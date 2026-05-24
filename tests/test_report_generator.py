@@ -268,6 +268,71 @@ def test_company_analysis_uses_financial_and_valuation_data() -> None:
     assert "P/B 高於同業平均 4.30" in company_analysis
 
 
+def test_financial_summary_ignores_percentage_and_total_liability_equity_fields() -> None:
+    metrics = [
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="income_statement",
+            metric="IncomeAfterTaxes",
+            origin_name="本期淨利（淨損）",
+            value=572_801_304_000,
+            source="FinMind TaiwanStockFinancialStatements",
+        ),
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="balance_sheet",
+            metric="Liabilities",
+            origin_name="負債總額",
+            value=2_728_560_764_000,
+            source="FinMind TaiwanStockBalanceSheet",
+        ),
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="balance_sheet",
+            metric="Liabilities_per",
+            origin_name="負債總額",
+            value=31.5,
+            source="FinMind TaiwanStockBalanceSheet",
+        ),
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="balance_sheet",
+            metric="TotalLiabilitiesEquity",
+            origin_name="負債及權益總計",
+            value=8_660_949_685_000,
+            source="FinMind TaiwanStockBalanceSheet",
+        ),
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="balance_sheet",
+            metric="Equity",
+            origin_name="權益總額",
+            value=5_932_388_921_000,
+            source="FinMind TaiwanStockBalanceSheet",
+        ),
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="balance_sheet",
+            metric="Equity_per",
+            origin_name="權益總額",
+            value=68.5,
+            source="FinMind TaiwanStockBalanceSheet",
+        ),
+    ]
+
+    summary = ReportGenerator._financial_statement_summary(metrics)
+
+    assert "2026 負債權益比約 0.46 倍" in summary["debt_trend"]
+    assert "2026 ROE 約 9.66%" in summary["roe_trend"]
+    assert "687799687000.00%" not in summary["roe_trend"]
+
+
 def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()

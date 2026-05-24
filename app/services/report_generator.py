@@ -835,6 +835,17 @@ class ReportGenerator:
             )
 
             detail_blocks.append(f"### {ticker} {name}")
+            detail_blocks.append(
+                "- 個股結論摘要："
+                + self._company_quick_take(
+                    snapshot,
+                    revenue,
+                    ticker_metrics,
+                    valuation,
+                    related_documents,
+                    related_findings,
+                )
+            )
             detail_blocks.append(f"- 產業鏈位置：{segment_name}")
             if snapshot:
                 detail_blocks.append(
@@ -921,9 +932,9 @@ class ReportGenerator:
             "",
             "#### 華爾街式完整分析框架",
             f"- 商業模式與收入來源：{name} 本次被歸類在「{segment_name}」。"
-            f"收入來源需以年報/法說資料確認；本系統目前僅能用主題文本與月營收觀察需求方向。{evidence_summary}",
-            f"- 競爭優勢（護城河）：目前可觀察到的證據為 {evidence_summary}"
-            f"護城河初評 {moat_score}/10；品牌、轉換成本、成本優勢、專利/獨家技術仍需年報與同業資料補強。",
+            f"收入來源仍需以年報/法說拆分；本系統先用主題文本、月營收與財報科目判斷需求是否落到公司層級。{evidence_summary}",
+            f"- 競爭優勢（護城河）：護城河初評 {moat_score}/10。"
+            f"依據：{self._moat_reason(moat_score, related_documents, related_findings, revenue, financial_summary)}",
             f"- 產業趨勢：{self._trend_summary(related_documents, related_findings)}",
             f"- 財務健康狀況：{financial_summary['health']} {revenue_summary}",
             "- 關鍵風險：" + self._company_risk_summary(related_findings),
@@ -1056,6 +1067,42 @@ class ReportGenerator:
         return f"{revenue.revenue_year}-{revenue.revenue_month:02d} 月營收 {revenue.revenue:,}，年增率 {yoy}。"
 
     @staticmethod
+    def _company_quick_take(
+        snapshot: MarketSnapshot | None,
+        revenue: MonthlyRevenue | None,
+        financial_metrics: list[FinancialMetric],
+        valuation: ValuationMetric | None,
+        related_documents: list[NewsDocument],
+        related_findings,
+    ) -> str:
+        strengths = []
+        cautions = []
+        if related_documents:
+            strengths.append(f"有 {len(related_documents)} 筆公司相關文本")
+        else:
+            cautions.append("缺公司層級新聞/RAG 證據")
+        if revenue and revenue.yoy_pct is not None:
+            if revenue.yoy_pct >= 20:
+                strengths.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
+            elif revenue.yoy_pct < 0:
+                cautions.append(f"月營收年減 {abs(revenue.yoy_pct):.2f}%")
+        else:
+            cautions.append("缺月營收年增率")
+        if valuation and valuation.pe_ratio is not None:
+            strengths.append(f"P/E {valuation.pe_ratio:.2f}")
+        else:
+            cautions.append("缺估值倍數")
+        if not financial_metrics:
+            cautions.append("缺五年財報資料")
+        if related_findings:
+            cautions.append(f"需追蹤 {len(related_findings)} 筆風險/機會歸因")
+        if not snapshot:
+            cautions.append("缺最新股價")
+        strength_text = "、".join(strengths[:3]) if strengths else "目前無明確加分訊號"
+        caution_text = "、".join(cautions[:3]) if cautions else "暫無重大資料缺口"
+        return f"{strength_text}；主要檢查點：{caution_text}。"
+
+    @staticmethod
     def _group_financial_metrics(metrics: list[FinancialMetric]) -> dict[str, list[FinancialMetric]]:
         grouped: dict[str, list[FinancialMetric]] = {}
         for metric in metrics:
@@ -1077,13 +1124,53 @@ class ReportGenerator:
                 "strength": "只依目前資料無法判斷 5 年體質變強或走弱。",
             }
 
-        revenue = ReportGenerator._metric_series(metrics, ["營業收入", "revenue"])
-        net_income = ReportGenerator._metric_series(metrics, ["本期淨利", "淨利", "net income"])
-        equity = ReportGenerator._metric_series(metrics, ["權益總計", "權益", "equity"])
-        liabilities = ReportGenerator._metric_series(metrics, ["負債總計", "負債", "liabilities"])
-        operating_cash = ReportGenerator._metric_series(metrics, ["營業活動", "operating cash"])
-        capex = ReportGenerator._metric_series(metrics, ["投資活動", "capital expenditure", "capex"])
-        gross_profit = ReportGenerator._metric_series(metrics, ["營業毛利", "gross profit"])
+        revenue = ReportGenerator._metric_series(
+            metrics,
+            ["營業收入", "revenue"],
+            statement_types={"income_statement"},
+        )
+        net_income = ReportGenerator._metric_series(
+            metrics,
+            ["本期淨利（淨損）", "本期淨利", "incomeaftertaxes", "netincome"],
+            statement_types={"income_statement"},
+            exclude_keywords=["歸屬", "綜合損益", "稅前"],
+        )
+        equity = ReportGenerator._metric_series(
+            metrics,
+            ["權益總額", "權益總計", "equity"],
+            statement_types={"balance_sheet"},
+            exclude_keywords=["_per", "採用權益法", "其他權益", "非控制權益", "資本公積", "負債及權益", "totalliabilitiesequity"],
+        )
+        liabilities = ReportGenerator._metric_series(
+            metrics,
+            ["負債總額", "負債總計", "liabilities"],
+            statement_types={"balance_sheet"},
+            exclude_keywords=[
+                "_per",
+                "流動負債",
+                "非流動負債",
+                "金融負債",
+                "所得稅負債",
+                "其他",
+                "負債及權益",
+                "totalliabilitiesequity",
+            ],
+        )
+        operating_cash = ReportGenerator._metric_series(
+            metrics,
+            ["營業活動", "operating cash"],
+            statement_types={"cash_flow"},
+        )
+        capex = ReportGenerator._metric_series(
+            metrics,
+            ["投資活動", "capital expenditure", "capex"],
+            statement_types={"cash_flow"},
+        )
+        gross_profit = ReportGenerator._metric_series(
+            metrics,
+            ["營業毛利", "gross profit"],
+            statement_types={"income_statement"},
+        )
 
         revenue_trend = ReportGenerator._series_trend_text(revenue, "營收")
         net_income_trend = ReportGenerator._series_trend_text(net_income, "淨利")
@@ -1104,19 +1191,27 @@ class ReportGenerator:
         }
 
     @staticmethod
-    def _metric_series(metrics: list[FinancialMetric], keywords: list[str]) -> dict[int, float]:
+    def _metric_series(
+        metrics: list[FinancialMetric],
+        keywords: list[str],
+        statement_types: set[str] | None = None,
+        exclude_keywords: list[str] | None = None,
+    ) -> dict[int, float]:
         series: dict[int, float] = {}
+        dates: dict[int, object] = {}
+        exclude_keywords = exclude_keywords or []
         for metric in metrics:
+            if statement_types and metric.statement_type not in statement_types:
+                continue
             name = f"{metric.metric} {metric.origin_name or ''}".lower()
+            if any(keyword.lower() in name for keyword in exclude_keywords):
+                continue
             if not any(keyword.lower() in name for keyword in keywords):
                 continue
             year = metric.report_date.year
-            if year not in series or metric.report_date >= max(
-                item.report_date
-                for item in metrics
-                if item.report_date.year == year
-            ):
+            if year not in series or metric.report_date >= dates[year]:
                 series[year] = metric.value
+                dates[year] = metric.report_date
         return dict(sorted(series.items())[-5:])
 
     @staticmethod
@@ -1318,6 +1413,28 @@ class ReportGenerator:
         if financial_summary and "體質改善" in financial_summary.get("strength", ""):
             score += 1
         return min(score, 6)
+
+    @staticmethod
+    def _moat_reason(
+        score: int,
+        related_documents: list[NewsDocument],
+        related_findings,
+        revenue: MonthlyRevenue | None,
+        financial_summary: dict[str, str] | None = None,
+    ) -> str:
+        reasons = []
+        if len(related_documents) >= 2:
+            reasons.append(f"{len(related_documents)} 筆公司層級文本")
+        if related_findings:
+            reasons.append(f"{len(related_findings)} 筆 AI 歸因證據")
+        if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+            reasons.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
+        if financial_summary and "體質改善" in financial_summary.get("strength", ""):
+            reasons.append("財務趨勢偏改善")
+        if not reasons:
+            reasons.append("目前缺少可量化護城河證據")
+        caveat = "仍需補客戶集中度、市占、長約、認證週期與專利/技術資料。"
+        return f"{'、'.join(reasons)}，因此暫評 {score}/10；{caveat}"
 
     @staticmethod
     def _company_rating(

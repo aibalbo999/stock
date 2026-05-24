@@ -281,6 +281,18 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
         limit_per_query=12,
         evidence_limit=120,
         max_queries=80,
+        query_metadata=[
+            {
+                "url": "https://news.google.com/search?q=AI",
+                "query": "AI",
+                "source_type": "subtopic",
+            },
+            {
+                "url": "https://news.google.com/search?q=HBM",
+                "query": "HBM",
+                "source_type": "coverage_gap",
+            },
+        ],
     )
 
     assert audit["topic"] == "AI 產業鏈"
@@ -296,6 +308,8 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
         "https://news.google.com/search?q=AI",
         "https://news.google.com/search?q=HBM",
     ]
+    assert audit["query_type_counts"] == {"subtopic": 1, "coverage_gap": 1}
+    assert audit["query_metadata_sample"][1]["source_type"] == "coverage_gap"
 
 
 def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> None:

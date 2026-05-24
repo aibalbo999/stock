@@ -173,9 +173,15 @@ def build_source_audit(
     limit_per_query: int,
     evidence_limit: int,
     max_queries: int,
+    query_metadata: list[dict] | None = None,
 ) -> dict:
     dynamic_summary = summarize_ingestion_stage(dynamic_query_ingestion)
     fixed_summary = summarize_ingestion_stage([fixed_source_ingestion])
+    query_metadata = query_metadata or []
+    query_type_counts: dict[str, int] = {}
+    for item in query_metadata:
+        source_type = str(item.get("source_type") or "unknown")
+        query_type_counts[source_type] = query_type_counts.get(source_type, 0) + 1
     return {
         "topic": payload.topic,
         "lookback_days": payload.lookback_days,
@@ -188,6 +194,8 @@ def build_source_audit(
         "dynamic_queries": dynamic_summary,
         "dynamic_query_count": len(urls),
         "dynamic_query_sample": urls[:10],
+        "query_type_counts": query_type_counts,
+        "query_metadata_sample": query_metadata[:10],
         "total_stored_count": fixed_summary["stored_count"] + dynamic_summary["stored_count"],
         "total_error_count": fixed_summary["error_count"] + dynamic_summary["error_count"],
     }
@@ -255,12 +263,14 @@ async def run_topic_discovery_ingestion(
     document_limit: int,
 ) -> dict:
     budget = discovery_query_budget(max_queries, payload.deep_analysis)
-    urls = service.google_news_urls(
+    query_metadata = service.google_news_urls(
         plan,
         include_international=payload.include_international,
         max_urls=budget["initial_queries"],
         topic=payload.topic,
+        include_metadata=True,
     )
+    urls = [item["url"] for item in query_metadata]
     end_date = today_taipei()
     start_date = end_date - timedelta(days=payload.lookback_days)
     fixed_source_ingestion = await IngestionPipeline().ingest_feeds(
@@ -286,6 +296,7 @@ async def run_topic_discovery_ingestion(
         limit_per_query,
         evidence_limit,
         max_queries,
+        query_metadata,
     )
 
     for round_index in range(budget["supplemental_rounds"] + 1):
@@ -307,6 +318,7 @@ async def run_topic_discovery_ingestion(
             limit_per_query,
             evidence_limit,
             max_queries,
+            query_metadata,
         )
         if not should_supplement_discovery_sources(source_audit, candidate_support):
             break
@@ -329,6 +341,14 @@ async def run_topic_discovery_ingestion(
             end_date,
         )
         urls.extend(supplemental_urls)
+        query_metadata.extend(
+            {
+                "url": url,
+                "query": url,
+                "source_type": "supplemental",
+            }
+            for url in supplemental_urls
+        )
         dynamic_query_ingestion.extend(supplemental_ingestion)
         remediation_rounds.append(
             {
@@ -347,6 +367,7 @@ async def run_topic_discovery_ingestion(
         limit_per_query,
         evidence_limit,
         max_queries,
+        query_metadata,
     )
     source_audit["plan_quality"] = service.evaluate_plan_quality(plan).model_dump()
     source_audit["candidate_support"] = candidate_support

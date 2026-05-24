@@ -229,6 +229,38 @@ def test_google_news_urls_include_coverage_gap_queries() -> None:
     assert any("%E8%82%A1%E5%83%B9" in url and "%E4%BC%B0%E5%80%BC" in url for url in urls)
 
 
+def test_google_news_urls_can_return_query_metadata() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "需求成長",
+              "rationale": "訂單",
+              "objective": "確認需求",
+              "required_evidence": ["訂單"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 訂單"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=4,
+        topic="AI 產業鏈",
+        include_metadata=True,
+    )
+
+    assert all("url" in item and "query" in item and "source_type" in item for item in metadata)
+    assert any(item["source_type"] == "research_task" for item in metadata)
+    assert any(item["source_type"] == "coverage_gap" for item in metadata)
+
+
 def test_google_news_urls_can_add_international_context_queries() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """

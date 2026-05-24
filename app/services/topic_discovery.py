@@ -177,10 +177,12 @@ class TopicDiscoveryService:
         include_international: bool = True,
         max_urls: int | None = None,
         topic: str | None = None,
-    ) -> list[str]:
+        include_metadata: bool = False,
+    ) -> list[str] | list[dict]:
         seen = set()
-        urls = []
-        queries: list[str] = []
+        urls: list[str] = []
+        metadata: list[dict] = []
+        queries: list[tuple[str, str]] = []
         for subtopic in plan.subtopics:
             task_terms = " ".join(
                 [subtopic.name, *subtopic.required_evidence[:2], *subtopic.risk_focus[:2]]
@@ -188,35 +190,44 @@ class TopicDiscoveryService:
                 else []
             )
             if task_terms.strip():
-                queries.append(task_terms.strip())
+                queries.append((task_terms.strip(), "research_task"))
             for query in subtopic.search_queries:
-                queries.append(query)
+                queries.append((query, "subtopic"))
                 if include_international:
-                    queries.append(f"{query} global market")
+                    queries.append((f"{query} global market", "subtopic_international"))
         for candidate in plan.candidate_companies:
             keywords = " ".join(candidate.evidence_keywords[:2])
-            queries.append(f"{candidate.name} {keywords}".strip())
-            queries.append(f"{candidate.ticker} {candidate.name}")
+            queries.append((f"{candidate.name} {keywords}".strip(), "candidate"))
+            queries.append((f"{candidate.ticker} {candidate.name}", "candidate"))
             if include_international:
                 english_terms = " ".join(candidate.evidence_keywords[:3])
-                queries.append(f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock")
-                queries.append(f"{candidate.segment} {english_terms} global supply chain")
+                queries.append(
+                    (f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock", "candidate_international")
+                )
+                queries.append(
+                    (f"{candidate.segment} {english_terms} global supply chain", "candidate_international")
+                )
         if topic:
-            queries.extend(self.coverage_gap_queries(topic, self.evaluate_plan_quality(plan)))
+            queries.extend(
+                (query, "coverage_gap")
+                for query in self.coverage_gap_queries(topic, self.evaluate_plan_quality(plan))
+            )
         if include_international:
-            queries.extend(self._international_context_queries())
-        for query in queries:
+            queries.extend((query, "international_context") for query in self._international_context_queries())
+        for query, source_type in queries:
             normalized = query.strip()
             if not normalized or normalized in seen:
                 continue
             seen.add(normalized)
-            urls.append(
+            url = (
                 "https://news.google.com/rss/search?"
                 f"q={quote_plus(normalized)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
             )
+            urls.append(url)
+            metadata.append({"url": url, "query": normalized, "source_type": source_type})
             if max_urls and len(urls) >= max_urls:
                 break
-        return urls
+        return metadata if include_metadata else urls
 
     @staticmethod
     def coverage_gap_queries(topic: str, quality: DiscoveryPlanQuality) -> list[str]:

@@ -646,6 +646,17 @@ def render_source_audit(result: dict) -> None:
             }
         )
     st.dataframe(rows, width="stretch", hide_index=True)
+    query_type_counts = audit.get("query_type_counts") or {}
+    if query_type_counts:
+        st.markdown("**AI 查詢來源分布**")
+        st.dataframe(
+            [
+                {"查詢類型": query_type, "數量": count}
+                for query_type, count in query_type_counts.items()
+            ],
+            width="stretch",
+            hide_index=True,
+        )
     if remediation.get("supplemented"):
         st.info(
             f"第一次抓取後資料覆蓋不足，系統已自動補抓 "

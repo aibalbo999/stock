@@ -33,6 +33,16 @@ class TopicDiscoveryPlan(BaseModel):
     candidate_companies: list[CandidateCompany] = Field(default_factory=list, max_length=20)
 
 
+class DiscoveryPlanQuality(BaseModel):
+    status: str
+    score: int
+    missing: list[str]
+    coverage: dict[str, bool]
+    subtopic_count: int
+    candidate_count: int
+    recommendation: str
+
+
 class ValidatedCandidate(BaseModel):
     ticker: str
     name: str
@@ -74,6 +84,91 @@ class TopicDiscoveryService:
             "model": result.model,
             "key_index": result.key_index,
             "plan": plan.model_dump(),
+            "plan_quality": self.evaluate_plan_quality(plan).model_dump(),
+        }
+
+    @staticmethod
+    def evaluate_plan_quality(plan: TopicDiscoveryPlan) -> DiscoveryPlanQuality:
+        missing = []
+        if not plan.subtopics:
+            missing.append("缺少研究子題")
+        if not plan.candidate_companies:
+            missing.append("缺少候選公司")
+        for index, subtopic in enumerate(plan.subtopics, start=1):
+            label = subtopic.name or f"子題 {index}"
+            if not subtopic.objective.strip():
+                missing.append(f"{label} 缺少研究目的")
+            if not subtopic.required_evidence:
+                missing.append(f"{label} 缺少必查證據")
+            if not subtopic.risk_focus:
+                missing.append(f"{label} 缺少風險焦點")
+            if not subtopic.search_queries:
+                missing.append(f"{label} 缺少搜尋 query")
+
+        coverage = TopicDiscoveryService._plan_theme_coverage(plan)
+        for theme, covered in coverage.items():
+            if not covered:
+                missing.append(f"缺少{theme}任務")
+
+        complete_subtopics = sum(
+            1
+            for subtopic in plan.subtopics
+            if subtopic.objective.strip()
+            and subtopic.required_evidence
+            and subtopic.risk_focus
+            and subtopic.search_queries
+        )
+        score = 0
+        if plan.subtopics:
+            score += int(40 * complete_subtopics / len(plan.subtopics))
+        score += int(30 * sum(1 for covered in coverage.values() if covered) / len(coverage))
+        if plan.candidate_companies:
+            score += 20
+        if all(candidate.evidence_keywords for candidate in plan.candidate_companies):
+            score += 10
+        status = "ready" if score >= 80 and not missing else "caution" if score >= 55 else "insufficient"
+        return DiscoveryPlanQuality(
+            status=status,
+            score=min(score, 100),
+            missing=missing,
+            coverage=coverage,
+            subtopic_count=len(plan.subtopics),
+            candidate_count=len(plan.candidate_companies),
+            recommendation=(
+                "拆解任務完整，可進入資料抓取。"
+                if status == "ready"
+                else "拆解任務可用但需留意缺口。"
+                if status == "caution"
+                else "拆解任務不足，應要求 AI 重新拆解或人工補充。"
+            ),
+        )
+
+    @staticmethod
+    def _plan_theme_coverage(plan: TopicDiscoveryPlan) -> dict[str, bool]:
+        texts = [
+            " ".join(
+                [
+                    subtopic.name,
+                    subtopic.rationale,
+                    subtopic.objective,
+                    *subtopic.required_evidence,
+                    *subtopic.risk_focus,
+                    *subtopic.search_queries,
+                ]
+            ).lower()
+            for subtopic in plan.subtopics
+        ]
+        joined = "\n".join(texts)
+        themes = {
+            "需求/成長": ["需求", "成長", "訂單", "出貨", "市場規模", "capex", "demand", "growth"],
+            "供給/產能": ["供給", "產能", "良率", "供應", "瓶頸", "capacity", "supply", "yield"],
+            "財務/營收": ["財務", "營收", "毛利", "獲利", "現金流", "revenue", "margin", "profit"],
+            "估值/股價": ["估值", "股價", "本益比", "pe", "p/e", "pb", "valuation", "price"],
+            "風險/瓶頸": ["風險", "瓶頸", "限制", "缺電", "地緣", "管制", "risk", "bottleneck"],
+        }
+        return {
+            theme: any(keyword in joined for keyword in keywords)
+            for theme, keywords in themes.items()
         }
 
     def google_news_urls(

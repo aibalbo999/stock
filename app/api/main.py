@@ -347,6 +347,7 @@ async def run_topic_discovery_ingestion(
         evidence_limit,
         max_queries,
     )
+    source_audit["plan_quality"] = service.evaluate_plan_quality(plan).model_dump()
     source_audit["candidate_support"] = candidate_support
     source_audit["remediation"] = {
         "supplemented": bool(remediation_rounds),
@@ -446,6 +447,7 @@ def discovery_candidate_whitelist(payload: TopicDiscoveryRequest) -> dict:
     candidates = service.validate_candidates(plan, documents)
     return {
         "discovery": discovery,
+        "plan_quality": service.evaluate_plan_quality(plan).model_dump(),
         "candidate_whitelist": [candidate.model_dump() for candidate in candidates],
     }
 

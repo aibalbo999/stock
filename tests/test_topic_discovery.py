@@ -92,6 +92,79 @@ def test_google_news_urls_include_research_task_terms() -> None:
     assert any("%E6%B0%B4%E5%86%B7%E8%A8%82%E5%96%AE" in url for url in urls)
 
 
+def test_evaluate_plan_quality_marks_complete_research_tasks_ready() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "需求成長",
+              "rationale": "雲端資本支出",
+              "objective": "確認訂單與市場規模是否成長",
+              "required_evidence": ["訂單", "市場規模", "營收"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 訂單 營收"]
+            },
+            {
+              "name": "供給產能",
+              "rationale": "CoWoS 與 HBM",
+              "objective": "確認產能與良率瓶頸",
+              "required_evidence": ["產能", "良率"],
+              "risk_focus": ["供給瓶頸", "缺電"],
+              "search_queries": ["CoWoS HBM 產能 良率"]
+            },
+            {
+              "name": "估值股價",
+              "rationale": "股價反映程度",
+              "objective": "比較估值與本益比",
+              "required_evidence": ["股價", "本益比"],
+              "risk_focus": ["估值過高"],
+              "search_queries": ["台股 AI 伺服器 本益比 估值"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2330",
+              "name": "台積電",
+              "segment": "晶圓代工",
+              "rationale": "CoWoS",
+              "evidence_keywords": ["CoWoS"]
+            }
+          ]
+        }
+        """
+    )
+
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert quality.status == "ready"
+    assert quality.score >= 80
+    assert quality.missing == []
+    assert all(quality.coverage.values())
+
+
+def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {"name": "熱門股票", "rationale": "", "search_queries": []}
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert quality.status == "insufficient"
+    assert "熱門股票 缺少研究目的" in quality.missing
+    assert "熱門股票 缺少必查證據" in quality.missing
+    assert "熱門股票 缺少風險焦點" in quality.missing
+    assert "熱門股票 缺少搜尋 query" in quality.missing
+    assert "缺少候選公司" in quality.missing
+
+
 def test_google_news_urls_can_add_international_context_queries() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """

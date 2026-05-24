@@ -601,6 +601,7 @@ def render_source_audit(result: dict) -> None:
     dynamic_queries = audit.get("dynamic_queries") or {}
     candidate_support = audit.get("candidate_support") or {}
     remediation = audit.get("remediation") or {}
+    plan_quality = audit.get("plan_quality") or {}
     cols = st.columns(4)
     cols[0].metric("固定來源入庫", fixed_sources.get("stored_count", 0))
     cols[1].metric("AI 查詢入庫", dynamic_queries.get("stored_count", 0))
@@ -620,6 +621,15 @@ def render_source_audit(result: dict) -> None:
         f"弱證據：{candidate_support.get('weak', 0)}｜"
         f"自動補資料：{'已觸發' if remediation.get('supplemented') else '未觸發'}"
     )
+    if isinstance(plan_quality, dict) and plan_quality:
+        st.caption(
+            f"拆解任務品質：{plan_quality.get('status', 'unknown')}｜"
+            f"分數：{plan_quality.get('score', 0)}｜"
+            f"{plan_quality.get('recommendation', '')}"
+        )
+        missing = plan_quality.get("missing") or []
+        if missing:
+            st.warning("拆解任務缺口：" + "；".join(missing[:6]))
 
     rows = []
     for source_type, summary in [

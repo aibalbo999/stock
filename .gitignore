@@ -1,0 +1,31 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local databases, vector stores, and scheduler state
+*.db
+*.sqlite
+*.sqlite3
+.chroma/
+chroma/
+faiss_index/
+celerybeat-schedule*
+
+# Generated reports and logs
+reports/
+*.log
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

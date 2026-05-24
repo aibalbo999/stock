@@ -1,0 +1,105 @@
+{
+  "version": "2026-05-24",
+  "policy": {
+    "mapping_rule": "Only companies in this whitelist may be mapped into the AI supply chain report.",
+    "unknown_rule": "If no whitelisted company is supported by retrieved evidence, answer: 目前無足夠數據判斷."
+  },
+  "segments": [
+    {
+      "id": "compute_chip",
+      "name": "算力晶片",
+      "companies": [],
+      "notes": "台股無直接對應高階 GPU 設計商；不得硬湊 IC 設計公司。"
+    },
+    {
+      "id": "foundry",
+      "name": "晶圓代工",
+      "companies": [
+        {
+          "ticker": "2330",
+          "name": "台積電",
+          "aliases": ["TSMC", "Taiwan Semiconductor", "台灣積體電路"]
+        }
+      ]
+    },
+    {
+      "id": "advanced_packaging",
+      "name": "先進封裝 / CoWoS 設備",
+      "companies": [
+        {
+          "ticker": "3131",
+          "name": "弘塑",
+          "aliases": ["弘塑科技"]
+        },
+        {
+          "ticker": "3583",
+          "name": "辛耘",
+          "aliases": ["辛耘企業"]
+        }
+      ]
+    },
+    {
+      "id": "server_odm",
+      "name": "AI 伺服器代工",
+      "companies": [
+        {
+          "ticker": "2382",
+          "name": "廣達",
+          "aliases": ["Quanta", "廣達電腦"]
+        },
+        {
+          "ticker": "3231",
+          "name": "緯創",
+          "aliases": ["Wistron", "緯創資通"]
+        }
+      ]
+    },
+    {
+      "id": "thermal",
+      "name": "散熱",
+      "companies": [
+        {
+          "ticker": "3324",
+          "name": "雙鴻",
+          "aliases": ["雙鴻科技", "Auras"]
+        }
+      ]
+    }
+  ],
+  "risk_keywords": {
+    "structural_bottleneck": [
+      "CoWoS",
+      "HBM",
+      "產能滿載",
+      "良率",
+      "先進封裝",
+      "封裝瓶頸",
+      "電網負荷",
+      "缺電",
+      "水冷",
+      "液冷",
+      "散熱技術轉換",
+      "美國晶片法案",
+      "出口管制",
+      "地緣政治"
+    ],
+    "short_term_volatility": [
+      "匯率",
+      "庫存調整",
+      "客戶拉貨",
+      "季節性",
+      "短單",
+      "出貨遞延",
+      "法說會前",
+      "股價震盪"
+    ],
+    "causal_checks": [
+      "伺服器出貨延遲",
+      "AI server delay",
+      "交期延長",
+      "上游供應",
+      "CoWoS 產能不足",
+      "HBM 供給不足"
+    ]
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "sources": [
+    {
+      "name": "cna-technology",
+      "url": "https://feeds.feedburner.com/rsscna/technology",
+      "enabled": true,
+      "publisher": "中央社科技"
+    },
+    {
+      "name": "cna-finance",
+      "url": "https://feeds.feedburner.com/rsscna/finance",
+      "enabled": true,
+      "publisher": "中央社財經"
+    },
+    {
+      "name": "technews",
+      "url": "https://technews.tw/feed/",
+      "enabled": true,
+      "publisher": "科技新報"
+    },
+    {
+      "name": "ithome",
+      "url": "https://www.ithome.com.tw/rss",
+      "enabled": true,
+      "publisher": "iThome"
+    },
+    {
+      "name": "nvidia-newsroom",
+      "url": "https://nvidianews.nvidia.com/rss.xml",
+      "enabled": true,
+      "publisher": "NVIDIA Newsroom"
+    },
+    {
+      "name": "nvidia-blog",
+      "url": "https://feeds.feedburner.com/nvidiablog",
+      "enabled": true,
+      "publisher": "NVIDIA Blog"
+    },
+    {
+      "name": "nvidia-developer-blog",
+      "url": "https://developer.nvidia.com/blog/feed/",
+      "enabled": true,
+      "publisher": "NVIDIA Developer Blog"
+    },
+    {
+      "name": "google-news-tsmc-cowos-ai",
+      "url": "https://news.google.com/rss/search?q=%E5%8F%B0%E7%A9%8D%E9%9B%BB%20CoWoS%20AI&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-ai-server-odm",
+      "url": "https://news.google.com/rss/search?q=%E5%BB%A3%E9%81%94%20%E7%B7%AF%E5%89%B5%20AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-advanced-packaging-equipment",
+      "url": "https://news.google.com/rss/search?q=%E5%BC%98%E5%A1%91%20%E8%BE%9B%E8%80%98%20CoWoS%20%E5%85%88%E9%80%B2%E5%B0%81%E8%A3%9D&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-liquid-cooling-thermal",
+      "url": "https://news.google.com/rss/search?q=%E9%9B%99%E9%B4%BB%20AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8%20%E6%95%A3%E7%86%B1%20%E6%B0%B4%E5%86%B7&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-global-ai-server-supply-chain",
+      "url": "https://news.google.com/rss/search?q=NVIDIA%20AI%20server%20supply%20chain%20Taiwan%20ODM&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-global-cowos-hbm",
+      "url": "https://news.google.com/rss/search?q=CoWoS%20HBM%20capacity%20bottleneck%20AI%20chips&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-global-ai-data-center-power",
+      "url": "https://news.google.com/rss/search?q=AI%20data%20center%20power%20grid%20constraint%20semiconductor&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-global-liquid-cooling",
+      "url": "https://news.google.com/rss/search?q=AI%20data%20center%20liquid%20cooling%20supply%20chain&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-global-export-controls",
+      "url": "https://news.google.com/rss/search?q=US%20export%20controls%20AI%20chips%20Taiwan%20supply%20chain&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    },
+    {
+      "name": "google-news-trendforce-ai-server",
+      "url": "https://news.google.com/rss/search?q=TrendForce%20AI%20server%20HBM%20CoWoS%20NVIDIA&hl=en-US&gl=US&ceid=US:en",
+      "enabled": true,
+      "publisher": null
+    }
+  ]
+}

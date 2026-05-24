@@ -1334,18 +1334,21 @@ with tabs[3]:
         value=schedule_config.lookback_days,
     )
     if st.button("儲存排程設定", type="primary"):
-        saved = schedule_store.save(
-            ScheduleConfig(
-                enabled=schedule_enabled,
-                hour=int(schedule_hour),
-                minute=int(schedule_minute),
-                topic=schedule_topic,
-                tickers=schedule_tickers,
-                lookback_days=int(schedule_lookback),
-                timezone="Asia/Taipei",
+        if schedule_enabled and not schedule_tickers:
+            st.warning("啟用每日排程時，請至少選擇一檔白名單股票。")
+        else:
+            saved = schedule_store.save(
+                ScheduleConfig(
+                    enabled=schedule_enabled,
+                    hour=int(schedule_hour),
+                    minute=int(schedule_minute),
+                    topic=schedule_topic,
+                    tickers=schedule_tickers,
+                    lookback_days=int(schedule_lookback),
+                    timezone="Asia/Taipei",
+                )
             )
-        )
-        st.success(f"已儲存：每日 {saved.timezone} {saved.hour:02d}:{saved.minute:02d}")
+            st.success(f"已儲存：每日 {saved.timezone} {saved.hour:02d}:{saved.minute:02d}")
     with st.expander("進階：背景服務啟動指令"):
         st.info("只有需要啟動自動排程服務時才需要使用。")
         st.code(

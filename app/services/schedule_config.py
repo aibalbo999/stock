@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import get_settings
 from app.services.entity_mapping import EntityMapper
@@ -21,6 +21,12 @@ class ScheduleConfig(BaseModel):
     @classmethod
     def tickers_must_be_whitelisted(cls, value: list[str]) -> list[str]:
         return EntityMapper().filter_allowed_tickers(value)
+
+    @model_validator(mode="after")
+    def enabled_schedule_requires_tickers(self) -> "ScheduleConfig":
+        if self.enabled and not self.tickers:
+            raise ValueError("enabled schedule requires at least one whitelisted ticker")
+        return self
 
 
 class ScheduleConfigStore:

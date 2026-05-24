@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
 
 
@@ -7,6 +9,17 @@ def test_schedule_config_filters_non_whitelist_tickers() -> None:
     config = ScheduleConfig(tickers=["2330", "9999", "2382"])
 
     assert config.tickers == ["2330", "2382"]
+
+
+def test_enabled_schedule_requires_whitelisted_ticker() -> None:
+    with pytest.raises(ValueError, match="enabled schedule requires"):
+        ScheduleConfig(enabled=True, tickers=["9999"])
+
+
+def test_disabled_schedule_allows_empty_tickers() -> None:
+    config = ScheduleConfig(enabled=False, tickers=[])
+
+    assert config.tickers == []
 
 
 def test_schedule_config_store_roundtrip(tmp_path: Path, monkeypatch) -> None:

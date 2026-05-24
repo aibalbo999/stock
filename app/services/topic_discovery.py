@@ -176,6 +176,7 @@ class TopicDiscoveryService:
         plan: TopicDiscoveryPlan,
         include_international: bool = True,
         max_urls: int | None = None,
+        topic: str | None = None,
     ) -> list[str]:
         seen = set()
         urls = []
@@ -200,6 +201,8 @@ class TopicDiscoveryService:
                 english_terms = " ".join(candidate.evidence_keywords[:3])
                 queries.append(f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock")
                 queries.append(f"{candidate.segment} {english_terms} global supply chain")
+        if topic:
+            queries.extend(self.coverage_gap_queries(topic, self.evaluate_plan_quality(plan)))
         if include_international:
             queries.extend(self._international_context_queries())
         for query in queries:
@@ -214,6 +217,25 @@ class TopicDiscoveryService:
             if max_urls and len(urls) >= max_urls:
                 break
         return urls
+
+    @staticmethod
+    def coverage_gap_queries(topic: str, quality: DiscoveryPlanQuality) -> list[str]:
+        if quality.status == "ready":
+            return []
+        query_terms = {
+            "需求/成長": ["需求 成長 訂單 出貨", "市場規模 展望"],
+            "供給/產能": ["供給 產能 良率 瓶頸", "供應鏈 交期"],
+            "財務/營收": ["營收 毛利 獲利", "財報 現金流"],
+            "估值/股價": ["股價 估值 本益比", "同業 比較"],
+            "風險/瓶頸": ["風險 瓶頸 限制", "地緣政治 缺電 管制"],
+        }
+        queries = []
+        for theme, covered in quality.coverage.items():
+            if covered:
+                continue
+            for terms in query_terms.get(theme, []):
+                queries.append(f"{topic} {terms}".strip())
+        return queries
 
     def supplemental_google_news_urls(
         self,

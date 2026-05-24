@@ -259,6 +259,7 @@ async def run_topic_discovery_ingestion(
         plan,
         include_international=payload.include_international,
         max_urls=budget["initial_queries"],
+        topic=payload.topic,
     )
     end_date = today_taipei()
     start_date = end_date - timedelta(days=payload.lookback_days)

@@ -165,6 +165,70 @@ def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
     assert "缺少候選公司" in quality.missing
 
 
+def test_coverage_gap_queries_add_missing_research_dimensions() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "需求成長",
+              "rationale": "雲端資本支出",
+              "objective": "確認需求成長",
+              "required_evidence": ["訂單"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 訂單"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI 伺服器",
+              "rationale": "出貨",
+              "evidence_keywords": ["AI 伺服器"]
+            }
+          ]
+        }
+        """
+    )
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    queries = TopicDiscoveryService.coverage_gap_queries("AI 產業鏈", quality)
+
+    assert "AI 產業鏈 供給 產能 良率 瓶頸" in queries
+    assert "AI 產業鏈 營收 毛利 獲利" in queries
+    assert "AI 產業鏈 股價 估值 本益比" in queries
+
+
+def test_google_news_urls_include_coverage_gap_queries() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "需求成長",
+              "rationale": "訂單",
+              "objective": "確認需求",
+              "required_evidence": ["訂單"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 訂單"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    urls = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=8,
+        topic="AI 產業鏈",
+    )
+
+    assert any("%E8%82%A1%E5%83%B9" in url and "%E4%BC%B0%E5%80%BC" in url for url in urls)
+
+
 def test_google_news_urls_can_add_international_context_queries() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from datetime import datetime, time, timedelta
 from html import escape
 from typing import Optional
@@ -409,6 +410,55 @@ def detail_html(markdown: str, title: str, heading: str) -> str:
     return f"<details><summary>{escape(title)}</summary><ul>{body}</ul></details>"
 
 
+def company_analysis_html(markdown: str) -> str:
+    section = markdown_section_or_none(markdown, "個別公司分析")
+    if not section:
+        return ""
+    company_blocks = re.split(r"(?m)^### (?=\d{4}\s)", section)
+    cards = []
+    for block in company_blocks[1:]:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        title = lines[0].replace("**", "")
+        highlights = []
+        for line in lines[1:]:
+            if line.startswith("### "):
+                break
+            if line.startswith("#### ") and len(highlights) >= 4:
+                break
+            if not line.startswith("- "):
+                continue
+            text = line[2:].replace("**", "").strip()
+            if (
+                text.startswith(("產業鏈位置", "市場資料", "月營收"))
+                or "財務體質判斷" in text
+                or "是否低估或高估" in text
+                or "最終結論" in text
+            ):
+                highlights.append(text)
+            if len(highlights) >= 6:
+                break
+        if not highlights:
+            highlights = [
+                line[2:].replace("**", "").strip()
+                for line in lines[1:]
+                if line.startswith("- ")
+            ][:4]
+        body = "".join(f"<li>{escape(item)}</li>" for item in highlights)
+        cards.append(
+            f"""
+            <details class="company-detail">
+              <summary>{escape(title)}</summary>
+              <ul>{body or "<li>目前無足夠數據判斷。</li>"}</ul>
+            </details>
+            """
+        )
+    if not cards:
+        return ""
+    return f"<details open><summary>個別公司分析（{len(cards)} 檔）</summary>{''.join(cards)}</details>"
+
+
 def metric_percent(value: object) -> str:
     return "未評估" if value is None else f"{float(value or 0):.0%}"
 
@@ -470,7 +520,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     details = "".join(
         [
             detail_html(markdown, "資金控管", "資金控管建議"),
-            detail_html(markdown, "個別公司分析", "個別公司分析"),
+            company_analysis_html(markdown),
             detail_html(markdown, "主要風險", "主要風險與瓶頸"),
             detail_html(markdown, "資料完整度", "資料完整度"),
             detail_html(markdown, "來源覆蓋", "來源覆蓋"),
@@ -510,6 +560,8 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .decision {{ white-space:nowrap; background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:6px 10px; font-weight:700; font-size:13px; }}
   details {{ background:#F9FBFD; border:1px solid #D7DEE8; border-radius:8px; padding:12px 14px; margin:8px 0; }}
   summary {{ cursor:pointer; font-weight:700; }}
+  .company-detail {{ background:#FFFFFF; margin:10px 0 0; }}
+  .company-detail summary {{ color:#1D4ED8; }}
   @media (max-width:760px) {{ .grid,.trust-grid {{ grid-template-columns:1fr 1fr; }} .stock-card {{ display:block; }} .decision {{ display:inline-block; margin-top:10px; }} }}
 </style>
 </head>

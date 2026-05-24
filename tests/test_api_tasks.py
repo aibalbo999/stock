@@ -134,6 +134,27 @@ def test_generate_report_async_queues_celery_task(monkeypatch) -> None:
     }
 
 
+def test_generate_report_async_requires_whitelisted_ticker(monkeypatch) -> None:
+    def fake_delay(payload: dict) -> DummyQueuedTask:
+        raise AssertionError("task should not be queued without whitelisted tickers")
+
+    monkeypatch.setattr(main.generate_report_task, "delay", fake_delay)
+
+    response = TestClient(main.app).post(
+        "/reports/generate_async",
+        json={
+            "topic": "AI 產業鏈",
+            "tickers": [],
+            "lookback_days": 7,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "async report generation requires at least one whitelisted ticker"
+    }
+
+
 def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypatch) -> None:
     captured = {"updated_payloads": []}
 

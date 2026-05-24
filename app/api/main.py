@@ -884,6 +884,11 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
 
 @app.post("/reports/generate_async")
 def generate_report_async(request: ReportRequest) -> dict:
+    if not EntityMapper().filter_allowed_tickers(request.tickers):
+        raise HTTPException(
+            status_code=400,
+            detail="async report generation requires at least one whitelisted ticker",
+        )
     task = generate_report_task.delay(request.model_dump(mode="json"))
     return {"task_id": task.id, "status": "queued"}
 

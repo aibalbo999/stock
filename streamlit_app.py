@@ -895,23 +895,28 @@ with tabs[0]:
                     st.error(str(exc))
 
         if run_sync and run_async:
-            payload = {
-                "topic": topic,
-                "tickers": tickers,
-                "lookback_days": int(lookback_days),
-                "evidence_limit": int(evidence_limit),
-                "investor_capital": int(investor_capital),
-                "beginner_mode": bool(beginner_mode),
-                "investor_profile": investor_profile,
-                "max_position_pct": float(max_position_pct) / 100,
-                "cash_reserve_pct": float(cash_reserve_pct) / 100,
-            }
-            try:
-                task_response = api_post("/reports/generate_async", payload)
-                st.session_state["last_async_task_id"] = task_response["task_id"]
-                st.success(f"已送出非同步任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"非同步任務送出失敗：{exc}")
+            if ai_discovery_mode:
+                st.warning("背景執行目前只支援手動個股範圍；AI 拆解主題請取消背景執行後直接分析。")
+            elif not tickers:
+                st.warning("背景執行請至少選擇一檔白名單股票。")
+            else:
+                payload = {
+                    "topic": topic,
+                    "tickers": tickers,
+                    "lookback_days": int(lookback_days),
+                    "evidence_limit": int(evidence_limit),
+                    "investor_capital": int(investor_capital),
+                    "beginner_mode": bool(beginner_mode),
+                    "investor_profile": investor_profile,
+                    "max_position_pct": float(max_position_pct) / 100,
+                    "cash_reserve_pct": float(cash_reserve_pct) / 100,
+                }
+                try:
+                    task_response = api_post("/reports/generate_async", payload)
+                    st.session_state["last_async_task_id"] = task_response["task_id"]
+                    st.success(f"已送出非同步任務：{task_response['task_id']}")
+                except requests.RequestException as exc:
+                    st.error(f"非同步任務送出失敗：{exc}")
 
         with st.expander("疑難排解：查詢背景分析"):
             last_task_id = st.session_state.get("last_async_task_id")

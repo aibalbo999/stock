@@ -12,6 +12,9 @@ def test_parse_topic_discovery_plan() -> None:
         {
           "name": "CoWoS",
           "rationale": "AI GPU supply chain bottleneck",
+          "objective": "查核先進封裝是否限制出貨",
+          "required_evidence": ["產能", "訂單"],
+          "risk_focus": ["供給瓶頸"],
           "search_queries": ["台積電 CoWoS AI"]
         }
       ],
@@ -30,6 +33,9 @@ def test_parse_topic_discovery_plan() -> None:
     plan = TopicDiscoveryService.parse_plan(raw)
 
     assert plan.subtopics[0].name == "CoWoS"
+    assert plan.subtopics[0].objective == "查核先進封裝是否限制出貨"
+    assert plan.subtopics[0].required_evidence == ["產能", "訂單"]
+    assert plan.subtopics[0].risk_focus == ["供給瓶頸"]
     assert plan.candidate_companies[0].ticker == "2330"
 
 
@@ -59,6 +65,31 @@ def test_google_news_urls_deduplicate_queries() -> None:
     assert "news.google.com/rss/search" in urls[0]
     assert "hl=zh-TW" in urls[0]
     assert any("2330" in url for url in urls)
+
+
+def test_google_news_urls_include_research_task_terms() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "rationale": "AI 機櫃功耗上升",
+              "objective": "查核散熱技術轉換是否延遲出貨",
+              "required_evidence": ["水冷訂單", "機櫃功耗"],
+              "risk_focus": ["技術轉換", "交期延遲"],
+              "search_queries": ["AI 伺服器 液冷"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    urls = TopicDiscoveryService().google_news_urls(plan, include_international=False, max_urls=2)
+
+    assert any("%E6%B6%B2%E5%86%B7%E6%95%A3%E7%86%B1" in url for url in urls)
+    assert any("%E6%B0%B4%E5%86%B7%E8%A8%82%E5%96%AE" in url for url in urls)
 
 
 def test_google_news_urls_can_add_international_context_queries() -> None:
@@ -134,6 +165,36 @@ def test_supplemental_google_news_urls_focuses_on_unsupported_candidates() -> No
     assert urls
     assert any("2382" in url or "%E5%BB%A3%E9%81%94" in url for url in urls)
     assert not any("2330+%E5%8F%B0%E7%A9%8D%E9%9B%BB" in url for url in urls)
+
+
+def test_supplemental_google_news_urls_include_subtopic_evidence_and_risk_terms() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "電力供給",
+              "rationale": "資料中心耗電提升",
+              "objective": "確認缺電是否限制投資",
+              "required_evidence": ["電網負荷", "資料中心"],
+              "risk_focus": ["缺電", "電價"],
+              "search_queries": ["AI 資料中心 缺電"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    urls = TopicDiscoveryService().supplemental_google_news_urls(
+        plan,
+        [],
+        include_international=False,
+        max_urls=3,
+    )
+
+    assert any("%E9%9B%BB%E7%B6%B2%E8%B2%A0%E8%8D%B7" in url for url in urls)
+    assert any("%E7%BC%BA%E9%9B%BB" in url for url in urls)
 
 
 def test_validate_candidates_marks_evidence_supported() -> None:

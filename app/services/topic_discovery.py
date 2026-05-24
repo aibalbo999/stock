@@ -14,6 +14,9 @@ from app.services.whitelist import SupplyChainWhitelist
 class DiscoverySubtopic(BaseModel):
     name: str = Field(min_length=1)
     rationale: str = ""
+    objective: str = ""
+    required_evidence: list[str] = Field(default_factory=list, max_length=6)
+    risk_focus: list[str] = Field(default_factory=list, max_length=6)
     search_queries: list[str] = Field(default_factory=list, max_length=5)
 
 
@@ -83,6 +86,13 @@ class TopicDiscoveryService:
         urls = []
         queries: list[str] = []
         for subtopic in plan.subtopics:
+            task_terms = " ".join(
+                [subtopic.name, *subtopic.required_evidence[:2], *subtopic.risk_focus[:2]]
+                if subtopic.required_evidence or subtopic.risk_focus
+                else []
+            )
+            if task_terms.strip():
+                queries.append(task_terms.strip())
             for query in subtopic.search_queries:
                 queries.append(query)
                 if include_international:
@@ -139,7 +149,11 @@ class TopicDiscoveryService:
                 queries.append(f"{candidate.name} {candidate.ticker} Taiwan supplier {keywords}".strip())
                 queries.append(f"{candidate.segment} {keywords} Taiwan listed company".strip())
         for subtopic in plan.subtopics:
-            queries.append(f"{subtopic.name} {subtopic.rationale} 台股".strip())
+            evidence_terms = " ".join(subtopic.required_evidence[:2])
+            risk_terms = " ".join(subtopic.risk_focus[:2])
+            queries.append(f"{subtopic.name} {subtopic.rationale} {evidence_terms} 台股".strip())
+            if risk_terms:
+                queries.append(f"{subtopic.name} {risk_terms} 風險 瓶頸".strip())
             for query in subtopic.search_queries[:2]:
                 queries.append(f"{query} 最新")
 
@@ -291,11 +305,15 @@ class TopicDiscoveryService:
 - 回覆第一個字元必須是 {{，最後一個字元必須是 }}。
 - subtopics 最多 5 筆；candidate_companies 最多 10 筆。
 - rationale 每欄最多 25 個中文字；search query 每筆最多 30 個中文字。
+- 子題應是一個可執行研究任務，不只是關鍵字。
+- 每個子題需包含 objective、required_evidence、risk_focus，說明研究目的、需要查核的資料、需監控的風險。
 - 子題應能驅動資料抓取，例如 CoWoS、HBM、AI 伺服器、液冷、地緣政治、缺電等，但不要固定死在這些範例。
 - candidate_companies 是「候選研究清單」，不是正式投資推薦。
 - 公司必須是台股 4 碼 ticker。
 - 不確定 ticker 時不要輸出該公司。
 - search_queries 要適合 Google News RSS 搜尋，使用繁體中文為主。
+- 拆解時至少涵蓋：需求/成長、供給/產能、財務/營收、估值/股價、風險/瓶頸；若主題不適用可合併但不可完全缺漏。
+- 不可把「熱門股票」當作子題；必須先說明產業因果，再提出候選公司。
 
 JSON schema:
 {{
@@ -303,6 +321,9 @@ JSON schema:
     {{
       "name": "string",
       "rationale": "string",
+      "objective": "string",
+      "required_evidence": ["營收", "產能", "訂單"],
+      "risk_focus": ["供給瓶頸", "價格下修"],
       "search_queries": ["string"]
     }}
   ],

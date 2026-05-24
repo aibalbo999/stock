@@ -78,13 +78,47 @@ class TopicDiscoveryService:
                 "raw_preview": result.text[:500],
                 "plan": TopicDiscoveryPlan().model_dump(),
             }
+        initial_quality = self.evaluate_plan_quality(plan)
+        repair = None
+        final_plan = plan
+        final_quality = initial_quality
+        if initial_quality.status != "ready":
+            repair = self.repair_plan(topic, plan, initial_quality)
+            if repair is not None and repair["quality"].score >= initial_quality.score:
+                final_plan = repair["plan"]
+                final_quality = repair["quality"]
         return {
             "topic": topic,
             "fallback": False,
             "model": result.model,
             "key_index": result.key_index,
-            "plan": plan.model_dump(),
-            "plan_quality": self.evaluate_plan_quality(plan).model_dump(),
+            "plan": final_plan.model_dump(),
+            "plan_quality": final_quality.model_dump(),
+            "initial_plan_quality": initial_quality.model_dump(),
+            "repair_attempted": initial_quality.status != "ready",
+            "repair_applied": final_plan is not plan,
+            "repair_model": repair["model"] if repair else None,
+            "repair_key_index": repair["key_index"] if repair else None,
+        }
+
+    def repair_plan(
+        self,
+        topic: str,
+        plan: TopicDiscoveryPlan,
+        quality: DiscoveryPlanQuality,
+    ) -> dict | None:
+        result = self.llm.generate_with_metadata(self._repair_prompt(topic, plan, quality))
+        if result.fallback:
+            return None
+        try:
+            repaired_plan = self.parse_plan(result.text)
+        except ValueError:
+            return None
+        return {
+            "plan": repaired_plan,
+            "quality": self.evaluate_plan_quality(repaired_plan),
+            "model": result.model,
+            "key_index": result.key_index,
         }
 
     @staticmethod
@@ -462,6 +496,53 @@ JSON schema:
       "segment": "晶圓代工",
       "rationale": "string",
       "evidence_keywords": ["CoWoS", "HBM"]
+    }}
+  ]
+}}
+"""
+
+    @staticmethod
+    def _repair_prompt(topic: str, plan: TopicDiscoveryPlan, quality: DiscoveryPlanQuality) -> str:
+        return f"""
+你是台股產業研究總監。請修正主題「{topic}」的研究拆解 JSON，讓它成為可執行、可查證、可用於後續投資研究的任務清單。
+
+目前品質狀態：
+{json.dumps(quality.model_dump(), ensure_ascii=False)}
+
+目前 JSON：
+{json.dumps(plan.model_dump(), ensure_ascii=False)}
+
+修正要求：
+- 只能輸出 JSON，不要 Markdown，不要解釋，不要前後文。
+- 回覆第一個字元必須是 {{，最後一個字元必須是 }}。
+- 保留合理的原子題與候選公司，但必須補齊品質缺口。
+- subtopics 最多 8 筆；candidate_companies 最多 20 筆。
+- 每個子題都要有 objective、required_evidence、risk_focus、search_queries。
+- 子題必須是可執行研究任務，不能只是熱門股、概念股或單一關鍵字。
+- search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料。
+- 至少涵蓋品質缺口中提到的研究面向；若主題不適用，需用同一子題合併處理但不能空缺。
+- candidate_companies 只是候選研究清單，不是投資推薦；公司必須是台股 4 碼 ticker，不確定 ticker 不要輸出。
+- evidence_keywords 必須能用來驗證公司與主題的真實關聯，不能只寫「AI」或「熱門」。
+
+JSON schema:
+{{
+  "subtopics": [
+    {{
+      "name": "string",
+      "rationale": "string",
+      "objective": "string",
+      "required_evidence": ["營收", "產能", "訂單"],
+      "risk_focus": ["供給瓶頸", "價格下修"],
+      "search_queries": ["string"]
+    }}
+  ],
+  "candidate_companies": [
+    {{
+      "ticker": "2330",
+      "name": "台積電",
+      "segment": "晶圓代工",
+      "rationale": "string",
+      "evidence_keywords": ["CoWoS", "先進封裝"]
     }}
   ]
 }}

@@ -1,8 +1,23 @@
 from datetime import date
 
 from app.data_sources.news import NewsFetcher
+from app.services.llm_client import LLMResult
 from app.services.topic_discovery import TopicDiscoveryService
 from app.services.whitelist import SupplyChainWhitelist
+
+
+class FakeDiscoveryLLM:
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
+        self.prompts: list[str] = []
+
+    def generate_with_metadata(self, prompt: str) -> LLMResult:
+        self.prompts.append(prompt)
+        return LLMResult(
+            text=self.responses.pop(0),
+            key_index=0,
+            model="fake-model",
+        )
 
 
 def test_parse_topic_discovery_plan() -> None:
@@ -163,6 +178,108 @@ def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
     assert "熱門股票 缺少風險焦點" in quality.missing
     assert "熱門股票 缺少搜尋 query" in quality.missing
     assert "缺少候選公司" in quality.missing
+
+
+def test_discover_repairs_incomplete_plan_once() -> None:
+    weak_plan = """
+    {
+      "subtopics": [
+        {"name": "熱門股票", "rationale": "", "search_queries": []}
+      ],
+      "candidate_companies": []
+    }
+    """
+    repaired_plan = """
+    {
+      "subtopics": [
+        {
+          "name": "需求成長",
+          "rationale": "雲端資本支出",
+          "objective": "確認訂單與市場規模是否成長",
+          "required_evidence": ["訂單", "市場規模", "營收"],
+          "risk_focus": ["需求下修"],
+          "search_queries": ["AI 伺服器 訂單 營收"]
+        },
+        {
+          "name": "供給產能",
+          "rationale": "關鍵零組件供應",
+          "objective": "確認產能與良率瓶頸",
+          "required_evidence": ["產能", "良率"],
+          "risk_focus": ["供給瓶頸", "缺電"],
+          "search_queries": ["AI 供應鏈 產能 良率"]
+        },
+        {
+          "name": "估值股價",
+          "rationale": "市場反映程度",
+          "objective": "比較估值與本益比",
+          "required_evidence": ["股價", "本益比"],
+          "risk_focus": ["估值過高"],
+          "search_queries": ["台股 AI 本益比 估值"]
+        }
+      ],
+      "candidate_companies": [
+        {
+          "ticker": "2330",
+          "name": "台積電",
+          "segment": "晶圓代工",
+          "rationale": "先進製程與封裝",
+          "evidence_keywords": ["CoWoS", "先進封裝"]
+        }
+      ]
+    }
+    """
+    llm = FakeDiscoveryLLM([weak_plan, repaired_plan])
+
+    result = TopicDiscoveryService(llm=llm).discover("AI 產業鏈")
+
+    assert result["repair_attempted"] is True
+    assert result["repair_applied"] is True
+    assert result["initial_plan_quality"]["status"] == "insufficient"
+    assert result["plan_quality"]["status"] == "ready"
+    assert result["plan"]["subtopics"][0]["name"] == "需求成長"
+    assert "品質狀態" in llm.prompts[1]
+
+
+def test_discover_keeps_original_when_repair_is_worse() -> None:
+    caution_plan = """
+    {
+      "subtopics": [
+        {
+          "name": "需求成長",
+          "rationale": "訂單追蹤",
+          "objective": "確認需求與營收",
+          "required_evidence": ["訂單", "營收"],
+          "risk_focus": ["需求下修"],
+          "search_queries": ["AI 伺服器 訂單 營收"]
+        }
+      ],
+      "candidate_companies": [
+        {
+          "ticker": "2382",
+          "name": "廣達",
+          "segment": "AI 伺服器",
+          "rationale": "伺服器代工",
+          "evidence_keywords": ["AI 伺服器"]
+        }
+      ]
+    }
+    """
+    weak_plan = """
+    {
+      "subtopics": [
+        {"name": "熱門股票", "rationale": "", "search_queries": []}
+      ],
+      "candidate_companies": []
+    }
+    """
+    llm = FakeDiscoveryLLM([caution_plan, weak_plan])
+
+    result = TopicDiscoveryService(llm=llm).discover("AI 產業鏈")
+
+    assert result["repair_attempted"] is True
+    assert result["repair_applied"] is False
+    assert result["plan"]["subtopics"][0]["name"] == "需求成長"
+    assert result["plan_quality"]["score"] >= result["initial_plan_quality"]["score"]
 
 
 def test_coverage_gap_queries_add_missing_research_dimensions() -> None:

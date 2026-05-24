@@ -647,11 +647,16 @@ def render_source_audit(result: dict) -> None:
         )
     st.dataframe(rows, width="stretch", hide_index=True)
     query_type_counts = audit.get("query_type_counts") or {}
+    query_type_labels = audit.get("query_type_labels") or {}
     if query_type_counts:
         st.markdown("**AI 查詢來源分布**")
         st.dataframe(
             [
-                {"查詢類型": query_type, "數量": count}
+                {
+                    "查詢類型": (query_type_labels.get(query_type) or {}).get("label", query_type),
+                    "數量": count,
+                    "說明": (query_type_labels.get(query_type) or {}).get("description", ""),
+                }
                 for query_type, count in query_type_counts.items()
             ],
             width="stretch",

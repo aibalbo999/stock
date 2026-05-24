@@ -182,6 +182,10 @@ def build_source_audit(
     for item in query_metadata:
         source_type = str(item.get("source_type") or "unknown")
         query_type_counts[source_type] = query_type_counts.get(source_type, 0) + 1
+    query_type_labels = {
+        source_type: query_type_label(source_type)
+        for source_type in query_type_counts
+    }
     return {
         "topic": payload.topic,
         "lookback_days": payload.lookback_days,
@@ -195,10 +199,27 @@ def build_source_audit(
         "dynamic_query_count": len(urls),
         "dynamic_query_sample": urls[:10],
         "query_type_counts": query_type_counts,
+        "query_type_labels": query_type_labels,
         "query_metadata_sample": query_metadata[:10],
         "total_stored_count": fixed_summary["stored_count"] + dynamic_summary["stored_count"],
         "total_error_count": fixed_summary["error_count"] + dynamic_summary["error_count"],
     }
+
+
+def query_type_label(source_type: str) -> dict:
+    labels = {
+        "research_task": ("研究任務", "由拆解任務的目的、必查證據與風險焦點產生。"),
+        "subtopic": ("子題查詢", "由 AI 原始子題搜尋 query 產生。"),
+        "subtopic_international": ("子題國際查詢", "由子題 query 延伸的國際市場搜尋。"),
+        "candidate": ("候選公司查詢", "用於驗證候選公司與主題證據是否同時存在。"),
+        "candidate_international": ("候選公司國際查詢", "用於查核台股候選公司在國際供應鏈中的證據。"),
+        "coverage_gap": ("缺口補強查詢", "系統依拆解品質缺口自動補上的搜尋。"),
+        "international_context": ("國際背景查詢", "系統固定加入的國際供應鏈背景搜尋。"),
+        "supplemental": ("補抓查詢", "第一次抓取後因證據不足自動追加的搜尋。"),
+        "unknown": ("未分類查詢", "尚未分類的查詢來源。"),
+    }
+    label, description = labels.get(source_type, labels["unknown"])
+    return {"label": label, "description": description}
 
 
 def summarize_candidate_support(candidates) -> dict:

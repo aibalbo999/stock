@@ -309,6 +309,8 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
         "https://news.google.com/search?q=HBM",
     ]
     assert audit["query_type_counts"] == {"subtopic": 1, "coverage_gap": 1}
+    assert audit["query_type_labels"]["subtopic"]["label"] == "子題查詢"
+    assert audit["query_type_labels"]["coverage_gap"]["label"] == "缺口補強查詢"
     assert audit["query_metadata_sample"][1]["source_type"] == "coverage_gap"
 
 

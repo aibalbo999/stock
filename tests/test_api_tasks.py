@@ -493,6 +493,57 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["warnings"] == []
 
 
+def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 0.8},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        plan_quality={
+            "status": "insufficient",
+            "score": 30,
+            "missing": ["缺少估值/股價研究任務"],
+        },
+    )
+
+    assert gate["status"] == "insufficient"
+    assert gate["action_policy"]["policy"] == "research_only"
+    assert any("AI 拆解任務品質不足" in blocker for blocker in gate["blockers"])
+    assert gate["metrics"]["discovery_plan_status"] == "insufficient"
+    assert gate["metrics"]["discovery_plan_score"] == 30
+
+
+def test_report_quality_gate_warns_on_caution_discovery_plan() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 0.8},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        investor_capital=1_000_000,
+        cash_reserve_pct=0.3,
+        plan_quality={
+            "status": "caution",
+            "score": 70,
+            "missing": ["缺少風險/瓶頸研究任務"],
+        },
+    )
+
+    assert gate["status"] == "caution"
+    assert gate["action_policy"]["policy"] == "manual_review_required"
+    assert gate["action_policy"]["max_deployable_amount"] == 175_000
+    assert any("AI 拆解任務仍有缺口" in warning for warning in gate["warnings"])
+
+
 def test_report_quality_gate_caps_caution_deployable_amount() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
@@ -559,6 +610,11 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
             "timestamp_coverage": 0.92,
             "recent_coverage": 0.75,
         },
+        plan_quality={
+            "status": "ready",
+            "score": 95,
+            "missing": [],
+        },
     )
     response = main.attach_quality_gate_to_report(
         ReportResponse(
@@ -578,6 +634,8 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
     assert parsed["metrics"]["source_unique_publishers"] == 5
     assert parsed["metrics"]["source_timestamp_coverage"] == 0.92
     assert parsed["metrics"]["source_recent_coverage"] == 0.75
+    assert parsed["metrics"]["discovery_plan_status"] == "ready"
+    assert parsed["metrics"]["discovery_plan_score"] == 95
 
 
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:

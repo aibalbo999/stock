@@ -846,6 +846,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             investor_capital=payload.investor_capital,
             cash_reserve_pct=payload.cash_reserve_pct,
             source_quality=summarize_document_source_quality(documents, payload.lookback_days),
+            plan_quality=source_audit.get("plan_quality"),
         )
 
         request = ReportRequest(

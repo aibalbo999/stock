@@ -25,12 +25,14 @@ def build_report_quality_gate(
     investor_capital: int | None = None,
     cash_reserve_pct: float | None = None,
     source_quality: dict | None = None,
+    plan_quality: dict | None = None,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
     promoted_count = len(promoted_tickers)
     source_count = int(dynamic_sources.get("stored_count") or 0)
     source_quality = source_quality or {}
+    plan_quality = plan_quality or source_audit.get("plan_quality") or {}
     supported_ratio = float(candidate_support.get("supported_ratio") or 0)
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
@@ -60,6 +62,17 @@ def build_report_quality_gate(
             warnings.append("資料來源多樣性偏低")
         if source_count >= 8 and recent_coverage < 0.4:
             warnings.append("近期資料比例偏低，可能混入過舊產業假設")
+    if plan_quality:
+        plan_status = str(plan_quality.get("status") or "unknown")
+        plan_score = int(plan_quality.get("score") or 0)
+        missing = plan_quality.get("missing") or []
+        missing_summary = "、".join(str(item) for item in missing[:3])
+        if plan_status == "insufficient" or plan_score < 55:
+            detail = f"：{missing_summary}" if missing_summary else ""
+            blockers.append(f"AI 拆解任務品質不足{detail}")
+        elif plan_status == "caution" or plan_score < 80:
+            detail = f"：{missing_summary}" if missing_summary else ""
+            warnings.append(f"AI 拆解任務仍有缺口{detail}")
     if promoted_count and market_coverage < 0.5:
         blockers.append("股價資料覆蓋率低於 50%")
     elif promoted_count and market_coverage < 1:
@@ -113,6 +126,8 @@ def build_report_quality_gate(
             "source_unique_publishers": source_quality.get("unique_publisher_count"),
             "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
             "source_recent_coverage": source_quality.get("recent_coverage"),
+            "discovery_plan_status": plan_quality.get("status") if plan_quality else None,
+            "discovery_plan_score": plan_quality.get("score") if plan_quality else None,
         },
         "recommendation": (
             "資料品質不足，請先視為研究草稿，不應作為買賣依據。"
@@ -225,6 +240,7 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
         f"- 近期資料比例：{_format_optional_percent(metrics.get('source_recent_coverage'))}",
+        f"- 拆解任務品質：{_format_plan_quality(metrics)}",
         f"- 股價資料覆蓋率：{float(metrics.get('market_coverage') or 0):.0%}",
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
@@ -248,6 +264,20 @@ def _format_optional_int(value: object) -> str:
 
 def _format_optional_percent(value: object) -> str:
     return "未評估" if value is None else f"{float(value or 0):.0%}"
+
+
+def _format_plan_quality(metrics: dict) -> str:
+    status = metrics.get("discovery_plan_status")
+    score = metrics.get("discovery_plan_score")
+    if status is None and score is None:
+        return "未評估"
+    labels = {
+        "ready": "完整",
+        "caution": "需補強",
+        "insufficient": "不足",
+    }
+    label = labels.get(str(status), str(status or "unknown"))
+    return f"{label}（{int(score or 0)} 分）"
 
 
 def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
@@ -283,6 +313,8 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "source_unique_publishers": _parse_optional_int(fields.get("來源發布者數")),
             "source_timestamp_coverage": _parse_optional_percent(fields.get("來源時間戳覆蓋率")),
             "source_recent_coverage": _parse_optional_percent(fields.get("近期資料比例")),
+            "discovery_plan_status": _parse_plan_quality_status(fields.get("拆解任務品質")),
+            "discovery_plan_score": _parse_plan_quality_score(fields.get("拆解任務品質")),
             "market_coverage": _parse_percent(fields.get("股價資料覆蓋率")),
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
@@ -325,6 +357,25 @@ def _parse_optional_percent(value: str | None) -> float | None:
         return None
     match = re.search(r"(-?\d+(?:\.\d+)?)%", value)
     return float(match.group(1)) / 100 if match else None
+
+
+def _parse_plan_quality_status(value: str | None) -> str | None:
+    if not value or value == "未評估":
+        return None
+    if "完整" in value:
+        return "ready"
+    if "需補強" in value:
+        return "caution"
+    if "不足" in value:
+        return "insufficient"
+    return "unknown"
+
+
+def _parse_plan_quality_score(value: str | None) -> int | None:
+    if not value or value == "未評估":
+        return None
+    match = re.search(r"(\d+)\s*分", value)
+    return int(match.group(1)) if match else None
 
 
 def _parse_amount(value: str | None) -> int | None:

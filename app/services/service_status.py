@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import redis
 
 from app.core.config import get_settings
+from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
 
 
 def service_status() -> dict:
@@ -27,6 +28,11 @@ def service_status() -> dict:
         "celery": {
             "broker_url": _redact_url(settings.redis_url),
             "backend_url": _redact_url(settings.redis_url),
+        },
+        "candidate_confidence": {
+            "high_threshold": HIGH_CONFIDENCE_THRESHOLD,
+            "medium_threshold": MEDIUM_CONFIDENCE_THRESHOLD,
+            "promotion_rule": "正式分析需至少 2 篇證據、2 個來源，且證據信心達高信心門檻。",
         },
     }
 

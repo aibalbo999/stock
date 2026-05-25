@@ -798,6 +798,8 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
         gate,
     )
 
+    assert "正式股票證據信心：平均 高 88.5 / 最低 高 80" in response.markdown
+
     parsed = parse_quality_gate_from_markdown(response.markdown)
 
     assert parsed is not None

@@ -365,8 +365,8 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 正式分析股票：{metrics.get('promoted_count', 0)} 檔",
         f"- 候選公司證據覆蓋率：{float(metrics.get('candidate_supported_ratio') or 0):.0%}",
         f"- 探索候選覆蓋率：{float(metrics.get('exploration_candidate_supported_ratio') or 0):.0%}",
-        f"- 正式股票證據信心：平均 {_format_optional_number(metrics.get('formal_confidence_avg'))} / "
-        f"最低 {_format_optional_number(metrics.get('formal_confidence_min'))}",
+        f"- 正式股票證據信心：平均 {_format_confidence_score(metrics.get('formal_confidence_avg'))} / "
+        f"最低 {_format_confidence_score(metrics.get('formal_confidence_min'))}",
         f"- AI 動態來源入庫：{metrics.get('dynamic_source_count', 0)} 篇",
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
@@ -405,6 +405,19 @@ def _format_optional_number(value: object) -> str:
         return "未評估"
     number = float(value)
     return str(int(number)) if number.is_integer() else f"{number:.1f}"
+
+
+def _format_confidence_score(value: object) -> str:
+    if value is None:
+        return "未評估"
+    score = float(value)
+    if score >= 75:
+        label = "高"
+    elif score >= 45:
+        label = "中"
+    else:
+        label = "低"
+    return f"{label} {_format_optional_number(score)}"
 
 
 def _format_optional_percent(value: object) -> str:
@@ -513,7 +526,7 @@ def _parse_optional_percent(value: str | None) -> float | None:
 def _parse_confidence_value(value: str | None, label: str) -> float | None:
     if not value or "未評估" in value:
         return None
-    match = re.search(rf"{re.escape(label)}\s*(\d+(?:\.\d+)?)", value)
+    match = re.search(rf"{re.escape(label)}\s*(?:高|中|低)?\s*(\d+(?:\.\d+)?)", value)
     return float(match.group(1)) if match else None
 
 

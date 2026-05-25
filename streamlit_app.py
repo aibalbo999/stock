@@ -1248,6 +1248,7 @@ def render_company_data_audit(report_id: int) -> None:
     }
     for row in audit.get("rows") or []:
         evidence = row.get("evidence") or {}
+        filings = row.get("company_filings") or {}
         rows.append(
             {
                 "股票": row.get("ticker"),
@@ -1256,6 +1257,9 @@ def render_company_data_audit(report_id: int) -> None:
                 "月營收": (row.get("monthly_revenue") or {}).get("latest_date"),
                 "財報期數": (row.get("financial_metrics") or {}).get("periods"),
                 "估值": (row.get("valuation") or {}).get("latest_date"),
+                "公司文件": filings.get("rows"),
+                "高品質文件": filings.get("high_quality_rows"),
+                "文件品質": filings.get("max_quality_score"),
                 "報告文本": evidence.get("report_text_count"),
                 "入庫文本": evidence.get("db_text_count"),
                 "AI歸因": evidence.get("effective_finding_count"),

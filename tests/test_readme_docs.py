@@ -17,6 +17,7 @@ def test_readme_documents_follow_up_freshness_thresholds() -> None:
         "月營收": "refresh_monthly_revenue",
         "估值": "refresh_valuations",
         "五年財務": "refresh_financial_metrics",
+        "公司公開文件": "ingest_company_filings",
     }
     for label, action_type in expected.items():
         assert f"{label}：{TRACKING_FRESHNESS_THRESHOLDS[action_type]} 天" in readme

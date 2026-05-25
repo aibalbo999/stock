@@ -10,7 +10,11 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.time import today_taipei
-from app.data_sources.company_filings import CompanyFilingFetcher
+from app.data_sources.company_filings import (
+    CompanyFilingFetcher,
+    filing_quality_score,
+    filing_source_tier,
+)
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.status import db_status
@@ -960,6 +964,12 @@ def list_company_filings(tickers: str = "", limit_per_ticker: int = 5) -> list[d
                 "document_type": document.document_type,
                 "title": document.title,
                 "publisher": document.source.publisher,
+                "source_tier": filing_source_tier(document),
+                "quality_score": filing_quality_score(
+                    document,
+                    document.ticker,
+                    document.company_name or "",
+                ),
                 "published_at": document.source.published_at.isoformat()
                 if document.source.published_at
                 else None,

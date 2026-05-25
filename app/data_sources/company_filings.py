@@ -9,9 +9,11 @@ from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 
 
 DOCUMENT_QUERY_TEMPLATES = (
-    "{ticker} {name} 年報 法說會 公開說明書",
-    "{ticker} {name} investor presentation annual report",
-    "{ticker} {name} 公開資訊觀測站 年報",
+    "{ticker} {name} 年報 法說會 公開說明書 filetype:pdf",
+    "{ticker} {name} investor presentation annual report filetype:pdf",
+    "{ticker} {name} 公開資訊觀測站 年報 site:mops.twse.com.tw",
+    "{ticker} {name} 法人說明會 site:mops.twse.com.tw",
+    "{ticker} {name} investor relations presentation",
 )
 
 DOCUMENT_TYPE_KEYWORDS = {
@@ -25,6 +27,21 @@ DISCLOSURE_TERMS = tuple(
     for keywords in DOCUMENT_TYPE_KEYWORDS.values()
     for keyword in keywords
 )
+OFFICIAL_SOURCE_DOMAINS = (
+    "mops.twse.com.tw",
+    "mopsov.twse.com.tw",
+    "twse.com.tw",
+    "tpex.org.tw",
+)
+IR_SOURCE_HINTS = (
+    "ir.",
+    "/ir",
+    "investor",
+    "investors",
+    "investor-relations",
+    "investor_relations",
+)
+HIGH_QUALITY_FILING_SCORE = 70
 
 
 class CompanyFilingFetcher:
@@ -111,6 +128,44 @@ class CompanyFilingFetcher:
         return documents, errors
 
 
+def filing_source_tier(document: CompanyFilingDocument | NewsDocument) -> str:
+    url = (document.source.url or "").lower()
+    publisher = (document.source.publisher or "").lower()
+    if any(domain in url or domain in publisher for domain in OFFICIAL_SOURCE_DOMAINS):
+        return "official_disclosure"
+    if any(hint in url or hint in publisher for hint in IR_SOURCE_HINTS):
+        return "company_ir"
+    return "third_party"
+
+
+def filing_quality_score(document: CompanyFilingDocument | NewsDocument, ticker: str = "", company_name: str = "") -> int:
+    text = f"{document.title}\n{getattr(document, 'text', '')}".lower()
+    url = (document.source.url or "").lower()
+    score = 0
+    tier = filing_source_tier(document)
+    if tier == "official_disclosure":
+        score += 55
+    elif tier == "company_ir":
+        score += 45
+    else:
+        score += 15
+    if ticker and ticker.lower() in text:
+        score += 10
+    if company_name and company_name.lower() in text:
+        score += 10
+    if any(term.lower() in text for term in DISCLOSURE_TERMS):
+        score += 15
+    if ".pdf" in url or "filetype:pdf" in url:
+        score += 10
+    if document.source.published_at:
+        score += 5
+    return min(score, 100)
+
+
+def is_high_quality_company_filing(document: CompanyFilingDocument | NewsDocument, ticker: str = "", company_name: str = "") -> bool:
+    return filing_quality_score(document, ticker, company_name) >= HIGH_QUALITY_FILING_SCORE
+
+
 def infer_document_type(text: str) -> str:
     lowered = text.lower()
     for document_type, keywords in DOCUMENT_TYPE_KEYWORDS.items():
@@ -126,4 +181,6 @@ def is_relevant_company_filing_result(document: NewsDocument, ticker: str, compa
         company_terms.append(company_name.lower())
     has_company = any(term and term in text for term in company_terms)
     has_disclosure = any(term.lower() in text for term in DISCLOSURE_TERMS)
-    return has_company and has_disclosure
+    if not has_company or not has_disclosure:
+        return False
+    return filing_quality_score(document, ticker, company_name) >= 40

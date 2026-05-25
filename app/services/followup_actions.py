@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from urllib.parse import quote_plus
 
 from app.core.time import today_taipei
@@ -11,6 +11,7 @@ from app.db.session import session_scope
 from app.models.schemas import ReportRequest
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import (
+    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -34,6 +35,7 @@ TRACKING_FRESHNESS_THRESHOLDS = {
     "refresh_monthly_revenue": 75,
     "refresh_valuations": 14,
     "refresh_financial_metrics": 150,
+    "ingest_company_filings": 365,
 }
 TRACKING_CANDIDATE_LIMIT = 5
 
@@ -417,6 +419,11 @@ def tracking_freshness_details_by_action(actions: list[FollowUpAction], request:
             latest_valuation = {
                 item.ticker: item.trade_date for item in ValuationMetricRepository(session).latest_by_tickers(tickers)
             }
+            latest_company_filing = {}
+            for ticker in tickers:
+                stats = CompanyFilingRepository(session).stats_by_ticker(ticker)
+                if stats.get("latest_date"):
+                    latest_company_filing[ticker] = date.fromisoformat(stats["latest_date"])
             metrics = FinancialMetricRepository(session).by_tickers(tickers)
             latest_financial: dict[str, object] = {}
             for metric in metrics:
@@ -431,6 +438,7 @@ def tracking_freshness_details_by_action(actions: list[FollowUpAction], request:
         "refresh_monthly_revenue": (latest_revenue, TRACKING_FRESHNESS_THRESHOLDS["refresh_monthly_revenue"]),
         "refresh_valuations": (latest_valuation, TRACKING_FRESHNESS_THRESHOLDS["refresh_valuations"]),
         "refresh_financial_metrics": (latest_financial, TRACKING_FRESHNESS_THRESHOLDS["refresh_financial_metrics"]),
+        "ingest_company_filings": (latest_company_filing, TRACKING_FRESHNESS_THRESHOLDS["ingest_company_filings"]),
     }
     for action in tracking_actions:
         source = thresholds.get(action.action_type)

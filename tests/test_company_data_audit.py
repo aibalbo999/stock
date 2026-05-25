@@ -66,7 +66,7 @@ def test_company_data_audit_flags_per_company_gaps() -> None:
     assert rows["9999"]["status"] == "insufficient"
     assert "股價歷史不足或過舊" in rows["9999"]["missing"]
     assert "公司層級文本證據不足" in rows["9999"]["missing"]
-    assert "公司原始公開文件不足" in rows["9999"]["missing"]
+    assert "公司原始公開文件不足或來源品質偏低" in rows["9999"]["missing"]
 
 
 def _seed_complete_market_data(session, ticker: str) -> None:
@@ -142,6 +142,7 @@ def _seed_complete_market_data(session, ticker: str) -> None:
             title=f"{ticker} 年報",
             text="公司年報揭露主要產品、營收來源與風險因素。",
             publisher="公司 IR",
+            url="https://mops.twse.com.tw/server-java/t57sb01?step=1&colorchg=1&co_id=2330",
             published_at=date(2026, 5, 1),
         )
     )

@@ -4,12 +4,18 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import now_taipei
+from app.data_sources.company_filings import (
+    HIGH_QUALITY_FILING_SCORE,
+    filing_quality_score,
+    filing_source_tier,
+)
 from app.db.models import (
     AnalysisRun,
     CompanyFiling,
@@ -30,6 +36,7 @@ VALUATION_MIN_ROWS = 1
 COMPANY_TEXT_MIN_COUNT = 2
 COMPANY_FINDING_MIN_COUNT = 1
 COMPANY_FILING_MIN_COUNT = 1
+COMPANY_FILING_MIN_QUALITY_SCORE = HIGH_QUALITY_FILING_SCORE
 PRICE_MAX_AGE_DAYS = 7
 MONTHLY_REVENUE_MAX_AGE_DAYS = 75
 FINANCIAL_MAX_AGE_DAYS = 180
@@ -86,6 +93,7 @@ def audit_company_data(
             "company_text_min_count": COMPANY_TEXT_MIN_COUNT,
             "company_finding_min_count": COMPANY_FINDING_MIN_COUNT,
             "company_filing_min_count": COMPANY_FILING_MIN_COUNT,
+            "company_filing_min_quality_score": COMPANY_FILING_MIN_QUALITY_SCORE,
         },
         "notes": _audit_notes(rows, run_payload or {}),
     }
@@ -144,7 +152,7 @@ def _audit_one_ticker(
             today,
         ),
         "company_evidence": evidence["effective_text_count"] >= COMPANY_TEXT_MIN_COUNT,
-        "company_filings": filings["rows"] >= COMPANY_FILING_MIN_COUNT,
+        "company_filings": filings["high_quality_rows"] >= COMPANY_FILING_MIN_COUNT,
         "risk_findings": evidence["effective_finding_count"] >= COMPANY_FINDING_MIN_COUNT,
         "persisted_company_evidence": evidence["db_text_count"] >= COMPANY_TEXT_MIN_COUNT,
         "persisted_risk_findings": evidence["db_finding_count"] >= COMPANY_FINDING_MIN_COUNT,
@@ -193,12 +201,40 @@ def _valuation_stats(session: Session, ticker: str) -> dict:
 def _company_filing_stats(session: Session, ticker: str) -> dict:
     rows = list(session.scalars(select(CompanyFiling).where(CompanyFiling.ticker == ticker)))
     latest_date = max((row.published_at for row in rows if row.published_at), default=None)
+    quality_rows = [
+        {
+            "id": row.id,
+            "title": row.title,
+            "document_type": row.document_type,
+            "source_tier": filing_source_tier(_filing_row_proxy(row)),
+            "quality_score": filing_quality_score(_filing_row_proxy(row), row.ticker, row.company_name or ""),
+        }
+        for row in rows
+    ]
     return {
         "rows": len(rows),
+        "high_quality_rows": sum(
+            1 for row in quality_rows if row["quality_score"] >= COMPANY_FILING_MIN_QUALITY_SCORE
+        ),
         "document_types": sorted({row.document_type for row in rows}),
+        "source_tiers": sorted({row["source_tier"] for row in quality_rows}),
+        "max_quality_score": max((row["quality_score"] for row in quality_rows), default=0),
         "publishers": len({row.publisher or row.url or row.title for row in rows}),
         "latest_date": latest_date.isoformat() if latest_date else None,
+        "quality_sample": sorted(quality_rows, key=lambda row: row["quality_score"], reverse=True)[:3],
     }
+
+
+def _filing_row_proxy(row: CompanyFiling):
+    return SimpleNamespace(
+        title=row.title,
+        text=row.text,
+        source=SimpleNamespace(
+            url=row.url,
+            publisher=row.publisher,
+            published_at=row.published_at,
+        ),
+    )
 
 
 def _financial_stats(session: Session, ticker: str) -> dict:
@@ -296,7 +332,7 @@ def _missing_reasons(checks: dict[str, bool], financial: dict) -> list[str]:
         "financial_metrics": "五年財報不足、過舊或缺核心科目",
         "valuation": "估值資料不足或過舊",
         "company_evidence": "公司層級文本證據不足",
-        "company_filings": "公司原始公開文件不足",
+        "company_filings": "公司原始公開文件不足或來源品質偏低",
         "risk_findings": "公司層級 AI 風險/機會歸因不足",
         "persisted_company_evidence": "可稽核入庫公司文本不足",
         "persisted_risk_findings": "可稽核入庫 AI 歸因不足",

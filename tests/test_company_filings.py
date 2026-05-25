@@ -5,6 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
+    filing_quality_score,
+    filing_source_tier,
     infer_document_type,
     is_relevant_company_filing_result,
 )
@@ -31,6 +33,28 @@ def test_company_filing_discovery_filters_generic_results() -> None:
 
     assert is_relevant_company_filing_result(relevant, "2330", "台積電") is True
     assert is_relevant_company_filing_result(generic, "2330", "台積電") is False
+
+
+def test_company_filing_quality_prefers_official_sources() -> None:
+    official = NewsFetcher.from_manual_text(
+        title="2330 台積電 年報",
+        text="台積電 年報揭露 AI/HPC 需求與風險因素。",
+        publisher="公開資訊觀測站",
+        published_at=date(2026, 5, 1),
+        url="https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+    )
+    third_party = NewsFetcher.from_manual_text(
+        title="2330 台積電 法說會懶人包",
+        text="台積電 法說會摘要。",
+        publisher="第三方部落格",
+        published_at=date(2026, 5, 1),
+        url="https://example.com/tsmc-summary",
+    )
+
+    assert filing_source_tier(official) == "official_disclosure"
+    assert filing_quality_score(official, "2330", "台積電") >= 70
+    assert filing_source_tier(third_party) == "third_party"
+    assert filing_quality_score(third_party, "2330", "台積電") < 70
 
 
 def test_company_filing_repository_roundtrip() -> None:

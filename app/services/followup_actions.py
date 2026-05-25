@@ -34,6 +34,7 @@ TRACKING_FRESHNESS_THRESHOLDS = {
     "refresh_valuations": 14,
     "refresh_financial_metrics": 150,
 }
+TRACKING_CANDIDATE_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -197,6 +198,8 @@ class FollowUpActionPlanner:
         required: bool = True,
     ) -> list[FollowUpAction]:
         rows = self._markdown_table_rows(markdown, "候選公司審計", required_headers=("股票", "狀態"))
+        if not required:
+            rows = self._top_tracking_candidate_rows(rows, TRACKING_CANDIDATE_LIMIT)
         actions: list[FollowUpAction] = []
         weak_or_missing = []
         purpose = "required" if required else "tracking"
@@ -243,6 +246,33 @@ class FollowUpActionPlanner:
                 )
             )
         return actions
+
+    @classmethod
+    def _top_tracking_candidate_rows(cls, rows: list[dict[str, str]], limit: int) -> list[dict[str, str]]:
+        candidates = [row for row in rows if "正式分析" not in row.get("狀態", "")]
+        return sorted(candidates, key=cls._tracking_candidate_rank)[:limit]
+
+    @staticmethod
+    def _tracking_candidate_rank(row: dict[str, str]) -> tuple[int, int, int, str]:
+        status = row.get("狀態", "")
+        evidence_count, source_count = FollowUpActionPlanner._parse_evidence_counts(row.get("證據", ""))
+        confidence = FollowUpActionPlanner._parse_confidence_score(row.get("信心", ""))
+        status_rank = 0 if "弱證據" in status else 1
+        return (status_rank, -evidence_count, -source_count, -confidence, row.get("股票", ""))
+
+    @staticmethod
+    def _parse_evidence_counts(value: str) -> tuple[int, int]:
+        numbers = [int(match) for match in re.findall(r"\d+", value)]
+        if not numbers:
+            return 0, 0
+        if len(numbers) == 1:
+            return numbers[0], 0
+        return numbers[0], numbers[1]
+
+    @staticmethod
+    def _parse_confidence_score(value: str) -> int:
+        numbers = [int(match) for match in re.findall(r"\d+", value)]
+        return numbers[-1] if numbers else 0
 
     def _actions_from_trigger(self, trigger: str, tickers: tuple[str, ...]) -> list[FollowUpAction]:
         actions: list[FollowUpAction] = []

@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
-from app.services.followup_actions import FOLLOW_UP_ACTION_LABELS, TRACKING_FRESHNESS_THRESHOLDS
+from app.services.followup_actions import (
+    FOLLOW_UP_ACTION_LABELS,
+    TRACKING_CANDIDATE_LIMIT,
+    TRACKING_FRESHNESS_THRESHOLDS,
+)
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 
 
@@ -46,6 +50,7 @@ def test_readme_documents_llm_retry_statuses() -> None:
     assert "動態白名單證據回寫" in readme
     assert "個股缺口自動補強" in readme
     assert "候選追蹤降噪" in readme
+    assert f"前 {TRACKING_CANDIDATE_LIMIT} 檔" in readme
     assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
     assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
     assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme

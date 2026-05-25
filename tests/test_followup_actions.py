@@ -181,6 +181,38 @@ def test_candidate_audit_can_be_tracking_when_report_is_ready(monkeypatch) -> No
     assert any(action.action_type == "ingest_news" and action.tickers == ("3324",) for action in actions)
 
 
+def test_candidate_tracking_prioritizes_near_promotion_candidates(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 1001 零證一 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 1002 零證二 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 1003 零證三 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 1004 零證四 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 1005 零證五 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 1006 零證六 | 測試 | 待補證據 | 0 篇 / 0 來源 | 缺資料 | 補抓 | 未評分 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據 | 補抓 | 中 52 |
+| 3661 世芯-KY | ASIC | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據 | 補抓 | 中 60 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2382"]),
+        markdown=markdown,
+        candidate_audit_required=False,
+    )
+
+    ingest_tickers = [
+        action.tickers[0]
+        for action in actions
+        if action.action_type == "ingest_news"
+    ]
+    assert ingest_tickers[:2] == ["3661", "3324"]
+    assert len(ingest_tickers) == 5
+    assert "1006" not in ingest_tickers
+
+
 def test_candidate_follow_up_news_queries_are_targeted() -> None:
     action = FollowUpAction(
         "ingest_news",

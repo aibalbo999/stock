@@ -830,8 +830,11 @@ class ReportGenerator:
             evidence_label = (
                 f"{len(related_documents)} 文本 / {len(related_findings)} 歸因"
             )
+            valuation_position = self._valuation_position_label(valuation, peer_valuation_summary)
+            financial_confidence = self._financial_confidence_label(ticker_metrics, valuation, revenue)
             overview_rows.append(
-                f"| {ticker} {name} | {segment_name} | {price_label} | {revenue_label} | {evidence_label} |"
+                f"| {ticker} {name} | {segment_name} | {price_label} | {revenue_label} | "
+                f"{valuation_position} | {financial_confidence} | {evidence_label} |"
             )
 
             detail_blocks.append(f"### {ticker} {name}")
@@ -845,6 +848,9 @@ class ReportGenerator:
                     related_documents,
                     related_findings,
                 )
+            )
+            detail_blocks.append(
+                f"- 資料信心：{financial_confidence}；估值位置：{valuation_position}。"
             )
             detail_blocks.append(f"- 產業鏈位置：{segment_name}")
             if snapshot:
@@ -900,8 +906,8 @@ class ReportGenerator:
 
         lines = [
             "### 個股速覽",
-            "| 股票 | 產業位置 | 股價 | 月營收 | 證據狀態 |",
-            "|---|---|---|---|---|",
+            "| 股票 | 產業位置 | 股價 | 月營收 | 估值位置 | 財務信心 | 證據狀態 |",
+            "|---|---|---|---|---|---|---|",
             *overview_rows,
             "",
             "### 個股細節",
@@ -1333,6 +1339,58 @@ class ReportGenerator:
             level = "高於" if valuation.pb_ratio > pb_avg * 1.1 else "低於" if valuation.pb_ratio < pb_avg * 0.9 else "接近"
             parts.append(f"P/B {level}同業平均 {pb_avg:.2f}")
         return "相對估值：" + "；".join(parts) + "。"
+
+    @staticmethod
+    def _valuation_position_label(
+        valuation: ValuationMetric | None,
+        peer_summary: dict[str, float | None] | None = None,
+    ) -> str:
+        if not valuation:
+            return "缺估值"
+        pe_avg = (peer_summary or {}).get("pe_avg")
+        pb_avg = (peer_summary or {}).get("pb_avg")
+        pressure = 0
+        discount = 0
+        if valuation.pe_ratio is not None and pe_avg:
+            if valuation.pe_ratio > pe_avg * 1.1:
+                pressure += 1
+            elif valuation.pe_ratio < pe_avg * 0.9:
+                discount += 1
+        if valuation.pb_ratio is not None and pb_avg:
+            if valuation.pb_ratio > pb_avg * 1.1:
+                pressure += 1
+            elif valuation.pb_ratio < pb_avg * 0.9:
+                discount += 1
+        if pressure >= 2:
+            return "估值偏高"
+        if pressure == 1 and discount == 0:
+            return "估值略高"
+        if discount >= 2:
+            return "估值低於同業"
+        if discount == 1 and pressure == 0:
+            return "估值略低"
+        return "估值接近同業"
+
+    @staticmethod
+    def _financial_confidence_label(
+        financial_metrics: list[FinancialMetric],
+        valuation: ValuationMetric | None,
+        revenue: MonthlyRevenue | None,
+    ) -> str:
+        score = 0
+        if len(financial_metrics) >= 8:
+            score += 1
+        if len(financial_metrics) >= 40:
+            score += 1
+        if valuation:
+            score += 1
+        if revenue:
+            score += 1
+        if score >= 4:
+            return "高"
+        if score >= 2:
+            return "中"
+        return "低"
 
     @staticmethod
     def _valuation_conclusion(

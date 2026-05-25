@@ -178,7 +178,7 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
 
     assert "### 2330 台積電" in company_analysis
     assert "### 個股速覽" in company_analysis
-    assert "| 股票 | 產業位置 | 股價 | 月營收 | 證據狀態 |" in company_analysis
+    assert "| 股票 | 產業位置 | 股價 | 月營收 | 估值位置 | 財務信心 | 證據狀態 |" in company_analysis
     assert "| 2330 台積電 |" in company_analysis
     assert "#### 華爾街式完整分析框架" in company_analysis
     assert "商業模式與收入來源" in company_analysis
@@ -263,6 +263,8 @@ def test_company_analysis_uses_financial_and_valuation_data() -> None:
 
     assert "2022 至 2026 營收成長 50.00%" in company_analysis
     assert "2026 負債權益比約 0.40 倍" in company_analysis
+    assert "資料信心：低；估值位置：估值偏高。" in company_analysis
+    assert "| 2330 台積電 | 晶圓代工 | 2026-05-22 收盤 2255.0 | 缺 | 估值偏高 | 低 |" in company_analysis
     assert "P/E 24.50、P/B 5.80、殖利率 1.60%" in company_analysis
     assert "P/E 高於同業平均 18.50" in company_analysis
     assert "P/B 高於同業平均 4.30" in company_analysis
@@ -331,6 +333,24 @@ def test_financial_summary_ignores_percentage_and_total_liability_equity_fields(
     assert "2026 負債權益比約 0.46 倍" in summary["debt_trend"]
     assert "2026 ROE 約 9.66%" in summary["roe_trend"]
     assert "687799687000.00%" not in summary["roe_trend"]
+
+
+def test_valuation_position_and_financial_confidence_labels() -> None:
+    peer = {"pe_avg": 20.0, "pb_avg": 5.0, "count": 3}
+
+    assert ReportGenerator._valuation_position_label(
+        ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=30, pb_ratio=8),
+        peer,
+    ) == "估值偏高"
+    assert ReportGenerator._valuation_position_label(
+        ValuationMetric(ticker="2382", trade_date=date(2026, 5, 22), pe_ratio=12, pb_ratio=3),
+        peer,
+    ) == "估值低於同業"
+    assert ReportGenerator._financial_confidence_label(
+        [FinancialMetric(ticker="2330", report_date=date(2026, 3, 31), statement_type="income_statement", metric="營業收入", value=1, source="test") for _ in range(40)],
+        ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=20, pb_ratio=5),
+        MonthlyRevenue(ticker="2330", revenue_date=date(2026, 4, 1), revenue=1, revenue_year=2026, revenue_month=4),
+    ) == "高"
 
 
 def test_executive_snapshot_summarizes_decisions_in_table() -> None:

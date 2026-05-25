@@ -20,3 +20,10 @@ def test_service_status_shape() -> None:
 
 def test_settings_default_api_base_url() -> None:
     assert Settings().api_base_url == "http://127.0.0.1:8000"
+
+
+def test_candidate_confidence_threshold_settings_defaults() -> None:
+    settings = Settings()
+
+    assert settings.candidate_confidence_high_threshold == HIGH_CONFIDENCE_THRESHOLD
+    assert settings.candidate_confidence_medium_threshold == MEDIUM_CONFIDENCE_THRESHOLD

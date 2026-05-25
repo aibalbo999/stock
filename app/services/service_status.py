@@ -5,11 +5,12 @@ from urllib.parse import urlparse
 import redis
 
 from app.core.config import get_settings
-from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
+from app.services.candidate_confidence import confidence_thresholds
 
 
 def service_status() -> dict:
     settings = get_settings()
+    high_threshold, medium_threshold = confidence_thresholds()
     return {
         "redis": _redis_status(settings.redis_url),
         "gemini": {
@@ -30,8 +31,8 @@ def service_status() -> dict:
             "backend_url": _redact_url(settings.redis_url),
         },
         "candidate_confidence": {
-            "high_threshold": HIGH_CONFIDENCE_THRESHOLD,
-            "medium_threshold": MEDIUM_CONFIDENCE_THRESHOLD,
+            "high_threshold": high_threshold,
+            "medium_threshold": medium_threshold,
             "promotion_rule": "正式分析需至少 2 篇證據、2 個來源，且證據信心達高信心門檻。",
         },
     }

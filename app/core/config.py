@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     google_api_keys: str = ""
     fugle_api_key: Optional[str] = None
     finmind_token: Optional[str] = None
+    candidate_confidence_high_threshold: int = 75
+    candidate_confidence_medium_threshold: int = 45
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

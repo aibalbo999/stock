@@ -1,5 +1,6 @@
 from app.services.candidate_confidence import (
     HIGH_CONFIDENCE_THRESHOLD,
+    confidence_thresholds,
     confidence_level,
     format_confidence_score,
     is_high_confidence,
@@ -18,3 +19,18 @@ def test_candidate_confidence_format_and_gate_helpers() -> None:
     assert format_confidence_score(88.5) == "高 88.5"
     assert is_high_confidence(HIGH_CONFIDENCE_THRESHOLD) is True
     assert is_low_formal_confidence(HIGH_CONFIDENCE_THRESHOLD - 1) is True
+
+
+def test_candidate_confidence_thresholds_can_use_environment(monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("CANDIDATE_CONFIDENCE_HIGH_THRESHOLD", "80")
+    monkeypatch.setenv("CANDIDATE_CONFIDENCE_MEDIUM_THRESHOLD", "50")
+    get_settings.cache_clear()
+    try:
+        assert confidence_thresholds() == (80, 50)
+        assert confidence_level(79) == "中"
+        assert is_high_confidence(80) is True
+        assert is_low_formal_confidence(79) is True
+    finally:
+        get_settings.cache_clear()

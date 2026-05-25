@@ -63,6 +63,8 @@ DATABASE_URL=postgresql+psycopg://stock_ai:stock_ai_password@localhost:5432/stoc
 PRIMARY_LLM_MODEL=gemini-3.5-flash
 LOCAL_LLM_MODEL=gemma-4-31b
 GOOGLE_API_KEYS=key1,key2,key3,key4,key5
+CANDIDATE_CONFIDENCE_HIGH_THRESHOLD=75
+CANDIDATE_CONFIDENCE_MEDIUM_THRESHOLD=45
 ```
 
 啟動 API：

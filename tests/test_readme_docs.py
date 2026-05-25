@@ -29,5 +29,6 @@ def test_readme_documents_candidate_confidence_gate() -> None:
 
     assert f"證據信心低於 {HIGH_CONFIDENCE_THRESHOLD} 分" in readme
     assert f"證據信心分數達 {HIGH_CONFIDENCE_THRESHOLD} 分" in readme
+    assert f"CANDIDATE_CONFIDENCE_HIGH_THRESHOLD={HIGH_CONFIDENCE_THRESHOLD}" in readme
     assert "候選證據信心" in readme
     assert "證據篇數、來源家數、來源日期覆蓋與最新證據日期" in readme

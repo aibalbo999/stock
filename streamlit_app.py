@@ -723,6 +723,13 @@ def metric_int(value: object) -> str:
     return "未評估" if value is None else str(value)
 
 
+def metric_number(value: object) -> str:
+    if value is None:
+        return "未評估"
+    number = float(value)
+    return str(int(number)) if number.is_integer() else f"{number:.1f}"
+
+
 def report_html(markdown: str, result: Optional[dict] = None) -> str:
     gate = result.get("quality_gate") if result else None
     gate = gate if isinstance(gate, dict) else {}
@@ -747,6 +754,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     timestamp_coverage = metric_percent(metrics.get("source_timestamp_coverage"))
     recent_coverage = metric_percent(metrics.get("source_recent_coverage"))
     leading_signal_coverage = metric_percent(metrics.get("leading_signal_coverage"))
+    confidence_min = metric_number(metrics.get("formal_confidence_min"))
 
     summary_items = markdown_items(markdown, "一頁摘要", limit=3)
     action_items = markdown_items(markdown, "下一步行動", limit=3)
@@ -802,7 +810,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   h2 {{ font-size:18px; margin:22px 0 10px; }}
   .muted {{ color:#667085; }}
   .grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:14px; }}
-  .trust-grid {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:10px; }}
+  .trust-grid {{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-top:10px; }}
   .metric {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:14px; }}
   .metric span {{ display:block; color:#667085; font-size:13px; }}
   .metric strong {{ display:block; margin-top:4px; font-size:20px; }}
@@ -882,6 +890,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       <div class="metric"><span>日期可查</span><strong>{escape(timestamp_coverage)}</strong></div>
       <div class="metric"><span>近期資料</span><strong>{escape(recent_coverage)}</strong></div>
       <div class="metric"><span>領先訊號</span><strong>{escape(leading_signal_coverage)}</strong></div>
+      <div class="metric"><span>最低信心</span><strong>{escape(confidence_min)}</strong></div>
     </div>
   </section>
   {quality_html}
@@ -1166,12 +1175,13 @@ def render_quality_gate(result: dict) -> None:
     cols[2].metric("正式證據", f"{float(metrics.get('candidate_supported_ratio') or 0):.0%}")
     amount = action_policy.get("max_deployable_amount")
     cols[3].metric("可投入上限", f"{int(amount):,}" if amount is not None else "-")
-    source_cols = st.columns(5)
+    source_cols = st.columns(6)
     source_cols[0].metric("來源篇數", metrics.get("dynamic_source_count", 0))
     source_cols[1].metric("來源家數", metric_int(metrics.get("source_unique_publishers")))
     source_cols[2].metric("日期可查", metric_percent(metrics.get("source_timestamp_coverage")))
     source_cols[3].metric("近期資料", metric_percent(metrics.get("source_recent_coverage")))
     source_cols[4].metric("領先訊號", metric_percent(metrics.get("leading_signal_coverage")))
+    source_cols[5].metric("最低信心", metric_number(metrics.get("formal_confidence_min")))
     if action_policy.get("label"):
         st.caption(f"投資行動狀態：{action_policy['label']}")
 

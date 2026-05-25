@@ -60,6 +60,7 @@ def test_report_html_renders_quality_warnings() -> None:
                 "status": "caution",
                 "warnings": ["候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票"],
                 "blockers": [],
+                "metrics": {"formal_confidence_min": 76, "formal_confidence_avg": 82.5},
                 "remediation_actions": ["對弱證據候選補抓公司新聞、法說會與供應鏈資料後再做二次篩選。"],
                 "action_policy": {"label": "需人工覆核"},
             },
@@ -72,6 +73,8 @@ def test_report_html_renders_quality_warnings() -> None:
     assert "建議補強" in html
     assert "弱證據候選補抓" in html
     assert "quality-issues" in html
+    assert "最低信心" in html
+    assert ">76<" in html
 
 
 def test_report_html_renders_follow_up_tasks() -> None:

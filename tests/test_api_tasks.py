@@ -562,6 +562,26 @@ def test_report_quality_gate_blocks_weak_formal_stocks() -> None:
     assert "正式分析股票仍含弱證據公司" in gate["blockers"]
 
 
+def test_report_quality_gate_warns_when_leading_signal_coverage_is_low() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330", "2382"],
+        market_count=2,
+        monthly_revenue_count=2,
+        financial_metrics_count=20,
+        valuation_count=2,
+        leading_signal_count=0,
+    )
+
+    assert gate["status"] == "caution"
+    assert "領先訊號覆蓋偏低，潛力/風險排序信心需下修" in gate["warnings"]
+    assert gate["metrics"]["leading_signal_coverage"] == 0
+    assert any("補齊股價歷史" in action for action in gate["remediation_actions"])
+
+
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

@@ -7,6 +7,7 @@ from app.core.time import now_taipei
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument, ReportRequest, ReportResponse
 from app.services.entity_mapping import EntityMapper
+from app.services.leading_signals import LeadingSignalAnalyzer
 from app.services.persistence import (
     FinancialMetricRepository,
     MarketRepository,
@@ -26,6 +27,7 @@ def build_report_quality_gate(
     cash_reserve_pct: float | None = None,
     source_quality: dict | None = None,
     plan_quality: dict | None = None,
+    leading_signal_count: int | None = None,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
@@ -46,6 +48,7 @@ def build_report_quality_gate(
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
+    leading_signal_coverage = leading_signal_count / promoted_count if promoted_count and leading_signal_count is not None else None
 
     blockers = []
     warnings = []
@@ -97,6 +100,11 @@ def build_report_quality_gate(
         warnings.append("五年財務資料不足，個股財務判斷信心需下修")
     if promoted_count and valuation_coverage < 0.5:
         warnings.append("估值資料覆蓋偏低")
+    if promoted_count and leading_signal_coverage is not None:
+        if leading_signal_coverage < 0.5:
+            warnings.append("領先訊號覆蓋偏低，潛力/風險排序信心需下修")
+        elif leading_signal_coverage < 1:
+            observations.append("部分股票領先訊號不足，系統已降低排序信心")
 
     status = "ready"
     if blockers:
@@ -141,6 +149,7 @@ def build_report_quality_gate(
             "monthly_revenue_coverage": monthly_coverage,
             "financial_metrics_count": financial_metrics_count,
             "valuation_coverage": valuation_coverage,
+            "leading_signal_coverage": leading_signal_coverage,
             "source_unique_publishers": source_quality.get("unique_publisher_count"),
             "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
             "source_recent_coverage": source_quality.get("recent_coverage"),
@@ -204,6 +213,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("估值資料覆蓋",),
             "補齊同業估值、P/E 與 DCF 假設，估值缺口未補齊前只保留觀察結論。",
+        ),
+        (
+            ("領先訊號覆蓋",),
+            "補齊股價歷史、成交量、月營收與估值資料，避免只靠新聞排序潛力與風險標的。",
         ),
     ]
     for keywords, action in rules:
@@ -272,6 +285,15 @@ def _normalize_publisher(value: str | None) -> str:
     return (value or "").strip()
 
 
+def _peer_valuation_summary(valuations) -> dict[str, float | None]:
+    pe_values = [valuation.pe_ratio for valuation in valuations if valuation.pe_ratio is not None and valuation.pe_ratio > 0]
+    pb_values = [valuation.pb_ratio for valuation in valuations if valuation.pb_ratio is not None and valuation.pb_ratio > 0]
+    return {
+        "pe_avg": sum(pe_values) / len(pe_values) if pe_values else None,
+        "pb_avg": sum(pb_values) / len(pb_values) if pb_values else None,
+    }
+
+
 def build_quality_gate_for_request(
     request: ReportRequest,
     documents: list[NewsDocument] | None = None,
@@ -293,7 +315,14 @@ def build_quality_gate_for_request(
         market_count = len(MarketRepository(session).latest_by_tickers(tickers))
         monthly_revenue_count = len(MonthlyRevenueRepository(session).latest_by_tickers(tickers))
         financial_metrics_count = len(FinancialMetricRepository(session).by_tickers(tickers))
-        valuation_count = len(ValuationMetricRepository(session).latest_by_tickers(tickers))
+        valuations = ValuationMetricRepository(session).latest_by_tickers(tickers)
+        valuation_count = len(valuations)
+        price_histories = MarketRepository(session).history_by_tickers(tickers, limit=90)
+        revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
+    valuation_map = {valuation.ticker: valuation for valuation in valuations}
+    peer_summary = _peer_valuation_summary(valuations)
+    leading_signals = LeadingSignalAnalyzer().build(tickers, price_histories, revenue_histories, valuation_map, peer_summary)
+    leading_signal_count = sum(1 for signal in leading_signals.values() if signal.has_signal_data)
     return build_report_quality_gate(
         source_audit,
         tickers,
@@ -304,6 +333,7 @@ def build_quality_gate_for_request(
         investor_capital=request.investor_capital,
         cash_reserve_pct=request.cash_reserve_pct,
         source_quality=source_quality,
+        leading_signal_count=leading_signal_count,
     )
 
 
@@ -331,6 +361,7 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 股價資料覆蓋率：{float(metrics.get('market_coverage') or 0):.0%}",
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
+        f"- 領先訊號覆蓋率：{_format_optional_percent(metrics.get('leading_signal_coverage'))}",
     ]
     if action_policy.get("max_deployable_amount") is not None:
         lines.append(f"- 本輪品質門檻後可投入上限：約 {int(action_policy['max_deployable_amount']):,} 元")
@@ -414,6 +445,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "market_coverage": _parse_percent(fields.get("股價資料覆蓋率")),
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
+            "leading_signal_coverage": _parse_optional_percent(fields.get("領先訊號覆蓋率")),
         },
         "recommendation": fields.get("系統判斷", "目前無足夠數據判斷。"),
     }

@@ -246,6 +246,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 下一步行動",
@@ -258,6 +259,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 先看結論",
@@ -272,6 +274,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 來源覆蓋",
@@ -378,6 +381,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> list[dict]:
         snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
         revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
@@ -392,7 +396,8 @@ class ReportGenerator:
             related_findings = self._related_findings(ticker, findings)
             snapshot = snapshots.get(ticker)
             revenue = revenues.get(ticker)
-            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            signal = (leading_signals or {}).get(ticker)
+            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue, signal)
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -413,6 +418,7 @@ class ReportGenerator:
                     "snapshot": snapshot,
                     "revenue": revenue,
                     "estimate": estimate,
+                    "leading_signal": signal,
                     "quality": quality,
                     "decision": decision,
                 }
@@ -429,6 +435,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "1. 先補足新聞與市場資料，再重新執行分析。"
@@ -442,6 +449,7 @@ class ReportGenerator:
             monthly_revenues,
             financial_metrics,
             valuation_metrics,
+            leading_signals,
         )
         research = [item for item in contexts if item["decision"] == "可小額分批研究"]
         watch = [
@@ -454,7 +462,7 @@ class ReportGenerator:
         lines = [
             "1. 先處理資料缺口：若有「缺 AI 歸因、缺月營收、缺股價」，先補資料再考慮加碼。",
             "2. 只把資料完整且通過降值門檻的股票放進小額研究清單。",
-            "3. 對降值風險高於門檻的股票，先等風險下降或新資料確認。",
+            "3. 對降值風險高於門檻或領先訊號偏空的股票，先等風險下降或新資料確認。",
             "",
             "### 可立即研究",
         ]
@@ -496,6 +504,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "本次沒有形成可驗證個股清單；先補資料，不建議依此報告做個股配置。"
@@ -514,10 +523,12 @@ class ReportGenerator:
             monthly_revenues,
             financial_metrics,
             valuation_metrics,
+            leading_signals,
         ):
             decision = item["decision"]
             quality = item["quality"]
             estimate = item["estimate"]
+            signal = item.get("leading_signal")
             if decision == "可小額分批研究":
                 actionable += 1
             elif decision == "避開 / 降低曝險":
@@ -535,6 +546,7 @@ class ReportGenerator:
                         self._quality_label(quality["grade"]),
                         f"{estimate['upside_pct']}%",
                         f"{estimate['downside_pct']}%",
+                        signal.direction if signal else "未評估",
                         "、".join(quality["missing"]) if quality["missing"] else "完整",
                     ]
                 )
@@ -560,8 +572,8 @@ class ReportGenerator:
             f"| 避開/降低曝險 | {avoid} 檔 |",
             "",
             "### 決策總覽",
-            "| 股票 | 判斷 | 資料等級 | 升值情境 | 降值風險 | 主要缺口 |",
-            "|---|---|---|---:|---:|---|",
+            "| 股票 | 判斷 | 資料等級 | 升值情境 | 降值風險 | 領先訊號 | 主要缺口 |",
+            "|---|---|---|---:|---:|---|---|",
             *rows,
             "",
             "閱讀方式：先看「判斷」與「主要缺口」，再到後面的資金控管與個別公司分析確認原因。",
@@ -577,6 +589,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "未形成可驗證股票範圍；本次報告只能保留主題觀察，不能產出個股投資判斷。"
@@ -592,8 +605,8 @@ class ReportGenerator:
         lines = [
             "本段檢查每檔股票是否同時具備新聞/RAG、AI 歸因、股價、月營收、五年財報與估值資料；資料不足時，系統會降低建議強度。",
             "",
-            "| 股票 | 新聞/RAG | AI歸因 | 股價 | 月營收 | 五年財報 | 估值 | 判讀 |",
-            "|---|---:|---:|---|---|---:|---|---|",
+            "| 股票 | 新聞/RAG | AI歸因 | 股價 | 月營收 | 五年財報 | 估值 | 領先訊號 | 判讀 |",
+            "|---|---:|---:|---|---|---:|---|---|---|",
         ]
         for ticker in tickers:
             company = companies.get(ticker)
@@ -633,9 +646,11 @@ class ReportGenerator:
             )
             financial_label = str(len(ticker_metrics)) if ticker_metrics else "缺"
             valuation_label = valuation.trade_date.isoformat() if valuation else "缺"
+            signal = (leading_signals or {}).get(ticker)
+            signal_label = signal.direction if signal and signal.has_signal_data else "缺"
             lines.append(
                 f"| {label} | {len(related_documents)} | {len(related_findings)} | "
-                f"{price_label} | {revenue_label} | {financial_label} | {valuation_label} | {verdict} |"
+                f"{price_label} | {revenue_label} | {financial_label} | {valuation_label} | {signal_label} | {verdict} |"
             )
 
         lines.extend(

@@ -812,11 +812,17 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         dynamic_whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidate_payload)
 
         market_client = MarketDataClient()
-        snapshots, market_errors = await market_client.get_latest_snapshots_with_errors(
+        price_histories, market_errors = await market_client.get_price_histories_with_errors(
             promoted_tickers,
             start_date,
             end_date,
         )
+        snapshots = [
+            sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
+            for history in price_histories.values()
+            if history
+        ]
+        price_history_snapshots = [snapshot for history in price_histories.values() for snapshot in history]
         monthly_revenues, monthly_revenue_errors = await market_client.get_monthly_revenue_histories_with_errors(
             promoted_tickers,
             end_date - timedelta(days=450),
@@ -832,8 +838,15 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             start_date,
             end_date,
         )
+        monthly_tickers = {revenue.ticker for revenue in monthly_revenues}
+        valuation_tickers = {valuation.ticker for valuation in valuations}
+        leading_signal_count = sum(
+            1
+            for ticker in promoted_tickers
+            if price_histories.get(ticker) or ticker in monthly_tickers or ticker in valuation_tickers
+        )
         with session_scope() as session:
-            MarketRepository(session).upsert_snapshots(snapshots)
+            MarketRepository(session).upsert_snapshots(price_history_snapshots)
             monthly_repository = MonthlyRevenueRepository(session)
             monthly_repository.upsert_revenues(monthly_revenues)
             FinancialMetricRepository(session).upsert_metrics(financial_metrics)
@@ -850,6 +863,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             cash_reserve_pct=payload.cash_reserve_pct,
             source_quality=summarize_document_source_quality(documents, payload.lookback_days),
             plan_quality=source_audit.get("plan_quality"),
+            leading_signal_count=leading_signal_count,
         )
 
         request = ReportRequest(
@@ -878,6 +892,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,
             "market": [snapshot.model_dump(mode="json") for snapshot in snapshots],
+            "market_history_count": len(price_history_snapshots),
             "market_errors": [error.model_dump() for error in market_errors],
             "monthly_revenue": [
                 revenue.model_dump(mode="json") for revenue in monthly_revenues
@@ -909,6 +924,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "candidate_whitelist": candidate_payload,
             "promoted_tickers": promoted_tickers,
             "market": [snapshot.model_dump(mode="json") for snapshot in snapshots],
+            "market_history_count": len(price_history_snapshots),
             "market_errors": [error.model_dump() for error in market_errors],
             "monthly_revenue": [revenue.model_dump(mode="json") for revenue in monthly_revenues],
             "monthly_revenue_errors": [

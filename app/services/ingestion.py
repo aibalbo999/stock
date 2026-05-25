@@ -92,16 +92,23 @@ class IngestionPipeline:
         end_date: date,
     ) -> dict:
         allowed = self.mapper.filter_allowed_tickers(tickers or sorted(self.mapper.whitelist.allowed_tickers()))
-        snapshots, errors = await MarketDataClient().get_latest_snapshots_with_errors(
+        histories, errors = await MarketDataClient().get_price_histories_with_errors(
             allowed,
             start_date,
             end_date,
         )
+        all_snapshots = [snapshot for history in histories.values() for snapshot in history]
+        latest_snapshots = [
+            sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
+            for history in histories.values()
+            if history
+        ]
         with session_scope() as session:
-            MarketRepository(session).upsert_snapshots(snapshots)
+            MarketRepository(session).upsert_snapshots(all_snapshots)
         return {
             "requested_tickers": allowed,
-            "stored": [snapshot.model_dump(mode="json") for snapshot in snapshots],
+            "stored": [snapshot.model_dump(mode="json") for snapshot in latest_snapshots],
+            "stored_history_count": len(all_snapshots),
             "errors": [error.model_dump() for error in errors],
             "source": "FinMind TaiwanStockPrice",
         }

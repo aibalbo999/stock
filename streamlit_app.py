@@ -594,6 +594,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     publisher_count = metric_int(metrics.get("source_unique_publishers"))
     timestamp_coverage = metric_percent(metrics.get("source_timestamp_coverage"))
     recent_coverage = metric_percent(metrics.get("source_recent_coverage"))
+    leading_signal_coverage = metric_percent(metrics.get("leading_signal_coverage"))
 
     summary_items = markdown_items(markdown, "一頁摘要", limit=3)
     action_items = markdown_items(markdown, "下一步行動", limit=3)
@@ -647,7 +648,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   h2 {{ font-size:18px; margin:22px 0 10px; }}
   .muted {{ color:#667085; }}
   .grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:14px; }}
-  .trust-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:10px; }}
+  .trust-grid {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:10px; }}
   .metric {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:14px; }}
   .metric span {{ display:block; color:#667085; font-size:13px; }}
   .metric strong {{ display:block; margin-top:4px; font-size:20px; }}
@@ -712,6 +713,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       <div class="metric"><span>來源家數</span><strong>{escape(publisher_count)}</strong></div>
       <div class="metric"><span>日期可查</span><strong>{escape(timestamp_coverage)}</strong></div>
       <div class="metric"><span>近期資料</span><strong>{escape(recent_coverage)}</strong></div>
+      <div class="metric"><span>領先訊號</span><strong>{escape(leading_signal_coverage)}</strong></div>
     </div>
   </section>
   {quality_html}
@@ -897,11 +899,12 @@ def render_quality_gate(result: dict) -> None:
     cols[2].metric("正式證據", f"{float(metrics.get('candidate_supported_ratio') or 0):.0%}")
     amount = action_policy.get("max_deployable_amount")
     cols[3].metric("可投入上限", f"{int(amount):,}" if amount is not None else "-")
-    source_cols = st.columns(4)
+    source_cols = st.columns(5)
     source_cols[0].metric("來源篇數", metrics.get("dynamic_source_count", 0))
     source_cols[1].metric("來源家數", metric_int(metrics.get("source_unique_publishers")))
     source_cols[2].metric("日期可查", metric_percent(metrics.get("source_timestamp_coverage")))
     source_cols[3].metric("近期資料", metric_percent(metrics.get("source_recent_coverage")))
+    source_cols[4].metric("領先訊號", metric_percent(metrics.get("leading_signal_coverage")))
     if action_policy.get("label"):
         st.caption(f"投資行動狀態：{action_policy['label']}")
 

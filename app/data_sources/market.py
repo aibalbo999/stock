@@ -73,6 +73,20 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> tuple[list[MarketSnapshot], list[MarketFetchError]]:
+        histories, errors = await self.get_price_histories_with_errors(tickers, start_date, end_date)
+        snapshots = [
+            sorted(history, key=lambda item: item.trade_date)[-1]
+            for history in histories.values()
+            if history
+        ]
+        return snapshots, errors
+
+    async def get_price_histories_with_errors(
+        self,
+        tickers: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> tuple[dict[str, list[MarketSnapshot]], list[MarketFetchError]]:
         semaphore = asyncio.Semaphore(self.concurrency)
 
         async def fetch_one(ticker: str):
@@ -83,14 +97,14 @@ class MarketDataClient:
                     return ticker, [], self._fetch_error(ticker, "TaiwanStockPrice", exc)
 
         results = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-        snapshots: list[MarketSnapshot] = []
+        histories: dict[str, list[MarketSnapshot]] = {}
         errors: list[MarketFetchError] = []
         for ticker, history, error in results:
             if error:
                 errors.append(error)
                 continue
             if history:
-                snapshots.append(sorted(history, key=lambda item: item.trade_date)[-1])
+                histories[ticker] = sorted(history, key=lambda item: item.trade_date)
             else:
                 errors.append(
                     MarketFetchError(
@@ -99,7 +113,8 @@ class MarketDataClient:
                         error="FinMind returned no price rows for requested period",
                     )
                 )
-        return snapshots, errors
+                histories[ticker] = []
+        return histories, errors
 
     async def get_monthly_revenue_history(
         self,

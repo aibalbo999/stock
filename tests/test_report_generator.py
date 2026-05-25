@@ -468,7 +468,7 @@ def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     )
 
     assert "**重點提醒：本次有 1 檔可小額研究" in snapshot_text
-    assert "| 股票 | 判斷 | 資料等級 | 升值情境 | 降值風險 | 主要缺口 |" in snapshot_text
+    assert "| 股票 | 判斷 | 資料等級 | 升值情境 | 降值風險 | 領先訊號 | 主要缺口 |" in snapshot_text
     assert "| 2330 台積電 | 可小額分批研究 | 完整 |" in snapshot_text
     assert "| 可小額研究 | 1 檔 |" in snapshot_text
 
@@ -696,6 +696,7 @@ def test_data_quality_section_explains_complete_and_missing_layers() -> None:
     )
 
     assert "2330 台積電" in section
+    assert "領先訊號" in section
     assert "完整，可進入二次篩選" in section
     assert "2382 廣達" in section
     assert "不足：公司文本不足、缺 AI 歸因、缺股價、缺月營收" in section

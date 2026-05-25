@@ -124,6 +124,32 @@ def test_latest_snapshots_collect_partial_errors(monkeypatch) -> None:
     }
 
 
+def test_price_histories_keep_all_rows_for_leading_signals(monkeypatch) -> None:
+    client = MarketDataClient()
+
+    async def fake_get_price_history(ticker: str, start_date: date, end_date: date):
+        return [
+            MarketSnapshot(ticker=ticker, trade_date=date(2026, 5, 20), close=100.0),
+            MarketSnapshot(ticker=ticker, trade_date=date(2026, 5, 22), close=110.0),
+        ]
+
+    monkeypatch.setattr(client, "get_price_history", fake_get_price_history)
+
+    histories, errors = asyncio.run(
+        client.get_price_histories_with_errors(
+            ["2330"],
+            date(2026, 5, 1),
+            date(2026, 5, 22),
+        )
+    )
+
+    assert errors == []
+    assert [snapshot.trade_date for snapshot in histories["2330"]] == [
+        date(2026, 5, 20),
+        date(2026, 5, 22),
+    ]
+
+
 def test_monthly_revenue_collect_partial_errors(monkeypatch) -> None:
     client = MarketDataClient()
 
@@ -179,6 +205,11 @@ def test_market_repository_upsert_and_latest() -> None:
         assert len(latest) == 1
         assert latest[0].trade_date == date(2026, 5, 22)
         assert latest[0].close == 1010.0
+        history = repository.history_by_tickers(["2330"], limit=10)
+        assert [snapshot.trade_date for snapshot in history["2330"]] == [
+            date(2026, 5, 21),
+            date(2026, 5, 22),
+        ]
     finally:
         session.close()
 

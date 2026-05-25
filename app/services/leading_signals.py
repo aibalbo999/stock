@@ -30,6 +30,19 @@ class LeadingSignal:
         return "中性"
 
     @property
+    def has_signal_data(self) -> bool:
+        return any(
+            value is not None
+            for value in [
+                self.price_20d_pct,
+                self.price_60d_pct,
+                self.volume_ratio_20d,
+                self.revenue_yoy_pct,
+                self.revenue_acceleration_pct,
+            ]
+        ) or self.valuation_label != "未評估"
+
+    @property
     def summary(self) -> str:
         factors = self.bullish_factors if self.score >= 0 else self.bearish_factors
         if not factors:

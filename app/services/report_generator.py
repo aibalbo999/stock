@@ -262,6 +262,19 @@ class ReportGenerator:
                 leading_signals,
             ),
             "",
+            "## 監控清單",
+            self._render_monitoring_checklist(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            ),
+            "",
             "## 先看結論",
             self._summary(findings),
             "",
@@ -517,6 +530,83 @@ class ReportGenerator:
         if estimate.get("upside_pct", 0) <= 10:
             triggers.append("升值情境重新站上 10%")
         return "；".join(triggers[:4]) if triggers else "等待新來源確認投資假設延續"
+
+    @staticmethod
+    def _avoid_trigger_text(context: dict) -> str:
+        estimate = context.get("estimate") or {}
+        signal: LeadingSignal | None = context.get("leading_signal")
+        triggers = []
+        if estimate.get("downside_pct", 0) > 12:
+            triggers.append("降值風險仍高於 12%")
+        elif estimate.get("downside_pct", 0) > 5:
+            triggers.append("降值風險仍高於 5%")
+        if signal and signal.direction == "偏空":
+            triggers.append("領先訊號維持偏空")
+        if estimate.get("upside_pct", 0) <= 10:
+            triggers.append("升值情境低於 10%")
+        return "；".join(triggers[:3]) if triggers else "若新資料未改善，維持觀察"
+
+    @staticmethod
+    def _monitor_frequency(context: dict) -> str:
+        decision = context.get("decision")
+        estimate = context.get("estimate") or {}
+        signal: LeadingSignal | None = context.get("leading_signal")
+        if decision == "避開 / 降低曝險":
+            return "每週"
+        if signal and signal.direction == "偏空":
+            return "每週"
+        if estimate.get("downside_pct", 0) > 5:
+            return "每週"
+        if decision == "可小額分批研究":
+            return "每週"
+        return "每月"
+
+    def _render_monitoring_checklist(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> str:
+        if not tickers:
+            return "目前無可監控股票。"
+        contexts = self._decision_contexts(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
+        lines = [
+            "這張表把觀察與避開名單轉成可執行監控規則；條件未改善前，不把觀察股升級為買進研究。",
+            "",
+            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |",
+            "|---|---|---|---|---|",
+        ]
+        for context in contexts:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        context["label"],
+                        context["decision"],
+                        self._recheck_trigger_text(context),
+                        self._avoid_trigger_text(context),
+                        self._monitor_frequency(context),
+                    ]
+                )
+                + " |"
+            )
+        return "\n".join(lines)
 
     def _render_executive_snapshot(
         self,

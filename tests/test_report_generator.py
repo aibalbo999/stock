@@ -1225,6 +1225,68 @@ def test_recheck_trigger_text_uses_signal_risk_and_missing_data() -> None:
     assert "降值風險降至 5% 以下" in trigger
 
 
+def test_monitoring_checklist_renders_recheck_and_avoid_rules() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"])
+    snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 10),
+        revenue=100,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=20,
+    )
+    signal = LeadingSignal(
+        ticker="2330",
+        score=-6,
+        upside_bonus=0,
+        downside_penalty=6,
+        bearish_factors=["20 日股價轉弱 -12.0%"],
+    )
+
+    markdown = generator._render_monitoring_checklist(
+        request,
+        ["2330"],
+        [
+            NewsFetcher.from_manual_text(
+                title="台積電 AI 需求成長",
+                text="台積電 AI 需求成長。",
+                publisher="測試新聞",
+                published_at=date(2026, 5, 20),
+            ),
+            NewsFetcher.from_manual_text(
+                title="台積電 CoWoS 大單",
+                text="台積電 CoWoS 大單。",
+                publisher="測試新聞",
+                published_at=date(2026, 5, 21),
+            ),
+        ],
+        [make_finding("2330", "台積電", "台積電 AI 需求成長", RiskType.opportunity_or_growth)],
+        [snapshot],
+        [revenue],
+        [
+            FinancialMetric(
+                ticker="2330",
+                report_date=date(2026, 3, 31),
+                statement_type="income_statement",
+                metric="營收",
+                value=1,
+                source="test",
+            )
+        ],
+        [ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=20, pb_ratio=3)],
+        {"2330": signal},
+    )
+
+    assert "| 股票 | 目前動作 | 重新研究條件 |" in markdown
+    assert "領先訊號由偏空轉為中性以上" in markdown
+    assert "領先訊號維持偏空" in markdown
+    assert "每週" in markdown
+
+
 def test_render_leading_signal_check_outputs_table() -> None:
     signal = LeadingSignalAnalyzer().analyze(
         "2330",

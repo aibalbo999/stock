@@ -46,3 +46,26 @@ def test_report_html_renders_comparison_matrix_cards() -> None:
     assert "decision-watch" in html
     assert "valuation-high" in html
     assert "risk-high" in html
+
+
+def test_report_html_renders_quality_warnings() -> None:
+    helpers = load_report_helpers()
+    markdown = "# AI 產業鏈 自動分析報告\n"
+
+    html = helpers["report_html"](
+        markdown,
+        {
+            "report_id": 1,
+            "quality_gate": {
+                "status": "caution",
+                "warnings": ["候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票"],
+                "blockers": [],
+                "action_policy": {"label": "需人工覆核"},
+            },
+        },
+    )
+
+    assert "品質警示" in html
+    assert "警示：" in html
+    assert "候選公司證據覆蓋率低於 60%" in html
+    assert "quality-issues" in html

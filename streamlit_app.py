@@ -539,6 +539,19 @@ def downside_badge_class(value: str) -> str:
     return "risk-high" if float(digits) > 5 else "risk-low"
 
 
+def quality_issue_html(gate: dict) -> str:
+    blockers = gate.get("blockers") or []
+    warnings = gate.get("warnings") or []
+    if not blockers and not warnings:
+        return ""
+    items = []
+    for blocker in blockers:
+        items.append(f"<li><strong>阻擋：</strong>{escape(str(blocker))}</li>")
+    for warning in warnings:
+        items.append(f"<li><strong>警示：</strong>{escape(str(warning))}</li>")
+    return "<section class='panel quality-issues'><h2>品質警示</h2><ul>" + "".join(items) + "</ul></section>"
+
+
 def metric_percent(value: object) -> str:
     return "未評估" if value is None else f"{float(value or 0):.0%}"
 
@@ -560,6 +573,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
         "unknown": "未標示",
     }
     status_class = status if status in {"ready", "caution", "insufficient"} else "unknown"
+    quality_html = quality_issue_html(gate)
     amount = action_policy.get("max_deployable_amount")
     amount_label = f"{int(amount):,} 元" if amount is not None else "-"
     report_id = result.get("report_id") if result else "-"
@@ -632,6 +646,8 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .insufficient {{ background:#FDEAE7; color:#B42318; }}
   .unknown {{ background:#E8EEF6; color:#344054; }}
   .panel {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:16px; margin-top:12px; }}
+  .quality-issues {{ border-color:#F5C97B; background:#FFFCF2; }}
+  .quality-issues strong {{ color:#8A5A12; }}
   ul {{ margin:8px 0 0; padding-left:20px; }}
   li {{ margin:7px 0; line-height:1.55; }}
   .stock-list {{ display:grid; gap:10px; }}
@@ -685,6 +701,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       <div class="metric"><span>近期資料</span><strong>{escape(recent_coverage)}</strong></div>
     </div>
   </section>
+  {quality_html}
   <section class="panel"><h2>重點摘要</h2><ul>{summary_html}</ul></section>
   {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
   <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>

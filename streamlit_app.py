@@ -730,6 +730,17 @@ def metric_number(value: object) -> str:
     return str(int(number)) if number.is_integer() else f"{number:.1f}"
 
 
+def confidence_label(value: object) -> str:
+    if value is None:
+        return "未評估"
+    score = float(value)
+    if score >= 75:
+        return f"高 {metric_number(score)}"
+    if score >= 45:
+        return f"中 {metric_number(score)}"
+    return f"低 {metric_number(score)}"
+
+
 def report_html(markdown: str, result: Optional[dict] = None) -> str:
     gate = result.get("quality_gate") if result else None
     gate = gate if isinstance(gate, dict) else {}
@@ -754,7 +765,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     timestamp_coverage = metric_percent(metrics.get("source_timestamp_coverage"))
     recent_coverage = metric_percent(metrics.get("source_recent_coverage"))
     leading_signal_coverage = metric_percent(metrics.get("leading_signal_coverage"))
-    confidence_min = metric_number(metrics.get("formal_confidence_min"))
+    confidence_min = confidence_label(metrics.get("formal_confidence_min"))
 
     summary_items = markdown_items(markdown, "一頁摘要", limit=3)
     action_items = markdown_items(markdown, "下一步行動", limit=3)
@@ -1181,7 +1192,7 @@ def render_quality_gate(result: dict) -> None:
     source_cols[2].metric("日期可查", metric_percent(metrics.get("source_timestamp_coverage")))
     source_cols[3].metric("近期資料", metric_percent(metrics.get("source_recent_coverage")))
     source_cols[4].metric("領先訊號", metric_percent(metrics.get("leading_signal_coverage")))
-    source_cols[5].metric("最低信心", metric_number(metrics.get("formal_confidence_min")))
+    source_cols[5].metric("最低信心", confidence_label(metrics.get("formal_confidence_min")))
     if action_policy.get("label"):
         st.caption(f"投資行動狀態：{action_policy['label']}")
 

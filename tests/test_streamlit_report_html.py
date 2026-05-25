@@ -74,7 +74,27 @@ def test_report_html_renders_quality_warnings() -> None:
     assert "弱證據候選補抓" in html
     assert "quality-issues" in html
     assert "最低信心" in html
-    assert ">76<" in html
+    assert ">高 76<" in html
+
+
+def test_report_html_labels_low_candidate_confidence() -> None:
+    helpers = load_report_helpers()
+
+    html = helpers["report_html"](
+        "# AI 產業鏈 自動分析報告\n",
+        {
+            "report_id": 1,
+            "quality_gate": {
+                "status": "insufficient",
+                "metrics": {"formal_confidence_min": 42},
+                "blockers": ["正式分析股票含低信心證據公司"],
+                "action_policy": {"label": "僅供研究，不允許投入資金"},
+            },
+        },
+    )
+
+    assert "最低信心" in html
+    assert ">低 42<" in html
 
 
 def test_report_html_renders_follow_up_tasks() -> None:

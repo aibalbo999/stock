@@ -509,6 +509,7 @@ def test_report_quality_gate_warns_for_broad_ai_candidate_list_after_promotion()
     assert gate["status"] == "caution"
     assert gate["blockers"] == []
     assert "候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票" in gate["warnings"]
+    assert any("弱證據候選補抓" in action for action in gate["remediation_actions"])
 
 
 def test_report_quality_gate_blocks_overly_diffuse_candidate_list() -> None:
@@ -526,6 +527,7 @@ def test_report_quality_gate_blocks_overly_diffuse_candidate_list() -> None:
 
     assert gate["status"] == "insufficient"
     assert "候選公司證據覆蓋率低於 25%，AI 候選清單過度發散" in gate["blockers"]
+    assert any("弱證據候選補抓" in action for action in gate["remediation_actions"])
 
 
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
@@ -671,6 +673,32 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
     assert parsed["metrics"]["source_recent_coverage"] == 0.75
     assert parsed["metrics"]["discovery_plan_status"] == "ready"
     assert parsed["metrics"]["discovery_plan_score"] == 95
+
+
+def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 0.4},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+    )
+    response = main.attach_quality_gate_to_report(
+        ReportResponse(
+            title="AI 產業鏈 自動分析報告",
+            markdown="# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n- 測試",
+        ),
+        gate,
+    )
+
+    parsed = parse_quality_gate_from_markdown(response.markdown)
+
+    assert parsed is not None
+    assert parsed["remediation_actions"] == gate["remediation_actions"]
 
 
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:

@@ -109,10 +109,12 @@ def build_report_quality_gate(
     if investor_capital is not None and cash_reserve_pct is not None:
         deployable_base = max(0, int(investor_capital * (1 - cash_reserve_pct)))
         deployable_amount = int(deployable_base * max_deployable_multiplier)
+    remediation_actions = quality_remediation_actions(blockers, warnings)
     return {
         "status": status,
         "blockers": blockers,
         "warnings": warnings,
+        "remediation_actions": remediation_actions,
         "action_policy": {
             "policy": action_policy,
             "label": action_label,
@@ -141,6 +143,74 @@ def build_report_quality_gate(
             else "資料品質達到本系統產出投資建議的基本門檻。"
         ),
     }
+
+
+def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> list[str]:
+    issue_text = "；".join([*blockers, *warnings])
+    actions = []
+    rules = [
+        (
+            ("沒有通過證據驗證",),
+            "重新執行主題拆解，要求 AI 補查公司與主題的直接證據後再產生正式股票。",
+        ),
+        (
+            ("候選公司證據覆蓋率低於 25%", "候選公司證據覆蓋率低於 60%"),
+            "保留已升格的正式股票，對弱證據候選補抓公司新聞、法說會與供應鏈資料後再做二次篩選。",
+        ),
+        (
+            ("AI 動態資料來源入庫篇數過少", "AI 動態資料來源偏少"),
+            "增加查詢子題、拉長回溯天數或開啟深度分析，至少補足 12 篇以上可追溯來源。",
+        ),
+        (
+            ("來源時間戳覆蓋率", "缺少發布日期"),
+            "優先改用有發布日期的來源，無日期資料只作背景參考，不納入關鍵風險或估值推論。",
+        ),
+        (
+            ("資料來源發布者過於單一", "資料來源多樣性偏低"),
+            "補入不同發布者與國際資料源，避免單一媒體或單一市場觀點主導結論。",
+        ),
+        (
+            ("近期資料比例偏低",),
+            "補抓最近期間資料，確認產能、訂單、法規與估值假設仍然有效。",
+        ),
+        (
+            ("AI 拆解任務品質",),
+            "請 AI 重新拆解分析任務，補齊缺漏的產業子題、風險瓶頸、估值與個股研究任務。",
+        ),
+        (
+            ("股價資料覆蓋率",),
+            "刷新股價與市值資料，缺資料股票不得產生買入或加碼建議。",
+        ),
+        (
+            ("月營收資料覆蓋",),
+            "補齊月營收資料，並把缺資料股票的成長判斷降為低信心。",
+        ),
+        (
+            ("五年財務資料不足",),
+            "補齊近五年財務指標，未補齊前不得給出高信心財務體質結論。",
+        ),
+        (
+            ("估值資料覆蓋",),
+            "補齊同業估值、P/E 與 DCF 假設，估值缺口未補齊前只保留觀察結論。",
+        ),
+    ]
+    for keywords, action in rules:
+        if any(keyword in issue_text for keyword in keywords):
+            actions.append(action)
+    if issue_text and not actions:
+        actions.append("先補齊品質警示所列資料缺口，再重新執行完整分析。")
+    return _dedupe(actions)
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    deduped = []
+    seen = set()
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
 
 
 def summarize_document_source_quality(documents: list[NewsDocument], lookback_days: int) -> dict:
@@ -257,6 +327,9 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         lines.append("- 阻擋項：" + "；".join(blockers))
     if warnings:
         lines.append("- 警示項：" + "；".join(warnings))
+    remediation_actions = quality_gate.get("remediation_actions") or []
+    if remediation_actions:
+        lines.append("- 建議補強：" + "；".join(str(action) for action in remediation_actions))
     if not blockers and not warnings:
         lines.append("- 阻擋/警示：無")
     return "\n".join(lines)
@@ -306,6 +379,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
         "status": status_map.get(fields.get("狀態", ""), "unknown"),
         "blockers": _split_issue_field(fields.get("阻擋項")),
         "warnings": _split_issue_field(fields.get("警示項")),
+        "remediation_actions": _split_issue_field(fields.get("建議補強")),
         "action_policy": {
             "label": action_label,
             "max_deployable_amount": _parse_amount(fields.get("本輪品質門檻後可投入上限")),

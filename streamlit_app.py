@@ -542,14 +542,22 @@ def downside_badge_class(value: str) -> str:
 def quality_issue_html(gate: dict) -> str:
     blockers = gate.get("blockers") or []
     warnings = gate.get("warnings") or []
-    if not blockers and not warnings:
+    actions = gate.get("remediation_actions") or []
+    if not blockers and not warnings and not actions:
         return ""
     items = []
     for blocker in blockers:
         items.append(f"<li><strong>阻擋：</strong>{escape(str(blocker))}</li>")
     for warning in warnings:
         items.append(f"<li><strong>警示：</strong>{escape(str(warning))}</li>")
-    return "<section class='panel quality-issues'><h2>品質警示</h2><ul>" + "".join(items) + "</ul></section>"
+    action_items = "".join(f"<li>{escape(str(action))}</li>" for action in actions)
+    action_html = (
+        "<div class='quality-actions'><strong>建議補強</strong><ul>" + action_items + "</ul></div>"
+        if action_items
+        else ""
+    )
+    issue_html = "<ul>" + "".join(items) + "</ul>" if items else ""
+    return f"<section class='panel quality-issues'><h2>品質警示</h2>{issue_html}{action_html}</section>"
 
 
 def metric_percent(value: object) -> str:
@@ -648,6 +656,8 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .panel {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:16px; margin-top:12px; }}
   .quality-issues {{ border-color:#F5C97B; background:#FFFCF2; }}
   .quality-issues strong {{ color:#8A5A12; }}
+  .quality-actions {{ margin-top:12px; border-top:1px solid #F5C97B; padding-top:12px; }}
+  .quality-actions strong {{ display:block; margin-bottom:2px; }}
   ul {{ margin:8px 0 0; padding-left:20px; }}
   li {{ margin:7px 0; line-height:1.55; }}
   .stock-list {{ display:grid; gap:10px; }}

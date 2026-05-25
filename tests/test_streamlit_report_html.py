@@ -60,6 +60,7 @@ def test_report_html_renders_quality_warnings() -> None:
                 "status": "caution",
                 "warnings": ["候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票"],
                 "blockers": [],
+                "remediation_actions": ["對弱證據候選補抓公司新聞、法說會與供應鏈資料後再做二次篩選。"],
                 "action_policy": {"label": "需人工覆核"},
             },
         },
@@ -68,4 +69,6 @@ def test_report_html_renders_quality_warnings() -> None:
     assert "品質警示" in html
     assert "警示：" in html
     assert "候選公司證據覆蓋率低於 60%" in html
+    assert "建議補強" in html
+    assert "弱證據候選補抓" in html
     assert "quality-issues" in html

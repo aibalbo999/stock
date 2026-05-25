@@ -6,6 +6,7 @@ import redis
 
 from app.core.config import get_settings
 from app.services.candidate_confidence import confidence_thresholds
+from app.services.llm_client import MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 
 
 def service_status() -> dict:
@@ -17,6 +18,8 @@ def service_status() -> dict:
             "configured": len(settings.gemini_api_keys) > 0,
             "key_count": len(settings.gemini_api_keys),
             "model": settings.primary_llm_model,
+            "retryable_http_statuses": sorted(RETRYABLE_HTTP_STATUSES),
+            "max_retries_per_key": MAX_RETRIES_PER_KEY,
         },
         "finmind": {
             "configured": bool(settings.finmind_token),

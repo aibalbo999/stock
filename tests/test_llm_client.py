@@ -26,12 +26,52 @@ def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:
         return "ok"
 
     monkeypatch.setattr(client, "_call_gemini", fake_call)
+    monkeypatch.setattr(client, "_sleep_before_retry", lambda response, attempt: None)
 
     result = client.generate_with_metadata("prompt")
 
     assert result.text == "ok"
     assert result.key_index == 1
-    assert calls == [("prompt", "bad-key"), ("prompt", "good-key")]
+    assert calls == [
+        ("prompt", "bad-key"),
+        ("prompt", "bad-key"),
+        ("prompt", "bad-key"),
+        ("prompt", "good-key"),
+    ]
+
+
+def test_llm_client_retries_503_before_rotating(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = SimpleNamespace(primary_llm_model="gemini-test")
+    client.rotator = APIKeyRotator(["flaky-key"])
+    calls = []
+
+    def fake_call(prompt: str, api_key: str) -> str:
+        calls.append((prompt, api_key))
+        if len(calls) == 1:
+            response = httpx.Response(503, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("unavailable", request=response.request, response=response)
+        return "ok-after-retry"
+
+    monkeypatch.setattr(client, "_call_gemini", fake_call)
+    monkeypatch.setattr(client, "_sleep_before_retry", lambda response, attempt: None)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "ok-after-retry"
+    assert result.key_index == 0
+    assert calls == [("prompt", "flaky-key"), ("prompt", "flaky-key")]
+
+
+def test_llm_retry_delay_uses_retry_after_header() -> None:
+    response = httpx.Response(
+        503,
+        headers={"Retry-After": "2"},
+        request=httpx.Request("POST", "https://example.test"),
+    )
+
+    assert LLMClient._retry_delay_seconds(response, attempt=0) == 2
+    assert LLMClient._retry_delay_seconds(None, attempt=2) == 2.0
 
 
 def test_shared_rotator_reuses_same_pool() -> None:

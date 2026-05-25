@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Lock
+from time import sleep
+from typing import Optional
 
 import httpx
 
 from app.core.config import get_settings
+
+RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
+ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
+MAX_RETRIES_PER_KEY = 2
+BASE_RETRY_DELAY_SECONDS = 0.5
+MAX_RETRY_DELAY_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -79,18 +87,32 @@ class LLMClient:
 
         errors: list[str] = []
         for key_index, api_key in self.rotator.candidates():
-            try:
-                text = self._call_gemini(prompt, api_key)
-                if text:
-                    return LLMResult(text=text, key_index=key_index, model=self.settings.primary_llm_model)
-                errors.append(f"key[{key_index}] empty response")
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                errors.append(f"key[{key_index}] HTTP {status}")
-                if status not in {401, 403, 429, 500, 502, 503, 504}:
+            should_stop = False
+            for attempt in range(MAX_RETRIES_PER_KEY + 1):
+                try:
+                    text = self._call_gemini(prompt, api_key)
+                    if text:
+                        return LLMResult(text=text, key_index=key_index, model=self.settings.primary_llm_model)
+                    errors.append(f"key[{key_index}] empty response")
                     break
-            except httpx.HTTPError as exc:
-                errors.append(f"key[{key_index}] {exc.__class__.__name__}")
+                except httpx.HTTPStatusError as exc:
+                    status = exc.response.status_code
+                    errors.append(f"key[{key_index}] HTTP {status} attempt {attempt + 1}")
+                    if status not in ROTATABLE_HTTP_STATUSES:
+                        should_stop = True
+                        break
+                    if status in RETRYABLE_HTTP_STATUSES and attempt < MAX_RETRIES_PER_KEY:
+                        self._sleep_before_retry(exc.response, attempt)
+                        continue
+                    break
+                except httpx.HTTPError as exc:
+                    errors.append(f"key[{key_index}] {exc.__class__.__name__} attempt {attempt + 1}")
+                    if attempt < MAX_RETRIES_PER_KEY:
+                        self._sleep_before_retry(None, attempt)
+                        continue
+                    break
+            if should_stop:
+                break
 
         return LLMResult(
             text=(
@@ -99,6 +121,20 @@ class LLMClient:
             ),
             fallback=True,
         )
+
+    def _sleep_before_retry(self, response: Optional[httpx.Response], attempt: int) -> None:
+        sleep(self._retry_delay_seconds(response, attempt))
+
+    @staticmethod
+    def _retry_delay_seconds(response: Optional[httpx.Response], attempt: int) -> float:
+        if response is not None:
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    return min(MAX_RETRY_DELAY_SECONDS, max(0.0, float(retry_after)))
+                except ValueError:
+                    pass
+        return min(MAX_RETRY_DELAY_SECONDS, BASE_RETRY_DELAY_SECONDS * (2**attempt))
 
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata(

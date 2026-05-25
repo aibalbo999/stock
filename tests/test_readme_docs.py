@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.followup_actions import FOLLOW_UP_ACTION_LABELS, TRACKING_FRESHNESS_THRESHOLDS
+from app.services.llm_client import RETRYABLE_HTTP_STATUSES
 
 
 def test_readme_documents_follow_up_freshness_thresholds() -> None:
@@ -32,3 +33,11 @@ def test_readme_documents_candidate_confidence_gate() -> None:
     assert f"CANDIDATE_CONFIDENCE_HIGH_THRESHOLD={HIGH_CONFIDENCE_THRESHOLD}" in readme
     assert "候選證據信心" in readme
     assert "證據篇數、來源家數、來源日期覆蓋與最新證據日期" in readme
+
+
+def test_readme_documents_llm_retry_statuses() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    for status in sorted(RETRYABLE_HTTP_STATUSES):
+        assert str(status) in readme
+    assert "輪調下一把 key" in readme

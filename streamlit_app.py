@@ -611,6 +611,7 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
                     candidate.get("validation_reason") or "",
                     candidate.get("next_action") or "",
                     source_summary,
+                    f"{candidate.get('evidence_confidence_label') or '未評分'} {candidate.get('evidence_confidence_score', '-')}",
                 ]
             )
     else:
@@ -630,7 +631,8 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
         evidence = escape(row[3]) if len(row) > 3 else "-"
         reason = escape(row[4]) if len(row) > 4 else ""
         next_action = escape(row[5]) if len(row) > 5 else ""
-        source_summary = escape(row[6]) if len(row) > 6 else ""
+        source_summary = escape(row[6]) if candidates and len(row) > 6 else ""
+        confidence = escape(row[7] if candidates and len(row) > 7 else row[6] if not candidates and len(row) > 6 else "")
         status_class = (
             "audit-supported"
             if "正式分析" in status_raw
@@ -651,6 +653,7 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
               <div class="audit-meta">
                 <span>{status}</span>
                 <span>{evidence}</span>
+                {"<span>" + confidence + "</span>" if confidence else ""}
               </div>
             </article>
             """
@@ -966,6 +969,10 @@ def candidate_rows(candidates: list[dict]) -> list[dict]:
                 "狀態": status_labels.get(candidate.get("status"), "待補資料"),
                 "原因": candidate.get("validation_reason"),
                 "下一步": candidate.get("next_action"),
+                "證據信心": (
+                    f"{candidate.get('evidence_confidence_label') or '未評分'} "
+                    f"{candidate.get('evidence_confidence_score', '-')}"
+                ),
                 "主要來源": "；".join(
                     source.get("title", "")
                     for source in candidate.get("evidence_sources", [])[:2]

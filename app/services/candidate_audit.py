@@ -43,8 +43,8 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
         f"| 弱證據觀察 | {summary['weak_count']} |",
         f"| 待補證據 | {summary['needs_evidence_count']} |",
         "",
-        "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |",
-        "|---|---|---|---:|---|---|",
+        "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |",
+        "|---|---|---|---:|---|---|---:|",
     ]
     for candidate in candidates:
         ticker = str(candidate.get("ticker") or "")
@@ -54,6 +54,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
         source_count = int(candidate.get("evidence_source_count") or 0)
         reason = candidate.get("validation_reason") or candidate_audit_reason(evidence_count, source_count)
         next_action = candidate.get("next_action") or candidate_audit_next_action(evidence_count, source_count)
+        confidence = candidate_confidence_text(candidate)
         if ticker in promoted:
             status = "evidence_supported"
         lines.append(
@@ -66,6 +67,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
                     f"{evidence_count} 篇 / {source_count} 來源",
                     str(reason),
                     str(next_action),
+                    confidence,
                 ]
             )
             + " |"
@@ -111,3 +113,13 @@ def candidate_audit_next_action(evidence_count: int, source_count: int) -> str:
     if evidence_count > 0:
         return "補抓更多來源後再驗證。"
     return "重新補抓公司層級來源。"
+
+
+def candidate_confidence_text(candidate: dict) -> str:
+    score = candidate.get("evidence_confidence_score")
+    label = candidate.get("evidence_confidence_label") or ""
+    latest = candidate.get("latest_evidence_date")
+    if score is None:
+        return "未評分"
+    date_text = f"，最新 {latest}" if latest else ""
+    return f"{label} {int(score)}{date_text}"

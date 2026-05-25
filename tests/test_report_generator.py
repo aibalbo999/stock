@@ -810,6 +810,9 @@ def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
                         "url": "https://example.com/quanta",
                     }
                 ],
+                "evidence_confidence_score": 92,
+                "evidence_confidence_label": "高",
+                "latest_evidence_date": "2026-05-24",
                 "status": "evidence_supported",
                 "validation_reason": "通過正式分析門檻：至少 2 篇公司主題證據。",
                 "next_action": "納入正式分析。",
@@ -841,6 +844,7 @@ def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
     assert "候選公司代表來源" in markdown
     assert "廣達 AI 伺服器訂單" in markdown
     assert "測試新聞" in markdown
+    assert "高 92，最新 2026-05-24" in markdown
 
 
 def test_partial_quality_upside_stays_on_watchlist_without_allocation() -> None:

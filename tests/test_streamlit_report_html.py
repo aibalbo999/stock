@@ -147,6 +147,8 @@ def test_report_html_renders_candidate_audit_from_result_payload() -> None:
                             "published_at": "2026-05-24",
                         }
                     ],
+                    "evidence_confidence_score": 92,
+                    "evidence_confidence_label": "高",
                 },
                 {
                     "ticker": "3324",
@@ -168,6 +170,7 @@ def test_report_html_renders_candidate_audit_from_result_payload() -> None:
     assert "3324 雙鴻" in html
     assert "廣達 AI 伺服器訂單" in html
     assert "測試新聞" in html
+    assert "高 92" in html
 
 
 def test_candidate_revalidation_summary_counts_statuses() -> None:

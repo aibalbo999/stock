@@ -694,6 +694,9 @@ def test_validate_candidates_marks_evidence_supported() -> None:
     assert candidates[0].evidence_sources[0]["title"] == "台積電 CoWoS 產能擴張"
     assert candidates[0].evidence_sources[0]["publisher"] == "test-a"
     assert candidates[0].evidence_sources[0]["published_at"] == "2026-05-24"
+    assert candidates[0].evidence_confidence_score >= 75
+    assert candidates[0].evidence_confidence_label == "高"
+    assert candidates[0].latest_evidence_date == "2026-05-24"
 
 
 def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
@@ -729,6 +732,7 @@ def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
     assert candidates[0].promotion_eligible is False
     assert "弱證據" in candidates[0].validation_reason
     assert "補抓" in candidates[0].next_action
+    assert candidates[0].evidence_confidence_score < 75
 
 
 def test_validate_candidates_requires_company_entity_evidence() -> None:

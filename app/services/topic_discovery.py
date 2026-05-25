@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
+from typing import Optional
 from urllib.parse import quote_plus
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.time import today_taipei
 from app.models.schemas import NewsDocument
 from app.services.llm_client import LLMClient
 from app.services.whitelist import SupplyChainWhitelist
@@ -54,6 +57,9 @@ class ValidatedCandidate(BaseModel):
     evidence_source_count: int = 0
     evidence_titles: list[str]
     evidence_sources: list[dict] = Field(default_factory=list)
+    evidence_confidence_score: int = 0
+    evidence_confidence_label: str = "低"
+    latest_evidence_date: Optional[str] = None
     status: str
     validation_reason: str = ""
     next_action: str = ""
@@ -683,6 +689,7 @@ class TopicDiscoveryService:
             deduped_titles = list(dict.fromkeys(document.title for document in evidence_documents))[:5]
             source_count = self._evidence_source_count(evidence_documents)
             evidence_sources = self._candidate_evidence_sources(evidence_documents)
+            confidence = self._candidate_evidence_confidence(evidence_documents, source_count)
             validated.append(
                 ValidatedCandidate(
                     ticker=candidate.ticker,
@@ -694,6 +701,9 @@ class TopicDiscoveryService:
                     evidence_source_count=source_count,
                     evidence_titles=deduped_titles,
                     evidence_sources=evidence_sources,
+                    evidence_confidence_score=confidence["score"],
+                    evidence_confidence_label=confidence["label"],
+                    latest_evidence_date=confidence["latest_evidence_date"],
                     status=self._candidate_status(len(evidence_documents), source_count),
                     validation_reason=self._candidate_validation_reason(len(evidence_documents), source_count),
                     next_action=self._candidate_next_action(len(evidence_documents), source_count),
@@ -762,6 +772,43 @@ class TopicDiscoveryService:
             if len(sources) >= limit:
                 break
         return sources
+
+    @staticmethod
+    def _candidate_evidence_confidence(documents: list[NewsDocument], source_count: int) -> dict:
+        evidence_count = len(documents)
+        dated_documents = [document for document in documents if document.source.published_at]
+        latest_date = max((document.source.published_at for document in dated_documents), default=None)
+        evidence_score = min(evidence_count, 3) / 3 * 35
+        source_score = min(source_count, 3) / 3 * 35
+        timestamp_score = (len(dated_documents) / evidence_count * 10) if evidence_count else 0
+        recency_score = TopicDiscoveryService._recency_score(latest_date)
+        score = int(round(evidence_score + source_score + timestamp_score + recency_score))
+        return {
+            "score": min(score, 100),
+            "label": TopicDiscoveryService._confidence_label(score),
+            "latest_evidence_date": latest_date.isoformat() if latest_date else None,
+        }
+
+    @staticmethod
+    def _recency_score(latest_date: Optional[date]) -> int:
+        if latest_date is None:
+            return 0
+        age_days = (today_taipei() - latest_date).days
+        if age_days <= 30:
+            return 20
+        if age_days <= 90:
+            return 12
+        if age_days <= 180:
+            return 6
+        return 0
+
+    @staticmethod
+    def _confidence_label(score: int) -> str:
+        if score >= 75:
+            return "高"
+        if score >= 45:
+            return "中"
+        return "低"
 
     @staticmethod
     def _candidate_status(evidence_count: int, source_count: int) -> str:

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.time import today_taipei
 from app.models.schemas import NewsDocument
+from app.services.candidate_confidence import confidence_level, is_high_confidence
 from app.services.llm_client import LLMClient
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -808,23 +809,19 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _confidence_label(score: int) -> str:
-        if score >= 75:
-            return "高"
-        if score >= 45:
-            return "中"
-        return "低"
+        return confidence_level(score)
 
     @staticmethod
     def _candidate_status(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
         if evidence_count == 0:
             return "needs_evidence"
-        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
+        if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
             return "evidence_supported"
         return "weak_evidence"
 
     @staticmethod
     def _candidate_validation_reason(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
-        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
+        if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
             return "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。"
         if evidence_count >= 2 and source_count >= 2:
             return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分，需補近期或有日期來源。"
@@ -834,7 +831,7 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _candidate_next_action(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
-        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
+        if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
             return "納入正式分析。"
         if evidence_count >= 2 and source_count >= 2:
             return "補抓有日期、近期且不同發布者的公司與主題來源後再驗證。"

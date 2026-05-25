@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app.services.candidate_confidence import format_confidence_score, is_low_formal_confidence
+
 
 STATUS_LABELS = {
     "evidence_supported": "正式分析",
@@ -111,7 +113,7 @@ def render_candidate_evidence_markdown(candidates: list[dict]) -> list[str]:
 
 
 def candidate_audit_reason(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:
-    if evidence_count >= 2 and source_count >= 2 and confidence_score is not None and confidence_score < 75:
+    if evidence_count >= 2 and source_count >= 2 and is_low_formal_confidence(confidence_score):
         return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分。"
     if evidence_count >= 2 and source_count >= 2:
         return "通過正式分析門檻。"
@@ -121,7 +123,7 @@ def candidate_audit_reason(evidence_count: int, source_count: int, confidence_sc
 
 
 def candidate_audit_next_action(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:
-    if evidence_count >= 2 and source_count >= 2 and confidence_score is not None and confidence_score < 75:
+    if evidence_count >= 2 and source_count >= 2 and is_low_formal_confidence(confidence_score):
         return "補抓有日期、近期且不同發布者的來源後再驗證。"
     if evidence_count >= 2 and source_count >= 2:
         return "納入正式分析。"
@@ -137,4 +139,7 @@ def candidate_confidence_text(candidate: dict) -> str:
     if score is None:
         return "未評分"
     date_text = f"，最新 {latest}" if latest else ""
-    return f"{label} {int(score)}{date_text}"
+    confidence = format_confidence_score(float(score))
+    if label and not confidence.startswith(label):
+        confidence = f"{label} {int(score)}"
+    return f"{confidence}{date_text}"

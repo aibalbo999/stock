@@ -17,6 +17,7 @@ from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest, ReportResponse
 from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import candidate_audit_summary, render_candidate_audit_markdown
+from app.services.candidate_confidence import is_low_formal_confidence
 from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import (
     FollowUpActionPlanner,
@@ -535,7 +536,7 @@ def summarize_candidate_support(candidates) -> dict:
         "formal_supported_ratio": 1.0 if supported else 0,
         "formal_confidence_avg": round(sum(supported_scores) / len(supported_scores), 1) if supported_scores else None,
         "formal_confidence_min": min(supported_scores) if supported_scores else None,
-        "formal_low_confidence_count": sum(1 for score in supported_scores if score < 75),
+        "formal_low_confidence_count": sum(1 for score in supported_scores if is_low_formal_confidence(score)),
     }
 
 

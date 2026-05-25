@@ -35,6 +35,7 @@ from app.services.report_quality import (
 )
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
 from app.services.service_status import service_status
+from app.services.candidate_confidence import format_confidence_score
 from app.services.whitelist import SupplyChainWhitelist
 
 st.set_page_config(page_title="台股 AI 產業鏈分析", layout="wide")
@@ -731,14 +732,7 @@ def metric_number(value: object) -> str:
 
 
 def confidence_label(value: object) -> str:
-    if value is None:
-        return "未評估"
-    score = float(value)
-    if score >= 75:
-        return f"高 {metric_number(score)}"
-    if score >= 45:
-        return f"中 {metric_number(score)}"
-    return f"低 {metric_number(score)}"
+    return format_confidence_score(float(value)) if value is not None else "未評估"
 
 
 def report_html(markdown: str, result: Optional[dict] = None) -> str:

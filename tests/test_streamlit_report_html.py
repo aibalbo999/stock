@@ -6,6 +6,8 @@ from typing import Optional
 
 import re
 
+from app.services.candidate_confidence import format_confidence_score
+
 
 def load_report_helpers() -> dict:
     source = Path("streamlit_app.py").read_text()
@@ -15,6 +17,7 @@ def load_report_helpers() -> dict:
         "escape": escape,
         "Optional": Optional,
         "re": re,
+        "format_confidence_score": format_confidence_score,
     }
     exec(source[start:end], namespace)
     return namespace

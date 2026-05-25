@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from app.core.time import now_taipei
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument, ReportRequest, ReportResponse
+from app.services.candidate_confidence import format_confidence_score
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignalAnalyzer
 from app.services.persistence import (
@@ -408,16 +409,7 @@ def _format_optional_number(value: object) -> str:
 
 
 def _format_confidence_score(value: object) -> str:
-    if value is None:
-        return "未評估"
-    score = float(value)
-    if score >= 75:
-        label = "高"
-    elif score >= 45:
-        label = "中"
-    else:
-        label = "低"
-    return f"{label} {_format_optional_number(score)}"
+    return format_confidence_score(float(value)) if value is not None else "未評估"
 
 
 def _format_optional_percent(value: object) -> str:

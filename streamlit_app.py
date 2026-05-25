@@ -459,6 +459,41 @@ def company_analysis_html(markdown: str) -> str:
     return f"<details open><summary>個別公司分析（{len(cards)} 檔）</summary>{''.join(cards)}</details>"
 
 
+def comparison_matrix_html(markdown: str) -> str:
+    rows = markdown_table_rows(markdown, "個股比較矩陣", limit=8)
+    if not rows:
+        return ""
+    cards = []
+    for row in rows:
+        stock = escape(row[0]) if len(row) > 0 else "-"
+        decision = escape(row[1]) if len(row) > 1 else "-"
+        upside = escape(row[2]) if len(row) > 2 else "-"
+        downside = escape(row[3]) if len(row) > 3 else "-"
+        valuation = escape(row[4]) if len(row) > 4 else "-"
+        confidence = escape(row[5]) if len(row) > 5 else "-"
+        reminder = escape(row[6]) if len(row) > 6 else ""
+        cards.append(
+            f"""
+            <article class="matrix-card">
+              <div class="matrix-top">
+                <div>
+                  <div class="ticker">{stock}</div>
+                  <div class="reason">{reminder}</div>
+                </div>
+                <span class="decision">{decision}</span>
+              </div>
+              <div class="mini-grid">
+                <div><span>升值</span><strong>{upside}</strong></div>
+                <div><span>降值</span><strong>{downside}</strong></div>
+                <div><span>估值</span><strong>{valuation}</strong></div>
+                <div><span>信心</span><strong>{confidence}</strong></div>
+              </div>
+            </article>
+            """
+        )
+    return "".join(cards)
+
+
 def metric_percent(value: object) -> str:
     return "未評估" if value is None else f"{float(value or 0):.0%}"
 
@@ -494,6 +529,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     action_items = markdown_items(markdown, "下一步行動", limit=3)
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
     investment_rows = markdown_table_rows(markdown, "投資建議", limit=6)
+    comparison_html = comparison_matrix_html(markdown)
     final_items = markdown_items(markdown, "二次綜合篩選", limit=3)
 
     summary_html = "".join(f"<li>{escape(item)}</li>" for item in summary_items) or "<li>目前無足夠數據判斷。</li>"
@@ -520,7 +556,6 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     details = "".join(
         [
             detail_html(markdown, "資金控管", "資金控管建議"),
-            detail_html(markdown, "個股比較", "個股比較矩陣"),
             company_analysis_html(markdown),
             detail_html(markdown, "主要風險", "主要風險與瓶頸"),
             detail_html(markdown, "資料完整度", "資料完整度"),
@@ -556,6 +591,13 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   li {{ margin:7px 0; line-height:1.55; }}
   .stock-list {{ display:grid; gap:10px; }}
   .stock-card {{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .matrix-list {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
+  .matrix-card {{ border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .matrix-top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }}
+  .mini-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }}
+  .mini-grid div {{ background:#F4F7FB; border-radius:8px; padding:8px; }}
+  .mini-grid span {{ display:block; color:#667085; font-size:12px; }}
+  .mini-grid strong {{ display:block; margin-top:3px; font-size:14px; }}
   .ticker {{ font-weight:800; margin-bottom:6px; }}
   .reason {{ color:#53657D; font-size:14px; line-height:1.5; }}
   .decision {{ white-space:nowrap; background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:6px 10px; font-weight:700; font-size:13px; }}
@@ -563,7 +605,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   summary {{ cursor:pointer; font-weight:700; }}
   .company-detail {{ background:#FFFFFF; margin:10px 0 0; }}
   .company-detail summary {{ color:#1D4ED8; }}
-  @media (max-width:760px) {{ .grid,.trust-grid {{ grid-template-columns:1fr 1fr; }} .stock-card {{ display:block; }} .decision {{ display:inline-block; margin-top:10px; }} }}
+  @media (max-width:760px) {{ .grid,.trust-grid,.matrix-list {{ grid-template-columns:1fr; }} .stock-card,.matrix-top {{ display:block; }} .decision {{ display:inline-block; margin-top:10px; }} }}
 </style>
 </head>
 <body>
@@ -589,6 +631,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   <section class="panel"><h2>重點摘要</h2><ul>{summary_html}</ul></section>
   {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
   <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>
+  {"<section class='panel'><h2>個股比較矩陣</h2><div class='matrix-list'>" + comparison_html + "</div></section>" if comparison_html else ""}
   <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
   {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}
   <section class="panel"><h2>展開看細節</h2>{details or "<p class='muted'>目前沒有更多細節。</p>"}</section>

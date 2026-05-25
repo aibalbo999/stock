@@ -519,6 +519,11 @@ def summarize_candidate_support(candidates) -> dict:
     supported = sum(1 for candidate in candidates if candidate.status == "evidence_supported")
     weak = sum(1 for candidate in candidates if candidate.status == "weak_evidence")
     unsupported = sum(1 for candidate in candidates if candidate.status == "needs_evidence")
+    supported_scores = [
+        int(candidate.evidence_confidence_score or 0)
+        for candidate in candidates
+        if candidate.status == "evidence_supported"
+    ]
     exploration_supported_ratio = supported / total if total else 0
     return {
         "total": total,
@@ -528,6 +533,9 @@ def summarize_candidate_support(candidates) -> dict:
         "supported_ratio": exploration_supported_ratio,
         "exploration_supported_ratio": exploration_supported_ratio,
         "formal_supported_ratio": 1.0 if supported else 0,
+        "formal_confidence_avg": round(sum(supported_scores) / len(supported_scores), 1) if supported_scores else None,
+        "formal_confidence_min": min(supported_scores) if supported_scores else None,
+        "formal_low_confidence_count": sum(1 for score in supported_scores if score < 75),
     }
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -506,7 +507,11 @@ def test_report_quality_gate_blocks_weak_research_inputs() -> None:
 def test_report_quality_gate_passes_complete_research_inputs() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.8},
+            "candidate_support": {
+                "supported_ratio": 0.8,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
             "dynamic_queries": {"stored_count": 24},
         },
         promoted_tickers=["2330", "2382"],
@@ -523,6 +528,46 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["action_policy"]["max_deployable_amount"] == 700_000
     assert gate["blockers"] == []
     assert gate["warnings"] == []
+
+
+def test_candidate_support_summarizes_formal_confidence_scores() -> None:
+    summary = main.summarize_candidate_support(
+        [
+            SimpleNamespace(status="evidence_supported", evidence_confidence_score=88),
+            SimpleNamespace(status="evidence_supported", evidence_confidence_score=76),
+            SimpleNamespace(status="weak_evidence", evidence_confidence_score=60),
+        ]
+    )
+
+    assert summary["supported"] == 2
+    assert summary["formal_confidence_avg"] == 82
+    assert summary["formal_confidence_min"] == 76
+    assert summary["formal_low_confidence_count"] == 0
+
+
+def test_report_quality_gate_blocks_low_confidence_formal_stocks() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {
+                "supported_ratio": 1.0,
+                "formal_supported_ratio": 1.0,
+                "formal_confidence_avg": 72,
+                "formal_confidence_min": 68,
+                "formal_low_confidence_count": 1,
+            },
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+    )
+
+    assert gate["status"] == "insufficient"
+    assert "正式分析股票含低信心證據公司" in gate["blockers"]
+    assert gate["metrics"]["formal_confidence_avg"] == 72
+    assert any("低信心正式股票" in action for action in gate["remediation_actions"])
 
 
 def test_report_quality_gate_treats_broad_candidate_list_as_observation_after_promotion() -> None:
@@ -617,7 +662,11 @@ def test_report_quality_gate_warns_when_leading_signal_coverage_is_low() -> None
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.8},
+            "candidate_support": {
+                "supported_ratio": 0.8,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
             "dynamic_queries": {"stored_count": 24},
         },
         promoted_tickers=["2330"],
@@ -716,7 +765,11 @@ def test_attach_quality_gate_to_report_persists_gate_in_markdown_and_payload() -
 def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.8},
+            "candidate_support": {
+                "supported_ratio": 0.8,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
             "dynamic_queries": {"stored_count": 24},
         },
         promoted_tickers=["2330"],
@@ -758,6 +811,8 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
     assert parsed["metrics"]["discovery_plan_status"] == "ready"
     assert parsed["metrics"]["discovery_plan_score"] == 95
     assert parsed["metrics"]["exploration_candidate_supported_ratio"] == 0.8
+    assert parsed["metrics"]["formal_confidence_avg"] == 88.5
+    assert parsed["metrics"]["formal_confidence_min"] == 80
 
 
 def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None:

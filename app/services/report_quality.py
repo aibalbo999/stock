@@ -45,6 +45,9 @@ def build_report_quality_gate(
         )
         or 0
     )
+    formal_confidence_avg = candidate_support.get("formal_confidence_avg")
+    formal_confidence_min = candidate_support.get("formal_confidence_min")
+    formal_low_confidence_count = int(candidate_support.get("formal_low_confidence_count") or 0)
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
@@ -59,6 +62,8 @@ def build_report_quality_gate(
         blockers.append("候選公司證據覆蓋率低於 60%")
     elif promoted_count and formal_supported_ratio < 1:
         blockers.append("正式分析股票仍含弱證據公司")
+    elif promoted_count and formal_low_confidence_count:
+        blockers.append("正式分析股票含低信心證據公司")
     elif promoted_count and exploration_supported_ratio < 0.6:
         observations.append("AI 初始候選清單較廣，已由二次篩選收斂為正式分析股票")
     if source_count < 8:
@@ -144,6 +149,9 @@ def build_report_quality_gate(
             "promoted_count": promoted_count,
             "candidate_supported_ratio": formal_supported_ratio,
             "exploration_candidate_supported_ratio": exploration_supported_ratio,
+            "formal_confidence_avg": formal_confidence_avg,
+            "formal_confidence_min": formal_confidence_min,
+            "formal_low_confidence_count": formal_low_confidence_count,
             "dynamic_source_count": source_count,
             "market_coverage": market_coverage,
             "monthly_revenue_coverage": monthly_coverage,
@@ -177,6 +185,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("候選公司證據覆蓋率低於 25%", "候選公司證據覆蓋率低於 60%"),
             "保留已升格的正式股票，對弱證據候選補抓公司新聞、法說會與供應鏈資料後再做二次篩選。",
+        ),
+        (
+            ("低信心證據公司",),
+            "對低信心正式股票補抓近期、有日期且不同發布者的公司來源，未補齊前不得產生買入建議。",
         ),
         (
             ("AI 動態資料來源入庫篇數過少", "AI 動態資料來源偏少"),
@@ -353,6 +365,8 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 正式分析股票：{metrics.get('promoted_count', 0)} 檔",
         f"- 候選公司證據覆蓋率：{float(metrics.get('candidate_supported_ratio') or 0):.0%}",
         f"- 探索候選覆蓋率：{float(metrics.get('exploration_candidate_supported_ratio') or 0):.0%}",
+        f"- 正式股票證據信心：平均 {_format_optional_number(metrics.get('formal_confidence_avg'))} / "
+        f"最低 {_format_optional_number(metrics.get('formal_confidence_min'))}",
         f"- AI 動態來源入庫：{metrics.get('dynamic_source_count', 0)} 篇",
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
@@ -384,6 +398,13 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
 
 def _format_optional_int(value: object) -> str:
     return "未評估" if value is None else str(value)
+
+
+def _format_optional_number(value: object) -> str:
+    if value is None:
+        return "未評估"
+    number = float(value)
+    return str(int(number)) if number.is_integer() else f"{number:.1f}"
 
 
 def _format_optional_percent(value: object) -> str:
@@ -436,6 +457,8 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "promoted_count": _parse_int(fields.get("正式分析股票")),
             "candidate_supported_ratio": _parse_percent(fields.get("候選公司證據覆蓋率")),
             "exploration_candidate_supported_ratio": _parse_percent(fields.get("探索候選覆蓋率")),
+            "formal_confidence_avg": _parse_confidence_value(fields.get("正式股票證據信心"), "平均"),
+            "formal_confidence_min": _parse_confidence_value(fields.get("正式股票證據信心"), "最低"),
             "dynamic_source_count": _parse_int(fields.get("AI 動態來源入庫")),
             "source_unique_publishers": _parse_optional_int(fields.get("來源發布者數")),
             "source_timestamp_coverage": _parse_optional_percent(fields.get("來源時間戳覆蓋率")),
@@ -485,6 +508,13 @@ def _parse_optional_percent(value: str | None) -> float | None:
         return None
     match = re.search(r"(-?\d+(?:\.\d+)?)%", value)
     return float(match.group(1)) / 100 if match else None
+
+
+def _parse_confidence_value(value: str | None, label: str) -> float | None:
+    if not value or "未評估" in value:
+        return None
+    match = re.search(rf"{re.escape(label)}\s*(\d+(?:\.\d+)?)", value)
+    return float(match.group(1)) if match else None
 
 
 def _parse_plan_quality_status(value: str | None) -> str | None:

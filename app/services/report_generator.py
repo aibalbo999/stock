@@ -278,6 +278,18 @@ class ReportGenerator:
                 valuation_metrics,
             ),
             "",
+            "## 個股比較矩陣",
+            self._render_company_comparison_matrix(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+            ),
+            "",
             "## 二次綜合篩選",
             self._render_final_potential_screen(
                 tickers,
@@ -781,6 +793,82 @@ class ReportGenerator:
         lines.extend(downside_rows or ["目前無足夠數據判斷。"])
         if insufficient_rows:
             lines.extend(["", "### 未達門檻 / 資料不足", *insufficient_rows])
+        return "\n".join(lines)
+
+    def _render_company_comparison_matrix(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+    ) -> str:
+        if not tickers:
+            return "目前無足夠數據判斷。"
+
+        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
+        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
+        metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
+        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
+        peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
+        companies = {company.ticker: company for company in self.whitelist.companies()}
+        downside_gate = self._downside_gate(request)
+        rows = []
+        for ticker in tickers:
+            company = companies.get(ticker)
+            related_documents = self._related_documents(ticker, documents)
+            related_findings = self._related_findings(ticker, findings)
+            snapshot = snapshots.get(ticker)
+            revenue = revenues.get(ticker)
+            ticker_metrics = metrics_by_ticker.get(ticker, [])
+            valuation = valuations.get(ticker)
+            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            quality = self._data_quality_grade(
+                related_documents,
+                related_findings,
+                snapshot,
+                revenue,
+                ticker_metrics,
+                valuation,
+                financial_metrics is not None or valuation_metrics is not None,
+            )
+            rows.append(
+                {
+                    "label": f"{ticker} {company.name if company else ticker}",
+                    "decision": self._decision_label(estimate, quality, related_findings, downside_gate),
+                    "upside": estimate["upside_pct"],
+                    "downside": estimate["downside_pct"],
+                    "valuation": self._valuation_position_label(valuation, peer_valuation_summary),
+                    "confidence": self._financial_confidence_label(ticker_metrics, valuation, revenue),
+                    "reminder": self._company_matrix_reminder(estimate, quality, related_findings, valuation, peer_valuation_summary),
+                }
+            )
+        rows.sort(key=lambda row: (row["decision"] != "可小額分批研究", -row["upside"], row["downside"]))
+        lines = [
+            "這張表用來比較正式分析股票的相對位置；它是研究排序工具，不是買賣指令。",
+            "",
+            "| 股票 | 判斷 | 升值 | 降值 | 估值位置 | 財務信心 | 核心提醒 |",
+            "|---|---|---:|---:|---|---|---|",
+        ]
+        for row in rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        row["label"],
+                        row["decision"],
+                        f"{row['upside']}%",
+                        f"{row['downside']}%",
+                        row["valuation"],
+                        row["confidence"],
+                        row["reminder"],
+                    ]
+                )
+                + " |"
+            )
         return "\n".join(lines)
 
     def _render_company_analysis(
@@ -1391,6 +1479,27 @@ class ReportGenerator:
         if score >= 2:
             return "中"
         return "低"
+
+    @staticmethod
+    def _company_matrix_reminder(
+        estimate: dict,
+        quality: dict,
+        related_findings,
+        valuation: ValuationMetric | None,
+        peer_summary: dict[str, float | None] | None = None,
+    ) -> str:
+        if quality.get("grade") != "supported":
+            return "先補資料：" + "、".join(quality.get("missing", [])[:2])
+        valuation_label = ReportGenerator._valuation_position_label(valuation, peer_summary)
+        if estimate["downside_pct"] > 5:
+            return f"先追蹤降值風險 {estimate['downside_pct']}%"
+        if valuation_label in {"估值偏高", "估值略高"}:
+            return f"{valuation_label}，分批觀察"
+        if related_findings:
+            return f"追蹤 {len(related_findings)} 筆歸因是否延續"
+        if estimate["upside_pct"] > 10:
+            return "題材與基本面可再深入"
+        return "暫列觀察"
 
     @staticmethod
     def _valuation_conclusion(

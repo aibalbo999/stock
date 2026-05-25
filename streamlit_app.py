@@ -520,6 +520,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     details = "".join(
         [
             detail_html(markdown, "資金控管", "資金控管建議"),
+            detail_html(markdown, "個股比較", "個股比較矩陣"),
             company_analysis_html(markdown),
             detail_html(markdown, "主要風險", "主要風險與瓶頸"),
             detail_html(markdown, "資料完整度", "資料完整度"),

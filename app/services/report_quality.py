@@ -42,8 +42,12 @@ def build_report_quality_gate(
     warnings = []
     if promoted_count == 0:
         blockers.append("沒有通過證據驗證的正式分析股票")
-    if supported_ratio < 0.6:
+    if promoted_count == 0 and supported_ratio < 0.6:
         blockers.append("候選公司證據覆蓋率低於 60%")
+    elif promoted_count and supported_ratio < 0.25:
+        blockers.append("候選公司證據覆蓋率低於 25%，AI 候選清單過度發散")
+    elif promoted_count and supported_ratio < 0.6:
+        warnings.append("候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票")
     if source_count < 8:
         blockers.append("AI 動態資料來源入庫篇數過少")
     elif source_count < 12:

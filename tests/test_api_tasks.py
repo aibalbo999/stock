@@ -493,6 +493,41 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["warnings"] == []
 
 
+def test_report_quality_gate_warns_for_broad_ai_candidate_list_after_promotion() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 0.4},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330", "2382"],
+        market_count=2,
+        monthly_revenue_count=2,
+        financial_metrics_count=20,
+        valuation_count=2,
+    )
+
+    assert gate["status"] == "caution"
+    assert gate["blockers"] == []
+    assert "候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票" in gate["warnings"]
+
+
+def test_report_quality_gate_blocks_overly_diffuse_candidate_list() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 0.2},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+    )
+
+    assert gate["status"] == "insufficient"
+    assert "候選公司證據覆蓋率低於 25%，AI 候選清單過度發散" in gate["blockers"]
+
+
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

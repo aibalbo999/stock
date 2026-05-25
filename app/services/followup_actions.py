@@ -67,11 +67,13 @@ class FollowUpActionPlanner:
         quality_gate: dict | None = None,
         markdown: str = "",
         contexts: list[dict] | None = None,
+        company_data_audit: dict | None = None,
         apply_freshness: bool = True,
     ) -> list[FollowUpAction]:
         tickers = tuple(request.tickers)
         actions: list[FollowUpAction] = []
         actions.extend(self.from_quality_gate(quality_gate or {}, tickers))
+        actions.extend(self.from_company_data_audit(company_data_audit or {}, tickers))
         actions.extend(self.from_monitoring_contexts(contexts or [], tickers))
         actions.extend(self.from_monitoring_markdown(markdown, tickers))
         actions.extend(self.from_candidate_audit_markdown(markdown, tickers))
@@ -130,6 +132,35 @@ class FollowUpActionPlanner:
                     "once",
                 )
             )
+        return actions
+
+    def from_company_data_audit(self, audit: dict, fallback_tickers: tuple[str, ...]) -> list[FollowUpAction]:
+        actions: list[FollowUpAction] = []
+        for row in audit.get("rows") or []:
+            if row.get("status") == "sufficient":
+                continue
+            ticker = str(row.get("ticker") or "")
+            tickers = (ticker,) if ticker else fallback_tickers
+            missing_text = "；".join(str(item) for item in row.get("missing") or [])
+            if self._has(missing_text, "股價", "成交量"):
+                actions.append(FollowUpAction("refresh_market", f"個股資料審計缺口：{missing_text}", tickers, "high"))
+            if self._has(missing_text, "月營收"):
+                actions.append(FollowUpAction("refresh_monthly_revenue", f"個股資料審計缺口：{missing_text}", tickers, "high"))
+            if self._has(missing_text, "五年財報", "核心財報", "財報"):
+                actions.append(FollowUpAction("refresh_financial_metrics", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
+            if self._has(missing_text, "估值"):
+                actions.append(FollowUpAction("refresh_valuations", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
+            if self._has(missing_text, "公司文本", "AI 歸因", "入庫"):
+                actions.append(
+                    FollowUpAction(
+                        "ingest_news",
+                        f"個股資料審計缺口：{missing_text}",
+                        tickers,
+                        "high",
+                        "weekly",
+                        "required",
+                    )
+                )
         return actions
 
     def from_monitoring_contexts(self, contexts: list[dict], fallback_tickers: tuple[str, ...]) -> list[FollowUpAction]:

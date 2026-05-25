@@ -59,6 +59,34 @@ def test_llm_fallback_warning_becomes_rerun_action() -> None:
     assert actions[0].priority == "high"
 
 
+def test_company_data_audit_becomes_required_follow_up_actions() -> None:
+    audit = {
+        "rows": [
+            {
+                "ticker": "3017",
+                "status": "partial",
+                "missing": ["可稽核入庫公司文本不足", "可稽核入庫 AI 歸因不足"],
+            },
+            {
+                "ticker": "2059",
+                "status": "insufficient",
+                "missing": ["股價歷史不足或過舊", "估值資料不足或過舊"],
+            },
+        ]
+    }
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["3017", "2059"]),
+        company_data_audit=audit,
+    )
+
+    keys = {(action.action_type, action.tickers) for action in actions}
+    assert ("ingest_news", ("3017",)) in keys
+    assert ("refresh_market", ("2059",)) in keys
+    assert ("refresh_valuations", ("2059",)) in keys
+    assert ("rerun_analysis", ("3017", "2059")) in keys
+
+
 def test_monitoring_table_becomes_ticker_specific_actions(monkeypatch) -> None:
     monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
     markdown = """

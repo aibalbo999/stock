@@ -137,6 +137,10 @@ def load_report_follow_up_context(report_id: int) -> dict:
             tickers = []
         markdown = report.markdown
         topic = report.topic
+        try:
+            company_data_audit = audit_report_company_data(session, report_id)
+        except ValueError:
+            company_data_audit = {}
     run_payload = parse_run_payload(run_payload_json)
     request = request_from_report_record(topic, tickers, run_payload_json)
     candidates = candidate_audit_from_run_payload(run_payload)
@@ -146,6 +150,7 @@ def load_report_follow_up_context(report_id: int) -> dict:
         "markdown": markdown,
         "quality_gate": parse_quality_gate_from_markdown(markdown) or {},
         "candidate_whitelist": candidates,
+        "company_data_audit": company_data_audit,
         "run_payload": run_payload,
     }
 
@@ -1001,8 +1006,15 @@ def get_report_follow_up_plan(report_id: int) -> dict:
     request = context["request"]
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
+    company_data_audit = context["company_data_audit"]
     planner = FollowUpActionPlanner()
-    candidate_actions = planner.plan(request, quality_gate=quality_gate, markdown=markdown, apply_freshness=False)
+    candidate_actions = planner.plan(
+        request,
+        quality_gate=quality_gate,
+        markdown=markdown,
+        company_data_audit=company_data_audit,
+        apply_freshness=False,
+    )
     actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
     skipped_action_payloads = [{key: value for key, value in detail.items() if key != "freshness"} for detail in skipped_details]
     return {
@@ -1029,8 +1041,15 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     request = context["request"]
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
+    company_data_audit = context["company_data_audit"]
     planner = FollowUpActionPlanner()
-    candidate_actions = planner.plan(request, quality_gate=quality_gate, markdown=markdown, apply_freshness=False)
+    candidate_actions = planner.plan(
+        request,
+        quality_gate=quality_gate,
+        markdown=markdown,
+        company_data_audit=company_data_audit,
+        apply_freshness=False,
+    )
     fresh_actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
     skipped_action_payloads = [{key: value for key, value in detail.items() if key != "freshness"} for detail in skipped_details]
     all_actions = candidate_actions if payload.force_refresh else fresh_actions
@@ -1064,6 +1083,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
                 "source_report_id": report_id,
                 "request": request.model_dump(mode="json"),
                 "quality_gate_before": quality_gate,
+                "company_data_audit_before": company_data_audit,
                 "available_actions": [action.to_dict() for action in all_actions],
                 "freshness": {
                     "skipped_count": len(skipped_details),
@@ -1086,6 +1106,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
                     "source_report_id": report_id,
                     "request": request.model_dump(mode="json"),
                     "quality_gate_before": quality_gate,
+                    "company_data_audit_before": company_data_audit,
                     "available_actions": [action.to_dict() for action in all_actions],
                     "planned_actions": [],
                     "purpose": payload.purpose,

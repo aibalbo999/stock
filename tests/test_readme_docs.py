@@ -43,6 +43,7 @@ def test_readme_documents_llm_retry_statuses() -> None:
     assert "輪調下一把 key" in readme
     assert "若本輪報告未啟用 LLM 或 LLM 呼叫失敗" in readme
     assert "個股資料足夠性審計" in readme
+    assert "動態白名單證據回寫" in readme
     assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
     assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
     assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme

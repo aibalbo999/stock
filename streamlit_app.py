@@ -1041,6 +1041,7 @@ def render_source_audit(result: dict) -> None:
     candidate_support = audit.get("candidate_support") or {}
     remediation = audit.get("remediation") or {}
     plan_quality = audit.get("plan_quality") or {}
+    dynamic_entity_backfill = audit.get("dynamic_entity_backfill") or {}
     cols = st.columns(4)
     cols[0].metric("固定來源入庫", fixed_sources.get("stored_count", 0))
     cols[1].metric("AI 查詢入庫", dynamic_queries.get("stored_count", 0))
@@ -1060,6 +1061,12 @@ def render_source_audit(result: dict) -> None:
         f"弱證據：{candidate_support.get('weak', 0)}｜"
         f"自動補資料：{'已觸發' if remediation.get('supplemented') else '未觸發'}"
     )
+    if dynamic_entity_backfill:
+        st.caption(
+            "動態公司證據入庫："
+            f"更新 {dynamic_entity_backfill.get('updated_documents', 0)} 篇、"
+            f"新增/合併 {dynamic_entity_backfill.get('matches_added', 0)} 個公司對應"
+        )
     if isinstance(plan_quality, dict) and plan_quality:
         st.caption(
             f"拆解任務品質：{plan_quality.get('status', 'unknown')}｜"

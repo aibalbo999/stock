@@ -51,6 +51,25 @@ class NewsRepository:
                 setattr(article, key, value)
         return article
 
+    def upsert_document_merging_matches(self, document: NewsDocument, entity_matches: list[dict]) -> NewsArticle:
+        existing = self.session.get(NewsArticle, document.id)
+        merged_matches = self._merge_entity_matches(
+            json.loads(existing.entity_matches_json) if existing else [],
+            entity_matches,
+        )
+        return self.upsert_document(document, merged_matches)
+
+    @staticmethod
+    def _merge_entity_matches(existing: list[dict], incoming: list[dict]) -> list[dict]:
+        merged: dict[tuple[str, str], dict] = {}
+        for item in [*existing, *incoming]:
+            ticker = str(item.get("ticker") or "")
+            segment_id = str(item.get("segment_id") or "")
+            if not ticker:
+                continue
+            merged[(ticker, segment_id)] = item
+        return list(merged.values())
+
     def latest_documents(self, limit: int = 20) -> list[NewsDocument]:
         statement = select(NewsArticle).order_by(NewsArticle.created_at.desc()).limit(limit)
         return [self._to_document(article) for article in self.session.scalars(statement)]

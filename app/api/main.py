@@ -258,6 +258,53 @@ def dedupe_documents(documents: list) -> list:
     return list(deduped.values())
 
 
+def persist_candidate_entity_matches(
+    plan: TopicDiscoveryPlan,
+    candidates: list,
+    documents: list,
+) -> dict:
+    candidate_lookup = {
+        candidate.ticker: candidate
+        for candidate in candidates
+        if getattr(candidate, "evidence_count", 0) > 0
+    }
+    if not candidate_lookup or not documents:
+        return {"updated_documents": 0, "matches_added": 0}
+
+    service = TopicDiscoveryService()
+    updated_documents = 0
+    matches_added = 0
+    with session_scope() as session:
+        repository = NewsRepository(session)
+        for document in documents:
+            haystack = f"{document.title}\n{document.text}"
+            dynamic_matches = []
+            for plan_candidate in plan.candidate_companies:
+                candidate = candidate_lookup.get(plan_candidate.ticker)
+                if candidate is None:
+                    continue
+                if not service._has_entity_and_context(
+                    haystack,
+                    service._candidate_entity_terms(plan_candidate),
+                    service._candidate_context_terms(plan_candidate),
+                ):
+                    continue
+                dynamic_matches.append(
+                    {
+                        "ticker": plan_candidate.ticker,
+                        "name": plan_candidate.name,
+                        "segment_id": f"dynamic_{plan_candidate.ticker}",
+                        "segment_name": plan_candidate.segment,
+                        "matched_alias": plan_candidate.name,
+                    }
+                )
+            if dynamic_matches:
+                repository.upsert_document_merging_matches(document, dynamic_matches)
+                updated_documents += 1
+                matches_added += len(dynamic_matches)
+    return {"updated_documents": updated_documents, "matches_added": matches_added}
+
+
 def dedupe_strings(values: list[str], limit: int) -> list[str]:
     deduped = []
     seen = set()
@@ -644,6 +691,7 @@ async def run_topic_discovery_ingestion(
             quality_filter=True,
         )
         candidates = service.validate_candidates(plan, documents)
+        dynamic_entity_backfill = persist_candidate_entity_matches(plan, candidates, documents)
         candidate_support = summarize_candidate_support(candidates)
         source_audit = build_source_audit(
             payload,
@@ -709,6 +757,7 @@ async def run_topic_discovery_ingestion(
         "supplemental_stored_count": sum(round_item["stored_count"] for round_item in remediation_rounds),
     }
     source_audit["query_budget"] = budget
+    source_audit["dynamic_entity_backfill"] = dynamic_entity_backfill
     return {
         "urls": urls,
         "start_date": start_date,

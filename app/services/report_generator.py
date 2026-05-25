@@ -406,8 +406,9 @@ class ReportGenerator:
                 metrics_by_ticker.get(ticker, []),
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
-            decision = self._decision_label(estimate, quality, related_findings, downside_gate)
+            decision = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
             contexts.append(
                 {
                     "ticker": ticker,
@@ -616,6 +617,7 @@ class ReportGenerator:
             has_revenue = ticker in revenues
             ticker_metrics = metrics_by_ticker.get(ticker, [])
             valuation = valuations.get(ticker)
+            signal = (leading_signals or {}).get(ticker)
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -624,6 +626,7 @@ class ReportGenerator:
                 ticker_metrics,
                 valuation,
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
             missing = quality["missing"]
 
@@ -646,7 +649,6 @@ class ReportGenerator:
             )
             financial_label = str(len(ticker_metrics)) if ticker_metrics else "缺"
             valuation_label = valuation.trade_date.isoformat() if valuation else "缺"
-            signal = (leading_signals or {}).get(ticker)
             signal_label = signal.direction if signal and signal.has_signal_data else "缺"
             lines.append(
                 f"| {label} | {len(related_documents)} | {len(related_findings)} | "
@@ -840,12 +842,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_documents = self._related_documents(ticker, documents)
             related_findings = self._related_findings(ticker, findings)
+            signal = (leading_signals or {}).get(ticker)
             estimate = self._estimate_potential(
                 related_documents,
                 related_findings,
                 snapshot,
                 revenue,
-                (leading_signals or {}).get(ticker),
+                signal,
             )
             quality = self._data_quality_grade(
                 related_documents,
@@ -855,6 +858,7 @@ class ReportGenerator:
                 metrics_by_ticker.get(ticker, []),
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
             label = f"{ticker} {name}"
             source = (
@@ -927,12 +931,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             ticker_metrics = metrics_by_ticker.get(ticker, [])
             valuation = valuations.get(ticker)
+            signal = (leading_signals or {}).get(ticker)
             estimate = self._estimate_potential(
                 related_documents,
                 related_findings,
                 snapshot,
                 revenue,
-                (leading_signals or {}).get(ticker),
+                signal,
             )
             quality = self._data_quality_grade(
                 related_documents,
@@ -942,11 +947,12 @@ class ReportGenerator:
                 ticker_metrics,
                 valuation,
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
             rows.append(
                 {
                     "label": f"{ticker} {company.name if company else ticker}",
-                    "decision": self._decision_label(estimate, quality, related_findings, downside_gate),
+                    "decision": self._decision_label(estimate, quality, related_findings, downside_gate, signal),
                     "upside": estimate["upside_pct"],
                     "downside": estimate["downside_pct"],
                     "valuation": self._valuation_position_label(valuation, peer_valuation_summary),
@@ -1220,12 +1226,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_findings = self._related_findings(ticker, findings)
             related_documents = self._related_documents(ticker, documents)
+            signal = (leading_signals or {}).get(ticker)
             estimate = self._estimate_potential(
                 related_documents,
                 related_findings,
                 snapshot,
                 revenue,
-                (leading_signals or {}).get(ticker),
+                signal,
             )
             quality = self._data_quality_grade(
                 related_documents,
@@ -1235,10 +1242,11 @@ class ReportGenerator:
                 metrics_by_ticker.get(ticker, []),
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
             downside_gate = self._downside_gate(request)
             name = company.name if company else ticker
-            rating = self._decision_label(estimate, quality, related_findings, downside_gate)
+            rating = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
             rationale = self._decision_reason(
                 rating,
                 estimate,
@@ -1247,6 +1255,7 @@ class ReportGenerator:
                 related_documents,
                 downside_gate,
                 request,
+                signal,
             )
 
             max_position = self._max_position_amount(request)
@@ -1927,12 +1936,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_documents = self._related_documents(ticker, documents)
             related_findings = self._related_findings(ticker, findings)
+            signal = (leading_signals or {}).get(ticker)
             estimate = self._estimate_potential(
                 related_documents,
                 related_findings,
                 snapshot,
                 revenue,
-                (leading_signals or {}).get(ticker),
+                signal,
             )
             quality = self._data_quality_grade(
                 related_documents,
@@ -1942,6 +1952,7 @@ class ReportGenerator:
                 metrics_by_ticker.get(ticker, []),
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
+                signal,
             )
             evidence_count = len(related_documents)
             has_structural_risk = any(
@@ -1961,6 +1972,11 @@ class ReportGenerator:
                 avoid_rows.append(
                     f"- {label}：避開或降低曝險。原因：降值風險 {estimate['downside_pct']}%，"
                     f"升值潛力 {estimate['upside_pct']}%；{self._risk_warning_reason(estimate)}來源：{source}。"
+                )
+            elif signal and signal.direction == "偏空":
+                watch_rows.append(
+                    f"- {label}：觀察 / 等風險降低。原因：領先訊號偏空（{signal.summary}），"
+                    f"先等量價、營收或估值訊號修復；來源：{source}。"
                 )
             elif has_structural_risk:
                 watch_rows.append(
@@ -2138,6 +2154,7 @@ class ReportGenerator:
         financial_metrics: list[FinancialMetric] | None = None,
         valuation: ValuationMetric | None = None,
         include_fundamentals: bool = False,
+        leading_signal: LeadingSignal | None = None,
     ) -> dict:
         missing = []
         if len(related_documents) < 2:
@@ -2152,6 +2169,8 @@ class ReportGenerator:
             missing.append("缺五年財報")
         if include_fundamentals and not valuation:
             missing.append("缺估值")
+        if include_fundamentals and leading_signal is not None and not leading_signal.has_signal_data:
+            missing.append("缺領先訊號")
 
         if not missing:
             grade = "supported"
@@ -2193,12 +2212,15 @@ class ReportGenerator:
         quality: dict,
         related_findings,
         downside_gate: int,
+        leading_signal: LeadingSignal | None = None,
     ) -> str:
         if "缺股價" in quality["missing"]:
             return "資料不足"
         if estimate["downside_pct"] > estimate["upside_pct"] or estimate["downside_pct"] > 12:
             return "避開 / 降低曝險"
         if estimate["downside_pct"] > downside_gate:
+            return "觀察 / 等風險降低"
+        if leading_signal and leading_signal.direction == "偏空":
             return "觀察 / 等風險降低"
         if any(finding.risk_type == RiskType.structural_bottleneck for finding in related_findings):
             return "觀察 / 小部位研究"
@@ -2221,12 +2243,18 @@ class ReportGenerator:
         related_documents: list[NewsDocument],
         downside_gate: int,
         request: ReportRequest,
+        leading_signal: LeadingSignal | None = None,
     ) -> str:
         if rating == "資料不足":
             return "缺少可驗證市場資料。"
         if rating == "避開 / 降低曝險":
             return ReportGenerator._risk_warning_reason(estimate)
         if rating == "觀察 / 等風險降低":
+            if leading_signal and leading_signal.direction == "偏空":
+                return (
+                    f"升值情境雖高於 10%，但領先訊號偏空（{leading_signal.summary}），"
+                    "先等量價、營收或估值訊號修復。"
+                )
             return (
                 f"升值情境雖高於 10%，但降值風險已超過 {downside_gate}%，"
                 f"依{ReportGenerator._profile_label(request)}設定先列觀察。"

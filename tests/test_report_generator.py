@@ -14,7 +14,7 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.services.entity_mapping import EntityMapper
-from app.services.leading_signals import LeadingSignalAnalyzer
+from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.report_generator import ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
@@ -1173,6 +1173,33 @@ def test_estimate_potential_uses_leading_signal_bonus() -> None:
 
     assert estimate["upside_pct"] > 10
     assert any("領先訊號偏多" in label for label, _score in estimate["upside_factors"])
+
+
+def test_bearish_leading_signal_blocks_actionable_rating() -> None:
+    signal = LeadingSignal(
+        ticker="2330",
+        score=-6,
+        upside_bonus=0,
+        downside_penalty=6,
+        bearish_factors=["20 日股價轉弱 -12.0%"],
+    )
+    estimate = {"upside_pct": 18, "downside_pct": 4}
+    quality = {"grade": "supported", "missing": []}
+
+    rating = ReportGenerator._decision_label(estimate, quality, [], 5, signal)
+    reason = ReportGenerator._decision_reason(
+        rating,
+        estimate,
+        quality,
+        [],
+        [],
+        5,
+        ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        signal,
+    )
+
+    assert rating == "觀察 / 等風險降低"
+    assert "領先訊號偏空" in reason
 
 
 def test_render_leading_signal_check_outputs_table() -> None:

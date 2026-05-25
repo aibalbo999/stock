@@ -1,0 +1,253 @@
+from contextlib import contextmanager
+from datetime import date
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.db.models import Base
+from app.models.schemas import MarketSnapshot, MonthlyRevenue
+from app.models.schemas import ReportRequest
+from app.services.followup_actions import (
+    FollowUpAction,
+    FollowUpActionPlanner,
+    TRACKING_FRESHNESS_THRESHOLDS,
+    execute_follow_up_actions_sync,
+    follow_up_news_queries,
+    render_follow_up_actions_markdown,
+    skipped_fresh_tracking_details,
+    summarize_follow_up_execution,
+)
+from app.services.persistence import MarketRepository, MonthlyRevenueRepository
+
+
+def test_quality_gate_remediation_becomes_executable_actions() -> None:
+    gate = {
+        "status": "caution",
+        "warnings": [
+            "月營收資料覆蓋偏低",
+            "估值資料覆蓋偏低",
+            "領先訊號覆蓋偏低，潛力/風險排序信心需下修",
+        ],
+        "remediation_actions": ["補齊股價歷史、成交量、月營收與估值資料，避免只靠新聞排序潛力與風險標的。"],
+    }
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330", "2382"]),
+        quality_gate=gate,
+    )
+
+    action_types = {action.action_type for action in actions}
+    assert "refresh_market" in action_types
+    assert "refresh_monthly_revenue" in action_types
+    assert "refresh_valuations" in action_types
+    assert "rerun_analysis" in action_types
+
+
+def test_monitoring_table_becomes_ticker_specific_actions(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 監控清單
+| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |
+|---|---|---|---|---|
+| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上；補齊估值 | 降值風險高於 5% | 每週 |
+| 2382 廣達 | 觀察 / 等風險降低 | 補齊月營收與公司文本後重跑 AI 歸因 | 升值情境低於 10% | 每月 |
+
+## 先看結論
+測試
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330", "2382"]),
+        markdown=markdown,
+    )
+
+    keys = {(action.action_type, action.tickers) for action in actions}
+    assert ("refresh_market", ("2330",)) in keys
+    assert ("refresh_valuations", ("2330",)) in keys
+    assert ("refresh_monthly_revenue", ("2382",)) in keys
+    assert ("ingest_news", ("2382",)) in keys
+    assert {action.purpose for action in actions} == {"tracking"}
+
+
+def test_render_follow_up_actions_markdown_is_user_readable() -> None:
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        quality_gate={"warnings": ["股價資料覆蓋率低於 50%"]},
+    )
+
+    markdown = render_follow_up_actions_markdown(actions)
+
+    assert "##" not in markdown
+    assert actions[0].to_dict()["label"]
+    assert "資料缺口補強" in markdown
+    assert "刷新股價/量能" in markdown
+    assert "重跑分析報告" in markdown
+
+
+def test_candidate_audit_becomes_required_follow_up_actions(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+本段保留 AI 初始候選到正式分析的完整軌跡。
+
+| 項目 | 數量 |
+|---|---:|
+| AI 初始候選 | 2 |
+| 正式分析 | 1 |
+
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |
+|---|---|---|---:|---|---|
+| 2382 廣達 | 系統組裝 | 正式分析 | 2 篇 / 2 來源 | 通過正式分析門檻 | 納入正式分析 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 |
+| 2308 台達電 | 電源與散熱 | 待補證據 | 0 篇 / 0 來源 | 缺少公司主題證據 | 重新補抓公司層級來源 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2382"]),
+        markdown=markdown,
+    )
+
+    keys = {(action.action_type, action.tickers, action.purpose) for action in actions}
+    assert ("ingest_news", ("3324",), "required") in keys
+    assert ("ingest_news", ("2308",), "required") in keys
+    assert any(action.action_type == "rerun_discovery" for action in actions)
+    assert any(action.action_type == "rerun_analysis" for action in actions)
+    news_action = next(action for action in actions if action.action_type == "ingest_news" and action.tickers == ("3324",))
+    assert "股票：3324 雙鴻" in news_action.reason
+    assert "產業位置：散熱模組" in news_action.reason
+
+
+def test_candidate_follow_up_news_queries_are_targeted() -> None:
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：3324 雙鴻；產業位置：散熱模組；弱證據觀察；補抓公司新聞後再驗證",
+        ("3324",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    queries = follow_up_news_queries(action, ReportRequest(topic="AI 產業鏈", tickers=["2382"]))
+
+    assert queries
+    assert any("3324" in query and "AI 產業鏈" in query for query in queries)
+    assert any("散熱模組" in query for query in queries)
+
+
+def test_execute_follow_up_news_uses_targeted_google_queries(monkeypatch) -> None:
+    calls = []
+
+    class FakePipeline:
+        async def ingest_feeds(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "count": 1,
+                "items": [
+                    {
+                        "id": kwargs["url"],
+                        "title": "雙鴻 AI 散熱補強來源",
+                        "publisher": "Google News follow-up",
+                    }
+                ],
+                "errors": [],
+            }
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", FakePipeline)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：3324 雙鴻；產業位置：散熱模組；弱證據觀察",
+        ("3324",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["2382"]), news_limit=12)
+
+    news_result = result["results"]["ingest_news:3324"]
+    assert news_result["source"] == "Google News targeted follow-up"
+    assert news_result["queries"]
+    assert calls
+    assert all("news.google.com/rss/search" in call["url"] for call in calls)
+    assert any("3324" in query["query"] for query in news_result["queries"])
+
+
+def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "refresh_market:2330": {
+                    "stored_history_count": 90,
+                    "errors": [{"ticker": "9999"}],
+                    "source": "FinMind TaiwanStockPrice",
+                },
+                "refresh_valuations:2330": {
+                    "stored": [{"ticker": "2330"}],
+                    "errors": [],
+                    "source": "FinMind TaiwanStockPER",
+                },
+            }
+        }
+    )
+
+    assert summary["task_result_count"] == 2
+    assert summary["stored_count"] == 91
+    assert summary["error_count"] == 1
+    assert summary["has_errors"] is True
+
+
+def test_tracking_actions_are_skipped_when_cached_data_is_fresh(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        MarketRepository(session).upsert_snapshots(
+            [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 24), close=100)]
+        )
+        MonthlyRevenueRepository(session).upsert_revenues(
+            [
+                MonthlyRevenue(
+                    ticker="2330",
+                    revenue_date=date(2026, 4, 10),
+                    revenue=100,
+                    revenue_year=2026,
+                    revenue_month=4,
+                )
+            ]
+        )
+        session.commit()
+
+        @contextmanager
+        def fake_session_scope():
+            yield session
+
+        monkeypatch.setattr("app.services.followup_actions.session_scope", fake_session_scope)
+        monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+
+        markdown = """
+## 監控清單
+| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |
+|---|---|---|---|---|
+| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號轉偏多且量價/營收同步改善 | 降值風險高於 5% | 每週 |
+"""
+
+        actions = FollowUpActionPlanner().plan(
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            markdown=markdown,
+        )
+
+        assert actions == []
+        details = skipped_fresh_tracking_details(
+            FollowUpActionPlanner().plan(
+                ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+                markdown=markdown,
+                apply_freshness=False,
+            ),
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        )
+        assert details[0]["freshness"]["latest_dates"]["2330"] == "2026-05-24"
+        assert details[0]["freshness"]["max_age_days"] == TRACKING_FRESHNESS_THRESHOLDS["refresh_market"]
+    finally:
+        session.close()

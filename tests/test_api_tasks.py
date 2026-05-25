@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.time import now_taipei
 from app.api import main
 from app.models.schemas import NewsDocument, ReportResponse, Source
+from app.services.followup_actions import FollowUpAction
 from app.services.report_quality import (
     parse_quality_gate_from_markdown,
     render_quality_action_guard_markdown,
@@ -286,11 +289,17 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
                 "url": "https://news.google.com/search?q=AI",
                 "query": "AI",
                 "source_type": "subtopic",
+                "hypothesis": "驗證 AI 需求",
+                "evidence_type": "需求/成長",
+                "language": "en",
             },
             {
                 "url": "https://news.google.com/search?q=HBM",
                 "query": "HBM",
                 "source_type": "coverage_gap",
+                "hypothesis": "補齊 HBM 缺口",
+                "evidence_type": "品質缺口補強",
+                "language": "en",
             },
         ],
     )
@@ -312,6 +321,8 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
     assert audit["query_type_labels"]["subtopic"]["label"] == "子題查詢"
     assert audit["query_type_labels"]["coverage_gap"]["label"] == "缺口補強查詢"
     assert audit["query_metadata_sample"][1]["source_type"] == "coverage_gap"
+    assert audit["query_metadata_sample"][0]["hypothesis"] == "驗證 AI 需求"
+    assert audit["query_metadata_sample"][1]["evidence_type"] == "品質缺口補強"
 
 
 def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> None:
@@ -346,6 +357,27 @@ def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:
         "supported": 2,
         "unsupported": 3,
         "supported_ratio": 0.4,
+    }
+
+    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+
+
+def test_source_audit_supplements_when_plan_query_quality_is_not_ready() -> None:
+    audit = {
+        "dynamic_queries": {"stored_count": 30},
+        "plan_quality": {
+            "status": "caution",
+            "query_quality": {
+                "total_queries": 2,
+                "generic_query_count": 1,
+            },
+        },
+    }
+    candidate_support = {
+        "total": 5,
+        "supported": 5,
+        "unsupported": 0,
+        "supported_ratio": 1,
     }
 
     assert main.should_supplement_discovery_sources(audit, candidate_support) is True
@@ -752,6 +784,661 @@ def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None
 
     assert parsed is not None
     assert parsed["remediation_actions"] == gate["remediation_actions"]
+
+
+def test_load_report_follow_up_context_restores_original_request(monkeypatch) -> None:
+    class FakeReport:
+        topic = "舊主題"
+        tickers_json = '["2330"]'
+        markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n- 測試"
+
+    class FakeRun:
+        payload_json = (
+            '{"request":{"topic":"AI 產業鏈","tickers":["2330","2382"],'
+            '"lookback_days":45,"evidence_limit":120},'
+            '"candidate_whitelist":['
+            '{"ticker":"2330","name":"台積電","segment":"晶圓代工","status":"evidence_supported",'
+            '"evidence_count":2,"evidence_source_count":2},'
+            '{"ticker":"3324","name":"雙鴻","segment":"散熱模組","status":"weak_evidence",'
+            '"evidence_count":1,"evidence_source_count":1}]}'
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> FakeRun:
+            assert report_id == 7
+            return FakeRun()
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+
+    context = main.load_report_follow_up_context(7)
+
+    assert context["request"].topic == "AI 產業鏈"
+    assert context["request"].tickers == ["2330", "2382"]
+    assert context["request"].lookback_days == 45
+    assert context["request"].evidence_limit == 120
+    assert "## 候選公司審計" in context["markdown"]
+    assert "3324 雙鴻" in context["markdown"]
+    assert len(context["candidate_whitelist"]) == 2
+
+
+def test_report_candidate_audit_endpoint_restores_history_payload(monkeypatch) -> None:
+    class FakeReport:
+        id = 7
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n測試"
+        generated_at = now_taipei()
+
+    class FakeRun:
+        payload_json = (
+            '{"candidate_whitelist":['
+            '{"ticker":"2330","name":"台積電","segment":"晶圓代工","status":"evidence_supported",'
+            '"evidence_count":2,"evidence_source_count":2},'
+            '{"ticker":"3324","name":"雙鴻","segment":"散熱模組","status":"weak_evidence",'
+            '"evidence_count":1,"evidence_source_count":1,"validation_reason":"弱證據：來源不足"}]}'
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> FakeRun:
+            assert report_id == 7
+            return FakeRun()
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+
+    response = TestClient(main.app).get("/reports/7/candidate-audit")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"]["total"] == 2
+    assert body["summary"]["weak_count"] == 1
+    assert "3324 雙鴻" in body["markdown"]
+
+    report_response = TestClient(main.app).get("/reports/7")
+    assert "## 候選公司審計" in report_response.json()["markdown"]
+
+
+def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:
+    refreshed = {}
+
+    async def fake_refresh(request):
+        refreshed["tickers"] = request.tickers
+        return {"market": {"stored_count": 2}}
+
+    monkeypatch.setattr(
+        main,
+        "revalidate_candidate_whitelist",
+        lambda run_payload, candidates: {
+            "candidate_whitelist": [
+                {
+                    "ticker": "2330",
+                    "name": "台積電",
+                    "segment": "晶圓代工",
+                    "status": "evidence_supported",
+                },
+                {
+                    "ticker": "3324",
+                    "name": "雙鴻",
+                    "segment": "散熱模組",
+                    "status": "evidence_supported",
+                },
+            ],
+            "promoted_tickers": ["2330", "3324"],
+            "newly_promoted": ["3324"],
+            "no_longer_promoted": [],
+            "status_changes": [
+                {
+                    "ticker": "3324",
+                    "previous_status": "weak_evidence",
+                    "current_status": "evidence_supported",
+                }
+            ],
+            "changed": True,
+        },
+    )
+    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh)
+
+    context = {
+        "run_payload": {"discovery": {"plan": {}}},
+        "candidate_whitelist": [
+            {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
+            {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "weak_evidence"},
+        ],
+    }
+    prepared = asyncio.run(
+        main.prepare_follow_up_report_context(
+            context,
+            main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            [FollowUpAction("ingest_news", "補候選", ("3324",), purpose="required")],
+        )
+    )
+
+    assert prepared["request"].tickers == ["2330", "3324"]
+    assert prepared["candidate_revalidation"]["changed"] is True
+    assert prepared["candidate_revalidation"]["newly_promoted"] == ["3324"]
+    assert refreshed["tickers"] == ["2330", "3324"]
+
+
+def test_candidate_revalidation_queries_are_company_specific() -> None:
+    plan = main.TopicDiscoveryPlan.model_validate(
+        {
+            "subtopics": [
+                {
+                    "name": "液冷散熱",
+                    "required_evidence": ["水冷訂單", "機櫃功耗"],
+                }
+            ],
+            "candidate_companies": [
+                {
+                    "ticker": "3324",
+                    "name": "雙鴻",
+                    "segment": "散熱模組",
+                    "rationale": "",
+                    "evidence_keywords": ["液冷", "AI 伺服器"],
+                }
+            ],
+        }
+    )
+
+    queries = main.candidate_revalidation_queries(plan, "AI 產業鏈")
+
+    assert any("3324" in query and "雙鴻" in query and "AI 產業鏈" in query for query in queries)
+    assert any("液冷散熱" in query and "水冷訂單" in query for query in queries)
+
+
+def test_collect_revalidation_documents_dedupes_and_falls_back() -> None:
+    document = NewsDocument(
+        id="doc-1",
+        title="雙鴻 液冷散熱",
+        text="雙鴻 AI 伺服器液冷散熱。",
+        source=Source(title="雙鴻 液冷散熱"),
+    )
+
+    class FakeRepository:
+        def __init__(self) -> None:
+            self.queries = []
+
+        def search_documents(self, query: str, limit: int = 20) -> list[NewsDocument]:
+            self.queries.append(query)
+            return [document, document]
+
+        def latest_documents(self, limit: int = 20) -> list[NewsDocument]:
+            raise AssertionError("should not fall back when search found documents")
+
+    repository = FakeRepository()
+
+    documents = main.collect_revalidation_documents(repository, ["3324 雙鴻", "散熱模組"], 10)
+
+    assert repository.queries == ["3324 雙鴻", "散熱模組"]
+    assert documents == [document]
+
+
+def test_load_report_follow_up_context_raises_404(monkeypatch) -> None:
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> None:
+            assert report_id == 404
+            return None
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+
+    try:
+        main.load_report_follow_up_context(404)
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "report not found"
+    else:
+        raise AssertionError("expected HTTPException")
+
+
+def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> None:
+    class FakeReport:
+        id = 7
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 監控清單\n"
+            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+            "|---|---|---|---|---|\n"
+            "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
+        )
+
+    class NewReport:
+        id = 8
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+        def create(self, request, response) -> NewReport:
+            assert request.tickers == ["2330"]
+            assert "重跑後報告" in response.markdown
+            return NewReport()
+
+    class FakeRun:
+        id = 31
+        payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2330"],"lookback_days":30}}'
+
+    class FakeAnalysisRunRepository:
+        success_report_id = None
+
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> FakeRun | None:
+            assert report_id == 7
+            return FakeRun()
+
+        def start(self, source: str, payload: dict) -> FakeRun:
+            assert source == "follow_up_api"
+            assert payload["source_report_id"] == 7
+            assert payload["planned_actions"]
+            return FakeRun()
+
+        def update_payload(self, run_id: int, payload: dict) -> FakeRun:
+            assert run_id == 31
+            assert payload["execution"] == {
+                "actions": payload["planned_actions"],
+                "results": {"refresh_monthly_revenue:2330": {"stored_count": 12, "errors": []}},
+                "execution_summary": {
+                    "task_result_count": 1,
+                    "stored_count": 12,
+                    "error_count": 0,
+                    "has_errors": False,
+                    "items": [],
+                },
+            }
+            return FakeRun()
+
+        def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
+            assert run_id == 31
+            FakeAnalysisRunRepository.success_report_id = report_id
+            return FakeRun()
+
+    class FakeGenerator:
+        last_evidence_documents = []
+
+        def generate(self, request):
+            assert request.topic == "AI 產業鏈"
+            return ReportResponse(title="重跑後報告", markdown="# 重跑後報告")
+
+    async def fake_execute(actions, request, news_limit=30):
+        assert {action.action_type for action in actions} >= {
+            "refresh_monthly_revenue",
+            "refresh_valuations",
+            "rerun_analysis",
+        }
+        assert request.tickers == ["2330"]
+        return {
+            "actions": [action.to_dict() for action in actions],
+            "results": {"refresh_monthly_revenue:2330": {"stored_count": 12, "errors": []}},
+            "execution_summary": {
+                "task_result_count": 1,
+                "stored_count": 12,
+                "error_count": 0,
+                "has_errors": False,
+                "items": [],
+            },
+        }
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(main, "ReportGenerator", FakeGenerator)
+    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    monkeypatch.setattr(
+        main,
+        "build_quality_gate_for_request",
+        lambda request, documents: {"status": "ready", "warnings": [], "blockers": []},
+    )
+
+    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "executed"
+    assert body["run_id"] == 31
+    assert body["summary"]["selected"]["total_count"] >= 3
+    assert body["summary"]["execution"]["stored_count"] == 12
+    assert body["rerun_report"]["report_id"] == 8
+    assert FakeAnalysisRunRepository.success_report_id == 8
+
+
+def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> None:
+    captured = {}
+
+    class FakeReport:
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 候選公司審計\n"
+            "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |\n"
+            "|---|---|---|---:|---|---|\n"
+            "| 2330 台積電 | 晶圓代工 | 正式分析 | 2 篇 / 2 來源 | 通過 | 納入正式分析 |\n"
+            "| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據 | 補抓公司新聞 |\n"
+        )
+
+    class NewReport:
+        id = 18
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+        def create(self, request, response) -> NewReport:
+            captured["created_request"] = request.model_dump(mode="json")
+            return NewReport()
+
+    class FakeRun:
+        id = 61
+        payload_json = (
+            '{"request":{"topic":"AI 產業鏈","tickers":["2330"],"lookback_days":30},'
+            '"candidate_whitelist":['
+            '{"ticker":"2330","name":"台積電","segment":"晶圓代工","status":"evidence_supported"},'
+            '{"ticker":"3324","name":"雙鴻","segment":"散熱模組","status":"weak_evidence"}]}'
+        )
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> FakeRun:
+            assert report_id == 7
+            return FakeRun()
+
+        def start(self, source: str, payload: dict) -> FakeRun:
+            return FakeRun()
+
+        def update_payload(self, run_id: int, payload: dict) -> FakeRun:
+            captured["payload"] = payload
+            return FakeRun()
+
+        def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
+            return FakeRun()
+
+    class FakeGenerator:
+        last_evidence_documents = []
+
+        def __init__(self, whitelist=None):
+            self.whitelist = whitelist
+
+        def generate(self, request):
+            assert request.tickers == ["2330", "3324"]
+            return ReportResponse(title="升格後報告", markdown="# 升格後報告")
+
+    async def fake_execute(actions, request, news_limit=30):
+        return {"actions": [action.to_dict() for action in actions], "results": {}, "execution_summary": {}}
+
+    async def fake_refresh_market_data(request):
+        captured["refreshed_request"] = request.model_dump(mode="json")
+        return {}
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(main, "ReportGenerator", FakeGenerator)
+    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    monkeypatch.setattr(
+        main,
+        "revalidate_candidate_whitelist",
+        lambda run_payload, candidates: {
+            "candidate_whitelist": [
+                {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
+                {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "evidence_supported"},
+            ],
+            "promoted_tickers": ["2330", "3324"],
+            "newly_promoted": ["3324"],
+            "no_longer_promoted": [],
+            "status_changes": [
+                {
+                    "ticker": "3324",
+                    "previous_status": "weak_evidence",
+                    "current_status": "evidence_supported",
+                }
+            ],
+            "changed": True,
+        },
+    )
+    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh_market_data)
+    monkeypatch.setattr(main, "build_quality_gate_for_request", lambda request, documents: {"status": "ready"})
+
+    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
+
+    assert response.status_code == 200
+    assert captured["created_request"]["tickers"] == ["2330", "3324"]
+    assert captured["refreshed_request"]["tickers"] == ["2330", "3324"]
+    assert captured["payload"]["request"]["tickers"] == ["2330", "3324"]
+    assert captured["payload"]["candidate_whitelist"][1]["status"] == "evidence_supported"
+    assert captured["payload"]["rerun_report"]["candidate_revalidation"]["newly_promoted"] == ["3324"]
+
+
+def test_report_follow_up_endpoint_can_skip_tracking_when_required_only(monkeypatch) -> None:
+    class FakeReport:
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 監控清單\n"
+            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+            "|---|---|---|---|---|\n"
+            "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeRun:
+        id = 41
+        payload_json = "{}"
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> None:
+            assert report_id == 7
+            return None
+
+        def start(self, source: str, payload: dict) -> FakeRun:
+            raise AssertionError("no-op follow-up should not create a run by default")
+
+        def update_payload(self, run_id: int, payload: dict) -> FakeRun:
+            assert run_id == 41
+            assert payload["planned_actions"] == []
+            assert payload["status"] == "no_action_required"
+            return FakeRun()
+
+        def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
+            assert run_id == 41
+            FakeAnalysisRunRepository.marked_report_id = report_id
+            return FakeRun()
+
+    async def fake_execute(actions, request, news_limit=30):
+        raise AssertionError("required-only run should skip tracking actions")
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+
+    response = TestClient(main.app).post(
+        "/reports/7/follow-up/run",
+        json={"rerun_report": True, "purpose": "required"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_action_required"
+    assert response.json()["run_id"] is None
+    assert response.json()["summary"]["selected"]["total_count"] == 0
+    assert response.json()["summary"]["available"]["tracking_count"] >= 1
+    assert response.json()["available_actions"]
+
+
+def test_report_follow_up_endpoint_can_force_fresh_tracking_actions(monkeypatch) -> None:
+    class FakeReport:
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 監控清單\n"
+            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+            "|---|---|---|---|---|\n"
+            "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeRun:
+        id = 51
+        payload_json = "{}"
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> None:
+            assert report_id == 7
+            return None
+
+        def start(self, source: str, payload: dict) -> FakeRun:
+            assert source == "follow_up_api"
+            assert payload["force_refresh"] is True
+            assert payload["planned_actions"]
+            return FakeRun()
+
+        def update_payload(self, run_id: int, payload: dict) -> FakeRun:
+            assert run_id == 51
+            assert payload["force_refresh"] is True
+            return FakeRun()
+
+        def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
+            assert run_id == 51
+            return FakeRun()
+
+    async def fake_execute(actions, request, news_limit=30):
+        assert any(action.action_type == "refresh_market" for action in actions)
+        return {"actions": [action.to_dict() for action in actions], "results": {}, "execution_summary": {}}
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
+    monkeypatch.setattr(
+        main,
+        "split_fresh_tracking_actions",
+        lambda actions, request: (
+            [],
+            [
+                {
+                    **action.to_dict(),
+                    "freshness": {"is_fresh": True, "max_age_days": 5, "latest_dates": {"2330": "2026-05-25"}},
+                }
+                for action in actions
+                if action.action_type == "refresh_market"
+            ],
+        ),
+    )
+
+    response = TestClient(main.app).post(
+        "/reports/7/follow-up/run",
+        json={"rerun_report": False, "purpose": "tracking", "force_refresh": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "executed"
+    assert response.json()["force_refresh"] is True
+
+
+def test_report_follow_up_plan_preview_uses_report_history(monkeypatch) -> None:
+    class FakeReport:
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 監控清單\n"
+            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+            "|---|---|---|---|---|\n"
+            "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> None:
+            assert report_id == 7
+            return None
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeRunRepository)
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+
+    response = TestClient(main.app).get("/reports/7/follow-up/plan")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["freshness"]["thresholds"]["refresh_market"] == 5
+    action_types = {action["action_type"] for action in body["actions"]}
+    assert "refresh_monthly_revenue" in action_types
+    assert "refresh_valuations" in action_types
+    assert "rerun_analysis" in action_types
+    assert body["summary"]["tracking_count"] >= 1
+    assert "| 任務 | 股票 | 性質 | 優先級 | 頻率 | 觸發原因 |" in body["markdown_preview"]
 
 
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:

@@ -17,7 +17,9 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.rag.vector_store import VectorStore
+from app.services.candidate_audit import render_candidate_audit_markdown
 from app.services.entity_mapping import EntityMapper
+from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
 from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
@@ -275,8 +277,24 @@ class ReportGenerator:
                 leading_signals,
             ),
             "",
+            "## 自動補強任務",
+            self._render_follow_up_actions(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            ),
+            "",
             "## 先看結論",
             self._summary(findings),
+            "",
+            "## 候選公司審計",
+            self._render_candidate_audit(tickers),
             "",
             "## 資料完整度",
             self._render_data_quality(
@@ -608,6 +626,35 @@ class ReportGenerator:
             )
         return "\n".join(lines)
 
+    def _render_follow_up_actions(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> str:
+        contexts = self._decision_contexts(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
+        for context in contexts:
+            context["recheck_trigger"] = self._recheck_trigger_text(context)
+            context["avoid_trigger"] = self._avoid_trigger_text(context)
+        actions = FollowUpActionPlanner().plan(request, contexts=contexts)
+        return render_follow_up_actions_markdown(actions)
+
     def _render_executive_snapshot(
         self,
         request: ReportRequest,
@@ -878,6 +925,9 @@ class ReportGenerator:
         if international_count == 0:
             lines.extend(["", "提醒：本次沒有國際來源進入證據池；若要擴大國際覆蓋，請開啟深度分析與國際資料源。"])
         return "\n".join(lines)
+
+    def _render_candidate_audit(self, promoted_tickers: list[str]) -> str:
+        return render_candidate_audit_markdown(self.whitelist.candidate_audit(), promoted_tickers)
 
     @staticmethod
     def _render_leading_signal_check(

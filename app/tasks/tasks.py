@@ -6,6 +6,7 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest
+from app.services.followup_actions import FollowUpActionPlanner, execute_follow_up_actions_sync
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import AnalysisRunRepository, ReportRepository
 from app.services.report_generator import ReportGenerator
@@ -47,6 +48,25 @@ def generate_report_task(self, payload: dict) -> dict:
                 len(generator.last_evidence_documents),
             ),
         )
+        follow_up_summary = None
+        if quality_gate.get("status") != "ready":
+            follow_up_actions = FollowUpActionPlanner().plan(request, quality_gate=quality_gate)
+            if follow_up_actions:
+                follow_up_summary = execute_follow_up_actions_sync(follow_up_actions, request)
+                ingestion_summary = {
+                    **ingestion_summary,
+                    "follow_up": follow_up_summary,
+                }
+                generator = ReportGenerator()
+                response = generator.generate(request)
+                quality_gate = build_quality_gate_for_request(
+                    request,
+                    documents=generator.last_evidence_documents,
+                    source_count=max(
+                        (ingestion_summary.get("news") or {}).get("count", 0),
+                        len(generator.last_evidence_documents),
+                    ),
+                )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
             AnalysisRunRepository(session).update_payload(
@@ -54,6 +74,7 @@ def generate_report_task(self, payload: dict) -> dict:
                 {
                     **build_run_payload(payload, task_id, ingestion_summary),
                     "quality_gate": quality_gate,
+                    "follow_up": follow_up_summary,
                 },
             )
         with session_scope() as session:

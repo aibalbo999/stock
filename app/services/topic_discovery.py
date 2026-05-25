@@ -38,6 +38,7 @@ class DiscoveryPlanQuality(BaseModel):
     score: int
     missing: list[str]
     coverage: dict[str, bool]
+    query_quality: dict = Field(default_factory=dict)
     subtopic_count: int
     candidate_count: int
     recommendation: str
@@ -52,7 +53,11 @@ class ValidatedCandidate(BaseModel):
     evidence_count: int
     evidence_source_count: int = 0
     evidence_titles: list[str]
+    evidence_sources: list[dict] = Field(default_factory=list)
     status: str
+    validation_reason: str = ""
+    next_action: str = ""
+    promotion_eligible: bool = False
 
 
 class TopicDiscoveryService:
@@ -124,6 +129,7 @@ class TopicDiscoveryService:
     @staticmethod
     def evaluate_plan_quality(plan: TopicDiscoveryPlan) -> DiscoveryPlanQuality:
         missing = []
+        query_quality = TopicDiscoveryService._plan_query_quality(plan)
         if not plan.subtopics:
             missing.append("缺少研究子題")
         if not plan.candidate_companies:
@@ -138,6 +144,13 @@ class TopicDiscoveryService:
                 missing.append(f"{label} 缺少風險焦點")
             if not subtopic.search_queries:
                 missing.append(f"{label} 缺少搜尋 query")
+            subtopic_query_quality = query_quality["subtopics"].get(label, {})
+            if subtopic.search_queries and not subtopic_query_quality.get("has_international_query"):
+                missing.append(f"{label} 缺少國際資料 query")
+            for query in subtopic_query_quality.get("generic_queries", [])[:2]:
+                missing.append(f"{label} 搜尋 query 過於籠統：{query}")
+            for query in subtopic_query_quality.get("unaligned_queries", [])[:2]:
+                missing.append(f"{label} 搜尋 query 未對應研究證據或風險：{query}")
 
         coverage = TopicDiscoveryService._plan_theme_coverage(plan)
         for theme, covered in coverage.items():
@@ -151,6 +164,9 @@ class TopicDiscoveryService:
             and subtopic.required_evidence
             and subtopic.risk_focus
             and subtopic.search_queries
+            and query_quality["subtopics"].get(subtopic.name or "", {}).get("has_international_query")
+            and not query_quality["subtopics"].get(subtopic.name or "", {}).get("generic_queries")
+            and not query_quality["subtopics"].get(subtopic.name or "", {}).get("unaligned_queries")
         )
         score = 0
         if plan.subtopics:
@@ -166,6 +182,7 @@ class TopicDiscoveryService:
             score=min(score, 100),
             missing=missing,
             coverage=coverage,
+            query_quality=query_quality,
             subtopic_count=len(plan.subtopics),
             candidate_count=len(plan.candidate_companies),
             recommendation=(
@@ -205,6 +222,112 @@ class TopicDiscoveryService:
             for theme, keywords in themes.items()
         }
 
+    @staticmethod
+    def _plan_query_quality(plan: TopicDiscoveryPlan) -> dict:
+        subtopic_quality = {}
+        total_queries = 0
+        aligned_queries = 0
+        international_query_count = 0
+        generic_query_count = 0
+        for subtopic in plan.subtopics:
+            label = subtopic.name or "未命名子題"
+            generic_queries = []
+            unaligned_queries = []
+            languages = []
+            for query in subtopic.search_queries:
+                total_queries += 1
+                language = TopicDiscoveryService._query_language(query)
+                languages.append(language)
+                if TopicDiscoveryService._is_generic_query(query):
+                    generic_queries.append(query)
+                    generic_query_count += 1
+                    continue
+                if language in {"en", "mixed"}:
+                    international_query_count += 1
+                if TopicDiscoveryService._query_aligns_subtopic(query, subtopic):
+                    aligned_queries += 1
+                else:
+                    unaligned_queries.append(query)
+            subtopic_quality[label] = {
+                "query_count": len(subtopic.search_queries),
+                "languages": languages,
+                "has_international_query": any(
+                    TopicDiscoveryService._query_language(query) in {"en", "mixed"}
+                    and not TopicDiscoveryService._is_generic_query(query)
+                    for query in subtopic.search_queries
+                ),
+                "generic_queries": generic_queries,
+                "unaligned_queries": unaligned_queries,
+            }
+        return {
+            "total_queries": total_queries,
+            "aligned_queries": aligned_queries,
+            "international_query_count": international_query_count,
+            "generic_query_count": generic_query_count,
+            "subtopics": subtopic_quality,
+        }
+
+    @staticmethod
+    def _query_aligns_subtopic(query: str, subtopic: DiscoverySubtopic) -> bool:
+        query_text = query.lower()
+        terms = TopicDiscoveryService._research_terms(subtopic)
+        return any(term.lower() in query_text for term in terms)
+
+    @staticmethod
+    def _research_terms(subtopic: DiscoverySubtopic) -> list[str]:
+        raw_terms = [
+            subtopic.name,
+            *subtopic.required_evidence,
+            *subtopic.risk_focus,
+            *TopicDiscoveryService._meaningful_tokens(subtopic.objective),
+            *TopicDiscoveryService._meaningful_tokens(subtopic.rationale),
+        ]
+        return [
+            term
+            for term in dict.fromkeys(term.strip() for term in raw_terms)
+            if term and not TopicDiscoveryService._is_noise_term(term)
+        ]
+
+    @staticmethod
+    def _meaningful_tokens(text: str) -> list[str]:
+        return [
+            token
+            for token in re.findall(r"[A-Za-z][A-Za-z0-9+\-/]{1,}|\d{2,}|[\u4e00-\u9fff]{2,}", text)
+            if not TopicDiscoveryService._is_noise_term(token)
+        ]
+
+    @staticmethod
+    def _is_generic_query(query: str) -> bool:
+        tokens = TopicDiscoveryService._meaningful_tokens(query)
+        if len(tokens) <= 1:
+            return True
+        signal_tokens = [token for token in tokens if not TopicDiscoveryService._is_noise_term(token)]
+        return len(signal_tokens) <= 1
+
+    @staticmethod
+    def _is_noise_term(term: str) -> bool:
+        normalized = term.strip().lower()
+        return normalized in {
+            "ai",
+            "台股",
+            "股票",
+            "概念股",
+            "熱門",
+            "產業",
+            "供應鏈",
+            "最新",
+            "市場",
+            "global",
+            "market",
+            "stock",
+            "stocks",
+            "company",
+            "companies",
+            "supplier",
+            "supply",
+            "chain",
+        }
+
     def google_news_urls(
         self,
         plan: TopicDiscoveryPlan,
@@ -216,7 +339,7 @@ class TopicDiscoveryService:
         seen = set()
         urls: list[str] = []
         metadata: list[dict] = []
-        queries: list[tuple[str, str]] = []
+        queries: list[dict] = []
         for subtopic in plan.subtopics:
             task_terms = " ".join(
                 [subtopic.name, *subtopic.required_evidence[:2], *subtopic.risk_focus[:2]]
@@ -224,31 +347,101 @@ class TopicDiscoveryService:
                 else []
             )
             if task_terms.strip():
-                queries.append((task_terms.strip(), "research_task"))
+                queries.append(
+                    self._query_item(
+                        task_terms.strip(),
+                        "research_task",
+                        self._subtopic_hypothesis(subtopic),
+                        self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                    )
+                )
             for query in subtopic.search_queries:
-                queries.append((query, "subtopic"))
+                queries.append(
+                    self._query_item(
+                        query,
+                        "subtopic",
+                        self._subtopic_hypothesis(subtopic),
+                        self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                    )
+                )
                 if include_international:
-                    queries.append((f"{query} global market", "subtopic_international"))
+                    queries.append(
+                        self._query_item(
+                            f"{query} global market",
+                            "subtopic_international",
+                            self._subtopic_hypothesis(subtopic),
+                            self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                        )
+                    )
         for candidate in plan.candidate_companies:
             keywords = " ".join(candidate.evidence_keywords[:2])
-            queries.append((f"{candidate.name} {keywords}".strip(), "candidate"))
-            queries.append((f"{candidate.ticker} {candidate.name}", "candidate"))
+            candidate_hypothesis = f"驗證 {candidate.ticker} {candidate.name} 是否與「{candidate.segment}」及主題證據直接相關。"
+            queries.append(
+                self._query_item(
+                    f"{candidate.name} {keywords}".strip(),
+                    "candidate",
+                    candidate_hypothesis,
+                    "候選公司證據",
+                )
+            )
+            queries.append(
+                self._query_item(
+                    f"{candidate.ticker} {candidate.name}",
+                    "candidate",
+                    candidate_hypothesis,
+                    "公司實體驗證",
+                )
+            )
             if include_international:
                 english_terms = " ".join(candidate.evidence_keywords[:3])
                 queries.append(
-                    (f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock", "candidate_international")
+                    self._query_item(
+                        f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock",
+                        "candidate_international",
+                        candidate_hypothesis,
+                        "國際供應鏈證據",
+                    )
                 )
                 queries.append(
-                    (f"{candidate.segment} {english_terms} global supply chain", "candidate_international")
+                    self._query_item(
+                        f"{candidate.segment} {english_terms} global supply chain",
+                        "candidate_international",
+                        candidate_hypothesis,
+                        "國際供應鏈證據",
+                    )
                 )
         if topic:
+            plan_quality = self.evaluate_plan_quality(plan)
             queries.extend(
-                (query, "coverage_gap")
-                for query in self.coverage_gap_queries(topic, self.evaluate_plan_quality(plan))
+                self._query_item(
+                    query,
+                    "query_quality_gap",
+                    f"補強「{topic}」中過於籠統、未對齊或缺國際資料的搜尋 query。",
+                    "查詢品質補強",
+                )
+                for query in self.query_quality_gap_queries(topic, plan, plan_quality)
+            )
+            queries.extend(
+                self._query_item(
+                    query,
+                    "coverage_gap",
+                    f"補齊「{topic}」研究拆解品質缺口。",
+                    "品質缺口補強",
+                )
+                for query in self.coverage_gap_queries(topic, plan_quality)
             )
         if include_international:
-            queries.extend((query, "international_context") for query in self._international_context_queries())
-        for query, source_type in queries:
+            queries.extend(
+                self._query_item(
+                    query,
+                    "international_context",
+                    "補充國際市場、雲端資本支出與供應鏈背景，避免只看台灣新聞。",
+                    "國際背景",
+                )
+                for query in self._international_context_queries()
+            )
+        for item in queries:
+            query = item["query"]
             normalized = query.strip()
             if not normalized or normalized in seen:
                 continue
@@ -258,10 +451,49 @@ class TopicDiscoveryService:
                 f"q={quote_plus(normalized)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
             )
             urls.append(url)
-            metadata.append({"url": url, "query": normalized, "source_type": source_type})
+            metadata.append({**item, "url": url, "query": normalized, "language": self._query_language(normalized)})
             if max_urls and len(urls) >= max_urls:
                 break
         return metadata if include_metadata else urls
+
+    @staticmethod
+    def _query_item(query: str, source_type: str, hypothesis: str, evidence_type: str) -> dict:
+        return {
+            "query": query,
+            "source_type": source_type,
+            "hypothesis": hypothesis,
+            "evidence_type": evidence_type,
+        }
+
+    @staticmethod
+    def _subtopic_hypothesis(subtopic: DiscoverySubtopic) -> str:
+        objective = subtopic.objective.strip()
+        if objective:
+            return objective
+        return f"驗證「{subtopic.name}」是否影響本主題的投資機會或風險。"
+
+    @staticmethod
+    def _evidence_type(required_evidence: list[str], risk_focus: list[str]) -> str:
+        text = " ".join([*required_evidence, *risk_focus]).lower()
+        if any(term in text for term in ["估值", "股價", "本益比", "pe", "valuation"]):
+            return "估值/股價"
+        if any(term in text for term in ["營收", "財務", "毛利", "獲利", "revenue", "margin"]):
+            return "財務/營收"
+        if any(term in text for term in ["風險", "瓶頸", "缺電", "地緣", "管制", "risk"]):
+            return "風險/瓶頸"
+        if any(term in text for term in ["產能", "供給", "良率", "capacity", "supply"]):
+            return "供給/產能"
+        return "需求/成長"
+
+    @staticmethod
+    def _query_language(query: str) -> str:
+        has_cjk = any("\u4e00" <= char <= "\u9fff" for char in query)
+        has_ascii = any(char.isascii() and char.isalpha() for char in query)
+        if has_cjk and has_ascii:
+            return "mixed"
+        if has_cjk:
+            return "zh"
+        return "en"
 
     @staticmethod
     def coverage_gap_queries(topic: str, quality: DiscoveryPlanQuality) -> list[str]:
@@ -282,6 +514,25 @@ class TopicDiscoveryService:
                 queries.append(f"{topic} {terms}".strip())
         return queries
 
+    @staticmethod
+    def query_quality_gap_queries(topic: str, plan: TopicDiscoveryPlan, quality: DiscoveryPlanQuality) -> list[str]:
+        query_quality = quality.query_quality or {}
+        subtopic_quality = query_quality.get("subtopics") or {}
+        queries = []
+        for subtopic in plan.subtopics:
+            label = subtopic.name or "未命名子題"
+            detail = subtopic_quality.get(label) or {}
+            evidence_terms = " ".join(subtopic.required_evidence[:2])
+            risk_terms = " ".join(subtopic.risk_focus[:1])
+            base = " ".join(part for part in [topic, subtopic.name, evidence_terms, risk_terms] if part).strip()
+            if not base:
+                continue
+            if detail.get("generic_queries") or detail.get("unaligned_queries"):
+                queries.append(base)
+            if subtopic.search_queries and not detail.get("has_international_query"):
+                queries.append(f"{base} global market")
+        return list(dict.fromkeys(query for query in queries if query))
+
     def supplemental_google_news_urls(
         self,
         plan: TopicDiscoveryPlan,
@@ -290,6 +541,25 @@ class TopicDiscoveryService:
         max_urls: int | None = None,
         existing_urls: list[str] | None = None,
     ) -> list[str]:
+        return [
+            item["url"]
+            for item in self.supplemental_google_news_query_metadata(
+                plan,
+                validated_candidates,
+                include_international=include_international,
+                max_urls=max_urls,
+                existing_urls=existing_urls,
+            )
+        ]
+
+    def supplemental_google_news_query_metadata(
+        self,
+        plan: TopicDiscoveryPlan,
+        validated_candidates: list[ValidatedCandidate],
+        include_international: bool = True,
+        max_urls: int | None = None,
+        existing_urls: list[str] | None = None,
+    ) -> list[dict]:
         supported_tickers = {
             candidate.ticker
             for candidate in validated_candidates
@@ -319,8 +589,11 @@ class TopicDiscoveryService:
             for query in subtopic.search_queries[:2]:
                 queries.append(f"{query} 最新")
 
-        return self._google_news_urls_from_queries(
+        return self._google_news_metadata_from_queries(
             queries,
+            source_type="supplemental",
+            hypothesis="補強弱證據候選與低覆蓋子題，重新驗證是否可進入正式分析。",
+            evidence_type="補抓資料源",
             max_urls=max_urls,
             existing_urls=existing_urls or [],
         )
@@ -331,8 +604,29 @@ class TopicDiscoveryService:
         max_urls: int | None = None,
         existing_urls: list[str] | None = None,
     ) -> list[str]:
+        return [
+            item["url"]
+            for item in TopicDiscoveryService._google_news_metadata_from_queries(
+                queries,
+                source_type="supplemental",
+                hypothesis="補強資料來源。",
+                evidence_type="補抓資料源",
+                max_urls=max_urls,
+                existing_urls=existing_urls,
+            )
+        ]
+
+    @staticmethod
+    def _google_news_metadata_from_queries(
+        queries: list[str],
+        source_type: str,
+        hypothesis: str,
+        evidence_type: str,
+        max_urls: int | None = None,
+        existing_urls: list[str] | None = None,
+    ) -> list[dict]:
         seen = set(existing_urls or [])
-        urls = []
+        metadata = []
         normalized_queries = set()
         for query in queries:
             normalized = query.strip()
@@ -346,10 +640,19 @@ class TopicDiscoveryService:
             if url in seen:
                 continue
             seen.add(url)
-            urls.append(url)
-            if max_urls and len(urls) >= max_urls:
+            metadata.append(
+                {
+                    "url": url,
+                    "query": normalized,
+                    "source_type": source_type,
+                    "hypothesis": hypothesis,
+                    "evidence_type": evidence_type,
+                    "language": TopicDiscoveryService._query_language(normalized),
+                }
+            )
+            if max_urls and len(metadata) >= max_urls:
                 break
-        return urls
+        return metadata
 
     @staticmethod
     def _international_context_queries() -> list[str]:
@@ -379,6 +682,7 @@ class TopicDiscoveryService:
                     evidence_documents.append(document)
             deduped_titles = list(dict.fromkeys(document.title for document in evidence_documents))[:5]
             source_count = self._evidence_source_count(evidence_documents)
+            evidence_sources = self._candidate_evidence_sources(evidence_documents)
             validated.append(
                 ValidatedCandidate(
                     ticker=candidate.ticker,
@@ -389,7 +693,12 @@ class TopicDiscoveryService:
                     evidence_count=len(evidence_documents),
                     evidence_source_count=source_count,
                     evidence_titles=deduped_titles,
+                    evidence_sources=evidence_sources,
                     status=self._candidate_status(len(evidence_documents), source_count),
+                    validation_reason=self._candidate_validation_reason(len(evidence_documents), source_count),
+                    next_action=self._candidate_next_action(len(evidence_documents), source_count),
+                    promotion_eligible=self._candidate_status(len(evidence_documents), source_count)
+                    == "evidence_supported",
                 )
             )
         return validated
@@ -429,12 +738,54 @@ class TopicDiscoveryService:
         return len(sources)
 
     @staticmethod
+    def _candidate_evidence_sources(documents: list[NewsDocument], limit: int = 5) -> list[dict]:
+        sources = []
+        seen = set()
+        for document in documents:
+            source_key = (
+                document.title,
+                document.source.publisher,
+                document.source.url,
+                document.source.published_at.isoformat() if document.source.published_at else "",
+            )
+            if source_key in seen:
+                continue
+            seen.add(source_key)
+            sources.append(
+                {
+                    "title": document.title,
+                    "publisher": document.source.publisher or document.source.title or "",
+                    "published_at": document.source.published_at.isoformat() if document.source.published_at else None,
+                    "url": document.source.url,
+                }
+            )
+            if len(sources) >= limit:
+                break
+        return sources
+
+    @staticmethod
     def _candidate_status(evidence_count: int, source_count: int) -> str:
         if evidence_count == 0:
             return "needs_evidence"
         if evidence_count >= 2 and source_count >= 2:
             return "evidence_supported"
         return "weak_evidence"
+
+    @staticmethod
+    def _candidate_validation_reason(evidence_count: int, source_count: int) -> str:
+        if evidence_count >= 2 and source_count >= 2:
+            return "通過正式分析門檻：至少 2 篇公司主題證據，且來自 2 個以上來源。"
+        if evidence_count > 0:
+            return f"弱證據：目前只有 {evidence_count} 篇、{source_count} 個來源，避免單一來源造成誤判。"
+        return "待補證據：尚未找到公司實體與主題上下文同時成立的來源。"
+
+    @staticmethod
+    def _candidate_next_action(evidence_count: int, source_count: int) -> str:
+        if evidence_count >= 2 and source_count >= 2:
+            return "納入正式分析。"
+        if evidence_count > 0:
+            return "補抓公司新聞、法說會、月營收與國際供應鏈資料後再驗證。"
+        return "用公司名稱、代號、產業位置與主題關鍵字重新補抓來源。"
 
     @staticmethod
     def parse_plan(raw_text: str) -> TopicDiscoveryPlan:
@@ -473,7 +824,8 @@ class TopicDiscoveryService:
 - candidate_companies 是「候選研究清單」，不是正式投資推薦。
 - 公司必須是台股 4 碼 ticker。
 - 不確定 ticker 時不要輸出該公司。
-- search_queries 要適合 Google News RSS 搜尋，使用繁體中文為主。
+- search_queries 要適合 Google News RSS 搜尋；繁體中文為主，但每個子題至少 1 筆可用英文或中英混合詞查國際資料。
+- search_queries 必須對應 objective、required_evidence 或 risk_focus，不可只是公司名或籠統題材詞。
 - 拆解時至少涵蓋：需求/成長、供給/產能、財務/營收、估值/股價、風險/瓶頸；若主題不適用可合併但不可完全缺漏。
 - 不可把「熱門股票」當作子題；必須先說明產業因果，再提出候選公司。
 
@@ -519,7 +871,8 @@ JSON schema:
 - subtopics 最多 8 筆；candidate_companies 最多 20 筆。
 - 每個子題都要有 objective、required_evidence、risk_focus、search_queries。
 - 子題必須是可執行研究任務，不能只是熱門股、概念股或單一關鍵字。
-- search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料。
+- search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料；每個子題至少保留 1 筆英文或中英混合國際查詢。
+- search_queries 必須能說明要驗證哪個投資假設，不可只是公司名、熱門股或籠統題材詞。
 - 至少涵蓋品質缺口中提到的研究面向；若主題不適用，需用同一子題合併處理但不能空缺。
 - candidate_companies 只是候選研究清單，不是投資推薦；公司必須是台股 4 碼 ticker，不確定 ticker 不要輸出。
 - evidence_keywords 必須能用來驗證公司與主題的真實關聯，不能只寫「AI」或「熱門」。

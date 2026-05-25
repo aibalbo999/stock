@@ -50,6 +50,7 @@ class SupplyChainWhitelist:
         raw = {
             "segments": list(segments_by_name.values()),
             "risk_keywords": base.risk_keywords,
+            "candidate_audit": candidates,
         }
         return cls(raw=raw)
 
@@ -58,6 +59,9 @@ class SupplyChainWhitelist:
 
     def allowed_tickers(self) -> set[str]:
         return {company.ticker for company in self.companies()}
+
+    def candidate_audit(self) -> list[dict]:
+        return list(self.raw.get("candidate_audit") or [])
 
     def segment_for_ticker(self, ticker: str) -> SupplyChainSegment | None:
         for segment in self.segments:

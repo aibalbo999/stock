@@ -476,6 +476,15 @@ class AnalysisRunRepository:
     def get(self, run_id: int) -> AnalysisRun | None:
         return self.session.get(AnalysisRun, run_id)
 
+    def get_by_report_id(self, report_id: int) -> AnalysisRun | None:
+        statement = (
+            select(AnalysisRun)
+            .where(AnalysisRun.report_id == report_id)
+            .order_by(AnalysisRun.started_at.desc())
+            .limit(1)
+        )
+        return self.session.scalars(statement).first()
+
     def get_by_celery_task_id(self, task_id: str) -> AnalysisRun | None:
         statement = select(AnalysisRun).order_by(AnalysisRun.started_at.desc())
         for run in self.session.scalars(statement):

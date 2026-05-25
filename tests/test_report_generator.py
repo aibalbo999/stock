@@ -790,6 +790,59 @@ def test_evidence_ranking_uses_dynamic_evidence_keywords_without_entity_match() 
     assert generator._related_documents("6669", documents) == []
 
 
+def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2382",
+                "name": "廣達",
+                "segment": "系統組裝",
+                "rationale": "",
+                "evidence_keywords": ["AI 伺服器"],
+                "evidence_count": 2,
+                "evidence_source_count": 2,
+                "evidence_titles": [],
+                "evidence_sources": [
+                    {
+                        "title": "廣達 AI 伺服器訂單",
+                        "publisher": "測試新聞",
+                        "published_at": "2026-05-24",
+                        "url": "https://example.com/quanta",
+                    }
+                ],
+                "status": "evidence_supported",
+                "validation_reason": "通過正式分析門檻：至少 2 篇公司主題證據。",
+                "next_action": "納入正式分析。",
+            },
+            {
+                "ticker": "3324",
+                "name": "雙鴻",
+                "segment": "散熱模組",
+                "rationale": "",
+                "evidence_keywords": ["液冷"],
+                "evidence_count": 1,
+                "evidence_source_count": 1,
+                "evidence_titles": [],
+                "status": "weak_evidence",
+                "validation_reason": "弱證據：目前只有 1 篇、1 個來源。",
+                "next_action": "補抓公司新聞、法說會、月營收與國際供應鏈資料後再驗證。",
+            },
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+
+    markdown = generator._render_candidate_audit(["2382"])
+
+    assert "| AI 初始候選 | 2 |" in markdown
+    assert "| 正式分析 | 1 |" in markdown
+    assert "3324 雙鴻" in markdown
+    assert "弱證據觀察" in markdown
+    assert "補抓公司新聞" in markdown
+    assert "候選公司代表來源" in markdown
+    assert "廣達 AI 伺服器訂單" in markdown
+    assert "測試新聞" in markdown
+
+
 def test_partial_quality_upside_stays_on_watchlist_without_allocation() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()

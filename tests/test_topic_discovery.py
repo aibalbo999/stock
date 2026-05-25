@@ -180,6 +180,76 @@ def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
     assert "缺少候選公司" in quality.missing
 
 
+def test_evaluate_plan_quality_flags_generic_and_unaligned_queries() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "需求成長",
+              "rationale": "雲端資本支出",
+              "objective": "確認訂單與市場規模是否成長",
+              "required_evidence": ["訂單", "市場規模"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI", "台積電 法說會"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI 伺服器代工",
+              "rationale": "伺服器訂單",
+              "evidence_keywords": ["AI server", "訂單"]
+            }
+          ]
+        }
+        """
+    )
+
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert quality.status == "insufficient"
+    assert "需求成長 搜尋 query 過於籠統：AI" in quality.missing
+    assert "需求成長 搜尋 query 未對應研究證據或風險：台積電 法說會" in quality.missing
+    assert quality.query_quality["generic_query_count"] == 1
+    assert quality.query_quality["subtopics"]["需求成長"]["unaligned_queries"] == ["台積電 法說會"]
+
+
+def test_evaluate_plan_quality_requires_international_query_per_subtopic() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "估值股價",
+              "rationale": "市場反映程度",
+              "objective": "比較估值與本益比",
+              "required_evidence": ["股價", "本益比"],
+              "risk_focus": ["估值過高"],
+              "search_queries": ["台股 伺服器 股價 本益比"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "6669",
+              "name": "緯穎",
+              "segment": "AI 伺服器",
+              "rationale": "伺服器營收",
+              "evidence_keywords": ["AI server", "營收"]
+            }
+          ]
+        }
+        """
+    )
+
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert quality.status == "insufficient"
+    assert "估值股價 缺少國際資料 query" in quality.missing
+    assert quality.query_quality["international_query_count"] == 0
+
+
 def test_discover_repairs_incomplete_plan_once() -> None:
     weak_plan = """
     {
@@ -317,6 +387,32 @@ def test_coverage_gap_queries_add_missing_research_dimensions() -> None:
     assert "AI 產業鏈 股價 估值 本益比" in queries
 
 
+def test_query_quality_gap_queries_add_aligned_and_international_searches() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "rationale": "AI 機櫃功耗上升",
+              "objective": "確認液冷訂單是否支撐散熱成長",
+              "required_evidence": ["水冷訂單", "營收"],
+              "risk_focus": ["技術轉換延遲"],
+              "search_queries": ["AI"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    queries = TopicDiscoveryService.query_quality_gap_queries("AI 產業鏈", plan, quality)
+
+    assert "AI 產業鏈 液冷散熱 水冷訂單 營收 技術轉換延遲" in queries
+    assert "AI 產業鏈 液冷散熱 水冷訂單 營收 技術轉換延遲 global market" in queries
+
+
 def test_google_news_urls_include_coverage_gap_queries() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -344,6 +440,37 @@ def test_google_news_urls_include_coverage_gap_queries() -> None:
     )
 
     assert any("%E8%82%A1%E5%83%B9" in url and "%E4%BC%B0%E5%80%BC" in url for url in urls)
+
+
+def test_google_news_urls_include_query_quality_gap_metadata() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "rationale": "AI 機櫃功耗上升",
+              "objective": "確認液冷訂單是否支撐散熱成長",
+              "required_evidence": ["水冷訂單"],
+              "risk_focus": ["技術轉換延遲"],
+              "search_queries": ["AI"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=10,
+        topic="AI 產業鏈",
+        include_metadata=True,
+    )
+
+    assert any(item["source_type"] == "query_quality_gap" for item in metadata)
+    assert any(item["evidence_type"] == "查詢品質補強" for item in metadata)
 
 
 def test_google_news_urls_can_return_query_metadata() -> None:
@@ -376,6 +503,47 @@ def test_google_news_urls_can_return_query_metadata() -> None:
     assert all("url" in item and "query" in item and "source_type" in item for item in metadata)
     assert any(item["source_type"] == "research_task" for item in metadata)
     assert any(item["source_type"] == "coverage_gap" for item in metadata)
+    assert all("hypothesis" in item and "evidence_type" in item and "language" in item for item in metadata)
+    assert metadata[0]["hypothesis"] == "確認需求"
+    assert metadata[0]["evidence_type"] in {"需求/成長", "風險/瓶頸"}
+
+
+def test_google_news_query_metadata_labels_language_and_hypothesis() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "CSP 資本支出",
+              "objective": "驗證雲端資本支出是否支撐 AI 伺服器需求",
+              "required_evidence": ["capex", "訂單"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["North American cloud AI server capex"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI 伺服器代工",
+              "rationale": "ODM exposure",
+              "evidence_keywords": ["AI server", "CSP"]
+            }
+          ]
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=4,
+        include_metadata=True,
+    )
+
+    assert metadata[0]["hypothesis"] == "驗證雲端資本支出是否支撐 AI 伺服器需求"
+    assert metadata[0]["language"] == "mixed"
+    assert any(item["evidence_type"] == "候選公司證據" for item in metadata)
 
 
 def test_google_news_urls_can_add_international_context_queries() -> None:
@@ -519,8 +687,13 @@ def test_validate_candidates_marks_evidence_supported() -> None:
     candidates = service.validate_candidates(plan, documents)
 
     assert candidates[0].status == "evidence_supported"
+    assert candidates[0].promotion_eligible is True
+    assert "通過正式分析門檻" in candidates[0].validation_reason
     assert candidates[0].evidence_count == 2
     assert candidates[0].evidence_source_count == 2
+    assert candidates[0].evidence_sources[0]["title"] == "台積電 CoWoS 產能擴張"
+    assert candidates[0].evidence_sources[0]["publisher"] == "test-a"
+    assert candidates[0].evidence_sources[0]["published_at"] == "2026-05-24"
 
 
 def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
@@ -553,6 +726,9 @@ def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
     assert candidates[0].status == "weak_evidence"
     assert candidates[0].evidence_count == 1
     assert candidates[0].evidence_source_count == 1
+    assert candidates[0].promotion_eligible is False
+    assert "弱證據" in candidates[0].validation_reason
+    assert "補抓" in candidates[0].next_action
 
 
 def test_validate_candidates_requires_company_entity_evidence() -> None:
@@ -683,6 +859,7 @@ def test_dynamic_whitelist_uses_only_evidence_supported_candidates() -> None:
 
     assert whitelist.allowed_tickers() == {"6669"}
     assert "6669 緯穎" in whitelist.as_prompt_context()
+    assert len(whitelist.candidate_audit()) == 2
 
 
 def test_dynamic_whitelist_keeps_evidence_keywords_without_promoting_unverified_companies() -> None:

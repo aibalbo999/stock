@@ -308,7 +308,7 @@ API_BASE_URL = get_settings().api_base_url.rstrip("/")
 
 
 def api_post(path: str, payload: dict) -> dict:
-    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=180)
+    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=900)
     response.raise_for_status()
     return response.json()
 
@@ -394,11 +394,43 @@ def markdown_table_rows(markdown: str, heading: str, limit: int = 6) -> list[lis
         if not line.startswith("|") or "---" in line:
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if len(cells) < 2 or cells[0] in {"股票", "項目"}:
+        if len(cells) < 2 or cells[0] in {"股票", "項目", "任務"}:
             continue
         rows.append(cells)
         if len(rows) >= limit:
             break
+    return rows
+
+
+def markdown_table_rows_by_header(
+    markdown: str,
+    heading: str,
+    required_first_header: str,
+    limit: int = 20,
+) -> list[list[str]]:
+    section = markdown_section_or_none(markdown, heading)
+    if not section:
+        return []
+    rows = []
+    in_target_table = False
+    for line in section.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            if in_target_table and rows:
+                break
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if not cells:
+            continue
+        if cells[0] == required_first_header:
+            in_target_table = True
+            continue
+        if in_target_table:
+            if "---" in line:
+                continue
+            rows.append(cells)
+            if len(rows) >= limit:
+                break
     return rows
 
 
@@ -516,6 +548,123 @@ def comparison_matrix_html(markdown: str) -> str:
     return summary + "".join(cards)
 
 
+def follow_up_tasks_html(markdown: str) -> str:
+    rows = markdown_table_rows(markdown, "自動補強任務", limit=8)
+    if not rows:
+        return ""
+    cards = []
+    for row in rows:
+        task = escape(row[0]) if len(row) > 0 else "-"
+        tickers = escape(row[1]) if len(row) > 1 else "-"
+        purpose = escape(row[2]) if len(row) > 5 else "追蹤更新"
+        priority = escape(row[3]) if len(row) > 5 else escape(row[2]) if len(row) > 2 else "-"
+        frequency = escape(row[4]) if len(row) > 5 else escape(row[3]) if len(row) > 3 else "-"
+        reason = escape(row[5]) if len(row) > 5 else escape(row[4]) if len(row) > 4 else ""
+        cards.append(
+            f"""
+            <article class="task-card">
+              <div>
+                <div class="ticker">{task}</div>
+                <div class="reason">{reason}</div>
+              </div>
+              <div class="task-meta">
+                <span>{tickers}</span>
+                <span>{purpose}</span>
+                <span>{priority}</span>
+                <span>{frequency}</span>
+              </div>
+            </article>
+            """
+        )
+    return "".join(cards)
+
+
+def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
+    candidates = result.get("candidate_whitelist", []) if result else []
+    rows = []
+    if candidates:
+        status_labels = {
+            "evidence_supported": "正式分析",
+            "weak_evidence": "弱證據觀察",
+            "needs_evidence": "待補證據",
+        }
+        for candidate in candidates:
+            evidence_sources = candidate.get("evidence_sources") or []
+            source_summary = "；".join(
+                " / ".join(
+                    part
+                    for part in [
+                        str(source.get("title") or ""),
+                        str(source.get("publisher") or ""),
+                        str(source.get("published_at") or ""),
+                    ]
+                    if part
+                )
+                for source in evidence_sources[:2]
+            )
+            rows.append(
+                [
+                    f"{candidate.get('ticker')} {candidate.get('name')}",
+                    candidate.get("segment") or "未分類",
+                    status_labels.get(candidate.get("status"), "待補證據"),
+                    f"{int(candidate.get('evidence_count') or 0)} 篇 / {int(candidate.get('evidence_source_count') or 0)} 來源",
+                    candidate.get("validation_reason") or "",
+                    candidate.get("next_action") or "",
+                    source_summary,
+                ]
+            )
+    else:
+        rows = markdown_table_rows_by_header(markdown, "候選公司審計", "股票", limit=30)
+    if not rows:
+        return ""
+
+    supported = [row for row in rows if len(row) > 2 and "正式分析" in row[2]]
+    weak = [row for row in rows if len(row) > 2 and "弱證據" in row[2]]
+    needs = [row for row in rows if len(row) > 2 and "待補" in row[2]]
+    cards = []
+    for row in rows:
+        stock = escape(row[0]) if len(row) > 0 else "-"
+        segment = escape(row[1]) if len(row) > 1 else "-"
+        status_raw = row[2] if len(row) > 2 else "待補證據"
+        status = escape(status_raw)
+        evidence = escape(row[3]) if len(row) > 3 else "-"
+        reason = escape(row[4]) if len(row) > 4 else ""
+        next_action = escape(row[5]) if len(row) > 5 else ""
+        source_summary = escape(row[6]) if len(row) > 6 else ""
+        status_class = (
+            "audit-supported"
+            if "正式分析" in status_raw
+            else "audit-weak"
+            if "弱證據" in status_raw
+            else "audit-needs"
+        )
+        cards.append(
+            f"""
+            <article class="audit-card {status_class}">
+              <div>
+                <div class="ticker">{stock}</div>
+                <div class="reason">{segment}</div>
+                <div class="audit-reason">{reason}</div>
+                <div class="audit-next">{next_action}</div>
+                {"<div class='audit-source'>" + source_summary + "</div>" if source_summary else ""}
+              </div>
+              <div class="audit-meta">
+                <span>{status}</span>
+                <span>{evidence}</span>
+              </div>
+            </article>
+            """
+        )
+    summary = (
+        "<div class='audit-summary'>"
+        f"<span>正式分析 {len(supported)}</span>"
+        f"<span>弱證據 {len(weak)}</span>"
+        f"<span>待補證據 {len(needs)}</span>"
+        "</div>"
+    )
+    return summary + "".join(cards)
+
+
 def decision_badge_class(value: str) -> str:
     if "可小額" in value or "可研究" in value:
         return "decision-action"
@@ -601,6 +750,8 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
     investment_rows = markdown_table_rows(markdown, "投資建議", limit=6)
     comparison_html = comparison_matrix_html(markdown)
+    follow_up_html = follow_up_tasks_html(markdown)
+    audit_html = candidate_audit_html(markdown, result)
     final_items = markdown_items(markdown, "二次綜合篩選", limit=3)
 
     summary_html = "".join(f"<li>{escape(item)}</li>" for item in summary_items) or "<li>目前無足夠數據判斷。</li>"
@@ -666,6 +817,20 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   li {{ margin:7px 0; line-height:1.55; }}
   .stock-list {{ display:grid; gap:10px; }}
   .stock-card {{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .task-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#F9FBFD; margin:8px 0; }}
+  .task-meta {{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-content:flex-start; min-width:220px; }}
+  .task-meta span {{ background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:700; }}
+  .audit-summary {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }}
+  .audit-summary span {{ background:#F4F7FB; border:1px solid #D7DEE8; border-radius:999px; padding:6px 10px; font-size:13px; color:#344054; font-weight:700; }}
+  .audit-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; margin:8px 0; }}
+  .audit-card.audit-supported {{ border-left:4px solid #0E9F6E; }}
+  .audit-card.audit-weak {{ border-left:4px solid #F59E0B; }}
+  .audit-card.audit-needs {{ border-left:4px solid #667085; }}
+  .audit-reason {{ margin-top:8px; color:#344054; font-size:13px; line-height:1.45; }}
+  .audit-next {{ margin-top:5px; color:#53657D; font-size:13px; line-height:1.45; }}
+  .audit-source {{ margin-top:8px; color:#667085; font-size:12px; line-height:1.45; border-top:1px solid #EAECF0; padding-top:8px; }}
+  .audit-meta {{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-content:flex-start; min-width:180px; }}
+  .audit-meta span {{ background:#F4F7FB; color:#344054; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:700; }}
   .matrix-list {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
   .matrix-summary {{ grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px; }}
   .matrix-summary span {{ background:#F4F7FB; border:1px solid #D7DEE8; border-radius:999px; padding:6px 10px; font-size:13px; color:#344054; font-weight:700; }}
@@ -692,7 +857,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   summary {{ cursor:pointer; font-weight:700; }}
   .company-detail {{ background:#FFFFFF; margin:10px 0 0; }}
   .company-detail summary {{ color:#1D4ED8; }}
-  @media (max-width:760px) {{ .grid,.trust-grid,.matrix-list {{ grid-template-columns:1fr; }} .stock-card,.matrix-top {{ display:block; }} .decision {{ display:inline-block; margin-top:10px; }} }}
+  @media (max-width:760px) {{ .grid,.trust-grid,.matrix-list {{ grid-template-columns:1fr; }} .stock-card,.task-card,.audit-card,.matrix-top {{ display:block; }} .decision,.task-meta,.audit-meta {{ display:inline-flex; margin-top:10px; justify-content:flex-start; min-width:0; }} }}
 </style>
 </head>
 <body>
@@ -720,6 +885,8 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   <section class="panel"><h2>重點摘要</h2><ul>{summary_html}</ul></section>
   {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
   <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>
+  {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
+  {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
   {"<section class='panel'><h2>個股比較矩陣</h2><div class='matrix-list'>" + comparison_html + "</div></section>" if comparison_html else ""}
   <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
   {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}
@@ -728,6 +895,54 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
 </body>
 </html>
 """
+
+
+def candidate_revalidation_summary(result: dict) -> dict:
+    revalidation = ((result.get("rerun_report") or {}).get("candidate_revalidation") or {})
+    candidates = revalidation.get("candidate_whitelist") or []
+    promoted = set(revalidation.get("promoted_tickers") or [])
+    supported = [
+        candidate
+        for candidate in candidates
+        if candidate.get("status") == "evidence_supported"
+    ]
+    weak = [
+        candidate
+        for candidate in candidates
+        if candidate.get("status") == "weak_evidence"
+    ]
+    needs = [
+        candidate
+        for candidate in candidates
+        if candidate.get("status") == "needs_evidence"
+    ]
+    return {
+        "changed": bool(revalidation.get("changed")),
+        "total": len(candidates),
+        "promoted_count": len(promoted) if promoted else len(supported),
+        "weak_count": len(weak),
+        "needs_evidence_count": len(needs),
+        "document_query_count": int(revalidation.get("document_query_count") or 0),
+        "document_count": int(revalidation.get("document_count") or 0),
+        "newly_promoted": revalidation.get("newly_promoted") or [],
+        "no_longer_promoted": revalidation.get("no_longer_promoted") or [],
+        "status_changes": revalidation.get("status_changes") or [],
+        "rows": [
+            {
+                "股票": f"{candidate.get('ticker')} {candidate.get('name')}",
+                "產業位置": candidate.get("segment"),
+                "狀態": {
+                    "evidence_supported": "正式分析",
+                    "weak_evidence": "弱證據",
+                    "needs_evidence": "待補證據",
+                }.get(candidate.get("status"), "待補證據"),
+                "證據": f"{candidate.get('evidence_count', 0)} 篇 / {candidate.get('evidence_source_count', 0)} 來源",
+                "原因": candidate.get("validation_reason") or "-",
+                "下一步": candidate.get("next_action") or "-",
+            }
+            for candidate in candidates
+        ],
+    }
 
 
 def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
@@ -749,7 +964,13 @@ def candidate_rows(candidates: list[dict]) -> list[dict]:
                 "來源數": candidate.get("evidence_count"),
                 "來源家數": candidate.get("evidence_source_count"),
                 "狀態": status_labels.get(candidate.get("status"), "待補資料"),
-                "主要來源": "；".join(candidate.get("evidence_titles", [])[:2]),
+                "原因": candidate.get("validation_reason"),
+                "下一步": candidate.get("next_action"),
+                "主要來源": "；".join(
+                    source.get("title", "")
+                    for source in candidate.get("evidence_sources", [])[:2]
+                )
+                or "；".join(candidate.get("evidence_titles", [])[:2]),
             }
         )
     return rows
@@ -815,6 +1036,29 @@ def render_source_audit(result: dict) -> None:
         missing = plan_quality.get("missing") or []
         if missing:
             st.warning("拆解任務缺口：" + "；".join(missing[:6]))
+        query_quality = plan_quality.get("query_quality") or {}
+        if query_quality:
+            st.caption(
+                f"查詢品質：對齊 {query_quality.get('aligned_queries', 0)}/"
+                f"{query_quality.get('total_queries', 0)}｜"
+                f"國際查詢 {query_quality.get('international_query_count', 0)}｜"
+                f"籠統查詢 {query_quality.get('generic_query_count', 0)}"
+            )
+            query_quality_rows = []
+            for name, detail in (query_quality.get("subtopics") or {}).items():
+                query_quality_rows.append(
+                    {
+                        "子題": name,
+                        "查詢數": detail.get("query_count", 0),
+                        "語言": "、".join(detail.get("languages", [])),
+                        "國際查詢": "有" if detail.get("has_international_query") else "缺少",
+                        "籠統查詢": "；".join(detail.get("generic_queries", [])),
+                        "未對齊查詢": "；".join(detail.get("unaligned_queries", [])),
+                    }
+                )
+            if query_quality_rows:
+                with st.expander("AI 查詢品質檢查"):
+                    st.dataframe(query_quality_rows, width="stretch", hide_index=True)
 
     rows = []
     for source_type, summary in [
@@ -864,8 +1108,24 @@ def render_source_audit(result: dict) -> None:
         if remediation_rows:
             st.dataframe(remediation_rows, width="stretch", hide_index=True)
 
+    query_metadata_sample = audit.get("query_metadata_sample") or []
     query_sample = audit.get("dynamic_query_sample") or []
-    if query_sample:
+    if query_metadata_sample:
+        st.markdown("**AI 本次產生的資料查詢樣本**")
+        st.dataframe(
+            [
+                {
+                    "查詢": item.get("query"),
+                    "語言": item.get("language", "-"),
+                    "證據類型": item.get("evidence_type", "-"),
+                    "驗證假設": item.get("hypothesis", "-"),
+                }
+                for item in query_metadata_sample
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    elif query_sample:
         st.markdown("**AI 本次產生的資料查詢樣本**")
         st.dataframe(
             [{"查詢來源": url} for url in query_sample],
@@ -922,6 +1182,245 @@ def render_quality_gate(result: dict) -> None:
         st.markdown("**系統建議補強**")
         for action in actions:
             st.markdown(f"- {action}")
+
+
+def render_follow_up_controls(report_id: int, markdown: str) -> None:
+    rows = markdown_table_rows(markdown, "自動補強任務", limit=20)
+    planned_actions = []
+    plan_error = None
+    try:
+        plan = api_get(f"/reports/{report_id}/follow-up/plan")
+        planned_actions = plan.get("actions") or []
+        freshness = plan.get("freshness") or {}
+    except requests.RequestException as exc:
+        plan_error = str(exc)
+        freshness = {}
+    st.markdown("**自動補強**")
+    if planned_actions:
+        required_count = sum(1 for action in planned_actions if action.get("purpose") == "required")
+        tracking_count = sum(1 for action in planned_actions if action.get("purpose") == "tracking")
+        st.caption(f"資料缺口補強 {required_count} 項，追蹤更新 {tracking_count} 項。")
+        st.dataframe(
+            [
+                {
+                    "任務": action.get("label") or action.get("action_type", "-"),
+                    "股票": "、".join(action.get("tickers") or []) or "全主題",
+                    "性質": "資料缺口補強" if action.get("purpose") == "required" else "追蹤更新",
+                    "優先級": action.get("priority", "-"),
+                    "頻率": action.get("frequency", "-"),
+                    "觸發原因": action.get("reason", "-"),
+                }
+                for action in planned_actions
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    elif rows:
+        st.dataframe(
+            [
+                {
+                    "任務": row[0] if len(row) > 0 else "-",
+                    "股票": row[1] if len(row) > 1 else "-",
+                    "性質": row[2] if len(row) > 5 else "追蹤更新",
+                    "優先級": row[3] if len(row) > 5 else row[2] if len(row) > 2 else "-",
+                    "頻率": row[4] if len(row) > 5 else row[3] if len(row) > 3 else "-",
+                    "觸發原因": row[5] if len(row) > 5 else row[4] if len(row) > 4 else "-",
+                }
+                for row in rows
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("目前沒有明確補強任務；仍可重新刷新資料並重跑一次，確認結論是否改變。")
+        skipped = freshness.get("skipped_actions") or []
+        if skipped:
+            st.caption(f"已略過 {len(skipped)} 項追蹤更新，原因是相關資料仍在新鮮範圍內。")
+            with st.expander("查看已略過的追蹤更新"):
+                skipped_details = freshness.get("skipped_details") or []
+                st.dataframe(
+                    [
+                        {
+                            "任務": action.get("label") or action.get("action_type", "-"),
+                            "股票": "、".join(action.get("tickers") or []) or "全主題",
+                            "最新日期": "、".join(
+                                f"{ticker}:{date_value}"
+                                for ticker, date_value in ((action.get("freshness") or {}).get("latest_dates") or {}).items()
+                            )
+                            or "-",
+                            "新鮮門檻": f"{(action.get('freshness') or {}).get('max_age_days')} 天"
+                            if (action.get("freshness") or {}).get("max_age_days") is not None
+                            else "-",
+                            "原因": "資料仍在新鮮範圍內",
+                        }
+                        for action in (skipped_details or skipped)
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+        if plan_error:
+            st.caption("暫時無法讀取後端任務預覽。")
+    skipped_actions = (freshness.get("skipped_actions") or []) if isinstance(freshness, dict) else []
+    force_refresh = False
+    if skipped_actions:
+        force_refresh = st.checkbox(
+            "忽略新鮮度，強制更新已略過的追蹤資料",
+            value=False,
+            key=f"followup_force_refresh_{report_id}",
+        )
+    purpose_options = {
+        "全部任務": "all",
+        "只補資料缺口": "required",
+        "只做追蹤更新": "tracking",
+    }
+    default_purpose = "只補資料缺口" if planned_actions and any(
+        action.get("purpose") == "required" for action in planned_actions
+    ) else "只做追蹤更新"
+    selected_purpose_label = st.radio(
+        "執行範圍",
+        options=list(purpose_options.keys()),
+        index=list(purpose_options.keys()).index(default_purpose),
+        horizontal=True,
+        key=f"followup_purpose_{report_id}",
+    )
+    selected_purpose = purpose_options[selected_purpose_label]
+    action_pool = planned_actions + skipped_actions if force_refresh else planned_actions
+    if selected_purpose == "all":
+        executable_actions = action_pool
+    else:
+        executable_actions = [
+            action
+            for action in action_pool
+            if action.get("purpose") == selected_purpose
+        ]
+    has_executable_actions = bool(executable_actions or rows)
+    if planned_actions and not executable_actions:
+        st.caption("目前選擇的範圍沒有可執行任務。")
+    elif executable_actions:
+        selected_required = sum(1 for action in executable_actions if action.get("purpose") == "required")
+        selected_tracking = sum(1 for action in executable_actions if action.get("purpose") == "tracking")
+        st.caption(f"本次將執行：資料缺口補強 {selected_required} 項，追蹤更新 {selected_tracking} 項。")
+    cols = st.columns([0.62, 0.38])
+    rerun_report = cols[0].checkbox("完成後重新產生一份報告", value=True, key=f"followup_rerun_{report_id}")
+    news_limit = cols[1].number_input(
+        "補抓資料量",
+        min_value=10,
+        max_value=100,
+        value=30,
+        step=10,
+        key=f"followup_news_limit_{report_id}",
+    )
+    button_label = (
+        "補資料缺口並重跑"
+        if selected_purpose == "required"
+        else "執行追蹤更新並重跑"
+        if selected_purpose == "tracking"
+        else "執行全部補強並重跑"
+    )
+    if st.button(
+        button_label,
+        type="primary",
+        key=f"followup_run_{report_id}",
+        disabled=not has_executable_actions,
+    ):
+        with st.spinner("正在補資料、重算訊號並更新報告..."):
+            try:
+                result = api_post(
+                    f"/reports/{report_id}/follow-up/run",
+                    {
+                        "rerun_report": bool(rerun_report),
+                        "news_limit": int(news_limit),
+                        "purpose": selected_purpose,
+                        "force_refresh": bool(force_refresh),
+                    },
+                )
+                st.session_state["last_follow_up_result"] = result
+                new_report = result.get("rerun_report") or {}
+                selected_summary = (result.get("summary") or {}).get("selected") or {}
+                execution_summary = (result.get("summary") or {}).get("execution") or {}
+                summary_text = (
+                    f"執行 {selected_summary.get('total_count', len(result.get('actions') or []))} 項任務"
+                    f"（資料缺口 {selected_summary.get('required_count', 0)}、"
+                    f"追蹤更新 {selected_summary.get('tracking_count', 0)}）"
+                )
+                if execution_summary:
+                    summary_text += (
+                        f"，補入/更新 {execution_summary.get('stored_count', 0)} 筆資料"
+                        f"，錯誤 {execution_summary.get('error_count', 0)} 項"
+                    )
+                revalidation = candidate_revalidation_summary(result)
+                if revalidation["total"]:
+                    changed_label = "清單已更新" if revalidation["changed"] else "清單無變化"
+                    summary_text += (
+                        f"，候選重新驗證：正式 {revalidation['promoted_count']} 檔、"
+                        f"弱證據 {revalidation['weak_count']} 檔、待補 {revalidation['needs_evidence_count']} 檔"
+                        f"（{changed_label}）"
+                    )
+                    if revalidation["document_count"]:
+                        summary_text += (
+                            f"，驗證文件 {revalidation['document_count']} 筆"
+                            f"/查詢 {revalidation['document_query_count']} 組"
+                        )
+                    if revalidation["newly_promoted"]:
+                        summary_text += "，新升格：" + "、".join(revalidation["newly_promoted"][:6])
+                    if revalidation["no_longer_promoted"]:
+                        summary_text += "，降回觀察：" + "、".join(revalidation["no_longer_promoted"][:6])
+                if new_report.get("report_id"):
+                    st.session_state["follow_up_flash"] = {
+                        "message": f"{summary_text}，已產生新報告 #{new_report['report_id']}。",
+                        "result": result,
+                    }
+                    st.session_state["selected_report_id"] = int(new_report["report_id"])
+                    st.rerun()
+                else:
+                    st.success(f"{summary_text}，補強任務已完成。")
+            except requests.RequestException as exc:
+                st.error(f"自動補強失敗：{exc}")
+
+
+def render_follow_up_flash() -> None:
+    flash = st.session_state.get("follow_up_flash")
+    if not isinstance(flash, dict):
+        return
+    st.success(flash.get("message", "補強任務已完成。"))
+    result = flash.get("result") or {}
+    execution = ((result.get("summary") or {}).get("execution") or {})
+    items = execution.get("items") or []
+    if items:
+        with st.expander("查看本次補強結果"):
+            st.dataframe(
+                [
+                    {
+                        "任務": item.get("task"),
+                        "更新筆數": item.get("stored_count", 0),
+                        "錯誤數": item.get("error_count", 0),
+                        "來源": item.get("source") or "-",
+                    }
+                    for item in items
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+    revalidation = candidate_revalidation_summary(result)
+    if revalidation["total"]:
+        with st.expander("查看候選重新驗證結果", expanded=revalidation["changed"]):
+            cols = st.columns(4)
+            cols[0].metric("候選", revalidation["total"])
+            cols[1].metric("正式", revalidation["promoted_count"])
+            cols[2].metric("弱證據", revalidation["weak_count"])
+            cols[3].metric("待補", revalidation["needs_evidence_count"])
+            st.caption(
+                f"本次重新驗證使用 {revalidation['document_query_count']} 組公司/主題查詢、"
+                f"{revalidation['document_count']} 筆去重後文件。"
+            )
+            if revalidation["newly_promoted"]:
+                st.success("新升格為正式分析：" + "、".join(revalidation["newly_promoted"]))
+            if revalidation["no_longer_promoted"]:
+                st.warning("降回觀察/待補：" + "、".join(revalidation["no_longer_promoted"]))
+            st.dataframe(revalidation["rows"], width="stretch", hide_index=True)
+    if st.button("關閉補強結果", key="dismiss_follow_up_flash"):
+        st.session_state.pop("follow_up_flash", None)
+        st.rerun()
 
 
 def render_task_status(task_status: dict) -> None:
@@ -1187,6 +1686,7 @@ with tabs[0]:
                 render_reader_report(report_markdown, result)
             with result_tabs[1]:
                 render_quality_gate(result)
+                render_follow_up_controls(int(result["report_id"]), report_markdown)
                 with st.expander("資料來源概況"):
                     render_source_audit(result)
                 if result.get("candidate_whitelist"):
@@ -1209,6 +1709,7 @@ with tabs[0]:
 
 with tabs[1]:
     render_section_header("報告中心", "查看已產出的 HTML 報告與下載檔案。")
+    render_follow_up_flash()
     report_nav_col, report_preview_col = st.columns([0.30, 0.70], gap="large")
     with session_scope() as session:
         reports = ReportRepository(session).latest(20)
@@ -1221,9 +1722,13 @@ with tabs[1]:
         ]
     with report_nav_col:
         if report_options:
+            report_ids = [report["id"] for report in report_options]
+            if st.session_state.get("selected_report_id") not in report_ids:
+                st.session_state["selected_report_id"] = report_ids[0]
             selected_id = st.selectbox(
                 "選擇報告",
-                options=[report["id"] for report in report_options],
+                options=report_ids,
+                key="selected_report_id",
                 format_func=lambda report_id: next(
                     report["label"] for report in report_options if report["id"] == report_id
                 ),
@@ -1236,12 +1741,23 @@ with tabs[1]:
         report_title = "report"
         history_result = None
         if selected_id:
-            with session_scope() as session:
-                report = ReportRepository(session).get(int(selected_id))
-                report_markdown = report.markdown if report else None
-                report_title = report.title if report else "report"
-            if report_markdown:
+            try:
+                report_payload = api_get(f"/reports/{int(selected_id)}")
+                report_markdown = report_payload.get("markdown")
+                report_title = report_payload.get("title") or "report"
                 history_result = {
+                    "report_id": selected_id,
+                    "quality_gate": report_payload.get("quality_gate") or parse_quality_gate_from_markdown(report_markdown or ""),
+                    "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
+                    "candidate_audit": report_payload.get("candidate_audit") or {},
+                }
+            except requests.RequestException:
+                with session_scope() as session:
+                    report = ReportRepository(session).get(int(selected_id))
+                    report_markdown = report.markdown if report else None
+                    report_title = report.title if report else "report"
+            if report_markdown:
+                history_result = history_result or {
                     "report_id": selected_id,
                     "quality_gate": parse_quality_gate_from_markdown(report_markdown),
                 }
@@ -1273,6 +1789,11 @@ with tabs[1]:
             with history_tabs[1]:
                 if history_result:
                     render_quality_gate(history_result)
+                    render_follow_up_controls(int(selected_id), report_markdown)
+                    candidates = history_result.get("candidate_whitelist") or []
+                    if candidates:
+                        with st.expander("候選公司審計"):
+                            st.dataframe(candidate_rows(candidates), width="stretch", hide_index=True)
                 else:
                     st.info("此份報告尚無可解析的品質門檻。")
             with history_tabs[2]:

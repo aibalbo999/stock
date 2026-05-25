@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -15,7 +16,16 @@ from app.db.status import db_status
 from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest, ReportResponse
 from app.rag.vector_store import VectorStore
+from app.services.candidate_audit import candidate_audit_summary, render_candidate_audit_markdown
 from app.services.entity_mapping import EntityMapper
+from app.services.followup_actions import (
+    FollowUpActionPlanner,
+    TRACKING_FRESHNESS_THRESHOLDS,
+    execute_follow_up_actions,
+    render_follow_up_actions_markdown,
+    split_fresh_tracking_actions,
+    summarize_follow_up_execution,
+)
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import (
     AnalysisRunRepository,
@@ -77,6 +87,279 @@ def safe_update_run_success(run_id: int, payload: dict, report_id: int) -> bool:
         return True
 
 
+def request_from_report_record(topic: str, tickers: list[str], run_payload_json: str | None = None) -> ReportRequest:
+    payload = parse_run_payload(run_payload_json)
+    if payload:
+        request_payload = payload.get("request") if isinstance(payload, dict) else None
+        if isinstance(request_payload, dict):
+            return ReportRequest.model_validate(request_payload)
+    return ReportRequest(topic=topic, tickers=tickers)
+
+
+def parse_run_payload(run_payload_json: str | None) -> dict:
+    if not run_payload_json:
+        return {}
+    try:
+        payload = json.loads(run_payload_json)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def candidate_audit_from_run_payload(payload: dict) -> list[dict]:
+    candidates = payload.get("candidate_whitelist") or []
+    return candidates if isinstance(candidates, list) else []
+
+
+def append_candidate_audit_if_missing(markdown: str, candidates: list[dict], promoted_tickers: list[str]) -> str:
+    if not candidates or "\n## 候選公司審計" in f"\n{markdown}":
+        return markdown
+    return (
+        markdown.rstrip()
+        + "\n\n## 候選公司審計\n"
+        + render_candidate_audit_markdown(candidates, promoted_tickers)
+    )
+
+
+def load_report_follow_up_context(report_id: int) -> dict:
+    with session_scope() as session:
+        report = ReportRepository(session).get(report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        run = AnalysisRunRepository(session).get_by_report_id(report_id)
+        run_payload_json = run.payload_json if run is not None else None
+        try:
+            tickers = json.loads(report.tickers_json)
+        except json.JSONDecodeError:
+            tickers = []
+        markdown = report.markdown
+        topic = report.topic
+    run_payload = parse_run_payload(run_payload_json)
+    request = request_from_report_record(topic, tickers, run_payload_json)
+    candidates = candidate_audit_from_run_payload(run_payload)
+    markdown = append_candidate_audit_if_missing(markdown, candidates, request.tickers)
+    return {
+        "request": request,
+        "markdown": markdown,
+        "quality_gate": parse_quality_gate_from_markdown(markdown) or {},
+        "candidate_whitelist": candidates,
+        "run_payload": run_payload,
+    }
+
+
+def revalidate_candidate_whitelist(run_payload: dict, fallback_candidates: list[dict], limit: int = 500) -> dict:
+    if not fallback_candidates:
+        return {
+            "candidate_whitelist": [],
+            "promoted_tickers": [],
+            "newly_promoted": [],
+            "no_longer_promoted": [],
+            "status_changes": [],
+            "changed": False,
+        }
+    plan_payload = (run_payload.get("discovery") or {}).get("plan") or {
+        "subtopics": [],
+        "candidate_companies": fallback_candidates,
+    }
+    plan = TopicDiscoveryPlan.model_validate(plan_payload)
+    topic = ((run_payload.get("request") or {}).get("topic") or run_payload.get("topic") or "").strip()
+    queries = candidate_revalidation_queries(plan, topic)
+    with session_scope() as session:
+        repository = NewsRepository(session)
+        documents = collect_revalidation_documents(repository, queries, limit)
+    candidates = TopicDiscoveryService().validate_candidates(plan, documents)
+    candidate_payload = [candidate.model_dump() for candidate in candidates]
+    promoted_tickers = [
+        candidate["ticker"]
+        for candidate in candidate_payload
+        if candidate["status"] == "evidence_supported"
+    ]
+    previous_promoted = {
+        candidate.get("ticker")
+        for candidate in fallback_candidates
+        if candidate.get("status") == "evidence_supported"
+    }
+    previous_statuses = {
+        candidate.get("ticker"): candidate.get("status")
+        for candidate in fallback_candidates
+        if candidate.get("ticker")
+    }
+    current_statuses = {
+        candidate.get("ticker"): candidate.get("status")
+        for candidate in candidate_payload
+        if candidate.get("ticker")
+    }
+    promoted_set = set(promoted_tickers)
+    newly_promoted = sorted(promoted_set - previous_promoted)
+    no_longer_promoted = sorted(previous_promoted - promoted_set)
+    status_changes = [
+        {
+            "ticker": ticker,
+            "previous_status": previous_statuses.get(ticker),
+            "current_status": current_status,
+        }
+        for ticker, current_status in sorted(current_statuses.items())
+        if previous_statuses.get(ticker) != current_status
+    ]
+    return {
+        "candidate_whitelist": candidate_payload,
+        "promoted_tickers": promoted_tickers,
+        "document_query_count": len(queries),
+        "document_count": len(documents),
+        "newly_promoted": newly_promoted,
+        "no_longer_promoted": no_longer_promoted,
+        "status_changes": status_changes,
+        "changed": bool(newly_promoted or no_longer_promoted or status_changes),
+    }
+
+
+def candidate_revalidation_queries(plan: TopicDiscoveryPlan, topic: str = "", limit: int = 80) -> list[str]:
+    queries = []
+    for candidate in plan.candidate_companies:
+        keywords = " ".join(candidate.evidence_keywords[:4])
+        base_terms = " ".join(
+            term
+            for term in [topic, candidate.ticker, candidate.name, candidate.segment, keywords]
+            if term
+        )
+        if base_terms:
+            queries.append(base_terms)
+        if candidate.name and candidate.segment:
+            queries.append(f"{candidate.name} {candidate.segment}")
+        if candidate.ticker and topic:
+            queries.append(f"{candidate.ticker} {topic}")
+    for subtopic in plan.subtopics:
+        evidence_terms = " ".join(subtopic.required_evidence[:2])
+        if subtopic.name or evidence_terms:
+            queries.append(" ".join(term for term in [topic, subtopic.name, evidence_terms] if term))
+    return dedupe_strings(queries, limit)
+
+
+def collect_revalidation_documents(repository: NewsRepository, queries: list[str], limit: int) -> list:
+    documents = []
+    per_query_limit = max(10, min(40, limit // max(1, len(queries)))) if queries else limit
+    for query in queries:
+        documents.extend(repository.search_documents(query, limit=per_query_limit))
+        if len(documents) >= limit * 2:
+            break
+    if not documents:
+        documents = repository.latest_documents(limit)
+    return dedupe_documents(documents)[:limit]
+
+
+def dedupe_documents(documents: list) -> list:
+    deduped = {}
+    for document in documents:
+        key = document.id or document.source.url or document.title
+        deduped.setdefault(key, document)
+    return list(deduped.values())
+
+
+def dedupe_strings(values: list[str], limit: int) -> list[str]:
+    deduped = []
+    seen = set()
+    for value in values:
+        normalized = " ".join(str(value).split())
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+async def prepare_follow_up_report_context(
+    context: dict,
+    request: ReportRequest,
+    actions: list,
+) -> dict:
+    candidates = context.get("candidate_whitelist") or []
+    should_revalidate = bool(candidates) and any(
+        action.action_type in {"ingest_news", "rerun_discovery"} and action.purpose == "required"
+        for action in actions
+    )
+    if should_revalidate:
+        revalidation = revalidate_candidate_whitelist(context.get("run_payload") or {}, candidates)
+        candidate_payload = revalidation["candidate_whitelist"] or candidates
+        promoted_tickers = revalidation["promoted_tickers"] or request.tickers
+    else:
+        revalidation = {
+            "candidate_whitelist": candidates,
+            "promoted_tickers": request.tickers,
+            "newly_promoted": [],
+            "no_longer_promoted": [],
+            "status_changes": [],
+            "changed": False,
+        }
+        candidate_payload = candidates
+        promoted_tickers = request.tickers
+
+    rerun_request = request.model_copy(update={"tickers": promoted_tickers})
+    if revalidation.get("changed") and promoted_tickers:
+        await refresh_market_data_for_report(rerun_request)
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidate_payload) if candidate_payload else None
+    return {
+        "request": rerun_request,
+        "whitelist": whitelist,
+        "candidate_whitelist": candidate_payload,
+        "candidate_revalidation": revalidation,
+    }
+
+
+async def refresh_market_data_for_report(request: ReportRequest) -> dict:
+    today = today_taipei()
+    pipeline = IngestionPipeline()
+    tickers = request.tickers
+    return {
+        "market": await pipeline.refresh_market(
+            tickers,
+            today - timedelta(days=max(request.lookback_days, 120)),
+            today,
+            filter_allowed=False,
+        ),
+        "monthly_revenue": await pipeline.refresh_monthly_revenue(
+            tickers,
+            today - timedelta(days=450),
+            today,
+            filter_allowed=False,
+        ),
+        "financial_metrics": await pipeline.refresh_financial_metrics(
+            tickers,
+            today - timedelta(days=365 * 6),
+            today,
+            filter_allowed=False,
+        ),
+        "valuations": await pipeline.refresh_valuations(
+            tickers,
+            today - timedelta(days=max(request.lookback_days, 30)),
+            today,
+            filter_allowed=False,
+        ),
+    }
+
+
+def filter_follow_up_actions(actions: list, purpose: str) -> list:
+    if purpose == "all":
+        return actions
+    selected = [action for action in actions if action.purpose == purpose]
+    if selected and not any(action.action_type == "rerun_analysis" for action in selected):
+        rerun = next((action for action in actions if action.action_type == "rerun_analysis"), None)
+        if rerun is not None:
+            selected.append(rerun)
+    return selected
+
+
+def follow_up_action_summary(actions: list) -> dict:
+    required_count = sum(1 for action in actions if action.purpose == "required")
+    tracking_count = sum(1 for action in actions if action.purpose == "tracking")
+    return {
+        "required_count": required_count,
+        "tracking_count": tracking_count,
+        "total_count": len(actions),
+    }
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -117,6 +400,14 @@ class MaintenanceCleanupRequest(BaseModel):
     stale_running_before: Optional[datetime] = None
     runs_before: Optional[datetime] = None
     reports_before: Optional[datetime] = None
+
+
+class FollowUpRunRequest(BaseModel):
+    rerun_report: bool = True
+    news_limit: int = 30
+    purpose: Literal["all", "required", "tracking"] = "all"
+    record_noop: bool = False
+    force_refresh: bool = False
 
 
 class TopicDiscoveryRequest(BaseModel):
@@ -214,6 +505,7 @@ def query_type_label(source_type: str) -> dict:
         "candidate": ("候選公司查詢", "用於驗證候選公司與主題證據是否同時存在。"),
         "candidate_international": ("候選公司國際查詢", "用於查核台股候選公司在國際供應鏈中的證據。"),
         "coverage_gap": ("缺口補強查詢", "系統依拆解品質缺口自動補上的搜尋。"),
+        "query_quality_gap": ("查詢品質補強", "系統依籠統、未對齊或缺國際資料的 query 自動補上的搜尋。"),
         "international_context": ("國際背景查詢", "系統固定加入的國際供應鏈背景搜尋。"),
         "supplemental": ("補抓查詢", "第一次抓取後因證據不足自動追加的搜尋。"),
         "unknown": ("未分類查詢", "尚未分類的查詢來源。"),
@@ -226,7 +518,7 @@ def summarize_candidate_support(candidates) -> dict:
     total = len(candidates)
     supported = sum(1 for candidate in candidates if candidate.status == "evidence_supported")
     weak = sum(1 for candidate in candidates if candidate.status == "weak_evidence")
-    unsupported = total - supported
+    unsupported = sum(1 for candidate in candidates if candidate.status == "needs_evidence")
     exploration_supported_ratio = supported / total if total else 0
     return {
         "total": total,
@@ -240,6 +532,12 @@ def summarize_candidate_support(candidates) -> dict:
 
 
 def should_supplement_discovery_sources(source_audit: dict, candidate_support: dict) -> bool:
+    plan_quality = source_audit.get("plan_quality") or {}
+    query_quality = plan_quality.get("query_quality") or {}
+    if plan_quality and plan_quality.get("status") != "ready":
+        return True
+    if int(query_quality.get("generic_query_count") or 0) > 0:
+        return True
     if candidate_support["total"] == 0:
         return source_audit["dynamic_queries"]["stored_count"] < 8
     if candidate_support["supported_ratio"] < 0.6:
@@ -287,6 +585,7 @@ async def run_topic_discovery_ingestion(
     document_limit: int,
 ) -> dict:
     budget = discovery_query_budget(max_queries, payload.deep_analysis)
+    plan_quality = service.evaluate_plan_quality(plan)
     query_metadata = service.google_news_urls(
         plan,
         include_international=payload.include_international,
@@ -311,7 +610,7 @@ async def run_topic_discovery_ingestion(
     )
     remediation_rounds = []
     candidates = []
-    candidate_support = {"total": 0, "supported": 0, "unsupported": 0, "supported_ratio": 0}
+    candidate_support = {"total": 0, "supported": 0, "weak": 0, "unsupported": 0, "supported_ratio": 0}
     source_audit = build_source_audit(
         payload,
         urls,
@@ -322,6 +621,7 @@ async def run_topic_discovery_ingestion(
         max_queries,
         query_metadata,
     )
+    source_audit["plan_quality"] = plan_quality.model_dump()
 
     for round_index in range(budget["supplemental_rounds"] + 1):
         with session_scope() as session:
@@ -344,18 +644,20 @@ async def run_topic_discovery_ingestion(
             max_queries,
             query_metadata,
         )
+        source_audit["plan_quality"] = plan_quality.model_dump()
         if not should_supplement_discovery_sources(source_audit, candidate_support):
             break
         remaining_queries = max_queries - len(urls)
         if remaining_queries <= 0 or round_index >= budget["supplemental_rounds"]:
             break
-        supplemental_urls = service.supplemental_google_news_urls(
+        supplemental_metadata = service.supplemental_google_news_query_metadata(
             plan,
             candidates,
             include_international=payload.include_international,
             max_urls=min(remaining_queries, budget["supplemental_batch_size"]),
             existing_urls=urls,
         )
+        supplemental_urls = [item["url"] for item in supplemental_metadata]
         if not supplemental_urls:
             break
         supplemental_ingestion = await ingest_dynamic_news_urls(
@@ -365,14 +667,7 @@ async def run_topic_discovery_ingestion(
             end_date,
         )
         urls.extend(supplemental_urls)
-        query_metadata.extend(
-            {
-                "url": url,
-                "query": url,
-                "source_type": "supplemental",
-            }
-            for url in supplemental_urls
-        )
+        query_metadata.extend(supplemental_metadata)
         dynamic_query_ingestion.extend(supplemental_ingestion)
         remediation_rounds.append(
             {
@@ -581,14 +876,261 @@ def get_report(report_id: int) -> dict:
         report = ReportRepository(session).get(report_id)
         if report is None:
             raise HTTPException(status_code=404, detail="report not found")
+        run = AnalysisRunRepository(session).get_by_report_id(report_id)
+        run_payload = parse_run_payload(run.payload_json if run is not None else None)
+        candidates = candidate_audit_from_run_payload(run_payload)
+        try:
+            promoted_tickers = json.loads(report.tickers_json)
+        except json.JSONDecodeError:
+            promoted_tickers = []
         return {
             "id": report.id,
             "title": report.title,
             "topic": report.topic,
             "generated_at": report.generated_at.isoformat(),
-            "markdown": report.markdown,
+            "markdown": append_candidate_audit_if_missing(report.markdown, candidates, promoted_tickers),
             "quality_gate": parse_quality_gate_from_markdown(report.markdown),
+            "candidate_whitelist": candidates,
+            "candidate_audit": {
+                "summary": candidate_audit_summary(candidates, promoted_tickers),
+                "markdown": render_candidate_audit_markdown(candidates, promoted_tickers) if candidates else "",
+            },
         }
+
+
+@app.get("/reports/{report_id}/candidate-audit")
+def get_report_candidate_audit(report_id: int) -> dict:
+    with session_scope() as session:
+        report = ReportRepository(session).get(report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        run = AnalysisRunRepository(session).get_by_report_id(report_id)
+        run_payload = parse_run_payload(run.payload_json if run is not None else None)
+        candidates = candidate_audit_from_run_payload(run_payload)
+        try:
+            promoted_tickers = json.loads(report.tickers_json)
+        except json.JSONDecodeError:
+            promoted_tickers = []
+    return {
+        "report_id": report_id,
+        "promoted_tickers": promoted_tickers,
+        "summary": candidate_audit_summary(candidates, promoted_tickers),
+        "candidate_whitelist": candidates,
+        "markdown": render_candidate_audit_markdown(candidates, promoted_tickers),
+    }
+
+
+@app.get("/reports/{report_id}/follow-up/plan")
+def get_report_follow_up_plan(report_id: int) -> dict:
+    context = load_report_follow_up_context(report_id)
+    request = context["request"]
+    markdown = context["markdown"]
+    quality_gate = context["quality_gate"]
+    planner = FollowUpActionPlanner()
+    candidate_actions = planner.plan(request, quality_gate=quality_gate, markdown=markdown, apply_freshness=False)
+    actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
+    skipped_action_payloads = [{key: value for key, value in detail.items() if key != "freshness"} for detail in skipped_details]
+    return {
+        "report_id": report_id,
+        "request": request.model_dump(mode="json"),
+        "quality_gate_status": quality_gate.get("status"),
+        "summary": follow_up_action_summary(actions),
+        "freshness": {
+            "skipped_count": len(skipped_details),
+            "skipped_actions": skipped_action_payloads,
+            "skipped_details": skipped_details,
+            "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+            "message": "部分追蹤更新因資料仍在新鮮範圍內而略過。" if skipped_details else None,
+        },
+        "actions": [action.to_dict() for action in actions],
+        "markdown_preview": render_follow_up_actions_markdown(actions),
+    }
+
+
+@app.post("/reports/{report_id}/follow-up/run")
+async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequest] = None) -> dict:
+    payload = payload or FollowUpRunRequest()
+    context = load_report_follow_up_context(report_id)
+    request = context["request"]
+    markdown = context["markdown"]
+    quality_gate = context["quality_gate"]
+    planner = FollowUpActionPlanner()
+    candidate_actions = planner.plan(request, quality_gate=quality_gate, markdown=markdown, apply_freshness=False)
+    fresh_actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
+    skipped_action_payloads = [{key: value for key, value in detail.items() if key != "freshness"} for detail in skipped_details]
+    all_actions = candidate_actions if payload.force_refresh else fresh_actions
+    actions = filter_follow_up_actions(all_actions, payload.purpose)
+    available_summary = follow_up_action_summary(all_actions)
+    selected_summary = follow_up_action_summary(actions)
+    if not actions and not payload.record_noop:
+        return {
+            "report_id": report_id,
+            "run_id": None,
+            "status": "no_action_required",
+            "purpose": payload.purpose,
+            "summary": {
+                "available": available_summary,
+                "selected": selected_summary,
+            },
+            "freshness": {
+                "skipped_count": len(skipped_details),
+                "skipped_actions": skipped_action_payloads,
+                "skipped_details": skipped_details,
+                "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+            },
+            "available_actions": [action.to_dict() for action in all_actions],
+            "actions": [],
+            "results": {},
+        }
+    with session_scope() as session:
+        run = AnalysisRunRepository(session).start(
+            "follow_up_api",
+            {
+                "source_report_id": report_id,
+                "request": request.model_dump(mode="json"),
+                "quality_gate_before": quality_gate,
+                "available_actions": [action.to_dict() for action in all_actions],
+                "freshness": {
+                    "skipped_count": len(skipped_details),
+                    "skipped_actions": skipped_action_payloads,
+                    "skipped_details": skipped_details,
+                    "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+                },
+                "planned_actions": [action.to_dict() for action in actions],
+                "rerun_report": payload.rerun_report,
+                "purpose": payload.purpose,
+                "force_refresh": payload.force_refresh,
+            },
+        )
+        run_id = run.id
+    if not actions:
+        with session_scope() as session:
+            AnalysisRunRepository(session).update_payload(
+                run_id,
+                {
+                    "source_report_id": report_id,
+                    "request": request.model_dump(mode="json"),
+                    "quality_gate_before": quality_gate,
+                    "available_actions": [action.to_dict() for action in all_actions],
+                    "planned_actions": [],
+                    "purpose": payload.purpose,
+                    "force_refresh": payload.force_refresh,
+                    "summary": {
+                        "available": available_summary,
+                        "selected": selected_summary,
+                    },
+                    "freshness": {
+                        "skipped_count": len(skipped_details),
+                        "skipped_actions": skipped_action_payloads,
+                        "skipped_details": skipped_details,
+                        "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+                    },
+                    "status": "no_action_required",
+                },
+            )
+            AnalysisRunRepository(session).mark_success(run_id, report_id)
+        return {
+            "report_id": report_id,
+            "run_id": run_id,
+            "status": "no_action_required",
+            "purpose": payload.purpose,
+            "summary": {
+                "available": available_summary,
+                "selected": selected_summary,
+            },
+            "freshness": {
+                "skipped_count": len(skipped_details),
+                "skipped_actions": skipped_action_payloads,
+                "skipped_details": skipped_details,
+                "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+            },
+            "actions": [],
+            "results": {},
+        }
+    try:
+        execution = await execute_follow_up_actions(actions, request, news_limit=payload.news_limit)
+    except Exception as exc:
+        safe_mark_run_failed(run_id, str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    execution_summary = execution.get("execution_summary") or summarize_follow_up_execution(execution)
+    response_payload = {
+        "report_id": report_id,
+        "run_id": run_id,
+        "status": "executed",
+        "purpose": payload.purpose,
+        "force_refresh": payload.force_refresh,
+        "summary": {
+            "available": available_summary,
+            "selected": selected_summary,
+            "execution": execution_summary,
+        },
+        "freshness": {
+            "skipped_count": len(skipped_details),
+            "skipped_actions": skipped_action_payloads,
+            "skipped_details": skipped_details,
+            "thresholds": TRACKING_FRESHNESS_THRESHOLDS,
+        },
+        "actions": [action.to_dict() for action in actions],
+        "results": execution["results"],
+        "rerun_report": None,
+    }
+    if payload.rerun_report:
+        rerun_context = await prepare_follow_up_report_context(context, request, actions)
+        rerun_request = rerun_context["request"]
+        whitelist = rerun_context["whitelist"]
+        generator = ReportGenerator(whitelist=whitelist) if whitelist else ReportGenerator()
+        response = generator.generate(rerun_request)
+        refreshed_quality_gate = build_quality_gate_for_request(
+            rerun_request,
+            documents=generator.last_evidence_documents,
+        )
+        response = attach_quality_gate_to_report(response, refreshed_quality_gate)
+        with session_scope() as session:
+            new_report = ReportRepository(session).create(rerun_request, response)
+            new_report_id = new_report.id
+        response_payload["rerun_report"] = {
+            "report_id": new_report_id,
+            "request": rerun_request.model_dump(mode="json"),
+            "quality_gate": refreshed_quality_gate,
+            "candidate_revalidation": rerun_context["candidate_revalidation"],
+            "follow_up_section": render_follow_up_actions_markdown(
+                FollowUpActionPlanner().plan(
+                    rerun_request,
+                    quality_gate=refreshed_quality_gate,
+                    markdown=response.markdown,
+                )
+            ),
+        }
+    persisted_request = (response_payload["rerun_report"] or {}).get("request") or request.model_dump(mode="json")
+    persisted_candidates = (
+        (response_payload["rerun_report"] or {})
+        .get("candidate_revalidation", {})
+        .get("candidate_whitelist")
+        or context.get("candidate_whitelist")
+    )
+    with session_scope() as session:
+        AnalysisRunRepository(session).update_payload(
+            run_id,
+            {
+                "source_report_id": report_id,
+                "request": persisted_request,
+                "quality_gate_before": quality_gate,
+                "available_actions": [action.to_dict() for action in all_actions],
+                "freshness": response_payload["freshness"],
+                "planned_actions": [action.to_dict() for action in actions],
+                "execution": execution,
+                "rerun_report": response_payload["rerun_report"],
+                "candidate_whitelist": persisted_candidates,
+                "purpose": payload.purpose,
+                "force_refresh": payload.force_refresh,
+                "summary": response_payload["summary"],
+            },
+        )
+        AnalysisRunRepository(session).mark_success(
+            run_id,
+            (response_payload["rerun_report"] or {}).get("report_id") or report_id,
+        )
+    return response_payload
 
 
 @app.delete("/reports/{report_id}")

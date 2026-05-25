@@ -72,3 +72,162 @@ def test_report_html_renders_quality_warnings() -> None:
     assert "建議補強" in html
     assert "弱證據候選補抓" in html
     assert "quality-issues" in html
+
+
+def test_report_html_renders_follow_up_tasks() -> None:
+    helpers = load_report_helpers()
+    markdown = """
+# AI 產業鏈 自動分析報告
+
+## 自動補強任務
+| 任務 | 股票 | 優先級 | 頻率 | 觸發原因 |
+|---|---|---|---|---|
+| 刷新股價/量能 | 2330 | high | weekly | 領先訊號偏空，需重新檢查 |
+| 刷新月營收 | 2382 | high | monthly | 補齊月營收與公司文本 |
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert "系統會自動補強" in html
+    assert "刷新股價/量能" in html
+    assert "刷新月營收" in html
+    assert "task-card" in html
+
+
+def test_report_html_renders_candidate_audit_from_markdown() -> None:
+    helpers = load_report_helpers()
+    markdown = """
+# AI 產業鏈 自動分析報告
+
+## 候選公司審計
+| 項目 | 數量 |
+|---|---:|
+| AI 初始候選 | 3 |
+| 正式分析 | 1 |
+
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |
+|---|---|---|---:|---|---|
+| 2382 廣達 | 系統組裝 | 正式分析 | 2 篇 / 2 來源 | 通過正式分析門檻 | 納入正式分析 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞 |
+| 2308 台達電 | 電源與散熱 | 待補證據 | 0 篇 / 0 來源 | 缺少公司主題證據 | 重新補抓 |
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert "候選公司審計" in html
+    assert "正式分析 1" in html
+    assert "弱證據 1" in html
+    assert "待補證據 1" in html
+    assert "3324 雙鴻" in html
+    assert "audit-card audit-weak" in html
+
+
+def test_report_html_renders_candidate_audit_from_result_payload() -> None:
+    helpers = load_report_helpers()
+
+    html = helpers["report_html"](
+        "# AI 產業鏈 自動分析報告",
+        {
+            "report_id": 1,
+            "quality_gate": {},
+            "candidate_whitelist": [
+                {
+                    "ticker": "2382",
+                    "name": "廣達",
+                    "segment": "系統組裝",
+                    "status": "evidence_supported",
+                    "evidence_count": 2,
+                    "evidence_source_count": 2,
+                    "validation_reason": "通過正式分析門檻",
+                    "next_action": "納入正式分析",
+                    "evidence_sources": [
+                        {
+                            "title": "廣達 AI 伺服器訂單",
+                            "publisher": "測試新聞",
+                            "published_at": "2026-05-24",
+                        }
+                    ],
+                },
+                {
+                    "ticker": "3324",
+                    "name": "雙鴻",
+                    "segment": "散熱模組",
+                    "status": "weak_evidence",
+                    "evidence_count": 1,
+                    "evidence_source_count": 1,
+                    "validation_reason": "弱證據：來源不足",
+                    "next_action": "補抓公司新聞",
+                },
+            ],
+        },
+    )
+
+    assert "候選公司審計" in html
+    assert "候選清單</span><strong>2</strong>" in html
+    assert "2382 廣達" in html
+    assert "3324 雙鴻" in html
+    assert "廣達 AI 伺服器訂單" in html
+    assert "測試新聞" in html
+
+
+def test_candidate_revalidation_summary_counts_statuses() -> None:
+    helpers = load_report_helpers()
+
+    summary = helpers["candidate_revalidation_summary"](
+        {
+            "rerun_report": {
+                "candidate_revalidation": {
+                    "changed": True,
+                    "promoted_tickers": ["2382", "3324"],
+                    "document_query_count": 9,
+                    "document_count": 24,
+                    "newly_promoted": ["3324"],
+                    "no_longer_promoted": [],
+                    "status_changes": [
+                        {
+                            "ticker": "3324",
+                            "previous_status": "weak_evidence",
+                            "current_status": "evidence_supported",
+                        }
+                    ],
+                    "candidate_whitelist": [
+                        {
+                            "ticker": "2382",
+                            "name": "廣達",
+                            "segment": "系統組裝",
+                            "status": "evidence_supported",
+                            "evidence_count": 2,
+                            "evidence_source_count": 2,
+                        },
+                        {
+                            "ticker": "3324",
+                            "name": "雙鴻",
+                            "segment": "散熱模組",
+                            "status": "evidence_supported",
+                            "evidence_count": 3,
+                            "evidence_source_count": 2,
+                        },
+                        {
+                            "ticker": "2308",
+                            "name": "台達電",
+                            "segment": "電源與散熱",
+                            "status": "needs_evidence",
+                            "evidence_count": 0,
+                            "evidence_source_count": 0,
+                        },
+                    ],
+                }
+            }
+        }
+    )
+
+    assert summary["changed"] is True
+    assert summary["total"] == 3
+    assert summary["promoted_count"] == 2
+    assert summary["weak_count"] == 0
+    assert summary["needs_evidence_count"] == 1
+    assert summary["document_query_count"] == 9
+    assert summary["document_count"] == 24
+    assert summary["newly_promoted"] == ["3324"]
+    assert summary["status_changes"][0]["previous_status"] == "weak_evidence"
+    assert summary["rows"][1]["股票"] == "3324 雙鴻"

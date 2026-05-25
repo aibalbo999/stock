@@ -167,6 +167,7 @@ class FollowUpActionPlanner:
                     row.get("證據", ""),
                     row.get("排除 / 升格原因", ""),
                     row.get("下一步", ""),
+                    f"信心：{row.get('信心', '')}" if row.get("信心") else "",
                 ]
                 if item
             )
@@ -583,9 +584,28 @@ def follow_up_news_queries(action: FollowUpAction, request: ReportRequest) -> li
         if ticker:
             queries.append(f"{ticker} {request.topic} {context}".strip())
             queries.append(f"{ticker} 台股 {request.topic} 供應鏈 證據".strip())
+            if needs_confidence_sources(action.reason):
+                queries.append(f"{ticker} {request.topic} 法說會 近期 來源 日期".strip())
+                queries.append(f"{ticker} {request.topic} monthly revenue investor conference".strip())
     if context:
         queries.append(f"{request.topic} {context}".strip())
+        if needs_confidence_sources(action.reason):
+            queries.append(f"{request.topic} 近期 公司來源 發布日期 多來源".strip())
     return dedupe_queries(queries, limit=8)
+
+
+def needs_confidence_sources(reason: str) -> bool:
+    return any(
+        keyword in reason
+        for keyword in [
+            "證據信心",
+            "信心：",
+            "有日期",
+            "近期",
+            "不同發布者",
+            "日期來源",
+        ]
+    )
 
 
 def compact_query_text(text: str) -> str:

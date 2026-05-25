@@ -735,6 +735,50 @@ def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
     assert candidates[0].evidence_confidence_score < 75
 
 
+def test_validate_candidates_requires_high_confidence_before_promotion() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "2330",
+              "name": "台積電",
+              "segment": "晶圓代工",
+              "rationale": "CoWoS",
+              "evidence_keywords": ["CoWoS"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台積電 CoWoS 產能擴張",
+            text="台積電 CoWoS 產能擴張支撐 AI 需求。",
+            publisher="test-a",
+            published_at=None,
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電先進封裝擴產",
+            text="台積電 CoWoS 與先進封裝需求升溫。",
+            publisher="test-b",
+            published_at=None,
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].evidence_count == 2
+    assert candidates[0].evidence_source_count == 2
+    assert candidates[0].evidence_confidence_score < 75
+    assert candidates[0].status == "weak_evidence"
+    assert candidates[0].promotion_eligible is False
+    assert "篇數與來源數達標" in candidates[0].validation_reason
+    assert "有日期、近期" in candidates[0].next_action
+
+
 def test_validate_candidates_requires_company_entity_evidence() -> None:
     service = TopicDiscoveryService()
     plan = TopicDiscoveryService.parse_plan(

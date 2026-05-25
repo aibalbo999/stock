@@ -95,11 +95,11 @@ def test_candidate_audit_becomes_required_follow_up_actions(monkeypatch) -> None
 | AI 初始候選 | 2 |
 | 正式分析 | 1 |
 
-| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |
-|---|---|---|---:|---|---|
-| 2382 廣達 | 系統組裝 | 正式分析 | 2 篇 / 2 來源 | 通過正式分析門檻 | 納入正式分析 |
-| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 |
-| 2308 台達電 | 電源與散熱 | 待補證據 | 0 篇 / 0 來源 | 缺少公司主題證據 | 重新補抓公司層級來源 |
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 2382 廣達 | 系統組裝 | 正式分析 | 2 篇 / 2 來源 | 通過正式分析門檻 | 納入正式分析 | 高 88 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 | 中 52 |
+| 2308 台達電 | 電源與散熱 | 待補證據 | 0 篇 / 0 來源 | 缺少公司主題證據 | 重新補抓公司層級來源 | 未評分 |
 """
 
     actions = FollowUpActionPlanner().plan(
@@ -115,6 +115,7 @@ def test_candidate_audit_becomes_required_follow_up_actions(monkeypatch) -> None
     news_action = next(action for action in actions if action.action_type == "ingest_news" and action.tickers == ("3324",))
     assert "股票：3324 雙鴻" in news_action.reason
     assert "產業位置：散熱模組" in news_action.reason
+    assert "信心：中 52" in news_action.reason
 
 
 def test_candidate_follow_up_news_queries_are_targeted() -> None:
@@ -132,6 +133,24 @@ def test_candidate_follow_up_news_queries_are_targeted() -> None:
     assert queries
     assert any("3324" in query and "AI 產業鏈" in query for query in queries)
     assert any("散熱模組" in query for query in queries)
+
+
+def test_candidate_follow_up_queries_prioritize_fresh_sources_for_low_confidence() -> None:
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：3324 雙鴻；產業位置：散熱模組；"
+        "弱證據：篇數與來源數達標，但證據信心只有 60 分，需補近期或有日期來源；信心：中 60",
+        ("3324",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    queries = follow_up_news_queries(action, ReportRequest(topic="AI 產業鏈", tickers=["2382"]))
+
+    assert any("法說會" in query and "近期" in query for query in queries)
+    assert any("investor conference" in query for query in queries)
+    assert any("發布日期" in query and "多來源" in query for query in queries)
 
 
 def test_execute_follow_up_news_uses_targeted_google_queries(monkeypatch) -> None:

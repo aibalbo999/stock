@@ -690,6 +690,7 @@ class TopicDiscoveryService:
             source_count = self._evidence_source_count(evidence_documents)
             evidence_sources = self._candidate_evidence_sources(evidence_documents)
             confidence = self._candidate_evidence_confidence(evidence_documents, source_count)
+            status = self._candidate_status(len(evidence_documents), source_count, confidence["score"])
             validated.append(
                 ValidatedCandidate(
                     ticker=candidate.ticker,
@@ -704,11 +705,14 @@ class TopicDiscoveryService:
                     evidence_confidence_score=confidence["score"],
                     evidence_confidence_label=confidence["label"],
                     latest_evidence_date=confidence["latest_evidence_date"],
-                    status=self._candidate_status(len(evidence_documents), source_count),
-                    validation_reason=self._candidate_validation_reason(len(evidence_documents), source_count),
-                    next_action=self._candidate_next_action(len(evidence_documents), source_count),
-                    promotion_eligible=self._candidate_status(len(evidence_documents), source_count)
-                    == "evidence_supported",
+                    status=status,
+                    validation_reason=self._candidate_validation_reason(
+                        len(evidence_documents),
+                        source_count,
+                        confidence["score"],
+                    ),
+                    next_action=self._candidate_next_action(len(evidence_documents), source_count, confidence["score"]),
+                    promotion_eligible=status == "evidence_supported",
                 )
             )
         return validated
@@ -811,25 +815,29 @@ class TopicDiscoveryService:
         return "低"
 
     @staticmethod
-    def _candidate_status(evidence_count: int, source_count: int) -> str:
+    def _candidate_status(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
         if evidence_count == 0:
             return "needs_evidence"
-        if evidence_count >= 2 and source_count >= 2:
+        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
             return "evidence_supported"
         return "weak_evidence"
 
     @staticmethod
-    def _candidate_validation_reason(evidence_count: int, source_count: int) -> str:
+    def _candidate_validation_reason(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
+        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
+            return "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。"
         if evidence_count >= 2 and source_count >= 2:
-            return "通過正式分析門檻：至少 2 篇公司主題證據，且來自 2 個以上來源。"
+            return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分，需補近期或有日期來源。"
         if evidence_count > 0:
             return f"弱證據：目前只有 {evidence_count} 篇、{source_count} 個來源，避免單一來源造成誤判。"
         return "待補證據：尚未找到公司實體與主題上下文同時成立的來源。"
 
     @staticmethod
-    def _candidate_next_action(evidence_count: int, source_count: int) -> str:
-        if evidence_count >= 2 and source_count >= 2:
+    def _candidate_next_action(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
+        if evidence_count >= 2 and source_count >= 2 and confidence_score >= 75:
             return "納入正式分析。"
+        if evidence_count >= 2 and source_count >= 2:
+            return "補抓有日期、近期且不同發布者的公司與主題來源後再驗證。"
         if evidence_count > 0:
             return "補抓公司新聞、法說會、月營收與國際供應鏈資料後再驗證。"
         return "用公司名稱、代號、產業位置與主題關鍵字重新補抓來源。"

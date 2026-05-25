@@ -11,9 +11,9 @@ from app.core.config import get_settings
 
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
-MAX_RETRIES_PER_KEY = 2
-BASE_RETRY_DELAY_SECONDS = 0.5
-MAX_RETRY_DELAY_SECONDS = 5.0
+DEFAULT_MAX_RETRIES_PER_KEY = 2
+DEFAULT_BASE_RETRY_DELAY_SECONDS = 0.5
+DEFAULT_MAX_RETRY_DELAY_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -88,7 +88,8 @@ class LLMClient:
         errors: list[str] = []
         for key_index, api_key in self.rotator.candidates():
             should_stop = False
-            for attempt in range(MAX_RETRIES_PER_KEY + 1):
+            max_retries = self.max_retries_per_key
+            for attempt in range(max_retries + 1):
                 try:
                     text = self._call_gemini(prompt, api_key)
                     if text:
@@ -101,13 +102,13 @@ class LLMClient:
                     if status not in ROTATABLE_HTTP_STATUSES:
                         should_stop = True
                         break
-                    if status in RETRYABLE_HTTP_STATUSES and attempt < MAX_RETRIES_PER_KEY:
+                    if status in RETRYABLE_HTTP_STATUSES and attempt < max_retries:
                         self._sleep_before_retry(exc.response, attempt)
                         continue
                     break
                 except httpx.HTTPError as exc:
                     errors.append(f"key[{key_index}] {exc.__class__.__name__} attempt {attempt + 1}")
-                    if attempt < MAX_RETRIES_PER_KEY:
+                    if attempt < max_retries:
                         self._sleep_before_retry(None, attempt)
                         continue
                     break
@@ -125,16 +126,27 @@ class LLMClient:
     def _sleep_before_retry(self, response: Optional[httpx.Response], attempt: int) -> None:
         sleep(self._retry_delay_seconds(response, attempt))
 
-    @staticmethod
-    def _retry_delay_seconds(response: Optional[httpx.Response], attempt: int) -> float:
+    def _retry_delay_seconds(self, response: Optional[httpx.Response], attempt: int) -> float:
         if response is not None:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
-                    return min(MAX_RETRY_DELAY_SECONDS, max(0.0, float(retry_after)))
+                    return min(self.max_retry_delay_seconds, max(0.0, float(retry_after)))
                 except ValueError:
                     pass
-        return min(MAX_RETRY_DELAY_SECONDS, BASE_RETRY_DELAY_SECONDS * (2**attempt))
+        return min(self.max_retry_delay_seconds, self.base_retry_delay_seconds * (2**attempt))
+
+    @property
+    def max_retries_per_key(self) -> int:
+        return max(0, int(getattr(self.settings, "llm_max_retries_per_key", DEFAULT_MAX_RETRIES_PER_KEY)))
+
+    @property
+    def base_retry_delay_seconds(self) -> float:
+        return max(0.0, float(getattr(self.settings, "llm_base_retry_delay_seconds", DEFAULT_BASE_RETRY_DELAY_SECONDS)))
+
+    @property
+    def max_retry_delay_seconds(self) -> float:
+        return max(0.0, float(getattr(self.settings, "llm_max_retry_delay_seconds", DEFAULT_MAX_RETRY_DELAY_SECONDS)))
 
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata(

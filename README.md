@@ -20,7 +20,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 前端介面：Streamlit 提供分析、報告、資料、設定頁；報告以 HTML 卡片式閱讀為主。
 - 排程與背景任務：Celery + Redis 支援背景產報與定時排程。
 - 時區：系統顯示時間以 Asia/Taipei 為準。
-- LLM 韌性：Gemini 遇到 429/500/502/503/504 會先短暫重試，再輪調下一把 key；全部失敗才降級為規則引擎草稿。
+- LLM 韌性：Gemini 遇到 429/500/502/503/504 會依 `.env` 重試策略短暫重試，再輪調下一把 key；全部失敗才降級為規則引擎草稿。
 
 ## 核心安全護欄
 
@@ -66,6 +66,9 @@ LOCAL_LLM_MODEL=gemma-4-31b
 GOOGLE_API_KEYS=key1,key2,key3,key4,key5
 CANDIDATE_CONFIDENCE_HIGH_THRESHOLD=75
 CANDIDATE_CONFIDENCE_MEDIUM_THRESHOLD=45
+LLM_MAX_RETRIES_PER_KEY=2
+LLM_BASE_RETRY_DELAY_SECONDS=0.5
+LLM_MAX_RETRY_DELAY_SECONDS=5.0
 ```
 
 啟動 API：

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     finmind_token: Optional[str] = None
     candidate_confidence_high_threshold: int = 75
     candidate_confidence_medium_threshold: int = 45
+    llm_max_retries_per_key: int = 2
+    llm_base_retry_delay_seconds: float = 0.5
+    llm_max_retry_delay_seconds: float = 5.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

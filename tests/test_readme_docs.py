@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.followup_actions import FOLLOW_UP_ACTION_LABELS, TRACKING_FRESHNESS_THRESHOLDS
-from app.services.llm_client import RETRYABLE_HTTP_STATUSES
+from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 
 
 def test_readme_documents_follow_up_freshness_thresholds() -> None:
@@ -41,3 +41,6 @@ def test_readme_documents_llm_retry_statuses() -> None:
     for status in sorted(RETRYABLE_HTTP_STATUSES):
         assert str(status) in readme
     assert "輪調下一把 key" in readme
+    assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
+    assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
+    assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme

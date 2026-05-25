@@ -1,6 +1,6 @@
 from app.core.config import Settings
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
-from app.services.llm_client import MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
+from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 from app.services.service_status import _redact_url, service_status
 
 
@@ -16,7 +16,9 @@ def test_service_status_shape() -> None:
     assert "finmind" in status
     assert "vector_store" in status
     assert status["gemini"]["retryable_http_statuses"] == sorted(RETRYABLE_HTTP_STATUSES)
-    assert status["gemini"]["max_retries_per_key"] == MAX_RETRIES_PER_KEY
+    assert status["gemini"]["max_retries_per_key"] == DEFAULT_MAX_RETRIES_PER_KEY
+    assert status["gemini"]["base_retry_delay_seconds"] == 0.5
+    assert status["gemini"]["max_retry_delay_seconds"] == 5.0
     assert status["candidate_confidence"]["high_threshold"] == HIGH_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["medium_threshold"] == MEDIUM_CONFIDENCE_THRESHOLD
 
@@ -30,3 +32,11 @@ def test_candidate_confidence_threshold_settings_defaults() -> None:
 
     assert settings.candidate_confidence_high_threshold == HIGH_CONFIDENCE_THRESHOLD
     assert settings.candidate_confidence_medium_threshold == MEDIUM_CONFIDENCE_THRESHOLD
+
+
+def test_llm_retry_settings_defaults() -> None:
+    settings = Settings()
+
+    assert settings.llm_max_retries_per_key == DEFAULT_MAX_RETRIES_PER_KEY
+    assert settings.llm_base_retry_delay_seconds == 0.5
+    assert settings.llm_max_retry_delay_seconds == 5.0

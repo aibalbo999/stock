@@ -1221,6 +1221,46 @@ def render_quality_gate(result: dict) -> None:
             st.markdown(f"- {action}")
 
 
+def render_company_data_audit(report_id: int) -> None:
+    try:
+        audit = api_get(f"/reports/{report_id}/company-data-audit")
+    except requests.RequestException as exc:
+        st.warning(f"個股資料足夠性檢查失敗：{exc}")
+        return
+    summary = audit.get("summary") or {}
+    cols = st.columns(4)
+    cols[0].metric("檢查公司", summary.get("total", 0))
+    cols[1].metric("足夠", summary.get("sufficient", 0))
+    cols[2].metric("部分足夠", summary.get("partial", 0))
+    cols[3].metric("不足", summary.get("insufficient", 0))
+    rows = []
+    status_labels = {
+        "sufficient": "足夠",
+        "partial": "部分足夠",
+        "insufficient": "不足",
+    }
+    for row in audit.get("rows") or []:
+        evidence = row.get("evidence") or {}
+        rows.append(
+            {
+                "股票": row.get("ticker"),
+                "狀態": status_labels.get(row.get("status"), row.get("status")),
+                "股價": (row.get("price") or {}).get("latest_date"),
+                "月營收": (row.get("monthly_revenue") or {}).get("latest_date"),
+                "財報期數": (row.get("financial_metrics") or {}).get("periods"),
+                "估值": (row.get("valuation") or {}).get("latest_date"),
+                "報告文本": evidence.get("report_text_count"),
+                "入庫文本": evidence.get("db_text_count"),
+                "AI歸因": evidence.get("effective_finding_count"),
+                "缺口": "；".join(row.get("missing") or []) or "無",
+            }
+        )
+    if rows:
+        st.dataframe(rows, width="stretch", hide_index=True)
+    for note in audit.get("notes") or []:
+        st.caption(note)
+
+
 def render_follow_up_controls(report_id: int, markdown: str) -> None:
     rows = markdown_table_rows(markdown, "自動補強任務", limit=20)
     planned_actions = []
@@ -1724,6 +1764,7 @@ with tabs[0]:
                 render_reader_report(report_markdown, result)
             with result_tabs[1]:
                 render_quality_gate(result)
+                render_company_data_audit(int(result["report_id"]))
                 render_follow_up_controls(int(result["report_id"]), report_markdown)
                 with st.expander("資料來源概況"):
                     render_source_audit(result)
@@ -1827,6 +1868,7 @@ with tabs[1]:
             with history_tabs[1]:
                 if history_result:
                     render_quality_gate(history_result)
+                    render_company_data_audit(int(selected_id))
                     render_follow_up_controls(int(selected_id), report_markdown)
                     candidates = history_result.get("candidate_whitelist") or []
                     if candidates:

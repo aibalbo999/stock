@@ -555,6 +555,28 @@ def test_report_quality_gate_warns_when_llm_falls_back() -> None:
     assert any("檢查 LLM API key" in action for action in gate["remediation_actions"])
 
 
+def test_report_company_data_audit_endpoint(monkeypatch) -> None:
+    class FakeSession:
+        pass
+
+    @contextmanager
+    def fake_session_scope():
+        yield FakeSession()
+
+    def fake_audit(session, report_id):
+        assert isinstance(session, FakeSession)
+        assert report_id == 7
+        return {"status": "needs_attention", "rows": [{"ticker": "3017", "status": "partial"}]}
+
+    monkeypatch.setattr(main, "session_scope", fake_session_scope)
+    monkeypatch.setattr(main, "audit_report_company_data", fake_audit)
+
+    response = TestClient(main.app).get("/reports/7/company-data-audit")
+
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["ticker"] == "3017"
+
+
 def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

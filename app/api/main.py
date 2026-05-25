@@ -18,6 +18,7 @@ from app.models.schemas import ReportRequest, ReportResponse
 from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import candidate_audit_summary, render_candidate_audit_markdown
 from app.services.candidate_confidence import is_low_formal_confidence
+from app.services.company_data_audit import audit_report_company_data
 from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import (
     FollowUpActionPlanner,
@@ -934,6 +935,15 @@ def get_report_candidate_audit(report_id: int) -> dict:
         "candidate_whitelist": candidates,
         "markdown": render_candidate_audit_markdown(candidates, promoted_tickers),
     }
+
+
+@app.get("/reports/{report_id}/company-data-audit")
+def get_report_company_data_audit(report_id: int) -> dict:
+    with session_scope() as session:
+        try:
+            return audit_report_company_data(session, report_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/reports/{report_id}/follow-up/plan")

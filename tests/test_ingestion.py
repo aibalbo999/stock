@@ -1,8 +1,9 @@
 import asyncio
 from datetime import date
 
+from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher
-from app.models.schemas import ReportRequest
+from app.models.schemas import MarketSnapshot, ReportRequest
 from app.services.ingestion import IngestionPipeline
 
 
@@ -118,6 +119,30 @@ def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:
     assert calls["monthly_tickers"] == ["2330"]
     assert calls["financial_tickers"] == ["2330"]
     assert calls["valuation_tickers"] == ["2330"]
+
+
+def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
+    pipeline = IngestionPipeline()
+
+    async def fake_histories(self, tickers: list[str], start_date: date, end_date: date):
+        return {
+            ticker: [MarketSnapshot(ticker=ticker, trade_date=end_date, close=100.0)]
+            for ticker in tickers
+        }, []
+
+    monkeypatch.setattr(MarketDataClient, "get_price_histories_with_errors", fake_histories)
+
+    result = asyncio.run(
+        pipeline.refresh_market(
+            ["3017", "2059"],
+            date(2026, 5, 1),
+            date(2026, 5, 25),
+            filter_allowed=False,
+        )
+    )
+
+    assert result["requested_tickers"] == ["3017", "2059"]
+    assert result["stored_history_count"] == 2
 
 
 def test_ingestion_filter_removes_old_and_low_quality_political_noise() -> None:

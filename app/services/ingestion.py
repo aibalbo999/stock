@@ -90,8 +90,10 @@ class IngestionPipeline:
         tickers: list[str],
         start_date: date,
         end_date: date,
+        filter_allowed: bool = True,
     ) -> dict:
-        allowed = self.mapper.filter_allowed_tickers(tickers or sorted(self.mapper.whitelist.allowed_tickers()))
+        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
+        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
         histories, errors = await MarketDataClient().get_price_histories_with_errors(
             allowed,
             start_date,

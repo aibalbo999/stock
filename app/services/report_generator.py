@@ -480,7 +480,10 @@ class ReportGenerator:
         if watch:
             for item in watch:
                 missing = "、".join(item["quality"]["missing"]) if item["quality"]["missing"] else "等待新證據"
-                lines.append(f"- {item['label']}：{item['decision']}；下一步補查 {missing}。")
+                lines.append(
+                    f"- {item['label']}：{item['decision']}；下一步補查 {missing}。"
+                    f"重新評估條件：{self._recheck_trigger_text(item)}"
+                )
         else:
             lines.append("- 目前沒有待補資料名單。")
 
@@ -489,11 +492,31 @@ class ReportGenerator:
             for item in avoid:
                 lines.append(
                     f"- {item['label']}：降值風險 {item['estimate']['downside_pct']}%，"
-                    "暫不列入買進研究。"
+                    f"暫不列入買進研究。重新評估條件：{self._recheck_trigger_text(item)}"
                 )
         else:
             lines.append("- 目前沒有明確避開名單。")
         return "\n".join(lines)
+
+    @staticmethod
+    def _recheck_trigger_text(context: dict) -> str:
+        estimate = context.get("estimate") or {}
+        quality = context.get("quality") or {}
+        signal: LeadingSignal | None = context.get("leading_signal")
+        triggers = []
+        if quality.get("missing"):
+            triggers.append("補齊" + "、".join(quality["missing"][:3]))
+        if signal and signal.direction == "偏空":
+            triggers.append("領先訊號由偏空轉為中性以上")
+        elif signal and signal.direction == "中性":
+            triggers.append("領先訊號轉偏多且量價/營收同步改善")
+        elif not signal or not signal.has_signal_data:
+            triggers.append("補齊股價歷史、月營收或估值後重算領先訊號")
+        if estimate.get("downside_pct", 0) > 5:
+            triggers.append("降值風險降至 5% 以下")
+        if estimate.get("upside_pct", 0) <= 10:
+            triggers.append("升值情境重新站上 10%")
+        return "；".join(triggers[:4]) if triggers else "等待新來源確認投資假設延續"
 
     def _render_executive_snapshot(
         self,
@@ -957,7 +980,14 @@ class ReportGenerator:
                     "downside": estimate["downside_pct"],
                     "valuation": self._valuation_position_label(valuation, peer_valuation_summary),
                     "confidence": self._financial_confidence_label(ticker_metrics, valuation, revenue),
-                    "reminder": self._company_matrix_reminder(estimate, quality, related_findings, valuation, peer_valuation_summary),
+                    "reminder": self._company_matrix_reminder(
+                        estimate,
+                        quality,
+                        related_findings,
+                        valuation,
+                        peer_valuation_summary,
+                        signal,
+                    ),
                 }
             )
         rows.sort(key=lambda row: (row["decision"] != "可小額分批研究", -row["upside"], row["downside"]))
@@ -1611,9 +1641,12 @@ class ReportGenerator:
         related_findings,
         valuation: ValuationMetric | None,
         peer_summary: dict[str, float | None] | None = None,
+        leading_signal: LeadingSignal | None = None,
     ) -> str:
         if quality.get("grade") != "supported":
             return "先補資料：" + "、".join(quality.get("missing", [])[:2])
+        if leading_signal and leading_signal.direction == "偏空":
+            return "等領先訊號修復"
         valuation_label = ReportGenerator._valuation_position_label(valuation, peer_summary)
         if estimate["downside_pct"] > 5:
             return f"先追蹤降值風險 {estimate['downside_pct']}%"

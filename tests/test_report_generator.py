@@ -520,6 +520,7 @@ def test_action_checklist_groups_research_and_watch_items() -> None:
     assert "2330 台積電：可看資金控管建議中的首筆配置" in checklist
     assert "### 待補資料 / 觀察" in checklist
     assert "2382 廣達：資料不足" in checklist
+    assert "重新評估條件" in checklist
 
 
 def test_final_potential_screen_reports_upside_and_downside_thresholds() -> None:
@@ -1200,6 +1201,28 @@ def test_bearish_leading_signal_blocks_actionable_rating() -> None:
 
     assert rating == "觀察 / 等風險降低"
     assert "領先訊號偏空" in reason
+
+
+def test_recheck_trigger_text_uses_signal_risk_and_missing_data() -> None:
+    signal = LeadingSignal(
+        ticker="2330",
+        score=-6,
+        upside_bonus=0,
+        downside_penalty=6,
+        bearish_factors=["20 日股價轉弱 -12.0%"],
+    )
+
+    trigger = ReportGenerator._recheck_trigger_text(
+        {
+            "estimate": {"upside_pct": 18, "downside_pct": 9},
+            "quality": {"missing": ["缺估值"]},
+            "leading_signal": signal,
+        }
+    )
+
+    assert "補齊缺估值" in trigger
+    assert "領先訊號由偏空轉為中性以上" in trigger
+    assert "降值風險降至 5% 以下" in trigger
 
 
 def test_render_leading_signal_check_outputs_table() -> None:

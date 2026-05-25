@@ -25,6 +25,22 @@ class NewsArticle(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class CompanyFiling(Base):
+    __tablename__ = "company_filings"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    document_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    publisher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    published_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class GeneratedReport(Base):
     __tablename__ = "generated_reports"
 

@@ -11,6 +11,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 查詢自動補強：若 query 太籠統、未對齊研究證據/風險，或缺少有效國際查詢，系統會產生 `query_quality_gap` 補強查詢。
 - 拆解自我修復：若第一次拆解缺少必要研究面向，系統會把品質缺口交回 AI 自動修正一次，並只採用分數更高的版本。
 - 資料抓取：支援固定 RSS、Google News RSS 動態 query、手動補充新聞與市場資料刷新。
+- 公司公開文件：可手動匯入或依股票自動搜尋年報、法說會、公開說明書與重大訊息線索，並寫入 RAG 與個股資料審計。
 - RAG/檢索：新聞文本進向量庫，報告生成時會取回相關證據。
 - 白名單與候選驗證：靜態白名單仍是安全底線；AI 自組候選清單需通過來源驗證後才會升格。
 - 弱證據分級：單一文章、單一來源或證據信心低於 75 分只會標成 `weak_evidence`，不會直接進正式分析股票。
@@ -40,6 +41,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 正式分析股票需至少 2 筆證據、來自 2 個來源，且證據信心分數達 75 分；否則維持弱證據或待補資料。
 - 證據信心分數會綜合證據篇數、來源家數、來源日期覆蓋與最新證據日期；低信心候選會自動補抓近期、有日期、多來源資料。
 - 每項風險與財務/市場推論都應附來源與日期；缺證據時輸出「目前無足夠數據判斷」。
+- 個股分析應優先採用公司原始公開文件、財報與月營收，再輔以新聞與產業資料；若缺公司文件，審計會要求補抓。
 - 品質門檻不通過時，報告不應被視為買入清單。
 
 ## 快速開始
@@ -102,6 +104,9 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 - `GET /news`
 - `POST /news/fetch`
 - `POST /ingest/manual`
+- `POST /company-filings/manual`
+- `POST /company-filings/fetch`
+- `GET /company-filings`
 - `POST /discovery/topic-plan`
 - `POST /discovery/ingest`
 - `POST /discovery/candidate-whitelist`
@@ -144,6 +149,7 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 目前自動補強任務名稱包含：
 
 - 補抓資料源
+- 補抓公司公開文件
 - 刷新股價/量能
 - 刷新月營收
 - 刷新五年財務

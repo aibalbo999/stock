@@ -24,6 +24,7 @@ from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.persistence import (
+    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -90,9 +91,17 @@ class ReportGenerator:
         try:
             with session_scope() as session:
                 db_documents = NewsRepository(session).latest_documents(limit=300)
+                company_filing_documents = [
+                    CompanyFilingRepository.to_news_document(document)
+                    for document in CompanyFilingRepository(session).latest_by_tickers(
+                        self.mapper.filter_allowed_tickers(request.tickers),
+                        limit_per_ticker=6,
+                    )
+                ]
         except Exception:
             db_documents = []
-        documents = self._dedupe_documents([*evidence_docs, *db_documents])
+            company_filing_documents = []
+        documents = self._dedupe_documents([*evidence_docs, *db_documents, *company_filing_documents])
         ranked = self._rank_evidence_documents(request, documents)
         if ranked:
             return ranked[: request.evidence_limit]

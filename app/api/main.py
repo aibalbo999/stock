@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.time import today_taipei
+from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.status import db_status
@@ -31,6 +32,7 @@ from app.services.followup_actions import (
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import (
     AnalysisRunRepository,
+    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -440,6 +442,17 @@ class ManualNewsIngest(BaseModel):
     title: str
     text: str
     publisher: str = "manual"
+    published_at: Optional[date] = None
+    url: Optional[str] = None
+
+
+class ManualCompanyFilingIngest(BaseModel):
+    ticker: str
+    title: str
+    text: str
+    company_name: str = ""
+    document_type: str = "company_disclosure"
+    publisher: str = "manual company filing"
     published_at: Optional[date] = None
     url: Optional[str] = None
 
@@ -900,6 +913,60 @@ def ingest_manual(payload: ManualNewsIngest) -> dict:
             [match.model_dump(mode="json") for match in matches],
         )
     return {"document_id": document.id, "entity_matches": [match.model_dump() for match in matches]}
+
+
+@app.post("/company-filings/manual")
+def ingest_company_filing_manual(payload: ManualCompanyFilingIngest) -> dict:
+    document = CompanyFilingFetcher.from_manual_text(
+        ticker=payload.ticker,
+        company_name=payload.company_name,
+        document_type=payload.document_type,
+        title=payload.title,
+        text=payload.text,
+        publisher=payload.publisher,
+        published_at=payload.published_at,
+        url=payload.url,
+    )
+    news_document = CompanyFilingRepository.to_news_document(document)
+    VectorStore().upsert_documents([news_document])
+    with session_scope() as session:
+        CompanyFilingRepository(session).upsert_document(document)
+    return {"document_id": document.id, "ticker": document.ticker, "document_type": document.document_type}
+
+
+@app.post("/company-filings/fetch")
+async def fetch_company_filings(payload: MarketRefreshRequest) -> dict:
+    return await IngestionPipeline().ingest_company_filings(
+        payload.tickers,
+        limit_per_query=3,
+        filter_allowed=bool(payload.tickers),
+    )
+
+
+@app.get("/company-filings")
+def list_company_filings(tickers: str = "", limit_per_ticker: int = 5) -> list[dict]:
+    requested = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
+    allowed = EntityMapper().filter_allowed_tickers(requested or sorted(EntityMapper().whitelist.allowed_tickers()))
+    with session_scope() as session:
+        documents = CompanyFilingRepository(session).latest_by_tickers(
+            allowed,
+            limit_per_ticker=max(1, min(limit_per_ticker, 20)),
+        )
+        return [
+            {
+                "id": document.id,
+                "ticker": document.ticker,
+                "company_name": document.company_name,
+                "document_type": document.document_type,
+                "title": document.title,
+                "publisher": document.source.publisher,
+                "published_at": document.source.published_at.isoformat()
+                if document.source.published_at
+                else None,
+                "url": document.source.url,
+            }
+            for document in documents
+        ]
 
 
 @app.post("/reports/generate", response_model=ReportResponse)
@@ -1464,6 +1531,20 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             if candidate["status"] == "evidence_supported"
         ]
         dynamic_whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidate_payload)
+        company_filing_ingestion = await IngestionPipeline().ingest_company_filings(
+            promoted_tickers,
+            limit_per_query=2,
+            filter_allowed=False,
+        )
+        with session_scope() as session:
+            company_filing_documents = [
+                CompanyFilingRepository.to_news_document(document)
+                for document in CompanyFilingRepository(session).latest_by_tickers(
+                    promoted_tickers,
+                    limit_per_ticker=4,
+                )
+            ]
+        documents = dedupe_documents([*documents, *company_filing_documents])
 
         market_client = MarketDataClient()
         price_histories, market_errors = await market_client.get_price_histories_with_errors(
@@ -1544,6 +1625,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "ingestion": ingestion_results,
             "fixed_source_ingestion": fixed_source_ingestion,
             "dynamic_query_ingestion": dynamic_query_ingestion,
+            "company_filing_ingestion": company_filing_ingestion,
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,
             "market": [snapshot.model_dump(mode="json") for snapshot in snapshots],
@@ -1575,6 +1657,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "queries": urls,
             "fixed_source_ingestion": fixed_source_ingestion,
             "dynamic_query_ingestion": dynamic_query_ingestion,
+            "company_filing_ingestion": company_filing_ingestion,
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,
             "promoted_tickers": promoted_tickers,

@@ -1,0 +1,64 @@
+from datetime import date
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.data_sources.company_filings import (
+    CompanyFilingFetcher,
+    infer_document_type,
+    is_relevant_company_filing_result,
+)
+from app.db.models import Base
+from app.data_sources.news import NewsFetcher
+from app.services.persistence import CompanyFilingRepository
+
+
+def test_infer_company_filing_document_type() -> None:
+    assert infer_document_type("台積電 2025 年報") == "annual_report"
+    assert infer_document_type("Quanta investor presentation") == "investor_presentation"
+    assert infer_document_type("公開說明書 募集資金用途") == "prospectus"
+
+
+def test_company_filing_discovery_filters_generic_results() -> None:
+    relevant = NewsFetcher.from_manual_text(
+        title="2330 台積電 法說會重點",
+        text="台積電 investor presentation 說明 AI/HPC 需求。",
+    )
+    generic = NewsFetcher.from_manual_text(
+        title="台股財報公布時間整理",
+        text="說明市場整體財報時間，沒有個別公司公開文件。",
+    )
+
+    assert is_relevant_company_filing_result(relevant, "2330", "台積電") is True
+    assert is_relevant_company_filing_result(generic, "2330", "台積電") is False
+
+
+def test_company_filing_repository_roundtrip() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+
+    with Session() as session:
+        document = CompanyFilingFetcher.from_manual_text(
+            ticker="2330",
+            company_name="台積電",
+            document_type="annual_report",
+            title="台積電 年報",
+            text="年報揭露 AI/HPC 需求、資本支出與風險因素。",
+            publisher="台積電 IR",
+            published_at=date(2026, 5, 1),
+            url="https://example.com/2330-annual-report.pdf",
+        )
+        repository = CompanyFilingRepository(session)
+        repository.upsert_document(document)
+        session.commit()
+
+        stored = repository.latest_by_tickers(["2330"])
+        stats = repository.stats_by_ticker("2330")
+        news_document = CompanyFilingRepository.to_news_document(stored[0])
+
+    assert stored[0].ticker == "2330"
+    assert stats["rows"] == 1
+    assert stats["document_types"] == ["annual_report"]
+    assert news_document.id.startswith("filing-")
+    assert "文件類型：annual_report" in news_document.text

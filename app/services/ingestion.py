@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.core.time import today_taipei
+from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.session import session_scope
@@ -10,6 +11,7 @@ from app.models.schemas import ReportRequest
 from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import (
+    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -187,6 +189,55 @@ class IngestionPipeline:
             "source": "FinMind TaiwanStockPER",
         }
 
+    async def ingest_company_filings(
+        self,
+        tickers: list[str],
+        limit_per_query: int = 3,
+        filter_allowed: bool = True,
+    ) -> dict:
+        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
+        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
+        companies = {company.ticker: company for company in self.mapper.whitelist.companies()}
+        fetcher = CompanyFilingFetcher()
+        documents = []
+        errors = []
+        for ticker in allowed:
+            company = companies.get(ticker)
+            company_documents, company_errors = await fetcher.fetch_discovery_documents(
+                ticker,
+                company.name if company else "",
+                limit_per_query=limit_per_query,
+            )
+            documents.extend(company_documents)
+            errors.extend(company_errors)
+
+        news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
+        VectorStore().upsert_documents(news_documents)
+        with session_scope() as session:
+            repository = CompanyFilingRepository(session)
+            for document in documents:
+                repository.upsert_document(document)
+        return {
+            "requested_tickers": allowed,
+            "stored_count": len(documents),
+            "items": [
+                {
+                    "id": document.id,
+                    "ticker": document.ticker,
+                    "document_type": document.document_type,
+                    "title": document.title,
+                    "publisher": document.source.publisher,
+                    "published_at": document.source.published_at.isoformat()
+                    if document.source.published_at
+                    else None,
+                    "url": document.source.url,
+                }
+                for document in documents
+            ],
+            "errors": errors,
+            "source": "Google News company filing discovery",
+        }
+
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
         end_date = today_taipei()
         start_date = end_date - timedelta(days=request.lookback_days)
@@ -215,12 +266,18 @@ class IngestionPipeline:
             start_date,
             end_date,
         )
+        company_filings = await self.ingest_company_filings(
+            tickers,
+            limit_per_query=2,
+            filter_allowed=False,
+        )
         return {
             "news": news,
             "market": market,
             "monthly_revenue": monthly_revenue,
             "financial_metrics": financial_metrics,
             "valuations": valuations,
+            "company_filings": company_filings,
         }
 
     @staticmethod

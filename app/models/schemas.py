@@ -22,6 +22,16 @@ class NewsDocument(BaseModel):
     source: Source
 
 
+class CompanyFilingDocument(BaseModel):
+    id: str
+    ticker: str
+    company_name: Optional[str] = None
+    document_type: str = "company_disclosure"
+    title: str
+    text: str
+    source: Source
+
+
 class Company(BaseModel):
     ticker: str
     name: str

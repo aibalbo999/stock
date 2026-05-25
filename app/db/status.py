@@ -5,6 +5,7 @@ from sqlalchemy import func, inspect, select
 from app.core.config import get_settings
 from app.db.models import (
     AnalysisRun,
+    CompanyFiling,
     FinancialMetricSnapshot,
     GeneratedReport,
     MonthlyRevenueSnapshot,
@@ -19,6 +20,7 @@ from app.services.persistence import AnalysisRunRepository
 
 TABLE_MODELS = {
     "news_articles": NewsArticle,
+    "company_filings": CompanyFiling,
     "generated_reports": GeneratedReport,
     "stock_price_snapshots": StockPriceSnapshot,
     "monthly_revenue_snapshots": MonthlyRevenueSnapshot,

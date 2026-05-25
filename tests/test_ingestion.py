@@ -47,11 +47,20 @@ def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> No
         calls["valuation_tickers"] = tickers
         return {"requested_tickers": tickers, "stored": []}
 
+    async def fake_ingest_company_filings(
+        tickers: list[str],
+        limit_per_query: int = 3,
+        filter_allowed: bool = True,
+    ) -> dict:
+        calls["company_filing_tickers"] = tickers
+        return {"requested_tickers": tickers, "stored_count": 0}
+
     monkeypatch.setattr(pipeline, "ingest_feeds", fake_ingest_feeds)
     monkeypatch.setattr(pipeline, "refresh_market", fake_refresh_market)
     monkeypatch.setattr(pipeline, "refresh_monthly_revenue", fake_refresh_monthly_revenue)
     monkeypatch.setattr(pipeline, "refresh_financial_metrics", fake_refresh_financial_metrics)
     monkeypatch.setattr(pipeline, "refresh_valuations", fake_refresh_valuations)
+    monkeypatch.setattr(pipeline, "ingest_company_filings", fake_ingest_company_filings)
 
     summary = asyncio.run(
         pipeline.pre_report_refresh(ReportRequest(topic="AI 產業鏈", tickers=[], lookback_days=21))
@@ -61,6 +70,7 @@ def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> No
     assert "2330" in calls["tickers"]
     assert "2330" in calls["financial_tickers"]
     assert "2330" in calls["valuation_tickers"]
+    assert "2330" in calls["company_filing_tickers"]
     assert calls["days"] == 21
     assert summary["news"]["count"] == 0
 
@@ -103,11 +113,20 @@ def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:
         calls["valuation_tickers"] = tickers
         return {"requested_tickers": tickers, "stored": []}
 
+    async def fake_ingest_company_filings(
+        tickers: list[str],
+        limit_per_query: int = 3,
+        filter_allowed: bool = True,
+    ) -> dict:
+        calls["company_filing_tickers"] = tickers
+        return {"requested_tickers": tickers, "stored_count": 0}
+
     monkeypatch.setattr(pipeline, "ingest_feeds", fake_ingest_feeds)
     monkeypatch.setattr(pipeline, "refresh_market", fake_refresh_market)
     monkeypatch.setattr(pipeline, "refresh_monthly_revenue", fake_refresh_monthly_revenue)
     monkeypatch.setattr(pipeline, "refresh_financial_metrics", fake_refresh_financial_metrics)
     monkeypatch.setattr(pipeline, "refresh_valuations", fake_refresh_valuations)
+    monkeypatch.setattr(pipeline, "ingest_company_filings", fake_ingest_company_filings)
 
     asyncio.run(
         pipeline.pre_report_refresh(
@@ -119,6 +138,7 @@ def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:
     assert calls["monthly_tickers"] == ["2330"]
     assert calls["financial_tickers"] == ["2330"]
     assert calls["valuation_tickers"] == ["2330"]
+    assert calls["company_filing_tickers"] == ["2330"]
 
 
 def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:

@@ -13,5 +13,6 @@ def test_db_status_contains_core_tables() -> None:
     status = db_status()
 
     assert "news_articles" in status["tables"]
+    assert "company_filings" in status["tables"]
     assert "generated_reports" in status["tables"]
     assert "gemini_key_count" in status["settings"]

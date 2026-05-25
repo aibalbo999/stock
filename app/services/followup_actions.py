@@ -21,6 +21,7 @@ from app.services.persistence import (
 ActionType = str
 FOLLOW_UP_ACTION_LABELS = {
     "ingest_news": "補抓資料源",
+    "ingest_company_filings": "補抓公司公開文件",
     "refresh_market": "刷新股價/量能",
     "refresh_monthly_revenue": "刷新月營收",
     "refresh_financial_metrics": "刷新五年財務",
@@ -152,6 +153,17 @@ class FollowUpActionPlanner:
                 actions.append(FollowUpAction("refresh_financial_metrics", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
             if self._has(missing_text, "估值"):
                 actions.append(FollowUpAction("refresh_valuations", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
+            if self._has(missing_text, "公司原始公開文件", "公開文件"):
+                actions.append(
+                    FollowUpAction(
+                        "ingest_company_filings",
+                        f"個股資料審計缺口：{missing_text}",
+                        tickers,
+                        "high",
+                        "monthly",
+                        "required",
+                    )
+                )
             if self._has(missing_text, "公司文本", "AI 歸因", "入庫"):
                 actions.append(
                     FollowUpAction(
@@ -561,6 +573,12 @@ async def execute_follow_up_actions(
                 request,
                 news_limit,
                 today,
+            )
+        elif action.action_type == "ingest_company_filings":
+            result["results"][result_key] = await pipeline.ingest_company_filings(
+                tickers,
+                limit_per_query=max(2, min(5, news_limit // 10)),
+                filter_allowed=False,
             )
         elif action.action_type == "refresh_market":
             result["results"][result_key] = await pipeline.refresh_market(

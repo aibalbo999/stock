@@ -29,6 +29,7 @@ def build_report_quality_gate(
     source_quality: dict | None = None,
     plan_quality: dict | None = None,
     leading_signal_count: int | None = None,
+    llm_status: dict | None = None,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
@@ -53,6 +54,8 @@ def build_report_quality_gate(
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
     leading_signal_coverage = leading_signal_count / promoted_count if promoted_count and leading_signal_count is not None else None
+    llm_status = llm_status or {}
+    llm_fallback = bool(llm_status.get("fallback")) if llm_status else None
 
     blockers = []
     warnings = []
@@ -111,6 +114,11 @@ def build_report_quality_gate(
             warnings.append("領先訊號覆蓋偏低，潛力/風險排序信心需下修")
         elif leading_signal_coverage < 1:
             observations.append("部分股票領先訊號不足，系統已降低排序信心")
+    if llm_status:
+        if llm_fallback:
+            warnings.append("LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿")
+        else:
+            observations.append("LLM 補充分析已完成，且仍受來源與白名單驗證約束")
 
     status = "ready"
     if blockers:
@@ -159,6 +167,9 @@ def build_report_quality_gate(
             "financial_metrics_count": financial_metrics_count,
             "valuation_coverage": valuation_coverage,
             "leading_signal_coverage": leading_signal_coverage,
+            "llm_analysis_status": "fallback" if llm_fallback else "enabled" if llm_status else None,
+            "llm_model": llm_status.get("model"),
+            "llm_key_index": llm_status.get("key_index"),
             "source_unique_publishers": source_quality.get("unique_publisher_count"),
             "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
             "source_recent_coverage": source_quality.get("recent_coverage"),
@@ -230,6 +241,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("領先訊號覆蓋",),
             "補齊股價歷史、成交量、月營收與估值資料，避免只靠新聞排序潛力與風險標的。",
+        ),
+        (
+            ("LLM 補充分析",),
+            "檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。",
         ),
     ]
     for keywords, action in rules:
@@ -311,6 +326,7 @@ def build_quality_gate_for_request(
     request: ReportRequest,
     documents: list[NewsDocument] | None = None,
     source_count: int | None = None,
+    llm_result: object | None = None,
 ) -> dict:
     tickers = EntityMapper().filter_allowed_tickers(request.tickers)
     source_count = len(documents or []) if source_count is None else source_count
@@ -347,7 +363,18 @@ def build_quality_gate_for_request(
         cash_reserve_pct=request.cash_reserve_pct,
         source_quality=source_quality,
         leading_signal_count=leading_signal_count,
+        llm_status=summarize_llm_status(llm_result),
     )
+
+
+def summarize_llm_status(llm_result: object | None) -> dict | None:
+    if llm_result is None:
+        return None
+    return {
+        "fallback": bool(getattr(llm_result, "fallback", False)),
+        "model": getattr(llm_result, "model", None),
+        "key_index": getattr(llm_result, "key_index", None),
+    }
 
 
 def render_quality_gate_markdown(quality_gate: dict) -> str:
@@ -373,6 +400,7 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
         f"- 近期資料比例：{_format_optional_percent(metrics.get('source_recent_coverage'))}",
         f"- 拆解任務品質：{_format_plan_quality(metrics)}",
+        f"- LLM 補充分析：{_format_llm_status(metrics)}",
         f"- 股價資料覆蓋率：{float(metrics.get('market_coverage') or 0):.0%}",
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
@@ -430,6 +458,18 @@ def _format_plan_quality(metrics: dict) -> str:
     return f"{label}（{int(score or 0)} 分）"
 
 
+def _format_llm_status(metrics: dict) -> str:
+    status = metrics.get("llm_analysis_status")
+    if status == "enabled":
+        model = metrics.get("llm_model") or "unknown"
+        key_index = metrics.get("llm_key_index")
+        key_note = f"，key_pool_index={key_index}" if key_index is not None else ""
+        return f"已啟用（model={model}{key_note}）"
+    if status == "fallback":
+        return "未啟用或呼叫失敗，已退回規則引擎"
+    return "未評估"
+
+
 def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
     section = _markdown_section(markdown, "報告品質門檻")
     if not section:
@@ -470,6 +510,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "source_recent_coverage": _parse_optional_percent(fields.get("近期資料比例")),
             "discovery_plan_status": _parse_plan_quality_status(fields.get("拆解任務品質")),
             "discovery_plan_score": _parse_plan_quality_score(fields.get("拆解任務品質")),
+            "llm_analysis_status": _parse_llm_status(fields.get("LLM 補充分析")),
             "market_coverage": _parse_percent(fields.get("股價資料覆蓋率")),
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
@@ -539,6 +580,16 @@ def _parse_plan_quality_score(value: str | None) -> int | None:
         return None
     match = re.search(r"(\d+)\s*分", value)
     return int(match.group(1)) if match else None
+
+
+def _parse_llm_status(value: str | None) -> str | None:
+    if not value or value == "未評估":
+        return None
+    if "退回規則引擎" in value or "呼叫失敗" in value:
+        return "fallback"
+    if "已啟用" in value:
+        return "enabled"
+    return None
 
 
 def _parse_amount(value: str | None) -> int | None:

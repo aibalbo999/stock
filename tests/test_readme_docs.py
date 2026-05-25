@@ -41,6 +41,7 @@ def test_readme_documents_llm_retry_statuses() -> None:
     for status in sorted(RETRYABLE_HTTP_STATUSES):
         assert str(status) in readme
     assert "輪調下一把 key" in readme
+    assert "若本輪報告未啟用 LLM 或 LLM 呼叫失敗" in readme
     assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
     assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
     assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme

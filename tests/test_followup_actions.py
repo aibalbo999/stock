@@ -43,6 +43,22 @@ def test_quality_gate_remediation_becomes_executable_actions() -> None:
     assert "rerun_analysis" in action_types
 
 
+def test_llm_fallback_warning_becomes_rerun_action() -> None:
+    gate = {
+        "status": "caution",
+        "warnings": ["LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿"],
+        "remediation_actions": ["檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。"],
+    }
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        quality_gate=gate,
+    )
+
+    assert [action.action_type for action in actions] == ["rerun_analysis"]
+    assert actions[0].priority == "high"
+
+
 def test_monitoring_table_becomes_ticker_specific_actions(monkeypatch) -> None:
     monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
     markdown = """

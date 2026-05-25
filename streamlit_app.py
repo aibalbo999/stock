@@ -1199,6 +1199,9 @@ def render_quality_gate(result: dict) -> None:
     source_cols[3].metric("近期資料", metric_percent(metrics.get("source_recent_coverage")))
     source_cols[4].metric("領先訊號", metric_percent(metrics.get("leading_signal_coverage")))
     source_cols[5].metric("最低信心", confidence_label(metrics.get("formal_confidence_min")))
+    llm_status = metrics.get("llm_analysis_status")
+    if llm_status:
+        st.caption("模型補充分析：" + ("已啟用" if llm_status == "enabled" else "退回規則引擎"))
     if action_policy.get("label"):
         st.caption(f"投資行動狀態：{action_policy['label']}")
 
@@ -1618,6 +1621,7 @@ with tabs[0]:
                         request,
                         documents=generator.last_evidence_documents,
                         source_count=source_count,
+                        llm_result=getattr(generator, "last_llm_result", None),
                     )
                     response = attach_quality_gate_to_report(response, quality_gate)
                     with session_scope() as session:

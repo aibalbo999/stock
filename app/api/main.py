@@ -44,6 +44,7 @@ from app.services.report_quality import (
     build_report_quality_gate,
     parse_quality_gate_from_markdown,
     summarize_document_source_quality,
+    summarize_llm_status,
 )
 from app.services.llm_client import LLMClient
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
@@ -748,6 +749,11 @@ def llm_status() -> dict:
         "local_model": settings.local_llm_model,
         "gemini_key_count": len(settings.gemini_api_keys),
         "enabled": len(settings.gemini_api_keys) > 0,
+        "retry_policy": {
+            "max_retries_per_key": max(0, int(settings.llm_max_retries_per_key)),
+            "base_retry_delay_seconds": max(0.0, float(settings.llm_base_retry_delay_seconds)),
+            "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
+        },
     }
 
 
@@ -844,6 +850,7 @@ def generate_report(request: ReportRequest) -> ReportResponse:
         quality_gate = build_quality_gate_for_request(
             request,
             documents=generator.last_evidence_documents,
+            llm_result=getattr(generator, "last_llm_result", None),
         )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
@@ -1092,6 +1099,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
         refreshed_quality_gate = build_quality_gate_for_request(
             rerun_request,
             documents=generator.last_evidence_documents,
+            llm_result=getattr(generator, "last_llm_result", None),
         )
         response = attach_quality_gate_to_report(response, refreshed_quality_gate)
         with session_scope() as session:
@@ -1298,6 +1306,7 @@ async def run_pipeline(request: ReportRequest) -> dict:
                 (ingestion_summary.get("news") or {}).get("count", 0),
                 len(generator.last_evidence_documents),
             ),
+            llm_result=getattr(generator, "last_llm_result", None),
         )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
@@ -1403,6 +1412,19 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             FinancialMetricRepository(session).upsert_metrics(financial_metrics)
             ValuationMetricRepository(session).upsert_valuations(valuations)
             latest_monthly_revenues = monthly_repository.latest_by_tickers(promoted_tickers)
+        request = ReportRequest(
+            topic=payload.topic,
+            tickers=promoted_tickers,
+            lookback_days=payload.lookback_days,
+            evidence_limit=evidence_limit,
+            investor_capital=payload.investor_capital,
+            beginner_mode=payload.beginner_mode,
+            investor_profile=payload.investor_profile,
+            max_position_pct=payload.max_position_pct,
+            cash_reserve_pct=payload.cash_reserve_pct,
+        )
+        generator = ReportGenerator(whitelist=dynamic_whitelist)
+        response = generator.generate(request, documents=documents)
         quality_gate = build_report_quality_gate(
             source_audit,
             promoted_tickers,
@@ -1415,20 +1437,8 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             source_quality=summarize_document_source_quality(documents, payload.lookback_days),
             plan_quality=source_audit.get("plan_quality"),
             leading_signal_count=leading_signal_count,
+            llm_status=summarize_llm_status(generator.last_llm_result),
         )
-
-        request = ReportRequest(
-            topic=payload.topic,
-            tickers=promoted_tickers,
-            lookback_days=payload.lookback_days,
-            evidence_limit=evidence_limit,
-            investor_capital=payload.investor_capital,
-            beginner_mode=payload.beginner_mode,
-            investor_profile=payload.investor_profile,
-            max_position_pct=payload.max_position_pct,
-            cash_reserve_pct=payload.cash_reserve_pct,
-        )
-        response = ReportGenerator(whitelist=dynamic_whitelist).generate(request, documents=documents)
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
             report = ReportRepository(session).create(request, response)

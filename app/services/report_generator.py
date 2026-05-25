@@ -46,6 +46,7 @@ class ReportGenerator:
         self.risk_analyzer = RiskAnalyzer(self.whitelist, self.mapper, use_llm=True)
         self.llm = LLMClient()
         self.last_evidence_documents: list[NewsDocument] = []
+        self.last_llm_result: LLMResult | None = None
 
     def generate(self, request: ReportRequest, documents: list[NewsDocument] | None = None) -> ReportResponse:
         evidence_docs = documents or self._retrieve_evidence(request)
@@ -64,6 +65,7 @@ class ReportGenerator:
             market_data=self._format_market_data(market_snapshots, monthly_revenues),
         )
         llm_result = self.llm.generate_with_metadata(prompt)
+        self.last_llm_result = llm_result
         markdown = self._render_markdown(
             request,
             evidence_docs,

@@ -47,6 +47,7 @@ def generate_report_task(self, payload: dict) -> dict:
                 (ingestion_summary.get("news") or {}).get("count", 0),
                 len(generator.last_evidence_documents),
             ),
+            llm_result=getattr(generator, "last_llm_result", None),
         )
         follow_up_summary = None
         if quality_gate.get("status") != "ready":
@@ -66,6 +67,7 @@ def generate_report_task(self, payload: dict) -> dict:
                         (ingestion_summary.get("news") or {}).get("count", 0),
                         len(generator.last_evidence_documents),
                     ),
+                    llm_result=getattr(generator, "last_llm_result", None),
                 )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:

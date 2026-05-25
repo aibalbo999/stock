@@ -209,9 +209,10 @@ def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypat
     def fake_session_scope():
         yield object()
 
-    def fake_quality_gate_for_request(request, documents=None, source_count=None) -> dict:
+    def fake_quality_gate_for_request(request, documents=None, source_count=None, llm_result=None) -> dict:
         captured["quality_documents"] = documents
         captured["quality_source_count"] = source_count
+        captured["quality_llm_result"] = llm_result
         return {
             "status": "ready",
             "blockers": [],
@@ -528,6 +529,55 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["action_policy"]["max_deployable_amount"] == 700_000
     assert gate["blockers"] == []
     assert gate["warnings"] == []
+
+
+def test_report_quality_gate_warns_when_llm_falls_back() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {
+                "supported_ratio": 1.0,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        llm_status={"fallback": True, "model": None, "key_index": None},
+    )
+
+    assert gate["status"] == "caution"
+    assert "LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿" in gate["warnings"]
+    assert gate["metrics"]["llm_analysis_status"] == "fallback"
+    assert any("檢查 LLM API key" in action for action in gate["remediation_actions"])
+
+
+def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {
+                "supported_ratio": 1.0,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        llm_status={"fallback": False, "model": "gemini-test", "key_index": 2},
+    )
+
+    assert gate["status"] == "ready"
+    assert gate["metrics"]["llm_analysis_status"] == "enabled"
+    assert gate["metrics"]["llm_model"] == "gemini-test"
+    assert gate["metrics"]["llm_key_index"] == 2
+    assert "LLM 補充分析已完成，且仍受來源與白名單驗證約束" in gate["observations"]
 
 
 def test_candidate_support_summarizes_formal_confidence_scores() -> None:
@@ -1178,7 +1228,7 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
     monkeypatch.setattr(
         main,
         "build_quality_gate_for_request",
-        lambda request, documents: {"status": "ready", "warnings": [], "blockers": []},
+        lambda request, documents, **kwargs: {"status": "ready", "warnings": [], "blockers": []},
     )
 
     response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
@@ -1294,7 +1344,7 @@ def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> Non
         },
     )
     monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh_market_data)
-    monkeypatch.setattr(main, "build_quality_gate_for_request", lambda request, documents: {"status": "ready"})
+    monkeypatch.setattr(main, "build_quality_gate_for_request", lambda request, documents, **kwargs: {"status": "ready"})
 
     response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
 

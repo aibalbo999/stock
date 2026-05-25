@@ -120,6 +120,16 @@ class FollowUpActionPlanner:
             actions.append(FollowUpAction("ingest_news", "補抓近期與國際資料源，提高 RAG 證據覆蓋。", tickers, "high", "weekly"))
         if self._has(issue_text, "AI 拆解任務", "候選公司", "證據驗證", "正式分析股票"):
             actions.append(FollowUpAction("rerun_discovery", "重新執行 AI 主題拆解與候選白名單驗證。", tickers, "high", "once"))
+        if self._has(issue_text, "LLM 補充分析", "模型恢復"):
+            actions.append(
+                FollowUpAction(
+                    "rerun_analysis",
+                    "LLM 供應商或 API key 恢復後，重新產生報告並保留來源核查。",
+                    tickers,
+                    "high",
+                    "once",
+                )
+            )
         return actions
 
     def from_monitoring_contexts(self, contexts: list[dict], fallback_tickers: tuple[str, ...]) -> list[FollowUpAction]:
@@ -394,6 +404,7 @@ def split_fresh_tracking_actions(
         if action.action_type != "rerun_analysis"
         or (action.purpose == "tracking" and has_tracking_work)
         or (action.purpose == "required" and has_required_work)
+        or (action.purpose == "required" and "LLM" in action.reason)
     ]
     return filtered, rows
 

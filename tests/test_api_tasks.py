@@ -577,6 +577,26 @@ def test_report_company_data_audit_endpoint(monkeypatch) -> None:
     assert response.json()["rows"][0]["ticker"] == "3017"
 
 
+def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {"status": "ready"},
+            {"status": "sufficient"},
+        )
+        is False
+    )
+
+
+def test_candidate_audit_follow_up_is_required_when_company_data_has_gaps() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {"status": "ready"},
+            {"status": "needs_attention"},
+        )
+        is True
+    )
+
+
 def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

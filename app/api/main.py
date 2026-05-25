@@ -155,6 +155,14 @@ def load_report_follow_up_context(report_id: int) -> dict:
     }
 
 
+def should_require_candidate_audit_follow_up(quality_gate: dict, company_data_audit: dict) -> bool:
+    if quality_gate.get("status") != "ready":
+        return True
+    if company_data_audit and company_data_audit.get("status") != "sufficient":
+        return True
+    return False
+
+
 def revalidate_candidate_whitelist(run_payload: dict, fallback_candidates: list[dict], limit: int = 500) -> dict:
     if not fallback_candidates:
         return {
@@ -1007,12 +1015,14 @@ def get_report_follow_up_plan(report_id: int) -> dict:
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
+    candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
         quality_gate=quality_gate,
         markdown=markdown,
         company_data_audit=company_data_audit,
+        candidate_audit_required=candidate_audit_required,
         apply_freshness=False,
     )
     actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
@@ -1042,12 +1052,14 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
+    candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
         quality_gate=quality_gate,
         markdown=markdown,
         company_data_audit=company_data_audit,
+        candidate_audit_required=candidate_audit_required,
         apply_freshness=False,
     )
     fresh_actions, skipped_details = split_fresh_tracking_actions(candidate_actions, request)
@@ -1084,6 +1096,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
                 "request": request.model_dump(mode="json"),
                 "quality_gate_before": quality_gate,
                 "company_data_audit_before": company_data_audit,
+                "candidate_audit_required": candidate_audit_required,
                 "available_actions": [action.to_dict() for action in all_actions],
                 "freshness": {
                     "skipped_count": len(skipped_details),
@@ -1107,6 +1120,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
                     "request": request.model_dump(mode="json"),
                     "quality_gate_before": quality_gate,
                     "company_data_audit_before": company_data_audit,
+                    "candidate_audit_required": candidate_audit_required,
                     "available_actions": [action.to_dict() for action in all_actions],
                     "planned_actions": [],
                     "purpose": payload.purpose,

@@ -162,6 +162,25 @@ def test_candidate_audit_becomes_required_follow_up_actions(monkeypatch) -> None
     assert "信心：中 52" in news_action.reason
 
 
+def test_candidate_audit_can_be_tracking_when_report_is_ready(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 | 中 52 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2382"]),
+        markdown=markdown,
+        candidate_audit_required=False,
+    )
+
+    assert {action.purpose for action in actions} == {"tracking"}
+    assert any(action.action_type == "ingest_news" and action.tickers == ("3324",) for action in actions)
+
+
 def test_candidate_follow_up_news_queries_are_targeted() -> None:
     action = FollowUpAction(
         "ingest_news",

@@ -45,6 +45,7 @@ def test_readme_documents_llm_retry_statuses() -> None:
     assert "個股資料足夠性審計" in readme
     assert "動態白名單證據回寫" in readme
     assert "個股缺口自動補強" in readme
+    assert "候選追蹤降噪" in readme
     assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
     assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
     assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme

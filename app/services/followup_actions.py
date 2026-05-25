@@ -68,6 +68,7 @@ class FollowUpActionPlanner:
         markdown: str = "",
         contexts: list[dict] | None = None,
         company_data_audit: dict | None = None,
+        candidate_audit_required: bool = True,
         apply_freshness: bool = True,
     ) -> list[FollowUpAction]:
         tickers = tuple(request.tickers)
@@ -76,7 +77,7 @@ class FollowUpActionPlanner:
         actions.extend(self.from_company_data_audit(company_data_audit or {}, tickers))
         actions.extend(self.from_monitoring_contexts(contexts or [], tickers))
         actions.extend(self.from_monitoring_markdown(markdown, tickers))
-        actions.extend(self.from_candidate_audit_markdown(markdown, tickers))
+        actions.extend(self.from_candidate_audit_markdown(markdown, tickers, required=candidate_audit_required))
         if actions and not any(action.action_type == "rerun_analysis" for action in actions):
             purpose = "required" if any(action.purpose == "required" for action in actions) else "tracking"
             reason = (
@@ -189,10 +190,17 @@ class FollowUpActionPlanner:
             actions.extend(self._actions_from_trigger(trigger, tickers))
         return actions
 
-    def from_candidate_audit_markdown(self, markdown: str, fallback_tickers: tuple[str, ...]) -> list[FollowUpAction]:
+    def from_candidate_audit_markdown(
+        self,
+        markdown: str,
+        fallback_tickers: tuple[str, ...],
+        required: bool = True,
+    ) -> list[FollowUpAction]:
         rows = self._markdown_table_rows(markdown, "候選公司審計", required_headers=("股票", "狀態"))
         actions: list[FollowUpAction] = []
         weak_or_missing = []
+        purpose = "required" if required else "tracking"
+        priority = "high" if required else "medium"
         for row in rows:
             status = row.get("狀態", "")
             if "正式分析" in status:
@@ -217,9 +225,9 @@ class FollowUpActionPlanner:
                     "ingest_news",
                     f"候選公司未升格，需補齊公司層級證據：{reason}",
                     tickers,
-                    "high",
+                    priority,
                     "weekly",
-                    "required",
+                    purpose,
                 )
             )
             weak_or_missing.append(ticker)
@@ -229,9 +237,9 @@ class FollowUpActionPlanner:
                     "rerun_discovery",
                     "補齊弱證據與待補候選後，重新執行主題拆解與候選升格驗證。",
                     fallback_tickers,
-                    "high",
+                    priority,
                     "once",
-                    "required",
+                    purpose,
                 )
             )
         return actions

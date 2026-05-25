@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 
 STATUS_LABELS = {
     "evidence_supported": "正式分析",
@@ -52,8 +54,17 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
         status = str(candidate.get("status") or "")
         evidence_count = int(candidate.get("evidence_count") or 0)
         source_count = int(candidate.get("evidence_source_count") or 0)
-        reason = candidate.get("validation_reason") or candidate_audit_reason(evidence_count, source_count)
-        next_action = candidate.get("next_action") or candidate_audit_next_action(evidence_count, source_count)
+        confidence_score = candidate.get("evidence_confidence_score")
+        reason = candidate.get("validation_reason") or candidate_audit_reason(
+            evidence_count,
+            source_count,
+            confidence_score,
+        )
+        next_action = candidate.get("next_action") or candidate_audit_next_action(
+            evidence_count,
+            source_count,
+            confidence_score,
+        )
         confidence = candidate_confidence_text(candidate)
         if ticker in promoted:
             status = "evidence_supported"
@@ -99,7 +110,9 @@ def render_candidate_evidence_markdown(candidates: list[dict]) -> list[str]:
     return lines
 
 
-def candidate_audit_reason(evidence_count: int, source_count: int) -> str:
+def candidate_audit_reason(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:
+    if evidence_count >= 2 and source_count >= 2 and confidence_score is not None and confidence_score < 75:
+        return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分。"
     if evidence_count >= 2 and source_count >= 2:
         return "通過正式分析門檻。"
     if evidence_count > 0:
@@ -107,7 +120,9 @@ def candidate_audit_reason(evidence_count: int, source_count: int) -> str:
     return "待補證據：缺少公司與主題同時成立的來源。"
 
 
-def candidate_audit_next_action(evidence_count: int, source_count: int) -> str:
+def candidate_audit_next_action(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:
+    if evidence_count >= 2 and source_count >= 2 and confidence_score is not None and confidence_score < 75:
+        return "補抓有日期、近期且不同發布者的來源後再驗證。"
     if evidence_count >= 2 and source_count >= 2:
         return "納入正式分析。"
     if evidence_count > 0:

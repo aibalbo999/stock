@@ -847,6 +847,33 @@ def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
     assert "高 92，最新 2026-05-24" in markdown
 
 
+def test_candidate_audit_fallback_uses_low_confidence_reason() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "3324",
+                "name": "雙鴻",
+                "segment": "散熱模組",
+                "rationale": "",
+                "evidence_keywords": ["液冷"],
+                "evidence_count": 2,
+                "evidence_source_count": 2,
+                "evidence_titles": [],
+                "evidence_confidence_score": 60,
+                "evidence_confidence_label": "中",
+                "status": "weak_evidence",
+            },
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+
+    markdown = generator._render_candidate_audit([])
+
+    assert "弱證據：篇數與來源數達標，但證據信心只有 60 分" in markdown
+    assert "補抓有日期、近期且不同發布者" in markdown
+    assert "中 60" in markdown
+
+
 def test_partial_quality_upside_stays_on_watchlist_without_allocation() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()

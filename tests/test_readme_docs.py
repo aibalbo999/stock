@@ -21,3 +21,11 @@ def test_readme_documents_follow_up_action_labels() -> None:
 
     for label in FOLLOW_UP_ACTION_LABELS.values():
         assert f"- {label}" in readme
+
+
+def test_readme_documents_candidate_confidence_gate() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "證據信心低於 75 分" in readme
+    assert "證據信心分數達 75 分" in readme
+    assert "證據篇數、來源家數、來源日期覆蓋與最新證據日期" in readme

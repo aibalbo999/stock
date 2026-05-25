@@ -962,6 +962,18 @@ def candidate_revalidation_summary(result: dict) -> dict:
     }
 
 
+def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
+    confidence = service_snapshot.get("candidate_confidence") or {}
+    high_threshold = confidence.get("high_threshold")
+    return {
+        "資料庫": "正常" if status.get("integrity", {}).get("ok", True) else "異常",
+        "Redis": "正常" if service_snapshot.get("redis", {}).get("ok") else "未連線",
+        "AI Key": service_snapshot.get("gemini", {}).get("key_count", 0),
+        "市場資料": "可用" if service_snapshot.get("finmind", {}).get("mode") else "檢查",
+        "升格門檻": format_confidence_score(float(high_threshold)) if high_threshold is not None else "未評估",
+    }
+
+
 def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
     components.html(report_html(markdown, result), height=820, scrolling=True)
 
@@ -2122,11 +2134,10 @@ with tabs[3]:
     render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
     status = db_status()
     service_snapshot = service_status()
-    service_cols = st.columns(4)
-    service_cols[0].metric("資料庫", "正常" if status.get("integrity", {}).get("ok", True) else "異常")
-    service_cols[1].metric("Redis", "正常" if service_snapshot.get("redis", {}).get("ok") else "未連線")
-    service_cols[2].metric("AI Key", service_snapshot.get("gemini", {}).get("key_count", 0))
-    service_cols[3].metric("市場資料", "可用" if service_snapshot.get("finmind", {}).get("mode") else "檢查")
+    service_metrics = maintenance_service_metrics(status, service_snapshot)
+    service_cols = st.columns(len(service_metrics))
+    for column, (label, value) in zip(service_cols, service_metrics.items()):
+        column.metric(label, value)
     with st.expander("進階：服務細節"):
         st.json(status["settings"])
         st.json(status["integrity"])

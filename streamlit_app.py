@@ -464,34 +464,79 @@ def comparison_matrix_html(markdown: str) -> str:
     if not rows:
         return ""
     cards = []
+    action_count = 0
+    watch_count = 0
+    risk_count = 0
     for row in rows:
         stock = escape(row[0]) if len(row) > 0 else "-"
-        decision = escape(row[1]) if len(row) > 1 else "-"
+        decision_raw = row[1] if len(row) > 1 else "-"
+        decision = escape(decision_raw)
         upside = escape(row[2]) if len(row) > 2 else "-"
-        downside = escape(row[3]) if len(row) > 3 else "-"
-        valuation = escape(row[4]) if len(row) > 4 else "-"
+        downside_raw = row[3] if len(row) > 3 else "-"
+        downside = escape(downside_raw)
+        valuation_raw = row[4] if len(row) > 4 else "-"
+        valuation = escape(valuation_raw)
         confidence = escape(row[5]) if len(row) > 5 else "-"
         reminder = escape(row[6]) if len(row) > 6 else ""
+        decision_class = decision_badge_class(decision_raw)
+        valuation_class = valuation_badge_class(valuation_raw)
+        downside_class = downside_badge_class(downside_raw)
+        if decision_class == "decision-action":
+            action_count += 1
+        elif decision_class == "decision-risk":
+            risk_count += 1
+        else:
+            watch_count += 1
         cards.append(
             f"""
-            <article class="matrix-card">
+            <article class="matrix-card {decision_class}">
               <div class="matrix-top">
                 <div>
                   <div class="ticker">{stock}</div>
                   <div class="reason">{reminder}</div>
                 </div>
-                <span class="decision">{decision}</span>
+                <span class="decision {decision_class}">{decision}</span>
               </div>
               <div class="mini-grid">
                 <div><span>升值</span><strong>{upside}</strong></div>
-                <div><span>降值</span><strong>{downside}</strong></div>
-                <div><span>估值</span><strong>{valuation}</strong></div>
+                <div class="{downside_class}"><span>降值</span><strong>{downside}</strong></div>
+                <div class="{valuation_class}"><span>估值</span><strong>{valuation}</strong></div>
                 <div><span>信心</span><strong>{confidence}</strong></div>
               </div>
             </article>
             """
         )
-    return "".join(cards)
+    summary = (
+        f"<div class='matrix-summary'>"
+        f"<span>可研究 {action_count}</span>"
+        f"<span>觀察 {watch_count}</span>"
+        f"<span>風險 {risk_count}</span>"
+        f"</div>"
+    )
+    return summary + "".join(cards)
+
+
+def decision_badge_class(value: str) -> str:
+    if "可小額" in value or "可研究" in value:
+        return "decision-action"
+    if "避開" in value or "降低曝險" in value:
+        return "decision-risk"
+    return "decision-watch"
+
+
+def valuation_badge_class(value: str) -> str:
+    if "偏高" in value or "略高" in value:
+        return "valuation-high"
+    if "低於" in value or "略低" in value:
+        return "valuation-low"
+    return "valuation-neutral"
+
+
+def downside_badge_class(value: str) -> str:
+    digits = re.sub(r"[^\d.]", "", value)
+    if not digits:
+        return ""
+    return "risk-high" if float(digits) > 5 else "risk-low"
 
 
 def metric_percent(value: object) -> str:
@@ -592,15 +637,27 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .stock-list {{ display:grid; gap:10px; }}
   .stock-card {{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
   .matrix-list {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
+  .matrix-summary {{ grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px; }}
+  .matrix-summary span {{ background:#F4F7FB; border:1px solid #D7DEE8; border-radius:999px; padding:6px 10px; font-size:13px; color:#344054; font-weight:700; }}
   .matrix-card {{ border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .matrix-card.decision-action {{ border-left:4px solid #0E9F6E; }}
+  .matrix-card.decision-watch {{ border-left:4px solid #F59E0B; }}
+  .matrix-card.decision-risk {{ border-left:4px solid #D92D20; }}
   .matrix-top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }}
   .mini-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }}
   .mini-grid div {{ background:#F4F7FB; border-radius:8px; padding:8px; }}
+  .mini-grid .valuation-high {{ background:#FFF4DA; }}
+  .mini-grid .valuation-low {{ background:#E4F8F0; }}
+  .mini-grid .risk-high {{ background:#FDEAE7; }}
+  .mini-grid .risk-low {{ background:#E4F8F0; }}
   .mini-grid span {{ display:block; color:#667085; font-size:12px; }}
   .mini-grid strong {{ display:block; margin-top:3px; font-size:14px; }}
   .ticker {{ font-weight:800; margin-bottom:6px; }}
   .reason {{ color:#53657D; font-size:14px; line-height:1.5; }}
   .decision {{ white-space:nowrap; background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:6px 10px; font-weight:700; font-size:13px; }}
+  .decision.decision-action {{ background:#E4F8F0; color:#087443; }}
+  .decision.decision-watch {{ background:#FFF4DA; color:#8A5A12; }}
+  .decision.decision-risk {{ background:#FDEAE7; color:#B42318; }}
   details {{ background:#F9FBFD; border:1px solid #D7DEE8; border-radius:8px; padding:12px 14px; margin:8px 0; }}
   summary {{ cursor:pointer; font-weight:700; }}
   .company-detail {{ background:#FFFFFF; margin:10px 0 0; }}

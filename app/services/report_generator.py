@@ -20,6 +20,7 @@ from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
+from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.persistence import (
     FinancialMetricRepository,
     MarketRepository,
@@ -53,6 +54,7 @@ class ReportGenerator:
         monthly_revenues = self._latest_monthly_revenues(tickers)
         financial_metrics = self._financial_metrics(tickers)
         valuation_metrics = self._latest_valuations(tickers)
+        leading_signals = self._leading_signals(tickers, valuation_metrics)
 
         prompt = SYSTEM_PROMPT + "\n\n" + REPORT_PROMPT_TEMPLATE.format(
             whitelist=self.whitelist.as_prompt_context(),
@@ -70,6 +72,7 @@ class ReportGenerator:
             monthly_revenues,
             financial_metrics,
             valuation_metrics,
+            leading_signals,
         )
         return ReportResponse(
             title=f"{request.topic} 自動分析報告",
@@ -196,6 +199,24 @@ class ReportGenerator:
         except Exception:
             return []
 
+    def _leading_signals(
+        self,
+        tickers: list[str],
+        valuation_metrics: list[ValuationMetric],
+    ) -> dict[str, LeadingSignal]:
+        if not tickers:
+            return {}
+        try:
+            with session_scope() as session:
+                price_histories = MarketRepository(session).history_by_tickers(tickers, limit=90)
+                revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
+        except Exception:
+            price_histories = {}
+            revenue_histories = {}
+        valuations = {valuation.ticker: valuation for valuation in valuation_metrics}
+        peer_summary = self._peer_valuation_summary(valuation_metrics)
+        return LeadingSignalAnalyzer().build(tickers, price_histories, revenue_histories, valuations, peer_summary)
+
     def _render_markdown(
         self,
         request: ReportRequest,
@@ -207,7 +228,9 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue],
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
+        leading_signals = leading_signals or {}
         lines = [
             f"# {request.topic} 自動分析報告",
             "",
@@ -254,6 +277,9 @@ class ReportGenerator:
             "## 來源覆蓋",
             self._render_source_coverage(request, tickers, documents),
             "",
+            "## 領先訊號檢查",
+            self._render_leading_signal_check(tickers, leading_signals),
+            "",
             "## 資金控管建議",
             self._render_beginner_portfolio_plan(
                 request,
@@ -264,6 +290,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 投資建議",
@@ -276,6 +303,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 個股比較矩陣",
@@ -288,6 +316,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 二次綜合篩選",
@@ -299,6 +328,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 評分明細",
@@ -310,6 +340,7 @@ class ReportGenerator:
                 monthly_revenues,
                 financial_metrics,
                 valuation_metrics,
+                leading_signals,
             ),
             "",
             "## 基本面月營收檢查",
@@ -626,6 +657,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "目前無足夠數據判斷。"
@@ -651,6 +683,7 @@ class ReportGenerator:
                 related_findings,
                 snapshots.get(ticker),
                 revenues.get(ticker),
+                (leading_signals or {}).get(ticker),
             )
             lines.append(
                 "| "
@@ -716,6 +749,52 @@ class ReportGenerator:
             lines.extend(["", "提醒：本次沒有國際來源進入證據池；若要擴大國際覆蓋，請開啟深度分析與國際資料源。"])
         return "\n".join(lines)
 
+    @staticmethod
+    def _render_leading_signal_check(
+        tickers: list[str],
+        leading_signals: dict[str, LeadingSignal],
+    ) -> str:
+        if not tickers:
+            return "目前無足夠數據判斷。"
+        lines = [
+            "本段使用股價歷史、成交量、月營收加速與同業估值位置，補足新聞較慢的問題；它是早期警示與排序訊號，不是單獨買賣依據。",
+            "",
+            "| 股票 | 方向 | 分數 | 20日股價 | 60日股價 | 量能 | 月營收YoY | 營收加速 | 估值 | 核心訊號 |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---|---|",
+        ]
+        for ticker in tickers:
+            signal = leading_signals.get(ticker)
+            if not signal:
+                lines.append(f"| {ticker} | 未評估 | 0 | - | - | - | - | - | 未評估 | 目前無足夠領先訊號。 |")
+                continue
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        ticker,
+                        signal.direction,
+                        str(signal.score),
+                        ReportGenerator._format_optional_pct(signal.price_20d_pct),
+                        ReportGenerator._format_optional_pct(signal.price_60d_pct),
+                        ReportGenerator._format_optional_ratio(signal.volume_ratio_20d),
+                        ReportGenerator._format_optional_pct(signal.revenue_yoy_pct),
+                        ReportGenerator._format_optional_pct(signal.revenue_acceleration_pct),
+                        signal.valuation_label,
+                        signal.summary,
+                    ]
+                )
+                + " |"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_optional_pct(value: float | None) -> str:
+        return "-" if value is None else f"{value:.1f}%"
+
+    @staticmethod
+    def _format_optional_ratio(value: float | None) -> str:
+        return "-" if value is None else f"{value:.1f}x"
+
     def _render_final_potential_screen(
         self,
         tickers: list[str],
@@ -725,6 +804,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "目前無足夠數據判斷。"
@@ -745,7 +825,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_documents = self._related_documents(ticker, documents)
             related_findings = self._related_findings(ticker, findings)
-            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            estimate = self._estimate_potential(
+                related_documents,
+                related_findings,
+                snapshot,
+                revenue,
+                (leading_signals or {}).get(ticker),
+            )
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -805,6 +891,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "目前無足夠數據判斷。"
@@ -825,7 +912,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             ticker_metrics = metrics_by_ticker.get(ticker, [])
             valuation = valuations.get(ticker)
-            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            estimate = self._estimate_potential(
+                related_documents,
+                related_findings,
+                snapshot,
+                revenue,
+                (leading_signals or {}).get(ticker),
+            )
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -1090,6 +1183,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "目前無足夠數據判斷。"
@@ -1111,7 +1205,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_findings = self._related_findings(ticker, findings)
             related_documents = self._related_documents(ticker, documents)
-            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            estimate = self._estimate_potential(
+                related_documents,
+                related_findings,
+                snapshot,
+                revenue,
+                (leading_signals or {}).get(ticker),
+            )
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -1784,6 +1884,7 @@ class ReportGenerator:
         monthly_revenues: list[MonthlyRevenue] | None = None,
         financial_metrics: list[FinancialMetric] | None = None,
         valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
             return "目前無足夠數據判斷。"
@@ -1811,7 +1912,13 @@ class ReportGenerator:
             revenue = revenues.get(ticker)
             related_documents = self._related_documents(ticker, documents)
             related_findings = self._related_findings(ticker, findings)
-            estimate = self._estimate_potential(related_documents, related_findings, snapshot, revenue)
+            estimate = self._estimate_potential(
+                related_documents,
+                related_findings,
+                snapshot,
+                revenue,
+                (leading_signals or {}).get(ticker),
+            )
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -2132,6 +2239,7 @@ class ReportGenerator:
         related_findings,
         snapshot: MarketSnapshot | None,
         monthly_revenue: MonthlyRevenue | None = None,
+        leading_signal: LeadingSignal | None = None,
     ) -> dict:
         if not snapshot:
             return {
@@ -2200,6 +2308,17 @@ class ReportGenerator:
         else:
             confidence_notes.append("缺少月營收資料")
 
+        if leading_signal:
+            if leading_signal.upside_bonus:
+                upside_pct = max(11, upside_pct) + leading_signal.upside_bonus
+                upside_factors.append((f"領先訊號偏多：{leading_signal.summary}", leading_signal.upside_bonus))
+            if leading_signal.downside_penalty:
+                downside_pct = max(6, downside_pct) + leading_signal.downside_penalty
+                downside_factors.append((f"領先訊號偏空：{leading_signal.summary}", leading_signal.downside_penalty))
+            confidence_notes.append(f"領先訊號 {leading_signal.direction}（分數 {leading_signal.score}）")
+        else:
+            confidence_notes.append("缺少領先訊號")
+
         if len(related_documents) < 2:
             confidence_notes.append(f"公司相關文本僅 {len(related_documents)} 筆")
         if not related_findings:
@@ -2216,13 +2335,15 @@ class ReportGenerator:
             "downside_pct": downside_pct,
             "upside_reason": (
                 f"有 {len(related_documents)} 筆公司相關文本，正向關鍵證據 {positive_hits} 項、機會歸因 {opportunity_findings} 筆"
-                f"{ReportGenerator._revenue_reason(monthly_revenue, revenue_upside_bonus, True)}。"
+                f"{ReportGenerator._revenue_reason(monthly_revenue, revenue_upside_bonus, True)}"
+                f"{ReportGenerator._leading_signal_reason(leading_signal, True)}。"
                 if upside_pct
                 else "正向證據未達 >10% 情境門檻。"
             ),
             "downside_reason": (
                 f"偵測到負向/瓶頸證據 {negative_hits + structural_findings + volatility_findings} 項"
-                f"{ReportGenerator._revenue_reason(monthly_revenue, revenue_downside_penalty, False)}。"
+                f"{ReportGenerator._revenue_reason(monthly_revenue, revenue_downside_penalty, False)}"
+                f"{ReportGenerator._leading_signal_reason(leading_signal, False)}。"
                 if downside_pct
                 else "風險證據未達 >5% 情境門檻。"
             ),
@@ -2250,6 +2371,16 @@ class ReportGenerator:
         if score_delta <= 0:
             return f"，月營收年增率 {monthly_revenue.yoy_pct:.2f}% 未觸發{direction}"
         return f"，月營收年增率 {monthly_revenue.yoy_pct:.2f}% 觸發{direction} {score_delta} 點"
+
+    @staticmethod
+    def _leading_signal_reason(leading_signal: LeadingSignal | None, positive: bool) -> str:
+        if not leading_signal:
+            return ""
+        score = leading_signal.upside_bonus if positive else leading_signal.downside_penalty
+        if score <= 0:
+            return ""
+        direction = "正向加分" if positive else "風險加分"
+        return f"，領先訊號{leading_signal.direction}觸發{direction} {score} 點"
 
     @staticmethod
     def _summary(findings) -> str:

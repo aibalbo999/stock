@@ -14,6 +14,7 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.services.entity_mapping import EntityMapper
+from app.services.leading_signals import LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.report_generator import ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
@@ -1111,3 +1112,80 @@ def test_risk_warning_reason_distinguishes_threshold_from_relative_risk() -> Non
     assert ReportGenerator._risk_warning_reason({"upside_pct": 8, "downside_pct": 13}) == (
         "降值風險高於升值潛力，對新手資金不適合追價。"
     )
+
+
+def test_leading_signal_analyzer_scores_price_revenue_and_valuation() -> None:
+    prices = [
+        MarketSnapshot(
+            ticker="2330",
+            trade_date=date(2026, 1, day),
+            close=100 + day,
+            trading_volume=1_000,
+        )
+        for day in range(1, 31)
+    ]
+    prices[-1] = prices[-1].model_copy(update={"close": 140, "trading_volume": 2_000})
+    revenues = [
+        MonthlyRevenue(
+            ticker="2330",
+            revenue_date=date(2026, month, 10),
+            revenue=1000 + month,
+            revenue_year=2026,
+            revenue_month=month,
+            yoy_pct=10 + month,
+        )
+        for month in range(1, 5)
+    ]
+    valuation = ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=12, pb_ratio=2)
+
+    signal = LeadingSignalAnalyzer().analyze(
+        "2330",
+        prices,
+        revenues,
+        valuation,
+        {"pe_avg": 20, "pb_avg": 3},
+    )
+
+    assert signal.direction == "偏多"
+    assert signal.upside_bonus > 0
+    assert signal.downside_penalty == 0
+    assert "估值低於同業" in signal.bullish_factors
+
+
+def test_estimate_potential_uses_leading_signal_bonus() -> None:
+    snapshot = MarketSnapshot(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        close=2255.0,
+        source="FinMind TaiwanStockPrice",
+    )
+    signal = LeadingSignalAnalyzer().analyze(
+        "2330",
+        [
+            MarketSnapshot(ticker="2330", trade_date=date(2026, 1, day), close=100 + day, trading_volume=1000)
+            for day in range(1, 31)
+        ],
+        [],
+    )
+
+    estimate = ReportGenerator._estimate_potential([], [], snapshot, None, signal)
+
+    assert estimate["upside_pct"] > 10
+    assert any("領先訊號偏多" in label for label, _score in estimate["upside_factors"])
+
+
+def test_render_leading_signal_check_outputs_table() -> None:
+    signal = LeadingSignalAnalyzer().analyze(
+        "2330",
+        [
+            MarketSnapshot(ticker="2330", trade_date=date(2026, 1, day), close=100 + day, trading_volume=1000)
+            for day in range(1, 31)
+        ],
+        [],
+    )
+
+    markdown = ReportGenerator._render_leading_signal_check(["2330"], {"2330": signal})
+
+    assert "領先訊號檢查" not in markdown
+    assert "| 股票 | 方向 | 分數 |" in markdown
+    assert "2330" in markdown

@@ -162,6 +162,19 @@ class MarketRepository:
                 snapshots.append(self._to_snapshot(row))
         return snapshots
 
+    def history_by_tickers(self, tickers: list[str], limit: int = 80) -> dict[str, list[MarketSnapshot]]:
+        histories: dict[str, list[MarketSnapshot]] = {}
+        for ticker in tickers:
+            statement = (
+                select(StockPriceSnapshot)
+                .where(StockPriceSnapshot.ticker == ticker)
+                .order_by(StockPriceSnapshot.trade_date.desc())
+                .limit(limit)
+            )
+            rows = list(self.session.scalars(statement))
+            histories[ticker] = [self._to_snapshot(row) for row in reversed(rows)]
+        return histories
+
     @staticmethod
     def _to_snapshot(row: StockPriceSnapshot) -> MarketSnapshot:
         return MarketSnapshot(
@@ -216,6 +229,19 @@ class MonthlyRevenueRepository:
             if row:
                 latest.append(self._to_revenue(row, self._yoy_pct(row)))
         return latest
+
+    def history_by_tickers(self, tickers: list[str], limit: int = 18) -> dict[str, list[MonthlyRevenue]]:
+        histories: dict[str, list[MonthlyRevenue]] = {}
+        for ticker in tickers:
+            statement = (
+                select(MonthlyRevenueSnapshot)
+                .where(MonthlyRevenueSnapshot.ticker == ticker)
+                .order_by(MonthlyRevenueSnapshot.revenue_date.desc())
+                .limit(limit)
+            )
+            rows = list(self.session.scalars(statement))
+            histories[ticker] = [self._to_revenue(row, self._yoy_pct(row)) for row in reversed(rows)]
+        return histories
 
     def _yoy_pct(self, row: MonthlyRevenueSnapshot) -> float | None:
         previous = self.session.scalars(

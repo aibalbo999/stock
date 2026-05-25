@@ -33,21 +33,31 @@ def build_report_quality_gate(
     source_count = int(dynamic_sources.get("stored_count") or 0)
     source_quality = source_quality or {}
     plan_quality = plan_quality or source_audit.get("plan_quality") or {}
-    supported_ratio = float(candidate_support.get("supported_ratio") or 0)
+    exploration_supported_ratio = float(
+        candidate_support.get("exploration_supported_ratio", candidate_support.get("supported_ratio")) or 0
+    )
+    formal_supported_ratio = float(
+        candidate_support.get(
+            "formal_supported_ratio",
+            1.0 if promoted_count else exploration_supported_ratio,
+        )
+        or 0
+    )
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
 
     blockers = []
     warnings = []
+    observations = []
     if promoted_count == 0:
         blockers.append("沒有通過證據驗證的正式分析股票")
-    if promoted_count == 0 and supported_ratio < 0.6:
+    if promoted_count == 0 and exploration_supported_ratio < 0.6:
         blockers.append("候選公司證據覆蓋率低於 60%")
-    elif promoted_count and supported_ratio < 0.25:
-        blockers.append("候選公司證據覆蓋率低於 25%，AI 候選清單過度發散")
-    elif promoted_count and supported_ratio < 0.6:
-        warnings.append("候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票")
+    elif promoted_count and formal_supported_ratio < 1:
+        blockers.append("正式分析股票仍含弱證據公司")
+    elif promoted_count and exploration_supported_ratio < 0.6:
+        observations.append("AI 初始候選清單較廣，已由二次篩選收斂為正式分析股票")
     if source_count < 8:
         blockers.append("AI 動態資料來源入庫篇數過少")
     elif source_count < 12:
@@ -114,6 +124,7 @@ def build_report_quality_gate(
         "status": status,
         "blockers": blockers,
         "warnings": warnings,
+        "observations": observations,
         "remediation_actions": remediation_actions,
         "action_policy": {
             "policy": action_policy,
@@ -123,7 +134,8 @@ def build_report_quality_gate(
         },
         "metrics": {
             "promoted_count": promoted_count,
-            "candidate_supported_ratio": supported_ratio,
+            "candidate_supported_ratio": formal_supported_ratio,
+            "exploration_candidate_supported_ratio": exploration_supported_ratio,
             "dynamic_source_count": source_count,
             "market_coverage": market_coverage,
             "monthly_revenue_coverage": monthly_coverage,
@@ -310,6 +322,7 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 投資行動狀態：{action_policy.get('label', '目前無足夠數據判斷。')}",
         f"- 正式分析股票：{metrics.get('promoted_count', 0)} 檔",
         f"- 候選公司證據覆蓋率：{float(metrics.get('candidate_supported_ratio') or 0):.0%}",
+        f"- 探索候選覆蓋率：{float(metrics.get('exploration_candidate_supported_ratio') or 0):.0%}",
         f"- AI 動態來源入庫：{metrics.get('dynamic_source_count', 0)} 篇",
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
@@ -323,10 +336,13 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         lines.append(f"- 本輪品質門檻後可投入上限：約 {int(action_policy['max_deployable_amount']):,} 元")
     blockers = quality_gate.get("blockers") or []
     warnings = quality_gate.get("warnings") or []
+    observations = quality_gate.get("observations") or []
     if blockers:
         lines.append("- 阻擋項：" + "；".join(blockers))
     if warnings:
         lines.append("- 警示項：" + "；".join(warnings))
+    if observations:
+        lines.append("- 觀察項：" + "；".join(str(item) for item in observations))
     remediation_actions = quality_gate.get("remediation_actions") or []
     if remediation_actions:
         lines.append("- 建議補強：" + "；".join(str(action) for action in remediation_actions))
@@ -379,6 +395,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
         "status": status_map.get(fields.get("狀態", ""), "unknown"),
         "blockers": _split_issue_field(fields.get("阻擋項")),
         "warnings": _split_issue_field(fields.get("警示項")),
+        "observations": _split_issue_field(fields.get("觀察項")),
         "remediation_actions": _split_issue_field(fields.get("建議補強")),
         "action_policy": {
             "label": action_label,
@@ -387,6 +404,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
         "metrics": {
             "promoted_count": _parse_int(fields.get("正式分析股票")),
             "candidate_supported_ratio": _parse_percent(fields.get("候選公司證據覆蓋率")),
+            "exploration_candidate_supported_ratio": _parse_percent(fields.get("探索候選覆蓋率")),
             "dynamic_source_count": _parse_int(fields.get("AI 動態來源入庫")),
             "source_unique_publishers": _parse_optional_int(fields.get("來源發布者數")),
             "source_timestamp_coverage": _parse_optional_percent(fields.get("來源時間戳覆蓋率")),

@@ -542,14 +542,17 @@ def downside_badge_class(value: str) -> str:
 def quality_issue_html(gate: dict) -> str:
     blockers = gate.get("blockers") or []
     warnings = gate.get("warnings") or []
+    observations = gate.get("observations") or []
     actions = gate.get("remediation_actions") or []
-    if not blockers and not warnings and not actions:
+    if not blockers and not warnings and not observations and not actions:
         return ""
     items = []
     for blocker in blockers:
         items.append(f"<li><strong>阻擋：</strong>{escape(str(blocker))}</li>")
     for warning in warnings:
         items.append(f"<li><strong>警示：</strong>{escape(str(warning))}</li>")
+    for observation in observations:
+        items.append(f"<li><strong>觀察：</strong>{escape(str(observation))}</li>")
     action_items = "".join(f"<li>{escape(str(action))}</li>" for action in actions)
     action_html = (
         "<div class='quality-actions'><strong>建議補強</strong><ul>" + action_items + "</ul></div>"
@@ -891,7 +894,7 @@ def render_quality_gate(result: dict) -> None:
     cols = st.columns(4)
     cols[0].metric("品質狀態", label_map.get(status, status))
     cols[1].metric("正式股票", metrics.get("promoted_count", 0))
-    cols[2].metric("候選覆蓋", f"{float(metrics.get('candidate_supported_ratio') or 0):.0%}")
+    cols[2].metric("正式證據", f"{float(metrics.get('candidate_supported_ratio') or 0):.0%}")
     amount = action_policy.get("max_deployable_amount")
     cols[3].metric("可投入上限", f"{int(amount):,}" if amount is not None else "-")
     source_cols = st.columns(4)
@@ -907,8 +910,15 @@ def render_quality_gate(result: dict) -> None:
         issues.append({"等級": "阻擋", "項目": item})
     for item in gate.get("warnings", []) or []:
         issues.append({"等級": "警示", "項目": item})
+    for item in gate.get("observations", []) or []:
+        issues.append({"等級": "觀察", "項目": item})
     if issues:
         st.dataframe(issues, width="stretch", hide_index=True)
+    actions = gate.get("remediation_actions") or []
+    if actions:
+        st.markdown("**系統建議補強**")
+        for action in actions:
+            st.markdown(f"- {action}")
 
 
 def render_task_status(task_status: dict) -> None:

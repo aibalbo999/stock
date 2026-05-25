@@ -227,12 +227,15 @@ def summarize_candidate_support(candidates) -> dict:
     supported = sum(1 for candidate in candidates if candidate.status == "evidence_supported")
     weak = sum(1 for candidate in candidates if candidate.status == "weak_evidence")
     unsupported = total - supported
+    exploration_supported_ratio = supported / total if total else 0
     return {
         "total": total,
         "supported": supported,
         "weak": weak,
         "unsupported": unsupported,
-        "supported_ratio": supported / total if total else 0,
+        "supported_ratio": exploration_supported_ratio,
+        "exploration_supported_ratio": exploration_supported_ratio,
+        "formal_supported_ratio": 1.0 if supported else 0,
     }
 
 

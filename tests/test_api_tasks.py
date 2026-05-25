@@ -493,10 +493,14 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["warnings"] == []
 
 
-def test_report_quality_gate_warns_for_broad_ai_candidate_list_after_promotion() -> None:
+def test_report_quality_gate_treats_broad_candidate_list_as_observation_after_promotion() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.4},
+            "candidate_support": {
+                "supported_ratio": 0.4,
+                "exploration_supported_ratio": 0.4,
+                "formal_supported_ratio": 1.0,
+            },
             "dynamic_queries": {"stored_count": 24},
         },
         promoted_tickers=["2330", "2382"],
@@ -506,16 +510,23 @@ def test_report_quality_gate_warns_for_broad_ai_candidate_list_after_promotion()
         valuation_count=2,
     )
 
-    assert gate["status"] == "caution"
+    assert gate["status"] == "ready"
     assert gate["blockers"] == []
-    assert "候選公司證據覆蓋率低於 60%，已由二次篩選收斂正式股票" in gate["warnings"]
-    assert any("弱證據候選補抓" in action for action in gate["remediation_actions"])
+    assert gate["warnings"] == []
+    assert "AI 初始候選清單較廣，已由二次篩選收斂為正式分析股票" in gate["observations"]
+    assert gate["metrics"]["candidate_supported_ratio"] == 1.0
+    assert gate["metrics"]["exploration_candidate_supported_ratio"] == 0.4
+    assert gate["remediation_actions"] == []
 
 
-def test_report_quality_gate_blocks_overly_diffuse_candidate_list() -> None:
+def test_report_quality_gate_accepts_diffuse_exploration_when_formal_stocks_are_verified() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.2},
+            "candidate_support": {
+                "supported_ratio": 0.2,
+                "exploration_supported_ratio": 0.2,
+                "formal_supported_ratio": 1.0,
+            },
             "dynamic_queries": {"stored_count": 24},
         },
         promoted_tickers=["2330"],
@@ -525,9 +536,30 @@ def test_report_quality_gate_blocks_overly_diffuse_candidate_list() -> None:
         valuation_count=1,
     )
 
+    assert gate["status"] == "ready"
+    assert gate["blockers"] == []
+    assert "AI 初始候選清單較廣，已由二次篩選收斂為正式分析股票" in gate["observations"]
+
+
+def test_report_quality_gate_blocks_weak_formal_stocks() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {
+                "supported_ratio": 0.8,
+                "exploration_supported_ratio": 0.8,
+                "formal_supported_ratio": 0.75,
+            },
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330", "2382"],
+        market_count=2,
+        monthly_revenue_count=2,
+        financial_metrics_count=20,
+        valuation_count=2,
+    )
+
     assert gate["status"] == "insufficient"
-    assert "候選公司證據覆蓋率低於 25%，AI 候選清單過度發散" in gate["blockers"]
-    assert any("弱證據候選補抓" in action for action in gate["remediation_actions"])
+    assert "正式分析股票仍含弱證據公司" in gate["blockers"]
 
 
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
@@ -673,13 +705,14 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
     assert parsed["metrics"]["source_recent_coverage"] == 0.75
     assert parsed["metrics"]["discovery_plan_status"] == "ready"
     assert parsed["metrics"]["discovery_plan_score"] == 95
+    assert parsed["metrics"]["exploration_candidate_supported_ratio"] == 0.8
 
 
 def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
-            "candidate_support": {"supported_ratio": 0.4},
-            "dynamic_queries": {"stored_count": 24},
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 10},
         },
         promoted_tickers=["2330"],
         market_count=1,

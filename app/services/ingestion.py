@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.core.time import today_taipei
-from app.data_sources.company_filings import CompanyFilingFetcher
+from app.data_sources.company_filings import (
+    RECOMMENDED_DOCUMENT_TYPES,
+    REQUIRED_CORE_DOCUMENT_TYPES,
+    CompanyFilingFetcher,
+)
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.session import session_scope
@@ -203,6 +207,8 @@ class IngestionPipeline:
         documents = []
         errors = []
         search_plans = []
+        per_ticker_results = []
+        target_document_types = tuple(document_types or REQUIRED_CORE_DOCUMENT_TYPES)
         for ticker in allowed:
             company = companies.get(ticker)
             company_name = company.name if company else ""
@@ -214,7 +220,25 @@ class IngestionPipeline:
                 document_types=document_types,
             )
             documents.extend(company_documents)
-            errors.extend(company_errors)
+            enriched_errors = [
+                {
+                    **error,
+                    "ticker": ticker,
+                    "company_name": company_name,
+                    "category": classify_company_filing_error(error.get("error", "")),
+                }
+                for error in company_errors
+            ]
+            errors.extend(enriched_errors)
+            per_ticker_results.append(
+                company_filing_ticker_result(
+                    ticker,
+                    company_name,
+                    company_documents,
+                    target_document_types,
+                    enriched_errors,
+                )
+            )
 
         news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
         VectorStore().upsert_documents(news_documents)
@@ -240,6 +264,13 @@ class IngestionPipeline:
                 for document in documents
             ],
             "errors": errors,
+            "per_ticker_results": per_ticker_results,
+            "missing_tickers": [
+                row["ticker"]
+                for row in per_ticker_results
+                if row["status"] != "sufficient"
+            ],
+            "next_actions": company_filing_next_actions(per_ticker_results),
             "official_search_plans": search_plans,
             "source": "Google News company filing discovery",
         }
@@ -347,3 +378,80 @@ class IngestionPipeline:
         has_political_noise = any(term in text for term in political_noise)
         has_market_context = any(term in text for term in market_terms)
         return has_political_noise and not has_market_context
+
+
+def classify_company_filing_error(message: str) -> str:
+    lowered = message.lower()
+    if "ocr" in lowered or "extractable text" in lowered or "掃描" in message:
+        return "manual_text_required"
+    if any(term in lowered for term in ("429", "rate limit", "too many requests", "503", "500", "timeout")):
+        return "retryable_source_error"
+    if any(term in lowered for term in ("403", "forbidden", "login", "登入", "captcha")):
+        return "source_access_restricted"
+    if any(term in lowered for term in ("too short", "does not mention", "does not match")):
+        return "content_not_usable"
+    return "source_fetch_error"
+
+
+def company_filing_ticker_result(
+    ticker: str,
+    company_name: str,
+    documents: list,
+    target_document_types: tuple[str, ...],
+    errors: list[dict],
+) -> dict:
+    document_types = sorted({document.document_type for document in documents})
+    missing_required = [
+        document_type
+        for document_type in target_document_types
+        if document_type not in document_types
+    ]
+    missing_recommended = [
+        document_type
+        for document_type in RECOMMENDED_DOCUMENT_TYPES
+        if document_type not in document_types and document_type not in target_document_types
+    ]
+    status = "sufficient" if documents and not missing_required else "needs_manual_source"
+    return {
+        "ticker": ticker,
+        "company_name": company_name,
+        "stored_count": len(documents),
+        "document_types": document_types,
+        "missing_required_types": missing_required,
+        "missing_recommended_types": missing_recommended,
+        "error_count": len(errors),
+        "error_categories": sorted({error.get("category", "source_fetch_error") for error in errors}),
+        "status": status,
+        "next_step": company_filing_next_step(status, missing_required, missing_recommended),
+    }
+
+
+def company_filing_next_step(
+    status: str,
+    missing_required: list[str],
+    missing_recommended: list[str],
+) -> str:
+    if status == "sufficient" and not missing_recommended:
+        return "公司公開文件已足夠進入個股分析。"
+    missing = missing_required or missing_recommended
+    if missing:
+        return "請補官方文件：" + "、".join(missing) + "；可使用 MOPS、TWSE/TPEx 或公司 IR 的 HTML/PDF/文字版。"
+    return "請改用公司 IR/MOPS 官方 URL 或人工貼上文件文字。"
+
+
+def company_filing_next_actions(per_ticker_results: list[dict]) -> list[dict]:
+    actions = []
+    for row in per_ticker_results:
+        if row["status"] == "sufficient":
+            continue
+        actions.append(
+            {
+                "ticker": row["ticker"],
+                "company_name": row["company_name"],
+                "action": "manual_company_filing_import",
+                "reason": row["next_step"],
+                "missing_required_types": row["missing_required_types"],
+                "missing_recommended_types": row["missing_recommended_types"],
+            }
+        )
+    return actions

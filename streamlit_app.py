@@ -2058,6 +2058,28 @@ with tabs[2]:
                     )
                 )
             st.success(f"已新增或更新 {result['stored_count']} 筆公司文件線索。")
+            per_ticker_results = result.get("per_ticker_results") or []
+            if per_ticker_results:
+                st.caption("公司文件補強狀態")
+                st.dataframe(
+                    [
+                        {
+                            "股票": row.get("ticker"),
+                            "公司": row.get("company_name"),
+                            "狀態": "足夠" if row.get("status") == "sufficient" else "需補文件",
+                            "已抓文件": row.get("stored_count", 0),
+                            "缺必要文件": "、".join(row.get("missing_required_types") or []),
+                            "缺建議文件": "、".join(row.get("missing_recommended_types") or []),
+                            "下一步": row.get("next_step"),
+                        }
+                        for row in per_ticker_results
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+            next_actions = result.get("next_actions") or []
+            if next_actions:
+                st.info("仍需人工補官方文件：" + "、".join(action.get("ticker", "") for action in next_actions))
             plans = result.get("official_search_plans") or []
             if plans:
                 st.caption("官方搜尋計畫")

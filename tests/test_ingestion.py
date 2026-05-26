@@ -1,10 +1,12 @@
 import asyncio
+from contextlib import contextmanager
 from datetime import date
 
+from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import MarketSnapshot, ReportRequest
-from app.services.ingestion import IngestionPipeline
+from app.services.ingestion import IngestionPipeline, classify_company_filing_error
 
 
 def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> None:
@@ -164,6 +166,85 @@ def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
 
     assert result["requested_tickers"] == ["3017", "2059"]
     assert result["stored_history_count"] == 2
+
+
+def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
+    stored = {"vector_count": 0, "repository_count": 0}
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            stored["vector_count"] = len(documents)
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        @staticmethod
+        def to_news_document(document):
+            return NewsFetcher.from_manual_text(
+                title=document.title,
+                text=document.text,
+                publisher=document.source.publisher,
+                published_at=document.source.published_at,
+                url=document.source.url,
+            )
+
+        def upsert_document(self, document) -> None:
+            stored["repository_count"] += 1
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    async def fake_fetch_discovery_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit_per_query: int = 3,
+        document_types=None,
+    ):
+        if ticker == "2330":
+            return [
+                CompanyFilingFetcher.from_manual_text(
+                    ticker="2330",
+                    company_name=company_name,
+                    document_type="annual_report",
+                    title="台積電 2026 年報",
+                    text="台積電 年報揭露 AI/HPC 需求與風險因素。" * 8,
+                    publisher="公開資訊觀測站",
+                    published_at=date(2026, 5, 1),
+                    url="https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+                )
+            ], []
+        return [], [{"source": "https://news.google.com/rss/search?q=2382", "error": "HTTP 503 timeout"}]
+
+    monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
+    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+
+    result = asyncio.run(
+        IngestionPipeline().ingest_company_filings(
+            ["2330", "2382"],
+            limit_per_query=2,
+        )
+    )
+
+    by_ticker = {row["ticker"]: row for row in result["per_ticker_results"]}
+    assert stored == {"vector_count": 1, "repository_count": 1}
+    assert by_ticker["2330"]["status"] == "sufficient"
+    assert by_ticker["2382"]["status"] == "needs_manual_source"
+    assert by_ticker["2382"]["missing_required_types"] == ["annual_report"]
+    assert by_ticker["2382"]["error_categories"] == ["retryable_source_error"]
+    assert result["missing_tickers"] == ["2382"]
+    assert result["next_actions"][0]["action"] == "manual_company_filing_import"
+
+
+def test_classify_company_filing_errors() -> None:
+    assert classify_company_filing_error("HTTP 503 timeout") == "retryable_source_error"
+    assert classify_company_filing_error("PDF 掃描圖檔，請 OCR") == "manual_text_required"
+    assert classify_company_filing_error("403 forbidden") == "source_access_restricted"
+    assert classify_company_filing_error("content does not mention the target company") == "content_not_usable"
 
 
 def test_ingestion_filter_removes_old_and_low_quality_political_noise() -> None:

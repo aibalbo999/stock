@@ -935,7 +935,13 @@ def ingest_company_filing_manual(payload: ManualCompanyFilingIngest) -> dict:
     VectorStore().upsert_documents([news_document])
     with session_scope() as session:
         CompanyFilingRepository(session).upsert_document(document)
-    return {"document_id": document.id, "ticker": document.ticker, "document_type": document.document_type}
+    return {
+        "document_id": document.id,
+        "ticker": document.ticker,
+        "document_type": document.document_type,
+        "source_tier": filing_source_tier(document),
+        "quality_score": filing_quality_score(document, document.ticker, document.company_name or ""),
+    }
 
 
 @app.post("/company-filings/fetch")

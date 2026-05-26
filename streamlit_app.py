@@ -11,6 +11,11 @@ import streamlit.components.v1 as components
 
 from app.core.config import get_settings
 from app.core.time import today_taipei
+from app.data_sources.company_filings import (
+    CompanyFilingFetcher,
+    filing_quality_score,
+    filing_source_tier,
+)
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.status import db_status
@@ -2143,27 +2148,71 @@ with tabs[2]:
 
 with tabs[2]:
     render_section_header("補充資料", "手動補充新聞、法說或研究摘要，讓報告可以引用具體來源。")
-    title = st.text_input("標題")
-    publisher = st.text_input("來源", value="manual")
-    published_at = st.date_input("日期", value=today_taipei())
-    url = st.text_input("URL")
-    text = st.text_area("內文", height=260)
-    if st.button("匯入 RAG"):
-        document = NewsFetcher.from_manual_text(
-            title=title,
-            text=text,
-            publisher=publisher,
-            published_at=published_at,
-            url=url or None,
-        )
-        VectorStore().upsert_documents([document])
-        matches = EntityMapper().match_document(document)
-        with session_scope() as session:
-            NewsRepository(session).upsert_document(
-                document,
-                [match.model_dump(mode="json") for match in matches],
+    input_tabs = st.tabs(["新聞/研究摘要", "公司公開文件"])
+    with input_tabs[0]:
+        title = st.text_input("標題")
+        publisher = st.text_input("來源", value="manual")
+        published_at = st.date_input("日期", value=today_taipei())
+        url = st.text_input("URL")
+        text = st.text_area("內文", height=260)
+        if st.button("匯入 RAG"):
+            document = NewsFetcher.from_manual_text(
+                title=title,
+                text=text,
+                publisher=publisher,
+                published_at=published_at,
+                url=url or None,
             )
-        st.success(f"已匯入：{document.id}")
+            VectorStore().upsert_documents([document])
+            matches = EntityMapper().match_document(document)
+            with session_scope() as session:
+                NewsRepository(session).upsert_document(
+                    document,
+                    [match.model_dump(mode="json") for match in matches],
+                )
+            st.success(f"已匯入：{document.id}")
+
+    with input_tabs[1]:
+        filing_ticker = st.selectbox("股票代號", options=allowed_tickers, index=allowed_tickers.index("2330") if "2330" in allowed_tickers else 0)
+        filing_company = st.text_input("公司名稱", value=next((company.name for company in whitelist.companies() if company.ticker == filing_ticker), ""))
+        filing_type = st.selectbox(
+            "文件類型",
+            options=["annual_report", "investor_presentation", "prospectus", "material_information", "company_disclosure"],
+            format_func=lambda value: {
+                "annual_report": "年報",
+                "investor_presentation": "法說/投資人簡報",
+                "prospectus": "公開說明書",
+                "material_information": "重大訊息",
+                "company_disclosure": "其他公司揭露",
+            }.get(value, value),
+        )
+        filing_title = st.text_input("文件標題", key="filing_title")
+        filing_publisher = st.text_input("文件來源", value="公司 IR / MOPS", key="filing_publisher")
+        filing_date = st.date_input("文件日期", value=today_taipei(), key="filing_date")
+        filing_url = st.text_input("文件 URL", key="filing_url")
+        filing_text = st.text_area("文件文字", height=260, key="filing_text")
+        if st.button("匯入公司文件"):
+            if not filing_title or not filing_text:
+                st.warning("請輸入文件標題與文字。")
+            else:
+                document = CompanyFilingFetcher.from_manual_text(
+                    ticker=filing_ticker,
+                    company_name=filing_company,
+                    document_type=filing_type,
+                    title=filing_title,
+                    text=filing_text,
+                    publisher=filing_publisher,
+                    published_at=filing_date,
+                    url=filing_url or None,
+                )
+                news_document = CompanyFilingRepository.to_news_document(document)
+                VectorStore().upsert_documents([news_document])
+                with session_scope() as session:
+                    CompanyFilingRepository(session).upsert_document(document)
+                tier = filing_source_tier(document)
+                score = filing_quality_score(document, filing_ticker, filing_company)
+                st.success(f"已匯入公司文件：{document.id}")
+                st.caption(f"來源分級：{tier}；品質分數：{score}")
 
     with st.expander("進階：從 RSS 匯入"):
         render_section_header("RSS 匯入", "從既有資料源或指定 URL 抓取最新文本。")

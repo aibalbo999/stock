@@ -577,6 +577,57 @@ def test_report_company_data_audit_endpoint(monkeypatch) -> None:
     assert response.json()["rows"][0]["ticker"] == "3017"
 
 
+def test_manual_company_filing_endpoint_returns_quality(monkeypatch) -> None:
+    stored = {}
+    original_repository = main.CompanyFilingRepository
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            stored["rag_document_id"] = documents[0].id
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def upsert_document(self, document):
+            stored["filing_id"] = document.id
+
+        @staticmethod
+        def to_news_document(document):
+            return original_repository.to_news_document(document)
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(main, "VectorStore", FakeVectorStore)
+    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(main, "session_scope", fake_session_scope)
+
+    response = TestClient(main.app).post(
+        "/company-filings/manual",
+        json={
+            "ticker": "2330",
+            "company_name": "台積電",
+            "document_type": "annual_report",
+            "title": "台積電 年報",
+            "text": "台積電 年報揭露 AI/HPC 需求與風險因素。",
+            "publisher": "公開資訊觀測站",
+            "published_at": "2026-05-01",
+            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ticker"] == "2330"
+    assert body["document_type"] == "annual_report"
+    assert body["source_tier"] == "official_disclosure"
+    assert body["quality_score"] >= 70
+    assert stored["filing_id"] == body["document_id"]
+    assert stored["rag_document_id"].startswith("filing-")
+
+
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     assert (
         main.should_require_candidate_audit_follow_up(

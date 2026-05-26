@@ -527,7 +527,14 @@ def summarize_follow_up_execution(execution: dict) -> dict:
     rerun_blocker_actions = []
     for key, value in results.items():
         if not isinstance(value, dict):
-            rows.append({"task": key, "stored_count": 0, "error_count": 0})
+            rows.append(
+                {
+                    "task": key,
+                    "stored_count": 0,
+                    "error_count": 0,
+                    "completion": follow_up_completion_status(key, {}),
+                }
+            )
             continue
         errors = value.get("errors") or []
         error_count = len(errors) if isinstance(errors, list) else 0
@@ -544,6 +551,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
                 "stored_count": stored_count,
                 "error_count": error_count,
                 "source": value.get("source"),
+                "completion": follow_up_completion_status(key, value),
             }
         )
     unique_blocked = sorted(set(blocked_company_filing_tickers))
@@ -553,6 +561,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         "stored_count": total_items,
         "error_count": total_errors,
         "has_errors": total_errors > 0,
+        "completion": summarize_follow_up_completion(rows),
         "rerun_blocked": bool(unique_blocked),
         "rerun_blockers": [
             f"公司公開文件仍不足：{', '.join(unique_blocked)}"
@@ -562,6 +571,85 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         "rerun_blocker_actions": rerun_blocker_actions,
         "retryable_company_filing_tickers": unique_retryable,
         "items": rows,
+    }
+
+
+def summarize_follow_up_completion(rows: list[dict]) -> dict:
+    completed = sum(1 for row in rows if (row.get("completion") or {}).get("completed"))
+    blocked = [
+        row["task"]
+        for row in rows
+        if not (row.get("completion") or {}).get("completed")
+    ]
+    return {
+        "completed_count": completed,
+        "total_count": len(rows),
+        "all_completed": bool(rows) and completed == len(rows),
+        "blocked_tasks": blocked,
+    }
+
+
+def follow_up_completion_status(task: str, result: dict) -> dict:
+    action_type = task.split(":", 1)[0]
+    stored_count = _stored_count(result)
+    errors = result.get("errors") or []
+    error_count = len(errors) if isinstance(errors, list) else 0
+    if action_type == "ingest_company_filings":
+        blocked = ((result.get("gap_summary") or {}).get("blocked_tickers") or [])
+        return {
+            "check": "company_filing_quality",
+            "completed": stored_count > 0 and not blocked,
+            "observed": {"stored_count": stored_count, "blocked_tickers": blocked},
+            "required": {"min_documents": 1, "blocked_tickers": []},
+        }
+    if action_type == "refresh_market":
+        return {
+            "check": "market_history_coverage",
+            "completed": stored_count >= 120 and error_count == 0,
+            "observed": {"stored_count": stored_count, "error_count": error_count},
+            "required": {"min_days": 120, "error_count": 0},
+        }
+    if action_type == "refresh_monthly_revenue":
+        return {
+            "check": "monthly_revenue_coverage",
+            "completed": stored_count >= 12 and error_count == 0,
+            "observed": {"stored_count": stored_count, "error_count": error_count},
+            "required": {"min_months": 12, "error_count": 0},
+        }
+    if action_type == "refresh_financial_metrics":
+        return {
+            "check": "financial_metric_coverage",
+            "completed": stored_count >= 5 and error_count == 0,
+            "observed": {"stored_count": stored_count, "error_count": error_count},
+            "required": {"min_years": 5, "error_count": 0},
+        }
+    if action_type == "refresh_valuations":
+        return {
+            "check": "valuation_availability",
+            "completed": stored_count > 0 and error_count == 0,
+            "observed": {"stored_count": stored_count, "error_count": error_count},
+            "required": {"min_records": 1, "error_count": 0},
+        }
+    if action_type == "ingest_news":
+        return {
+            "check": "company_evidence_sources",
+            "completed": stored_count > 0 and error_count == 0,
+            "observed": {"stored_count": stored_count, "error_count": error_count},
+            "required": {"min_documents": 1, "error_count": 0},
+        }
+    if action_type == "rerun_discovery":
+        status = result.get("status")
+        return {
+            "check": "candidate_revalidation_ready",
+            "completed": status in {"planned", "completed", "ready"},
+            "observed": {"status": status},
+            "required": {"status": "planned_or_ready"},
+        }
+    return {
+        "check": "manual_review",
+        "completed": stored_count > 0 and error_count == 0,
+        "observed": {"stored_count": stored_count, "error_count": error_count},
+        "required": {"manual_review": True},
     }
 
 

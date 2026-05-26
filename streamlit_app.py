@@ -1573,6 +1573,7 @@ def render_follow_up_flash() -> None:
                         "任務": item.get("task"),
                         "更新筆數": item.get("stored_count", 0),
                         "錯誤數": item.get("error_count", 0),
+                        "完成狀態": "達標" if (item.get("completion") or {}).get("completed") else "未達標",
                         "來源": item.get("source") or "-",
                     }
                     for item in items

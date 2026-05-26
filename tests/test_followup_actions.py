@@ -318,6 +318,39 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["stored_count"] == 91
     assert summary["error_count"] == 1
     assert summary["has_errors"] is True
+    assert summary["completion"]["all_completed"] is False
+    assert summary["items"][0]["completion"]["check"] == "market_history_coverage"
+    assert summary["items"][0]["completion"]["completed"] is False
+    assert summary["items"][1]["completion"]["check"] == "valuation_availability"
+    assert summary["items"][1]["completion"]["completed"] is True
+
+
+def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "refresh_market:2330": {
+                    "stored_history_count": 120,
+                    "errors": [],
+                },
+                "refresh_monthly_revenue:2330": {
+                    "stored_count": 12,
+                    "errors": [],
+                },
+                "refresh_financial_metrics:2330": {
+                    "stored_count": 5,
+                    "errors": [],
+                },
+            }
+        }
+    )
+
+    assert summary["completion"] == {
+        "completed_count": 3,
+        "total_count": 3,
+        "all_completed": True,
+        "blocked_tasks": [],
+    }
 
 
 def test_summarize_follow_up_execution_blocks_rerun_when_company_filings_still_missing() -> None:

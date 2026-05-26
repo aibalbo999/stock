@@ -35,7 +35,10 @@ def build_report_quality_gate(
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
     promoted_count = len(promoted_tickers)
-    source_count = int(dynamic_sources.get("stored_count") or 0)
+    source_count = max(
+        int(dynamic_sources.get("stored_count") or 0),
+        int(source_audit.get("total_stored_count") or 0),
+    )
     source_quality = source_quality or {}
     plan_quality = plan_quality or source_audit.get("plan_quality") or {}
     exploration_supported_ratio = float(

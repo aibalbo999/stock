@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date, timedelta
 
@@ -363,6 +364,79 @@ class IngestionPipeline:
             "next_actions": company_filing_next_actions(per_ticker_results),
             "official_search_plans": search_plans,
             "source": "Company filing discovery (Google News + official web search)",
+        }
+
+    async def ingest_mops_annual_reports(
+        self,
+        tickers: list[str],
+        filter_allowed: bool = True,
+    ) -> dict:
+        requested = tickers or []
+        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
+        companies = {company.ticker: company for company in self.mapper.whitelist.companies()}
+        fetcher = CompanyFilingFetcher()
+        documents = []
+        errors = []
+        per_ticker_results = []
+        for ticker in allowed:
+            company = companies.get(ticker)
+            company_name = company.name if company else self._company_name_from_cached_evidence(ticker)
+            try:
+                ticker_documents, ticker_errors = await asyncio.wait_for(
+                    fetcher.fetch_mops_annual_report_documents(ticker, company_name),
+                    timeout=30,
+                )
+            except Exception as exc:
+                ticker_documents = []
+                ticker_errors = [{"source": "MOPS annual report", "error": str(exc) or exc.__class__.__name__}]
+            enriched_errors = enrich_company_filing_errors(ticker_errors, ticker, company_name)
+            documents.extend(ticker_documents)
+            errors.extend(enriched_errors)
+            per_ticker_results.append(
+                company_filing_ticker_result(
+                    ticker,
+                    company_name,
+                    ticker_documents,
+                    ("annual_report",),
+                    enriched_errors,
+                    [company_filing_attempt_result("mops_annual_report", ticker_documents, enriched_errors)],
+                )
+            )
+
+        documents = self._dedupe_documents(documents)
+        news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
+        VectorStore().upsert_documents(news_documents)
+        with session_scope() as session:
+            repository = CompanyFilingRepository(session)
+            for document in documents:
+                repository.upsert_document(document)
+        return {
+            "requested_tickers": allowed,
+            "stored_count": len(documents),
+            "items": [
+                {
+                    "id": document.id,
+                    "ticker": document.ticker,
+                    "document_type": document.document_type,
+                    "title": document.title,
+                    "publisher": document.source.publisher,
+                    "published_at": document.source.published_at.isoformat()
+                    if document.source.published_at
+                    else None,
+                    "url": document.source.url,
+                }
+                for document in documents
+            ],
+            "errors": errors,
+            "per_ticker_results": per_ticker_results,
+            "missing_tickers": [
+                row["ticker"]
+                for row in per_ticker_results
+                if row["status"] != "sufficient"
+            ],
+            "gap_summary": company_filing_gap_summary(per_ticker_results),
+            "next_actions": company_filing_next_actions(per_ticker_results),
+            "source": "MOPS annual report direct discovery",
         }
 
     @staticmethod

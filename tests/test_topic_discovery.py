@@ -353,6 +353,18 @@ def test_discover_keeps_original_when_repair_is_worse() -> None:
     assert result["plan_quality"]["score"] >= result["initial_plan_quality"]["score"]
 
 
+def test_discover_uses_fallback_plan_when_llm_returns_non_json() -> None:
+    llm = FakeDiscoveryLLM(["不是 JSON 的拆解說明"])
+
+    result = TopicDiscoveryService(llm=llm).discover("AI 產業鏈")
+
+    assert result["fallback_plan_applied"] is True
+    assert result["plan_quality"]["status"] in {"ready", "caution"}
+    assert result["plan"]["candidate_companies"]
+    assert any(candidate["ticker"] == "2330" for candidate in result["plan"]["candidate_companies"])
+    assert any("CoWoS" in subtopic["name"] for subtopic in result["plan"]["subtopics"])
+
+
 def test_coverage_gap_queries_add_missing_research_dimensions() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -840,6 +852,50 @@ def test_validate_candidates_requires_topic_context_evidence() -> None:
 
     assert candidates[0].status == "needs_evidence"
     assert candidates[0].evidence_count == 0
+
+
+def test_validate_candidates_uses_segment_and_rationale_as_context() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "AI 伺服器",
+              "required_evidence": ["雲端資本支出"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI伺服器代工",
+              "rationale": "美系 CSP 伺服器出貨",
+              "evidence_keywords": ["GB200 訂單"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="廣達 AI 伺服器出貨受惠雲端資本支出",
+            text="廣達受惠 AI 伺服器與美系雲端資本支出，未提到 GB200。",
+            publisher="test-a",
+            published_at=date(2026, 5, 24),
+        ),
+        NewsFetcher.from_manual_text(
+            title="廣達伺服器代工需求維持高檔",
+            text="美系 CSP 伺服器出貨帶動廣達營運。",
+            publisher="test-b",
+            published_at=date(2026, 5, 24),
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].status == "evidence_supported"
+    assert candidates[0].evidence_count == 2
 
 
 def test_validate_candidates_accepts_static_whitelist_aliases() -> None:

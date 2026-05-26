@@ -74,21 +74,35 @@ class TopicDiscoveryService:
     def discover(self, topic: str) -> dict:
         result = self.llm.generate_with_metadata(self._prompt(topic))
         if result.fallback:
+            fallback_plan = self._fallback_plan(topic)
+            fallback_quality = self.evaluate_plan_quality(fallback_plan)
             return {
                 "topic": topic,
                 "fallback": True,
                 "message": result.text,
-                "plan": TopicDiscoveryPlan().model_dump(),
+                "plan": fallback_plan.model_dump(),
+                "plan_quality": fallback_quality.model_dump(),
+                "initial_plan_quality": self.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+                "repair_attempted": False,
+                "repair_applied": False,
+                "fallback_plan_applied": True,
             }
         try:
             plan = self.parse_plan(result.text)
         except ValueError as exc:
+            fallback_plan = self._fallback_plan(topic)
+            fallback_quality = self.evaluate_plan_quality(fallback_plan)
             return {
                 "topic": topic,
                 "fallback": True,
                 "message": f"AI discovery JSON parse failed: {exc}",
                 "raw_preview": result.text[:500],
-                "plan": TopicDiscoveryPlan().model_dump(),
+                "plan": fallback_plan.model_dump(),
+                "plan_quality": fallback_quality.model_dump(),
+                "initial_plan_quality": self.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+                "repair_attempted": False,
+                "repair_applied": False,
+                "fallback_plan_applied": True,
             }
         initial_quality = self.evaluate_plan_quality(plan)
         repair = None
@@ -99,9 +113,17 @@ class TopicDiscoveryService:
             if repair is not None and repair["quality"].score >= initial_quality.score:
                 final_plan = repair["plan"]
                 final_quality = repair["quality"]
+        fallback_plan_applied = False
+        if final_quality.status == "insufficient":
+            fallback_plan = self._fallback_plan(topic)
+            fallback_quality = self.evaluate_plan_quality(fallback_plan)
+            if fallback_quality.score > final_quality.score:
+                final_plan = fallback_plan
+                final_quality = fallback_quality
+                fallback_plan_applied = True
         return {
             "topic": topic,
-            "fallback": False,
+            "fallback": fallback_plan_applied,
             "model": result.model,
             "key_index": result.key_index,
             "plan": final_plan.model_dump(),
@@ -109,6 +131,7 @@ class TopicDiscoveryService:
             "initial_plan_quality": initial_quality.model_dump(),
             "repair_attempted": initial_quality.status != "ready",
             "repair_applied": final_plan is not plan,
+            "fallback_plan_applied": fallback_plan_applied,
             "repair_model": repair["model"] if repair else None,
             "repair_key_index": repair["key_index"] if repair else None,
         }
@@ -132,6 +155,147 @@ class TopicDiscoveryService:
             "model": result.model,
             "key_index": result.key_index,
         }
+
+    @staticmethod
+    def _fallback_plan(topic: str) -> TopicDiscoveryPlan:
+        if "AI" not in topic.upper() and "人工智慧" not in topic:
+            return TopicDiscoveryPlan(
+                subtopics=[
+                    DiscoverySubtopic(
+                        name=f"{topic} 需求與成長",
+                        rationale="確認產業需求",
+                        objective="查核需求、訂單與營收是否支持投資假設",
+                        required_evidence=["需求", "訂單", "營收"],
+                        risk_focus=["需求下修", "競爭加劇"],
+                        search_queries=[f"{topic} 需求 訂單 營收", f"{topic} demand revenue outlook"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 估值與風險",
+                        rationale="避免只看題材",
+                        objective="比較估值、股價與主要風險",
+                        required_evidence=["股價", "本益比", "風險"],
+                        risk_focus=["估值過高", "政策風險"],
+                        search_queries=[f"{topic} 台股 估值 本益比 風險", f"{topic} valuation risk"],
+                    ),
+                ],
+                candidate_companies=[],
+            )
+        return TopicDiscoveryPlan(
+            subtopics=[
+                DiscoverySubtopic(
+                    name="AI 伺服器需求",
+                    rationale="雲端資本支出",
+                    objective="確認 CSP 資本支出、AI 伺服器出貨與台廠訂單是否成長",
+                    required_evidence=["CSP 資本支出", "AI 伺服器出貨", "月營收"],
+                    risk_focus=["需求下修", "砍單", "客戶集中"],
+                    search_queries=["AI 伺服器 出貨 月營收 台廠", "cloud capex AI server Taiwan ODM"],
+                ),
+                DiscoverySubtopic(
+                    name="CoWoS 與 HBM 產能",
+                    rationale="上游瓶頸",
+                    objective="查核先進封裝、HBM 與良率是否限制 AI 晶片出貨",
+                    required_evidence=["CoWoS 產能", "HBM 供給", "良率"],
+                    risk_focus=["產能滿載", "良率問題", "交期延遲"],
+                    search_queries=["台積電 CoWoS 產能 HBM 良率", "CoWoS HBM capacity bottleneck"],
+                ),
+                DiscoverySubtopic(
+                    name="液冷散熱與電源",
+                    rationale="功耗升級",
+                    objective="確認液冷、散熱與高功率電源是否形成成長或出貨瓶頸",
+                    required_evidence=["液冷訂單", "散熱滲透率", "電源規格"],
+                    risk_focus=["技術轉換延遲", "認證延遲", "毛利壓力"],
+                    search_queries=["AI 伺服器 液冷 散熱 電源 台股", "AI data center liquid cooling power supply"],
+                ),
+                DiscoverySubtopic(
+                    name="財務與估值",
+                    rationale="避免題材追高",
+                    objective="比較候選公司營收、獲利、現金流、P/E 與 P/B 是否支持評價",
+                    required_evidence=["月營收", "毛利率", "本益比", "現金流"],
+                    risk_focus=["估值過高", "營收放緩", "毛利下滑"],
+                    search_queries=["台股 AI 供應鏈 月營收 本益比 估值", "Taiwan AI supply chain valuation revenue margin"],
+                ),
+                DiscoverySubtopic(
+                    name="地緣政治與電力",
+                    rationale="外部限制",
+                    objective="評估出口管制、缺電與資料中心電網限制對供應鏈的影響",
+                    required_evidence=["出口管制", "缺電", "電網負荷"],
+                    risk_focus=["美國晶片管制", "地緣政治", "電力瓶頸"],
+                    search_queries=["AI 晶片 出口管制 台灣 供應鏈 缺電", "US export controls AI chips Taiwan power grid"],
+                ),
+            ],
+            candidate_companies=[
+                CandidateCompany(
+                    ticker="2330",
+                    name="台積電",
+                    segment="晶圓代工",
+                    rationale="CoWoS 與先進製程",
+                    evidence_keywords=["CoWoS", "先進封裝", "AI 晶片"],
+                ),
+                CandidateCompany(
+                    ticker="2382",
+                    name="廣達",
+                    segment="AI 伺服器代工",
+                    rationale="CSP 伺服器代工",
+                    evidence_keywords=["AI 伺服器", "CSP", "出貨"],
+                ),
+                CandidateCompany(
+                    ticker="3231",
+                    name="緯創",
+                    segment="AI 伺服器代工",
+                    rationale="伺服器與 GPU 基板",
+                    evidence_keywords=["AI 伺服器", "GPU", "出貨"],
+                ),
+                CandidateCompany(
+                    ticker="3324",
+                    name="雙鴻",
+                    segment="散熱模組",
+                    rationale="液冷散熱升級",
+                    evidence_keywords=["液冷", "散熱", "水冷板"],
+                ),
+                CandidateCompany(
+                    ticker="3017",
+                    name="奇鋐",
+                    segment="散熱模組",
+                    rationale="液冷與散熱供應",
+                    evidence_keywords=["液冷", "散熱", "CDU"],
+                ),
+                CandidateCompany(
+                    ticker="2059",
+                    name="川湖",
+                    segment="伺服器導軌",
+                    rationale="AI 伺服器導軌",
+                    evidence_keywords=["伺服器導軌", "AI 伺服器", "毛利率"],
+                ),
+                CandidateCompany(
+                    ticker="3131",
+                    name="弘塑",
+                    segment="先進封裝設備",
+                    rationale="CoWoS 設備供應",
+                    evidence_keywords=["CoWoS", "先進封裝", "設備"],
+                ),
+                CandidateCompany(
+                    ticker="3583",
+                    name="辛耘",
+                    segment="半導體設備",
+                    rationale="先進封裝設備",
+                    evidence_keywords=["CoWoS", "先進封裝", "設備"],
+                ),
+                CandidateCompany(
+                    ticker="2308",
+                    name="台達電",
+                    segment="電源與散熱",
+                    rationale="資料中心電源",
+                    evidence_keywords=["電源", "資料中心", "液冷"],
+                ),
+                CandidateCompany(
+                    ticker="6669",
+                    name="緯穎",
+                    segment="AI 伺服器",
+                    rationale="CSP 伺服器",
+                    evidence_keywords=["AI 伺服器", "CSP", "資料中心"],
+                ),
+            ],
+        )
 
     @staticmethod
     def evaluate_plan_quality(plan: TopicDiscoveryPlan) -> DiscoveryPlanQuality:
@@ -682,7 +846,7 @@ class TopicDiscoveryService:
         for candidate in plan.candidate_companies:
             evidence_documents = []
             entity_terms = self._candidate_entity_terms(candidate)
-            context_terms = self._candidate_context_terms(candidate)
+            context_terms = self._candidate_context_terms(candidate, plan)
             for document in documents:
                 haystack = f"{document.title}\n{document.text}"
                 if self._has_entity_and_context(haystack, entity_terms, context_terms):
@@ -730,8 +894,44 @@ class TopicDiscoveryService:
         return list(dict.fromkeys(term for term in terms if term))
 
     @staticmethod
-    def _candidate_context_terms(candidate: CandidateCompany) -> list[str]:
-        return list(dict.fromkeys(term for term in candidate.evidence_keywords if term))
+    def _candidate_context_terms(candidate: CandidateCompany, plan: TopicDiscoveryPlan | None = None) -> list[str]:
+        terms = []
+        terms.extend(candidate.evidence_keywords)
+        terms.extend(TopicDiscoveryService._context_phrases(candidate.segment))
+        terms.extend(TopicDiscoveryService._context_phrases(candidate.rationale))
+        for subtopic in (plan.subtopics if plan else []):
+            terms.extend(TopicDiscoveryService._context_phrases(subtopic.name))
+            terms.extend(subtopic.required_evidence)
+            terms.extend(subtopic.risk_focus)
+        terms.extend(
+            [
+                "AI 伺服器",
+                "AI伺服器",
+                "資料中心",
+                "CoWoS",
+                "HBM",
+                "先進封裝",
+                "液冷",
+                "散熱",
+                "電源",
+                "算力",
+                "雲端",
+                "CSP",
+                "capex",
+                "server",
+            ]
+        )
+        return list(dict.fromkeys(term.strip() for term in terms if term and term.strip()))
+
+    @staticmethod
+    def _context_phrases(text: str) -> list[str]:
+        if not text:
+            return []
+        normalized = re.sub(r"[，,。；;：:（）()、/|]+", " ", text)
+        parts = [part.strip() for part in normalized.split() if len(part.strip()) >= 2]
+        phrases = [text.strip()]
+        phrases.extend(parts)
+        return phrases
 
     @staticmethod
     def _has_entity_and_context(haystack: str, entity_terms: list[str], context_terms: list[str]) -> bool:

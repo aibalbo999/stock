@@ -344,7 +344,7 @@ def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> Non
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (12, 120, 80)
+    assert main.discovery_fetch_settings(payload) == (12, 120, 12)
 
 
 def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
@@ -353,10 +353,10 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
 
     assert normal_budget["initial_queries"] < 30
     assert normal_budget["supplemental_queries"] > 0
-    assert normal_budget["supplemental_rounds"] == 2
+    assert normal_budget["supplemental_rounds"] == 1
     assert deep_budget["initial_queries"] < 80
     assert deep_budget["supplemental_queries"] > normal_budget["supplemental_queries"]
-    assert deep_budget["supplemental_rounds"] == 3
+    assert deep_budget["supplemental_rounds"] == 1
 
 
 def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:

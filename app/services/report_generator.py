@@ -506,7 +506,7 @@ class ReportGenerator:
         avoid = [item for item in contexts if item["decision"] == "避開 / 降低曝險"]
 
         lines = [
-            "1. 先處理資料缺口：若有「缺 AI 歸因、缺月營收、缺股價、缺公司公開文件」，先補資料再考慮加碼。",
+            "1. 先處理資料缺口：若有「缺主題歸因、缺月營收、缺股價、缺公司公開文件」，先補資料再考慮加碼。",
             "2. 只把資料完整且通過降值門檻的股票放進小額研究清單。",
             "3. 對降值風險高於門檻或領先訊號偏空的股票，先等風險下降或新資料確認。",
             "",
@@ -778,9 +778,9 @@ class ReportGenerator:
         partial = 0
         weak = 0
         lines = [
-            "本段檢查每檔股票是否同時具備新聞/RAG、AI 歸因、股價、月營收、五年財報、估值與公司公開文件；資料不足時，系統會降低建議強度。",
+            "本段檢查每檔股票是否同時具備新聞/RAG、主題歸因、股價、月營收、五年財報、估值與公司公開文件；資料不足時，系統會降低建議強度。",
             "",
-            "| 股票 | 新聞/RAG | AI歸因 | 股價 | 月營收 | 五年財報 | 估值 | 公司文件 | 領先訊號 | 判讀 |",
+            "| 股票 | 新聞/RAG | 主題歸因 | 股價 | 月營收 | 五年財報 | 估值 | 公司文件 | 領先訊號 | 判讀 |",
             "|---|---:|---:|---|---|---:|---|---|---|---|",
         ]
         for ticker in tickers:
@@ -1466,8 +1466,8 @@ class ReportGenerator:
     @staticmethod
     def _company_evidence_summary(related_documents: list[NewsDocument], related_findings) -> str:
         if not related_documents and not related_findings:
-            return "目前沒有足夠公司層級文本或 AI 歸因證據。"
-        return f"目前有 {len(related_documents)} 筆公司相關文本、{len(related_findings)} 筆 AI 歸因證據。"
+            return "目前沒有足夠公司層級文本或主題/風險歸因證據。"
+        return f"目前有 {len(related_documents)} 筆公司相關文本、{len(related_findings)} 筆主題/風險歸因證據。"
 
     @staticmethod
     def _company_filing_evidence_summary(related_documents: list[NewsDocument]) -> str:
@@ -1899,7 +1899,7 @@ class ReportGenerator:
         if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
             signals.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
         if related_findings:
-            signals.append(f"{len(related_findings)} 筆 AI 歸因證據")
+            signals.append(f"{len(related_findings)} 筆主題/風險歸因證據")
         if not signals:
             return "目前沒有足夠可驗證訊號，需等待法說會、訂單或營收資料補強。"
         return "可追蹤 " + "、".join(list(dict.fromkeys(signals))[:5]) + " 是否延續到營收、毛利與現金流。"
@@ -1993,7 +1993,7 @@ class ReportGenerator:
         if len(related_documents) >= 2:
             reasons.append(f"{len(related_documents)} 筆公司層級文本")
         if related_findings:
-            reasons.append(f"{len(related_findings)} 筆 AI 歸因證據")
+            reasons.append(f"{len(related_findings)} 筆主題/風險歸因證據")
         if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
             reasons.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
         if financial_summary and "體質改善" in financial_summary.get("strength", ""):
@@ -2511,10 +2511,16 @@ class ReportGenerator:
         company_filing_missing: list[str] | None = None,
     ) -> dict:
         missing = []
-        if len(related_documents) < 2:
+        has_company_filing = (
+            include_fundamentals
+            and company_filing_missing is not None
+            and not company_filing_missing
+        )
+        has_topic_attribution = bool(related_findings) or has_company_filing or len(related_documents) >= 2
+        if len(related_documents) < 2 and not has_company_filing:
             missing.append("公司文本不足")
-        if not related_findings:
-            missing.append("缺 AI 歸因")
+        if not has_topic_attribution:
+            missing.append("缺主題歸因")
         if not snapshot:
             missing.append("缺股價")
         if not monthly_revenue:

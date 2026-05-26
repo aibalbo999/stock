@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -652,11 +653,11 @@ class TopicDiscoveryRequest(BaseModel):
 def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, int]:
     limit_per_query = payload.limit_per_query
     evidence_limit = payload.evidence_limit
-    max_queries = 30
+    max_queries = 20
     if payload.deep_analysis:
         limit_per_query = max(limit_per_query, 12)
         evidence_limit = max(evidence_limit, 120)
-        max_queries = 80
+        max_queries = 12
     return limit_per_query, evidence_limit, max_queries
 
 
@@ -783,8 +784,8 @@ def discovery_query_budget(max_queries: int, deep_analysis: bool) -> dict:
     return {
         "initial_queries": min(max_queries, initial_queries),
         "supplemental_queries": max(0, max_queries - initial_queries),
-        "supplemental_rounds": 3 if deep_analysis else 2,
-        "supplemental_batch_size": 12 if deep_analysis else 6,
+        "supplemental_rounds": 1 if deep_analysis else 1,
+        "supplemental_batch_size": 8 if deep_analysis else 6,
     }
 
 
@@ -796,15 +797,27 @@ async def ingest_dynamic_news_urls(
 ) -> list[dict]:
     ingestion_results = []
     for url in urls:
-        ingestion_results.append(
-            await IngestionPipeline().ingest_feeds(
-                url=url,
-                publisher=None,
-                limit=limit_per_query,
-                start_date=start_date,
-                end_date=end_date,
+        try:
+            ingestion_results.append(
+                await asyncio.wait_for(
+                    IngestionPipeline().ingest_feeds(
+                        url=url,
+                        publisher=None,
+                        limit=limit_per_query,
+                        start_date=start_date,
+                        end_date=end_date,
+                    ),
+                    timeout=12,
+                )
             )
-        )
+        except Exception as exc:
+            ingestion_results.append(
+                {
+                    "count": 0,
+                    "items": [],
+                    "errors": [{"source": url, "error": str(exc) or exc.__class__.__name__}],
+                }
+            )
     return ingestion_results
 
 
@@ -946,6 +959,41 @@ async def run_topic_discovery_ingestion(
     }
 
 
+async def discover_topic_with_timeout(service: TopicDiscoveryService, topic: str, timeout: int = 75) -> dict:
+    fallback_plan = TopicDiscoveryService._fallback_plan(topic)
+    fallback_quality = service.evaluate_plan_quality(fallback_plan)
+    try:
+        discovery = await asyncio.wait_for(asyncio.to_thread(service.discover, topic), timeout=timeout)
+    except Exception as exc:
+        return {
+            "topic": topic,
+            "fallback": True,
+            "message": f"AI topic discovery timed out or failed; deterministic fallback was applied: {exc}",
+            "plan": fallback_plan.model_dump(),
+            "plan_quality": fallback_quality.model_dump(),
+            "initial_plan_quality": service.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+            "repair_attempted": False,
+            "repair_applied": False,
+            "fallback_plan_applied": True,
+        }
+
+    plan = TopicDiscoveryPlan.model_validate(discovery.get("plan") or {})
+    plan_quality = service.evaluate_plan_quality(plan)
+    if plan_quality.status == "ready":
+        return discovery
+
+    if fallback_quality.ready_score > plan_quality.ready_score:
+        return {
+            **discovery,
+            "fallback": True,
+            "message": "AI topic discovery was incomplete; deterministic fallback provided broader coverage.",
+            "plan": fallback_plan.model_dump(),
+            "plan_quality": fallback_quality.model_dump(),
+            "fallback_plan_applied": True,
+        }
+    return discovery
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -990,7 +1038,7 @@ def discovery_topic_plan(payload: TopicDiscoveryRequest) -> dict:
 @app.post("/discovery/ingest")
 async def discovery_ingest(payload: TopicDiscoveryRequest) -> dict:
     service = TopicDiscoveryService()
-    discovery = service.discover(payload.topic)
+    discovery = await discover_topic_with_timeout(service, payload.topic)
     plan = TopicDiscoveryPlan.model_validate(discovery["plan"])
     limit_per_query, evidence_limit, max_queries = discovery_fetch_settings(payload)
     discovery_ingestion = await run_topic_discovery_ingestion(
@@ -1695,7 +1743,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         run_id = run.id
     try:
         service = TopicDiscoveryService()
-        discovery = service.discover(payload.topic)
+        discovery = await discover_topic_with_timeout(service, payload.topic)
         plan = TopicDiscoveryPlan.model_validate(discovery["plan"])
         limit_per_query, evidence_limit, max_queries = discovery_fetch_settings(payload)
         discovery_ingestion = await run_topic_discovery_ingestion(
@@ -1718,16 +1766,56 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         candidate_payload = [
             candidate.model_dump() for candidate in discovery_ingestion["candidates"]
         ]
+        candidate_filing_ingestion = None
+        if candidate_payload and not any(candidate["status"] == "evidence_supported" for candidate in candidate_payload):
+            candidate_tickers = [candidate["ticker"] for candidate in candidate_payload[:6]]
+            candidate_filing_ingestion = await IngestionPipeline().ingest_mops_annual_reports(
+                candidate_tickers,
+                filter_allowed=False,
+            )
+            with session_scope() as session:
+                candidate_filing_documents = [
+                    CompanyFilingRepository.to_news_document(document)
+                    for document in CompanyFilingRepository(session).latest_by_tickers(
+                        candidate_tickers,
+                        limit_per_ticker=2,
+                    )
+                ]
+            if candidate_filing_documents:
+                documents = dedupe_documents([*documents, *candidate_filing_documents])
+                revalidated_candidates = service.validate_candidates(plan, documents)
+                candidate_payload = [candidate.model_dump() for candidate in revalidated_candidates]
+                source_audit["candidate_support"] = summarize_candidate_support(revalidated_candidates)
+                source_audit["candidate_filing_revalidation"] = {
+                    "attempted": True,
+                    "stored_count": candidate_filing_ingestion.get("stored_count", 0),
+                    "document_count": len(candidate_filing_documents),
+                    "promoted_after_revalidation": [
+                        candidate["ticker"]
+                        for candidate in candidate_payload
+                        if candidate["status"] == "evidence_supported"
+                    ],
+                }
         promoted_tickers = [
             candidate["ticker"]
             for candidate in candidate_payload
             if candidate["status"] == "evidence_supported"
         ]
         dynamic_whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidate_payload)
-        company_filing_ingestion = await IngestionPipeline().ingest_company_filings(
-            promoted_tickers,
-            limit_per_query=2,
-            filter_allowed=False,
+        company_filing_ingestion = (
+            await IngestionPipeline().ingest_mops_annual_reports(
+                promoted_tickers,
+                filter_allowed=False,
+            )
+            if promoted_tickers
+            else {
+                "requested_tickers": [],
+                "stored_count": 0,
+                "per_ticker_results": [],
+                "gap_summary": {"blocked_tickers": [], "retryable_tickers": []},
+                "errors": [],
+                "source": "Company filing discovery skipped: no promoted candidates",
+            }
         )
         with session_scope() as session:
             company_filing_documents = [
@@ -1823,6 +1911,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "ingestion": ingestion_results,
             "fixed_source_ingestion": fixed_source_ingestion,
             "dynamic_query_ingestion": dynamic_query_ingestion,
+            "candidate_filing_ingestion": candidate_filing_ingestion,
             "company_filing_ingestion": company_filing_ingestion,
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,
@@ -1855,6 +1944,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "queries": urls,
             "fixed_source_ingestion": fixed_source_ingestion,
             "dynamic_query_ingestion": dynamic_query_ingestion,
+            "candidate_filing_ingestion": candidate_filing_ingestion,
             "company_filing_ingestion": company_filing_ingestion,
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,

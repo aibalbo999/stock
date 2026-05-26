@@ -811,7 +811,7 @@ def test_data_quality_section_explains_complete_and_missing_layers() -> None:
     assert "領先訊號" in section
     assert "完整，可進入二次篩選" in section
     assert "2382 廣達" in section
-    assert "不足：公司文本不足、缺 AI 歸因、缺股價、缺月營收" in section
+    assert "不足：公司文本不足、缺主題歸因、缺股價、缺月營收" in section
     assert "完整 1 檔、部分可用 0 檔、資料不足 1 檔" in section
 
 
@@ -1032,7 +1032,7 @@ def test_partial_quality_upside_stays_on_watchlist_without_allocation() -> None:
     )
 
     assert "觀察 / 資料待補" in recommendations
-    assert "缺 AI 歸因、缺月營收" in recommendations
+    assert "缺月營收" in recommendations
     assert "可列小額分批研究" not in plan
     assert "目前無可配置標的" in plan
 

@@ -66,6 +66,18 @@ def test_company_filing_search_plan_targets_official_sources() -> None:
     assert len(plan["google_news_urls"]) == len(plan["queries"])
 
 
+def test_company_filing_search_plan_can_target_document_type() -> None:
+    plan = CompanyFilingFetcher.official_search_plan(
+        "2330",
+        "台積電",
+        document_types=["annual_report"],
+    )
+
+    assert plan["document_types"] == ["annual_report"]
+    assert all("年報" in query or "annual report" in query for query in plan["queries"])
+    assert not any("法人說明會" in query for query in plan["queries"])
+
+
 def test_company_filing_repository_roundtrip() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

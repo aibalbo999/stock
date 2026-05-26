@@ -194,6 +194,7 @@ class IngestionPipeline:
         tickers: list[str],
         limit_per_query: int = 3,
         filter_allowed: bool = True,
+        document_types: list[str] | None = None,
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
@@ -205,11 +206,12 @@ class IngestionPipeline:
         for ticker in allowed:
             company = companies.get(ticker)
             company_name = company.name if company else ""
-            search_plans.append(fetcher.official_search_plan(ticker, company_name))
+            search_plans.append(fetcher.official_search_plan(ticker, company_name, document_types=document_types))
             company_documents, company_errors = await fetcher.fetch_discovery_documents(
                 ticker,
                 company_name,
                 limit_per_query=limit_per_query,
+                document_types=document_types,
             )
             documents.extend(company_documents)
             errors.extend(company_errors)

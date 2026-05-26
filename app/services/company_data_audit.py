@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.core.time import now_taipei
 from app.data_sources.company_filings import (
     HIGH_QUALITY_FILING_SCORE,
+    RECOMMENDED_DOCUMENT_TYPES,
+    REQUIRED_CORE_DOCUMENT_TYPES,
     filing_quality_score,
     filing_source_tier,
 )
@@ -94,6 +96,8 @@ def audit_company_data(
             "company_finding_min_count": COMPANY_FINDING_MIN_COUNT,
             "company_filing_min_count": COMPANY_FILING_MIN_COUNT,
             "company_filing_min_quality_score": COMPANY_FILING_MIN_QUALITY_SCORE,
+            "required_company_filing_types": list(REQUIRED_CORE_DOCUMENT_TYPES),
+            "recommended_company_filing_types": list(RECOMMENDED_DOCUMENT_TYPES),
         },
         "notes": _audit_notes(rows, run_payload or {}),
     }
@@ -152,12 +156,13 @@ def _audit_one_ticker(
             today,
         ),
         "company_evidence": evidence["effective_text_count"] >= COMPANY_TEXT_MIN_COUNT,
-        "company_filings": filings["high_quality_rows"] >= COMPANY_FILING_MIN_COUNT,
+        "company_filings": filings["high_quality_rows"] >= COMPANY_FILING_MIN_COUNT
+        and not filings["missing_required_types"],
         "risk_findings": evidence["effective_finding_count"] >= COMPANY_FINDING_MIN_COUNT,
         "persisted_company_evidence": evidence["db_text_count"] >= COMPANY_TEXT_MIN_COUNT,
         "persisted_risk_findings": evidence["db_finding_count"] >= COMPANY_FINDING_MIN_COUNT,
     }
-    missing = _missing_reasons(checks, financial)
+    missing = _missing_reasons(checks, financial, filings)
     if not missing:
         status = "sufficient"
     elif checks["price"] and checks["monthly_revenue"] and checks["financial_metrics"] and checks["valuation"]:
@@ -211,12 +216,24 @@ def _company_filing_stats(session: Session, ticker: str) -> dict:
         }
         for row in rows
     ]
+    high_quality_types = {
+        row["document_type"]
+        for row in quality_rows
+        if row["quality_score"] >= COMPANY_FILING_MIN_QUALITY_SCORE
+    }
     return {
         "rows": len(rows),
         "high_quality_rows": sum(
             1 for row in quality_rows if row["quality_score"] >= COMPANY_FILING_MIN_QUALITY_SCORE
         ),
         "document_types": sorted({row.document_type for row in rows}),
+        "high_quality_document_types": sorted(high_quality_types),
+        "missing_required_types": [
+            document_type for document_type in REQUIRED_CORE_DOCUMENT_TYPES if document_type not in high_quality_types
+        ],
+        "missing_recommended_types": [
+            document_type for document_type in RECOMMENDED_DOCUMENT_TYPES if document_type not in high_quality_types
+        ],
         "source_tiers": sorted({row["source_tier"] for row in quality_rows}),
         "max_quality_score": max((row["quality_score"] for row in quality_rows), default=0),
         "publishers": len({row.publisher or row.url or row.title for row in rows}),
@@ -325,7 +342,7 @@ def _financial_check(financial: dict, today: date) -> bool:
     return (today - date.fromisoformat(financial["latest_date"])).days <= FINANCIAL_MAX_AGE_DAYS
 
 
-def _missing_reasons(checks: dict[str, bool], financial: dict) -> list[str]:
+def _missing_reasons(checks: dict[str, bool], financial: dict, filings: dict | None = None) -> list[str]:
     labels = {
         "price": "股價歷史不足或過舊",
         "monthly_revenue": "月營收不足或過舊",
@@ -340,6 +357,8 @@ def _missing_reasons(checks: dict[str, bool], financial: dict) -> list[str]:
     missing = [label for key, label in labels.items() if not checks[key]]
     if financial.get("missing_core_metrics"):
         missing.append("缺核心財報科目：" + "、".join(financial["missing_core_metrics"]))
+    if filings and filings.get("missing_required_types"):
+        missing.append("缺高品質必要公司文件：" + "、".join(filings["missing_required_types"]))
     return missing
 
 

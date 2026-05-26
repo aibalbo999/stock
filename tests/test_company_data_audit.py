@@ -63,10 +63,13 @@ def test_company_data_audit_flags_per_company_gaps() -> None:
     rows = {row["ticker"]: row for row in audit["rows"]}
     assert rows["2330"]["status"] == "sufficient"
     assert rows["2330"]["checks"]["company_filings"] is True
+    assert rows["2330"]["company_filings"]["missing_required_types"] == []
+    assert rows["2330"]["company_filings"]["missing_recommended_types"] == ["investor_presentation"]
     assert rows["9999"]["status"] == "insufficient"
     assert "股價歷史不足或過舊" in rows["9999"]["missing"]
     assert "公司層級文本證據不足" in rows["9999"]["missing"]
     assert "公司原始公開文件不足或來源品質偏低" in rows["9999"]["missing"]
+    assert "缺高品質必要公司文件：annual_report" in rows["9999"]["missing"]
 
 
 def _seed_complete_market_data(session, ticker: str) -> None:

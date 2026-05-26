@@ -11,6 +11,7 @@ from app.services.followup_actions import (
     FollowUpAction,
     FollowUpActionPlanner,
     TRACKING_FRESHNESS_THRESHOLDS,
+    company_filing_document_types_from_reason,
     execute_follow_up_actions_sync,
     follow_up_news_queries,
     render_follow_up_actions_markdown,
@@ -179,6 +180,14 @@ def test_candidate_audit_can_be_tracking_when_report_is_ready(monkeypatch) -> No
 
     assert {action.purpose for action in actions} == {"tracking"}
     assert any(action.action_type == "ingest_news" and action.tickers == ("3324",) for action in actions)
+
+
+def test_company_filing_follow_up_targets_missing_document_type() -> None:
+    assert company_filing_document_types_from_reason("缺高品質必要公司文件：annual_report") == ["annual_report"]
+    assert company_filing_document_types_from_reason("建議補高品質公司文件：investor_presentation") == [
+        "investor_presentation"
+    ]
+    assert company_filing_document_types_from_reason("公司原始公開文件不足或來源品質偏低") is None
 
 
 def test_candidate_tracking_prioritizes_near_promotion_candidates(monkeypatch) -> None:

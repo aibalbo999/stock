@@ -42,6 +42,8 @@ IR_SOURCE_HINTS = (
     "investor_relations",
 )
 HIGH_QUALITY_FILING_SCORE = 70
+REQUIRED_CORE_DOCUMENT_TYPES = ("annual_report",)
+RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
 
 class CompanyFilingFetcher:
@@ -49,26 +51,44 @@ class CompanyFilingFetcher:
         self.news_fetcher = NewsFetcher()
 
     @staticmethod
-    def official_search_queries(ticker: str, name: str = "", limit: int | None = None) -> list[str]:
-        templates = DOCUMENT_QUERY_TEMPLATES if limit is None else DOCUMENT_QUERY_TEMPLATES[:limit]
+    def official_search_queries(
+        ticker: str,
+        name: str = "",
+        limit: int | None = None,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> list[str]:
+        templates = document_query_templates(document_types)
+        templates = templates if limit is None else templates[:limit]
         return [template.format(ticker=ticker, name=name).strip() for template in templates]
 
     @classmethod
-    def google_news_urls(cls, ticker: str, name: str = "", limit: int | None = None) -> list[str]:
+    def google_news_urls(
+        cls,
+        ticker: str,
+        name: str = "",
+        limit: int | None = None,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> list[str]:
         urls = []
-        for query_text in cls.official_search_queries(ticker, name, limit):
+        for query_text in cls.official_search_queries(ticker, name, limit, document_types):
             query = quote_plus(query_text)
             urls.append(f"https://news.google.com/rss/search?q={query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant")
         return urls
 
     @classmethod
-    def official_search_plan(cls, ticker: str, name: str = "") -> dict:
-        queries = cls.official_search_queries(ticker, name)
+    def official_search_plan(
+        cls,
+        ticker: str,
+        name: str = "",
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> dict:
+        queries = cls.official_search_queries(ticker, name, document_types=document_types)
         return {
             "ticker": ticker,
             "company_name": name,
+            "document_types": list(document_types or []),
             "queries": queries,
-            "google_news_urls": cls.google_news_urls(ticker, name),
+            "google_news_urls": cls.google_news_urls(ticker, name, document_types=document_types),
             "official_portals": [
                 {
                     "name": "公開資訊觀測站",
@@ -140,10 +160,11 @@ class CompanyFilingFetcher:
         ticker: str,
         company_name: str = "",
         limit_per_query: int = 3,
+        document_types: list[str] | tuple[str, ...] | None = None,
     ) -> tuple[list[CompanyFilingDocument], list[dict]]:
         documents: list[CompanyFilingDocument] = []
         errors = []
-        for url in self.google_news_urls(ticker, company_name):
+        for url in self.google_news_urls(ticker, company_name, document_types=document_types):
             try:
                 feed_documents = await self.news_fetcher.fetch_feed(
                     url,
@@ -216,3 +237,42 @@ def is_relevant_company_filing_result(document: NewsDocument, ticker: str, compa
     if not has_company or not has_disclosure:
         return False
     return filing_quality_score(document, ticker, company_name) >= 40
+
+
+def document_query_templates(document_types: list[str] | tuple[str, ...] | None = None) -> tuple[str, ...]:
+    if not document_types:
+        return DOCUMENT_QUERY_TEMPLATES
+    templates = []
+    wanted = set(document_types)
+    if "annual_report" in wanted:
+        templates.extend(
+            [
+                "{ticker} {name} 年報 filetype:pdf",
+                "{ticker} {name} annual report filetype:pdf",
+                "{ticker} {name} 公開資訊觀測站 年報 site:mops.twse.com.tw",
+            ]
+        )
+    if "investor_presentation" in wanted:
+        templates.extend(
+            [
+                "{ticker} {name} 法人說明會 filetype:pdf",
+                "{ticker} {name} investor presentation filetype:pdf",
+                "{ticker} {name} 法人說明會 site:mops.twse.com.tw",
+            ]
+        )
+    if "prospectus" in wanted:
+        templates.extend(
+            [
+                "{ticker} {name} 公開說明書 filetype:pdf",
+                "{ticker} {name} prospectus filetype:pdf",
+                "{ticker} {name} 公開說明書 site:mops.twse.com.tw",
+            ]
+        )
+    if "material_information" in wanted:
+        templates.extend(
+            [
+                "{ticker} {name} 重大訊息 site:mops.twse.com.tw",
+                "{ticker} {name} material information",
+            ]
+        )
+    return tuple(dict.fromkeys(templates)) or DOCUMENT_QUERY_TEMPLATES

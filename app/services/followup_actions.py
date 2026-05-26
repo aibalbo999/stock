@@ -583,10 +583,12 @@ async def execute_follow_up_actions(
                 today,
             )
         elif action.action_type == "ingest_company_filings":
+            document_types = company_filing_document_types_from_reason(action.reason)
             result["results"][result_key] = await pipeline.ingest_company_filings(
                 tickers,
                 limit_per_query=max(2, min(5, news_limit // 10)),
                 filter_allowed=False,
+                document_types=document_types,
             )
         elif action.action_type == "refresh_market":
             result["results"][result_key] = await pipeline.refresh_market(
@@ -627,6 +629,18 @@ async def execute_follow_up_actions(
 
 def execute_follow_up_actions_sync(actions: list[FollowUpAction], request: ReportRequest, news_limit: int = 30) -> dict:
     return asyncio.run(execute_follow_up_actions(actions, request, news_limit))
+
+
+def company_filing_document_types_from_reason(reason: str) -> list[str] | None:
+    if "annual_report" in reason or "年報" in reason:
+        return ["annual_report"]
+    if "investor_presentation" in reason or "法說" in reason or "法人說明" in reason:
+        return ["investor_presentation"]
+    if "prospectus" in reason or "公開說明書" in reason:
+        return ["prospectus"]
+    if "material_information" in reason or "重大訊息" in reason:
+        return ["material_information"]
+    return None
 
 
 async def ingest_follow_up_news(

@@ -280,3 +280,34 @@ def test_candidate_revalidation_summary_counts_statuses() -> None:
     assert summary["newly_promoted"] == ["3324"]
     assert summary["status_changes"][0]["previous_status"] == "weak_evidence"
     assert summary["rows"][1]["股票"] == "3324 雙鴻"
+
+
+def test_follow_up_result_message_explains_skipped_rerun() -> None:
+    helpers = load_report_helpers()
+
+    level, message = helpers["follow_up_result_message"](
+        {
+            "rerun_report": {
+                "status": "skipped",
+                "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
+                "blockers": ["公司公開文件仍不足：2382"],
+            }
+        },
+        "執行 2 項任務，補入/更新 0 筆資料，錯誤 0 項",
+    )
+
+    assert level == "warning"
+    assert "先不重新產生報告" in message
+    assert "公司公開文件仍不足：2382" in message
+
+
+def test_follow_up_result_message_reports_new_report() -> None:
+    helpers = load_report_helpers()
+
+    level, message = helpers["follow_up_result_message"](
+        {"rerun_report": {"report_id": 9}},
+        "執行 2 項任務",
+    )
+
+    assert level == "success"
+    assert "新報告 #9" in message

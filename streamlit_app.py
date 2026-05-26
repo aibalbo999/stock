@@ -980,6 +980,18 @@ def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
     }
 
 
+def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]:
+    rerun = result.get("rerun_report") or {}
+    if rerun.get("report_id"):
+        return "success", f"{summary_text}，已產生新報告 #{rerun['report_id']}。"
+    if rerun.get("status") == "skipped":
+        blockers = "；".join(rerun.get("blockers") or [])
+        reason = rerun.get("reason") or "補資料後仍有關鍵缺口，先不重新產生報告。"
+        detail = f"（{blockers}）" if blockers else ""
+        return "warning", f"{summary_text}，{reason}{detail}"
+    return "success", f"{summary_text}，補強任務已完成。"
+
+
 def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
     components.html(report_html(markdown, result), height=820, scrolling=True)
 
@@ -1459,15 +1471,19 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
                         summary_text += "，新升格：" + "、".join(revalidation["newly_promoted"][:6])
                     if revalidation["no_longer_promoted"]:
                         summary_text += "，降回觀察：" + "、".join(revalidation["no_longer_promoted"][:6])
+                message_level, message_text = follow_up_result_message(result, summary_text)
                 if new_report.get("report_id"):
                     st.session_state["follow_up_flash"] = {
-                        "message": f"{summary_text}，已產生新報告 #{new_report['report_id']}。",
+                        "level": message_level,
+                        "message": message_text,
                         "result": result,
                     }
                     st.session_state["selected_report_id"] = int(new_report["report_id"])
                     st.rerun()
+                elif new_report.get("status") == "skipped":
+                    st.warning(message_text)
                 else:
-                    st.success(f"{summary_text}，補強任務已完成。")
+                    st.success(message_text)
             except requests.RequestException as exc:
                 st.error(f"自動補強失敗：{exc}")
 
@@ -1476,7 +1492,11 @@ def render_follow_up_flash() -> None:
     flash = st.session_state.get("follow_up_flash")
     if not isinstance(flash, dict):
         return
-    st.success(flash.get("message", "補強任務已完成。"))
+    message = flash.get("message", "補強任務已完成。")
+    if flash.get("level") == "warning":
+        st.warning(message)
+    else:
+        st.success(message)
     result = flash.get("result") or {}
     execution = ((result.get("summary") or {}).get("execution") or {})
     items = execution.get("items") or []

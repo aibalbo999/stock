@@ -12,6 +12,7 @@ from app.core.time import now_taipei
 from app.api import main
 from app.models.schemas import NewsDocument, ReportResponse, Source
 from app.services.followup_actions import FollowUpAction
+from app.services import report_quality
 from app.services.report_quality import (
     parse_quality_gate_from_markdown,
     render_quality_action_guard_markdown,
@@ -556,6 +557,53 @@ def test_report_quality_gate_blocks_when_company_filings_are_missing() -> None:
     assert gate["status"] == "insufficient"
     assert "公司公開文件覆蓋率低於 50%" in gate["blockers"]
     assert gate["metrics"]["company_filing_coverage"] == 0
+
+
+def test_quality_gate_for_request_uses_dynamic_request_tickers(monkeypatch) -> None:
+    captured = {}
+
+    def fake_build_report_quality_gate(source_audit, promoted_tickers, **kwargs):
+        captured["promoted_tickers"] = promoted_tickers
+        return {"status": "ready", "metrics": {"promoted_count": len(promoted_tickers)}}
+
+    class FakeMarketRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=90):
+            return {}
+
+    class EmptyRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=18):
+            return {}
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(report_quality, "build_report_quality_gate", fake_build_report_quality_gate)
+    monkeypatch.setattr("app.services.report_quality.MarketRepository", FakeMarketRepository)
+    monkeypatch.setattr("app.services.report_quality.MonthlyRevenueRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.FinancialMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
+
+    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2059"]))
+
+    assert gate["status"] == "ready"
+    assert captured["promoted_tickers"] == ["2059"]
 
 
 def test_report_quality_gate_warns_when_llm_falls_back() -> None:
@@ -1265,6 +1313,59 @@ def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch)
     assert prepared["candidate_revalidation"]["changed"] is True
     assert prepared["candidate_revalidation"]["newly_promoted"] == ["3324"]
     assert refreshed["tickers"] == ["2330", "3324"]
+
+
+def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalidation_is_inconclusive(
+    monkeypatch,
+) -> None:
+    async def fake_refresh(request):
+        raise AssertionError("unchanged promotions should not force market refresh")
+
+    monkeypatch.setattr(
+        main,
+        "revalidate_candidate_whitelist",
+        lambda run_payload, candidates: {
+            "candidate_whitelist": [
+                {
+                    "ticker": "2330",
+                    "name": "台積電",
+                    "segment": "晶圓代工",
+                    "status": "needs_evidence",
+                }
+            ],
+            "promoted_tickers": [],
+            "newly_promoted": [],
+            "no_longer_promoted": ["2330"],
+            "status_changes": [
+                {
+                    "ticker": "2330",
+                    "previous_status": "evidence_supported",
+                    "current_status": "needs_evidence",
+                }
+            ],
+            "changed": True,
+        },
+    )
+    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh)
+
+    context = {
+        "run_payload": {"discovery": {"plan": {}}},
+        "candidate_whitelist": [
+            {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
+        ],
+    }
+    prepared = asyncio.run(
+        main.prepare_follow_up_report_context(
+            context,
+            main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            [FollowUpAction("ingest_news", "補候選", ("2330",), purpose="required")],
+        )
+    )
+
+    assert prepared["request"].tickers == ["2330"]
+    assert prepared["candidate_whitelist"][0]["status"] == "evidence_supported"
+    assert prepared["candidate_revalidation"]["revalidation_status"] == "kept_previous_promotions"
+    assert prepared["candidate_revalidation"]["changed"] is False
 
 
 def test_candidate_revalidation_queries_are_company_specific() -> None:

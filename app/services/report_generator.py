@@ -92,10 +92,11 @@ class ReportGenerator:
         try:
             with session_scope() as session:
                 db_documents = NewsRepository(session).latest_documents(limit=300)
+                filing_tickers = list(dict.fromkeys(request.tickers)) or self.mapper.filter_allowed_tickers(request.tickers)
                 company_filing_documents = [
                     CompanyFilingRepository.to_news_document(document)
                     for document in CompanyFilingRepository(session).latest_by_tickers(
-                        self.mapper.filter_allowed_tickers(request.tickers),
+                        filing_tickers,
                         limit_per_ticker=6,
                     )
                 ]
@@ -1322,6 +1323,7 @@ class ReportGenerator:
         financial_summary = self._financial_statement_summary(financial_metrics)
         valuation_summary = self._valuation_summary(valuation, peer_valuation_summary)
         evidence_summary = self._company_evidence_summary(related_documents, related_findings)
+        filing_summary = self._company_filing_evidence_summary(related_documents)
         revenue_summary = self._company_revenue_summary(revenue)
         moat_score = self._moat_score(related_documents, related_findings, revenue, financial_summary)
         final_rating = self._company_rating(snapshot, revenue, related_documents, related_findings)
@@ -1329,7 +1331,7 @@ class ReportGenerator:
             "",
             "#### 華爾街式完整分析框架",
             f"- 商業模式與收入來源：{name} 本次被歸類在「{segment_name}」。"
-            f"收入來源仍需以年報/法說拆分；本系統先用主題文本、月營收與財報科目判斷需求是否落到公司層級。{evidence_summary}",
+            f"{filing_summary}本系統會交叉使用主題文本、月營收、五年財報與估值資料判斷需求是否落到公司層級。{evidence_summary}",
             f"- 競爭優勢（護城河）：護城河初評 {moat_score}/10。"
             f"依據：{self._moat_reason(moat_score, related_documents, related_findings, revenue, financial_summary)}",
             f"- 產業趨勢：{self._trend_summary(related_documents, related_findings)}",
@@ -1351,24 +1353,24 @@ class ReportGenerator:
             f"- 財務體質判斷：{financial_summary['strength']}",
             "",
             "#### 競爭護城河",
-            "- 品牌影響力：目前無足夠數據判斷；可用公司市占、客戶名單與長約資料補強。",
-            "- 網路效應：多數硬體/供應鏈公司通常不是典型網路效應，需要個案證據確認。",
-            "- 轉換成本：目前無足夠數據判斷；需客戶認證週期、設計導入與良率資料。",
-            "- 成本優勢：目前無足夠數據判斷；需毛利率、規模與製程效率比較。",
-            "- 專利或獨家技術：目前無足夠數據判斷；需專利、技術節點或客戶認證資料。",
+            f"- 品牌影響力：{self._moat_factor_text('brand', related_documents, related_findings, revenue, financial_summary)}",
+            f"- 網路效應：{self._moat_factor_text('network', related_documents, related_findings, revenue, financial_summary)}",
+            f"- 轉換成本：{self._moat_factor_text('switching_cost', related_documents, related_findings, revenue, financial_summary)}",
+            f"- 成本優勢：{self._moat_factor_text('cost', related_documents, related_findings, revenue, financial_summary)}",
+            f"- 專利或獨家技術：{self._moat_factor_text('technology', related_documents, related_findings, revenue, financial_summary)}",
             f"- 護城河強度：{moat_score}/10。此分數只根據目前 RAG/月營收訊號，非完整同業研究。",
             "",
             "#### 估值分析",
             f"- P/E 與同業比較：{valuation_summary}",
-            "- DCF 估值：目前無足夠數據判斷；缺 5-10 年 FCF、折現率與終值假設。",
-            "- 產業平均估值：目前無足夠數據判斷；需同業樣本與估值資料。",
+            f"- DCF 估值：{self._dcf_proxy_text(financial_summary, valuation)}",
+            f"- 產業平均估值：{self._industry_average_text(peer_valuation_summary)}",
             f"- 是否低估或高估：{self._valuation_conclusion(snapshot, valuation, peer_valuation_summary)}",
             "",
             "#### 未來成長潛力",
             f"- 市場規模與產業成長率：{self._trend_summary(related_documents, related_findings)}",
-            "- 擴張機會與新產品：目前無足夠數據判斷；需法說、資本支出與產品路線圖。",
+            f"- 擴張機會與新產品：{self._growth_opportunity_text(related_documents, related_findings, revenue)}",
             "- AI 或技術優勢：若文本明確指向 AI 供應鏈受惠，可列為觀察點，但仍需訂單與財務驗證。",
-            "- 5-10 年潛在成長空間：目前無足夠數據判斷；需要長期營收、毛利與現金流假設。",
+            f"- 5-10 年潛在成長空間：{self._long_term_growth_text(financial_summary, revenue, related_documents)}",
             "",
             "#### 多空辯論",
             f"- 多頭分析師：{self._bull_case(revenue, related_documents)}",
@@ -1377,7 +1379,7 @@ class ReportGenerator:
             "",
             "#### 是否應該投資",
             f"- 短期展望（1 年內）：{self._near_term_outlook(revenue, related_documents, related_findings)}",
-            "- 長期展望（5 年以上）：目前無足夠數據判斷；需補長期財務、產業規模與競爭格局。",
+            f"- 長期展望（5 年以上）：{self._long_term_growth_text(financial_summary, revenue, related_documents)}",
             "- 關鍵催化因素：月營收加速、客戶/訂單驗證、產能瓶頸緩解、毛利率改善。",
             "- 主要風險：" + self._company_risk_summary(related_findings),
             f"- 最終結論：{final_rating}。此結論依目前系統資料產生，不等於個人化買賣建議。",
@@ -1466,6 +1468,24 @@ class ReportGenerator:
         if not related_documents and not related_findings:
             return "目前沒有足夠公司層級文本或 AI 歸因證據。"
         return f"目前有 {len(related_documents)} 筆公司相關文本、{len(related_findings)} 筆 AI 歸因證據。"
+
+    @staticmethod
+    def _company_filing_evidence_summary(related_documents: list[NewsDocument]) -> str:
+        filing_documents = [document for document in related_documents if document.id.startswith("filing-")]
+        if not filing_documents:
+            return "尚未取得足夠官方公開文件，因此收入拆分仍以外部資料與財報科目輔助判斷。"
+        types = sorted(
+            {
+                ReportGenerator._news_document_filing_type(document) or "company_disclosure"
+                for document in filing_documents
+            }
+        )
+        publishers = sorted({document.source.publisher or "公開文件" for document in filing_documents})
+        return (
+            f"已納入 {len(filing_documents)} 份官方/公司公開文件"
+            f"（{', '.join(types[:3])}；來源：{', '.join(publishers[:2])}），"
+            "可用來校正商業模式、風險與財務敘述。"
+        )
 
     @staticmethod
     def _company_revenue_summary(revenue: MonthlyRevenue | None) -> str:
@@ -1866,6 +1886,69 @@ class ReportGenerator:
         return "目前無足夠數據判斷。"
 
     @staticmethod
+    def _growth_opportunity_text(
+        related_documents: list[NewsDocument],
+        related_findings,
+        revenue: MonthlyRevenue | None,
+    ) -> str:
+        text = " ".join([document.title + " " + document.text[:300] for document in related_documents])
+        signals = []
+        for keyword in ["擴產", "新平台", "AI", "伺服器", "CoWoS", "HBM", "液冷", "訂單", "產能"]:
+            if keyword in text:
+                signals.append(keyword)
+        if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+            signals.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
+        if related_findings:
+            signals.append(f"{len(related_findings)} 筆 AI 歸因證據")
+        if not signals:
+            return "目前沒有足夠可驗證訊號，需等待法說會、訂單或營收資料補強。"
+        return "可追蹤 " + "、".join(list(dict.fromkeys(signals))[:5]) + " 是否延續到營收、毛利與現金流。"
+
+    @staticmethod
+    def _long_term_growth_text(
+        financial_summary: dict[str, str],
+        revenue: MonthlyRevenue | None,
+        related_documents: list[NewsDocument],
+    ) -> str:
+        positives = []
+        if "成長" in financial_summary.get("revenue_trend", ""):
+            positives.append(financial_summary["revenue_trend"])
+        if "體質改善" in financial_summary.get("strength", ""):
+            positives.append("財務體質呈改善訊號")
+        if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+            positives.append(f"近期月營收年增 {revenue.yoy_pct:.2f}%")
+        if len(related_documents) >= 2:
+            positives.append(f"{len(related_documents)} 筆公司層級文本支撐主題關聯")
+        if not positives:
+            return "目前缺少長期成長證據，需補產業規模、資本支出與競爭格局資料。"
+        return "；".join(positives[:3]) + "；仍需用 5-10 年產業規模、毛利率與自由現金流假設做二次驗證。"
+
+    @staticmethod
+    def _dcf_proxy_text(financial_summary: dict[str, str], valuation: ValuationMetric | None) -> str:
+        available = []
+        if "自由現金流" in financial_summary.get("fcf_trend", "") and "目前無足夠" not in financial_summary["fcf_trend"]:
+            available.append(financial_summary["fcf_trend"])
+        if valuation and valuation.pe_ratio is not None:
+            available.append(f"目前可用 P/E {valuation.pe_ratio:.2f} 作為相對估值交叉檢查")
+        if not available:
+            return "尚缺可驗證 FCF 序列、折現率與終值假設，不自動給目標價。"
+        return "；".join(available) + "；系統暫不硬算目標價，避免用未驗證假設製造精準幻覺。"
+
+    @staticmethod
+    def _industry_average_text(peer_summary: dict[str, float | None]) -> str:
+        count = int(peer_summary.get("count") or 0)
+        pe_avg = peer_summary.get("pe_avg")
+        pb_avg = peer_summary.get("pb_avg")
+        if count < 2 or (pe_avg is None and pb_avg is None):
+            return "同業樣本不足，需補更多可比公司後再判斷產業平均。"
+        parts = [f"同業樣本 {count} 檔"]
+        if pe_avg is not None:
+            parts.append(f"平均 P/E {pe_avg:.2f}")
+        if pb_avg is not None:
+            parts.append(f"平均 P/B {pb_avg:.2f}")
+        return "、".join(parts) + "。"
+
+    @staticmethod
     def _bull_case(revenue: MonthlyRevenue | None, related_documents: list[NewsDocument]) -> str:
         points = []
         if related_documents:
@@ -1919,6 +2002,37 @@ class ReportGenerator:
             reasons.append("目前缺少可量化護城河證據")
         caveat = "仍需補客戶集中度、市占、長約、認證週期與專利/技術資料。"
         return f"{'、'.join(reasons)}，因此暫評 {score}/10；{caveat}"
+
+    @staticmethod
+    def _moat_factor_text(
+        factor: str,
+        related_documents: list[NewsDocument],
+        related_findings,
+        revenue: MonthlyRevenue | None,
+        financial_summary: dict[str, str],
+    ) -> str:
+        text = " ".join([document.title + " " + document.text[:500] for document in related_documents])
+        if factor == "brand":
+            if len(related_documents) >= 5:
+                return f"公司在本主題下有 {len(related_documents)} 筆可追溯文本，顯示市場辨識度高；仍需市占與客戶結構驗證。"
+            if related_documents:
+                return f"已有 {len(related_documents)} 筆公司層級文本，但品牌/市占強度仍需更多來源交叉比對。"
+        if factor == "network":
+            return "硬體與供應鏈公司通常不是典型網路效應，系統不會把題材熱度誤判成網路效應。"
+        if factor == "switching_cost":
+            if any(keyword in text for keyword in ["認證", "導入", "長約", "客戶", "良率", "供應鏈"]):
+                return "文本出現客戶認證、導入或供應鏈關鍵字，可能存在轉換成本；仍需客戶與合約資料確認。"
+            return "尚未看到足夠客戶認證或導入週期證據，暫不加分。"
+        if factor == "cost":
+            if "負債權益比" in financial_summary.get("debt_trend", "") or "利率約" in financial_summary.get("margin_trend", ""):
+                return f"可用財報顯示 {financial_summary.get('margin_trend')} {financial_summary.get('debt_trend')}，可作為成本優勢初步檢查。"
+            if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 20:
+                return f"月營收年增 {revenue.yoy_pct:.2f}% 顯示規模動能，但仍需毛利率驗證成本優勢。"
+        if factor == "technology":
+            keywords = [keyword for keyword in ["專利", "先進製程", "CoWoS", "HBM", "液冷", "導軌", "ASIC"] if keyword in text]
+            if keywords:
+                return f"文本出現 {', '.join(keywords[:4])} 等技術/產品關鍵字，可列為技術壁壘候選；仍需官方技術或專利來源驗證。"
+        return "目前證據不足，系統保留為待補資料，不自動給護城河加分。"
 
     @staticmethod
     def _company_rating(

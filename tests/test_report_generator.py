@@ -7,6 +7,7 @@ from app.models.schemas import (
     InvestorProfile,
     MarketSnapshot,
     MonthlyRevenue,
+    NewsDocument,
     ReportRequest,
     RiskFinding,
     RiskType,
@@ -337,6 +338,47 @@ def test_company_analysis_uses_financial_and_valuation_data() -> None:
     assert "P/E 24.50、P/B 5.80、殖利率 1.60%" in company_analysis
     assert "P/E 高於同業平均 18.50" in company_analysis
     assert "P/B 高於同業平均 4.30" in company_analysis
+
+
+def test_company_analysis_uses_official_filings_to_reduce_generic_data_gaps() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    filing = NewsDocument(
+        id="filing-demo",
+        title="股東會年報",
+        text="2330 台積電\n文件類型：annual_report\nAI 伺服器 CoWoS 先進製程 客戶 認證 產能",
+        source=Source(title="股東會年報", publisher="公開資訊觀測站 MOPS", published_at=date(2026, 5, 21)),
+    )
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 1),
+        revenue=410_725_118_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=25.0,
+    )
+    valuation = ValuationMetric(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        pe_ratio=24.5,
+        pb_ratio=5.8,
+    )
+
+    company_analysis = generator._render_company_analysis(
+        ["2330"],
+        [filing],
+        [],
+        [],
+        [revenue],
+        [],
+        [valuation],
+    )
+
+    assert "已納入 1 份官方/公司公開文件" in company_analysis
+    assert "可用 P/E 24.50 作為相對估值交叉檢查" in company_analysis
+    assert "月營收年增 25.00%" in company_analysis
+    assert "硬體與供應鏈公司通常不是典型網路效應" in company_analysis
 
 
 def test_company_comparison_matrix_summarizes_decision_valuation_and_confidence() -> None:

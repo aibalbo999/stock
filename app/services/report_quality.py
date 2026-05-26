@@ -345,7 +345,9 @@ def build_quality_gate_for_request(
     llm_result: object | None = None,
     company_filing_sufficient_count: int | None = None,
 ) -> dict:
-    tickers = EntityMapper().filter_allowed_tickers(request.tickers)
+    tickers = list(dict.fromkeys(request.tickers))
+    if not tickers:
+        tickers = EntityMapper().filter_allowed_tickers(request.tickers)
     source_count = len(documents or []) if source_count is None else source_count
     source_quality = summarize_document_source_quality(documents or [], request.lookback_days) if documents else None
     source_audit = {

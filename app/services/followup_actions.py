@@ -681,11 +681,13 @@ def follow_up_completion_status(task: str, result: dict) -> dict:
             "required": {"min_records": 1, "error_count": 0},
         }
     if action_type == "ingest_news":
+        target_tickers = [ticker for ticker in task.split(":", 1)[1].split(",") if ticker] if ":" in task else []
+        matched_count = _matched_target_item_count(result.get("items") or [], target_tickers)
         return {
             "check": "company_evidence_sources",
-            "completed": stored_count > 0 and error_count == 0,
-            "observed": {"stored_count": stored_count, "error_count": error_count},
-            "required": {"min_documents": 1, "error_count": 0},
+            "completed": stored_count > 0 and matched_count > 0 and error_count == 0,
+            "observed": {"stored_count": stored_count, "matched_target_count": matched_count, "error_count": error_count},
+            "required": {"min_documents": 1, "min_matched_target_documents": 1, "error_count": 0},
         }
     if action_type == "rerun_discovery":
         status = result.get("status")
@@ -715,6 +717,20 @@ def _stored_count(result: dict) -> int:
     if isinstance(latest, list):
         return len(latest)
     return 0
+
+
+def _matched_target_item_count(items: list, target_tickers: list[str]) -> int:
+    if not target_tickers:
+        return len(items)
+    targets = set(target_tickers)
+    matched = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        matches = item.get("entity_matches") or []
+        if any(isinstance(match, dict) and match.get("ticker") in targets for match in matches):
+            matched += 1
+    return matched
 
 
 async def execute_follow_up_actions(
@@ -748,7 +764,7 @@ async def execute_follow_up_actions(
         elif action.action_type == "refresh_market":
             result["results"][result_key] = await pipeline.refresh_market(
                 tickers,
-                today - timedelta(days=max(request.lookback_days, 120)),
+                today - timedelta(days=max(request.lookback_days, 240)),
                 today,
                 filter_allowed=False,
             )

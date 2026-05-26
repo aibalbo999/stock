@@ -369,8 +369,22 @@ async def prepare_follow_up_report_context(
     )
     if should_revalidate:
         revalidation = revalidate_candidate_whitelist(context.get("run_payload") or {}, candidates)
-        candidate_payload = revalidation["candidate_whitelist"] or candidates
-        promoted_tickers = revalidation["promoted_tickers"] or request.tickers
+        if not revalidation["promoted_tickers"] and request.tickers:
+            candidate_payload = candidates
+            promoted_tickers = request.tickers
+            revalidation = {
+                **revalidation,
+                "candidate_whitelist": candidates,
+                "promoted_tickers": request.tickers,
+                "changed": False,
+                "status_changes": [],
+                "no_longer_promoted": [],
+                "revalidation_status": "kept_previous_promotions",
+                "revalidation_reason": "本次補強資料未能穩定重建候選證據，保留上一版正式分析清單並由資料品質門檻控管。",
+            }
+        else:
+            candidate_payload = revalidation["candidate_whitelist"] or candidates
+            promoted_tickers = revalidation["promoted_tickers"] or request.tickers
     else:
         revalidation = {
             "candidate_whitelist": candidates,
@@ -402,7 +416,7 @@ async def refresh_market_data_for_report(request: ReportRequest) -> dict:
     return {
         "market": await pipeline.refresh_market(
             tickers,
-            today - timedelta(days=max(request.lookback_days, 120)),
+            today - timedelta(days=max(request.lookback_days, 240)),
             today,
             filter_allowed=False,
         ),
@@ -1439,6 +1453,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
             rerun_request,
             documents=generator.last_evidence_documents,
             llm_result=getattr(generator, "last_llm_result", None),
+            company_filing_sufficient_count=count_sufficient_company_filings(rerun_request.tickers),
         )
         response = attach_quality_gate_to_report(response, refreshed_quality_gate)
         with session_scope() as session:

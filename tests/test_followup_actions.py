@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -296,6 +296,32 @@ def test_execute_follow_up_news_uses_targeted_google_queries(monkeypatch) -> Non
     assert any("3324" in query["query"] for query in news_result["queries"])
 
 
+def test_execute_follow_up_market_refresh_fetches_enough_calendar_days(monkeypatch) -> None:
+    captured = {}
+
+    class FakePipeline:
+        async def refresh_market(self, tickers, start_date, end_date, filter_allowed=True):
+            captured["tickers"] = tickers
+            captured["start_date"] = start_date
+            captured["end_date"] = end_date
+            captured["filter_allowed"] = filter_allowed
+            return {"stored_history_count": 120, "errors": []}
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", FakePipeline)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction("refresh_market", "補齊股價歷史", ("2330",), "high")
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["2330"]), news_limit=12)
+
+    assert captured == {
+        "tickers": ["2330"],
+        "start_date": date(2026, 5, 25) - timedelta(days=240),
+        "end_date": date(2026, 5, 25),
+        "filter_allowed": False,
+    }
+    assert result["execution_summary"]["completion"]["all_completed"] is True
+
+
 def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     summary = summarize_follow_up_execution(
         {
@@ -329,6 +355,30 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["rerun_blocker_actions"][0]["target"] == "股價與量能"
     assert summary["rerun_blocker_actions"][0]["observed"] == {"stored_count": 90, "error_count": 1}
     assert summary["rerun_blocker_actions"][0]["required"] == {"min_days": 120, "error_count": 0}
+
+
+def test_summarize_follow_up_execution_requires_news_to_match_target_company() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news:3324": {
+                    "count": 2,
+                    "items": [
+                        {"title": "AI 供應鏈總覽", "entity_matches": []},
+                        {"title": "廣達 AI 伺服器", "entity_matches": [{"ticker": "2382"}]},
+                    ],
+                    "errors": [],
+                }
+            }
+        }
+    )
+
+    completion = summary["items"][0]["completion"]
+
+    assert completion["check"] == "company_evidence_sources"
+    assert completion["completed"] is False
+    assert completion["observed"]["matched_target_count"] == 0
+    assert summary["rerun_blockers"] == ["補強任務未達完成條件：ingest_news:3324"]
 
 
 def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() -> None:

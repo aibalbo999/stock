@@ -12,6 +12,9 @@ from app.data_sources.company_filings import (
     filing_source_tier,
     infer_document_type,
     is_relevant_company_filing_result,
+    normalize_search_result_url,
+    parse_mops_annual_report_rows,
+    parse_mops_roc_datetime,
     validate_fetched_company_filing_document,
     validate_public_document_url,
 )
@@ -81,6 +84,84 @@ def test_company_filing_search_plan_can_target_document_type() -> None:
     assert plan["document_types"] == ["annual_report"]
     assert all("年報" in query or "annual report" in query for query in plan["queries"])
     assert not any("法人說明會" in query for query in plan["queries"])
+
+
+def test_search_result_url_normalizes_duckduckgo_redirect() -> None:
+    url = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Finvestor.tsmc.com%2Fannual-report.pdf"
+
+    assert normalize_search_result_url(url) == "https://investor.tsmc.com/annual-report.pdf"
+
+
+def test_parse_mops_annual_report_rows_keeps_chinese_annual_report() -> None:
+    html = """
+    <table>
+      <tr><td>2330</td><td>113 年</td><td>股東會相關資料</td><td></td><td>常會</td><td>股東會年報(尚未適用永續揭露準則)</td><td></td><td>2024_2330_F04.pdf</td><td>100</td><td>114/05/16 17:43:11</td></tr>
+      <tr><td>2330</td><td>113 年</td><td>股東會相關資料</td><td></td><td>常會</td><td>英文版-股東會年報</td><td></td><td>2024_2330_FE4.pdf</td><td>100</td><td>114/05/16 17:43:11</td></tr>
+      <tr><td>2330</td><td>113 年</td><td>股東會相關資料</td><td></td><td>常會</td><td>年報前十大股東相互間關係表</td><td></td><td>2024_2330_F17.pdf</td><td>100</td><td>114/05/16 17:43:11</td></tr>
+    </table>
+    """
+
+    rows = parse_mops_annual_report_rows(html)
+
+    assert rows == [
+        {
+            "ticker": "2330",
+            "data_year": "113 年",
+            "description": "股東會年報(尚未適用永續揭露準則)",
+            "filename": "2024_2330_F04.pdf",
+            "uploaded_at": "114/05/16 17:43:11",
+        }
+    ]
+    assert parse_mops_roc_datetime("114/05/16 17:43:11") == date(2025, 5, 16)
+
+
+def test_company_filing_web_search_fetches_candidate_documents(monkeypatch) -> None:
+    async def fake_search(query_text: str, limit: int = 5):
+        return [
+            {
+                "title": "台積電 2026 年報 PDF",
+                "url": "https://investor.tsmc.com/annual-report.pdf",
+                "snippet": "2330 台積電 年報 annual report",
+                "publisher": "investor.tsmc.com",
+            }
+        ]
+
+    async def fake_fetch_url_document(
+        self,
+        url,
+        ticker,
+        company_name="",
+        document_type="company_disclosure",
+        publisher=None,
+        published_at=None,
+    ):
+        return CompanyFilingFetcher.from_manual_text(
+            ticker=ticker,
+            company_name=company_name,
+            document_type=document_type,
+            title="台積電 2026 年報",
+            text="台積電 年報揭露 AI/HPC 需求與風險因素。" * 8,
+            publisher=publisher or "investor.tsmc.com",
+            published_at=date(2026, 5, 1),
+            url=url,
+        )
+
+    monkeypatch.setattr(CompanyFilingFetcher, "_duckduckgo_search", staticmethod(fake_search))
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+
+    import asyncio
+
+    documents, errors = asyncio.run(
+        CompanyFilingFetcher().fetch_web_search_documents(
+            "2330",
+            "台積電",
+            document_types=["annual_report"],
+        )
+    )
+
+    assert errors == []
+    assert documents[0].document_type == "annual_report"
+    assert documents[0].source.url == "https://investor.tsmc.com/annual-report.pdf"
 
 
 def test_company_filing_repository_roundtrip() -> None:

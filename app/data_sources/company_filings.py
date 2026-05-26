@@ -4,7 +4,7 @@ from datetime import date, datetime
 from hashlib import sha1
 from ipaddress import ip_address
 from io import BytesIO
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -35,6 +35,7 @@ DISCLOSURE_TERMS = tuple(
 OFFICIAL_SOURCE_DOMAINS = (
     "mops.twse.com.tw",
     "mopsov.twse.com.tw",
+    "doc.twse.com.tw",
     "twse.com.tw",
     "tpex.org.tw",
 )
@@ -58,6 +59,8 @@ RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
 
 class CompanyFilingFetcher:
+    _twse_profile_cache: list[dict] | None = None
+
     def __init__(self) -> None:
         self.news_fetcher = NewsFetcher()
 
@@ -260,6 +263,251 @@ class CompanyFilingFetcher:
                 documents.append(self.from_news_document(document, ticker, company_name))
         return documents, errors
 
+    async def fetch_web_search_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit_per_query: int = 5,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> tuple[list[CompanyFilingDocument], list[dict]]:
+        documents: list[CompanyFilingDocument] = []
+        errors = []
+        seen_urls: set[str] = set()
+        for query_text in self.official_search_queries(ticker, company_name, document_types=document_types):
+            try:
+                results = await self._duckduckgo_search(query_text, limit_per_query)
+            except Exception as exc:
+                errors.append({"source": query_text, "error": str(exc)})
+                continue
+            for result in results:
+                url = result.get("url") or ""
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                preview = NewsDocument(
+                    id=sha1(url.encode("utf-8")).hexdigest(),
+                    title=result.get("title") or url,
+                    text=result.get("snippet") or "",
+                    source=Source(title=result.get("title") or url, url=url, publisher=result.get("publisher")),
+                )
+                if not is_relevant_company_filing_result(preview, ticker, company_name):
+                    continue
+                try:
+                    document_type = infer_document_type(f"{preview.title}\n{preview.text}\n{url}")
+                    document = await self.fetch_url_document(
+                        url,
+                        ticker=ticker,
+                        company_name=company_name,
+                        document_type=document_type,
+                        publisher=preview.source.publisher or "web company filing discovery",
+                    )
+                except Exception as exc:
+                    errors.append({"source": url, "error": str(exc)})
+                    continue
+                documents.append(document)
+        return documents, errors
+
+    async def fetch_mops_annual_report_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        years: int = 3,
+    ) -> tuple[list[CompanyFilingDocument], list[dict]]:
+        documents: list[CompanyFilingDocument] = []
+        errors = []
+        current_roc_year = date.today().year - 1911
+        for roc_year in range(current_roc_year, current_roc_year - years, -1):
+            query_url = (
+                "https://doc.twse.com.tw/server-java/t57sb01"
+                f"?step=1&colorchg=1&co_id={ticker}&year={roc_year}&mtype=F&isnew=false"
+            )
+            try:
+                html = await self._fetch_url_text(query_url, encoding="big5")
+                rows = parse_mops_annual_report_rows(html)
+            except Exception as exc:
+                errors.append({"source": query_url, "error": str(exc)})
+                continue
+            for row in rows:
+                filename = row.get("filename") or ""
+                if not filename:
+                    continue
+                try:
+                    pdf_url, content = await self._download_mops_pdf(ticker, filename, "F")
+                    text = extract_pdf_text(content)
+                    title = row.get("description") or filename
+                    published_at = parse_mops_roc_datetime(row.get("uploaded_at") or "")
+                    document = self.from_manual_text(
+                        ticker=ticker,
+                        company_name=company_name,
+                        document_type="annual_report",
+                        title=title,
+                        text=text,
+                        publisher="公開資訊觀測站 MOPS",
+                        published_at=published_at,
+                        url=pdf_url,
+                    )
+                    validate_fetched_company_filing_document(document, ticker, company_name, "annual_report")
+                except Exception as exc:
+                    errors.append({"source": filename, "error": str(exc)})
+                    continue
+                documents.append(document)
+            if documents:
+                break
+        return documents, errors
+
+    @staticmethod
+    async def _download_mops_pdf(ticker: str, filename: str, kind: str) -> tuple[str, bytes]:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            response = await client.post(
+                "https://doc.twse.com.tw/server-java/t57sb01",
+                data={
+                    "step": "9",
+                    "kind": kind,
+                    "co_id": ticker,
+                    "filename": filename,
+                    "colorchg": "1",
+                },
+            )
+            response.raise_for_status()
+            response.encoding = "big5"
+            soup = BeautifulSoup(response.text, "html.parser")
+            link = soup.find("a", href=True)
+            if not link:
+                raise ValueError("MOPS did not return a PDF download link")
+            pdf_url = urljoin("https://doc.twse.com.tw", link["href"])
+            pdf_response = await client.get(pdf_url)
+            pdf_response.raise_for_status()
+        if len(pdf_response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+            raise ValueError("company filing content is too large to import")
+        return pdf_url, pdf_response.content
+
+    async def fetch_official_website_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit: int = 12,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> tuple[list[CompanyFilingDocument], list[dict]]:
+        profile = await self.twse_company_profile(ticker)
+        profile_name = (profile or {}).get("公司簡稱") or (profile or {}).get("公司名稱") or ""
+        website = normalize_company_website((profile or {}).get("網址") or "")
+        company_name = company_name or profile_name
+        if not website:
+            return [], [{"source": "TWSE company profile", "error": "company website not found"}]
+
+        urls_to_scan = official_website_seed_urls(website)
+        candidate_links: list[dict] = []
+        errors = []
+        for page_url in urls_to_scan:
+            try:
+                page_html = await self._fetch_url_text(page_url)
+                soup = BeautifulSoup(page_html, "html.parser")
+                page = NewsDocument(
+                    id=sha1(page_url.encode("utf-8")).hexdigest(),
+                    title=NewsFetcher._title(soup) or page_url,
+                    text=NewsFetcher._article_text(soup),
+                    source=Source(
+                        title=NewsFetcher._title(soup) or page_url,
+                        url=page_url,
+                        publisher="TWSE company profile website",
+                        published_at=NewsFetcher._published_date(soup),
+                        fetched_at=datetime.utcnow(),
+                    ),
+                )
+            except Exception as exc:
+                errors.append({"source": page_url, "error": str(exc)})
+                continue
+            candidate_links.extend(extract_company_filing_links(page_html, page_url))
+            if is_document_text_relevant(page, ticker, company_name, document_types):
+                candidate_links.append(
+                    {
+                        "url": page.source.url or page_url,
+                        "title": page.title,
+                        "publisher": page.source.publisher,
+                    }
+                )
+            if len(candidate_links) >= limit:
+                break
+
+        documents: list[CompanyFilingDocument] = []
+        seen_urls: set[str] = set()
+        for link in candidate_links:
+            url = link.get("url") or ""
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            preview_text = f"{link.get('title') or ''}\n{url}"
+            document_type = infer_document_type(preview_text)
+            if document_types and document_type not in set(document_types):
+                continue
+            try:
+                document = await self.fetch_url_document(
+                    url,
+                    ticker=ticker,
+                    company_name=company_name,
+                    document_type=document_type,
+                    publisher=link.get("publisher") or "official company website",
+                )
+            except Exception as exc:
+                errors.append({"source": url, "error": str(exc)})
+                continue
+            documents.append(document)
+            if len(documents) >= limit:
+                break
+        return documents, errors
+
+    @staticmethod
+    async def _fetch_url_text(url: str, encoding: str | None = None) -> str:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        content_length = int(response.headers.get("content-length") or 0)
+        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+            raise ValueError("company filing content is too large to import")
+        if encoding:
+            response.encoding = encoding
+        return response.text
+
+    @classmethod
+    async def twse_company_profile(cls, ticker: str) -> dict:
+        if cls._twse_profile_cache is None:
+            url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            cls._twse_profile_cache = response.json()
+        return next((row for row in cls._twse_profile_cache if str(row.get("公司代號") or "") == ticker), {})
+
+    @staticmethod
+    async def _duckduckgo_search(query_text: str, limit: int = 5) -> list[dict]:
+        url = f"https://duckduckgo.com/html/?q={quote_plus(query_text)}"
+        headers = {"User-Agent": "Mozilla/5.0 stock-research-bot/1.0"}
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=headers) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        results = []
+        for result in soup.select(".result"):
+            link = result.select_one("a.result__a")
+            if not link:
+                continue
+            href = normalize_search_result_url(link.get("href") or "")
+            if not href:
+                continue
+            snippet_node = result.select_one(".result__snippet")
+            parsed = urlparse(href)
+            results.append(
+                {
+                    "title": link.get_text(" ", strip=True),
+                    "url": href,
+                    "snippet": snippet_node.get_text(" ", strip=True) if snippet_node else "",
+                    "publisher": parsed.netloc,
+                }
+            )
+            if len(results) >= limit:
+                break
+        return results
+
 
 def filing_source_tier(document: CompanyFilingDocument | NewsDocument) -> str:
     url = (document.source.url or "").lower()
@@ -297,6 +545,113 @@ def validate_public_document_url(url: str) -> None:
 
 def is_pdf_response(url: str, content_type: str) -> bool:
     return "application/pdf" in content_type or urlparse(url).path.lower().endswith(".pdf")
+
+
+def parse_mops_annual_report_rows(html: str) -> list[dict]:
+    soup = BeautifulSoup(html or "", "html.parser")
+    rows = []
+    for table_row in soup.find_all("tr"):
+        cells = [cell.get_text(" ", strip=True) for cell in table_row.find_all("td")]
+        if len(cells) < 10:
+            continue
+        description = cells[5]
+        filename = cells[7]
+        if "股東會年報" not in description or "英文版" in description or "前十大股東" in description:
+            continue
+        rows.append(
+            {
+                "ticker": cells[0],
+                "data_year": cells[1],
+                "description": description,
+                "filename": filename,
+                "uploaded_at": cells[9],
+            }
+        )
+    return rows
+
+
+def parse_mops_roc_datetime(value: str) -> date | None:
+    value = (value or "").strip()
+    if not value or "/" not in value:
+        return None
+    date_part = value.split()[0]
+    parts = date_part.split("/")
+    if len(parts) != 3:
+        return None
+    try:
+        year = int(parts[0]) + 1911
+        return date(year, int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def normalize_search_result_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if "duckduckgo.com" in parsed.netloc and parsed.path.startswith("/l/"):
+        target = parse_qs(parsed.query).get("uddg", [""])[0]
+        return unquote(target)
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
+
+def normalize_company_website(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    return url.rstrip("/")
+
+
+def official_website_seed_urls(website: str) -> list[str]:
+    parsed = urlparse(website)
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    paths = [
+        "",
+        "/investor",
+        "/investors",
+        "/ir",
+        "/investor-relations",
+        "/annual-reports",
+        "/annual-report",
+        "/zh-TW/investor",
+        "/zh-Hant/investor",
+        "/chinese/investor",
+        "/chinese/annual-reports",
+    ]
+    urls = [website, *[root + path for path in paths if root + path != website]]
+    return list(dict.fromkeys(urls))
+
+
+def extract_company_filing_links(html: str, base_url: str) -> list[dict]:
+    soup = BeautifulSoup(html or "", "html.parser")
+    links = []
+    for anchor in soup.find_all("a"):
+        href = anchor.get("href") or ""
+        text = anchor.get_text(" ", strip=True)
+        target = urljoin(base_url, href)
+        haystack = f"{text}\n{target}".lower()
+        if not any(term.lower() in haystack for term in DISCLOSURE_TERMS):
+            continue
+        if not target.startswith(("http://", "https://")):
+            continue
+        links.append({"url": target, "title": text or target, "publisher": urlparse(target).netloc})
+    return links
+
+
+def is_document_text_relevant(
+    document: NewsDocument,
+    ticker: str,
+    company_name: str,
+    document_types: list[str] | tuple[str, ...] | None,
+) -> bool:
+    text = f"{document.title}\n{document.text}\n{document.source.url or ''}"
+    if document_types and infer_document_type(text) not in set(document_types):
+        return False
+    return is_relevant_company_filing_result(document, ticker, company_name)
 
 
 def pdf_title_from_url(url: str) -> str:

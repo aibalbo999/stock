@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
+
+from sqlalchemy import select
 
 from app.core.time import today_taipei
 from app.data_sources.company_filings import (
@@ -10,6 +13,7 @@ from app.data_sources.company_filings import (
 )
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
+from app.db.models import NewsArticle
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
 from app.rag.vector_store import VectorStore
@@ -211,7 +215,7 @@ class IngestionPipeline:
         target_document_types = tuple(document_types or REQUIRED_CORE_DOCUMENT_TYPES)
         for ticker in allowed:
             company = companies.get(ticker)
-            company_name = company.name if company else ""
+            company_name = company.name if company else self._company_name_from_cached_evidence(ticker)
             search_plans.append(fetcher.official_search_plan(ticker, company_name, document_types=document_types))
             attempts = []
             company_documents, company_errors = await fetcher.fetch_discovery_documents(
@@ -245,7 +249,7 @@ class IngestionPipeline:
                         retry_enriched_errors,
                     )
                 )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, document_types):
+            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
                 broad_documents, broad_errors = await fetcher.fetch_discovery_documents(
                     ticker,
                     company_name,
@@ -260,6 +264,55 @@ class IngestionPipeline:
                         "broaden_official_search",
                         broad_documents,
                         broad_enriched_errors,
+                    )
+                )
+            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+                mops_documents, mops_errors = await fetcher.fetch_mops_annual_report_documents(
+                    ticker,
+                    company_name,
+                )
+                mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
+                company_documents.extend(mops_documents)
+                enriched_errors.extend(mops_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "mops_annual_report",
+                        mops_documents,
+                        mops_enriched_errors,
+                    )
+                )
+            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+                official_documents, official_errors = await fetcher.fetch_official_website_documents(
+                    ticker,
+                    company_name,
+                    limit=limit_per_query + 5,
+                    document_types=document_types,
+                )
+                official_enriched_errors = enrich_company_filing_errors(official_errors, ticker, company_name)
+                company_documents.extend(official_documents)
+                enriched_errors.extend(official_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "official_company_website",
+                        official_documents,
+                        official_enriched_errors,
+                    )
+                )
+            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+                web_documents, web_errors = await fetcher.fetch_web_search_documents(
+                    ticker,
+                    company_name,
+                    limit_per_query=limit_per_query + 3,
+                    document_types=document_types,
+                )
+                web_enriched_errors = enrich_company_filing_errors(web_errors, ticker, company_name)
+                company_documents.extend(web_documents)
+                enriched_errors.extend(web_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "official_web_search",
+                        web_documents,
+                        web_enriched_errors,
                     )
                 )
             company_documents = self._dedupe_documents(company_documents)
@@ -309,8 +362,28 @@ class IngestionPipeline:
             "gap_summary": company_filing_gap_summary(per_ticker_results),
             "next_actions": company_filing_next_actions(per_ticker_results),
             "official_search_plans": search_plans,
-            "source": "Google News company filing discovery",
+            "source": "Company filing discovery (Google News + official web search)",
         }
+
+    @staticmethod
+    def _company_name_from_cached_evidence(ticker: str) -> str:
+        try:
+            with session_scope() as session:
+                rows = session.scalars(
+                    select(NewsArticle.entity_matches_json)
+                    .where(NewsArticle.entity_matches_json.like(f"%{ticker}%"))
+                    .limit(50)
+                )
+                names = []
+                for raw in rows:
+                    for match in json.loads(raw or "[]"):
+                        if str(match.get("ticker") or "") == ticker and match.get("name"):
+                            names.append(str(match["name"]))
+                if names:
+                    return max(set(names), key=names.count)
+        except Exception:
+            return ""
+        return ""
 
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
         end_date = today_taipei()
@@ -453,7 +526,10 @@ def should_broaden_company_filing_search(
     errors: list[dict],
     document_types: list[str] | None,
 ) -> bool:
-    return bool(document_types) and not documents and not errors
+    if not document_types:
+        return False
+    available_types = {getattr(document, "document_type", "") for document in documents}
+    return any(document_type not in available_types for document_type in document_types)
 
 
 def company_filing_attempt_result(strategy: str, documents: list, errors: list[dict]) -> dict:

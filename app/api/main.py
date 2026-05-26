@@ -445,6 +445,7 @@ def follow_up_plan_next_actions(actions: list) -> list[dict]:
                 "purpose": action.purpose,
                 "reason": action.reason,
                 "next_step": follow_up_plan_action_next_step(action),
+                "completion_criteria": follow_up_plan_action_completion_criteria(action),
             }
         )
     return rows
@@ -478,6 +479,20 @@ def follow_up_plan_action_next_step(action) -> str:
         "rerun_analysis": "在補資料後重新產生報告；若仍有關鍵缺口，系統會先暫停重跑。",
     }
     return steps.get(action.action_type, "依任務設定補齊資料後再評估是否重跑報告。")
+
+
+def follow_up_plan_action_completion_criteria(action) -> str:
+    criteria = {
+        "ingest_news": "每檔至少補到 2 個以上來源或足以支撐/排除產業鏈關聯的近期證據。",
+        "ingest_company_filings": "每檔至少有必要類型的高品質官方文件；若仍缺件，列入人工匯入清單。",
+        "refresh_market": "目標股票近 120 天內有可用股價與量能資料。",
+        "refresh_monthly_revenue": "目標股票至少取得近 12 個月月營收資料。",
+        "refresh_financial_metrics": "目標股票取得足以做 5 年趨勢判斷的財務期數。",
+        "refresh_valuations": "目標股票取得最新本益比、股價淨值比或可比較估值資料。",
+        "rerun_discovery": "主題拆解、候選白名單與排除原因重新產出並通過基本品質檢查。",
+        "rerun_analysis": "補強後無關鍵 blocker，才重新產生完整投資報告。",
+    }
+    return criteria.get(action.action_type, "補強結果可被資料審計或品質閘門確認。")
 
 
 @asynccontextmanager

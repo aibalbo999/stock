@@ -992,7 +992,7 @@ def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]
     return "success", f"{summary_text}，補強任務已完成。"
 
 
-def follow_up_check_value_text(value: dict | None) -> str:
+def follow_up_check_value_text(value: Optional[dict]) -> str:
     if not value:
         return "-"
     labels = {

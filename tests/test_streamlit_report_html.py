@@ -406,8 +406,18 @@ def test_follow_up_blocker_action_rows_show_completion_gap() -> None:
     )
 
     assert rows[0]["下一步"] == "補齊未達標資料"
-    assert "stored_count" in rows[0]["目前"]
-    assert "min_days" in rows[0]["要求"]
+    assert rows[0]["目前"] == "已取得 90；錯誤 1"
+    assert rows[0]["要求"] == "至少天數 120；錯誤 0"
+
+
+def test_follow_up_check_value_text_formats_lists_and_booleans() -> None:
+    helpers = load_report_helpers()
+
+    text = helpers["follow_up_check_value_text"](
+        {"blocked_tickers": ["2382", "3324"], "manual_review": True}
+    )
+
+    assert text == "仍缺公司 2382、3324；需人工覆核 是"
 
 
 def test_follow_up_blocker_action_rows_fall_back_to_blockers() -> None:

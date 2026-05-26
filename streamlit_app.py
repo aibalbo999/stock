@@ -992,6 +992,34 @@ def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]
     return "success", f"{summary_text}，補強任務已完成。"
 
 
+def follow_up_check_value_text(value: dict | None) -> str:
+    if not value:
+        return "-"
+    labels = {
+        "stored_count": "已取得",
+        "error_count": "錯誤",
+        "blocked_tickers": "仍缺公司",
+        "min_days": "至少天數",
+        "min_months": "至少月份",
+        "min_years": "至少年數",
+        "min_records": "至少筆數",
+        "min_documents": "至少文件",
+        "status": "狀態",
+        "manual_review": "需人工覆核",
+    }
+    parts = []
+    for key, raw_value in value.items():
+        label = labels.get(key, key)
+        if isinstance(raw_value, list):
+            display = "、".join(str(item) for item in raw_value) if raw_value else "無"
+        elif isinstance(raw_value, bool):
+            display = "是" if raw_value else "否"
+        else:
+            display = str(raw_value)
+        parts.append(f"{label} {display}")
+    return "；".join(parts)
+
+
 def follow_up_blocker_action_rows(result: dict) -> list[dict]:
     rows = []
     rerun_actions = (result.get("rerun_report") or {}).get("next_actions") or []
@@ -1012,8 +1040,8 @@ def follow_up_blocker_action_rows(result: dict) -> list[dict]:
                     }.get(action.get("action"), action.get("action") or "-"),
                     "缺必要文件": "、".join(action.get("missing_required_types") or []),
                     "缺建議文件": "、".join(action.get("missing_recommended_types") or []),
-                    "目前": str(action.get("observed") or "-"),
-                    "要求": str(action.get("required") or "-"),
+                    "目前": follow_up_check_value_text(action.get("observed")),
+                    "要求": follow_up_check_value_text(action.get("required")),
                     "原因": action.get("reason") or "-",
                 }
             )

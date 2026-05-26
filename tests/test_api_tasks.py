@@ -1893,6 +1893,14 @@ def test_follow_up_plan_next_actions_describe_planned_work() -> None:
             "reason": "個股資料審計缺口：缺高品質必要公司文件：annual_report",
             "next_step": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
             "completion_criteria": "每檔至少有必要類型的高品質官方文件；若仍缺件，列入人工匯入清單。",
+            "completion_checks": [
+                {
+                    "check": "company_filing_quality",
+                    "required_document_types": ["annual_report"],
+                    "min_quality_score": 70,
+                    "min_documents_per_ticker": 1,
+                }
+            ],
         },
         {
             "action": "refresh_market",
@@ -1903,6 +1911,7 @@ def test_follow_up_plan_next_actions_describe_planned_work() -> None:
             "reason": "個股資料審計缺口：股價",
             "next_step": "刷新近期股價、量能與波動資料，用於降值風險與進出場檢查。",
             "completion_criteria": "目標股票近 120 天內有可用股價與量能資料。",
+            "completion_checks": [{"check": "market_history_coverage", "min_days": 120}],
         },
         {
             "action": "rerun_analysis",
@@ -1913,6 +1922,7 @@ def test_follow_up_plan_next_actions_describe_planned_work() -> None:
             "reason": "補資料後重新產生報告",
             "next_step": "在補資料後重新產生報告；若仍有關鍵缺口，系統會先暫停重跑。",
             "completion_criteria": "補強後無關鍵 blocker，才重新產生完整投資報告。",
+            "completion_checks": [{"check": "quality_gate_no_blockers"}],
         },
     ]
 

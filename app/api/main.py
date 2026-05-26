@@ -446,6 +446,7 @@ def follow_up_plan_next_actions(actions: list) -> list[dict]:
                 "reason": action.reason,
                 "next_step": follow_up_plan_action_next_step(action),
                 "completion_criteria": follow_up_plan_action_completion_criteria(action),
+                "completion_checks": follow_up_plan_action_completion_checks(action),
             }
         )
     return rows
@@ -493,6 +494,43 @@ def follow_up_plan_action_completion_criteria(action) -> str:
         "rerun_analysis": "補強後無關鍵 blocker，才重新產生完整投資報告。",
     }
     return criteria.get(action.action_type, "補強結果可被資料審計或品質閘門確認。")
+
+
+def follow_up_plan_action_completion_checks(action) -> list[dict]:
+    if action.action_type == "ingest_company_filings":
+        document_types = company_filing_document_types_from_reason(action.reason) or []
+        return [
+            {
+                "check": "company_filing_quality",
+                "required_document_types": document_types,
+                "min_quality_score": 70,
+                "min_documents_per_ticker": 1,
+            }
+        ]
+    checks = {
+        "ingest_news": [
+            {"check": "company_evidence_sources", "min_sources_per_ticker": 2},
+        ],
+        "refresh_market": [
+            {"check": "market_history_coverage", "min_days": 120},
+        ],
+        "refresh_monthly_revenue": [
+            {"check": "monthly_revenue_coverage", "min_months": 12},
+        ],
+        "refresh_financial_metrics": [
+            {"check": "financial_metric_coverage", "min_years": 5},
+        ],
+        "refresh_valuations": [
+            {"check": "valuation_availability", "required_fields": ["pe_ratio", "pb_ratio"]},
+        ],
+        "rerun_discovery": [
+            {"check": "candidate_revalidation_ready"},
+        ],
+        "rerun_analysis": [
+            {"check": "quality_gate_no_blockers"},
+        ],
+    }
+    return checks.get(action.action_type, [{"check": "manual_review"}])
 
 
 @asynccontextmanager

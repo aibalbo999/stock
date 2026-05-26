@@ -209,10 +209,17 @@ def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypat
     def fake_session_scope():
         yield object()
 
-    def fake_quality_gate_for_request(request, documents=None, source_count=None, llm_result=None) -> dict:
+    def fake_quality_gate_for_request(
+        request,
+        documents=None,
+        source_count=None,
+        llm_result=None,
+        company_filing_sufficient_count=None,
+    ) -> dict:
         captured["quality_documents"] = documents
         captured["quality_source_count"] = source_count
         captured["quality_llm_result"] = llm_result
+        captured["quality_company_filing_sufficient_count"] = company_filing_sufficient_count
         return {
             "status": "ready",
             "blockers": [],
@@ -234,6 +241,7 @@ def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypat
     monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
     monkeypatch.setattr(main, "session_scope", fake_session_scope)
     monkeypatch.setattr(main, "build_quality_gate_for_request", fake_quality_gate_for_request)
+    monkeypatch.setattr(main, "count_sufficient_company_filings", lambda tickers: 1)
 
     response = TestClient(main.app).post(
         "/reports/generate",
@@ -529,6 +537,25 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["action_policy"]["max_deployable_amount"] == 700_000
     assert gate["blockers"] == []
     assert gate["warnings"] == []
+
+
+def test_report_quality_gate_blocks_when_company_filings_are_missing() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330", "2382"],
+        market_count=2,
+        monthly_revenue_count=2,
+        financial_metrics_count=20,
+        valuation_count=2,
+        company_filing_sufficient_count=0,
+    )
+
+    assert gate["status"] == "insufficient"
+    assert "公司公開文件覆蓋率低於 50%" in gate["blockers"]
+    assert gate["metrics"]["company_filing_coverage"] == 0
 
 
 def test_report_quality_gate_warns_when_llm_falls_back() -> None:

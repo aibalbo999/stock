@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from app.data_sources.company_filings import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
 from app.core.prompts import REPORT_PROMPT_TEMPLATE, SYSTEM_PROMPT
 from app.db.session import session_scope
@@ -449,6 +450,7 @@ class ReportGenerator:
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                self._company_filing_missing(ticker, documents),
             )
             decision = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
             contexts.append(
@@ -503,7 +505,7 @@ class ReportGenerator:
         avoid = [item for item in contexts if item["decision"] == "避開 / 降低曝險"]
 
         lines = [
-            "1. 先處理資料缺口：若有「缺 AI 歸因、缺月營收、缺股價」，先補資料再考慮加碼。",
+            "1. 先處理資料缺口：若有「缺 AI 歸因、缺月營收、缺股價、缺公司公開文件」，先補資料再考慮加碼。",
             "2. 只把資料完整且通過降值門檻的股票放進小額研究清單。",
             "3. 對降值風險高於門檻或領先訊號偏空的股票，先等風險下降或新資料確認。",
             "",
@@ -775,10 +777,10 @@ class ReportGenerator:
         partial = 0
         weak = 0
         lines = [
-            "本段檢查每檔股票是否同時具備新聞/RAG、AI 歸因、股價、月營收、五年財報與估值資料；資料不足時，系統會降低建議強度。",
+            "本段檢查每檔股票是否同時具備新聞/RAG、AI 歸因、股價、月營收、五年財報、估值與公司公開文件；資料不足時，系統會降低建議強度。",
             "",
-            "| 股票 | 新聞/RAG | AI歸因 | 股價 | 月營收 | 五年財報 | 估值 | 領先訊號 | 判讀 |",
-            "|---|---:|---:|---|---|---:|---|---|---|",
+            "| 股票 | 新聞/RAG | AI歸因 | 股價 | 月營收 | 五年財報 | 估值 | 公司文件 | 領先訊號 | 判讀 |",
+            "|---|---:|---:|---|---|---:|---|---|---|---|",
         ]
         for ticker in tickers:
             company = companies.get(ticker)
@@ -789,6 +791,7 @@ class ReportGenerator:
             ticker_metrics = metrics_by_ticker.get(ticker, [])
             valuation = valuations.get(ticker)
             signal = (leading_signals or {}).get(ticker)
+            filing_missing = self._company_filing_missing(ticker, documents)
             quality = self._data_quality_grade(
                 related_documents,
                 related_findings,
@@ -798,6 +801,7 @@ class ReportGenerator:
                 valuation,
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                filing_missing,
             )
             missing = quality["missing"]
 
@@ -820,10 +824,12 @@ class ReportGenerator:
             )
             financial_label = str(len(ticker_metrics)) if ticker_metrics else "缺"
             valuation_label = valuation.trade_date.isoformat() if valuation else "缺"
+            filing_label = "足夠" if not filing_missing else "缺"
             signal_label = signal.direction if signal and signal.has_signal_data else "缺"
             lines.append(
                 f"| {label} | {len(related_documents)} | {len(related_findings)} | "
-                f"{price_label} | {revenue_label} | {financial_label} | {valuation_label} | {signal_label} | {verdict} |"
+                f"{price_label} | {revenue_label} | {financial_label} | {valuation_label} | "
+                f"{filing_label} | {signal_label} | {verdict} |"
             )
 
         lines.extend(
@@ -1033,6 +1039,7 @@ class ReportGenerator:
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                self._company_filing_missing(ticker, documents),
             )
             label = f"{ticker} {name}"
             source = (
@@ -1122,6 +1129,7 @@ class ReportGenerator:
                 valuation,
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                self._company_filing_missing(ticker, documents),
             )
             rows.append(
                 {
@@ -1424,6 +1432,7 @@ class ReportGenerator:
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                self._company_filing_missing(ticker, documents),
             )
             downside_gate = self._downside_gate(request)
             name = company.name if company else ticker
@@ -2137,6 +2146,7 @@ class ReportGenerator:
                 valuations.get(ticker),
                 financial_metrics is not None or valuation_metrics is not None,
                 signal,
+                self._company_filing_missing(ticker, documents),
             )
             evidence_count = len(related_documents)
             has_structural_risk = any(
@@ -2329,6 +2339,51 @@ class ReportGenerator:
             if any(match.ticker == ticker for match in finding.related_companies)
         ]
 
+    def _company_filing_missing(self, ticker: str, documents: list[NewsDocument]) -> list[str]:
+        companies = {company.ticker: company for company in self.whitelist.companies()}
+        company = companies.get(ticker)
+        company_name = company.name if company else ""
+        high_quality_types: set[str] = set()
+
+        for document in self._company_filing_documents_from_db(ticker):
+            if filing_quality_score(document, ticker, company_name) >= 70:
+                high_quality_types.add(document.document_type)
+
+        for document in documents:
+            if not self._is_company_filing_document(ticker, document):
+                continue
+            document_type = self._news_document_filing_type(document)
+            if document_type and filing_quality_score(document, ticker, company_name) >= 70:
+                high_quality_types.add(document_type)
+
+        missing_required = [
+            document_type for document_type in REQUIRED_CORE_DOCUMENT_TYPES if document_type not in high_quality_types
+        ]
+        if not missing_required:
+            return []
+        return ["缺公司公開文件（" + "、".join(missing_required) + "）"]
+
+    @staticmethod
+    def _company_filing_documents_from_db(ticker: str):
+        try:
+            with session_scope() as session:
+                return CompanyFilingRepository(session).latest_by_tickers([ticker], limit_per_ticker=8)
+        except Exception:
+            return []
+
+    @staticmethod
+    def _is_company_filing_document(ticker: str, document: NewsDocument) -> bool:
+        if not document.id.startswith("filing-"):
+            return False
+        return ticker in document.text or ticker in document.title
+
+    @staticmethod
+    def _news_document_filing_type(document: NewsDocument) -> str | None:
+        for line in document.text.splitlines():
+            if line.startswith("文件類型："):
+                return line.split("：", 1)[1].strip()
+        return None
+
     @staticmethod
     def _data_quality_grade(
         related_documents: list[NewsDocument],
@@ -2339,6 +2394,7 @@ class ReportGenerator:
         valuation: ValuationMetric | None = None,
         include_fundamentals: bool = False,
         leading_signal: LeadingSignal | None = None,
+        company_filing_missing: list[str] | None = None,
     ) -> dict:
         missing = []
         if len(related_documents) < 2:
@@ -2355,6 +2411,8 @@ class ReportGenerator:
             missing.append("缺估值")
         if include_fundamentals and leading_signal is not None and not leading_signal.has_signal_data:
             missing.append("缺領先訊號")
+        if include_fundamentals:
+            missing.extend(company_filing_missing or [])
 
         if not missing:
             grade = "supported"

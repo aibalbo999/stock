@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.time import today_taipei
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
+    REQUIRED_CORE_DOCUMENT_TYPES,
     filing_quality_score,
     filing_source_tier,
 )
@@ -75,6 +76,23 @@ def serialize_run(run) -> dict:
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
+
+
+def count_sufficient_company_filings(tickers: list[str]) -> int:
+    if not tickers:
+        return 0
+    with session_scope() as session:
+        documents = CompanyFilingRepository(session).latest_by_tickers(tickers, limit_per_ticker=8)
+    high_quality_types_by_ticker: dict[str, set[str]] = {ticker: set() for ticker in tickers}
+    company_names = {company.ticker: company.name for company in SupplyChainWhitelist().companies()}
+    for document in documents:
+        if filing_quality_score(document, document.ticker, company_names.get(document.ticker, "")) >= 70:
+            high_quality_types_by_ticker.setdefault(document.ticker, set()).add(document.document_type)
+    return sum(
+        1
+        for ticker in tickers
+        if all(document_type in high_quality_types_by_ticker.get(ticker, set()) for document_type in REQUIRED_CORE_DOCUMENT_TYPES)
+    )
 
 
 def safe_mark_run_failed(run_id: int, error: str) -> None:
@@ -1130,6 +1148,7 @@ def generate_report(request: ReportRequest) -> ReportResponse:
             request,
             documents=generator.last_evidence_documents,
             llm_result=getattr(generator, "last_llm_result", None),
+            company_filing_sufficient_count=count_sufficient_company_filings(request.tickers),
         )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
@@ -1772,6 +1791,11 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             plan_quality=source_audit.get("plan_quality"),
             leading_signal_count=leading_signal_count,
             llm_status=summarize_llm_status(generator.last_llm_result),
+            company_filing_sufficient_count=sum(
+                1
+                for row in company_filing_ingestion.get("per_ticker_results", [])
+                if row.get("status") == "sufficient"
+            ),
         )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:

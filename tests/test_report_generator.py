@@ -196,6 +196,74 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
     assert "缺少新聞、財報或法說證據" in recommendations
 
 
+def test_complete_market_data_still_requires_company_filings_for_actionable_rating() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    generator._company_filing_missing = lambda ticker, documents: ["缺公司公開文件（annual_report）"]
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"], beginner_mode=False)
+    snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=1000.0)
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 30),
+        revenue=300_000_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=20.0,
+    )
+    metrics = [
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2025, 12, 31),
+            statement_type="income_statement",
+            metric="營業收入",
+            value=1000.0,
+            source="FinMind TaiwanStockFinancialStatements",
+        )
+    ]
+    valuation = ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=18.0)
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台積電 AI 需求成長",
+            text="台積電 AI 需求成長，先進製程需求強勁。",
+            publisher="測試新聞",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電 CoWoS 擴產",
+            text="台積電 CoWoS 擴產帶動 AI 伺服器供應鏈。",
+            publisher="測試新聞",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    snapshot_markdown = generator._render_executive_snapshot(
+        request,
+        ["2330"],
+        documents,
+        [],
+        [snapshot],
+        [revenue],
+        metrics,
+        [valuation],
+    )
+    recommendations = generator._render_investment_recommendations(
+        request,
+        ["2330"],
+        documents,
+        [],
+        [snapshot],
+        [revenue],
+        metrics,
+        [valuation],
+    )
+
+    assert "| 2330 台積電 | 觀察 / 資料待補 | 待補 |" in snapshot_markdown
+    assert "缺公司公開文件（annual_report）" in snapshot_markdown
+    assert "觀察 / 資料待補" in recommendations
+    assert "且資料層完整" not in recommendations
+
+
 def test_company_analysis_uses_financial_and_valuation_data() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
@@ -275,6 +343,7 @@ def test_company_comparison_matrix_summarizes_decision_valuation_and_confidence(
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
     generator.mapper = EntityMapper(generator.whitelist)
+    generator._company_filing_missing = lambda ticker, documents: []
     request = ReportRequest(topic="AI 產業鏈", tickers=["2330"])
     snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=2255.0)
     revenue = MonthlyRevenue(

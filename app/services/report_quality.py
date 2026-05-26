@@ -30,6 +30,7 @@ def build_report_quality_gate(
     plan_quality: dict | None = None,
     leading_signal_count: int | None = None,
     llm_status: dict | None = None,
+    company_filing_sufficient_count: int | None = None,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
@@ -54,6 +55,11 @@ def build_report_quality_gate(
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
     leading_signal_coverage = leading_signal_count / promoted_count if promoted_count and leading_signal_count is not None else None
+    company_filing_coverage = (
+        company_filing_sufficient_count / promoted_count
+        if promoted_count and company_filing_sufficient_count is not None
+        else None
+    )
     llm_status = llm_status or {}
     llm_fallback = bool(llm_status.get("fallback")) if llm_status else None
 
@@ -114,6 +120,11 @@ def build_report_quality_gate(
             warnings.append("領先訊號覆蓋偏低，潛力/風險排序信心需下修")
         elif leading_signal_coverage < 1:
             observations.append("部分股票領先訊號不足，系統已降低排序信心")
+    if promoted_count and company_filing_coverage is not None:
+        if company_filing_coverage < 0.5:
+            blockers.append("公司公開文件覆蓋率低於 50%")
+        elif company_filing_coverage < 1:
+            warnings.append("部分股票缺少高品質公司公開文件")
     if llm_status:
         if llm_fallback:
             warnings.append("LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿")
@@ -167,6 +178,7 @@ def build_report_quality_gate(
             "financial_metrics_count": financial_metrics_count,
             "valuation_coverage": valuation_coverage,
             "leading_signal_coverage": leading_signal_coverage,
+            "company_filing_coverage": company_filing_coverage,
             "llm_analysis_status": "fallback" if llm_fallback else "enabled" if llm_status else None,
             "llm_model": llm_status.get("model"),
             "llm_key_index": llm_status.get("key_index"),
@@ -237,6 +249,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("估值資料覆蓋",),
             "補齊同業估值、P/E 與 DCF 假設，估值缺口未補齊前只保留觀察結論。",
+        ),
+        (
+            ("公司公開文件覆蓋", "高品質公司公開文件"),
+            "補抓或人工匯入年報、法說會與官方 IR 文件；未補齊前不得把個股列為可投入資金標的。",
         ),
         (
             ("領先訊號覆蓋",),
@@ -327,6 +343,7 @@ def build_quality_gate_for_request(
     documents: list[NewsDocument] | None = None,
     source_count: int | None = None,
     llm_result: object | None = None,
+    company_filing_sufficient_count: int | None = None,
 ) -> dict:
     tickers = EntityMapper().filter_allowed_tickers(request.tickers)
     source_count = len(documents or []) if source_count is None else source_count
@@ -364,6 +381,7 @@ def build_quality_gate_for_request(
         source_quality=source_quality,
         leading_signal_count=leading_signal_count,
         llm_status=summarize_llm_status(llm_result),
+        company_filing_sufficient_count=company_filing_sufficient_count,
     )
 
 
@@ -405,6 +423,7 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
         f"- 領先訊號覆蓋率：{_format_optional_percent(metrics.get('leading_signal_coverage'))}",
+        f"- 公司公開文件覆蓋率：{_format_optional_percent(metrics.get('company_filing_coverage'))}",
     ]
     if action_policy.get("max_deployable_amount") is not None:
         lines.append(f"- 本輪品質門檻後可投入上限：約 {int(action_policy['max_deployable_amount']):,} 元")
@@ -515,6 +534,7 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
             "leading_signal_coverage": _parse_optional_percent(fields.get("領先訊號覆蓋率")),
+            "company_filing_coverage": _parse_optional_percent(fields.get("公司公開文件覆蓋率")),
         },
         "recommendation": fields.get("系統判斷", "目前無足夠數據判斷。"),
     }
@@ -603,11 +623,19 @@ def render_quality_action_guard_markdown(quality_gate: dict) -> str:
     status = quality_gate.get("status")
     if status == "ready":
         return ""
+    action_policy = quality_gate.get("action_policy") or {}
+    amount = action_policy.get("max_deployable_amount")
+    amount_line = (
+        f"- 品質門檻後本輪可投入上限：{int(amount):,} 元；此數字優先於後續摘要或表格中的一般資金上限。"
+        if amount is not None
+        else "- 品質門檻後本輪可投入上限以本段限制為準，優先於後續摘要或表格中的一般資金上限。"
+    )
     if status == "insufficient":
         return "\n".join(
             [
                 "## 投資行動限制",
                 "- 本次報告品質狀態為「資料不足」。",
+                amount_line,
                 "- 所有個股結論自動降級為「觀察 / 補資料」，不得視為買入清單。",
                 "- 若報告其他章節出現升值情境或可研究字樣，僅代表研究線索，不代表可投入資金。",
                 "- 下一步應先補齊阻擋項，再重新執行分析。",
@@ -617,6 +645,7 @@ def render_quality_action_guard_markdown(quality_gate: dict) -> str:
         [
             "## 投資行動限制",
             "- 本次報告品質狀態為「需謹慎判讀」。",
+            amount_line,
             "- 可保留觀察名單，但不應直接轉成買入或加碼指令。",
             "- 需先人工覆核警示項，確認資料缺口不影響核心投資假設。",
         ]

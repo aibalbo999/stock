@@ -2191,7 +2191,10 @@ with tabs[2]:
         filing_date = st.date_input("文件日期", value=today_taipei(), key="filing_date")
         filing_url = st.text_input("文件 URL", key="filing_url")
         filing_text = st.text_area("文件文字", height=260, key="filing_text")
-        if st.button("匯入公司文件"):
+        filing_import_cols = st.columns(2)
+        import_text_filing = filing_import_cols[0].button("匯入公司文件")
+        import_url_filing = filing_import_cols[1].button("從 URL 抓取並匯入")
+        if import_text_filing:
             if not filing_title or not filing_text:
                 st.warning("請輸入文件標題與文字。")
             else:
@@ -2212,6 +2215,29 @@ with tabs[2]:
                 tier = filing_source_tier(document)
                 score = filing_quality_score(document, filing_ticker, filing_company)
                 st.success(f"已匯入公司文件：{document.id}")
+                st.caption(f"來源分級：{tier}；品質分數：{score}")
+        if import_url_filing:
+            if not filing_url:
+                st.warning("請輸入文件 URL。")
+            else:
+                with st.spinner("正在抓取 URL 並匯入公司文件..."):
+                    document = asyncio.run(
+                        CompanyFilingFetcher().fetch_url_document(
+                            url=filing_url,
+                            ticker=filing_ticker,
+                            company_name=filing_company,
+                            document_type=filing_type,
+                            publisher=filing_publisher,
+                            published_at=filing_date,
+                        )
+                    )
+                    news_document = CompanyFilingRepository.to_news_document(document)
+                    VectorStore().upsert_documents([news_document])
+                    with session_scope() as session:
+                        CompanyFilingRepository(session).upsert_document(document)
+                tier = filing_source_tier(document)
+                score = filing_quality_score(document, filing_ticker, filing_company)
+                st.success(f"已從 URL 匯入公司文件：{document.id}")
                 st.caption(f"來源分級：{tier}；品質分數：{score}")
 
     with st.expander("進階：從 RSS 匯入"):

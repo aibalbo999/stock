@@ -628,6 +628,67 @@ def test_manual_company_filing_endpoint_returns_quality(monkeypatch) -> None:
     assert stored["rag_document_id"].startswith("filing-")
 
 
+def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
+    stored = {}
+    original_repository = main.CompanyFilingRepository
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            stored["rag_document_id"] = documents[0].id
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def upsert_document(self, document):
+            stored["filing_id"] = document.id
+
+        @staticmethod
+        def to_news_document(document):
+            return original_repository.to_news_document(document)
+
+    async def fake_fetch_url_document(self, **kwargs):
+        return main.CompanyFilingFetcher.from_manual_text(
+            ticker=kwargs["ticker"],
+            company_name=kwargs["company_name"],
+            document_type=kwargs["document_type"],
+            title="台積電 2026 年報",
+            text="台積電 年報揭露 AI/HPC 需求與風險因素。",
+            publisher="公開資訊觀測站",
+            published_at=kwargs["published_at"],
+            url=kwargs["url"],
+        )
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(main, "VectorStore", FakeVectorStore)
+    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(main.CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+    monkeypatch.setattr(main, "session_scope", fake_session_scope)
+
+    response = TestClient(main.app).post(
+        "/company-filings/from-url",
+        json={
+            "ticker": "2330",
+            "company_name": "台積電",
+            "document_type": "annual_report",
+            "publisher": "公開資訊觀測站",
+            "published_at": "2026-05-01",
+            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ticker"] == "2330"
+    assert body["source_tier"] == "official_disclosure"
+    assert body["quality_score"] >= 70
+    assert stored["filing_id"] == body["document_id"]
+    assert stored["rag_document_id"].startswith("filing-")
+
+
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     assert (
         main.should_require_candidate_audit_follow_up(

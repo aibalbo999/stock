@@ -155,6 +155,27 @@ class CompanyFilingFetcher:
             ),
         )
 
+    async def fetch_url_document(
+        self,
+        url: str,
+        ticker: str,
+        company_name: str = "",
+        document_type: str = "company_disclosure",
+        publisher: str | None = None,
+        published_at: date | None = None,
+    ) -> CompanyFilingDocument:
+        document = await self.news_fetcher.fetch_url(url, publisher=publisher)
+        return self.from_manual_text(
+            ticker=ticker,
+            company_name=company_name,
+            document_type=document_type,
+            title=document.title,
+            text=document.text,
+            publisher=document.source.publisher or publisher or "company filing url",
+            published_at=published_at or document.source.published_at,
+            url=document.source.url or url,
+        )
+
     async def fetch_discovery_documents(
         self,
         ticker: str,

@@ -461,6 +461,15 @@ class ManualCompanyFilingIngest(BaseModel):
     url: Optional[str] = None
 
 
+class CompanyFilingUrlIngest(BaseModel):
+    ticker: str
+    url: str
+    company_name: str = ""
+    document_type: str = "company_disclosure"
+    publisher: Optional[str] = None
+    published_at: Optional[date] = None
+
+
 class MarketRefreshRequest(BaseModel):
     tickers: list[str] = []
     start_date: Optional[date] = None
@@ -931,6 +940,23 @@ def ingest_company_filing_manual(payload: ManualCompanyFilingIngest) -> dict:
         published_at=payload.published_at,
         url=payload.url,
     )
+    return persist_company_filing_document(document)
+
+
+@app.post("/company-filings/from-url")
+async def ingest_company_filing_from_url(payload: CompanyFilingUrlIngest) -> dict:
+    document = await CompanyFilingFetcher().fetch_url_document(
+        url=payload.url,
+        ticker=payload.ticker,
+        company_name=payload.company_name,
+        document_type=payload.document_type,
+        publisher=payload.publisher,
+        published_at=payload.published_at,
+    )
+    return persist_company_filing_document(document)
+
+
+def persist_company_filing_document(document) -> dict:
     news_document = CompanyFilingRepository.to_news_document(document)
     VectorStore().upsert_documents([news_document])
     with session_scope() as session:

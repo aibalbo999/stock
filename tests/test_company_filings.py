@@ -107,3 +107,31 @@ def test_company_filing_repository_roundtrip() -> None:
     assert stats["document_types"] == ["annual_report"]
     assert news_document.id.startswith("filing-")
     assert "文件類型：annual_report" in news_document.text
+
+
+def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
+    async def fake_fetch_url(self, url, publisher=None):
+        return NewsFetcher.from_manual_text(
+            title="台積電 2026 年報",
+            text="台積電 年報揭露 AI/HPC 需求與風險因素。",
+            publisher=publisher or "公開資訊觀測站",
+            published_at=date(2026, 5, 1),
+            url=url,
+        )
+
+    monkeypatch.setattr("app.data_sources.news.NewsFetcher.fetch_url", fake_fetch_url)
+
+    import asyncio
+
+    document = asyncio.run(
+        CompanyFilingFetcher().fetch_url_document(
+            "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+            ticker="2330",
+            company_name="台積電",
+            document_type="annual_report",
+        )
+    )
+
+    assert document.ticker == "2330"
+    assert document.document_type == "annual_report"
+    assert document.title == "台積電 2026 年報"

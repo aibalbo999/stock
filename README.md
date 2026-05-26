@@ -14,7 +14,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 公司公開文件：可手動匯入或依股票自動搜尋年報、法說會、公開說明書與重大訊息線索，並寫入 RAG 與個股資料審計；官方/MOPS/交易所/公司 IR 來源會優先於第三方摘要。
 - 公司文件補抓會回傳每檔股票的官方搜尋計畫，包含 MOPS、交易所、櫃買中心與 PDF/IR 查詢，方便追蹤「系統實際往哪裡找原始文件」。
 - 個股資料審計會區分必要與建議公司文件；目前必要文件為高品質年報，建議文件為高品質法說/投資人簡報。
-- 前端補充資料頁可直接匯入公司公開文件，匯入後會顯示來源分級與品質分數，並同步寫入 RAG 與公司文件審計。
+- 前端補充資料頁可直接匯入公司公開文件，也可貼 URL 自動抓取頁面文字；匯入後會顯示來源分級與品質分數，並同步寫入 RAG 與公司文件審計。
 - RAG/檢索：新聞文本進向量庫，報告生成時會取回相關證據。
 - 白名單與候選驗證：靜態白名單仍是安全底線；AI 自組候選清單需通過來源驗證後才會升格。
 - 弱證據分級：單一文章、單一來源或證據信心低於 75 分只會標成 `weak_evidence`，不會直接進正式分析股票。
@@ -108,6 +108,7 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 - `POST /news/fetch`
 - `POST /ingest/manual`
 - `POST /company-filings/manual`
+- `POST /company-filings/from-url`
 - `POST /company-filings/fetch`
 - `GET /company-filings`
 - `POST /discovery/topic-plan`

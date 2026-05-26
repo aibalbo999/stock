@@ -433,21 +433,51 @@ def follow_up_action_summary(actions: list) -> dict:
 def follow_up_plan_next_actions(actions: list) -> list[dict]:
     rows = []
     for action in actions:
-        if action.action_type != "ingest_company_filings":
+        target = follow_up_plan_action_target(action)
+        if target is None:
             continue
-        document_types = company_filing_document_types_from_reason(action.reason) or []
         rows.append(
             {
-                "action": "company_filing_search",
+                "action": action.action_type,
                 "tickers": list(action.tickers),
-                "document_types": document_types,
+                "target": target,
                 "priority": action.priority,
                 "purpose": action.purpose,
                 "reason": action.reason,
-                "next_step": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
+                "next_step": follow_up_plan_action_next_step(action),
             }
         )
     return rows
+
+
+def follow_up_plan_action_target(action) -> str | None:
+    if action.action_type == "ingest_company_filings":
+        document_types = company_filing_document_types_from_reason(action.reason) or []
+        return "、".join(document_types) if document_types else "公司公開文件"
+    targets = {
+        "ingest_news": "新聞/研究/產業證據",
+        "refresh_market": "股價與量能",
+        "refresh_monthly_revenue": "月營收",
+        "refresh_financial_metrics": "五年財務資料",
+        "refresh_valuations": "估值資料",
+        "rerun_discovery": "AI 主題拆解與候選白名單",
+        "rerun_analysis": "完整投資報告",
+    }
+    return targets.get(action.action_type)
+
+
+def follow_up_plan_action_next_step(action) -> str:
+    steps = {
+        "ingest_news": "依股票與主題補抓近期多來源資料，補足公司層級證據。",
+        "ingest_company_filings": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
+        "refresh_market": "刷新近期股價、量能與波動資料，用於降值風險與進出場檢查。",
+        "refresh_monthly_revenue": "補齊近月營收序列，用於成長加速或轉弱判斷。",
+        "refresh_financial_metrics": "補齊多年財報指標，用於財務體質、利潤率與負債檢查。",
+        "refresh_valuations": "刷新本益比、股價淨值比與殖利率，用於同業估值比較。",
+        "rerun_discovery": "重新拆解主題與候選公司，確認白名單是否需調整。",
+        "rerun_analysis": "在補資料後重新產生報告；若仍有關鍵缺口，系統會先暫停重跑。",
+    }
+    return steps.get(action.action_type, "依任務設定補齊資料後再評估是否重跑報告。")
 
 
 @asynccontextmanager

@@ -1368,7 +1368,7 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
                     {
                         "股票": "、".join(action.get("tickers") or []) or "全主題",
                         "下一步": action.get("next_step"),
-                        "文件類型": "、".join(action.get("document_types") or []) or "公司公開文件",
+                        "補強目標": action.get("target") or "-",
                         "優先級": action.get("priority", "-"),
                         "原因": action.get("reason", "-"),
                     }

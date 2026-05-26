@@ -1856,7 +1856,7 @@ def test_report_follow_up_plan_preview_uses_report_history(monkeypatch) -> None:
     assert "| 任務 | 股票 | 性質 | 優先級 | 頻率 | 觸發原因 |" in body["markdown_preview"]
 
 
-def test_follow_up_plan_next_actions_describe_company_filing_search() -> None:
+def test_follow_up_plan_next_actions_describe_planned_work() -> None:
     rows = main.follow_up_plan_next_actions(
         [
             FollowUpAction(
@@ -1873,19 +1873,44 @@ def test_follow_up_plan_next_actions_describe_company_filing_search() -> None:
                 ("2382",),
                 "high",
             ),
+            FollowUpAction(
+                "rerun_analysis",
+                "補資料後重新產生報告",
+                ("2382",),
+                "high",
+                "once",
+            ),
         ]
     )
 
     assert rows == [
         {
-            "action": "company_filing_search",
+            "action": "ingest_company_filings",
             "tickers": ["2382"],
-            "document_types": ["annual_report"],
+            "target": "annual_report",
             "priority": "high",
             "purpose": "required",
             "reason": "個股資料審計缺口：缺高品質必要公司文件：annual_report",
             "next_step": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
-        }
+        },
+        {
+            "action": "refresh_market",
+            "tickers": ["2382"],
+            "target": "股價與量能",
+            "priority": "high",
+            "purpose": "required",
+            "reason": "個股資料審計缺口：股價",
+            "next_step": "刷新近期股價、量能與波動資料，用於降值風險與進出場檢查。",
+        },
+        {
+            "action": "rerun_analysis",
+            "tickers": ["2382"],
+            "target": "完整投資報告",
+            "priority": "high",
+            "purpose": "required",
+            "reason": "補資料後重新產生報告",
+            "next_step": "在補資料後重新產生報告；若仍有關鍵缺口，系統會先暫停重跑。",
+        },
     ]
 
 

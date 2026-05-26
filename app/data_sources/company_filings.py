@@ -50,6 +50,9 @@ HIGH_QUALITY_FILING_SCORE = 70
 MIN_FETCHED_DOCUMENT_CHARS = 120
 MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
+PDF_IMPORT_MISSING_PYPDF_MESSAGE = "PDF 匯入需要安裝 pypdf，請先完成系統相依套件安裝後再重試。"
+PDF_IMPORT_PARSE_ERROR_MESSAGE = "PDF 公司文件無法解析，可能是檔案加密、損毀或格式不支援；請改用官方 HTML 頁面，或人工貼上文字版內容。"
+PDF_IMPORT_NO_TEXT_MESSAGE = "PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。"
 REQUIRED_CORE_DOCUMENT_TYPES = ("annual_report",)
 RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
@@ -305,15 +308,15 @@ def extract_pdf_text(content: bytes) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as exc:
-        raise ValueError("PDF company filing import requires pypdf") from exc
+        raise ValueError(PDF_IMPORT_MISSING_PYPDF_MESSAGE) from exc
     try:
         reader = PdfReader(BytesIO(content))
         pages = [page.extract_text() or "" for page in reader.pages]
     except Exception as exc:
-        raise ValueError("unable to extract text from PDF company filing") from exc
+        raise ValueError(PDF_IMPORT_PARSE_ERROR_MESSAGE) from exc
     text = "\n".join(page.strip() for page in pages if page.strip())
     if not text.strip():
-        raise ValueError("PDF company filing did not contain extractable text")
+        raise ValueError(PDF_IMPORT_NO_TEXT_MESSAGE)
     return text
 
 

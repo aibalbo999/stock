@@ -704,6 +704,27 @@ def test_company_filing_from_url_rejects_localhost() -> None:
     assert "localhost" in response.json()["detail"]
 
 
+def test_company_filing_from_url_returns_pdf_ocr_guidance(monkeypatch) -> None:
+    async def fake_fetch_url_document(self, **kwargs):
+        raise ValueError("PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。")
+
+    monkeypatch.setattr(main.CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+
+    response = TestClient(main.app).post(
+        "/company-filings/from-url",
+        json={
+            "ticker": "2330",
+            "company_name": "台積電",
+            "document_type": "annual_report",
+            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "OCR" in response.json()["detail"]
+    assert "文字版文件" in response.json()["detail"]
+
+
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     assert (
         main.should_require_candidate_audit_follow_up(

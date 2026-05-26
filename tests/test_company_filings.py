@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
+    PDF_IMPORT_NO_TEXT_MESSAGE,
     extract_pdf_text,
     filing_quality_score,
     filing_source_tier,
@@ -163,6 +164,29 @@ def test_company_filing_pdf_text_extraction(monkeypatch) -> None:
     )
 
     assert "台積電 2026 年報" in extract_pdf_text(b"%PDF fake")
+
+
+def test_company_filing_pdf_without_text_has_actionable_error(monkeypatch) -> None:
+    import pypdf
+
+    class BlankPage:
+        def extract_text(self) -> str:
+            return ""
+
+    monkeypatch.setattr(
+        pypdf,
+        "PdfReader",
+        lambda _content: SimpleNamespace(pages=[BlankPage()]),
+    )
+
+    try:
+        extract_pdf_text(b"%PDF fake")
+    except ValueError as exc:
+        assert str(exc) == PDF_IMPORT_NO_TEXT_MESSAGE
+        assert "OCR" in str(exc)
+        assert "文字版文件" in str(exc)
+    else:
+        raise AssertionError("PDF without extractable text should provide OCR guidance")
 
 
 def test_company_filing_url_validation_blocks_local_targets() -> None:

@@ -23,6 +23,12 @@ def load_report_helpers() -> dict:
     return namespace
 
 
+def test_streamlit_app_defers_annotation_evaluation_for_python39() -> None:
+    source = Path("streamlit_app.py").read_text()
+
+    assert source.startswith("from __future__ import annotations")
+
+
 def test_report_html_renders_comparison_matrix_cards() -> None:
     helpers = load_report_helpers()
     markdown = """

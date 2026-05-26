@@ -1433,6 +1433,103 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
     assert FakeAnalysisRunRepository.success_report_id == 8
 
 
+def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatch) -> None:
+    class FakeReport:
+        id = 7
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2382"]'
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 資料完整度\n"
+            "- 缺高品質必要公司文件：annual_report\n"
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+        def create(self, request, response):
+            raise AssertionError("report should not rerun while company filing blockers remain")
+
+    class FakeRun:
+        id = 31
+        payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2382"],"lookback_days":30}}'
+
+    class FakeAnalysisRunRepository:
+        success_report_id = None
+
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> FakeRun | None:
+            assert report_id == 7
+            return FakeRun()
+
+        def start(self, source: str, payload: dict) -> FakeRun:
+            return FakeRun()
+
+        def update_payload(self, run_id: int, payload: dict) -> FakeRun:
+            assert payload["rerun_report"]["status"] == "skipped"
+            return FakeRun()
+
+        def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
+            FakeAnalysisRunRepository.success_report_id = report_id
+            return FakeRun()
+
+    async def fake_execute(actions, request, news_limit=30):
+        return {
+            "actions": [action.to_dict() for action in actions],
+            "results": {
+                "ingest_company_filings:2382": {
+                    "stored_count": 0,
+                    "errors": [],
+                    "gap_summary": {"blocked_tickers": ["2382"], "retryable_tickers": []},
+                }
+            },
+            "execution_summary": {
+                "task_result_count": 1,
+                "stored_count": 0,
+                "error_count": 0,
+                "has_errors": False,
+                "rerun_blocked": True,
+                "rerun_blockers": ["公司公開文件仍不足：2382"],
+                "items": [],
+            },
+        }
+
+    class FakePlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction(
+                    "ingest_company_filings",
+                    "個股資料審計缺口：缺高品質必要公司文件：annual_report",
+                    ("2382",),
+                    "high",
+                    "monthly",
+                    "required",
+                )
+            ]
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(main, "FollowUpActionPlanner", FakePlanner)
+    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+
+    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rerun_report"]["status"] == "skipped"
+    assert body["rerun_report"]["blockers"] == ["公司公開文件仍不足：2382"]
+    assert FakeAnalysisRunRepository.success_report_id == 7
+
+
 def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> None:
     captured = {}
 

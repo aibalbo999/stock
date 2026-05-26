@@ -1296,7 +1296,13 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
         "results": execution["results"],
         "rerun_report": None,
     }
-    if payload.rerun_report:
+    if payload.rerun_report and execution_summary.get("rerun_blocked"):
+        response_payload["rerun_report"] = {
+            "status": "skipped",
+            "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
+            "blockers": execution_summary.get("rerun_blockers", []),
+        }
+    elif payload.rerun_report:
         rerun_context = await prepare_follow_up_report_context(context, request, actions)
         rerun_request = rerun_context["request"]
         whitelist = rerun_context["whitelist"]

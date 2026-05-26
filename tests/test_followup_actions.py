@@ -320,6 +320,27 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["has_errors"] is True
 
 
+def test_summarize_follow_up_execution_blocks_rerun_when_company_filings_still_missing() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_company_filings:2382": {
+                    "stored_count": 0,
+                    "errors": [],
+                    "gap_summary": {
+                        "blocked_tickers": ["2382"],
+                        "retryable_tickers": ["3324"],
+                    },
+                }
+            }
+        }
+    )
+
+    assert summary["rerun_blocked"] is True
+    assert summary["rerun_blockers"] == ["公司公開文件仍不足：2382"]
+    assert summary["retryable_company_filing_tickers"] == ["3324"]
+
+
 def test_tracking_actions_are_skipped_when_cached_data_is_fresh(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

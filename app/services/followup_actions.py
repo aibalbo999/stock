@@ -522,6 +522,8 @@ def summarize_follow_up_execution(execution: dict) -> dict:
     rows = []
     total_errors = 0
     total_items = 0
+    blocked_company_filing_tickers = []
+    retryable_company_filing_tickers = []
     for key, value in results.items():
         if not isinstance(value, dict):
             rows.append({"task": key, "stored_count": 0, "error_count": 0})
@@ -529,6 +531,9 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         errors = value.get("errors") or []
         error_count = len(errors) if isinstance(errors, list) else 0
         stored_count = _stored_count(value)
+        gap_summary = value.get("gap_summary") or {}
+        blocked_company_filing_tickers.extend(gap_summary.get("blocked_tickers") or [])
+        retryable_company_filing_tickers.extend(gap_summary.get("retryable_tickers") or [])
         total_errors += error_count
         total_items += stored_count
         rows.append(
@@ -539,11 +544,20 @@ def summarize_follow_up_execution(execution: dict) -> dict:
                 "source": value.get("source"),
             }
         )
+    unique_blocked = sorted(set(blocked_company_filing_tickers))
+    unique_retryable = sorted(set(retryable_company_filing_tickers))
     return {
         "task_result_count": len(rows),
         "stored_count": total_items,
         "error_count": total_errors,
         "has_errors": total_errors > 0,
+        "rerun_blocked": bool(unique_blocked),
+        "rerun_blockers": [
+            f"公司公開文件仍不足：{', '.join(unique_blocked)}"
+        ]
+        if unique_blocked
+        else [],
+        "retryable_company_filing_tickers": unique_retryable,
         "items": rows,
     }
 

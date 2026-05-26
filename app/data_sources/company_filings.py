@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import date, datetime
 from hashlib import sha1
 from ipaddress import ip_address
+from io import BytesIO
 from urllib.parse import quote_plus, urlparse
+
+import httpx
+from bs4 import BeautifulSoup
 
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
@@ -45,6 +49,7 @@ IR_SOURCE_HINTS = (
 HIGH_QUALITY_FILING_SCORE = 70
 MIN_FETCHED_DOCUMENT_CHARS = 120
 MAX_FETCHED_DOCUMENT_CHARS = 500_000
+MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 REQUIRED_CORE_DOCUMENT_TYPES = ("annual_report",)
 RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
@@ -168,7 +173,7 @@ class CompanyFilingFetcher:
         published_at: date | None = None,
     ) -> CompanyFilingDocument:
         validate_public_document_url(url)
-        document = await self.news_fetcher.fetch_url(url, publisher=publisher)
+        document = await self._fetch_url_as_document(url, publisher=publisher)
         validate_fetched_company_filing_document(document, ticker, company_name, document_type)
         return self.from_manual_text(
             ticker=ticker,
@@ -179,6 +184,52 @@ class CompanyFilingFetcher:
             publisher=document.source.publisher or publisher or "company filing url",
             published_at=published_at or document.source.published_at,
             url=document.source.url or url,
+        )
+
+    async def _fetch_url_as_document(self, url: str, publisher: str | None = None) -> NewsDocument:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        content_length = int(response.headers.get("content-length") or 0)
+        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+            raise ValueError("company filing content is too large to import")
+        content_type = response.headers.get("content-type", "").lower()
+        if is_pdf_response(url, content_type):
+            return self._pdf_response_to_document(url, response.content, publisher)
+        soup = BeautifulSoup(response.text, "html.parser")
+        title = NewsFetcher._title(soup) or url
+        text = NewsFetcher._article_text(soup)
+        return NewsDocument(
+            id=sha1(url.encode("utf-8")).hexdigest(),
+            title=title,
+            text=text,
+            source=Source(
+                title=title,
+                url=url,
+                publisher=publisher,
+                published_at=NewsFetcher._published_date(soup),
+                fetched_at=datetime.utcnow(),
+            ),
+        )
+
+    @staticmethod
+    def _pdf_response_to_document(
+        url: str,
+        content: bytes,
+        publisher: str | None = None,
+    ) -> NewsDocument:
+        text = extract_pdf_text(content)
+        title = pdf_title_from_url(url)
+        return NewsDocument(
+            id=sha1(url.encode("utf-8")).hexdigest(),
+            title=title,
+            text=text,
+            source=Source(
+                title=title,
+                url=url,
+                publisher=publisher,
+                fetched_at=datetime.utcnow(),
+            ),
         )
 
     async def fetch_discovery_documents(
@@ -239,6 +290,31 @@ def validate_public_document_url(url: str) -> None:
         or address.is_unspecified
     ):
         raise ValueError("company filing URL cannot target private or reserved IP addresses")
+
+
+def is_pdf_response(url: str, content_type: str) -> bool:
+    return "application/pdf" in content_type or urlparse(url).path.lower().endswith(".pdf")
+
+
+def pdf_title_from_url(url: str) -> str:
+    name = urlparse(url).path.rsplit("/", 1)[-1]
+    return name or url
+
+
+def extract_pdf_text(content: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise ValueError("PDF company filing import requires pypdf") from exc
+    try:
+        reader = PdfReader(BytesIO(content))
+        pages = [page.extract_text() or "" for page in reader.pages]
+    except Exception as exc:
+        raise ValueError("unable to extract text from PDF company filing") from exc
+    text = "\n".join(page.strip() for page in pages if page.strip())
+    if not text.strip():
+        raise ValueError("PDF company filing did not contain extractable text")
+    return text
 
 
 def validate_fetched_company_filing_document(

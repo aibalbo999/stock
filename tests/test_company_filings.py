@@ -1,10 +1,12 @@
 from datetime import date
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
+    extract_pdf_text,
     filing_quality_score,
     filing_source_tier,
     infer_document_type,
@@ -112,7 +114,7 @@ def test_company_filing_repository_roundtrip() -> None:
 
 
 def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
-    async def fake_fetch_url(self, url, publisher=None):
+    async def fake_fetch_url_as_document(self, url, publisher=None):
         return NewsFetcher.from_manual_text(
             title="台積電 2026 年報",
             text="台積電 2026 年報揭露 AI/HPC 需求與風險因素。" * 8,
@@ -121,7 +123,7 @@ def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
             url=url,
         )
 
-    monkeypatch.setattr("app.data_sources.news.NewsFetcher.fetch_url", fake_fetch_url)
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", fake_fetch_url_as_document)
 
     import asyncio
 
@@ -137,6 +139,30 @@ def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
     assert document.ticker == "2330"
     assert document.document_type == "annual_report"
     assert document.title == "台積電 2026 年報"
+
+
+def test_company_filing_pdf_text_extraction(monkeypatch) -> None:
+    import pypdf
+
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def extract_text(self) -> str:
+            return self.text
+
+    monkeypatch.setattr(
+        pypdf,
+        "PdfReader",
+        lambda _content: SimpleNamespace(
+            pages=[
+                FakePage("台積電 2026 年報"),
+                FakePage("AI/HPC 需求與風險因素"),
+            ]
+        ),
+    )
+
+    assert "台積電 2026 年報" in extract_pdf_text(b"%PDF fake")
 
 
 def test_company_filing_url_validation_blocks_local_targets() -> None:

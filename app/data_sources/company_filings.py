@@ -43,6 +43,8 @@ IR_SOURCE_HINTS = (
     "investor_relations",
 )
 HIGH_QUALITY_FILING_SCORE = 70
+MIN_FETCHED_DOCUMENT_CHARS = 120
+MAX_FETCHED_DOCUMENT_CHARS = 500_000
 REQUIRED_CORE_DOCUMENT_TYPES = ("annual_report",)
 RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
@@ -167,6 +169,7 @@ class CompanyFilingFetcher:
     ) -> CompanyFilingDocument:
         validate_public_document_url(url)
         document = await self.news_fetcher.fetch_url(url, publisher=publisher)
+        validate_fetched_company_filing_document(document, ticker, company_name, document_type)
         return self.from_manual_text(
             ticker=ticker,
             company_name=company_name,
@@ -236,6 +239,31 @@ def validate_public_document_url(url: str) -> None:
         or address.is_unspecified
     ):
         raise ValueError("company filing URL cannot target private or reserved IP addresses")
+
+
+def validate_fetched_company_filing_document(
+    document: NewsDocument,
+    ticker: str,
+    company_name: str = "",
+    document_type: str = "company_disclosure",
+) -> None:
+    text = f"{document.title}\n{document.text}".strip()
+    if len(text) < MIN_FETCHED_DOCUMENT_CHARS:
+        raise ValueError("company filing content is too short to audit")
+    if len(text) > MAX_FETCHED_DOCUMENT_CHARS:
+        raise ValueError("company filing content is too large to import")
+
+    lowered = text.lower()
+    company_terms = [ticker.lower()]
+    if company_name:
+        company_terms.append(company_name.lower())
+    if not any(term and term in lowered for term in company_terms):
+        raise ValueError("company filing content does not mention the target company")
+
+    if document_type != "company_disclosure":
+        keywords = DOCUMENT_TYPE_KEYWORDS.get(document_type, ())
+        if keywords and not any(keyword.lower() in lowered for keyword in keywords):
+            raise ValueError("company filing content does not match the selected document type")
 
 
 def filing_quality_score(document: CompanyFilingDocument | NewsDocument, ticker: str = "", company_name: str = "") -> int:

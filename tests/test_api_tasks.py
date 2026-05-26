@@ -653,7 +653,7 @@ def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
             company_name=kwargs["company_name"],
             document_type=kwargs["document_type"],
             title="台積電 2026 年報",
-            text="台積電 年報揭露 AI/HPC 需求與風險因素。",
+            text="台積電 年報揭露 AI/HPC 需求與風險因素。" * 8,
             publisher="公開資訊觀測站",
             published_at=kwargs["published_at"],
             url=kwargs["url"],

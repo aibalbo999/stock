@@ -9,6 +9,7 @@ from app.data_sources.company_filings import (
     filing_source_tier,
     infer_document_type,
     is_relevant_company_filing_result,
+    validate_fetched_company_filing_document,
     validate_public_document_url,
 )
 from app.db.models import Base
@@ -114,7 +115,7 @@ def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
     async def fake_fetch_url(self, url, publisher=None):
         return NewsFetcher.from_manual_text(
             title="台積電 2026 年報",
-            text="台積電 年報揭露 AI/HPC 需求與風險因素。",
+            text="台積電 2026 年報揭露 AI/HPC 需求與風險因素。" * 8,
             publisher=publisher or "公開資訊觀測站",
             published_at=date(2026, 5, 1),
             url=url,
@@ -154,3 +155,23 @@ def test_company_filing_url_validation_blocks_local_targets() -> None:
         except ValueError:
             continue
         raise AssertionError(f"unsafe URL should be rejected: {url}")
+
+
+def test_fetched_company_filing_content_validation() -> None:
+    valid = NewsFetcher.from_manual_text(
+        title="台積電 2026 年報",
+        text="台積電 2026 年報揭露 AI/HPC 需求、資本支出與風險因素。" * 8,
+    )
+    validate_fetched_company_filing_document(valid, "2330", "台積電", "annual_report")
+
+    cases = [
+        NewsFetcher.from_manual_text(title="短頁", text="台積電 年報"),
+        NewsFetcher.from_manual_text(title="登入頁", text="請登入後查看文件內容。" * 20),
+        NewsFetcher.from_manual_text(title="台積電 新聞", text="台積電 今日股價上漲，市場關注短線表現。" * 8),
+    ]
+    for document in cases:
+        try:
+            validate_fetched_company_filing_document(document, "2330", "台積電", "annual_report")
+        except ValueError:
+            continue
+        raise AssertionError(f"invalid fetched document should be rejected: {document.title}")

@@ -49,12 +49,44 @@ class CompanyFilingFetcher:
         self.news_fetcher = NewsFetcher()
 
     @staticmethod
-    def google_news_urls(ticker: str, name: str = "", limit: int = 3) -> list[str]:
+    def official_search_queries(ticker: str, name: str = "", limit: int | None = None) -> list[str]:
+        templates = DOCUMENT_QUERY_TEMPLATES if limit is None else DOCUMENT_QUERY_TEMPLATES[:limit]
+        return [template.format(ticker=ticker, name=name).strip() for template in templates]
+
+    @classmethod
+    def google_news_urls(cls, ticker: str, name: str = "", limit: int | None = None) -> list[str]:
         urls = []
-        for template in DOCUMENT_QUERY_TEMPLATES[:limit]:
-            query = quote_plus(template.format(ticker=ticker, name=name).strip())
+        for query_text in cls.official_search_queries(ticker, name, limit):
+            query = quote_plus(query_text)
             urls.append(f"https://news.google.com/rss/search?q={query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant")
         return urls
+
+    @classmethod
+    def official_search_plan(cls, ticker: str, name: str = "") -> dict:
+        queries = cls.official_search_queries(ticker, name)
+        return {
+            "ticker": ticker,
+            "company_name": name,
+            "queries": queries,
+            "google_news_urls": cls.google_news_urls(ticker, name),
+            "official_portals": [
+                {
+                    "name": "公開資訊觀測站",
+                    "url": "https://mops.twse.com.tw/mops/web/index",
+                    "purpose": "年報、公開說明書、法人說明會與重大訊息原始揭露。",
+                },
+                {
+                    "name": "臺灣證券交易所",
+                    "url": "https://www.twse.com.tw/",
+                    "purpose": "上市公司基本資料、重大訊息與市場公告交叉核對。",
+                },
+                {
+                    "name": "櫃買中心",
+                    "url": "https://www.tpex.org.tw/",
+                    "purpose": "上櫃公司公告、財報與重大訊息交叉核對。",
+                },
+            ],
+        }
 
     @staticmethod
     def from_news_document(

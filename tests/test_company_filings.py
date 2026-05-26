@@ -57,6 +57,15 @@ def test_company_filing_quality_prefers_official_sources() -> None:
     assert filing_quality_score(third_party, "2330", "台積電") < 70
 
 
+def test_company_filing_search_plan_targets_official_sources() -> None:
+    plan = CompanyFilingFetcher.official_search_plan("2330", "台積電")
+
+    assert any("site:mops.twse.com.tw" in query for query in plan["queries"])
+    assert any("filetype:pdf" in query for query in plan["queries"])
+    assert any(portal["name"] == "公開資訊觀測站" for portal in plan["official_portals"])
+    assert len(plan["google_news_urls"]) == len(plan["queries"])
+
+
 def test_company_filing_repository_roundtrip() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

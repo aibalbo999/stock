@@ -73,6 +73,7 @@ def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> No
     assert "2330" in calls["company_filing_tickers"]
     assert calls["days"] == 21
     assert summary["news"]["count"] == 0
+    assert "company_filings" in summary
 
 
 def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:

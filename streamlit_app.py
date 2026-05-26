@@ -21,6 +21,7 @@ from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import (
     AnalysisRunRepository,
+    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     NewsRepository,
@@ -1962,11 +1963,12 @@ with tabs[2]:
     allowed_tickers = sorted(whitelist.allowed_tickers())
     status_snapshot = db_status()
     table_counts = status_snapshot.get("tables", {})
-    count_cols = st.columns(4)
+    count_cols = st.columns(5)
     count_cols[0].metric("股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0)
     count_cols[1].metric("月營收快取", table_counts.get("monthly_revenue_snapshots", {}).get("count") or 0)
     count_cols[2].metric("財報三表快取", table_counts.get("financial_metric_snapshots", {}).get("count") or 0)
     count_cols[3].metric("估值快取", table_counts.get("valuation_metric_snapshots", {}).get("count") or 0)
+    count_cols[4].metric("公司文件", table_counts.get("company_filings", {}).get("count") or 0)
 
     selected_market_tickers = st.multiselect(
         "刷新個股",
@@ -1979,10 +1981,11 @@ with tabs[2]:
     with col_end:
         market_end = st.date_input("結束日期", value=today_taipei(), key="market_end")
 
-    refresh_cols = st.columns(3)
+    refresh_cols = st.columns(4)
     refresh_price = refresh_cols[0].button("刷新股價", type="primary")
     refresh_financials = refresh_cols[1].button("刷新 5 年財報")
     refresh_valuations = refresh_cols[2].button("刷新估值")
+    refresh_filings = refresh_cols[3].button("補抓公司文件")
 
     if refresh_price:
         if market_start > market_end:
@@ -2038,9 +2041,45 @@ with tabs[2]:
             if result["errors"]:
                 st.warning(result["errors"])
 
+    if refresh_filings:
+        if not selected_market_tickers:
+            st.warning("請至少選擇一檔白名單股票。")
+        else:
+            with st.spinner("正在搜尋官方/MOPS/IR 公司文件..."):
+                result = asyncio.run(
+                    IngestionPipeline().ingest_company_filings(
+                        selected_market_tickers,
+                        limit_per_query=3,
+                    )
+                )
+            st.success(f"已新增或更新 {result['stored_count']} 筆公司文件線索。")
+            plans = result.get("official_search_plans") or []
+            if plans:
+                st.caption("官方搜尋計畫")
+                st.dataframe(
+                    [
+                        {
+                            "股票": plan.get("ticker"),
+                            "公司": plan.get("company_name"),
+                            "查詢數": len(plan.get("queries") or []),
+                            "官方入口": "、".join(
+                                portal.get("name", "")
+                                for portal in plan.get("official_portals") or []
+                            ),
+                            "查詢範例": (plan.get("queries") or [""])[0],
+                        }
+                        for plan in plans
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+            if result["errors"]:
+                st.warning(result["errors"])
+
     with session_scope() as session:
         cached_snapshots = MarketRepository(session).latest_by_tickers(allowed_tickers)
         cached_valuations = ValuationMetricRepository(session).latest_by_tickers(allowed_tickers)
+        cached_filings = CompanyFilingRepository(session).latest_by_tickers(allowed_tickers, limit_per_ticker=2)
         cached_financial_count = len(FinancialMetricRepository(session).by_tickers(allowed_tickers))
     if cached_snapshots:
         st.caption("最新股價快取")
@@ -2083,6 +2122,24 @@ with tabs[2]:
     else:
         st.info("尚無估值資料快取。")
     st.caption(f"目前財報三表科目快取：{cached_financial_count} 筆")
+    if cached_filings:
+        st.caption("公司文件快取")
+        st.dataframe(
+            [
+                {
+                    "股票": filing.ticker,
+                    "類型": filing.document_type,
+                    "標題": filing.title,
+                    "來源": filing.source.publisher,
+                    "日期": filing.source.published_at.isoformat()
+                    if filing.source.published_at
+                    else None,
+                }
+                for filing in cached_filings
+            ],
+            width="stretch",
+            hide_index=True,
+        )
 
 with tabs[2]:
     render_section_header("補充資料", "手動補充新聞、法說或研究摘要，讓報告可以引用具體來源。")

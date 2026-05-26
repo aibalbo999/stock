@@ -201,11 +201,14 @@ class IngestionPipeline:
         fetcher = CompanyFilingFetcher()
         documents = []
         errors = []
+        search_plans = []
         for ticker in allowed:
             company = companies.get(ticker)
+            company_name = company.name if company else ""
+            search_plans.append(fetcher.official_search_plan(ticker, company_name))
             company_documents, company_errors = await fetcher.fetch_discovery_documents(
                 ticker,
-                company.name if company else "",
+                company_name,
                 limit_per_query=limit_per_query,
             )
             documents.extend(company_documents)
@@ -235,6 +238,7 @@ class IngestionPipeline:
                 for document in documents
             ],
             "errors": errors,
+            "official_search_plans": search_plans,
             "source": "Google News company filing discovery",
         }
 

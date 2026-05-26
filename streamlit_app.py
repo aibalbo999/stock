@@ -2058,6 +2058,9 @@ with tabs[2]:
                     )
                 )
             st.success(f"已新增或更新 {result['stored_count']} 筆公司文件線索。")
+            gap_summary = result.get("gap_summary") or {}
+            if gap_summary.get("recommendation"):
+                st.info(gap_summary["recommendation"])
             per_ticker_results = result.get("per_ticker_results") or []
             if per_ticker_results:
                 st.caption("公司文件補強狀態")
@@ -2066,7 +2069,12 @@ with tabs[2]:
                         {
                             "股票": row.get("ticker"),
                             "公司": row.get("company_name"),
-                            "狀態": "足夠" if row.get("status") == "sufficient" else "需補文件",
+                            "狀態": {
+                                "sufficient": "足夠",
+                                "retry_recommended": "可自動重試",
+                                "broader_search_recommended": "需擴大搜尋",
+                                "needs_manual_source": "需補文件",
+                            }.get(row.get("status"), row.get("status")),
                             "已抓文件": row.get("stored_count", 0),
                             "缺必要文件": "、".join(row.get("missing_required_types") or []),
                             "缺建議文件": "、".join(row.get("missing_recommended_types") or []),
@@ -2079,7 +2087,27 @@ with tabs[2]:
                 )
             next_actions = result.get("next_actions") or []
             if next_actions:
-                st.info("仍需人工補官方文件：" + "、".join(action.get("ticker", "") for action in next_actions))
+                manual_tickers = [
+                    action.get("ticker", "")
+                    for action in next_actions
+                    if action.get("action") == "manual_company_filing_import"
+                ]
+                retry_tickers = [
+                    action.get("ticker", "")
+                    for action in next_actions
+                    if action.get("action") == "retry_company_filing_search"
+                ]
+                broaden_tickers = [
+                    action.get("ticker", "")
+                    for action in next_actions
+                    if action.get("action") == "broaden_company_filing_search"
+                ]
+                if retry_tickers:
+                    st.info("可稍後自動重試：" + "、".join(retry_tickers))
+                if broaden_tickers:
+                    st.info("需擴大官方搜尋：" + "、".join(broaden_tickers))
+                if manual_tickers:
+                    st.info("仍需人工補官方文件：" + "、".join(manual_tickers))
             plans = result.get("official_search_plans") or []
             if plans:
                 st.caption("官方搜尋計畫")

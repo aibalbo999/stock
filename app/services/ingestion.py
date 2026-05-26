@@ -270,6 +270,7 @@ class IngestionPipeline:
                 for row in per_ticker_results
                 if row["status"] != "sufficient"
             ],
+            "gap_summary": company_filing_gap_summary(per_ticker_results),
             "next_actions": company_filing_next_actions(per_ticker_results),
             "official_search_plans": search_plans,
             "source": "Google News company filing discovery",
@@ -411,7 +412,8 @@ def company_filing_ticker_result(
         for document_type in RECOMMENDED_DOCUMENT_TYPES
         if document_type not in document_types and document_type not in target_document_types
     ]
-    status = "sufficient" if documents and not missing_required else "needs_manual_source"
+    error_categories = sorted({error.get("category", "source_fetch_error") for error in errors})
+    status = company_filing_status(documents, missing_required, error_categories)
     return {
         "ticker": ticker,
         "company_name": company_name,
@@ -420,10 +422,24 @@ def company_filing_ticker_result(
         "missing_required_types": missing_required,
         "missing_recommended_types": missing_recommended,
         "error_count": len(errors),
-        "error_categories": sorted({error.get("category", "source_fetch_error") for error in errors}),
+        "error_categories": error_categories,
         "status": status,
         "next_step": company_filing_next_step(status, missing_required, missing_recommended),
     }
+
+
+def company_filing_status(
+    documents: list,
+    missing_required: list[str],
+    error_categories: list[str],
+) -> str:
+    if documents and not missing_required:
+        return "sufficient"
+    if error_categories and set(error_categories).issubset({"retryable_source_error"}):
+        return "retry_recommended"
+    if not documents and not error_categories:
+        return "broader_search_recommended"
+    return "needs_manual_source"
 
 
 def company_filing_next_step(
@@ -433,6 +449,10 @@ def company_filing_next_step(
 ) -> str:
     if status == "sufficient" and not missing_recommended:
         return "公司公開文件已足夠進入個股分析。"
+    if status == "retry_recommended":
+        return "資料源暫時不穩，系統可稍後自動重試同一批官方搜尋。"
+    if status == "broader_search_recommended":
+        return "目前搜尋不到足夠文件，系統應擴大官方入口與公司 IR 查詢後再重跑。"
     missing = missing_required or missing_recommended
     if missing:
         return "請補官方文件：" + "、".join(missing) + "；可使用 MOPS、TWSE/TPEx 或公司 IR 的 HTML/PDF/文字版。"
@@ -444,14 +464,48 @@ def company_filing_next_actions(per_ticker_results: list[dict]) -> list[dict]:
     for row in per_ticker_results:
         if row["status"] == "sufficient":
             continue
+        action_type = {
+            "retry_recommended": "retry_company_filing_search",
+            "broader_search_recommended": "broaden_company_filing_search",
+        }.get(row["status"], "manual_company_filing_import")
         actions.append(
             {
                 "ticker": row["ticker"],
                 "company_name": row["company_name"],
-                "action": "manual_company_filing_import",
+                "action": action_type,
                 "reason": row["next_step"],
                 "missing_required_types": row["missing_required_types"],
                 "missing_recommended_types": row["missing_recommended_types"],
             }
         )
     return actions
+
+
+def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
+    status_counts: dict[str, int] = {}
+    for row in per_ticker_results:
+        status = row.get("status", "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    blocked = [
+        row["ticker"]
+        for row in per_ticker_results
+        if row.get("status") in {"needs_manual_source", "broader_search_recommended"}
+    ]
+    retryable = [
+        row["ticker"]
+        for row in per_ticker_results
+        if row.get("status") == "retry_recommended"
+    ]
+    if blocked:
+        recommendation = "部分公司仍缺官方文件，需先補來源或擴大官方搜尋後再進入完整個股分析。"
+    elif retryable:
+        recommendation = "部分公司因資料源暫時錯誤而不足，建議稍後自動重試後再重跑分析。"
+    else:
+        recommendation = "公司文件補強狀態足夠，可進入完整個股分析。"
+    return {
+        "total_tickers": len(per_ticker_results),
+        "status_counts": status_counts,
+        "retryable_tickers": retryable,
+        "blocked_tickers": blocked,
+        "recommendation": recommendation,
+    }

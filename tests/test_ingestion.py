@@ -6,7 +6,13 @@ from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import MarketSnapshot, ReportRequest
-from app.services.ingestion import IngestionPipeline, classify_company_filing_error
+from app.services.ingestion import (
+    IngestionPipeline,
+    classify_company_filing_error,
+    company_filing_gap_summary,
+    company_filing_next_actions,
+    company_filing_status,
+)
 
 
 def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> None:
@@ -233,11 +239,12 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     by_ticker = {row["ticker"]: row for row in result["per_ticker_results"]}
     assert stored == {"vector_count": 1, "repository_count": 1}
     assert by_ticker["2330"]["status"] == "sufficient"
-    assert by_ticker["2382"]["status"] == "needs_manual_source"
+    assert by_ticker["2382"]["status"] == "retry_recommended"
     assert by_ticker["2382"]["missing_required_types"] == ["annual_report"]
     assert by_ticker["2382"]["error_categories"] == ["retryable_source_error"]
     assert result["missing_tickers"] == ["2382"]
-    assert result["next_actions"][0]["action"] == "manual_company_filing_import"
+    assert result["gap_summary"]["retryable_tickers"] == ["2382"]
+    assert result["next_actions"][0]["action"] == "retry_company_filing_search"
 
 
 def test_classify_company_filing_errors() -> None:
@@ -245,6 +252,54 @@ def test_classify_company_filing_errors() -> None:
     assert classify_company_filing_error("PDF 掃描圖檔，請 OCR") == "manual_text_required"
     assert classify_company_filing_error("403 forbidden") == "source_access_restricted"
     assert classify_company_filing_error("content does not mention the target company") == "content_not_usable"
+
+
+def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None:
+    rows = [
+        {
+            "ticker": "2330",
+            "company_name": "台積電",
+            "status": "sufficient",
+            "next_step": "ok",
+            "missing_required_types": [],
+            "missing_recommended_types": [],
+        },
+        {
+            "ticker": "2382",
+            "company_name": "廣達",
+            "status": "retry_recommended",
+            "next_step": "retry",
+            "missing_required_types": ["annual_report"],
+            "missing_recommended_types": [],
+        },
+        {
+            "ticker": "3324",
+            "company_name": "雙鴻",
+            "status": "needs_manual_source",
+            "next_step": "manual",
+            "missing_required_types": ["annual_report"],
+            "missing_recommended_types": ["investor_presentation"],
+        },
+    ]
+
+    summary = company_filing_gap_summary(rows)
+    actions = company_filing_next_actions(rows)
+
+    assert summary["status_counts"] == {
+        "sufficient": 1,
+        "retry_recommended": 1,
+        "needs_manual_source": 1,
+    }
+    assert summary["retryable_tickers"] == ["2382"]
+    assert summary["blocked_tickers"] == ["3324"]
+    assert [action["action"] for action in actions] == [
+        "retry_company_filing_search",
+        "manual_company_filing_import",
+    ]
+
+
+def test_company_filing_status_can_request_broader_search() -> None:
+    assert company_filing_status([], ["annual_report"], []) == "broader_search_recommended"
 
 
 def test_ingestion_filter_removes_old_and_low_quality_political_noise() -> None:

@@ -992,6 +992,42 @@ def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]
     return "success", f"{summary_text}，補強任務已完成。"
 
 
+def follow_up_blocker_action_rows(result: dict) -> list[dict]:
+    rows = []
+    for task_result in (result.get("results") or {}).values():
+        if not isinstance(task_result, dict):
+            continue
+        for action in task_result.get("next_actions") or []:
+            rows.append(
+                {
+                    "股票": action.get("ticker") or "-",
+                    "公司": action.get("company_name") or "-",
+                    "下一步": {
+                        "manual_company_filing_import": "人工匯入官方文件",
+                        "retry_company_filing_search": "稍後自動重試",
+                        "broaden_company_filing_search": "擴大官方搜尋",
+                    }.get(action.get("action"), action.get("action") or "-"),
+                    "缺必要文件": "、".join(action.get("missing_required_types") or []),
+                    "缺建議文件": "、".join(action.get("missing_recommended_types") or []),
+                    "原因": action.get("reason") or "-",
+                }
+            )
+    if rows:
+        return rows
+    for blocker in (result.get("rerun_report") or {}).get("blockers") or []:
+        rows.append(
+            {
+                "股票": "-",
+                "公司": "-",
+                "下一步": "補齊資料後再重跑",
+                "缺必要文件": "-",
+                "缺建議文件": "-",
+                "原因": blocker,
+            }
+        )
+    return rows
+
+
 def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
     components.html(report_html(markdown, result), height=820, scrolling=True)
 
@@ -1484,6 +1520,10 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
                     st.warning(message_text)
                 else:
                     st.success(message_text)
+                blocker_rows = follow_up_blocker_action_rows(result)
+                if blocker_rows:
+                    st.caption("重跑前需要處理")
+                    st.dataframe(blocker_rows, width="stretch", hide_index=True)
             except requests.RequestException as exc:
                 st.error(f"自動補強失敗：{exc}")
 
@@ -1498,6 +1538,10 @@ def render_follow_up_flash() -> None:
     else:
         st.success(message)
     result = flash.get("result") or {}
+    blocker_rows = follow_up_blocker_action_rows(result)
+    if blocker_rows:
+        with st.expander("查看重跑前需要處理的項目", expanded=True):
+            st.dataframe(blocker_rows, width="stretch", hide_index=True)
     execution = ((result.get("summary") or {}).get("execution") or {})
     items = execution.get("items") or []
     if items:

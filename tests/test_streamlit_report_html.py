@@ -311,3 +311,49 @@ def test_follow_up_result_message_reports_new_report() -> None:
 
     assert level == "success"
     assert "新報告 #9" in message
+
+
+def test_follow_up_blocker_action_rows_use_next_actions() -> None:
+    helpers = load_report_helpers()
+
+    rows = helpers["follow_up_blocker_action_rows"](
+        {
+            "results": {
+                "ingest_company_filings:2382": {
+                    "next_actions": [
+                        {
+                            "ticker": "2382",
+                            "company_name": "廣達",
+                            "action": "manual_company_filing_import",
+                            "missing_required_types": ["annual_report"],
+                            "missing_recommended_types": ["investor_presentation"],
+                            "reason": "請補官方文件：annual_report",
+                        }
+                    ]
+                }
+            },
+            "rerun_report": {"status": "skipped", "blockers": ["公司公開文件仍不足：2382"]},
+        }
+    )
+
+    assert rows == [
+        {
+            "股票": "2382",
+            "公司": "廣達",
+            "下一步": "人工匯入官方文件",
+            "缺必要文件": "annual_report",
+            "缺建議文件": "investor_presentation",
+            "原因": "請補官方文件：annual_report",
+        }
+    ]
+
+
+def test_follow_up_blocker_action_rows_fall_back_to_blockers() -> None:
+    helpers = load_report_helpers()
+
+    rows = helpers["follow_up_blocker_action_rows"](
+        {"rerun_report": {"status": "skipped", "blockers": ["公司公開文件仍不足：2382"]}}
+    )
+
+    assert rows[0]["下一步"] == "補齊資料後再重跑"
+    assert rows[0]["原因"] == "公司公開文件仍不足：2382"

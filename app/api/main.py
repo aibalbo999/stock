@@ -1301,6 +1301,7 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
             "status": "skipped",
             "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
             "blockers": execution_summary.get("rerun_blockers", []),
+            "next_actions": execution_summary.get("rerun_blocker_actions", []),
         }
     elif payload.rerun_report:
         rerun_context = await prepare_follow_up_report_context(context, request, actions)

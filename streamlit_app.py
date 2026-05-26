@@ -994,7 +994,9 @@ def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]
 
 def follow_up_blocker_action_rows(result: dict) -> list[dict]:
     rows = []
-    for task_result in (result.get("results") or {}).values():
+    rerun_actions = (result.get("rerun_report") or {}).get("next_actions") or []
+    action_sources = [{"next_actions": rerun_actions}] if rerun_actions else (result.get("results") or {}).values()
+    for task_result in action_sources:
         if not isinstance(task_result, dict):
             continue
         for action in task_result.get("next_actions") or []:

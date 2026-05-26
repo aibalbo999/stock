@@ -524,6 +524,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
     total_items = 0
     blocked_company_filing_tickers = []
     retryable_company_filing_tickers = []
+    rerun_blocker_actions = []
     for key, value in results.items():
         if not isinstance(value, dict):
             rows.append({"task": key, "stored_count": 0, "error_count": 0})
@@ -534,6 +535,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         gap_summary = value.get("gap_summary") or {}
         blocked_company_filing_tickers.extend(gap_summary.get("blocked_tickers") or [])
         retryable_company_filing_tickers.extend(gap_summary.get("retryable_tickers") or [])
+        rerun_blocker_actions.extend(value.get("next_actions") or [])
         total_errors += error_count
         total_items += stored_count
         rows.append(
@@ -557,6 +559,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         ]
         if unique_blocked
         else [],
+        "rerun_blocker_actions": rerun_blocker_actions,
         "retryable_company_filing_tickers": unique_retryable,
         "items": rows,
     }

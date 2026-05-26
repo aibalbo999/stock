@@ -348,6 +348,41 @@ def test_follow_up_blocker_action_rows_use_next_actions() -> None:
     ]
 
 
+def test_follow_up_blocker_action_rows_prefer_rerun_next_actions() -> None:
+    helpers = load_report_helpers()
+
+    rows = helpers["follow_up_blocker_action_rows"](
+        {
+            "results": {
+                "ingest_company_filings:9999": {
+                    "next_actions": [
+                        {
+                            "ticker": "9999",
+                            "action": "manual_company_filing_import",
+                            "reason": "舊結果",
+                        }
+                    ]
+                }
+            },
+            "rerun_report": {
+                "status": "skipped",
+                "next_actions": [
+                    {
+                        "ticker": "2382",
+                        "company_name": "廣達",
+                        "action": "manual_company_filing_import",
+                        "missing_required_types": ["annual_report"],
+                        "reason": "請補官方文件：annual_report",
+                    }
+                ],
+            },
+        }
+    )
+
+    assert rows[0]["股票"] == "2382"
+    assert rows[0]["原因"] == "請補官方文件：annual_report"
+
+
 def test_follow_up_blocker_action_rows_fall_back_to_blockers() -> None:
     helpers = load_report_helpers()
 

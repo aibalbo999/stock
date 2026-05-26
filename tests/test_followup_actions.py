@@ -331,6 +331,13 @@ def test_summarize_follow_up_execution_blocks_rerun_when_company_filings_still_m
                         "blocked_tickers": ["2382"],
                         "retryable_tickers": ["3324"],
                     },
+                    "next_actions": [
+                        {
+                            "ticker": "2382",
+                            "action": "manual_company_filing_import",
+                            "missing_required_types": ["annual_report"],
+                        }
+                    ],
                 }
             }
         }
@@ -338,6 +345,7 @@ def test_summarize_follow_up_execution_blocks_rerun_when_company_filings_still_m
 
     assert summary["rerun_blocked"] is True
     assert summary["rerun_blockers"] == ["公司公開文件仍不足：2382"]
+    assert summary["rerun_blocker_actions"][0]["ticker"] == "2382"
     assert summary["retryable_company_filing_tickers"] == ["3324"]
 
 

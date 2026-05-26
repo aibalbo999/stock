@@ -1489,6 +1489,16 @@ def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatc
                     "stored_count": 0,
                     "errors": [],
                     "gap_summary": {"blocked_tickers": ["2382"], "retryable_tickers": []},
+                    "next_actions": [
+                        {
+                            "ticker": "2382",
+                            "company_name": "廣達",
+                            "action": "manual_company_filing_import",
+                            "missing_required_types": ["annual_report"],
+                            "missing_recommended_types": [],
+                            "reason": "請補官方文件：annual_report",
+                        }
+                    ],
                 }
             },
             "execution_summary": {
@@ -1498,6 +1508,16 @@ def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatc
                 "has_errors": False,
                 "rerun_blocked": True,
                 "rerun_blockers": ["公司公開文件仍不足：2382"],
+                "rerun_blocker_actions": [
+                    {
+                        "ticker": "2382",
+                        "company_name": "廣達",
+                        "action": "manual_company_filing_import",
+                        "missing_required_types": ["annual_report"],
+                        "missing_recommended_types": [],
+                        "reason": "請補官方文件：annual_report",
+                    }
+                ],
                 "items": [],
             },
         }
@@ -1527,6 +1547,7 @@ def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatc
     body = response.json()
     assert body["rerun_report"]["status"] == "skipped"
     assert body["rerun_report"]["blockers"] == ["公司公開文件仍不足：2382"]
+    assert body["rerun_report"]["next_actions"][0]["ticker"] == "2382"
     assert FakeAnalysisRunRepository.success_report_id == 7
 
 

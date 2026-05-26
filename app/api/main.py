@@ -1379,7 +1379,9 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     except Exception as exc:
         safe_mark_run_failed(run_id, str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    execution_summary = execution.get("execution_summary") or summarize_follow_up_execution(execution)
+    execution_summary = execution.get("execution_summary") or {}
+    if "completion" not in execution_summary:
+        execution_summary = summarize_follow_up_execution(execution)
     response_payload = {
         "report_id": report_id,
         "run_id": run_id,

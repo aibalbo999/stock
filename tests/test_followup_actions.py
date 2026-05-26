@@ -323,6 +323,8 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["items"][0]["completion"]["completed"] is False
     assert summary["items"][1]["completion"]["check"] == "valuation_availability"
     assert summary["items"][1]["completion"]["completed"] is True
+    assert summary["rerun_blocked"] is True
+    assert summary["rerun_blockers"] == ["補強任務未達完成條件：refresh_market:2330"]
 
 
 def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() -> None:
@@ -351,6 +353,8 @@ def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() ->
         "all_completed": True,
         "blocked_tasks": [],
     }
+    assert summary["rerun_blocked"] is False
+    assert summary["rerun_blockers"] == []
 
 
 def test_summarize_follow_up_execution_blocks_rerun_when_company_filings_still_missing() -> None:

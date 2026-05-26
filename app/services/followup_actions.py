@@ -556,18 +556,25 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         )
     unique_blocked = sorted(set(blocked_company_filing_tickers))
     unique_retryable = sorted(set(retryable_company_filing_tickers))
+    completion = summarize_follow_up_completion(rows)
+    incomplete_tasks = [
+        task
+        for task in completion["blocked_tasks"]
+        if not (task.startswith("ingest_company_filings") and unique_blocked)
+    ]
+    rerun_blockers = []
+    if unique_blocked:
+        rerun_blockers.append(f"公司公開文件仍不足：{', '.join(unique_blocked)}")
+    if incomplete_tasks:
+        rerun_blockers.append("補強任務未達完成條件：" + "、".join(incomplete_tasks))
     return {
         "task_result_count": len(rows),
         "stored_count": total_items,
         "error_count": total_errors,
         "has_errors": total_errors > 0,
-        "completion": summarize_follow_up_completion(rows),
-        "rerun_blocked": bool(unique_blocked),
-        "rerun_blockers": [
-            f"公司公開文件仍不足：{', '.join(unique_blocked)}"
-        ]
-        if unique_blocked
-        else [],
+        "completion": completion,
+        "rerun_blocked": bool(rerun_blockers),
+        "rerun_blockers": rerun_blockers,
         "rerun_blocker_actions": rerun_blocker_actions,
         "retryable_company_filing_tickers": unique_retryable,
         "items": rows,

@@ -1008,9 +1008,12 @@ def follow_up_blocker_action_rows(result: dict) -> list[dict]:
                         "manual_company_filing_import": "人工匯入官方文件",
                         "retry_company_filing_search": "稍後自動重試",
                         "broaden_company_filing_search": "擴大官方搜尋",
+                        "complete_follow_up_check": "補齊未達標資料",
                     }.get(action.get("action"), action.get("action") or "-"),
                     "缺必要文件": "、".join(action.get("missing_required_types") or []),
                     "缺建議文件": "、".join(action.get("missing_recommended_types") or []),
+                    "目前": str(action.get("observed") or "-"),
+                    "要求": str(action.get("required") or "-"),
                     "原因": action.get("reason") or "-",
                 }
             )
@@ -1024,6 +1027,8 @@ def follow_up_blocker_action_rows(result: dict) -> list[dict]:
                 "下一步": "補齊資料後再重跑",
                 "缺必要文件": "-",
                 "缺建議文件": "-",
+                "目前": "-",
+                "要求": "-",
                 "原因": blocker,
             }
         )

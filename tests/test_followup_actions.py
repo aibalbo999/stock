@@ -325,6 +325,10 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["items"][1]["completion"]["completed"] is True
     assert summary["rerun_blocked"] is True
     assert summary["rerun_blockers"] == ["補強任務未達完成條件：refresh_market:2330"]
+    assert summary["rerun_blocker_actions"][0]["action"] == "complete_follow_up_check"
+    assert summary["rerun_blocker_actions"][0]["target"] == "股價與量能"
+    assert summary["rerun_blocker_actions"][0]["observed"] == {"stored_count": 90, "error_count": 1}
+    assert summary["rerun_blocker_actions"][0]["required"] == {"min_days": 120, "error_count": 0}
 
 
 def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() -> None:

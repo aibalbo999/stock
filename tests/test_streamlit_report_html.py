@@ -343,6 +343,8 @@ def test_follow_up_blocker_action_rows_use_next_actions() -> None:
             "下一步": "人工匯入官方文件",
             "缺必要文件": "annual_report",
             "缺建議文件": "investor_presentation",
+            "目前": "-",
+            "要求": "-",
             "原因": "請補官方文件：annual_report",
         }
     ]
@@ -381,6 +383,31 @@ def test_follow_up_blocker_action_rows_prefer_rerun_next_actions() -> None:
 
     assert rows[0]["股票"] == "2382"
     assert rows[0]["原因"] == "請補官方文件：annual_report"
+
+
+def test_follow_up_blocker_action_rows_show_completion_gap() -> None:
+    helpers = load_report_helpers()
+
+    rows = helpers["follow_up_blocker_action_rows"](
+        {
+            "rerun_report": {
+                "status": "skipped",
+                "next_actions": [
+                    {
+                        "ticker": "2330",
+                        "action": "complete_follow_up_check",
+                        "observed": {"stored_count": 90, "error_count": 1},
+                        "required": {"min_days": 120, "error_count": 0},
+                        "reason": "refresh_market:2330 未達完成條件",
+                    }
+                ],
+            }
+        }
+    )
+
+    assert rows[0]["下一步"] == "補齊未達標資料"
+    assert "stored_count" in rows[0]["目前"]
+    assert "min_days" in rows[0]["要求"]
 
 
 def test_follow_up_blocker_action_rows_fall_back_to_blockers() -> None:

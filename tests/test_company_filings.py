@@ -9,6 +9,7 @@ from app.data_sources.company_filings import (
     filing_source_tier,
     infer_document_type,
     is_relevant_company_filing_result,
+    validate_public_document_url,
 )
 from app.db.models import Base
 from app.data_sources.news import NewsFetcher
@@ -135,3 +136,21 @@ def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
     assert document.ticker == "2330"
     assert document.document_type == "annual_report"
     assert document.title == "台積電 2026 年報"
+
+
+def test_company_filing_url_validation_blocks_local_targets() -> None:
+    validate_public_document_url("https://mops.twse.com.tw/server-java/t57sb01?co_id=2330")
+
+    for url in [
+        "file:///etc/passwd",
+        "http://localhost:8000/internal",
+        "http://127.0.0.1/internal",
+        "http://192.168.1.10/report",
+        "http://10.0.0.8/report",
+        "http://example.local/report",
+    ]:
+        try:
+            validate_public_document_url(url)
+        except ValueError:
+            continue
+        raise AssertionError(f"unsafe URL should be rejected: {url}")

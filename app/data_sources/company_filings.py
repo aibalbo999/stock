@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from hashlib import sha1
-from urllib.parse import quote_plus
+from ipaddress import ip_address
+from urllib.parse import quote_plus, urlparse
 
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
@@ -164,6 +165,7 @@ class CompanyFilingFetcher:
         publisher: str | None = None,
         published_at: date | None = None,
     ) -> CompanyFilingDocument:
+        validate_public_document_url(url)
         document = await self.news_fetcher.fetch_url(url, publisher=publisher)
         return self.from_manual_text(
             ticker=ticker,
@@ -210,6 +212,30 @@ def filing_source_tier(document: CompanyFilingDocument | NewsDocument) -> str:
     if any(hint in url or hint in publisher for hint in IR_SOURCE_HINTS):
         return "company_ir"
     return "third_party"
+
+
+def validate_public_document_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("company filing URL must use http or https")
+    if not parsed.hostname:
+        raise ValueError("company filing URL must include a hostname")
+    hostname = parsed.hostname.lower()
+    if hostname in {"localhost", "127.0.0.1", "::1"} or hostname.endswith(".local"):
+        raise ValueError("company filing URL cannot target localhost or local domains")
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        return
+    if (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    ):
+        raise ValueError("company filing URL cannot target private or reserved IP addresses")
 
 
 def filing_quality_score(document: CompanyFilingDocument | NewsDocument, ticker: str = "", company_name: str = "") -> int:

@@ -945,14 +945,17 @@ def ingest_company_filing_manual(payload: ManualCompanyFilingIngest) -> dict:
 
 @app.post("/company-filings/from-url")
 async def ingest_company_filing_from_url(payload: CompanyFilingUrlIngest) -> dict:
-    document = await CompanyFilingFetcher().fetch_url_document(
-        url=payload.url,
-        ticker=payload.ticker,
-        company_name=payload.company_name,
-        document_type=payload.document_type,
-        publisher=payload.publisher,
-        published_at=payload.published_at,
-    )
+    try:
+        document = await CompanyFilingFetcher().fetch_url_document(
+            url=payload.url,
+            ticker=payload.ticker,
+            company_name=payload.company_name,
+            document_type=payload.document_type,
+            publisher=payload.publisher,
+            published_at=payload.published_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return persist_company_filing_document(document)
 
 

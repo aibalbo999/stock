@@ -689,6 +689,21 @@ def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
     assert stored["rag_document_id"].startswith("filing-")
 
 
+def test_company_filing_from_url_rejects_localhost() -> None:
+    response = TestClient(main.app).post(
+        "/company-filings/from-url",
+        json={
+            "ticker": "2330",
+            "company_name": "台積電",
+            "document_type": "annual_report",
+            "url": "http://localhost:8000/internal",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "localhost" in response.json()["detail"]
+
+
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     assert (
         main.should_require_candidate_audit_follow_up(

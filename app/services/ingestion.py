@@ -213,22 +213,57 @@ class IngestionPipeline:
             company = companies.get(ticker)
             company_name = company.name if company else ""
             search_plans.append(fetcher.official_search_plan(ticker, company_name, document_types=document_types))
+            attempts = []
             company_documents, company_errors = await fetcher.fetch_discovery_documents(
                 ticker,
                 company_name,
                 limit_per_query=limit_per_query,
                 document_types=document_types,
             )
+            enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
+            attempts.append(
+                company_filing_attempt_result(
+                    "targeted_search",
+                    company_documents,
+                    enriched_errors,
+                )
+            )
+            if should_retry_company_filing_fetch(company_documents, enriched_errors):
+                retry_documents, retry_errors = await fetcher.fetch_discovery_documents(
+                    ticker,
+                    company_name,
+                    limit_per_query=limit_per_query,
+                    document_types=document_types,
+                )
+                retry_enriched_errors = enrich_company_filing_errors(retry_errors, ticker, company_name)
+                company_documents.extend(retry_documents)
+                enriched_errors.extend(retry_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "retry_after_source_error",
+                        retry_documents,
+                        retry_enriched_errors,
+                    )
+                )
+            if should_broaden_company_filing_search(company_documents, enriched_errors, document_types):
+                broad_documents, broad_errors = await fetcher.fetch_discovery_documents(
+                    ticker,
+                    company_name,
+                    limit_per_query=limit_per_query + 2,
+                    document_types=None,
+                )
+                broad_enriched_errors = enrich_company_filing_errors(broad_errors, ticker, company_name)
+                company_documents.extend(broad_documents)
+                enriched_errors.extend(broad_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "broaden_official_search",
+                        broad_documents,
+                        broad_enriched_errors,
+                    )
+                )
+            company_documents = self._dedupe_documents(company_documents)
             documents.extend(company_documents)
-            enriched_errors = [
-                {
-                    **error,
-                    "ticker": ticker,
-                    "company_name": company_name,
-                    "category": classify_company_filing_error(error.get("error", "")),
-                }
-                for error in company_errors
-            ]
             errors.extend(enriched_errors)
             per_ticker_results.append(
                 company_filing_ticker_result(
@@ -237,6 +272,7 @@ class IngestionPipeline:
                     company_documents,
                     target_document_types,
                     enriched_errors,
+                    attempts,
                 )
             )
 
@@ -394,12 +430,48 @@ def classify_company_filing_error(message: str) -> str:
     return "source_fetch_error"
 
 
+def enrich_company_filing_errors(errors: list[dict], ticker: str, company_name: str) -> list[dict]:
+    return [
+        {
+            **error,
+            "ticker": ticker,
+            "company_name": company_name,
+            "category": classify_company_filing_error(error.get("error", "")),
+        }
+        for error in errors
+    ]
+
+
+def should_retry_company_filing_fetch(documents: list, errors: list[dict]) -> bool:
+    if documents or not errors:
+        return False
+    return {error.get("category") for error in errors}.issubset({"retryable_source_error"})
+
+
+def should_broaden_company_filing_search(
+    documents: list,
+    errors: list[dict],
+    document_types: list[str] | None,
+) -> bool:
+    return bool(document_types) and not documents and not errors
+
+
+def company_filing_attempt_result(strategy: str, documents: list, errors: list[dict]) -> dict:
+    return {
+        "strategy": strategy,
+        "stored_count": len(documents),
+        "error_count": len(errors),
+        "error_categories": sorted({error.get("category", "source_fetch_error") for error in errors}),
+    }
+
+
 def company_filing_ticker_result(
     ticker: str,
     company_name: str,
     documents: list,
     target_document_types: tuple[str, ...],
     errors: list[dict],
+    attempts: list[dict] | None = None,
 ) -> dict:
     document_types = sorted({document.document_type for document in documents})
     missing_required = [
@@ -423,6 +495,7 @@ def company_filing_ticker_result(
         "missing_recommended_types": missing_recommended,
         "error_count": len(errors),
         "error_categories": error_categories,
+        "attempts": attempts or [],
         "status": status,
         "next_step": company_filing_next_step(status, missing_required, missing_recommended),
     }

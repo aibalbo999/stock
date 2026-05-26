@@ -242,9 +242,82 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     assert by_ticker["2382"]["status"] == "retry_recommended"
     assert by_ticker["2382"]["missing_required_types"] == ["annual_report"]
     assert by_ticker["2382"]["error_categories"] == ["retryable_source_error"]
+    assert [attempt["strategy"] for attempt in by_ticker["2382"]["attempts"]] == [
+        "targeted_search",
+        "retry_after_source_error",
+    ]
     assert result["missing_tickers"] == ["2382"]
     assert result["gap_summary"]["retryable_tickers"] == ["2382"]
     assert result["next_actions"][0]["action"] == "retry_company_filing_search"
+
+
+def test_ingest_company_filings_broadens_when_targeted_type_has_no_results(monkeypatch) -> None:
+    calls = []
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            pass
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        @staticmethod
+        def to_news_document(document):
+            return NewsFetcher.from_manual_text(title=document.title, text=document.text)
+
+        def upsert_document(self, document) -> None:
+            pass
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    async def fake_fetch_discovery_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit_per_query: int = 3,
+        document_types=None,
+    ):
+        calls.append({"document_types": document_types, "limit_per_query": limit_per_query})
+        if document_types == ["annual_report"]:
+            return [], []
+        return [
+            CompanyFilingFetcher.from_manual_text(
+                ticker=ticker,
+                company_name=company_name,
+                document_type="investor_presentation",
+                title="廣達 法說會",
+                text="廣達 法人說明會揭露 AI 伺服器訂單與風險因素。" * 8,
+            )
+        ], []
+
+    monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
+    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+
+    result = asyncio.run(
+        IngestionPipeline().ingest_company_filings(
+            ["2382"],
+            limit_per_query=2,
+            document_types=["annual_report"],
+        )
+    )
+
+    row = result["per_ticker_results"][0]
+    assert calls == [
+        {"document_types": ["annual_report"], "limit_per_query": 2},
+        {"document_types": None, "limit_per_query": 4},
+    ]
+    assert [attempt["strategy"] for attempt in row["attempts"]] == [
+        "targeted_search",
+        "broaden_official_search",
+    ]
+    assert row["stored_count"] == 1
+    assert row["status"] == "needs_manual_source"
+    assert row["missing_required_types"] == ["annual_report"]
 
 
 def test_classify_company_filing_errors() -> None:

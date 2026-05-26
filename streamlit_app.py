@@ -2076,6 +2076,7 @@ with tabs[2]:
                                 "needs_manual_source": "需補文件",
                             }.get(row.get("status"), row.get("status")),
                             "已抓文件": row.get("stored_count", 0),
+                            "搜尋嘗試": len(row.get("attempts") or []),
                             "缺必要文件": "、".join(row.get("missing_required_types") or []),
                             "缺建議文件": "、".join(row.get("missing_recommended_types") or []),
                             "下一步": row.get("next_step"),

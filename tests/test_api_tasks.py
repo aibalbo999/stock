@@ -1856,6 +1856,39 @@ def test_report_follow_up_plan_preview_uses_report_history(monkeypatch) -> None:
     assert "| 任務 | 股票 | 性質 | 優先級 | 頻率 | 觸發原因 |" in body["markdown_preview"]
 
 
+def test_follow_up_plan_next_actions_describe_company_filing_search() -> None:
+    rows = main.follow_up_plan_next_actions(
+        [
+            FollowUpAction(
+                "ingest_company_filings",
+                "個股資料審計缺口：缺高品質必要公司文件：annual_report",
+                ("2382",),
+                "high",
+                "monthly",
+                "required",
+            ),
+            FollowUpAction(
+                "refresh_market",
+                "個股資料審計缺口：股價",
+                ("2382",),
+                "high",
+            ),
+        ]
+    )
+
+    assert rows == [
+        {
+            "action": "company_filing_search",
+            "tickers": ["2382"],
+            "document_types": ["annual_report"],
+            "priority": "high",
+            "purpose": "required",
+            "reason": "個股資料審計缺口：缺高品質必要公司文件：annual_report",
+            "next_step": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
+        }
+    ]
+
+
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

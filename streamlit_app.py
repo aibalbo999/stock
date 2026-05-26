@@ -1331,10 +1331,12 @@ def render_company_data_audit(report_id: int) -> None:
 def render_follow_up_controls(report_id: int, markdown: str) -> None:
     rows = markdown_table_rows(markdown, "自動補強任務", limit=20)
     planned_actions = []
+    plan_next_actions = []
     plan_error = None
     try:
         plan = api_get(f"/reports/{report_id}/follow-up/plan")
         planned_actions = plan.get("actions") or []
+        plan_next_actions = plan.get("next_actions") or []
         freshness = plan.get("freshness") or {}
     except requests.RequestException as exc:
         plan_error = str(exc)
@@ -1359,6 +1361,22 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
             width="stretch",
             hide_index=True,
         )
+        if plan_next_actions:
+            st.caption("預計補強重點")
+            st.dataframe(
+                [
+                    {
+                        "股票": "、".join(action.get("tickers") or []) or "全主題",
+                        "下一步": action.get("next_step"),
+                        "文件類型": "、".join(action.get("document_types") or []) or "公司公開文件",
+                        "優先級": action.get("priority", "-"),
+                        "原因": action.get("reason", "-"),
+                    }
+                    for action in plan_next_actions
+                ],
+                width="stretch",
+                hide_index=True,
+            )
     elif rows:
         st.dataframe(
             [

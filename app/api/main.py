@@ -28,6 +28,7 @@ from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import (
     FollowUpActionPlanner,
     TRACKING_FRESHNESS_THRESHOLDS,
+    company_filing_document_types_from_reason,
     execute_follow_up_actions,
     render_follow_up_actions_markdown,
     split_fresh_tracking_actions,
@@ -427,6 +428,26 @@ def follow_up_action_summary(actions: list) -> dict:
         "tracking_count": tracking_count,
         "total_count": len(actions),
     }
+
+
+def follow_up_plan_next_actions(actions: list) -> list[dict]:
+    rows = []
+    for action in actions:
+        if action.action_type != "ingest_company_filings":
+            continue
+        document_types = company_filing_document_types_from_reason(action.reason) or []
+        rows.append(
+            {
+                "action": "company_filing_search",
+                "tickers": list(action.tickers),
+                "document_types": document_types,
+                "priority": action.priority,
+                "purpose": action.purpose,
+                "reason": action.reason,
+                "next_step": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
+            }
+        )
+    return rows
 
 
 @asynccontextmanager
@@ -1152,6 +1173,7 @@ def get_report_follow_up_plan(report_id: int) -> dict:
             "message": "部分追蹤更新因資料仍在新鮮範圍內而略過。" if skipped_details else None,
         },
         "actions": [action.to_dict() for action in actions],
+        "next_actions": follow_up_plan_next_actions(actions),
         "markdown_preview": render_follow_up_actions_markdown(actions),
     }
 

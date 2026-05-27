@@ -619,6 +619,7 @@ class FeedFetchRequest(BaseModel):
     publisher: Optional[str] = None
     limit: int = 10
     enabled_sources_only: bool = True
+    topic: Optional[str] = None
 
 
 class MaintenanceCleanupRequest(BaseModel):
@@ -834,6 +835,23 @@ def discovery_query_budget(max_queries: int, deep_analysis: bool) -> dict:
     }
 
 
+def source_selection_context(topic: str, plan: TopicDiscoveryPlan | None = None) -> str:
+    terms = [topic]
+    if plan:
+        for subtopic in plan.subtopics:
+            terms.extend(
+                [
+                    subtopic.name,
+                    subtopic.objective,
+                    " ".join(subtopic.required_evidence[:3]),
+                    " ".join(subtopic.risk_focus[:3]),
+                ]
+            )
+        for candidate in plan.candidate_companies:
+            terms.extend([candidate.name, candidate.segment, " ".join(candidate.evidence_keywords[:4])])
+    return " ".join(term for term in terms if term)
+
+
 async def ingest_dynamic_news_urls(
     urls: list[str],
     limit_per_query: int,
@@ -890,6 +908,7 @@ async def run_topic_discovery_ingestion(
     start_date = end_date - timedelta(days=lookback_days)
     fixed_source_ingestion = await IngestionPipeline().ingest_feeds(
         enabled_sources_only=True,
+        topic=source_selection_context(payload.topic, plan),
         limit=limit_per_query,
         start_date=start_date,
         end_date=end_date,
@@ -1639,6 +1658,7 @@ async def fetch_news(payload: FeedFetchRequest) -> dict:
         publisher=payload.publisher,
         limit=payload.limit,
         enabled_sources_only=payload.enabled_sources_only,
+        topic=payload.topic,
     )
 
 

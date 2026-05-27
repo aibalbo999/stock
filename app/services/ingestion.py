@@ -39,6 +39,7 @@ class IngestionPipeline:
         publisher: str | None = None,
         limit: int = 10,
         enabled_sources_only: bool = True,
+        topic: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
         quality_filter: bool = True,
@@ -55,7 +56,7 @@ class IngestionPipeline:
             documents = self._filter_documents(documents, start_date, end_date, quality_filter)[:limit]
         else:
             sources = (
-                NewsSourceStore().enabled_sources()
+                NewsSourceStore().sources_for_topic(topic)
                 if enabled_sources_only
                 else NewsSourceStore().load()
             )
@@ -74,6 +75,8 @@ class IngestionPipeline:
                             "name": source.name,
                             "publisher": source.publisher or source.name,
                             "category": source.category,
+                            "scope": source.scope,
+                            "topics": source.topics,
                             "stored_count": len(filtered_documents),
                             "error_count": 0,
                         }
@@ -85,6 +88,8 @@ class IngestionPipeline:
                             "name": source.name,
                             "publisher": source.publisher or source.name,
                             "category": source.category,
+                            "scope": source.scope,
+                            "topics": source.topics,
                             "stored_count": 0,
                             "error_count": 1,
                         }
@@ -501,6 +506,7 @@ class IngestionPipeline:
             tickers = sorted(self.mapper.whitelist.allowed_tickers())
         news = await self.ingest_feeds(
             enabled_sources_only=True,
+            topic=request.topic,
             limit=max(10, min(30, request.evidence_limit // 4)),
             start_date=start_date,
             end_date=end_date,

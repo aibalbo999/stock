@@ -10,7 +10,7 @@ from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.models.schemas import NewsDocument, Source
@@ -22,6 +22,19 @@ class NewsSourceConfig(BaseModel):
     enabled: bool = True
     publisher: Optional[str] = None
     category: str = "news"
+    scope: str = "universal"
+    topics: list[str] = Field(default_factory=list)
+
+    def matches_topic(self, topic: str | None) -> bool:
+        if not self.enabled:
+            return False
+        if self.scope == "universal":
+            return True
+        if not topic:
+            return False
+        normalized_topic = topic.casefold()
+        terms = [self.category, self.name, self.publisher or "", *self.topics]
+        return any(term.casefold() in normalized_topic for term in terms if term)
 
 
 class NewsSourceStore:
@@ -36,6 +49,9 @@ class NewsSourceStore:
 
     def enabled_sources(self) -> list[NewsSourceConfig]:
         return [source for source in self.load() if source.enabled]
+
+    def sources_for_topic(self, topic: str | None) -> list[NewsSourceConfig]:
+        return [source for source in self.load() if source.matches_topic(topic)]
 
 
 class NewsFetcher:

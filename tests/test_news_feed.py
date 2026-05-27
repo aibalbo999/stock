@@ -67,6 +67,29 @@ def test_news_source_store_loads_enabled_sources(tmp_path) -> None:
     assert store.load()[1].category == "news"
 
 
+def test_news_source_store_filters_topic_specific_sources(tmp_path) -> None:
+    path = tmp_path / "sources.json"
+    path.write_text(
+        """
+        {
+          "sources": [
+            {"name": "base", "url": "https://example.com/base", "enabled": true, "scope": "universal"},
+            {"name": "ai", "url": "https://example.com/ai", "enabled": true, "scope": "topic", "topics": ["AI", "人工智慧"]},
+            {"name": "ev", "url": "https://example.com/ev", "enabled": true, "scope": "topic", "topics": ["電動車"]},
+            {"name": "off", "url": "https://example.com/off", "enabled": false, "scope": "universal"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    store = NewsSourceStore(path)
+
+    assert [source.name for source in store.sources_for_topic("AI 產業鏈")] == ["base", "ai"]
+    assert [source.name for source in store.sources_for_topic("電動車供應鏈")] == ["base", "ev"]
+    assert [source.name for source in store.sources_for_topic("航運景氣循環")] == ["base"]
+
+
 def test_default_news_sources_have_research_categories_and_unique_urls() -> None:
     sources = NewsSourceStore(Path("data/news_sources.json")).load()
     names = [source.name for source in sources]
@@ -77,6 +100,9 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
     assert len(names) == len(set(names))
     assert len(urls) == len(set(urls))
     assert all(source.category for source in sources)
+    assert all(source.scope in {"universal", "topic"} for source in sources)
+    assert any(source.scope == "universal" for source in sources)
+    assert any(source.scope == "topic" and "AI" in source.topics for source in sources)
     assert {
         "taiwan_news",
         "ai_chip_vendor",

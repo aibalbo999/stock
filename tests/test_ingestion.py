@@ -32,6 +32,7 @@ def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> No
 
     async def fake_ingest_feeds(enabled_sources_only: bool = True, **kwargs) -> dict:
         calls["enabled_sources_only"] = enabled_sources_only
+        calls.update(kwargs)
         return {"count": 0, "items": [], "errors": []}
 
     async def fake_refresh_market(tickers: list[str], start_date: date, end_date: date) -> dict:
@@ -86,6 +87,7 @@ def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> No
     )
 
     assert calls["enabled_sources_only"] is True
+    assert calls["topic"] == "AI 產業鏈"
     assert "2330" in calls["tickers"]
     assert "2330" in calls["financial_tickers"]
     assert "2330" in calls["valuation_tickers"]

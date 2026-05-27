@@ -826,6 +826,7 @@ async def ingest_follow_up_news(
     if not queries:
         return await pipeline.ingest_feeds(
             enabled_sources_only=True,
+            topic=request.topic,
             limit=news_limit,
             start_date=start_date,
             end_date=today,

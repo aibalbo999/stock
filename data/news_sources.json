@@ -5,217 +5,621 @@
       "url": "https://feeds.feedburner.com/rsscna/technology",
       "enabled": true,
       "publisher": "中央社科技",
-      "category": "taiwan_news"
+      "category": "taiwan_news",
+      "scope": "universal",
+      "topics": []
     },
     {
       "name": "cna-finance",
       "url": "https://feeds.feedburner.com/rsscna/finance",
       "enabled": true,
       "publisher": "中央社財經",
-      "category": "taiwan_news"
+      "category": "taiwan_news",
+      "scope": "universal",
+      "topics": []
     },
     {
       "name": "technews",
       "url": "https://technews.tw/feed/",
       "enabled": true,
       "publisher": "科技新報",
-      "category": "taiwan_news"
+      "category": "taiwan_news",
+      "scope": "universal",
+      "topics": []
     },
     {
       "name": "ithome",
       "url": "https://www.ithome.com.tw/rss",
       "enabled": true,
       "publisher": "iThome",
-      "category": "taiwan_news"
+      "category": "taiwan_news",
+      "scope": "universal",
+      "topics": []
     },
     {
       "name": "nvidia-newsroom",
       "url": "https://nvidianews.nvidia.com/rss.xml",
       "enabled": true,
       "publisher": "NVIDIA Newsroom",
-      "category": "ai_chip_vendor"
+      "category": "ai_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GPU",
+        "加速器",
+        "NVIDIA"
+      ]
     },
     {
       "name": "nvidia-blog",
       "url": "https://feeds.feedburner.com/nvidiablog",
       "enabled": true,
       "publisher": "NVIDIA Blog",
-      "category": "ai_chip_vendor"
+      "category": "ai_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GPU",
+        "加速器",
+        "NVIDIA"
+      ]
     },
     {
       "name": "nvidia-developer-blog",
       "url": "https://developer.nvidia.com/blog/feed/",
       "enabled": true,
       "publisher": "NVIDIA Developer Blog",
-      "category": "ai_chip_vendor"
+      "category": "ai_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GPU",
+        "加速器",
+        "NVIDIA"
+      ]
     },
     {
       "name": "aws-news-blog",
       "url": "https://aws.amazon.com/blogs/aws/feed/",
       "enabled": true,
       "publisher": "AWS News Blog",
-      "category": "cloud_capex"
+      "category": "cloud_capex",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "capex",
+        "雲端資本支出"
+      ]
     },
     {
       "name": "google-cloud-release-notes",
       "url": "https://docs.cloud.google.com/feeds/gcp-release-notes.xml",
       "enabled": true,
       "publisher": "Google Cloud Release Notes",
-      "category": "cloud_capex"
+      "category": "cloud_capex",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "capex",
+        "雲端資本支出"
+      ]
     },
     {
       "name": "google-keyword",
       "url": "https://blog.google/rss/",
       "enabled": true,
       "publisher": "Google The Keyword",
-      "category": "cloud_capex"
+      "category": "cloud_capex",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "capex",
+        "雲端資本支出"
+      ]
     },
     {
       "name": "meta-engineering",
       "url": "https://engineering.fb.com/feed/",
       "enabled": true,
       "publisher": "Meta Engineering",
-      "category": "cloud_capex"
+      "category": "cloud_capex",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "capex",
+        "雲端資本支出"
+      ]
     },
     {
       "name": "openai-news",
       "url": "https://openai.com/news/rss.xml",
       "enabled": true,
       "publisher": "OpenAI News",
-      "category": "ai_demand"
+      "category": "ai_demand",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "生成式AI",
+        "大型語言模型",
+        "LLM"
+      ]
     },
     {
       "name": "open-compute-project",
       "url": "https://www.opencompute.org/blog/rss",
       "enabled": true,
       "publisher": "Open Compute Project",
-      "category": "datacenter_power"
+      "category": "datacenter_power",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電力",
+        "缺電",
+        "電網",
+        "power",
+        "grid"
+      ]
     },
     {
       "name": "datacenter-dynamics",
       "url": "https://www.datacenterdynamics.com/en/rss/",
       "enabled": true,
       "publisher": "Data Center Dynamics",
-      "category": "datacenter_power"
+      "category": "datacenter_power",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電力",
+        "缺電",
+        "電網",
+        "power",
+        "grid"
+      ]
     },
     {
       "name": "semiconductor-engineering",
       "url": "https://semiengineering.com/feed/",
       "enabled": true,
       "publisher": "Semiconductor Engineering",
-      "category": "semiconductor_industry"
+      "category": "semiconductor_industry",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "晶圓",
+        "先進製程",
+        "封裝"
+      ]
     },
     {
       "name": "serve-the-home",
       "url": "https://www.servethehome.com/feed/",
       "enabled": true,
       "publisher": "ServeTheHome",
-      "category": "server_infrastructure"
+      "category": "server_infrastructure",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "server",
+        "ODM",
+        "機櫃"
+      ]
     },
     {
       "name": "the-next-platform",
       "url": "https://www.nextplatform.com/feed/",
       "enabled": true,
       "publisher": "The Next Platform",
-      "category": "server_infrastructure"
+      "category": "server_infrastructure",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "server",
+        "ODM",
+        "機櫃"
+      ]
     },
     {
       "name": "toms-hardware",
       "url": "https://www.tomshardware.com/feeds.xml",
       "enabled": true,
       "publisher": "Tom's Hardware",
-      "category": "ai_chip_vendor"
+      "category": "ai_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GPU",
+        "加速器",
+        "NVIDIA"
+      ]
     },
     {
       "name": "ee-times",
       "url": "https://www.eetimes.com/feed/",
       "enabled": true,
       "publisher": "EE Times",
-      "category": "semiconductor_industry"
+      "category": "semiconductor_industry",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "晶圓",
+        "先進製程",
+        "封裝"
+      ]
     },
     {
       "name": "data-center-knowledge",
       "url": "https://www.datacenterknowledge.com/rss.xml",
       "enabled": true,
       "publisher": "Data Center Knowledge",
-      "category": "datacenter_power"
+      "category": "datacenter_power",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電力",
+        "缺電",
+        "電網",
+        "power",
+        "grid"
+      ]
     },
     {
       "name": "the-register-ai",
       "url": "https://www.theregister.com/software/ai_ml/headlines.atom",
       "enabled": true,
       "publisher": "The Register AI",
-      "category": "ai_demand"
+      "category": "ai_demand",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "生成式AI",
+        "大型語言模型",
+        "LLM"
+      ]
     },
     {
       "name": "google-news-tsmc-cowos-ai",
       "url": "https://news.google.com/rss/search?q=%E5%8F%B0%E7%A9%8D%E9%9B%BB%20CoWoS%20AI&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
       "enabled": true,
       "publisher": null,
-      "category": "advanced_packaging"
+      "category": "advanced_packaging",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "CoWoS",
+        "HBM",
+        "先進封裝",
+        "封測"
+      ]
     },
     {
       "name": "google-news-ai-server-odm",
       "url": "https://news.google.com/rss/search?q=%E5%BB%A3%E9%81%94%20%E7%B7%AF%E5%89%B5%20AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
       "enabled": true,
       "publisher": null,
-      "category": "server_odm"
+      "category": "server_odm",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "ODM",
+        "廣達",
+        "緯創",
+        "英業達"
+      ]
     },
     {
       "name": "google-news-advanced-packaging-equipment",
       "url": "https://news.google.com/rss/search?q=%E5%BC%98%E5%A1%91%20%E8%BE%9B%E8%80%98%20CoWoS%20%E5%85%88%E9%80%B2%E5%B0%81%E8%A3%9D&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
       "enabled": true,
       "publisher": null,
-      "category": "advanced_packaging"
+      "category": "advanced_packaging",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "CoWoS",
+        "HBM",
+        "先進封裝",
+        "封測"
+      ]
     },
     {
       "name": "google-news-liquid-cooling-thermal",
       "url": "https://news.google.com/rss/search?q=%E9%9B%99%E9%B4%BB%20AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8%20%E6%95%A3%E7%86%B1%20%E6%B0%B4%E5%86%B7&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
       "enabled": true,
       "publisher": null,
-      "category": "thermal_liquid_cooling"
+      "category": "thermal_liquid_cooling",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "散熱",
+        "液冷",
+        "水冷",
+        "thermal",
+        "liquid cooling"
+      ]
     },
     {
       "name": "google-news-global-ai-server-supply-chain",
       "url": "https://news.google.com/rss/search?q=AI%20server%20supply%20chain%20Taiwan&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "server_odm"
+      "category": "server_odm",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "ODM",
+        "廣達",
+        "緯創",
+        "英業達"
+      ]
     },
     {
       "name": "google-news-global-cowos-hbm",
       "url": "https://news.google.com/rss/search?q=CoWoS%20HBM%20capacity%20bottleneck%20AI%20chips&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "advanced_packaging"
+      "category": "advanced_packaging",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "CoWoS",
+        "HBM",
+        "先進封裝",
+        "封測"
+      ]
     },
     {
       "name": "google-news-global-ai-data-center-power",
       "url": "https://news.google.com/rss/search?q=AI%20data%20center%20power%20grid%20constraint%20semiconductor&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "datacenter_power"
+      "category": "datacenter_power",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電力",
+        "缺電",
+        "電網",
+        "power",
+        "grid"
+      ]
     },
     {
       "name": "google-news-global-liquid-cooling",
       "url": "https://news.google.com/rss/search?q=AI%20data%20center%20liquid%20cooling%20supply%20chain&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "thermal_liquid_cooling"
+      "category": "thermal_liquid_cooling",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "散熱",
+        "液冷",
+        "水冷",
+        "thermal",
+        "liquid cooling"
+      ]
     },
     {
       "name": "google-news-global-export-controls",
       "url": "https://news.google.com/rss/search?q=US%20export%20controls%20AI%20chips%20Taiwan%20supply%20chain&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "policy_export_controls"
+      "category": "policy_export_controls",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "地緣政治",
+        "出口管制",
+        "禁令",
+        "export control"
+      ]
     },
     {
       "name": "google-news-trendforce-ai-server",
       "url": "https://news.google.com/rss/search?q=TrendForce%20AI%20server%20HBM%20CoWoS%20NVIDIA&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
-      "category": "semiconductor_industry"
+      "category": "semiconductor_industry",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "晶圓",
+        "先進製程",
+        "封裝"
+      ]
     }
   ]
 }

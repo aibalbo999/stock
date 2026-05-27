@@ -21,6 +21,7 @@ class NewsSourceConfig(BaseModel):
     url: str
     enabled: bool = True
     publisher: Optional[str] = None
+    category: str = "news"
 
 
 class NewsSourceStore:

@@ -15,6 +15,17 @@ from app.services.ingestion import (
 )
 
 
+def test_source_category_counts_sum_stored_documents() -> None:
+    assert IngestionPipeline._source_category_counts(
+        [
+            {"category": "cloud_capex", "stored_count": 3},
+            {"category": "cloud_capex", "stored_count": 2},
+            {"category": "taiwan_news", "stored_count": 4},
+            {"stored_count": 1},
+        ]
+    ) == {"cloud_capex": 5, "taiwan_news": 4, "news": 1}
+
+
 def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> None:
     pipeline = IngestionPipeline()
     calls = {}

@@ -59,6 +59,7 @@ class IngestionPipeline:
                 if enabled_sources_only
                 else NewsSourceStore().load()
             )
+            source_results = []
             for source in sources:
                 try:
                     source_documents = await fetcher.fetch_feed(
@@ -66,11 +67,30 @@ class IngestionPipeline:
                         source.publisher or source.name,
                         fetch_limit,
                     )
-                    documents.extend(
-                        self._filter_documents(source_documents, start_date, end_date, quality_filter)[:limit]
+                    filtered_documents = self._filter_documents(source_documents, start_date, end_date, quality_filter)[:limit]
+                    documents.extend(filtered_documents)
+                    source_results.append(
+                        {
+                            "name": source.name,
+                            "publisher": source.publisher or source.name,
+                            "category": source.category,
+                            "stored_count": len(filtered_documents),
+                            "error_count": 0,
+                        }
                     )
                 except Exception as exc:
                     errors.append({"source": source.url, "error": str(exc)})
+                    source_results.append(
+                        {
+                            "name": source.name,
+                            "publisher": source.publisher or source.name,
+                            "category": source.category,
+                            "stored_count": 0,
+                            "error_count": 1,
+                        }
+                    )
+        if url:
+            source_results = []
 
         documents = self._dedupe_documents(documents)
         VectorStore().upsert_documents(documents)
@@ -94,7 +114,21 @@ class IngestionPipeline:
                         "entity_matches": [match.model_dump(mode="json") for match in matches],
                     }
                 )
-        return {"count": len(ingested), "items": ingested, "errors": errors}
+        return {
+            "count": len(ingested),
+            "items": ingested,
+            "errors": errors,
+            "source_results": source_results,
+            "source_category_counts": self._source_category_counts(source_results),
+        }
+
+    @staticmethod
+    def _source_category_counts(source_results: list[dict]) -> dict:
+        counts: dict[str, int] = {}
+        for result in source_results:
+            category = str(result.get("category") or "news")
+            counts[category] = counts.get(category, 0) + int(result.get("stored_count") or 0)
+        return counts
 
     async def refresh_market(
         self,

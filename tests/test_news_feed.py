@@ -51,7 +51,7 @@ def test_news_source_store_loads_enabled_sources(tmp_path) -> None:
         """
         {
           "sources": [
-            {"name": "on", "url": "https://example.com/rss", "enabled": true},
+            {"name": "on", "url": "https://example.com/rss", "enabled": true, "category": "cloud_capex"},
             {"name": "off", "url": "https://example.com/off", "enabled": false}
           ]
         }
@@ -62,3 +62,5 @@ def test_news_source_store_loads_enabled_sources(tmp_path) -> None:
     store = NewsSourceStore(path)
 
     assert [source.name for source in store.enabled_sources()] == ["on"]
+    assert store.enabled_sources()[0].category == "cloud_capex"
+    assert store.load()[1].category == "news"

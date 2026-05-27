@@ -713,7 +713,16 @@ def summarize_ingestion_stage(results: list[dict]) -> dict:
         "stored_count": stored_count,
         "error_count": error_count,
         "sample_titles": sample_titles,
+        "source_category_counts": summarize_source_categories(results),
     }
+
+
+def summarize_source_categories(results: list[dict]) -> dict:
+    counts: dict[str, int] = {}
+    for result in results:
+        for category, count in (result.get("source_category_counts") or {}).items():
+            counts[str(category)] = counts.get(str(category), 0) + int(count or 0)
+    return counts
 
 
 def build_source_audit(

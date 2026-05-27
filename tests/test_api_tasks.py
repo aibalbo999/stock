@@ -279,17 +279,20 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
             "count": 2,
             "items": [{"title": "固定來源 A"}, {"title": "固定來源 B"}],
             "errors": [],
+            "source_category_counts": {"taiwan_news": 2},
         },
         dynamic_query_ingestion=[
             {
                 "count": 3,
                 "items": [{"title": "動態來源 A"}, {"title": "動態來源 B"}],
                 "errors": [{"source": "bad", "error": "timeout"}],
+                "source_category_counts": {"cloud_capex": 3},
             },
             {
                 "count": 1,
                 "items": [{"title": "動態來源 C"}],
                 "errors": [],
+                "source_category_counts": {"semiconductor_industry": 1},
             },
         ],
         limit_per_query=12,
@@ -321,7 +324,12 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
     assert audit["deep_analysis"] is True
     assert audit["include_international"] is True
     assert audit["fixed_sources"]["stored_count"] == 2
+    assert audit["fixed_sources"]["source_category_counts"] == {"taiwan_news": 2}
     assert audit["dynamic_queries"]["stored_count"] == 4
+    assert audit["dynamic_queries"]["source_category_counts"] == {
+        "cloud_capex": 3,
+        "semiconductor_industry": 1,
+    }
     assert audit["dynamic_query_count"] == 2
     assert audit["total_stored_count"] == 6
     assert audit["total_error_count"] == 1

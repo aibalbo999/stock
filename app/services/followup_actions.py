@@ -69,6 +69,7 @@ class FollowUpActionPlanner:
         self,
         request: ReportRequest,
         quality_gate: dict | None = None,
+        source_audit: dict | None = None,
         markdown: str = "",
         contexts: list[dict] | None = None,
         company_data_audit: dict | None = None,
@@ -78,6 +79,7 @@ class FollowUpActionPlanner:
         tickers = tuple(request.tickers)
         actions: list[FollowUpAction] = []
         actions.extend(self.from_quality_gate(quality_gate or {}, tickers))
+        actions.extend(self.from_source_audit(source_audit or {}, tickers))
         actions.extend(self.from_company_data_audit(company_data_audit or {}, tickers))
         actions.extend(self.from_monitoring_contexts(contexts or [], tickers))
         actions.extend(self.from_monitoring_markdown(markdown, tickers))
@@ -101,6 +103,54 @@ class FollowUpActionPlanner:
             )
         actions = dedupe_actions(actions)
         return filter_fresh_tracking_actions(actions, request) if apply_freshness else actions
+
+    def from_source_audit(self, source_audit: dict, tickers: tuple[str, ...]) -> list[FollowUpAction]:
+        source_relevance = source_audit.get("source_relevance") or {}
+        readiness = source_relevance.get("subtopic_readiness") or {}
+        missing = [
+            name
+            for name, detail in readiness.items()
+            if isinstance(detail, dict) and detail.get("status") == "missing"
+        ]
+        weak = [
+            name
+            for name, detail in readiness.items()
+            if isinstance(detail, dict) and detail.get("status") == "weak"
+        ]
+        actions: list[FollowUpAction] = []
+        if missing:
+            actions.append(
+                FollowUpAction(
+                    "ingest_news",
+                    "來源覆蓋審計缺口：缺少來源覆蓋子題：" + "、".join(missing[:6]),
+                    tickers,
+                    "high",
+                    "weekly",
+                    "required",
+                )
+            )
+            actions.append(
+                FollowUpAction(
+                    "rerun_discovery",
+                    "補齊缺來源子題後，重新驗證主題拆解、候選白名單與來源覆蓋。",
+                    tickers,
+                    "high",
+                    "once",
+                    "required",
+                )
+            )
+        elif weak:
+            actions.append(
+                FollowUpAction(
+                    "ingest_news",
+                    "來源覆蓋審計缺口：弱來源子題需補不同發布者或缺少的資料意圖：" + "、".join(weak[:6]),
+                    tickers,
+                    "medium",
+                    "weekly",
+                    "required",
+                )
+            )
+        return actions
 
     def from_quality_gate(self, quality_gate: dict, tickers: tuple[str, ...]) -> list[FollowUpAction]:
         issue_text = "；".join(
@@ -867,8 +917,6 @@ async def ingest_follow_up_news(
 
 
 def follow_up_news_queries(action: FollowUpAction, request: ReportRequest) -> list[str]:
-    if not action.tickers and "候選公司未升格" not in action.reason:
-        return []
     tickers = list(action.tickers or tuple(request.tickers))
     context = compact_query_text(action.reason)
     queries = []

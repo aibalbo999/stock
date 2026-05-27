@@ -65,6 +65,9 @@ def build_report_quality_gate(
     )
     llm_status = llm_status or {}
     llm_fallback = bool(llm_status.get("fallback")) if llm_status else None
+    source_relevance = source_audit.get("source_relevance") or {}
+    missing_subtopic_count = int(source_relevance.get("missing_subtopic_count") or 0)
+    weak_subtopic_count = int(source_relevance.get("weak_subtopic_count") or 0)
 
     blockers = []
     warnings = []
@@ -83,6 +86,10 @@ def build_report_quality_gate(
         blockers.append("AI 動態資料來源入庫篇數過少")
     elif source_count < 12:
         warnings.append("AI 動態資料來源偏少")
+    if missing_subtopic_count:
+        blockers.append(f"AI 拆解子題仍有 {missing_subtopic_count} 個完全缺少相關來源")
+    if weak_subtopic_count:
+        warnings.append(f"AI 拆解子題仍有 {weak_subtopic_count} 個來源或資料意圖不足")
     if source_quality:
         timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0)
         unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
@@ -176,6 +183,8 @@ def build_report_quality_gate(
             "formal_confidence_min": formal_confidence_min,
             "formal_low_confidence_count": formal_low_confidence_count,
             "dynamic_source_count": source_count,
+            "missing_subtopic_count": missing_subtopic_count,
+            "weak_subtopic_count": weak_subtopic_count,
             "market_coverage": market_coverage,
             "monthly_revenue_coverage": monthly_coverage,
             "financial_metrics_count": financial_metrics_count,
@@ -236,6 +245,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("AI 拆解任務品質",),
             "請 AI 重新拆解分析任務，補齊缺漏的產業子題、風險瓶頸、估值與個股研究任務。",
+        ),
+        (
+            ("完全缺少相關來源", "來源或資料意圖不足"),
+            "針對缺來源或弱來源子題自動補抓資料；補足後重新驗證子題覆蓋，再重跑分析。",
         ),
         (
             ("股價資料覆蓋率",),

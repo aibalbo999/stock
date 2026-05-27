@@ -178,6 +178,7 @@ def load_report_follow_up_context(report_id: int) -> dict:
         "quality_gate": parse_quality_gate_from_markdown(markdown) or {},
         "candidate_whitelist": candidates,
         "company_data_audit": company_data_audit,
+        "source_audit": run_payload.get("source_audit") or {},
         "run_payload": run_payload,
     }
 
@@ -1436,11 +1437,13 @@ def get_report_follow_up_plan(report_id: int) -> dict:
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
+    source_audit = context["source_audit"]
     candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
         quality_gate=quality_gate,
+        source_audit=source_audit,
         markdown=markdown,
         company_data_audit=company_data_audit,
         candidate_audit_required=candidate_audit_required,
@@ -1474,11 +1477,13 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     markdown = context["markdown"]
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
+    source_audit = context["source_audit"]
     candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
         quality_gate=quality_gate,
+        source_audit=source_audit,
         markdown=markdown,
         company_data_audit=company_data_audit,
         candidate_audit_required=candidate_audit_required,

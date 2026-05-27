@@ -585,6 +585,31 @@ def test_report_quality_gate_blocks_weak_research_inputs() -> None:
     assert "候選公司證據覆蓋率低於 60%" in gate["blockers"]
 
 
+def test_report_quality_gate_blocks_missing_subtopic_sources() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 24},
+            "source_relevance": {
+                "missing_subtopic_count": 1,
+                "weak_subtopic_count": 2,
+            },
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+    )
+
+    assert gate["status"] == "insufficient"
+    assert "AI 拆解子題仍有 1 個完全缺少相關來源" in gate["blockers"]
+    assert "AI 拆解子題仍有 2 個來源或資料意圖不足" in gate["warnings"]
+    assert gate["metrics"]["missing_subtopic_count"] == 1
+    assert gate["metrics"]["weak_subtopic_count"] == 2
+    assert any("針對缺來源或弱來源子題" in action for action in gate["remediation_actions"])
+
+
 def test_report_quality_gate_passes_complete_research_inputs() -> None:
     gate = main.build_report_quality_gate(
         source_audit={

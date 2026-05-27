@@ -60,6 +60,44 @@ def test_llm_fallback_warning_becomes_rerun_action() -> None:
     assert actions[0].priority == "high"
 
 
+def test_source_audit_missing_subtopics_become_automatic_follow_up_actions() -> None:
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=[]),
+        source_audit={
+            "source_relevance": {
+                "subtopic_readiness": {
+                    "出口管制": {"status": "missing"},
+                    "液冷散熱": {"status": "ready"},
+                }
+            }
+        },
+    )
+
+    action_types = [action.action_type for action in actions]
+    assert "ingest_news" in action_types
+    assert "rerun_discovery" in action_types
+    assert "rerun_analysis" in action_types
+    news_action = next(action for action in actions if action.action_type == "ingest_news")
+    assert "出口管制" in news_action.reason
+    assert news_action.priority == "high"
+
+
+def test_source_audit_weak_subtopics_become_news_follow_up_without_discovery_rerun() -> None:
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        source_audit={
+            "source_relevance": {
+                "subtopic_readiness": {
+                    "液冷散熱": {"status": "weak"},
+                }
+            }
+        },
+    )
+
+    assert any(action.action_type == "ingest_news" and "液冷散熱" in action.reason for action in actions)
+    assert not any(action.action_type == "rerun_discovery" for action in actions)
+
+
 def test_company_data_audit_becomes_required_follow_up_actions() -> None:
     audit = {
         "rows": [
@@ -237,6 +275,22 @@ def test_candidate_follow_up_news_queries_are_targeted() -> None:
     assert queries
     assert any("3324" in query and "AI 產業鏈" in query for query in queries)
     assert any("散熱模組" in query for query in queries)
+
+
+def test_source_audit_follow_up_news_queries_work_without_tickers() -> None:
+    action = FollowUpAction(
+        "ingest_news",
+        "來源覆蓋審計缺口：缺少來源覆蓋子題：出口管制",
+        (),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    queries = follow_up_news_queries(action, ReportRequest(topic="AI 產業鏈", tickers=[]))
+
+    assert queries
+    assert any("AI 產業鏈" in query and "出口管制" in query for query in queries)
 
 
 def test_candidate_follow_up_queries_prioritize_fresh_sources_for_low_confidence() -> None:

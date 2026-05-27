@@ -58,7 +58,7 @@
     },
     {
       "name": "google-cloud-release-notes",
-      "url": "https://cloud.google.com/feeds/gcp-release-notes.xml",
+      "url": "https://docs.cloud.google.com/feeds/gcp-release-notes.xml",
       "enabled": true,
       "publisher": "Google Cloud Release Notes",
       "category": "cloud_capex"
@@ -135,7 +135,7 @@
     },
     {
       "name": "google-news-global-ai-server-supply-chain",
-      "url": "https://news.google.com/rss/search?q=NVIDIA%20AI%20server%20supply%20chain%20Taiwan%20ODM&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=AI%20server%20supply%20chain%20Taiwan&hl=en-US&gl=US&ceid=US:en",
       "enabled": true,
       "publisher": null,
       "category": "server_odm"

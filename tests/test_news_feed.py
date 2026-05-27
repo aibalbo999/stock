@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 
@@ -64,3 +65,26 @@ def test_news_source_store_loads_enabled_sources(tmp_path) -> None:
     assert [source.name for source in store.enabled_sources()] == ["on"]
     assert store.enabled_sources()[0].category == "cloud_capex"
     assert store.load()[1].category == "news"
+
+
+def test_default_news_sources_have_research_categories_and_unique_urls() -> None:
+    sources = NewsSourceStore(Path("data/news_sources.json")).load()
+    names = [source.name for source in sources]
+    urls = [source.url for source in sources]
+    categories = {source.category for source in sources}
+
+    assert len(sources) >= 25
+    assert len(names) == len(set(names))
+    assert len(urls) == len(set(urls))
+    assert all(source.category for source in sources)
+    assert {
+        "taiwan_news",
+        "ai_chip_vendor",
+        "cloud_capex",
+        "datacenter_power",
+        "advanced_packaging",
+        "server_odm",
+        "thermal_liquid_cooling",
+        "policy_export_controls",
+        "semiconductor_industry",
+    }.issubset(categories)

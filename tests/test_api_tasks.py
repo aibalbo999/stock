@@ -317,6 +317,7 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
 
     assert audit["topic"] == "AI 產業鏈"
     assert audit["lookback_days"] == 21
+    assert audit["effective_lookback_days"] == 90
     assert audit["deep_analysis"] is True
     assert audit["include_international"] is True
     assert audit["fixed_sources"]["stored_count"] == 2
@@ -344,7 +345,11 @@ def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> Non
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (12, 120, 12)
+    assert main.discovery_fetch_settings(payload) == (20, 180, 48)
+    assert main.discovery_effective_lookback_days(payload) == 90
+    assert main.discovery_document_limit(payload, 180) == 800
+    assert main.discovery_market_history_days(payload) == 720
+    assert main.discovery_valuation_history_days(payload) == 180
 
 
 def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
@@ -356,7 +361,8 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
     assert normal_budget["supplemental_rounds"] == 1
     assert deep_budget["initial_queries"] < 80
     assert deep_budget["supplemental_queries"] > normal_budget["supplemental_queries"]
-    assert deep_budget["supplemental_rounds"] == 1
+    assert deep_budget["supplemental_rounds"] == 3
+    assert deep_budget["supplemental_batch_size"] == 12
 
 
 def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() -> None:

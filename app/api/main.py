@@ -655,10 +655,26 @@ def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, 
     evidence_limit = payload.evidence_limit
     max_queries = 20
     if payload.deep_analysis:
-        limit_per_query = max(limit_per_query, 12)
-        evidence_limit = max(evidence_limit, 120)
-        max_queries = 12
+        limit_per_query = max(limit_per_query, 20)
+        evidence_limit = max(evidence_limit, 180)
+        max_queries = 48
     return limit_per_query, evidence_limit, max_queries
+
+
+def discovery_effective_lookback_days(payload: TopicDiscoveryRequest) -> int:
+    return max(payload.lookback_days, 90) if payload.deep_analysis else payload.lookback_days
+
+
+def discovery_document_limit(payload: TopicDiscoveryRequest, evidence_limit: int) -> int:
+    return max(800, evidence_limit * 4) if payload.deep_analysis else max(300, evidence_limit * 3)
+
+
+def discovery_market_history_days(payload: TopicDiscoveryRequest) -> int:
+    return max(payload.lookback_days, 720) if payload.deep_analysis else max(payload.lookback_days, 240)
+
+
+def discovery_valuation_history_days(payload: TopicDiscoveryRequest) -> int:
+    return max(payload.lookback_days, 180) if payload.deep_analysis else max(payload.lookback_days, 30)
 
 
 def should_revalidate_candidate_filings(candidates: list[dict], min_supported_ratio: float = 0.6) -> bool:
@@ -724,6 +740,7 @@ def build_source_audit(
     return {
         "topic": payload.topic,
         "lookback_days": payload.lookback_days,
+        "effective_lookback_days": discovery_effective_lookback_days(payload),
         "deep_analysis": payload.deep_analysis,
         "include_international": payload.include_international,
         "limit_per_query": limit_per_query,
@@ -798,12 +815,12 @@ def should_supplement_discovery_sources(source_audit: dict, candidate_support: d
 
 
 def discovery_query_budget(max_queries: int, deep_analysis: bool) -> dict:
-    initial_queries = max(8, int(max_queries * 0.65))
+    initial_queries = max(16 if deep_analysis else 8, int(max_queries * (0.55 if deep_analysis else 0.65)))
     return {
         "initial_queries": min(max_queries, initial_queries),
         "supplemental_queries": max(0, max_queries - initial_queries),
-        "supplemental_rounds": 1 if deep_analysis else 1,
-        "supplemental_batch_size": 8 if deep_analysis else 6,
+        "supplemental_rounds": 3 if deep_analysis else 1,
+        "supplemental_batch_size": 12 if deep_analysis else 6,
     }
 
 
@@ -859,7 +876,8 @@ async def run_topic_discovery_ingestion(
     )
     urls = [item["url"] for item in query_metadata]
     end_date = today_taipei()
-    start_date = end_date - timedelta(days=payload.lookback_days)
+    lookback_days = discovery_effective_lookback_days(payload)
+    start_date = end_date - timedelta(days=lookback_days)
     fixed_source_ingestion = await IngestionPipeline().ingest_feeds(
         enabled_sources_only=True,
         limit=limit_per_query,
@@ -1066,7 +1084,7 @@ async def discovery_ingest(payload: TopicDiscoveryRequest) -> dict:
         limit_per_query,
         evidence_limit,
         max_queries,
-        document_limit=200,
+        document_limit=discovery_document_limit(payload, evidence_limit),
     )
     return {
         "discovery": discovery,
@@ -1771,10 +1789,9 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             limit_per_query,
             evidence_limit,
             max_queries,
-            document_limit=300,
+            document_limit=discovery_document_limit(payload, evidence_limit),
         )
         urls = discovery_ingestion["urls"]
-        start_date = discovery_ingestion["start_date"]
         end_date = discovery_ingestion["end_date"]
         documents = discovery_ingestion["documents"]
         fixed_source_ingestion = discovery_ingestion["fixed_source_ingestion"]
@@ -1847,9 +1864,11 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         documents = dedupe_documents([*documents, *company_filing_documents])
 
         market_client = MarketDataClient()
+        market_start_date = end_date - timedelta(days=discovery_market_history_days(payload))
+        valuation_start_date = end_date - timedelta(days=discovery_valuation_history_days(payload))
         price_histories, market_errors = await market_client.get_price_histories_with_errors(
             promoted_tickers,
-            start_date,
+            market_start_date,
             end_date,
         )
         snapshots = [
@@ -1870,7 +1889,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         )
         valuations, valuation_errors = await market_client.get_latest_valuations_with_errors(
             promoted_tickers,
-            start_date,
+            valuation_start_date,
             end_date,
         )
         monthly_tickers = {revenue.ticker for revenue in monthly_revenues}
@@ -1890,7 +1909,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         request = ReportRequest(
             topic=payload.topic,
             tickers=promoted_tickers,
-            lookback_days=payload.lookback_days,
+            lookback_days=discovery_effective_lookback_days(payload),
             evidence_limit=evidence_limit,
             investor_capital=payload.investor_capital,
             beginner_mode=payload.beginner_mode,
@@ -1909,7 +1928,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             valuation_count=len(valuations),
             investor_capital=payload.investor_capital,
             cash_reserve_pct=payload.cash_reserve_pct,
-            source_quality=summarize_document_source_quality(documents, payload.lookback_days),
+            source_quality=summarize_document_source_quality(documents, discovery_effective_lookback_days(payload)),
             plan_quality=source_audit.get("plan_quality"),
             leading_signal_count=leading_signal_count,
             llm_status=summarize_llm_status(generator.last_llm_result),
@@ -1935,6 +1954,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "source_audit": source_audit,
             "candidate_whitelist": candidate_payload,
             "market": [snapshot.model_dump(mode="json") for snapshot in snapshots],
+            "market_history_days": discovery_market_history_days(payload),
             "market_history_count": len(price_history_snapshots),
             "market_errors": [error.model_dump() for error in market_errors],
             "monthly_revenue": [
@@ -1951,6 +1971,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
                 error.model_dump() for error in financial_metric_errors
             ],
             "valuations": [valuation.model_dump(mode="json") for valuation in valuations],
+            "valuation_history_days": discovery_valuation_history_days(payload),
             "valuation_errors": [error.model_dump() for error in valuation_errors],
             "quality_gate": quality_gate,
         }

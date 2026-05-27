@@ -723,13 +723,17 @@ def quality_issue_html(gate: dict) -> str:
     issue_html = "<ul>" + "".join(items) + "</ul>" if items else ""
     if blockers:
         title = "品質阻擋"
+        severity_class = "quality-blockers"
     elif warnings:
         title = "品質警示"
+        severity_class = "quality-warnings"
     elif actions:
         title = "建議補強"
+        severity_class = "quality-actions-only"
     else:
         title = "品質觀察"
-    return f"<section class='panel quality-issues'><h2>{title}</h2>{issue_html}{action_html}</section>"
+        severity_class = "quality-observations"
+    return f"<section class='panel quality-issues {severity_class}'><h2>{title}</h2>{issue_html}{action_html}</section>"
 
 
 def metric_percent(value: object) -> str:
@@ -841,9 +845,15 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .insufficient {{ background:#FDEAE7; color:#B42318; }}
   .unknown {{ background:#E8EEF6; color:#344054; }}
   .panel {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:16px; margin-top:12px; }}
-  .quality-issues {{ border-color:#F5C97B; background:#FFFCF2; }}
-  .quality-issues strong {{ color:#8A5A12; }}
-  .quality-actions {{ margin-top:12px; border-top:1px solid #F5C97B; padding-top:12px; }}
+  .quality-blockers {{ border-color:#F2A09A; background:#FFF7F5; }}
+  .quality-blockers strong {{ color:#B42318; }}
+  .quality-warnings {{ border-color:#F5C97B; background:#FFFCF2; }}
+  .quality-warnings strong {{ color:#8A5A12; }}
+  .quality-actions-only {{ border-color:#ADC8FF; background:#F6F9FF; }}
+  .quality-actions-only strong {{ color:#1D4ED8; }}
+  .quality-observations {{ border-color:#B9E4D2; background:#F4FBF8; }}
+  .quality-observations strong {{ color:#087443; }}
+  .quality-actions {{ margin-top:12px; border-top:1px solid #D7DEE8; padding-top:12px; }}
   .quality-actions strong {{ display:block; margin-bottom:2px; }}
   ul {{ margin:8px 0 0; padding-left:20px; }}
   li {{ margin:7px 0; line-height:1.55; }}

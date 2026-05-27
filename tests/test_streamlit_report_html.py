@@ -82,6 +82,7 @@ def test_report_html_renders_quality_warnings() -> None:
     assert "建議補強" in html
     assert "弱證據候選補抓" in html
     assert "quality-issues" in html
+    assert "quality-warnings" in html
     assert "最低信心" in html
     assert ">高 76<" in html
 
@@ -105,6 +106,8 @@ def test_report_html_renders_observations_without_warning_title() -> None:
 
     assert "品質觀察" in html
     assert "品質警示" not in html
+    assert "quality-observations" in html
+    assert "panel quality-issues quality-warnings" not in html
     assert "觀察：" in html
     assert "LLM 補充分析已完成" in html
 
@@ -127,6 +130,7 @@ def test_report_html_labels_low_candidate_confidence() -> None:
 
     assert "最低信心" in html
     assert ">低 42<" in html
+    assert "quality-blockers" in html
 
 
 def test_maintenance_service_metrics_show_promotion_threshold() -> None:

@@ -644,6 +644,7 @@ class TopicDiscoveryRequest(BaseModel):
     limit_per_query: int = 5
     lookback_days: int = 14
     evidence_limit: int = 40
+    analysis_mode: Literal["fast", "standard", "deep"] = "standard"
     deep_analysis: bool = False
     include_international: bool = True
     investor_capital: int = 1_000_000
@@ -653,31 +654,50 @@ class TopicDiscoveryRequest(BaseModel):
     cash_reserve_pct: float = 0.30
 
 
+def discovery_analysis_mode(payload: TopicDiscoveryRequest) -> str:
+    return "deep" if payload.deep_analysis else payload.analysis_mode
+
+
+def is_deep_discovery(payload: TopicDiscoveryRequest) -> bool:
+    return discovery_analysis_mode(payload) == "deep"
+
+
 def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, int]:
-    limit_per_query = payload.limit_per_query
-    evidence_limit = payload.evidence_limit
-    max_queries = 20
-    if payload.deep_analysis:
+    limit_per_query = max(payload.limit_per_query, 8)
+    evidence_limit = max(payload.evidence_limit, 80)
+    mode = discovery_analysis_mode(payload)
+    max_queries = 24 if mode == "fast" else 36
+    if mode == "deep":
         limit_per_query = max(limit_per_query, 20)
         evidence_limit = max(evidence_limit, 180)
-        max_queries = 48
+        max_queries = 72
     return limit_per_query, evidence_limit, max_queries
 
 
 def discovery_effective_lookback_days(payload: TopicDiscoveryRequest) -> int:
-    return max(payload.lookback_days, 90) if payload.deep_analysis else payload.lookback_days
+    mode = discovery_analysis_mode(payload)
+    if mode == "deep":
+        return max(payload.lookback_days, 120)
+    if mode == "standard":
+        return max(payload.lookback_days, 60)
+    return payload.lookback_days
 
 
 def discovery_document_limit(payload: TopicDiscoveryRequest, evidence_limit: int) -> int:
-    return max(800, evidence_limit * 4) if payload.deep_analysis else max(300, evidence_limit * 3)
+    mode = discovery_analysis_mode(payload)
+    if mode == "deep":
+        return max(1000, evidence_limit * 5)
+    if mode == "standard":
+        return max(600, evidence_limit * 4)
+    return max(300, evidence_limit * 3)
 
 
 def discovery_market_history_days(payload: TopicDiscoveryRequest) -> int:
-    return max(payload.lookback_days, 720) if payload.deep_analysis else max(payload.lookback_days, 240)
+    return max(payload.lookback_days, 720) if is_deep_discovery(payload) else max(payload.lookback_days, 240)
 
 
 def discovery_valuation_history_days(payload: TopicDiscoveryRequest) -> int:
-    return max(payload.lookback_days, 180) if payload.deep_analysis else max(payload.lookback_days, 30)
+    return max(payload.lookback_days, 180) if is_deep_discovery(payload) else max(payload.lookback_days, 30)
 
 
 def should_revalidate_candidate_filings(candidates: list[dict], min_supported_ratio: float = 0.6) -> bool:
@@ -688,7 +708,7 @@ def should_revalidate_candidate_filings(candidates: list[dict], min_supported_ra
 
 
 def candidate_filing_revalidation_tickers(candidates: list[dict], payload: TopicDiscoveryRequest) -> list[str]:
-    limit = 20 if payload.deep_analysis else 12
+    limit = 20 if is_deep_discovery(payload) else 12
     prioritized = [
         str(candidate.get("ticker"))
         for candidate in candidates
@@ -787,6 +807,7 @@ def build_source_audit(
         "topic": payload.topic,
         "lookback_days": payload.lookback_days,
         "effective_lookback_days": discovery_effective_lookback_days(payload),
+        "analysis_mode": discovery_analysis_mode(payload),
         "deep_analysis": payload.deep_analysis,
         "include_international": payload.include_international,
         "limit_per_query": limit_per_query,
@@ -880,13 +901,21 @@ def should_supplement_discovery_sources(source_audit: dict, candidate_support: d
     return source_audit["dynamic_queries"]["stored_count"] < 12
 
 
-def discovery_query_budget(max_queries: int, deep_analysis: bool) -> dict:
-    initial_queries = max(16 if deep_analysis else 8, int(max_queries * (0.55 if deep_analysis else 0.65)))
+def discovery_query_budget(max_queries: int, analysis_mode: str = "standard", deep_analysis: bool = False) -> dict:
+    mode = "deep" if deep_analysis else analysis_mode
+    settings = {
+        "fast": {"initial_floor": 8, "initial_ratio": 0.65, "rounds": 1, "batch": 6, "no_gain_stop": 1},
+        "standard": {"initial_floor": 12, "initial_ratio": 0.55, "rounds": 3, "batch": 10, "no_gain_stop": 2},
+        "deep": {"initial_floor": 20, "initial_ratio": 0.45, "rounds": 5, "batch": 12, "no_gain_stop": 2},
+    }.get(mode, {})
+    initial_queries = max(settings.get("initial_floor", 12), int(max_queries * settings.get("initial_ratio", 0.55)))
     return {
         "initial_queries": min(max_queries, initial_queries),
         "supplemental_queries": max(0, max_queries - initial_queries),
-        "supplemental_rounds": 3 if deep_analysis else 1,
-        "supplemental_batch_size": 12 if deep_analysis else 6,
+        "supplemental_rounds": settings.get("rounds", 3),
+        "supplemental_batch_size": settings.get("batch", 10),
+        "no_gain_stop_rounds": settings.get("no_gain_stop", 2),
+        "analysis_mode": mode,
     }
 
 
@@ -949,7 +978,11 @@ async def run_topic_discovery_ingestion(
     max_queries: int,
     document_limit: int,
 ) -> dict:
-    budget = discovery_query_budget(max_queries, payload.deep_analysis)
+    budget = discovery_query_budget(
+        max_queries,
+        analysis_mode=discovery_analysis_mode(payload),
+        deep_analysis=payload.deep_analysis,
+    )
     plan_quality = service.evaluate_plan_quality(plan)
     query_metadata = service.google_news_urls(
         plan,
@@ -976,6 +1009,7 @@ async def run_topic_discovery_ingestion(
         end_date,
     )
     remediation_rounds = []
+    no_gain_rounds = 0
     candidates = []
     candidate_support = {"total": 0, "supported": 0, "weak": 0, "unsupported": 0, "supported_ratio": 0}
     source_audit = build_source_audit(
@@ -1037,6 +1071,11 @@ async def run_topic_discovery_ingestion(
             start_date,
             end_date,
         )
+        supplemental_summary = summarize_ingestion_stage(supplemental_ingestion)
+        if supplemental_summary["stored_count"] <= 0:
+            no_gain_rounds += 1
+        else:
+            no_gain_rounds = 0
         urls.extend(supplemental_urls)
         query_metadata.extend(supplemental_metadata)
         dynamic_query_ingestion.extend(supplemental_ingestion)
@@ -1044,10 +1083,13 @@ async def run_topic_discovery_ingestion(
             {
                 "round": round_index + 1,
                 "query_count": len(supplemental_urls),
-                "stored_count": summarize_ingestion_stage(supplemental_ingestion)["stored_count"],
+                "stored_count": supplemental_summary["stored_count"],
                 "reason": "low_candidate_or_source_coverage",
+                "no_gain_rounds": no_gain_rounds,
             }
         )
+        if no_gain_rounds >= int(budget.get("no_gain_stop_rounds") or 2):
+            break
 
     source_audit = build_source_audit(
         payload,
@@ -1068,6 +1110,10 @@ async def run_topic_discovery_ingestion(
         "rounds": remediation_rounds,
         "supplemental_query_count": sum(round_item["query_count"] for round_item in remediation_rounds),
         "supplemental_stored_count": sum(round_item["stored_count"] for round_item in remediation_rounds),
+        "stopped_by_no_gain": bool(
+            remediation_rounds
+            and remediation_rounds[-1].get("no_gain_rounds", 0) >= int(budget.get("no_gain_stop_rounds") or 2)
+        ),
     }
     source_audit["query_budget"] = budget
     source_audit["dynamic_entity_backfill"] = dynamic_entity_backfill
@@ -1107,7 +1153,7 @@ async def discover_topic_with_timeout(service: TopicDiscoveryService, topic: str
     if plan_quality.status == "ready":
         return discovery
 
-    if fallback_quality.ready_score > plan_quality.ready_score:
+    if fallback_quality.score > plan_quality.score:
         return {
             **discovery,
             "fallback": True,

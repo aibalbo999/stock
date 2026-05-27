@@ -1741,13 +1741,21 @@ with tabs[0]:
 
             with st.expander("進階選項"):
                 ai_discovery_mode = st.checkbox("由 AI 拆解主題與建立候選清單", value=True)
-                deep_analysis = st.checkbox("深度分析（較慢，抓更多國際/本地來源）", value=True)
+                analysis_mode_label = st.radio(
+                    "分析強度",
+                    options=["快速預覽", "標準研究", "深度研究"],
+                    index=1,
+                    horizontal=True,
+                )
+                analysis_mode_map = {"快速預覽": "fast", "標準研究": "standard", "深度研究": "deep"}
+                analysis_mode = analysis_mode_map[analysis_mode_label]
+                deep_analysis = analysis_mode == "deep"
                 include_international = st.checkbox("納入國際資料源", value=True)
                 evidence_limit = st.slider(
                     "報告引用資料量",
                     min_value=40,
                     max_value=200,
-                    value=120 if deep_analysis else 40,
+                    value=180 if analysis_mode == "deep" else 120 if analysis_mode == "standard" else 80,
                     step=20,
                 )
                 refresh_before_report = st.checkbox("手動模式產報告前刷新資料", value=False)
@@ -1771,6 +1779,7 @@ with tabs[0]:
                                 "limit_per_query": int(discovery_limit),
                                 "lookback_days": int(lookback_days),
                                 "evidence_limit": int(evidence_limit),
+                                "analysis_mode": analysis_mode,
                                 "deep_analysis": bool(deep_analysis),
                                 "include_international": bool(include_international),
                                 "investor_capital": int(investor_capital),

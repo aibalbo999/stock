@@ -333,7 +333,8 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
 
     assert audit["topic"] == "AI 產業鏈"
     assert audit["lookback_days"] == 21
-    assert audit["effective_lookback_days"] == 90
+    assert audit["effective_lookback_days"] == 120
+    assert audit["analysis_mode"] == "deep"
     assert audit["deep_analysis"] is True
     assert audit["include_international"] is True
     assert audit["fixed_sources"]["stored_count"] == 2
@@ -371,24 +372,35 @@ def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> Non
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (20, 180, 48)
-    assert main.discovery_effective_lookback_days(payload) == 90
-    assert main.discovery_document_limit(payload, 180) == 800
+    assert main.discovery_fetch_settings(payload) == (20, 180, 72)
+    assert main.discovery_effective_lookback_days(payload) == 120
+    assert main.discovery_document_limit(payload, 180) == 1000
     assert main.discovery_market_history_days(payload) == 720
     assert main.discovery_valuation_history_days(payload) == 180
 
 
+def test_standard_discovery_fetch_settings_are_deeper_than_fast_preview() -> None:
+    fast = main.TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="fast")
+    standard = main.TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="standard")
+
+    assert main.discovery_fetch_settings(fast) == (8, 80, 24)
+    assert main.discovery_fetch_settings(standard) == (8, 80, 36)
+    assert main.discovery_effective_lookback_days(standard) == 60
+    assert main.discovery_document_limit(standard, 80) == 600
+
+
 def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
-    normal_budget = main.discovery_query_budget(30, deep_analysis=False)
+    normal_budget = main.discovery_query_budget(36, analysis_mode="standard")
     deep_budget = main.discovery_query_budget(80, deep_analysis=True)
 
-    assert normal_budget["initial_queries"] < 30
+    assert normal_budget["initial_queries"] < 36
     assert normal_budget["supplemental_queries"] > 0
-    assert normal_budget["supplemental_rounds"] == 1
+    assert normal_budget["supplemental_rounds"] == 3
     assert deep_budget["initial_queries"] < 80
     assert deep_budget["supplemental_queries"] > normal_budget["supplemental_queries"]
-    assert deep_budget["supplemental_rounds"] == 3
+    assert deep_budget["supplemental_rounds"] == 5
     assert deep_budget["supplemental_batch_size"] == 12
+    assert deep_budget["no_gain_stop_rounds"] == 2
 
 
 def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() -> None:

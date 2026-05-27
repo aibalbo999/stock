@@ -86,6 +86,29 @@ def test_report_html_renders_quality_warnings() -> None:
     assert ">高 76<" in html
 
 
+def test_report_html_renders_observations_without_warning_title() -> None:
+    helpers = load_report_helpers()
+    markdown = "# AI 產業鏈 自動分析報告\n"
+
+    html = helpers["report_html"](
+        markdown,
+        {
+            "report_id": 1,
+            "quality_gate": {
+                "status": "ready",
+                "warnings": [],
+                "blockers": [],
+                "observations": ["LLM 補充分析已完成，且仍受來源與白名單驗證約束"],
+            },
+        },
+    )
+
+    assert "品質觀察" in html
+    assert "品質警示" not in html
+    assert "觀察：" in html
+    assert "LLM 補充分析已完成" in html
+
+
 def test_report_html_labels_low_candidate_confidence() -> None:
     helpers = load_report_helpers()
 

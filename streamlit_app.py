@@ -721,7 +721,15 @@ def quality_issue_html(gate: dict) -> str:
         else ""
     )
     issue_html = "<ul>" + "".join(items) + "</ul>" if items else ""
-    return f"<section class='panel quality-issues'><h2>品質警示</h2>{issue_html}{action_html}</section>"
+    if blockers:
+        title = "品質阻擋"
+    elif warnings:
+        title = "品質警示"
+    elif actions:
+        title = "建議補強"
+    else:
+        title = "品質觀察"
+    return f"<section class='panel quality-issues'><h2>{title}</h2>{issue_html}{action_html}</section>"
 
 
 def metric_percent(value: object) -> str:

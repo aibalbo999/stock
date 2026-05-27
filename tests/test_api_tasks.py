@@ -280,6 +280,17 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
             "items": [{"title": "固定來源 A"}, {"title": "固定來源 B"}],
             "errors": [],
             "source_category_counts": {"taiwan_news": 2},
+            "source_results": [
+                {
+                    "category": "taiwan_news",
+                    "source_intents": ["industry_news"],
+                    "stored_count": 2,
+                }
+            ],
+            "source_selection": {
+                "selected": [{"name": "technews", "match_score": 1}],
+                "skipped": [{"name": "nvidia-newsroom", "reason": "topic_not_matched"}],
+            },
         },
         dynamic_query_ingestion=[
             {
@@ -327,6 +338,9 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
     assert audit["include_international"] is True
     assert audit["fixed_sources"]["stored_count"] == 2
     assert audit["fixed_sources"]["source_category_counts"] == {"taiwan_news": 2}
+    assert audit["fixed_sources"]["source_intent_counts"] == {"industry_news": 2}
+    assert audit["fixed_sources"]["source_selection"]["selected_count"] == 1
+    assert audit["fixed_sources"]["source_selection"]["skipped_count"] == 1
     assert audit["dynamic_queries"]["stored_count"] == 4
     assert audit["dynamic_queries"]["source_category_counts"] == {
         "cloud_capex": 3,
@@ -341,6 +355,7 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
     ]
     assert audit["query_type_counts"] == {"subtopic": 1, "coverage_gap": 1}
     assert audit["query_intent_counts"] == {"industry_news": 1, "capacity_supply": 1}
+    assert audit["query_intent_labels"]["capacity_supply"]["label"] == "產能供給"
     assert audit["query_type_labels"]["subtopic"]["label"] == "子題查詢"
     assert audit["query_type_labels"]["coverage_gap"]["label"] == "缺口補強查詢"
     assert audit["query_metadata_sample"][1]["source_type"] == "coverage_gap"

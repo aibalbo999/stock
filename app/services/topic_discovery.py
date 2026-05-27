@@ -871,6 +871,7 @@ class TopicDiscoveryService:
         include_international: bool = True,
         max_urls: int | None = None,
         existing_urls: list[str] | None = None,
+        missing_subtopics: list[str] | None = None,
     ) -> list[dict]:
         supported_tickers = {
             candidate.ticker
@@ -892,7 +893,13 @@ class TopicDiscoveryService:
             if include_international:
                 queries.append(f"{candidate.name} {candidate.ticker} Taiwan supplier {keywords}".strip())
                 queries.append(f"{candidate.segment} {keywords} Taiwan listed company".strip())
-        for subtopic in plan.subtopics:
+        target_names = set(missing_subtopics or [])
+        target_subtopics = [
+            subtopic
+            for subtopic in plan.subtopics
+            if not target_names or (subtopic.name or "未命名子題") in target_names
+        ]
+        for subtopic in target_subtopics:
             evidence_terms = " ".join(subtopic.required_evidence[:2])
             risk_terms = " ".join(subtopic.risk_focus[:2])
             queries.append(f"{subtopic.name} {subtopic.rationale} {evidence_terms} 台股".strip())
@@ -910,6 +917,15 @@ class TopicDiscoveryService:
             max_urls=max_urls,
             existing_urls=existing_urls or [],
         )
+
+    @staticmethod
+    def missing_subtopic_names(source_relevance: dict) -> list[str]:
+        readiness = source_relevance.get("subtopic_readiness") or {}
+        return [
+            name
+            for name, detail in readiness.items()
+            if isinstance(detail, dict) and detail.get("status") == "missing"
+        ]
 
     @staticmethod
     def _google_news_urls_from_queries(

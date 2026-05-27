@@ -85,10 +85,14 @@ def test_news_source_store_filters_topic_specific_sources(tmp_path) -> None:
 
     store = NewsSourceStore(path)
 
-    assert [source.name for source in store.sources_for_topic("AI 產業鏈")] == ["base", "ai"]
-    assert [source.name for source in store.sources_for_topic("電動車供應鏈")] == ["base", "ev"]
+    assert [source.name for source in store.sources_for_topic("AI 產業鏈")] == ["ai", "base"]
+    assert [source.name for source in store.sources_for_topic("電動車供應鏈")] == ["ev", "base"]
     assert [source.name for source in store.sources_for_topic("航運景氣循環")] == ["base"]
     assert [source.name for source in store.sources_for_topic("航運景氣循環 industry_news")] == ["base"]
+    selection = store.selection_for_topic("AI 產業鏈")
+    assert selection["selected"][0]["name"] == "ai"
+    assert selection["selected"][0]["match_terms"] == ["AI"]
+    assert any(item["name"] == "ev" and item["reason"] == "topic_not_matched" for item in selection["skipped"])
 
 
 def test_default_news_sources_have_research_categories_and_unique_urls() -> None:

@@ -31,11 +31,20 @@ class NewsSourceConfig(BaseModel):
             return False
         if self.scope == "universal":
             return True
+        return bool(self.match_terms(topic))
+
+    def match_terms(self, topic: str | None) -> list[str]:
         if not topic:
-            return False
+            return []
         normalized_topic = topic.casefold()
-        terms = self.topics
-        return any(term.casefold() in normalized_topic for term in terms if term)
+        return [term for term in self.topics if term and term.casefold() in normalized_topic]
+
+    def match_score(self, topic: str | None) -> int:
+        if not self.enabled:
+            return 0
+        if self.scope == "universal":
+            return 1
+        return len(self.match_terms(topic)) * 10
 
 
 class NewsSourceStore:
@@ -52,7 +61,44 @@ class NewsSourceStore:
         return [source for source in self.load() if source.enabled]
 
     def sources_for_topic(self, topic: str | None) -> list[NewsSourceConfig]:
-        return [source for source in self.load() if source.matches_topic(topic)]
+        return sorted(
+            [source for source in self.load() if source.matches_topic(topic)],
+            key=lambda source: (-source.match_score(topic), source.name),
+        )
+
+    def selection_for_topic(self, topic: str | None) -> dict:
+        sources = self.load()
+        selected = self.sources_for_topic(topic)
+        selected_names = {source.name for source in selected}
+        return {
+            "topic": topic,
+            "selected_count": len(selected),
+            "available_count": len(sources),
+            "selected": [
+                {
+                    "name": source.name,
+                    "scope": source.scope,
+                    "category": source.category,
+                    "match_score": source.match_score(topic),
+                    "match_terms": source.match_terms(topic),
+                    "source_intents": source.source_intents,
+                }
+                for source in selected
+            ],
+            "skipped": [
+                {
+                    "name": source.name,
+                    "scope": source.scope,
+                    "category": source.category,
+                    "reason": "disabled"
+                    if not source.enabled
+                    else "topic_not_matched",
+                    "topics": source.topics[:8],
+                }
+                for source in sources
+                if source.name not in selected_names
+            ],
+        }
 
 
 class NewsFetcher:

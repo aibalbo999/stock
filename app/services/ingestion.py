@@ -63,6 +63,7 @@ class IngestionPipeline:
                 if enabled_sources_only
                 else available_sources
             )
+            selection = source_store.selection_for_topic(topic)
             source_selection = {
                 "mode": "topic_filtered" if enabled_sources_only else "all_sources",
                 "topic": topic,
@@ -70,6 +71,8 @@ class IngestionPipeline:
                 "available_count": len(available_sources),
                 "selected_sources": [source.name for source in sources],
                 "skipped_sources": [source.name for source in available_sources if source.enabled and source not in sources],
+                "selected": selection["selected"] if enabled_sources_only else [],
+                "skipped": selection["skipped"] if enabled_sources_only else [],
             }
             source_results = []
             for source in sources:

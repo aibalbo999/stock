@@ -754,6 +754,46 @@ def test_supplemental_google_news_urls_include_subtopic_evidence_and_risk_terms(
     assert any("%E7%BC%BA%E9%9B%BB" in url for url in urls)
 
 
+def test_supplemental_google_news_urls_can_focus_missing_subtopics() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "rationale": "功耗提升",
+              "objective": "確認液冷訂單",
+              "required_evidence": ["液冷訂單"],
+              "risk_focus": ["認證延遲"],
+              "search_queries": ["AI 伺服器 液冷"]
+            },
+            {
+              "name": "出口管制",
+              "rationale": "政策風險",
+              "objective": "確認禁令",
+              "required_evidence": ["出口管制"],
+              "risk_focus": ["禁令"],
+              "search_queries": ["export control AI chips"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().supplemental_google_news_query_metadata(
+        plan,
+        [],
+        include_international=False,
+        max_urls=5,
+        missing_subtopics=["出口管制"],
+    )
+
+    assert metadata
+    assert all("出口管制" in item["query"] or "export control" in item["query"] for item in metadata)
+    assert not any("液冷散熱" in item["query"] for item in metadata)
+
+
 def test_validate_candidates_marks_evidence_supported() -> None:
     service = TopicDiscoveryService()
     plan = TopicDiscoveryService.parse_plan(

@@ -716,6 +716,8 @@ def summarize_ingestion_stage(results: list[dict]) -> dict:
         "error_count": error_count,
         "sample_titles": sample_titles,
         "source_category_counts": summarize_source_categories(results),
+        "source_intent_counts": summarize_source_intents(results),
+        "source_selection": summarize_source_selection(results),
     }
 
 
@@ -725,6 +727,31 @@ def summarize_source_categories(results: list[dict]) -> dict:
         for category, count in (result.get("source_category_counts") or {}).items():
             counts[str(category)] = counts.get(str(category), 0) + int(count or 0)
     return counts
+
+
+def summarize_source_intents(results: list[dict]) -> dict:
+    counts: dict[str, int] = {}
+    for result in results:
+        for source_result in result.get("source_results") or []:
+            stored_count = int(source_result.get("stored_count") or 0)
+            for intent in source_result.get("source_intents") or []:
+                counts[str(intent)] = counts.get(str(intent), 0) + stored_count
+    return counts
+
+
+def summarize_source_selection(results: list[dict]) -> dict:
+    selected = []
+    skipped = []
+    for result in results:
+        selection = result.get("source_selection") or {}
+        selected.extend(selection.get("selected") or [])
+        skipped.extend(selection.get("skipped") or [])
+    return {
+        "selected_count": len(selected),
+        "skipped_count": len(skipped),
+        "selected_sample": selected[:12],
+        "skipped_sample": skipped[:12],
+    }
 
 
 def build_source_audit(
@@ -751,6 +778,10 @@ def build_source_audit(
         source_type: query_type_label(source_type)
         for source_type in query_type_counts
     }
+    query_intent_labels = {
+        source_intent: query_intent_label(source_intent)
+        for source_intent in query_intent_counts
+    }
     return {
         "topic": payload.topic,
         "lookback_days": payload.lookback_days,
@@ -766,6 +797,7 @@ def build_source_audit(
         "dynamic_query_sample": urls[:10],
         "query_type_counts": query_type_counts,
         "query_intent_counts": query_intent_counts,
+        "query_intent_labels": query_intent_labels,
         "query_type_labels": query_type_labels,
         "query_metadata_sample": query_metadata[:10],
         "total_stored_count": fixed_summary["stored_count"] + dynamic_summary["stored_count"],
@@ -787,6 +819,21 @@ def query_type_label(source_type: str) -> dict:
         "unknown": ("未分類查詢", "尚未分類的查詢來源。"),
     }
     label, description = labels.get(source_type, labels["unknown"])
+    return {"label": label, "description": description}
+
+
+def query_intent_label(source_intent: str) -> dict:
+    labels = {
+        "industry_news": ("產業新聞", "追蹤需求、供給、競爭與產業變化。"),
+        "company_disclosure": ("公司公開資訊", "追蹤法說、年報、重大訊息與公司層級證據。"),
+        "financial_metrics": ("財務資料", "追蹤營收、獲利、毛利、現金流與 ROE。"),
+        "valuation": ("估值資料", "追蹤本益比、股價、同業估值與評價合理性。"),
+        "capacity_supply": ("產能供給", "追蹤產能、良率、交期與供應鏈瓶頸。"),
+        "regulatory_policy": ("政策法規", "追蹤出口管制、地緣政治、法規與政策變化。"),
+        "international_context": ("國際脈絡", "追蹤海外需求、國際供應鏈與全球市場訊號。"),
+        "unknown": ("未分類意圖", "尚未分類的資料需求。"),
+    }
+    label, description = labels.get(source_intent, labels["unknown"])
     return {"label": label, "description": description}
 
 
@@ -978,6 +1025,7 @@ async def run_topic_discovery_ingestion(
             include_international=payload.include_international,
             max_urls=min(remaining_queries, budget["supplemental_batch_size"]),
             existing_urls=urls,
+            missing_subtopics=service.missing_subtopic_names(source_relevance),
         )
         supplemental_urls = [item["url"] for item in supplemental_metadata]
         if not supplemental_urls:

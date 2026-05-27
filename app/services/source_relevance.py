@@ -107,7 +107,7 @@ class SourceRelevanceAnalyzer:
         ]
         if document_count == 0:
             status = "missing"
-        elif document_count >= 2 and publisher_count >= 2:
+        elif document_count >= 2 and publisher_count >= 2 and not missing_intents:
             status = "ready"
         else:
             status = "weak"
@@ -163,6 +163,8 @@ class SourceRelevanceAnalyzer:
             return "datacenter_power"
         if "semiengineering" in haystack or "semiconductor engineering" in haystack:
             return "semiconductor_industry"
+        if any(term in haystack for term in ["export", "bis", "commerce.gov", "federalregister"]):
+            return "policy_export_controls"
         if "news.google.com" in haystack:
             return "dynamic_search"
         return "news"
@@ -184,14 +186,17 @@ class SourceRelevanceAnalyzer:
             "cloud_capex": ["industry_news", "international_context"],
             "datacenter_power": ["capacity_supply", "regulatory_policy", "international_context"],
             "semiconductor_industry": ["industry_news", "capacity_supply", "international_context"],
+            "policy_export_controls": ["regulatory_policy", "international_context"],
             "dynamic_search": ["industry_news"],
             "news": ["industry_news"],
         }
         intents = list(mapping.get(category, ["industry_news"]))
         text = f"{document.title}\n{document.text}".lower()
+        if any(term in text for term in ["產能", "良率", "瓶頸", "交期", "capacity", "yield", "bottleneck"]):
+            intents.append("capacity_supply")
         if any(term in text for term in ["法說", "年報", "公開說明書", "重大訊息", "investor presentation"]):
             intents.append("company_disclosure")
-        if any(term in text for term in ["出口管制", "禁令", "政策", "regulation", "export control"]):
+        if any(term in text for term in ["商務部", "bis", "federal register", "official rule", "regulatory filing"]):
             intents.append("regulatory_policy")
         return list(dict.fromkeys(intents))
 

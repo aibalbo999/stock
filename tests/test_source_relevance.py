@@ -55,7 +55,8 @@ def test_source_relevance_reports_subtopic_readiness_by_research_task() -> None:
               "objective": "確認液冷散熱是否形成出貨瓶頸",
               "required_evidence": ["液冷訂單", "產能"],
               "risk_focus": ["交期延遲"],
-              "search_queries": ["AI 伺服器 液冷 產能"]
+              "search_queries": ["AI 伺服器 液冷 產能"],
+              "source_intents": ["industry_news", "capacity_supply"]
             },
             {
               "name": "出口管制",
@@ -89,3 +90,45 @@ def test_source_relevance_reports_subtopic_readiness_by_research_task() -> None:
     assert result["subtopic_readiness"]["液冷散熱"]["status"] == "ready"
     assert result["subtopic_readiness"]["出口管制"]["status"] == "missing"
     assert result["missing_subtopic_count"] == 1
+
+
+def test_source_relevance_keeps_subtopic_weak_when_required_intent_is_missing() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "政策風險",
+              "objective": "查核出口管制是否影響供應鏈",
+              "required_evidence": ["出口管制"],
+              "risk_focus": ["政策禁令"],
+              "search_queries": ["export control AI chips Taiwan"],
+              "source_intents": ["regulatory_policy"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="政策風險與出口管制影響 AI 晶片",
+            text="市場討論政策風險與出口管制，但未提供法規原始說明。",
+            publisher="科技新報",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="AI 晶片供應鏈評估政策風險",
+            text="供應鏈持續評估政策風險與出口限制。",
+            publisher="中央社科技",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    result = SourceRelevanceAnalyzer().analyze(plan, documents)
+
+    readiness = result["subtopic_readiness"]["政策風險"]
+    assert readiness["document_count"] == 2
+    assert readiness["publisher_count"] == 2
+    assert readiness["status"] == "weak"
+    assert readiness["missing_source_intents"] == ["regulatory_policy"]

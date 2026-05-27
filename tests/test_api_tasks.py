@@ -403,6 +403,31 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
     assert deep_budget["no_gain_stop_rounds"] == 2
 
 
+def test_discovery_budget_auto_escalates_on_source_coverage_gaps() -> None:
+    budget = main.discovery_query_budget(36, analysis_mode="standard")
+    source_audit = {
+        "plan_quality": {"status": "ready"},
+        "source_relevance": {"missing_subtopic_count": 2, "weak_subtopic_count": 0},
+    }
+    candidate_support = {"total": 5, "supported_ratio": 0.8}
+
+    assert main.should_escalate_discovery_budget(source_audit, candidate_support, budget) is True
+    escalated = main.escalate_discovery_budget(budget, 36)
+    assert escalated["escalated"] is True
+    assert escalated["supplemental_rounds"] == 5
+    assert escalated["supplemental_batch_size"] == 12
+
+
+def test_discovery_budget_does_not_escalate_deep_mode() -> None:
+    budget = main.discovery_query_budget(72, analysis_mode="deep")
+    source_audit = {
+        "plan_quality": {"status": "insufficient"},
+        "source_relevance": {"missing_subtopic_count": 3},
+    }
+
+    assert main.should_escalate_discovery_budget(source_audit, {"total": 0}, budget) is False
+
+
 def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() -> None:
     candidates = [
         {"ticker": "2330", "status": "evidence_supported"},

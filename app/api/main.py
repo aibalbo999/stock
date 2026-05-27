@@ -919,6 +919,44 @@ def discovery_query_budget(max_queries: int, analysis_mode: str = "standard", de
     }
 
 
+def should_escalate_discovery_budget(
+    source_audit: dict,
+    candidate_support: dict,
+    current_budget: dict,
+) -> bool:
+    if current_budget.get("escalated"):
+        return False
+    if current_budget.get("analysis_mode") == "deep":
+        return False
+    plan_quality = source_audit.get("plan_quality") or {}
+    source_relevance = source_audit.get("source_relevance") or {}
+    if plan_quality.get("status") == "insufficient":
+        return True
+    if int(source_relevance.get("missing_subtopic_count") or 0) >= 2:
+        return True
+    if int(source_relevance.get("weak_subtopic_count") or 0) >= 3:
+        return True
+    if int(candidate_support.get("total") or 0) > 0 and float(candidate_support.get("supported_ratio") or 0) < 0.35:
+        return True
+    return False
+
+
+def escalate_discovery_budget(budget: dict, max_queries: int) -> dict:
+    supplemental_rounds = max(int(budget.get("supplemental_rounds") or 0), 5)
+    supplemental_batch_size = max(int(budget.get("supplemental_batch_size") or 0), 12)
+    initial_queries = int(budget.get("initial_queries") or 0)
+    return {
+        **budget,
+        "analysis_mode": f"{budget.get('analysis_mode', 'standard')}_auto_escalated",
+        "supplemental_rounds": supplemental_rounds,
+        "supplemental_batch_size": supplemental_batch_size,
+        "supplemental_queries": max(0, max_queries - initial_queries),
+        "no_gain_stop_rounds": max(int(budget.get("no_gain_stop_rounds") or 0), 2),
+        "escalated": True,
+        "escalation_reason": "plan_or_source_coverage_gap",
+    }
+
+
 def source_selection_context(topic: str, plan: TopicDiscoveryPlan | None = None) -> str:
     terms = [topic]
     if plan:
@@ -1010,6 +1048,7 @@ async def run_topic_discovery_ingestion(
     )
     remediation_rounds = []
     no_gain_rounds = 0
+    remediation_stop_reason = "coverage_sufficient"
     candidates = []
     candidate_support = {"total": 0, "supported": 0, "weak": 0, "unsupported": 0, "supported_ratio": 0}
     source_audit = build_source_audit(
@@ -1049,10 +1088,14 @@ async def run_topic_discovery_ingestion(
         )
         source_audit["plan_quality"] = plan_quality.model_dump()
         source_audit["source_relevance"] = source_relevance
+        if should_escalate_discovery_budget(source_audit, candidate_support, budget):
+            budget = escalate_discovery_budget(budget, max_queries)
         if not should_supplement_discovery_sources(source_audit, candidate_support):
+            remediation_stop_reason = "coverage_sufficient"
             break
         remaining_queries = max_queries - len(urls)
         if remaining_queries <= 0 or round_index >= budget["supplemental_rounds"]:
+            remediation_stop_reason = "query_budget_exhausted"
             break
         supplemental_metadata = service.supplemental_google_news_query_metadata(
             plan,
@@ -1064,6 +1107,7 @@ async def run_topic_discovery_ingestion(
         )
         supplemental_urls = [item["url"] for item in supplemental_metadata]
         if not supplemental_urls:
+            remediation_stop_reason = "no_supplemental_queries"
             break
         supplemental_ingestion = await ingest_dynamic_news_urls(
             supplemental_urls,
@@ -1089,6 +1133,7 @@ async def run_topic_discovery_ingestion(
             }
         )
         if no_gain_rounds >= int(budget.get("no_gain_stop_rounds") or 2):
+            remediation_stop_reason = "no_new_sources"
             break
 
     source_audit = build_source_audit(
@@ -1106,7 +1151,7 @@ async def run_topic_discovery_ingestion(
     source_audit["source_relevance"] = source_relevance
     source_audit["remediation"] = {
         "supplemented": bool(remediation_rounds),
-        "reason": "low_candidate_or_source_coverage" if remediation_rounds else "coverage_sufficient",
+        "reason": remediation_stop_reason,
         "rounds": remediation_rounds,
         "supplemental_query_count": sum(round_item["query_count"] for round_item in remediation_rounds),
         "supplemental_stored_count": sum(round_item["stored_count"] for round_item in remediation_rounds),

@@ -40,6 +40,9 @@ include = ["app*"]
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.security_scan]
+command = "python scripts/security_scan.py"
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

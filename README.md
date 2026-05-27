@@ -8,6 +8,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 
 - AI 主題拆解：由 LLM 依主題產生可執行研究任務，包含子題、研究目的、必查證據、風險焦點、搜尋 query 與台股候選研究清單。
 - 查詢可追蹤：AI 產生的每組資料查詢會保留語言、證據類型與驗證假設，方便檢查「為什麼抓這批資料」。
+- 來源意圖可追蹤：AI 子題會保留/自動補齊 `source_intents`，用來標示應補新聞、公司公開文件、財務、估值、產能、政策或國際資料。
 - 查詢自動補強：若 query 太籠統、未對齊研究證據/風險，或缺少有效國際查詢，系統會產生 `query_quality_gap` 補強查詢。
 - 拆解自我修復：若第一次拆解缺少必要研究面向，系統會把品質缺口交回 AI 自動修正一次，並只採用分數更高的版本。
 - 資料抓取：支援固定 RSS、Google News RSS 動態 query、手動補充新聞與市場資料刷新；固定來源已分成台灣新聞、AI 晶片供應商、雲端資本支出、AI 需求、資料中心電力/基礎建設、半導體產業等類別。
@@ -36,6 +37,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 ## 核心安全護欄
 
 - 不提交 `.env`、SQLite DB、向量庫、報告輸出、快取與 Celery beat DB。
+- 提交前可執行 `.venv/bin/python scripts/security_scan.py` 掃描已追蹤檔案中的 Gemini/OpenAI key 與私鑰；規則使用長度與邊界判斷，避免把 CSS class 或測試任務 ID 誤判成密鑰。
 - API key 使用 `.env` 的 `GOOGLE_API_KEYS` 或 `GOOGLE_API_KEY`，可用逗號設定多組 Gemini key 輪調。
 - LLM 不能只憑模型回答把公司放進產業鏈；候選公司需同時命中公司實體與主題證據關鍵詞。
 - 子題拆解不可只輸出熱門股票或關鍵字，必須先說明產業因果、要查的資料與要監控的風險。

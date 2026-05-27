@@ -581,8 +581,34 @@ def test_google_news_urls_can_return_query_metadata() -> None:
     assert any(item["source_type"] == "research_task" for item in metadata)
     assert any(item["source_type"] == "coverage_gap" for item in metadata)
     assert all("hypothesis" in item and "evidence_type" in item and "language" in item for item in metadata)
+    assert all("source_intent" in item for item in metadata)
     assert metadata[0]["hypothesis"] == "確認需求"
     assert metadata[0]["evidence_type"] in {"需求/成長", "風險/瓶頸"}
+    assert metadata[0]["source_intent"] in {"industry_news", "company_disclosure"}
+
+
+def test_parse_plan_infers_source_intents_when_missing() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "估值與財務",
+              "rationale": "避免追高",
+              "objective": "比較營收、毛利與本益比",
+              "required_evidence": ["營收", "毛利", "本益比"],
+              "risk_focus": ["估值過高"],
+              "search_queries": ["台股 財報 本益比 valuation"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    assert "financial_metrics" in plan.subtopics[0].source_intents
+    assert "valuation" in plan.subtopics[0].source_intents
+    assert "international_context" in plan.subtopics[0].source_intents
 
 
 def test_google_news_query_metadata_labels_language_and_hypothesis() -> None:

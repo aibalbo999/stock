@@ -22,6 +22,7 @@ class DiscoverySubtopic(BaseModel):
     required_evidence: list[str] = Field(default_factory=list, max_length=6)
     risk_focus: list[str] = Field(default_factory=list, max_length=6)
     search_queries: list[str] = Field(default_factory=list, max_length=5)
+    source_intents: list[str] = Field(default_factory=list, max_length=6)
 
 
 class CandidateCompany(BaseModel):
@@ -159,7 +160,8 @@ class TopicDiscoveryService:
     @staticmethod
     def _fallback_plan(topic: str) -> TopicDiscoveryPlan:
         if "AI" not in topic.upper() and "人工智慧" not in topic:
-            return TopicDiscoveryPlan(
+            return TopicDiscoveryService.enrich_plan(
+                TopicDiscoveryPlan(
                 subtopics=[
                     DiscoverySubtopic(
                         name=f"{topic} 需求與成長",
@@ -179,8 +181,10 @@ class TopicDiscoveryService:
                     ),
                 ],
                 candidate_companies=[],
+                )
             )
-        return TopicDiscoveryPlan(
+        return TopicDiscoveryService.enrich_plan(
+            TopicDiscoveryPlan(
             subtopics=[
                 DiscoverySubtopic(
                     name="AI 伺服器需求",
@@ -373,6 +377,7 @@ class TopicDiscoveryService:
                     evidence_keywords=["散熱", "均熱片", "AI 伺服器"],
                 ),
             ],
+            )
         )
 
     @staticmethod
@@ -488,6 +493,7 @@ class TopicDiscoveryService:
                     *subtopic.required_evidence,
                     *subtopic.risk_focus,
                     *subtopic.search_queries,
+                    *subtopic.source_intents,
                 ]
             ).lower()
             for subtopic in plan.subtopics
@@ -636,6 +642,7 @@ class TopicDiscoveryService:
                         "research_task",
                         self._subtopic_hypothesis(subtopic),
                         self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                        self._primary_source_intent(subtopic),
                     )
                 )
             for query in subtopic.search_queries:
@@ -645,6 +652,7 @@ class TopicDiscoveryService:
                         "subtopic",
                         self._subtopic_hypothesis(subtopic),
                         self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                        self._primary_source_intent(subtopic),
                     )
                 )
                 if include_international:
@@ -654,6 +662,7 @@ class TopicDiscoveryService:
                             "subtopic_international",
                             self._subtopic_hypothesis(subtopic),
                             self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                            "international_context",
                         )
                     )
         for candidate in plan.candidate_companies:
@@ -665,6 +674,7 @@ class TopicDiscoveryService:
                     "candidate",
                     candidate_hypothesis,
                     "候選公司證據",
+                    "company_disclosure",
                 )
             )
             queries.append(
@@ -673,6 +683,7 @@ class TopicDiscoveryService:
                     "candidate",
                     candidate_hypothesis,
                     "公司實體驗證",
+                    "company_disclosure",
                 )
             )
             if include_international:
@@ -683,6 +694,7 @@ class TopicDiscoveryService:
                         "candidate_international",
                         candidate_hypothesis,
                         "國際供應鏈證據",
+                        "international_context",
                     )
                 )
                 queries.append(
@@ -691,6 +703,7 @@ class TopicDiscoveryService:
                         "candidate_international",
                         candidate_hypothesis,
                         "國際供應鏈證據",
+                        "international_context",
                     )
                 )
         if topic:
@@ -701,6 +714,7 @@ class TopicDiscoveryService:
                     "query_quality_gap",
                     f"補強「{topic}」中過於籠統、未對齊或缺國際資料的搜尋 query。",
                     "查詢品質補強",
+                    "industry_news",
                 )
                 for query in self.query_quality_gap_queries(topic, plan, plan_quality)
             )
@@ -710,6 +724,7 @@ class TopicDiscoveryService:
                     "coverage_gap",
                     f"補齊「{topic}」研究拆解品質缺口。",
                     "品質缺口補強",
+                    "industry_news",
                 )
                 for query in self.coverage_gap_queries(topic, plan_quality)
             )
@@ -720,6 +735,7 @@ class TopicDiscoveryService:
                     "international_context",
                     "補充國際市場、雲端資本支出與供應鏈背景，避免只看台灣新聞。",
                     "國際背景",
+                    "international_context",
                 )
                 for query in self._international_context_queries()
             )
@@ -740,12 +756,19 @@ class TopicDiscoveryService:
         return metadata if include_metadata else urls
 
     @staticmethod
-    def _query_item(query: str, source_type: str, hypothesis: str, evidence_type: str) -> dict:
+    def _query_item(
+        query: str,
+        source_type: str,
+        hypothesis: str,
+        evidence_type: str,
+        source_intent: str,
+    ) -> dict:
         return {
             "query": query,
             "source_type": source_type,
             "hypothesis": hypothesis,
             "evidence_type": evidence_type,
+            "source_intent": source_intent,
         }
 
     @staticmethod
@@ -767,6 +790,12 @@ class TopicDiscoveryService:
         if any(term in text for term in ["產能", "供給", "良率", "capacity", "supply"]):
             return "供給/產能"
         return "需求/成長"
+
+    @staticmethod
+    def _primary_source_intent(subtopic: DiscoverySubtopic) -> str:
+        if subtopic.source_intents:
+            return subtopic.source_intents[0]
+        return TopicDiscoveryService.infer_source_intents(subtopic)[0]
 
     @staticmethod
     def _query_language(query: str) -> str:
@@ -877,6 +906,7 @@ class TopicDiscoveryService:
             source_type="supplemental",
             hypothesis="補強弱證據候選與低覆蓋子題，重新驗證是否可進入正式分析。",
             evidence_type="補抓資料源",
+            source_intent="company_disclosure",
             max_urls=max_urls,
             existing_urls=existing_urls or [],
         )
@@ -894,6 +924,7 @@ class TopicDiscoveryService:
                 source_type="supplemental",
                 hypothesis="補強資料來源。",
                 evidence_type="補抓資料源",
+                source_intent="industry_news",
                 max_urls=max_urls,
                 existing_urls=existing_urls,
             )
@@ -905,6 +936,7 @@ class TopicDiscoveryService:
         source_type: str,
         hypothesis: str,
         evidence_type: str,
+        source_intent: str = "industry_news",
         max_urls: int | None = None,
         existing_urls: list[str] | None = None,
     ) -> list[dict]:
@@ -930,6 +962,7 @@ class TopicDiscoveryService:
                     "source_type": source_type,
                     "hypothesis": hypothesis,
                     "evidence_type": evidence_type,
+                    "source_intent": source_intent,
                     "language": TopicDiscoveryService._query_language(normalized),
                 }
             )
@@ -1155,9 +1188,46 @@ class TopicDiscoveryService:
     def parse_plan(raw_text: str) -> TopicDiscoveryPlan:
         json_text = TopicDiscoveryService._extract_json(raw_text)
         try:
-            return TopicDiscoveryPlan.model_validate_json(json_text)
+            return TopicDiscoveryService.enrich_plan(TopicDiscoveryPlan.model_validate_json(json_text))
         except (ValidationError, ValueError) as exc:
             raise ValueError("invalid topic discovery json") from exc
+
+    @staticmethod
+    def enrich_plan(plan: TopicDiscoveryPlan) -> TopicDiscoveryPlan:
+        for subtopic in plan.subtopics:
+            if not subtopic.source_intents:
+                subtopic.source_intents = TopicDiscoveryService.infer_source_intents(subtopic)
+        return plan
+
+    @staticmethod
+    def infer_source_intents(subtopic: DiscoverySubtopic) -> list[str]:
+        text = " ".join(
+            [
+                subtopic.name,
+                subtopic.rationale,
+                subtopic.objective,
+                *subtopic.required_evidence,
+                *subtopic.risk_focus,
+                *subtopic.search_queries,
+            ]
+        ).lower()
+        rules = [
+            ("financial_metrics", ["營收", "獲利", "毛利", "現金流", "roe", "revenue", "margin", "profit"]),
+            ("valuation", ["估值", "股價", "本益比", "pe", "p/e", "pb", "valuation", "price"]),
+            ("company_disclosure", ["法說", "年報", "公開說明書", "重大訊息", "訂單", "出貨", "客戶"]),
+            ("industry_news", ["產業", "市場", "需求", "供給", "成長", "market", "demand", "supply"]),
+            ("capacity_supply", ["產能", "良率", "瓶頸", "交期", "capacity", "yield", "bottleneck"]),
+            ("regulatory_policy", ["政策", "法規", "管制", "禁令", "地緣", "regulation", "export control"]),
+            ("international_context", ["國際", "全球", "美國", "global", "us ", "worldwide"]),
+        ]
+        intents = [intent for intent, terms in rules if any(term in text for term in terms)]
+        if not intents:
+            intents.append("industry_news")
+        if "international_context" not in intents and any(
+            TopicDiscoveryService._query_language(query) in {"en", "mixed"} for query in subtopic.search_queries
+        ):
+            intents.append("international_context")
+        return list(dict.fromkeys(intents))[:6]
 
     @staticmethod
     def _extract_json(raw_text: str) -> str:
@@ -1184,6 +1254,7 @@ class TopicDiscoveryService:
 - rationale 每欄最多 25 個中文字；search query 每筆最多 30 個中文字。
 - 子題應是一個可執行研究任務，不只是關鍵字。
 - 每個子題需包含 objective、required_evidence、risk_focus，說明研究目的、需要查核的資料、需監控的風險。
+- 每個子題需包含 source_intents，表示應抓取的資料類型，例如 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context。
 - 子題應能驅動資料抓取，例如 CoWoS、HBM、AI 伺服器、液冷、地緣政治、缺電等，但不要固定死在這些範例。
 - candidate_companies 是「候選研究清單」，不是正式投資推薦。
 - 若主題是大型產業鏈，候選清單應保持寬口徑；AI 產業鏈通常至少列出 15 檔可驗證台股候選，再交由後續證據升格。
@@ -1203,7 +1274,8 @@ JSON schema:
       "objective": "string",
       "required_evidence": ["營收", "產能", "訂單"],
       "risk_focus": ["供給瓶頸", "價格下修"],
-      "search_queries": ["string"]
+      "search_queries": ["string"],
+      "source_intents": ["industry_news", "company_disclosure"]
     }}
   ],
   "candidate_companies": [
@@ -1235,6 +1307,7 @@ JSON schema:
 - 保留合理的原子題與候選公司，但必須補齊品質缺口。
 - subtopics 最多 8 筆；candidate_companies 最多 20 筆。
 - 每個子題都要有 objective、required_evidence、risk_focus、search_queries。
+- 每個子題都要有 source_intents，讓系統知道應補哪類來源；可用值包含 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context。
 - 子題必須是可執行研究任務，不能只是熱門股、概念股或單一關鍵字。
 - search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料；每個子題至少保留 1 筆英文或中英混合國際查詢。
 - search_queries 必須能說明要驗證哪個投資假設，不可只是公司名、熱門股或籠統題材詞。
@@ -1251,7 +1324,8 @@ JSON schema:
       "objective": "string",
       "required_evidence": ["營收", "產能", "訂單"],
       "risk_focus": ["供給瓶頸", "價格下修"],
-      "search_queries": ["string"]
+      "search_queries": ["string"],
+      "source_intents": ["industry_news", "company_disclosure"]
     }}
   ],
   "candidate_companies": [

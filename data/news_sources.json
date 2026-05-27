@@ -7,7 +7,10 @@
       "publisher": "中央社科技",
       "category": "taiwan_news",
       "scope": "universal",
-      "topics": []
+      "topics": [],
+      "source_intents": [
+        "industry_news"
+      ]
     },
     {
       "name": "cna-finance",
@@ -16,7 +19,10 @@
       "publisher": "中央社財經",
       "category": "taiwan_news",
       "scope": "universal",
-      "topics": []
+      "topics": [],
+      "source_intents": [
+        "industry_news"
+      ]
     },
     {
       "name": "technews",
@@ -25,7 +31,10 @@
       "publisher": "科技新報",
       "category": "taiwan_news",
       "scope": "universal",
-      "topics": []
+      "topics": [],
+      "source_intents": [
+        "industry_news"
+      ]
     },
     {
       "name": "ithome",
@@ -34,7 +43,10 @@
       "publisher": "iThome",
       "category": "taiwan_news",
       "scope": "universal",
-      "topics": []
+      "topics": [],
+      "source_intents": [
+        "industry_news"
+      ]
     },
     {
       "name": "nvidia-newsroom",
@@ -55,6 +67,11 @@
         "GPU",
         "加速器",
         "NVIDIA"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -76,6 +93,11 @@
         "GPU",
         "加速器",
         "NVIDIA"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -97,6 +119,11 @@
         "GPU",
         "加速器",
         "NVIDIA"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -118,6 +145,10 @@
         "cloud",
         "capex",
         "雲端資本支出"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -139,6 +170,10 @@
         "cloud",
         "capex",
         "雲端資本支出"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -160,6 +195,10 @@
         "cloud",
         "capex",
         "雲端資本支出"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -181,6 +220,10 @@
         "cloud",
         "capex",
         "雲端資本支出"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -202,6 +245,10 @@
         "生成式AI",
         "大型語言模型",
         "LLM"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -225,6 +272,11 @@
         "電網",
         "power",
         "grid"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
       ]
     },
     {
@@ -248,6 +300,11 @@
         "電網",
         "power",
         "grid"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
       ]
     },
     {
@@ -269,6 +326,11 @@
         "晶圓",
         "先進製程",
         "封裝"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -290,6 +352,11 @@
         "server",
         "ODM",
         "機櫃"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -311,6 +378,11 @@
         "server",
         "ODM",
         "機櫃"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -332,6 +404,11 @@
         "GPU",
         "加速器",
         "NVIDIA"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -353,6 +430,11 @@
         "晶圓",
         "先進製程",
         "封裝"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     },
     {
@@ -376,6 +458,11 @@
         "電網",
         "power",
         "grid"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
       ]
     },
     {
@@ -397,6 +484,10 @@
         "生成式AI",
         "大型語言模型",
         "LLM"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -419,6 +510,11 @@
         "HBM",
         "先進封裝",
         "封測"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -441,6 +537,11 @@
         "廣達",
         "緯創",
         "英業達"
+      ],
+      "source_intents": [
+        "industry_news",
+        "company_disclosure",
+        "capacity_supply"
       ]
     },
     {
@@ -463,6 +564,11 @@
         "HBM",
         "先進封裝",
         "封測"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -486,6 +592,10 @@
         "水冷",
         "thermal",
         "liquid cooling"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "industry_news"
       ]
     },
     {
@@ -508,6 +618,11 @@
         "廣達",
         "緯創",
         "英業達"
+      ],
+      "source_intents": [
+        "industry_news",
+        "company_disclosure",
+        "capacity_supply"
       ]
     },
     {
@@ -530,6 +645,11 @@
         "HBM",
         "先進封裝",
         "封測"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "industry_news",
+        "international_context"
       ]
     },
     {
@@ -553,6 +673,11 @@
         "電網",
         "power",
         "grid"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
       ]
     },
     {
@@ -576,6 +701,10 @@
         "水冷",
         "thermal",
         "liquid cooling"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "industry_news"
       ]
     },
     {
@@ -598,6 +727,10 @@
         "出口管制",
         "禁令",
         "export control"
+      ],
+      "source_intents": [
+        "regulatory_policy",
+        "international_context"
       ]
     },
     {
@@ -619,6 +752,11 @@
         "晶圓",
         "先進製程",
         "封裝"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
       ]
     }
   ]

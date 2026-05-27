@@ -88,6 +88,7 @@ def test_news_source_store_filters_topic_specific_sources(tmp_path) -> None:
     assert [source.name for source in store.sources_for_topic("AI 產業鏈")] == ["base", "ai"]
     assert [source.name for source in store.sources_for_topic("電動車供應鏈")] == ["base", "ev"]
     assert [source.name for source in store.sources_for_topic("航運景氣循環")] == ["base"]
+    assert [source.name for source in store.sources_for_topic("航運景氣循環 industry_news")] == ["base"]
 
 
 def test_default_news_sources_have_research_categories_and_unique_urls() -> None:
@@ -101,6 +102,7 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
     assert len(urls) == len(set(urls))
     assert all(source.category for source in sources)
     assert all(source.scope in {"universal", "topic"} for source in sources)
+    assert all(source.source_intents for source in sources)
     assert any(source.scope == "universal" for source in sources)
     assert any(source.scope == "topic" and "AI" in source.topics for source in sources)
     assert {

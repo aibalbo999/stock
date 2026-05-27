@@ -845,6 +845,7 @@ def source_selection_context(topic: str, plan: TopicDiscoveryPlan | None = None)
                     subtopic.objective,
                     " ".join(subtopic.required_evidence[:3]),
                     " ".join(subtopic.risk_focus[:3]),
+                    " ".join(subtopic.source_intents[:3]),
                 ]
             )
         for candidate in plan.candidate_companies:

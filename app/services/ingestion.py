@@ -54,12 +54,23 @@ class IngestionPipeline:
             except Exception as exc:
                 errors.append({"source": url, "error": str(exc)})
             documents = self._filter_documents(documents, start_date, end_date, quality_filter)[:limit]
+            source_selection = {"mode": "single_url", "selected_count": 1 if url else 0, "available_count": 1 if url else 0}
         else:
+            source_store = NewsSourceStore()
+            available_sources = source_store.load()
             sources = (
-                NewsSourceStore().sources_for_topic(topic)
+                source_store.sources_for_topic(topic)
                 if enabled_sources_only
-                else NewsSourceStore().load()
+                else available_sources
             )
+            source_selection = {
+                "mode": "topic_filtered" if enabled_sources_only else "all_sources",
+                "topic": topic,
+                "selected_count": len(sources),
+                "available_count": len(available_sources),
+                "selected_sources": [source.name for source in sources],
+                "skipped_sources": [source.name for source in available_sources if source.enabled and source not in sources],
+            }
             source_results = []
             for source in sources:
                 try:
@@ -77,6 +88,7 @@ class IngestionPipeline:
                             "category": source.category,
                             "scope": source.scope,
                             "topics": source.topics,
+                            "source_intents": source.source_intents,
                             "stored_count": len(filtered_documents),
                             "error_count": 0,
                         }
@@ -90,6 +102,7 @@ class IngestionPipeline:
                             "category": source.category,
                             "scope": source.scope,
                             "topics": source.topics,
+                            "source_intents": source.source_intents,
                             "stored_count": 0,
                             "error_count": 1,
                         }
@@ -125,6 +138,7 @@ class IngestionPipeline:
             "errors": errors,
             "source_results": source_results,
             "source_category_counts": self._source_category_counts(source_results),
+            "source_selection": source_selection,
         }
 
     @staticmethod

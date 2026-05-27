@@ -24,6 +24,7 @@ class NewsSourceConfig(BaseModel):
     category: str = "news"
     scope: str = "universal"
     topics: list[str] = Field(default_factory=list)
+    source_intents: list[str] = Field(default_factory=list)
 
     def matches_topic(self, topic: str | None) -> bool:
         if not self.enabled:
@@ -33,7 +34,7 @@ class NewsSourceConfig(BaseModel):
         if not topic:
             return False
         normalized_topic = topic.casefold()
-        terms = [self.category, self.name, self.publisher or "", *self.topics]
+        terms = self.topics
         return any(term.casefold() in normalized_topic for term in terms if term)
 
 

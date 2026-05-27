@@ -73,7 +73,7 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
     urls = [source.url for source in sources]
     categories = {source.category for source in sources}
 
-    assert len(sources) >= 25
+    assert len(sources) >= 31
     assert len(names) == len(set(names))
     assert len(urls) == len(set(urls))
     assert all(source.category for source in sources)
@@ -84,6 +84,7 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
         "datacenter_power",
         "advanced_packaging",
         "server_odm",
+        "server_infrastructure",
         "thermal_liquid_cooling",
         "policy_export_controls",
         "semiconductor_industry",

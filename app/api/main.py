@@ -59,6 +59,7 @@ from app.services.report_quality import (
 from app.services.llm_client import LLMClient
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
 from app.services.service_status import service_status
+from app.services.source_relevance import SourceRelevanceAnalyzer
 from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
 from app.services.whitelist import SupplyChainWhitelist
 from app.tasks.celery_app import celery_app
@@ -924,6 +925,7 @@ async def run_topic_discovery_ingestion(
             quality_filter=True,
         )
         candidates = service.validate_candidates(plan, documents)
+        source_relevance = SourceRelevanceAnalyzer(service).analyze(plan, documents, limit=document_limit)
         dynamic_entity_backfill = persist_candidate_entity_matches(plan, candidates, documents)
         candidate_support = summarize_candidate_support(candidates)
         source_audit = build_source_audit(
@@ -982,6 +984,7 @@ async def run_topic_discovery_ingestion(
     )
     source_audit["plan_quality"] = service.evaluate_plan_quality(plan).model_dump()
     source_audit["candidate_support"] = candidate_support
+    source_audit["source_relevance"] = source_relevance
     source_audit["remediation"] = {
         "supplemented": bool(remediation_rounds),
         "reason": "low_candidate_or_source_coverage" if remediation_rounds else "coverage_sufficient",

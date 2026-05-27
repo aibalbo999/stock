@@ -81,7 +81,7 @@ class NewsFetcher:
         publisher: str | None = None,
         limit: int = 10,
     ) -> list[NewsDocument]:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             response = await client.get(url)
             response.raise_for_status()
         return self.parse_feed(response.text, feed_url=url, publisher=publisher, limit=limit)

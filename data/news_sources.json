@@ -106,6 +106,48 @@
       "category": "semiconductor_industry"
     },
     {
+      "name": "serve-the-home",
+      "url": "https://www.servethehome.com/feed/",
+      "enabled": true,
+      "publisher": "ServeTheHome",
+      "category": "server_infrastructure"
+    },
+    {
+      "name": "the-next-platform",
+      "url": "https://www.nextplatform.com/feed/",
+      "enabled": true,
+      "publisher": "The Next Platform",
+      "category": "server_infrastructure"
+    },
+    {
+      "name": "toms-hardware",
+      "url": "https://www.tomshardware.com/feeds.xml",
+      "enabled": true,
+      "publisher": "Tom's Hardware",
+      "category": "ai_chip_vendor"
+    },
+    {
+      "name": "ee-times",
+      "url": "https://www.eetimes.com/feed/",
+      "enabled": true,
+      "publisher": "EE Times",
+      "category": "semiconductor_industry"
+    },
+    {
+      "name": "data-center-knowledge",
+      "url": "https://www.datacenterknowledge.com/rss.xml",
+      "enabled": true,
+      "publisher": "Data Center Knowledge",
+      "category": "datacenter_power"
+    },
+    {
+      "name": "the-register-ai",
+      "url": "https://www.theregister.com/software/ai_ml/headlines.atom",
+      "enabled": true,
+      "publisher": "The Register AI",
+      "category": "ai_demand"
+    },
+    {
       "name": "google-news-tsmc-cowos-ai",
       "url": "https://news.google.com/rss/search?q=%E5%8F%B0%E7%A9%8D%E9%9B%BB%20CoWoS%20AI&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
       "enabled": true,

@@ -661,6 +661,24 @@ def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, 
     return limit_per_query, evidence_limit, max_queries
 
 
+def should_revalidate_candidate_filings(candidates: list[dict], min_supported_ratio: float = 0.6) -> bool:
+    if not candidates:
+        return False
+    supported = sum(1 for candidate in candidates if candidate.get("status") == "evidence_supported")
+    return (supported / len(candidates)) < min_supported_ratio
+
+
+def candidate_filing_revalidation_tickers(candidates: list[dict], payload: TopicDiscoveryRequest) -> list[str]:
+    limit = 20 if payload.deep_analysis else 12
+    prioritized = [
+        str(candidate.get("ticker"))
+        for candidate in candidates
+        if candidate.get("ticker") and candidate.get("status") != "evidence_supported"
+    ]
+    fallback = [str(candidate.get("ticker")) for candidate in candidates if candidate.get("ticker")]
+    return list(dict.fromkeys([*prioritized, *fallback]))[:limit]
+
+
 def summarize_ingestion_stage(results: list[dict]) -> dict:
     stored_count = 0
     error_count = 0
@@ -1767,8 +1785,8 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             candidate.model_dump() for candidate in discovery_ingestion["candidates"]
         ]
         candidate_filing_ingestion = None
-        if candidate_payload and not any(candidate["status"] == "evidence_supported" for candidate in candidate_payload):
-            candidate_tickers = [candidate["ticker"] for candidate in candidate_payload[:6]]
+        if should_revalidate_candidate_filings(candidate_payload):
+            candidate_tickers = candidate_filing_revalidation_tickers(candidate_payload, payload)
             candidate_filing_ingestion = await IngestionPipeline().ingest_mops_annual_reports(
                 candidate_tickers,
                 filter_allowed=False,
@@ -1795,6 +1813,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
                         for candidate in candidate_payload
                         if candidate["status"] == "evidence_supported"
                     ],
+                    "requested_tickers": candidate_tickers,
                 }
         promoted_tickers = [
             candidate["ticker"]

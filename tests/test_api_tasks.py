@@ -359,6 +359,30 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
     assert deep_budget["supplemental_rounds"] == 1
 
 
+def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() -> None:
+    candidates = [
+        {"ticker": "2330", "status": "evidence_supported"},
+        {"ticker": "2382", "status": "weak_evidence"},
+        {"ticker": "3231", "status": "needs_evidence"},
+    ]
+
+    assert main.should_revalidate_candidate_filings(candidates) is True
+    assert main.should_revalidate_candidate_filings([{"ticker": "2330", "status": "evidence_supported"}]) is False
+
+
+def test_candidate_filing_revalidation_prioritizes_unpromoted_candidates() -> None:
+    candidates = [
+        {"ticker": "2330", "status": "evidence_supported"},
+        {"ticker": "2382", "status": "weak_evidence"},
+        {"ticker": "3231", "status": "needs_evidence"},
+        {"ticker": "3324", "status": "weak_evidence"},
+    ]
+    payload = main.TopicDiscoveryRequest(topic="AI 產業鏈", deep_analysis=True)
+
+    assert main.candidate_filing_revalidation_tickers(candidates, payload)[:3] == ["2382", "3231", "3324"]
+    assert "2330" in main.candidate_filing_revalidation_tickers(candidates, payload)
+
+
 def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:
     audit = {
         "dynamic_queries": {"stored_count": 30},

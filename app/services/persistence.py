@@ -35,7 +35,6 @@ class NewsRepository:
         self.session = session
 
     def upsert_document(self, document: NewsDocument, entity_matches: list[dict]) -> NewsArticle:
-        article = self.session.get(NewsArticle, document.id)
         values = {
             "title": document.title,
             "text": document.text,
@@ -45,13 +44,7 @@ class NewsRepository:
             "fetched_at": document.source.fetched_at,
             "entity_matches_json": json.dumps(entity_matches, ensure_ascii=False),
         }
-        if article is None:
-            article = NewsArticle(id=document.id, **values)
-            self.session.add(article)
-        else:
-            for key, value in values.items():
-                setattr(article, key, value)
-        return article
+        return self.session.merge(NewsArticle(id=document.id, **values))
 
     def upsert_document_merging_matches(self, document: NewsDocument, entity_matches: list[dict]) -> NewsArticle:
         existing = self.session.get(NewsArticle, document.id)

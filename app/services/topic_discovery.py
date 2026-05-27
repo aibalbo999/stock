@@ -188,7 +188,7 @@ class TopicDiscoveryService:
                     objective="確認 CSP 資本支出、AI 伺服器出貨與台廠訂單是否成長",
                     required_evidence=["CSP 資本支出", "AI 伺服器出貨", "月營收"],
                     risk_focus=["需求下修", "砍單", "客戶集中"],
-                    search_queries=["AI 伺服器 出貨 月營收 台廠", "cloud capex AI server Taiwan ODM"],
+                    search_queries=["AI 伺服器 出貨 月營收 台廠", "cloud capex AI server 出貨 月營收"],
                 ),
                 DiscoverySubtopic(
                     name="CoWoS 與 HBM 產能",
@@ -204,7 +204,15 @@ class TopicDiscoveryService:
                     objective="確認液冷、散熱與高功率電源是否形成成長或出貨瓶頸",
                     required_evidence=["液冷訂單", "散熱滲透率", "電源規格"],
                     risk_focus=["技術轉換延遲", "認證延遲", "毛利壓力"],
-                    search_queries=["AI 伺服器 液冷 散熱 電源 台股", "AI data center liquid cooling power supply"],
+                    search_queries=["AI 伺服器 液冷訂單 散熱滲透率 電源規格", "AI data center liquid cooling 電源規格"],
+                ),
+                DiscoverySubtopic(
+                    name="高速 PCB 與載板",
+                    rationale="訊號與材料升級",
+                    objective="確認 AI 伺服器 PCB、載板與高速材料是否受惠或形成供給瓶頸",
+                    required_evidence=["PCB 訂單", "載板需求", "高速材料"],
+                    risk_focus=["良率瓶頸", "價格下修", "庫存調整"],
+                    search_queries=["AI 伺服器 PCB 載板 高速材料", "AI server PCB substrate CCL Taiwan"],
                 ),
                 DiscoverySubtopic(
                     name="財務與估值",
@@ -212,7 +220,7 @@ class TopicDiscoveryService:
                     objective="比較候選公司營收、獲利、現金流、P/E 與 P/B 是否支持評價",
                     required_evidence=["月營收", "毛利率", "本益比", "現金流"],
                     risk_focus=["估值過高", "營收放緩", "毛利下滑"],
-                    search_queries=["台股 AI 供應鏈 月營收 本益比 估值", "Taiwan AI supply chain valuation revenue margin"],
+                    search_queries=["台股 AI 供應鏈 月營收 本益比 估值", "Taiwan AI valuation revenue margin 本益比"],
                 ),
                 DiscoverySubtopic(
                     name="地緣政治與電力",
@@ -220,7 +228,7 @@ class TopicDiscoveryService:
                     objective="評估出口管制、缺電與資料中心電網限制對供應鏈的影響",
                     required_evidence=["出口管制", "缺電", "電網負荷"],
                     risk_focus=["美國晶片管制", "地緣政治", "電力瓶頸"],
-                    search_queries=["AI 晶片 出口管制 台灣 供應鏈 缺電", "US export controls AI chips Taiwan power grid"],
+                    search_queries=["AI 晶片 出口管制 台灣 供應鏈 缺電", "US export controls AI chips 電網負荷"],
                 ),
             ],
             candidate_companies=[
@@ -294,6 +302,76 @@ class TopicDiscoveryService:
                     rationale="CSP 伺服器",
                     evidence_keywords=["AI 伺服器", "CSP", "資料中心"],
                 ),
+                CandidateCompany(
+                    ticker="2317",
+                    name="鴻海",
+                    segment="AI 伺服器代工",
+                    rationale="伺服器與機櫃整合",
+                    evidence_keywords=["AI 伺服器", "機櫃", "CSP"],
+                ),
+                CandidateCompany(
+                    ticker="2356",
+                    name="英業達",
+                    segment="AI 伺服器代工",
+                    rationale="伺服器代工",
+                    evidence_keywords=["AI 伺服器", "雲端", "出貨"],
+                ),
+                CandidateCompany(
+                    ticker="2376",
+                    name="技嘉",
+                    segment="AI 伺服器與主機板",
+                    rationale="伺服器板卡",
+                    evidence_keywords=["AI 伺服器", "主機板", "GPU"],
+                ),
+                CandidateCompany(
+                    ticker="2377",
+                    name="微星",
+                    segment="AI 伺服器與板卡",
+                    rationale="伺服器板卡",
+                    evidence_keywords=["AI 伺服器", "GPU", "主機板"],
+                ),
+                CandidateCompany(
+                    ticker="3706",
+                    name="神達",
+                    segment="AI 伺服器",
+                    rationale="伺服器系統",
+                    evidence_keywords=["AI 伺服器", "資料中心", "系統"],
+                ),
+                CandidateCompany(
+                    ticker="2368",
+                    name="金像電",
+                    segment="AI 伺服器 PCB",
+                    rationale="高階伺服器板",
+                    evidence_keywords=["AI 伺服器", "PCB", "高速板"],
+                ),
+                CandidateCompany(
+                    ticker="3037",
+                    name="欣興",
+                    segment="ABF 載板 / PCB",
+                    rationale="載板與高階板",
+                    evidence_keywords=["ABF", "載板", "AI 伺服器"],
+                ),
+                CandidateCompany(
+                    ticker="8046",
+                    name="南電",
+                    segment="ABF 載板",
+                    rationale="高階載板",
+                    evidence_keywords=["ABF", "載板", "AI 晶片"],
+                ),
+                CandidateCompany(
+                    ticker="6274",
+                    name="台燿",
+                    segment="高速材料 / CCL",
+                    rationale="高速材料升級",
+                    evidence_keywords=["CCL", "高速材料", "AI 伺服器"],
+                ),
+                CandidateCompany(
+                    ticker="3653",
+                    name="健策",
+                    segment="散熱與金屬件",
+                    rationale="高功耗散熱",
+                    evidence_keywords=["散熱", "均熱片", "AI 伺服器"],
+                ),
             ],
         )
 
@@ -305,6 +383,8 @@ class TopicDiscoveryService:
             missing.append("缺少研究子題")
         if not plan.candidate_companies:
             missing.append("缺少候選公司")
+        if TopicDiscoveryService._requires_broad_candidate_pool(plan) and len(plan.candidate_companies) < 15:
+            missing.append("AI 產業鏈候選公司少於 15 檔，容易漏掉伺服器、散熱、PCB、電源與設備環節")
         for index, subtopic in enumerate(plan.subtopics, start=1):
             label = subtopic.name or f"子題 {index}"
             if not subtopic.objective.strip():
@@ -364,6 +444,38 @@ class TopicDiscoveryService:
                 else "拆解任務不足，應要求 AI 重新拆解或人工補充。"
             ),
         )
+
+    @staticmethod
+    def _requires_broad_candidate_pool(plan: TopicDiscoveryPlan) -> bool:
+        if len(plan.subtopics) < 4:
+            return False
+        text = " ".join(
+            [
+                *[
+                    " ".join(
+                        [
+                            subtopic.name,
+                            subtopic.rationale,
+                            subtopic.objective,
+                            *subtopic.required_evidence,
+                            *subtopic.risk_focus,
+                            *subtopic.search_queries,
+                        ]
+                    )
+                    for subtopic in plan.subtopics
+                ],
+                *[
+                    " ".join([candidate.segment, candidate.rationale, *candidate.evidence_keywords])
+                    for candidate in plan.candidate_companies
+                ],
+            ]
+        ).lower()
+        has_ai_theme = any(term in text for term in ["ai", "人工智慧", "伺服器", "server", "資料中心", "datacenter"])
+        has_supply_chain_theme = any(
+            term in text
+            for term in ["cowos", "hbm", "封裝", "散熱", "液冷", "電源", "pcb", "載板", "設備", "供應鏈"]
+        )
+        return has_ai_theme and has_supply_chain_theme
 
     @staticmethod
     def _plan_theme_coverage(plan: TopicDiscoveryPlan) -> dict[str, bool]:
@@ -1068,12 +1180,13 @@ class TopicDiscoveryService:
 約束：
 - 只能輸出 JSON，不要 Markdown，不要解釋，不要前後文。
 - 回覆第一個字元必須是 {{，最後一個字元必須是 }}。
-- subtopics 最多 5 筆；candidate_companies 最多 10 筆。
+- subtopics 最多 6 筆；candidate_companies 最多 20 筆。
 - rationale 每欄最多 25 個中文字；search query 每筆最多 30 個中文字。
 - 子題應是一個可執行研究任務，不只是關鍵字。
 - 每個子題需包含 objective、required_evidence、risk_focus，說明研究目的、需要查核的資料、需監控的風險。
 - 子題應能驅動資料抓取，例如 CoWoS、HBM、AI 伺服器、液冷、地緣政治、缺電等，但不要固定死在這些範例。
 - candidate_companies 是「候選研究清單」，不是正式投資推薦。
+- 若主題是大型產業鏈，候選清單應保持寬口徑；AI 產業鏈通常至少列出 15 檔可驗證台股候選，再交由後續證據升格。
 - 公司必須是台股 4 碼 ticker。
 - 不確定 ticker 時不要輸出該公司。
 - search_queries 要適合 Google News RSS 搜尋；繁體中文為主，但每個子題至少 1 筆可用英文或中英混合詞查國際資料。

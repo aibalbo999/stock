@@ -181,6 +181,70 @@ def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
     assert "缺少候選公司" in quality.missing
 
 
+def test_evaluate_plan_quality_flags_narrow_ai_supply_chain_candidate_pool() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "AI 伺服器需求",
+              "rationale": "雲端資本支出",
+              "objective": "確認 AI 伺服器出貨與台廠訂單是否成長",
+              "required_evidence": ["AI 伺服器出貨", "月營收"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 出貨 月營收", "cloud capex AI server"]
+            },
+            {
+              "name": "CoWoS 與 HBM",
+              "rationale": "上游瓶頸",
+              "objective": "查核 CoWoS 與 HBM 是否限制 AI 晶片出貨",
+              "required_evidence": ["CoWoS 產能", "HBM 供給"],
+              "risk_focus": ["供給瓶頸"],
+              "search_queries": ["CoWoS HBM 產能 良率", "CoWoS HBM capacity"]
+            },
+            {
+              "name": "液冷散熱電源",
+              "rationale": "功耗升級",
+              "objective": "確認液冷與電源是否形成瓶頸",
+              "required_evidence": ["液冷訂單", "電源規格"],
+              "risk_focus": ["認證延遲"],
+              "search_queries": ["AI 伺服器 液冷 電源", "AI data center liquid cooling"]
+            },
+            {
+              "name": "估值股價",
+              "rationale": "避免追高",
+              "objective": "比較估值與股價風險",
+              "required_evidence": ["本益比", "股價"],
+              "risk_focus": ["估值過高"],
+              "search_queries": ["台股 AI 供應鏈 本益比", "Taiwan AI supply chain valuation"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2330",
+              "name": "台積電",
+              "segment": "晶圓代工",
+              "rationale": "CoWoS",
+              "evidence_keywords": ["CoWoS"]
+            },
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI 伺服器",
+              "rationale": "伺服器出貨",
+              "evidence_keywords": ["AI 伺服器"]
+            }
+          ]
+        }
+        """
+    )
+
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert quality.status == "caution"
+    assert any("AI 產業鏈候選公司少於 15 檔" in item for item in quality.missing)
+
+
 def test_evaluate_plan_quality_flags_generic_and_unaligned_queries() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """

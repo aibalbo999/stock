@@ -305,6 +305,7 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
                 "source_type": "subtopic",
                 "hypothesis": "驗證 AI 需求",
                 "evidence_type": "需求/成長",
+                "source_intent": "industry_news",
                 "language": "en",
             },
             {
@@ -313,6 +314,7 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
                 "source_type": "coverage_gap",
                 "hypothesis": "補齊 HBM 缺口",
                 "evidence_type": "品質缺口補強",
+                "source_intent": "capacity_supply",
                 "language": "en",
             },
         ],
@@ -338,6 +340,7 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
         "https://news.google.com/search?q=HBM",
     ]
     assert audit["query_type_counts"] == {"subtopic": 1, "coverage_gap": 1}
+    assert audit["query_intent_counts"] == {"industry_news": 1, "capacity_supply": 1}
     assert audit["query_type_labels"]["subtopic"]["label"] == "子題查詢"
     assert audit["query_type_labels"]["coverage_gap"]["label"] == "缺口補強查詢"
     assert audit["query_metadata_sample"][1]["source_type"] == "coverage_gap"
@@ -421,6 +424,21 @@ def test_source_audit_supplements_when_plan_query_quality_is_not_ready() -> None
                 "generic_query_count": 1,
             },
         },
+    }
+    candidate_support = {
+        "total": 5,
+        "supported": 5,
+        "unsupported": 0,
+        "supported_ratio": 1,
+    }
+
+    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+
+
+def test_source_audit_supplements_when_subtopic_has_no_relevant_sources() -> None:
+    audit = {
+        "dynamic_queries": {"stored_count": 30},
+        "source_relevance": {"missing_subtopic_count": 1},
     }
     candidate_support = {
         "total": 5,

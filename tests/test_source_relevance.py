@@ -20,7 +20,10 @@ def test_source_relevance_links_documents_to_subtopics_and_candidates() -> None:
     assert result["analyzed_document_count"] == 1
     assert result["relevant_document_count"] == 1
     assert result["candidate_coverage"]["2382"] == 1
+    assert result["subtopic_readiness"]
+    assert result["missing_subtopic_count"] >= 0
     assert result["sample"][0]["source_category"] == "cloud_capex"
+    assert "international_context" in result["sample"][0]["source_intents"]
     assert result["sample"][0]["candidate_matches"][0]["ticker"] == "2382"
     assert result["sample"][0]["relevance_score"] > 0
 
@@ -39,3 +42,50 @@ def test_source_relevance_ignores_unrelated_documents() -> None:
     assert result["relevant_document_count"] == 0
     assert result["subtopic_coverage"] == {}
     assert result["candidate_coverage"] == {}
+    assert result["missing_subtopic_count"] == len(plan.subtopics)
+
+
+def test_source_relevance_reports_subtopic_readiness_by_research_task() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "objective": "確認液冷散熱是否形成出貨瓶頸",
+              "required_evidence": ["液冷訂單", "產能"],
+              "risk_focus": ["交期延遲"],
+              "search_queries": ["AI 伺服器 液冷 產能"]
+            },
+            {
+              "name": "出口管制",
+              "objective": "查核政策限制",
+              "required_evidence": ["出口管制"],
+              "risk_focus": ["禁令"],
+              "search_queries": ["export control AI chips Taiwan"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="AI 伺服器液冷散熱產能擴張",
+            text="液冷散熱訂單增加，但產能與交期仍可能形成瓶頸。",
+            publisher="科技新報",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="AI 伺服器液冷散熱供應鏈更新",
+            text="液冷散熱供應鏈新增產能，出貨交期改善。",
+            publisher="中央社科技",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    result = SourceRelevanceAnalyzer().analyze(plan, documents)
+
+    assert result["subtopic_readiness"]["液冷散熱"]["status"] == "ready"
+    assert result["subtopic_readiness"]["出口管制"]["status"] == "missing"
+    assert result["missing_subtopic_count"] == 1

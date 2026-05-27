@@ -741,9 +741,12 @@ def build_source_audit(
     fixed_summary = summarize_ingestion_stage([fixed_source_ingestion])
     query_metadata = query_metadata or []
     query_type_counts: dict[str, int] = {}
+    query_intent_counts: dict[str, int] = {}
     for item in query_metadata:
         source_type = str(item.get("source_type") or "unknown")
         query_type_counts[source_type] = query_type_counts.get(source_type, 0) + 1
+        source_intent = str(item.get("source_intent") or "unknown")
+        query_intent_counts[source_intent] = query_intent_counts.get(source_intent, 0) + 1
     query_type_labels = {
         source_type: query_type_label(source_type)
         for source_type in query_type_counts
@@ -762,6 +765,7 @@ def build_source_audit(
         "dynamic_query_count": len(urls),
         "dynamic_query_sample": urls[:10],
         "query_type_counts": query_type_counts,
+        "query_intent_counts": query_intent_counts,
         "query_type_labels": query_type_labels,
         "query_metadata_sample": query_metadata[:10],
         "total_stored_count": fixed_summary["stored_count"] + dynamic_summary["stored_count"],
@@ -817,6 +821,9 @@ def should_supplement_discovery_sources(source_audit: dict, candidate_support: d
     if plan_quality and plan_quality.get("status") != "ready":
         return True
     if int(query_quality.get("generic_query_count") or 0) > 0:
+        return True
+    source_relevance = source_audit.get("source_relevance") or {}
+    if int(source_relevance.get("missing_subtopic_count") or 0) > 0:
         return True
     if candidate_support["total"] == 0:
         return source_audit["dynamic_queries"]["stored_count"] < 8
@@ -959,6 +966,7 @@ async def run_topic_discovery_ingestion(
             query_metadata,
         )
         source_audit["plan_quality"] = plan_quality.model_dump()
+        source_audit["source_relevance"] = source_relevance
         if not should_supplement_discovery_sources(source_audit, candidate_support):
             break
         remaining_queries = max_queries - len(urls)

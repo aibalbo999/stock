@@ -26,6 +26,92 @@ def test_source_category_counts_sum_stored_documents() -> None:
     ) == {"cloud_capex": 5, "taiwan_news": 4, "news": 1}
 
 
+def test_select_diverse_sources_keeps_long_tail_categories() -> None:
+    class Source:
+        def __init__(self, name: str, category: str) -> None:
+            self.name = name
+            self.category = category
+
+    sources = [
+        Source("a1", "news"),
+        Source("a2", "news"),
+        Source("a3", "news"),
+        Source("b1", "emerging_momentum"),
+        Source("c1", "thermal_liquid_cooling"),
+    ]
+
+    selected = IngestionPipeline._select_diverse_sources(sources, limit=3)
+
+    assert [source.category for source in selected] == [
+        "news",
+        "emerging_momentum",
+        "thermal_liquid_cooling",
+    ]
+
+
+def test_ingest_web_search_stores_only_target_company_documents(monkeypatch) -> None:
+    stored = []
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            stored.extend(documents)
+
+    class FakeNewsRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def upsert_document(self, document, entity_matches) -> None:
+            pass
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    async def fake_search(query: str, limit: int = 5):
+        return [
+            {
+                "title": " unrelated market note ",
+                "url": "https://example.com/unrelated",
+                "snippet": "沒有公司關聯",
+                "publisher": "example.com",
+            },
+            {
+                "title": "雙鴻 AI 散熱模組法說會",
+                "url": "https://example.com/3324",
+                "snippet": "3324 雙鴻 說明 AI 伺服器散熱模組需求。",
+                "publisher": "example.com",
+            },
+        ]
+
+    async def fake_fetch_url(self, url: str, publisher=None):
+        if url.endswith("/3324"):
+            return NewsFetcher.from_manual_text(
+                title="雙鴻 AI 散熱模組法說會",
+                text="3324 雙鴻 說明 AI 伺服器散熱模組需求與出貨。",
+                publisher=publisher or "example.com",
+                url=url,
+            )
+        return NewsFetcher.from_manual_text(title="無關頁面", text="無關內容", publisher="example.com", url=url)
+
+    monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
+    monkeypatch.setattr("app.services.ingestion.NewsRepository", FakeNewsRepository)
+    monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(CompanyFilingFetcher, "_duckduckgo_search", fake_search)
+    monkeypatch.setattr(NewsFetcher, "fetch_url", fake_fetch_url)
+
+    result = asyncio.run(
+        IngestionPipeline().ingest_web_search(
+            ["3324 雙鴻 散熱模組 法說會"],
+            target_terms=["3324", "雙鴻", "散熱模組"],
+        )
+    )
+
+    assert result["count"] == 1
+    assert result["source"] == "DuckDuckGo targeted web search"
+    assert result["items"][0]["title"] == "雙鴻 AI 散熱模組法說會"
+    assert len(stored) == 1
+
+
 def test_pre_report_refresh_uses_whitelist_when_tickers_empty(monkeypatch) -> None:
     pipeline = IngestionPipeline()
     calls = {}
@@ -285,16 +371,182 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     assert by_ticker["2382"]["missing_required_types"] == ["annual_report"]
     assert by_ticker["2382"]["error_categories"] == ["retryable_source_error"]
     assert [attempt["strategy"] for attempt in by_ticker["2382"]["attempts"]] == [
+        "mops_annual_report",
         "targeted_search",
         "retry_after_source_error",
         "broaden_official_search",
-        "mops_annual_report",
         "official_company_website",
         "official_web_search",
     ]
     assert result["missing_tickers"] == ["2382"]
     assert result["gap_summary"]["retryable_tickers"] == ["2382"]
     assert result["next_actions"][0]["action"] == "retry_company_filing_search"
+
+
+def test_ingest_company_filings_counts_cached_official_documents(monkeypatch) -> None:
+    stored = {"vector_count": 0, "repository_count": 0}
+    fetch_calls = []
+    cached_document = CompanyFilingFetcher.from_manual_text(
+        ticker="2308",
+        company_name="台達電",
+        document_type="annual_report",
+        title="台達電 股東會年報",
+        text="2308 台達電 股東會年報揭露電源、散熱與 AI 伺服器需求及風險因素。" * 8,
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 5, 20),
+        url="https://doc.twse.com.tw/pdf/2025_2308_annual.pdf",
+    )
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            stored["vector_count"] = len(documents)
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        @staticmethod
+        def to_news_document(document):
+            return NewsFetcher.from_manual_text(
+                title=document.title,
+                text=document.text,
+                publisher=document.source.publisher,
+                published_at=document.source.published_at,
+                url=document.source.url,
+            )
+
+        def latest_by_tickers(self, tickers, limit_per_ticker=8):
+            return [cached_document] if "2308" in tickers else []
+
+        def upsert_document(self, document) -> None:
+            stored["repository_count"] += 1
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    async def fake_fetch_discovery_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit_per_query: int = 3,
+        document_types=None,
+    ):
+        fetch_calls.append((ticker, document_types))
+        return [], []
+
+    monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
+    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+
+    result = asyncio.run(
+        IngestionPipeline().ingest_company_filings(
+            ["2308"],
+            limit_per_query=2,
+            filter_allowed=False,
+            document_types=["annual_report"],
+        )
+    )
+
+    row = result["per_ticker_results"][0]
+    assert fetch_calls == []
+    assert stored == {"vector_count": 1, "repository_count": 1}
+    assert row["status"] == "sufficient"
+    assert row["missing_required_types"] == []
+    assert row["attempts"][0]["strategy"] == "cached_company_filings"
+    assert result["missing_tickers"] == []
+
+
+def test_ingest_company_filings_focuses_missing_recommended_type_after_cached_annual_report(monkeypatch) -> None:
+    calls = {"mops": 0, "discovery": []}
+    cached_document = CompanyFilingFetcher.from_manual_text(
+        ticker="2308",
+        company_name="台達電",
+        document_type="annual_report",
+        title="台達電 股東會年報",
+        text="2308 台達電 股東會年報揭露電源、散熱與 AI 伺服器需求及風險因素。" * 8,
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 5, 20),
+        url="https://doc.twse.com.tw/pdf/2025_2308_annual.pdf",
+    )
+    investor_document = CompanyFilingFetcher.from_manual_text(
+        ticker="2308",
+        company_name="台達電",
+        document_type="investor_presentation",
+        title="台達電 法說會簡報",
+        text="2308 台達電 法人說明會揭露電源、機器人、自動化與資料中心需求。" * 8,
+        publisher="台達電 IR",
+        published_at=date(2026, 5, 21),
+        url="https://www.deltaww.com/ir/investor-presentation.pdf",
+    )
+
+    class FakeVectorStore:
+        def upsert_documents(self, documents):
+            pass
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        @staticmethod
+        def to_news_document(document):
+            return NewsFetcher.from_manual_text(
+                title=document.title,
+                text=document.text,
+                publisher=document.source.publisher,
+                published_at=document.source.published_at,
+                url=document.source.url,
+            )
+
+        def latest_by_tickers(self, tickers, limit_per_ticker=8):
+            return [cached_document] if "2308" in tickers else []
+
+        def upsert_document(self, document) -> None:
+            pass
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    async def fake_fetch_mops_annual_report_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        years: int = 3,
+    ):
+        calls["mops"] += 1
+        return [], []
+
+    async def fake_fetch_discovery_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit_per_query: int = 3,
+        document_types=None,
+    ):
+        calls["discovery"].append(document_types)
+        return [investor_document], []
+
+    monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
+    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_mops_annual_report_documents", fake_fetch_mops_annual_report_documents)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+
+    result = asyncio.run(
+        IngestionPipeline().ingest_company_filings(
+            ["2308"],
+            limit_per_query=2,
+            filter_allowed=False,
+            document_types=["annual_report", "investor_presentation"],
+        )
+    )
+
+    row = result["per_ticker_results"][0]
+    assert calls == {"mops": 0, "discovery": [["investor_presentation"]]}
+    assert row["document_types"] == ["annual_report", "investor_presentation"]
+    assert row["status"] == "sufficient"
 
 
 def test_ingest_company_filings_broadens_when_targeted_type_has_no_results(monkeypatch) -> None:
@@ -387,9 +639,9 @@ def test_ingest_company_filings_broadens_when_targeted_type_has_no_results(monke
         {"document_types": None, "limit_per_query": 4},
     ]
     assert [attempt["strategy"] for attempt in row["attempts"]] == [
+        "mops_annual_report",
         "targeted_search",
         "broaden_official_search",
-        "mops_annual_report",
         "official_company_website",
         "official_web_search",
     ]

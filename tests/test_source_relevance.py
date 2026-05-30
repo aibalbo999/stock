@@ -92,6 +92,134 @@ def test_source_relevance_reports_subtopic_readiness_by_research_task() -> None:
     assert result["missing_subtopic_count"] == 1
 
 
+def test_source_relevance_matches_split_chinese_subtopic_terms() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱與電源",
+              "required_evidence": ["液冷訂單"],
+              "risk_focus": ["功耗瓶頸"],
+              "source_intents": ["industry_news", "capacity_supply"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="AI 電源與液冷雙引擎驅動",
+            text="資料中心功耗推升液冷散熱需求，供應鏈出貨增加。",
+            publisher="DIGITIMES",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="液冷散熱供應鏈接單升溫",
+            text="AI 伺服器電源與水冷模組同步擴產。",
+            publisher="工商時報",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    result = SourceRelevanceAnalyzer().analyze(plan, documents)
+
+    readiness = result["subtopic_readiness"]["液冷散熱與電源"]
+    assert readiness["status"] == "ready"
+    assert "capacity_supply" in readiness["covered_source_intents"]
+
+
+def test_source_relevance_matches_power_grid_aliases() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "地緣政治與電力",
+              "required_evidence": ["電網供給"],
+              "risk_focus": ["出口管制"],
+              "source_intents": ["capacity_supply", "regulatory_policy", "international_context"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="Utilities May Get an AI Boom the Grid Wasn't Built For",
+            text="AI data center power demand strains electricity grids and raises regulatory policy questions.",
+            publisher="Data Center Knowledge",
+            url="https://www.datacenterknowledge.com/example",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="Power grid limits delay AI data center growth",
+            text="Electricity bottlenecks and official rule changes affect data center expansion.",
+            publisher="Data Center Dynamics",
+            url="https://www.datacenterdynamics.com/example",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    result = SourceRelevanceAnalyzer().analyze(plan, documents)
+
+    readiness = result["subtopic_readiness"]["地緣政治與電力"]
+    assert readiness["status"] == "ready"
+    assert "capacity_supply" in readiness["covered_source_intents"]
+    assert "international_context" in readiness["covered_source_intents"]
+
+
+def test_source_relevance_matches_robotics_component_aliases() -> None:
+    plan = TopicDiscoveryService._fallback_plan("機器人 產業鏈")
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台達電伺服馬達與控制器切入機器人供應鏈",
+            text="工業電腦、邊緣運算與 motion control 需求升溫，帶動 servo controller 訂單。",
+            publisher="科技新報",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="上銀滾珠螺桿與線性滑軌受惠精密傳動需求",
+            text="諧波減速器、ball screw 與 linear guide 是機器人關節與線性傳動關鍵元件。",
+            publisher="DIGITIMES",
+            published_at=date(2026, 5, 21),
+        ),
+        NewsFetcher.from_manual_text(
+            title="所羅門 3D 視覺與機器視覺方案導入工廠機器人",
+            text="3D 感測、光學鏡頭、機構件與轉軸規格升級，支援 robot vision 應用。",
+            publisher="中央社科技",
+            published_at=date(2026, 5, 22),
+        ),
+    ]
+
+    result = SourceRelevanceAnalyzer().analyze(plan, documents)
+
+    assert result["subtopic_readiness"]["伺服馬達與控制系統"]["document_count"] == 1
+    assert result["subtopic_readiness"]["減速器與線性傳動"]["document_count"] == 1
+    assert result["subtopic_readiness"]["視覺感測與機構件"]["document_count"] == 1
+    assert result["missing_subtopic_count"] < len(plan.subtopics)
+
+
+def test_source_relevance_labels_robotics_industry_sources_as_international_context() -> None:
+    plan = TopicDiscoveryService._fallback_plan("機器人 產業鏈")
+    document = NewsFetcher.from_manual_text(
+        title="Humanoid robot suppliers scale servo actuator production",
+        text="Robot makers discuss servo motors, motion control and actuator capacity for humanoid robotics.",
+        publisher="The Robot Report",
+        url="https://www.therobotreport.com/example",
+        published_at=date(2026, 5, 23),
+    )
+
+    result = SourceRelevanceAnalyzer().analyze(plan, [document])
+
+    sample = result["sample"][0]
+    assert sample["source_category"] == "robotics_industry"
+    assert "international_context" in sample["source_intents"]
+    assert "capacity_supply" in sample["source_intents"]
+
+
 def test_source_relevance_keeps_subtopic_weak_when_required_intent_is_missing() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """

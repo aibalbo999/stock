@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.core.time import now_taipei
 from app.api import main
-from app.models.schemas import NewsDocument, ReportResponse, Source
+from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportResponse, Source
 from app.services.followup_actions import FollowUpAction
 from app.services import report_quality
 from app.services.report_quality import (
@@ -48,6 +48,55 @@ class DummyRun:
     error = None
     started_at = datetime(2026, 5, 24, 4, 52, 33)
     finished_at = datetime(2026, 5, 24, 4, 52, 50)
+
+
+def test_merge_latest_by_ticker_uses_cached_data_when_fetch_fails() -> None:
+    cached = [
+        MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 29), close=1200.0),
+        MarketSnapshot(ticker="2382", trade_date=date(2026, 5, 29), close=300.0),
+    ]
+    fetched = [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 30), close=1210.0)]
+
+    merged = main.merge_latest_by_ticker(["2330", "2382"], fetched, cached, "trade_date")
+
+    assert [snapshot.ticker for snapshot in merged] == ["2330", "2382"]
+    assert [snapshot.close for snapshot in merged] == [1210.0, 300.0]
+
+
+def test_merge_financial_metric_history_dedupes_cached_and_fetched_rows() -> None:
+    cached = [
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="income",
+            metric="revenue",
+            value=100.0,
+            source="test",
+        )
+    ]
+    fetched = [
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="income",
+            metric="revenue",
+            value=110.0,
+            source="test",
+        ),
+        FinancialMetric(
+            ticker="2382",
+            report_date=date(2026, 3, 31),
+            statement_type="income",
+            metric="revenue",
+            value=50.0,
+            source="test",
+        ),
+    ]
+
+    merged = main.merge_financial_metric_history(fetched, cached)
+    values = {(metric.ticker, metric.metric): metric.value for metric in merged}
+
+    assert values == {("2330", "revenue"): 110.0, ("2382", "revenue"): 50.0}
 
 
 def test_task_status_success(monkeypatch) -> None:
@@ -372,7 +421,7 @@ def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> Non
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (20, 180, 72)
+    assert main.discovery_fetch_settings(payload) == (20, 180, 24)
     assert main.discovery_effective_lookback_days(payload) == 120
     assert main.discovery_document_limit(payload, 180) == 1000
     assert main.discovery_market_history_days(payload) == 720
@@ -398,9 +447,9 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
     assert normal_budget["supplemental_rounds"] == 3
     assert deep_budget["initial_queries"] < 80
     assert deep_budget["supplemental_queries"] > normal_budget["supplemental_queries"]
-    assert deep_budget["supplemental_rounds"] == 5
-    assert deep_budget["supplemental_batch_size"] == 12
-    assert deep_budget["no_gain_stop_rounds"] == 2
+    assert deep_budget["supplemental_rounds"] == 2
+    assert deep_budget["supplemental_batch_size"] == 4
+    assert deep_budget["no_gain_stop_rounds"] == 1
 
 
 def test_discovery_budget_auto_escalates_on_source_coverage_gaps() -> None:
@@ -647,6 +696,31 @@ def test_report_quality_gate_blocks_missing_subtopic_sources() -> None:
     assert any("針對缺來源或弱來源子題" in action for action in gate["remediation_actions"])
 
 
+def test_report_quality_gate_treats_weak_subtopics_as_observation_when_sources_are_broad() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 160},
+            "source_relevance": {"weak_subtopic_count": 2},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        source_quality={
+            "unique_publisher_count": 35,
+            "timestamp_coverage": 1.0,
+            "recent_coverage": 1.0,
+        },
+        company_filing_sufficient_count=1,
+    )
+
+    assert gate["status"] == "ready"
+    assert gate["warnings"] == []
+    assert "主題拆解仍有 2 個子題可持續追蹤" in gate["observations"][0]
+
+
 def test_report_quality_gate_passes_complete_research_inputs() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
@@ -673,7 +747,7 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
     assert gate["warnings"] == []
 
 
-def test_report_quality_gate_blocks_when_company_filings_are_missing() -> None:
+def test_report_quality_gate_warns_when_company_filings_are_missing() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
@@ -687,9 +761,44 @@ def test_report_quality_gate_blocks_when_company_filings_are_missing() -> None:
         company_filing_sufficient_count=0,
     )
 
-    assert gate["status"] == "insufficient"
-    assert "公司公開文件覆蓋率低於 50%" in gate["blockers"]
+    assert gate["status"] == "caution"
+    assert "公司公開文件覆蓋率低於 50%，正式投入前需補年報或法說會" in gate["warnings"]
     assert gate["metrics"]["company_filing_coverage"] == 0
+
+
+def test_company_filing_gate_downgrades_supported_candidates_without_official_documents(monkeypatch) -> None:
+    monkeypatch.setattr(main, "sufficient_company_filing_tickers", lambda tickers: {"2330"})
+
+    gated = main.apply_company_filing_gate_to_candidate_payload(
+        [
+            {
+                "ticker": "2330",
+                "name": "台積電",
+                "segment": "晶圓代工",
+                "status": "evidence_supported",
+                "evidence_confidence_score": 95,
+                "evidence_confidence_label": "高",
+                "validation_reason": "通過正式分析門檻",
+                "promotion_eligible": True,
+            },
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源",
+                "status": "evidence_supported",
+                "evidence_confidence_score": 92,
+                "evidence_confidence_label": "高",
+                "validation_reason": "通過正式分析門檻",
+                "promotion_eligible": True,
+            },
+        ]
+    )
+
+    assert gated[0]["status"] == "evidence_supported"
+    assert gated[1]["status"] == "weak_evidence"
+    assert gated[1]["promotion_eligible"] is False
+    assert "系統尚未取得或解析到可用官方年報/法說文字" in gated[1]["validation_reason"]
+    assert "不代表公司沒有公開年報" in gated[1]["validation_reason"]
 
 
 def test_quality_gate_for_request_uses_dynamic_request_tickers(monkeypatch) -> None:
@@ -737,6 +846,64 @@ def test_quality_gate_for_request_uses_dynamic_request_tickers(monkeypatch) -> N
 
     assert gate["status"] == "ready"
     assert captured["promoted_tickers"] == ["2059"]
+
+
+def test_quality_gate_for_request_can_use_revalidated_candidate_confidence(monkeypatch) -> None:
+    captured = {}
+
+    def fake_build_report_quality_gate(source_audit, promoted_tickers, **kwargs):
+        captured["candidate_support"] = source_audit["candidate_support"]
+        return {"status": "ready", "metrics": source_audit["candidate_support"]}
+
+    class FakeMarketRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=90):
+            return {}
+
+    class EmptyRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=18):
+            return {}
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    support = {
+        "total": 20,
+        "supported": 1,
+        "supported_ratio": 0.05,
+        "formal_supported_ratio": 1.0,
+        "formal_confidence_avg": 100,
+        "formal_confidence_min": 100,
+    }
+    monkeypatch.setattr(report_quality, "build_report_quality_gate", fake_build_report_quality_gate)
+    monkeypatch.setattr("app.services.report_quality.MarketRepository", FakeMarketRepository)
+    monkeypatch.setattr("app.services.report_quality.MonthlyRevenueRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.FinancialMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
+
+    gate = main.build_quality_gate_for_request(
+        main.ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
+        candidate_support=support,
+    )
+
+    assert gate["metrics"]["formal_confidence_min"] == 100
+    assert captured["candidate_support"]["supported_ratio"] == 0.05
 
 
 def test_report_quality_gate_warns_when_llm_falls_back() -> None:
@@ -943,11 +1110,214 @@ def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     )
 
 
+def test_candidate_audit_follow_up_is_required_when_candidates_have_gaps() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {"status": "ready"},
+            {"status": "sufficient"},
+            [
+                {"ticker": "2330", "status": "evidence_supported"},
+                {"ticker": "2308", "status": "weak_evidence"},
+                {"ticker": "2359", "status": "needs_evidence"},
+            ],
+        )
+        is True
+    )
+
+
+def test_preserve_previous_supported_candidates_avoids_sampling_demotions() -> None:
+    preserved = main.preserve_previous_supported_candidates(
+        [
+            {
+                "ticker": "3037",
+                "name": "欣興",
+                "status": "weak_evidence",
+                "validation_reason": "本次樣本只有單一來源",
+            },
+            {"ticker": "2421", "name": "建準", "status": "evidence_supported"},
+        ],
+        [
+            {
+                "ticker": "3037",
+                "name": "欣興",
+                "status": "evidence_supported",
+                "validation_reason": "上一版通過正式分析門檻",
+            }
+        ],
+    )
+
+    by_ticker = {candidate["ticker"]: candidate for candidate in preserved}
+    assert by_ticker["3037"]["status"] == "evidence_supported"
+    assert "保留上一版正式分析" in by_ticker["3037"]["validation_reason"]
+    assert by_ticker["3037"]["validation_reason"].count("本次補強重驗證未穩定重建既有正式證據") == 1
+    assert by_ticker["2421"]["status"] == "evidence_supported"
+
+    preserved_again = main.preserve_previous_supported_candidates(
+        [{"ticker": "3037", "name": "欣興", "status": "weak_evidence"}],
+        [by_ticker["3037"]],
+    )
+
+    assert preserved_again[0]["validation_reason"].count("本次補強重驗證未穩定重建既有正式證據") == 1
+
+
+def test_mark_unavailable_candidates_after_large_revalidation() -> None:
+    candidates = main.mark_unavailable_candidates_after_revalidation(
+        [
+            {
+                "ticker": "6235",
+                "name": "華孚",
+                "status": "needs_evidence",
+                "evidence_count": 0,
+                "promotion_eligible": False,
+            },
+            {
+                "ticker": "2359",
+                "name": "所羅門",
+                "status": "weak_evidence",
+                "evidence_count": 1,
+                "evidence_source_count": 1,
+                "promotion_eligible": False,
+            },
+        ],
+        document_count=500,
+    )
+
+    assert candidates[0]["status"] == "evidence_unavailable"
+    assert "已自動補查 500 份" in candidates[0]["validation_reason"]
+    assert candidates[0]["promotion_eligible"] is False
+    assert candidates[1]["status"] == "evidence_limited"
+    assert "補查完成但未升格" in candidates[1]["validation_reason"]
+
+
+def test_revalidate_candidate_whitelist_prioritizes_company_filings_before_news_limit(monkeypatch) -> None:
+    plan = {
+        "subtopics": [],
+        "candidate_companies": [
+            {
+                "ticker": "6235",
+                "name": "華孚",
+                "segment": "鎂鋁合金機構件",
+                "rationale": "輕量化金屬機構件可用於機器人",
+                "evidence_keywords": ["鎂鋁合金", "機構件", "機器人"],
+            }
+        ],
+    }
+    unrelated_documents = [
+        NewsDocument(
+            id=f"n-{index}",
+            title=f"一般產業新聞 {index}",
+            text="AI 產業鏈與資料中心新聞，討論雲端伺服器與記憶體需求。",
+            source=Source(title="news", publisher="News", published_at=date(2026, 5, 1)),
+        )
+        for index in range(20)
+    ]
+    filing_document = main.CompanyFilingFetcher.from_manual_text(
+        ticker="6235",
+        company_name="華孚",
+        document_type="annual_report",
+        title="華孚 股東會年報",
+        text="6235 華孚 年報揭露鎂鋁合金機構件、輕量化、自動化與機器人應用。" * 8,
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 4, 30),
+        url="https://doc.twse.com.tw/pdf/6235.pdf",
+    )
+    original_company_filing_repository = main.CompanyFilingRepository
+
+    class FakeNewsRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def search_documents(self, query: str, limit: int = 20):
+            return unrelated_documents[:limit]
+
+        def latest_documents(self, limit: int = 20):
+            return unrelated_documents[:limit]
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def latest_by_tickers(self, tickers, limit_per_ticker=4):
+            return [filing_document] if "6235" in tickers else []
+
+        @staticmethod
+        def to_news_document(document):
+            return original_company_filing_repository.to_news_document(document)
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(main, "session_scope", fake_session_scope)
+    monkeypatch.setattr(main, "NewsRepository", FakeNewsRepository)
+    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
+
+    result = main.revalidate_candidate_whitelist(
+        {"discovery": {"plan": plan}, "request": {"topic": "機器人 產業鏈"}},
+        plan["candidate_companies"],
+        limit=5,
+    )
+
+    candidate = result["candidate_whitelist"][0]
+    assert result["company_filing_document_count"] == 1
+    assert candidate["evidence_count"] == 1
+    assert candidate["status"] == "weak_evidence"
+    assert "資料不足排除" not in candidate["validation_reason"]
+
+
 def test_candidate_audit_follow_up_is_required_when_company_data_has_gaps() -> None:
     assert (
         main.should_require_candidate_audit_follow_up(
             {"status": "ready"},
             {"status": "needs_attention"},
+        )
+        is True
+    )
+
+
+def test_candidate_audit_follow_up_is_required_when_candidates_were_unavailable() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {"status": "ready"},
+            {"status": "sufficient"},
+            [{"ticker": "6235", "status": "evidence_unavailable"}],
+        )
+        is True
+    )
+
+
+def test_candidate_audit_follow_up_is_tracking_for_source_only_gap() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {
+                "status": "insufficient",
+                "blockers": ["主題拆解子題仍有 3 個完全缺少相關來源"],
+                "warnings": ["主題拆解子題仍有 3 個來源或資料意圖不足"],
+                "metrics": {
+                    "promoted_count": 1,
+                    "candidate_supported_ratio": 1.0,
+                    "discovery_plan_status": "ready",
+                },
+            },
+            {"status": "sufficient"},
+        )
+        is False
+    )
+
+
+def test_candidate_audit_follow_up_is_required_when_no_formal_stock() -> None:
+    assert (
+        main.should_require_candidate_audit_follow_up(
+            {
+                "status": "insufficient",
+                "blockers": ["沒有通過證據驗證的正式分析股票"],
+                "metrics": {
+                    "promoted_count": 0,
+                    "candidate_supported_ratio": 0.0,
+                    "discovery_plan_status": "ready",
+                },
+            },
+            {"status": "sufficient"},
         )
         is True
     )
@@ -1102,7 +1472,7 @@ def test_report_quality_gate_warns_when_leading_signal_coverage_is_low() -> None
     )
 
     assert gate["status"] == "caution"
-    assert "領先訊號覆蓋偏低，潛力/風險排序信心需下修" in gate["warnings"]
+    assert "近況訊號覆蓋偏低，目前情境升值/降值排序信心需下修" in gate["warnings"]
     assert gate["metrics"]["leading_signal_coverage"] == 0
     assert any("補齊股價歷史" in action for action in gate["remediation_actions"])
 
@@ -1207,7 +1577,8 @@ def test_attach_quality_gate_to_report_persists_gate_in_markdown_and_payload() -
     assert "## 報告品質門檻" in updated.markdown
     assert updated.markdown.find("## 報告品質門檻") < updated.markdown.find("## 一頁摘要")
     assert "狀態：資料品質可用" in updated.markdown
-    assert "本輪品質門檻後可投入上限：約 700,000 元" in updated.markdown
+    assert "品質門檻研究額度上限：約 700,000 元" in updated.markdown
+    assert "不是本次配置或買進指令" in updated.markdown
 
 
 def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> None:
@@ -1263,6 +1634,30 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
     assert parsed["metrics"]["exploration_candidate_supported_ratio"] == 0.8
     assert parsed["metrics"]["formal_confidence_avg"] == 88.5
     assert parsed["metrics"]["formal_confidence_min"] == 80
+
+
+def test_quality_gate_markdown_uses_investor_friendly_model_warning() -> None:
+    markdown = report_quality.render_quality_gate_markdown(
+        {
+            "status": "caution",
+            "recommendation": "資料大致可用，但仍需人工確認警示項。",
+            "warnings": ["LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿"],
+            "blockers": [],
+            "observations": [],
+            "metrics": {"llm_analysis_status": "fallback"},
+            "remediation_actions": ["檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。"],
+            "action_policy": {"label": "需人工覆核"},
+        }
+    )
+
+    assert "模型補充分析未啟用或呼叫失敗，個股結論主要由資料規則產生，需人工覆核" in markdown
+    assert "請系統管理者恢復模型補充分析，恢復後重新產生報告並保留事實核查" in markdown
+    assert "LLM API key" not in markdown
+    assert "規則引擎草稿" not in markdown
+    parsed = parse_quality_gate_from_markdown(markdown)
+    assert parsed["warnings"] == [
+        "模型補充分析未啟用或呼叫失敗，個股結論主要由資料規則產生，需人工覆核"
+    ]
 
 
 def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None:
@@ -1385,6 +1780,65 @@ def test_report_candidate_audit_endpoint_restores_history_payload(monkeypatch) -
 
     report_response = TestClient(main.app).get("/reports/7")
     assert "## 候選公司審計" in report_response.json()["markdown"]
+
+
+def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
+    class FakeReport:
+        id = 7
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n測試"
+        generated_at = now_taipei()
+
+    class ReportRun:
+        payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2330"]}}'
+
+    class FollowUpRun:
+        id = 31
+        source = "follow_up_api"
+        status = "success"
+        payload_json = (
+            '{"source_report_id":7,"summary":{"selected":{"required_count":2}},'
+            '"planned_actions":[{"action_type":"ingest_news"}],'
+            '"rerun_report":{"report_id":8}}'
+        )
+        report_id = 8
+        output_path = None
+        error = None
+        started_at = datetime(2026, 5, 28, 10, 0, 0)
+        finished_at = datetime(2026, 5, 28, 10, 5, 0)
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> ReportRun:
+            assert report_id == 7
+            return ReportRun()
+
+        def latest(self, limit: int = 100) -> list[FollowUpRun]:
+            return [FollowUpRun()]
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+
+    response = TestClient(main.app).get("/reports/7")
+
+    assert response.status_code == 200
+    auto_follow_up = response.json()["auto_follow_up"]
+    assert auto_follow_up["id"] == 31
+    assert auto_follow_up["status"] == "success"
+    assert auto_follow_up["summary"]["selected"]["required_count"] == 2
+    assert auto_follow_up["rerun_report"]["report_id"] == 8
 
 
 def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:
@@ -1528,7 +1982,7 @@ def test_candidate_revalidation_queries_are_company_specific() -> None:
     assert any("液冷散熱" in query and "水冷訂單" in query for query in queries)
 
 
-def test_collect_revalidation_documents_dedupes_and_falls_back() -> None:
+def test_collect_revalidation_documents_dedupes_and_includes_latest_documents() -> None:
     document = NewsDocument(
         id="doc-1",
         title="雙鴻 液冷散熱",
@@ -1545,14 +1999,21 @@ def test_collect_revalidation_documents_dedupes_and_falls_back() -> None:
             return [document, document]
 
         def latest_documents(self, limit: int = 20) -> list[NewsDocument]:
-            raise AssertionError("should not fall back when search found documents")
+            return [
+                NewsDocument(
+                    id="doc-2",
+                    title="建準 散熱風扇",
+                    text="建準 機器人與 AI 散熱。",
+                    source=Source(title="建準 散熱風扇"),
+                )
+            ]
 
     repository = FakeRepository()
 
     documents = main.collect_revalidation_documents(repository, ["3324 雙鴻", "散熱模組"], 10)
 
     assert repository.queries == ["3324 雙鴻", "散熱模組"]
-    assert documents == [document]
+    assert [document.title for document in documents] == ["雙鴻 液冷散熱", "建準 散熱風扇"]
 
 
 def test_load_report_follow_up_context_raises_404(monkeypatch) -> None:
@@ -1692,6 +2153,146 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
     assert body["summary"]["execution"]["stored_count"] == 12
     assert body["rerun_report"]["report_id"] == 8
     assert FakeAnalysisRunRepository.success_report_id == 8
+
+
+def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
+    captured = {}
+
+    def fake_plan(report_id: int) -> dict:
+        assert report_id == 7
+        return {
+            "summary": {"required_count": 2, "tracking_count": 1, "total_count": 3},
+            "next_actions": [{"action": "ingest_company_filings"}],
+        }
+
+    async def fake_run(report_id: int, payload) -> dict:
+        assert report_id == 7
+        captured["payload"] = payload
+        return {
+            "run_id": 31,
+            "summary": {"selected": {"total_count": 2}, "execution": {"stored_count": 5}},
+            "freshness": {},
+            "actions": [{"action_type": "ingest_company_filings"}],
+            "rerun_report": {"report_id": 8},
+            "results": {"ingest_company_filings:2330": {"stored_count": 5}},
+        }
+
+    monkeypatch.setattr(
+        main,
+        "get_settings",
+        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+    )
+    monkeypatch.setattr(main, "get_report_follow_up_plan", fake_plan)
+    monkeypatch.setattr(main, "run_report_follow_up", fake_run)
+
+    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+
+    assert result["status"] == "started"
+    assert result["run_id"] == 31
+    assert result["rerun_report"]["report_id"] == 8
+    assert captured["payload"].purpose == "required"
+    assert captured["payload"].rerun_report is True
+    assert captured["payload"].news_limit == 40
+
+
+def test_auto_start_required_follow_up_queues_background_task_by_default(monkeypatch) -> None:
+    captured = {}
+
+    def fake_create_task(coro):
+        captured["queued"] = True
+        coro.close()
+        return SimpleNamespace()
+
+    monkeypatch.setattr(
+        main,
+        "get_settings",
+        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+    )
+    monkeypatch.setattr(
+        main,
+        "get_report_follow_up_plan",
+        lambda report_id: {
+            "summary": {"required_count": 2, "total_count": 3},
+            "actions": [{"action_type": "ingest_news"}],
+            "next_actions": [{"action": "ingest_news"}],
+        },
+    )
+    monkeypatch.setattr(main.asyncio, "create_task", fake_create_task)
+
+    result = asyncio.run(main.maybe_auto_start_required_follow_up(7))
+
+    assert result["status"] == "queued"
+    assert captured["queued"] is True
+    assert result["summary"]["selected"]["required_count"] == 2
+    assert result["next_actions"][0]["action"] == "ingest_news"
+
+
+def test_auto_start_follow_up_endpoint_returns_queue_status(monkeypatch) -> None:
+    async def fake_auto_start(report_id: int) -> dict:
+        assert report_id == 7
+        return {"status": "queued", "source_report_id": 7}
+
+    monkeypatch.setattr(main, "maybe_auto_start_required_follow_up", fake_auto_start)
+
+    response = TestClient(main.app).post("/reports/7/follow-up/auto-start")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "queued", "source_report_id": 7}
+
+
+def test_auto_start_required_follow_up_skips_when_no_required_gap(monkeypatch) -> None:
+    monkeypatch.setattr(
+        main,
+        "get_settings",
+        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+    )
+    monkeypatch.setattr(
+        main,
+        "get_report_follow_up_plan",
+        lambda report_id: {"summary": {"required_count": 0}, "next_actions": []},
+    )
+
+    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+
+    assert result["status"] == "not_needed"
+    assert result["reason"] == "no_required_data_gap"
+
+
+def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_ready(monkeypatch) -> None:
+    captured = {}
+
+    monkeypatch.setattr(
+        main,
+        "get_settings",
+        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+    )
+    monkeypatch.setattr(
+        main,
+        "get_report_follow_up_plan",
+        lambda report_id: {
+            "quality_gate_status": "ready",
+            "summary": {"required_count": 4, "total_count": 4},
+            "next_actions": [{"action": "ingest_news"}],
+        },
+    )
+    async def fake_run(report_id: int, payload) -> dict:
+        captured["payload"] = payload
+        return {
+            "run_id": 31,
+            "summary": {"selected": {"required_count": 4}},
+            "freshness": {},
+            "actions": [{"action_type": "ingest_news"}],
+            "rerun_report": {"report_id": 8},
+            "results": {},
+        }
+
+    monkeypatch.setattr(main, "run_report_follow_up", fake_run)
+
+    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+
+    assert result["status"] == "started"
+    assert result["run_id"] == 31
+    assert captured["payload"].purpose == "required"
 
 
 def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatch) -> None:
@@ -2170,7 +2771,7 @@ def test_follow_up_plan_next_actions_describe_planned_work() -> None:
             "priority": "high",
             "purpose": "required",
             "reason": "個股資料審計缺口：股價",
-            "next_step": "刷新近期股價、量能與波動資料，用於降值風險與進出場檢查。",
+            "next_step": "刷新近 120 天股價、量能與波動資料，用於目前情境降值分與進出場檢查。",
             "completion_criteria": "目標股票近 120 天內有可用股價與量能資料。",
             "completion_checks": [{"check": "market_history_coverage", "min_days": 120}],
         },

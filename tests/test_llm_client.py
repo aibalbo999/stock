@@ -11,6 +11,7 @@ def fake_settings(**overrides) -> SimpleNamespace:
         "llm_max_retries_per_key": 2,
         "llm_base_retry_delay_seconds": 0.5,
         "llm_max_retry_delay_seconds": 5.0,
+        "llm_total_timeout_seconds": 60.0,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -29,7 +30,7 @@ def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:
     client.rotator = APIKeyRotator(["bad-key", "good-key"])
     calls = []
 
-    def fake_call(prompt: str, api_key: str) -> str:
+    def fake_call(prompt: str, api_key: str, **_kwargs) -> str:
         calls.append((prompt, api_key))
         if api_key == "bad-key":
             response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
@@ -57,7 +58,7 @@ def test_llm_client_retries_503_before_rotating(monkeypatch) -> None:
     client.rotator = APIKeyRotator(["flaky-key"])
     calls = []
 
-    def fake_call(prompt: str, api_key: str) -> str:
+    def fake_call(prompt: str, api_key: str, **_kwargs) -> str:
         calls.append((prompt, api_key))
         if len(calls) == 1:
             response = httpx.Response(503, request=httpx.Request("POST", "https://example.test"))
@@ -93,7 +94,7 @@ def test_llm_client_uses_configured_retry_count(monkeypatch) -> None:
     client.rotator = APIKeyRotator(["flaky-key", "good-key"])
     calls = []
 
-    def fake_call(prompt: str, api_key: str) -> str:
+    def fake_call(prompt: str, api_key: str, **_kwargs) -> str:
         calls.append((prompt, api_key))
         if api_key == "flaky-key":
             response = httpx.Response(503, request=httpx.Request("POST", "https://example.test"))

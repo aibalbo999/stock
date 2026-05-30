@@ -50,7 +50,7 @@ class SourceRelevanceAnalyzer:
     def document_relevance(self, plan: TopicDiscoveryPlan, document: NewsDocument) -> dict:
         haystack = f"{document.title}\n{document.text}"
         subtopics = self._matched_subtopics(plan, haystack)
-        candidate_matches = self._matched_candidates(plan, haystack)
+        candidate_matches = self._matched_candidates(plan, document)
         source_category = self._source_category(document)
         source_intents = self._source_intents(source_category, document)
         score = 0
@@ -125,17 +125,115 @@ class SourceRelevanceAnalyzer:
         lowered = haystack.lower()
         matches = []
         for subtopic in plan.subtopics:
-            terms = self.service._research_terms(subtopic)
+            terms = [
+                *self.service._research_terms(subtopic),
+                *self.service._context_phrases(subtopic.name),
+                *self._subtopic_alias_terms(subtopic.name),
+            ]
             hit_count = sum(1 for term in terms if term.lower() in lowered)
             if hit_count >= 2 or (subtopic.name and subtopic.name.lower() in lowered):
                 matches.append(subtopic.name or "未命名子題")
         return matches
 
-    def _matched_candidates(self, plan: TopicDiscoveryPlan, haystack: str) -> list[dict]:
+    @staticmethod
+    def _subtopic_alias_terms(name: str) -> list[str]:
+        lowered = (name or "").lower()
+        aliases: list[str] = []
+        if any(term in lowered for term in ["液冷", "散熱", "電源", "cooling", "thermal", "power"]):
+            aliases.extend(
+                [
+                    "液冷",
+                    "水冷",
+                    "散熱",
+                    "電源",
+                    "功耗",
+                    "liquid cooling",
+                    "cooling",
+                    "thermal",
+                    "power",
+                    "hvdc",
+                ]
+            )
+        if any(term in lowered for term in ["電力", "電網", "地緣", "政策", "出口", "power", "grid"]):
+            aliases.extend(
+                [
+                    "電力",
+                    "電網",
+                    "出口管制",
+                    "地緣",
+                    "政策",
+                    "power grid",
+                    "grid",
+                    "electricity",
+                    "utilities",
+                    "export control",
+                    "geopolitical",
+                ]
+            )
+        if any(term in lowered for term in ["pcb", "載板", "高速"]):
+            aliases.extend(["PCB", "載板", "ABF", "CCL", "substrate", "interconnect"])
+        if any(term in lowered for term in ["伺服", "馬達", "控制", "servo", "controller"]):
+            aliases.extend(
+                [
+                    "伺服",
+                    "伺服馬達",
+                    "馬達",
+                    "控制器",
+                    "工業電腦",
+                    "邊緣運算",
+                    "servo",
+                    "motor",
+                    "controller",
+                    "motion control",
+                    "industrial pc",
+                    "edge computing",
+                ]
+            )
+        if any(term in lowered for term in ["減速器", "線性", "傳動", "reducer", "linear"]):
+            aliases.extend(
+                [
+                    "減速器",
+                    "諧波",
+                    "諧波減速器",
+                    "滾珠螺桿",
+                    "線性滑軌",
+                    "微型滑軌",
+                    "精密傳動",
+                    "harmonic reducer",
+                    "ball screw",
+                    "linear guide",
+                    "linear motion",
+                ]
+            )
+        if any(term in lowered for term in ["視覺", "感測", "機構", "轉軸", "vision", "sensor"]):
+            aliases.extend(
+                [
+                    "視覺",
+                    "機器視覺",
+                    "3D 視覺",
+                    "3D視覺",
+                    "3D 感測",
+                    "3D感測",
+                    "感測",
+                    "鏡頭",
+                    "光學鏡頭",
+                    "機構件",
+                    "轉軸",
+                    "鉸鏈",
+                    "robot vision",
+                    "machine vision",
+                    "sensor",
+                    "hinge",
+                    "camera module",
+                ]
+            )
+        return list(dict.fromkeys(term for term in aliases if term))
+
+    def _matched_candidates(self, plan: TopicDiscoveryPlan, document: NewsDocument) -> list[dict]:
         matches = []
         for candidate in plan.candidate_companies:
-            if not self.service._has_entity_and_context(
-                haystack,
+            if not self.service._document_supports_candidate(
+                document,
                 self.service._candidate_entity_terms(candidate),
                 self.service._candidate_context_terms(candidate, plan),
             ):
@@ -165,6 +263,19 @@ class SourceRelevanceAnalyzer:
             return "semiconductor_industry"
         if any(term in haystack for term in ["export", "bis", "commerce.gov", "federalregister"]):
             return "policy_export_controls"
+        if any(
+            term in haystack
+            for term in [
+                "therobotreport",
+                "the robot report",
+                "roboticsandautomationnews",
+                "robotics & automation news",
+                "ieee spectrum",
+                "spectrum.ieee.org",
+                "digitimes",
+            ]
+        ):
+            return "robotics_industry"
         if "news.google.com" in haystack:
             return "dynamic_search"
         return "news"
@@ -176,6 +287,7 @@ class SourceRelevanceAnalyzer:
             "cloud_capex": 12,
             "datacenter_power": 10,
             "semiconductor_industry": 10,
+            "robotics_industry": 10,
             "dynamic_search": 6,
         }.get(category, 2)
 
@@ -186,13 +298,39 @@ class SourceRelevanceAnalyzer:
             "cloud_capex": ["industry_news", "international_context"],
             "datacenter_power": ["capacity_supply", "regulatory_policy", "international_context"],
             "semiconductor_industry": ["industry_news", "capacity_supply", "international_context"],
+            "robotics_industry": ["industry_news", "capacity_supply", "international_context"],
             "policy_export_controls": ["regulatory_policy", "international_context"],
             "dynamic_search": ["industry_news"],
             "news": ["industry_news"],
         }
         intents = list(mapping.get(category, ["industry_news"]))
         text = f"{document.title}\n{document.text}".lower()
-        if any(term in text for term in ["產能", "良率", "瓶頸", "交期", "capacity", "yield", "bottleneck"]):
+        if any(
+            term in text
+            for term in [
+                "產能",
+                "良率",
+                "瓶頸",
+                "交期",
+                "出貨",
+                "擴產",
+                "功耗",
+                "電力",
+                "電網",
+                "液冷",
+                "水冷",
+                "電源",
+                "capacity",
+                "yield",
+                "bottleneck",
+                "shipment",
+                "power",
+                "grid",
+                "electricity",
+                "cooling",
+                "liquid",
+            ]
+        ):
             intents.append("capacity_supply")
         if any(term in text for term in ["法說", "年報", "公開說明書", "重大訊息", "investor presentation"]):
             intents.append("company_disclosure")

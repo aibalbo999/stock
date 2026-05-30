@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import contextmanager
 from datetime import date, timedelta
 
@@ -80,6 +81,40 @@ def test_source_audit_missing_subtopics_become_automatic_follow_up_actions() -> 
     news_action = next(action for action in actions if action.action_type == "ingest_news")
     assert "出口管制" in news_action.reason
     assert news_action.priority == "high"
+    assert news_action.tickers == ()
+
+
+def test_topic_level_follow_up_news_uses_topic_result_key_and_completion(monkeypatch) -> None:
+    calls = []
+
+    class FakePipeline:
+        async def ingest_feeds(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "count": 1,
+                "items": [{"id": "topic-doc", "title": "機器人伺服馬達補強來源", "entity_matches": []}],
+                "errors": [],
+            }
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", FakePipeline)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction(
+        "ingest_news",
+        "來源覆蓋審計缺口：缺少來源覆蓋子題：伺服馬達與控制系統",
+        (),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="機器人 產業鏈", tickers=["3037"]), news_limit=12)
+
+    news_result = result["results"]["ingest_news"]
+    assert news_result["count"] == 1
+    assert "ingest_news:3037" not in result["results"]
+    assert any("機器人 產業鏈 伺服馬達與控制系統" in query["query"] for query in news_result["queries"])
+    assert result["execution_summary"]["rerun_blocked"] is False
+    assert calls
 
 
 def test_source_audit_weak_subtopics_become_news_follow_up_without_discovery_rerun() -> None:
@@ -104,7 +139,7 @@ def test_company_data_audit_becomes_required_follow_up_actions() -> None:
             {
                 "ticker": "3017",
                 "status": "partial",
-                "missing": ["可稽核入庫公司文本不足", "可稽核入庫 AI 歸因不足"],
+                "missing": ["公司層級文本證據不足", "可稽核入庫 AI 歸因不足"],
             },
             {
                 "ticker": "2059",
@@ -201,6 +236,28 @@ def test_candidate_audit_becomes_required_follow_up_actions(monkeypatch) -> None
     assert "信心：中 52" in news_action.reason
 
 
+def test_candidate_audit_adds_company_filing_action_for_official_source_gap(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 2308 台達電 | 伺服驅動與控制系統 | 弱證據觀察 | 5 篇 / 5 來源 | 系統尚未取得或解析到可用官方年報/法說文字；這是資料管線缺口，不代表公司沒有公開年報 | 補抓或匯入官方年報、法說會或公司 IR 文字版後再升格為正式分析。 | 中 74 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
+        markdown=markdown,
+    )
+
+    keys = {(action.action_type, action.tickers, action.purpose) for action in actions}
+    assert ("ingest_news", ("2308",), "required") in keys
+    assert ("ingest_company_filings", ("2308",), "required") in keys
+    filing_action = next(action for action in actions if action.action_type == "ingest_company_filings")
+    assert "官方年報" in filing_action.reason
+    assert "IR" in filing_action.reason
+
+
 def test_candidate_audit_can_be_tracking_when_report_is_ready(monkeypatch) -> None:
     monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
     markdown = """
@@ -220,10 +277,52 @@ def test_candidate_audit_can_be_tracking_when_report_is_ready(monkeypatch) -> No
     assert any(action.action_type == "ingest_news" and action.tickers == ("3324",) for action in actions)
 
 
+def test_candidate_audit_retries_unavailable_candidates(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 6235 華孚 | 鎂鋁合金機構件 | 資料不足排除 | 0 篇 / 0 來源 | 已自動補查仍無直接證據 | 等公司公告後再納入 | 低 0 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 | 中 52 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
+        markdown=markdown,
+    )
+
+    assert any(action.action_type == "ingest_news" and action.tickers == ("6235",) for action in actions)
+    assert any(action.tickers == ("3324",) for action in actions)
+
+
+def test_candidate_audit_skips_completed_limited_candidates(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    markdown = """
+## 候選公司審計
+| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |
+|---|---|---|---:|---|---|---:|
+| 1590 亞德客-KY | 氣動與線性傳動 | 補查後未升格 | 1 篇 / 1 來源 | 已補查仍未達正式門檻 | 新公告後再評估 | 中 53 |
+| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據：來源不足 | 補抓公司新聞後再驗證 | 中 52 |
+"""
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
+        markdown=markdown,
+    )
+
+    assert not any(action.tickers == ("1590",) for action in actions)
+    assert any(action.tickers == ("3324",) for action in actions)
+
+
 def test_company_filing_follow_up_targets_missing_document_type() -> None:
     assert company_filing_document_types_from_reason("缺高品質必要公司文件：annual_report") == ["annual_report"]
     assert company_filing_document_types_from_reason("建議補高品質公司文件：investor_presentation") == [
         "investor_presentation"
+    ]
+    assert company_filing_document_types_from_reason("需補官方年報、法說會或 IR 文字來源") == [
+        "annual_report",
+        "investor_presentation",
     ]
     assert company_filing_document_types_from_reason("公司原始公開文件不足或來源品質偏低") is None
 
@@ -275,6 +374,141 @@ def test_candidate_follow_up_news_queries_are_targeted() -> None:
     assert queries
     assert any("3324" in query and "AI 產業鏈" in query for query in queries)
     assert any("散熱模組" in query for query in queries)
+    assert all("通過正式分析門檻" not in query for query in queries)
+
+
+def test_follow_up_news_completion_uses_dynamic_candidate_terms() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news:2359": {
+                    "count": 1,
+                    "items": [
+                        {
+                            "title": "所羅門董事長宣布 AI 視覺軟體新突破",
+                            "publisher": "CMoney",
+                            "entity_matches": [],
+                        }
+                    ],
+                    "target_terms": ["2359", "所羅門", "AI 3D 視覺軟體"],
+                    "errors": [],
+                }
+            }
+        }
+    )
+
+    assert summary["completion"]["all_completed"] is True
+    assert summary["rerun_blocked"] is False
+
+
+def test_follow_up_news_completion_checks_target_terms_without_tickers() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news": {
+                    "count": 1,
+                    "items": [{"title": "一般市場新聞", "publisher": "Example"}],
+                    "target_terms": ["出口管制"],
+                    "errors": [],
+                }
+            }
+        }
+    )
+
+    assert summary["completion"]["all_completed"] is False
+    assert summary["rerun_blocked"] is True
+
+
+def test_follow_up_news_completion_allows_topic_coverage_fallback_without_tickers() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news": {
+                    "count": 2,
+                    "items": [{"title": "產業鏈補強來源", "publisher": "Example"}],
+                    "target_terms": ["液冷散熱", "電源"],
+                    "coverage_fallback_count": 12,
+                    "errors": [{"source": "Google News", "error": "503"}],
+                }
+            }
+        }
+    )
+
+    completion = summary["items"][0]["completion"]
+
+    assert completion["completed"] is True
+    assert completion["observed"]["coverage_fallback_count"] == 12
+    assert summary["completion"]["all_completed"] is True
+
+
+def test_partial_candidate_supplement_does_not_block_rerun_when_data_was_stored() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news:2308": {
+                    "count": 2,
+                    "items": [{"title": "台達電 機器人電源與伺服系統補強來源", "publisher": "Example", "entity_matches": []}],
+                    "target_terms": ["2308", "台達電"],
+                    "errors": [],
+                },
+                "ingest_company_filings:2308": {
+                    "stored_count": 0,
+                    "items": [],
+                    "errors": [{"ticker": "2308", "error": "需要人工匯入"}],
+                    "gap_summary": {"blocked_tickers": ["2308"], "retryable_tickers": []},
+                    "next_actions": [{"ticker": "2308", "action": "manual_company_filing_import"}],
+                },
+            }
+        }
+    )
+
+    assert summary["completion"]["all_completed"] is False
+    assert summary["rerun_blocked"] is False
+    assert summary["rerun_blockers"] == []
+
+
+def test_candidate_supplement_timeouts_do_not_block_rerun_when_other_data_was_stored() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news:6235": {
+                    "count": 0,
+                    "items": [],
+                    "errors": [{"category": "timeout", "error": "逾時"}],
+                    "source": "follow-up action guard",
+                },
+                "ingest_news:3548": {
+                    "count": 10,
+                    "items": [{"title": "兆利 精密轉軸", "publisher": "Example"}],
+                    "target_terms": ["3548", "兆利"],
+                    "errors": [],
+                },
+            }
+        }
+    )
+
+    assert summary["stored_count"] == 10
+    assert summary["completion"]["all_completed"] is False
+    assert summary["rerun_blocked"] is False
+
+
+def test_candidate_follow_up_news_queries_stay_compact_for_long_reasons() -> None:
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：2308 台達電；產業位置：伺服驅動與控制系統；"
+        "弱證據觀察；3 篇 / 3 來源；通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。；"
+        "系統尚未取得或解析到可用官方年報/法說文字，先降回候選觀察；這是資料管線缺口，不代表公司沒有公開年報；補抓或匯入官方年報、法說會或公司 IR 文字版後再升格為正式分析。",
+        ("2308",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    queries = follow_up_news_queries(action, ReportRequest(topic="機器人 產業鏈", tickers=["3037"]))
+
+    assert any("2308 台達電 機器人 產業鏈 伺服驅動與控制系統" in query for query in queries)
+    assert all(len(query) <= 80 for query in queries)
+    assert all("通過正式分析門檻" not in query for query in queries)
 
 
 def test_source_audit_follow_up_news_queries_work_without_tickers() -> None:
@@ -350,6 +584,100 @@ def test_execute_follow_up_news_uses_targeted_google_queries(monkeypatch) -> Non
     assert any("3324" in query["query"] for query in news_result["queries"])
 
 
+def test_execute_follow_up_news_falls_back_to_enabled_sources_when_google_has_no_items(monkeypatch) -> None:
+    calls = []
+
+    class FakePipeline:
+        async def ingest_feeds(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs.get("enabled_sources_only"):
+                return {
+                    "count": 1,
+                    "items": [
+                        {
+                            "id": "fallback",
+                            "title": "雙鴻 機器人散熱補強來源",
+                            "entity_matches": [{"ticker": "3324"}],
+                        }
+                    ],
+                    "errors": [],
+                }
+            return {"count": 0, "items": [], "errors": [{"source": kwargs["url"], "error": "503"}]}
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", FakePipeline)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：3324 雙鴻；產業位置：散熱模組；弱證據觀察",
+        ("3324",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["2382"]), news_limit=12)
+
+    news_result = result["results"]["ingest_news:3324"]
+    assert news_result["source"] == "Google News targeted follow-up + enabled-source fallback"
+    assert news_result["count"] == 1
+    assert news_result["fallback"]["count"] == 1
+    assert any(call.get("enabled_sources_only") for call in calls)
+    assert result["execution_summary"]["rerun_blocked"] is False
+
+
+def test_execute_follow_up_news_uses_web_search_when_feeds_miss_target(monkeypatch) -> None:
+    calls = {"feeds": [], "web": []}
+
+    class FakePipeline:
+        async def ingest_feeds(self, **kwargs):
+            calls["feeds"].append(kwargs)
+            if kwargs.get("url"):
+                return {
+                    "count": 1,
+                    "items": [{"id": "unrelated", "title": "機器人概念股新聞", "publisher": "Example"}],
+                    "errors": [],
+                }
+            return {"count": 0, "items": [], "errors": []}
+
+        async def ingest_web_search(self, **kwargs):
+            calls["web"].append(kwargs)
+            return {
+                "count": 1,
+                "items": [
+                    {
+                        "id": "web-2308",
+                        "title": "台達電 伺服驅動與控制系統 法說會",
+                        "publisher": "web search",
+                        "entity_matches": [],
+                    }
+                ],
+                "errors": [],
+                "queries": [{"query": kwargs["queries"][0], "count": 1, "errors": []}],
+                "target_terms": kwargs["target_terms"],
+                "source": "DuckDuckGo targeted web search",
+            }
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", FakePipeline)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction(
+        "ingest_news",
+        "候選公司未升格，需補齊公司層級證據：股票：2308 台達電；產業位置：伺服驅動與控制系統；弱證據觀察",
+        ("2308",),
+        "high",
+        "weekly",
+        "required",
+    )
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="機器人 產業鏈", tickers=[]), news_limit=12)
+
+    news_result = result["results"]["ingest_news:2308"]
+    assert "targeted web search" in news_result["source"]
+    assert news_result["web_search"]["count"] == 1
+    assert calls["web"]
+    assert "2308" in calls["web"][0]["target_terms"]
+    assert "台達電" in calls["web"][0]["target_terms"]
+
+
 def test_execute_follow_up_market_refresh_fetches_enough_calendar_days(monkeypatch) -> None:
     captured = {}
 
@@ -365,7 +693,7 @@ def test_execute_follow_up_market_refresh_fetches_enough_calendar_days(monkeypat
     monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
     action = FollowUpAction("refresh_market", "補齊股價歷史", ("2330",), "high")
 
-    result = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["2330"]), news_limit=12)
+    _ = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["2330"]), news_limit=12)
 
     assert captured == {
         "tickers": ["2330"],
@@ -373,7 +701,27 @@ def test_execute_follow_up_market_refresh_fetches_enough_calendar_days(monkeypat
         "end_date": date(2026, 5, 25),
         "filter_allowed": False,
     }
-    assert result["execution_summary"]["completion"]["all_completed"] is True
+
+
+def test_execute_follow_up_actions_records_timeout_as_retryable_error(monkeypatch) -> None:
+    class SlowPipeline:
+        async def ingest_feeds(self, **kwargs):
+            await asyncio.sleep(0.05)
+            return {"count": 1, "items": [{"id": "late"}], "errors": []}
+
+    monkeypatch.setattr("app.services.followup_actions.IngestionPipeline", SlowPipeline)
+    monkeypatch.setattr("app.services.followup_actions.FOLLOW_UP_ACTION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+    action = FollowUpAction("ingest_news", "補候選", ("3324",), "high", "weekly", "required")
+
+    result = execute_follow_up_actions_sync([action], ReportRequest(topic="AI 產業鏈", tickers=["3324"]), news_limit=12)
+
+    news_result = result["results"]["ingest_news:3324"]
+    assert news_result["count"] == 0
+    assert news_result["errors"][0]["category"] == "timeout"
+    assert "超過 0.01 秒" in news_result["errors"][0]["error"]
+    assert result["execution_summary"]["rerun_blocked"] is True
+    assert result["execution_summary"]["completion"]["all_completed"] is False
 
 
 def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
@@ -433,6 +781,32 @@ def test_summarize_follow_up_execution_requires_news_to_match_target_company() -
     assert completion["completed"] is False
     assert completion["observed"]["matched_target_count"] == 0
     assert summary["rerun_blockers"] == ["補強任務未達完成條件：ingest_news:3324"]
+
+
+def test_summarize_follow_up_execution_allows_partial_news_source_errors_when_target_matches() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "ingest_news:2308": {
+                    "count": 1,
+                    "items": [
+                        {
+                            "title": "台達電 AI 電源與散熱 法說會",
+                            "entity_matches": [{"ticker": "2308"}],
+                        }
+                    ],
+                    "errors": [{"source": "Google News", "error": "503"}],
+                    "target_terms": ["2308", "台達電"],
+                }
+            }
+        }
+    )
+
+    completion = summary["items"][0]["completion"]
+
+    assert completion["completed"] is True
+    assert completion["observed"]["error_count"] == 1
+    assert summary["completion"]["all_completed"] is True
 
 
 def test_summarize_follow_up_execution_marks_all_completed_when_checks_pass() -> None:

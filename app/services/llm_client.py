@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Lock
-from time import sleep
+from time import monotonic, sleep
 from typing import Optional
 
 import httpx
@@ -14,6 +14,7 @@ ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
 DEFAULT_MAX_RETRIES_PER_KEY = 2
 DEFAULT_BASE_RETRY_DELAY_SECONDS = 0.5
 DEFAULT_MAX_RETRY_DELAY_SECONDS = 5.0
+DEFAULT_TOTAL_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -86,12 +87,20 @@ class LLMClient:
             )
 
         errors: list[str] = []
+        deadline = monotonic() + self.total_timeout_seconds
         for key_index, api_key in self.rotator.candidates():
+            if monotonic() >= deadline:
+                errors.append("LLM total timeout reached before trying next key")
+                break
             should_stop = False
             max_retries = self.max_retries_per_key
             for attempt in range(max_retries + 1):
+                if monotonic() >= deadline:
+                    errors.append(f"key[{key_index}] total timeout before attempt {attempt + 1}")
+                    should_stop = True
+                    break
                 try:
-                    text = self._call_gemini(prompt, api_key)
+                    text = self._call_gemini(prompt, api_key, timeout_seconds=max(1.0, deadline - monotonic()))
                     if text:
                         return LLMResult(text=text, key_index=key_index, model=self.settings.primary_llm_model)
                     errors.append(f"key[{key_index}] empty response")
@@ -102,13 +111,13 @@ class LLMClient:
                     if status not in ROTATABLE_HTTP_STATUSES:
                         should_stop = True
                         break
-                    if status in RETRYABLE_HTTP_STATUSES and attempt < max_retries:
+                    if status in RETRYABLE_HTTP_STATUSES and attempt < max_retries and monotonic() < deadline:
                         self._sleep_before_retry(exc.response, attempt)
                         continue
                     break
                 except httpx.HTTPError as exc:
                     errors.append(f"key[{key_index}] {exc.__class__.__name__} attempt {attempt + 1}")
-                    if attempt < max_retries:
+                    if attempt < max_retries and monotonic() < deadline:
                         self._sleep_before_retry(None, attempt)
                         continue
                     break
@@ -148,12 +157,16 @@ class LLMClient:
     def max_retry_delay_seconds(self) -> float:
         return max(0.0, float(getattr(self.settings, "llm_max_retry_delay_seconds", DEFAULT_MAX_RETRY_DELAY_SECONDS)))
 
+    @property
+    def total_timeout_seconds(self) -> float:
+        return max(1.0, float(getattr(self.settings, "llm_total_timeout_seconds", DEFAULT_TOTAL_TIMEOUT_SECONDS)))
+
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata(
             "請只回答 ok，不要輸出任何其他文字。"
         )
 
-    def _call_gemini(self, prompt: str, api_key: str) -> str:
+    def _call_gemini(self, prompt: str, api_key: str, timeout_seconds: float | None = None) -> str:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.settings.primary_llm_model}:generateContent"
@@ -171,7 +184,7 @@ class LLMClient:
                 "maxOutputTokens": 8192,
             },
         }
-        with httpx.Client(timeout=45) as client:
+        with httpx.Client(timeout=min(45.0, timeout_seconds or 45.0)) as client:
             response = client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
             response.raise_for_status()
         data = response.json()

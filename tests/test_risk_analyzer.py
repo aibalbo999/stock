@@ -59,6 +59,61 @@ def test_cowos_capacity_tightness_is_structural_bottleneck() -> None:
     assert any(finding.risk_type == RiskType.structural_bottleneck for finding in findings)
 
 
+def test_company_filing_boilerplate_macro_risk_is_not_reported_as_company_bottleneck() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="股東會年報",
+        text=(
+            "股票代號：1504\n公司名稱：東元\n文件類型：annual_report\n"
+            "三、未來公司發展策略，受到外部競爭環境、法規環境及總體經營環境之影響："
+            "邁入 115 年，全球總體經濟與地緣政治等變因仍舊存在。"
+        ),
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 5, 8),
+    ).model_copy(update={"id": "filing-teco"})
+
+    findings = RiskAnalyzer().analyze_documents([document])
+
+    assert findings == []
+
+
+def test_positive_company_filing_liquid_cooling_capability_is_not_bottleneck() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="股東會年報",
+        text=(
+            "股票代號：2301\n公司名稱：光寶科\n文件類型：annual_report\n"
+            "經營風險包含匯率與供應鏈變化，需持續管理。"
+            "光寶為全球次世代 AI 關鍵基礎設施中的領先廠商，"
+            "實機展示整合電源、機櫃以及液冷系統，助力資料中心客戶快速建置高效能、低能耗的 AI 基礎設施。"
+        ),
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 4, 30),
+    ).model_copy(update={"id": "filing-liteon-positive-liquid-cooling"})
+
+    findings = RiskAnalyzer().analyze_documents([document])
+
+    assert not any(finding.risk_type == RiskType.structural_bottleneck for finding in findings)
+
+
+def test_company_filing_structural_evidence_uses_local_risk_sentence() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="股東會年報",
+        text=(
+            "股票代號：2301\n公司名稱：光寶科\n文件類型：annual_report\n"
+            "光寶實機展示整合電源、機櫃以及液冷系統，助力資料中心客戶建置低能耗 AI 基礎設施。"
+            "因應出口管制法律法規之變化，本公司已就各事業單位日常營運狀況進行評估。"
+        ),
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 4, 30),
+    ).model_copy(update={"id": "filing-liteon-export-control"})
+
+    findings = RiskAnalyzer().analyze_documents([document])
+
+    structural = [finding for finding in findings if finding.risk_type == RiskType.structural_bottleneck]
+    assert len(structural) == 1
+    assert "出口管制" in structural[0].evidence
+    assert "液冷系統" not in structural[0].evidence
+
+
 def test_topic_keyword_without_risk_context_is_not_structural_bottleneck() -> None:
     document = NewsFetcher.from_manual_text(
         title="CoWoS 產能爆發 產業鏈機會受關注",

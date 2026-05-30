@@ -3,7 +3,7 @@ from datetime import date
 from app.data_sources.news import NewsFetcher
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
-from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -106,6 +106,48 @@ def test_google_news_urls_include_research_task_terms() -> None:
 
     assert any("%E6%B6%B2%E5%86%B7%E6%95%A3%E7%86%B1" in url for url in urls)
     assert any("%E6%B0%B4%E5%86%B7%E8%A8%82%E5%96%AE" in url for url in urls)
+
+
+def test_google_news_urls_cover_each_subtopic_before_extra_queries() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "AI 伺服器需求",
+              "required_evidence": ["CSP 資本支出"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 出貨", "cloud capex AI server"]
+            },
+            {
+              "name": "液冷散熱與電源",
+              "required_evidence": ["液冷訂單"],
+              "risk_focus": ["功耗瓶頸"],
+              "search_queries": ["液冷散熱 電源 AI 伺服器", "liquid cooling power AI server"]
+            },
+            {
+              "name": "地緣政治與電力",
+              "required_evidence": ["電網供給"],
+              "risk_focus": ["出口管制"],
+              "search_queries": ["AI data center power grid", "export control AI chip"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=6,
+        include_metadata=True,
+    )
+    queries = [item["query"] for item in metadata]
+
+    assert any("AI 伺服器需求" in query for query in queries)
+    assert any("液冷散熱與電源" in query for query in queries)
+    assert any("地緣政治與電力" in query for query in queries)
 
 
 def test_evaluate_plan_quality_marks_complete_research_tasks_ready() -> None:
@@ -429,6 +471,30 @@ def test_discover_uses_fallback_plan_when_llm_returns_non_json() -> None:
     assert any("CoWoS" in subtopic["name"] for subtopic in result["plan"]["subtopics"])
 
 
+def test_robotics_fallback_plan_provides_ready_candidate_pool() -> None:
+    plan = TopicDiscoveryService._fallback_plan("機器人 產業鏈")
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+    tickers = {candidate.ticker for candidate in plan.candidate_companies}
+
+    assert quality.status == "ready"
+    assert quality.score == 100
+    assert len(plan.subtopics) >= 6
+    assert len(plan.candidate_companies) == 20
+    assert {"2308", "2049", "6188", "3037"}.issubset(tickers)
+    assert any("協作" in subtopic.name for subtopic in plan.subtopics)
+
+
+def test_discover_uses_robotics_fallback_when_llm_returns_non_json() -> None:
+    llm = FakeDiscoveryLLM(["不是 JSON 的拆解說明"])
+
+    result = TopicDiscoveryService(llm=llm).discover("機器人 產業鏈")
+
+    assert result["fallback_plan_applied"] is True
+    assert result["plan_quality"]["status"] == "ready"
+    assert any(candidate["ticker"] == "6188" for candidate in result["plan"]["candidate_companies"])
+    assert any("協作" in subtopic["name"] for subtopic in result["plan"]["subtopics"])
+
+
 def test_coverage_gap_queries_add_missing_research_dimensions() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -724,6 +790,44 @@ def test_supplemental_google_news_urls_focuses_on_unsupported_candidates() -> No
     assert not any("2330+%E5%8F%B0%E7%A9%8D%E9%9B%BB" in url for url in urls)
 
 
+def test_candidate_validation_does_not_credit_other_company_filing_mentions() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [{"name": "機器人", "rationale": "", "search_queries": ["機器人"]}],
+          "candidate_companies": [
+            {
+              "ticker": "2308",
+              "name": "台達電",
+              "segment": "伺服控制",
+              "rationale": "機器人控制",
+              "evidence_keywords": ["機器人"]
+            },
+            {
+              "ticker": "2359",
+              "name": "所羅門",
+              "segment": "AI 視覺",
+              "rationale": "機器人視覺",
+              "evidence_keywords": ["機器人"]
+            }
+          ]
+        }
+        """
+    )
+    filing = NewsFetcher.from_manual_text(
+        title="股東會年報",
+        text="股票代號：2359\n公司名稱：所羅門\n文件類型：annual_report\n台達電為重要同業，機器人視覺需求成長。",
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2026, 5, 19),
+    ).model_copy(update={"id": "filing-solomon"})
+
+    validated = TopicDiscoveryService().validate_candidates(plan, [filing])
+    evidence_counts = {candidate.ticker: candidate.evidence_count for candidate in validated}
+
+    assert evidence_counts["2359"] == 1
+    assert evidence_counts["2308"] == 0
+
+
 def test_supplemental_google_news_urls_include_subtopic_evidence_and_risk_terms() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -984,6 +1088,45 @@ def test_validate_candidates_requires_topic_context_evidence() -> None:
     assert candidates[0].evidence_count == 0
 
 
+def test_validate_candidates_rejects_unrelated_release_notes_with_ticker_like_ids() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "5443",
+              "name": "均豪",
+              "segment": "半導體自動化",
+              "rationale": "機械手臂與自動化設備",
+              "evidence_keywords": ["自動化", "機械手臂"]
+            }
+          ]
+        }
+        """
+    )
+    release_note = NewsFetcher.from_manual_text(
+        title="May 21, 2026 / Google Cloud Release Notes",
+        text="Issue 5443 updates automation tooling for cloud servers.",
+        publisher="Google Cloud Release Notes",
+        published_at=date(2026, 5, 21),
+    )
+    company_news = NewsFetcher.from_manual_text(
+        title="均豪半導體自動化設備需求",
+        text="均豪受惠半導體自動化與機械手臂設備需求。",
+        publisher="test",
+        published_at=date(2026, 5, 24),
+    )
+
+    candidates = service.validate_candidates(plan, [release_note, company_news])
+
+    assert candidates[0].evidence_count == 1
+    assert candidates[0].evidence_source_count == 1
+    assert candidates[0].evidence_sources[0]["title"] == "均豪半導體自動化設備需求"
+    assert all("Google Cloud" not in source["publisher"] for source in candidates[0].evidence_sources)
+
+
 def test_validate_candidates_uses_segment_and_rationale_as_context() -> None:
     service = TopicDiscoveryService()
     plan = TopicDiscoveryService.parse_plan(
@@ -1128,3 +1271,24 @@ def test_dynamic_whitelist_keeps_evidence_keywords_without_promoting_unverified_
     assert len(companies) == 1
     assert companies[0].evidence_keywords == ["AI 伺服器", "資料中心"]
     assert "證據關鍵字：AI 伺服器、資料中心" in whitelist.as_prompt_context()
+
+
+def test_topic_discovery_prompt_requests_early_signal_and_low_attention_candidates() -> None:
+    prompt = TopicDiscoveryService._prompt("AI 產業鏈")
+    repair = TopicDiscoveryService._repair_prompt(
+        "AI 產業鏈",
+        TopicDiscoveryPlan(),
+        DiscoveryPlanQuality(
+            status="insufficient",
+            score=0,
+            missing=[],
+            coverage={},
+            subtopic_count=0,
+            candidate_count=0,
+            recommendation="補候選",
+        ),
+    )
+
+    assert "early_signal" in prompt
+    assert "報導較少但訊號可能轉強" in prompt
+    assert "長尾供應鏈候選" in repair

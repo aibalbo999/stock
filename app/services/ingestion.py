@@ -11,6 +11,7 @@ from app.data_sources.company_filings import (
     RECOMMENDED_DOCUMENT_TYPES,
     REQUIRED_CORE_DOCUMENT_TYPES,
     CompanyFilingFetcher,
+    is_high_quality_company_filing,
 )
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
@@ -63,6 +64,7 @@ class IngestionPipeline:
                 if enabled_sources_only
                 else available_sources
             )
+            sources = self._select_diverse_sources(sources, limit=18)
             selection = source_store.selection_for_topic(topic)
             source_selection = {
                 "mode": "topic_filtered" if enabled_sources_only else "all_sources",
@@ -75,41 +77,53 @@ class IngestionPipeline:
                 "skipped": selection["skipped"] if enabled_sources_only else [],
             }
             source_results = []
-            for source in sources:
-                try:
-                    source_documents = await fetcher.fetch_feed(
-                        source.url,
-                        source.publisher or source.name,
-                        fetch_limit,
-                    )
-                    filtered_documents = self._filter_documents(source_documents, start_date, end_date, quality_filter)[:limit]
-                    documents.extend(filtered_documents)
-                    source_results.append(
-                        {
+            semaphore = asyncio.Semaphore(6)
+
+            async def fetch_source(source):
+                async with semaphore:
+                    try:
+                        source_documents = await asyncio.wait_for(
+                            fetcher.fetch_feed(
+                                source.url,
+                                source.publisher or source.name,
+                                fetch_limit,
+                            ),
+                            timeout=8,
+                        )
+                        filtered_documents = self._filter_documents(source_documents, start_date, end_date, quality_filter)[:limit]
+                        return filtered_documents, {
                             "name": source.name,
                             "publisher": source.publisher or source.name,
+                            "url": source.url,
                             "category": source.category,
                             "scope": source.scope,
                             "topics": source.topics,
                             "source_intents": source.source_intents,
+                            "fetch_mode": "rss_or_atom",
                             "stored_count": len(filtered_documents),
                             "error_count": 0,
-                        }
-                    )
-                except Exception as exc:
-                    errors.append({"source": source.url, "error": str(exc)})
-                    source_results.append(
-                        {
+                        }, None
+                    except Exception as exc:
+                        return [], {
                             "name": source.name,
                             "publisher": source.publisher or source.name,
+                            "url": source.url,
                             "category": source.category,
                             "scope": source.scope,
                             "topics": source.topics,
                             "source_intents": source.source_intents,
+                            "fetch_mode": "rss_or_atom",
                             "stored_count": 0,
                             "error_count": 1,
-                        }
-                    )
+                        }, {"source": source.url, "error": str(exc) or exc.__class__.__name__}
+
+            for filtered_documents, source_result, error in await asyncio.gather(
+                *(fetch_source(source) for source in sources)
+            ):
+                documents.extend(filtered_documents)
+                source_results.append(source_result)
+                if error:
+                    errors.append(error)
         if url:
             source_results = []
 
@@ -144,6 +158,116 @@ class IngestionPipeline:
             "source_selection": source_selection,
         }
 
+    async def ingest_web_search(
+        self,
+        queries: list[str],
+        topic: str | None = None,
+        limit_per_query: int = 5,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        target_terms: list[str] | None = None,
+        quality_filter: bool = True,
+    ) -> dict:
+        fetcher = NewsFetcher()
+        documents = []
+        errors = []
+        query_results = []
+        seen_urls: set[str] = set()
+        for query in queries:
+            try:
+                search_results = await CompanyFilingFetcher._duckduckgo_search(query, limit_per_query)
+            except Exception as exc:
+                errors.append({"source": query, "error": str(exc) or exc.__class__.__name__})
+                query_results.append({"query": query, "count": 0, "errors": [str(exc) or exc.__class__.__name__]})
+                continue
+            stored_for_query = 0
+            query_errors = []
+            for result in search_results:
+                url = result.get("url") or ""
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                preview = NewsFetcher.from_manual_text(
+                    title=result.get("title") or url,
+                    text=result.get("snippet") or result.get("title") or url,
+                    publisher=result.get("publisher") or "web search",
+                    url=url,
+                )
+                if not self._matches_target_terms(preview, target_terms):
+                    continue
+                try:
+                    document = await fetcher.fetch_url(url, publisher=result.get("publisher") or "web search")
+                except Exception as exc:
+                    query_errors.append({"source": url, "error": str(exc) or exc.__class__.__name__})
+                    document = preview
+                if not self._matches_target_terms(document, target_terms):
+                    continue
+                documents.append(document)
+                stored_for_query += 1
+            query_results.append({"query": query, "count": stored_for_query, "errors": query_errors})
+            errors.extend(query_errors)
+
+        documents = self._filter_documents(
+            self._dedupe_documents(documents),
+            start_date,
+            end_date,
+            quality_filter,
+        )
+        VectorStore().upsert_documents(documents)
+        ingested = []
+        with session_scope() as session:
+            repository = NewsRepository(session)
+            for document in documents:
+                matches = self.mapper.match_document(document)
+                repository.upsert_document(
+                    document,
+                    [match.model_dump(mode="json") for match in matches],
+                )
+                ingested.append(
+                    {
+                        "id": document.id,
+                        "title": document.title,
+                        "publisher": document.source.publisher,
+                        "published_at": document.source.published_at.isoformat()
+                        if document.source.published_at
+                        else None,
+                        "url": document.source.url,
+                        "entity_matches": [match.model_dump(mode="json") for match in matches],
+                    }
+                )
+        return {
+            "count": len(ingested),
+            "items": ingested,
+            "errors": errors,
+            "queries": query_results,
+            "target_terms": target_terms or [],
+            "source": "DuckDuckGo targeted web search",
+            "source_selection": {"mode": "targeted_web_search", "topic": topic, "selected_count": len(queries)},
+        }
+
+    @staticmethod
+    def _select_diverse_sources(sources: list, limit: int) -> list:
+        if len(sources) <= limit:
+            return sources
+        selected: list = []
+        used_names: set[str] = set()
+        seen_categories: set[str] = set()
+        for source in sources:
+            if source.category in seen_categories:
+                continue
+            selected.append(source)
+            used_names.add(source.name)
+            seen_categories.add(source.category)
+            if len(selected) >= limit:
+                return selected
+        for source in sources:
+            if source.name in used_names:
+                continue
+            selected.append(source)
+            if len(selected) >= limit:
+                break
+        return selected
+
     @staticmethod
     def _source_category_counts(source_results: list[dict]) -> dict:
         counts: dict[str, int] = {}
@@ -151,6 +275,26 @@ class IngestionPipeline:
             category = str(result.get("category") or "news")
             counts[category] = counts.get(category, 0) + int(result.get("stored_count") or 0)
         return counts
+
+    @staticmethod
+    def _matches_target_terms(document, target_terms: list[str] | None) -> bool:
+        terms = [
+            term.casefold()
+            for term in (target_terms or [])
+            if term and len(term.strip()) >= 2
+        ]
+        if not terms:
+            return True
+        haystack = " ".join(
+            str(part or "")
+            for part in [
+                getattr(document, "title", ""),
+                getattr(document, "text", ""),
+                getattr(getattr(document, "source", None), "url", ""),
+                getattr(getattr(document, "source", None), "publisher", ""),
+            ]
+        ).casefold()
+        return any(term in haystack for term in terms)
 
     async def refresh_market(
         self,
@@ -260,6 +404,7 @@ class IngestionPipeline:
         limit_per_query: int = 3,
         filter_allowed: bool = True,
         document_types: list[str] | None = None,
+        company_names: dict[str, str] | None = None,
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
@@ -270,31 +415,80 @@ class IngestionPipeline:
         search_plans = []
         per_ticker_results = []
         target_document_types = tuple(document_types or REQUIRED_CORE_DOCUMENT_TYPES)
+        company_names = company_names or {}
+        cached_documents_by_ticker = self._cached_company_filings_by_ticker(allowed)
         for ticker in allowed:
             company = companies.get(ticker)
-            company_name = company.name if company else self._company_name_from_cached_evidence(ticker)
+            cached_documents = cached_documents_by_ticker.get(ticker, [])
+            company_name = (
+                company_names.get(ticker)
+                or (company.name if company else "")
+                or next((document.company_name or "" for document in cached_documents if document.company_name), "")
+                or self._company_name_from_cached_evidence(ticker)
+            )
             search_plans.append(fetcher.official_search_plan(ticker, company_name, document_types=document_types))
             attempts = []
-            company_documents, company_errors = await fetcher.fetch_discovery_documents(
-                ticker,
-                company_name,
-                limit_per_query=limit_per_query,
-                document_types=document_types,
-            )
-            enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
-            attempts.append(
-                company_filing_attempt_result(
-                    "targeted_search",
-                    company_documents,
-                    enriched_errors,
+            company_documents = list(cached_documents)
+            enriched_errors = []
+            if cached_documents:
+                attempts.append(
+                    company_filing_attempt_result(
+                        "cached_company_filings",
+                        cached_documents,
+                        [],
+                    )
                 )
+            mops_attempted = False
+            missing_document_types = missing_company_filing_document_types(
+                company_documents,
+                list(target_document_types),
             )
+            if "annual_report" in missing_document_types:
+                mops_documents, mops_errors = await fetcher.fetch_mops_annual_report_documents(
+                    ticker,
+                    company_name,
+                )
+                mops_attempted = True
+                mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
+                company_documents.extend(mops_documents)
+                enriched_errors.extend(mops_enriched_errors)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "mops_annual_report",
+                        mops_documents,
+                        mops_enriched_errors,
+                    )
+                )
+            missing_document_types = missing_company_filing_document_types(
+                company_documents,
+                list(target_document_types),
+            )
+            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+                fetched_documents, company_errors = await fetcher.fetch_discovery_documents(
+                    ticker,
+                    company_name,
+                    limit_per_query=limit_per_query,
+                    document_types=missing_document_types or document_types,
+                )
+                enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
+                company_documents.extend(fetched_documents)
+                attempts.append(
+                    company_filing_attempt_result(
+                        "targeted_search",
+                        fetched_documents,
+                        enriched_errors,
+                    )
+                )
             if should_retry_company_filing_fetch(company_documents, enriched_errors):
+                missing_document_types = missing_company_filing_document_types(
+                    company_documents,
+                    list(target_document_types),
+                )
                 retry_documents, retry_errors = await fetcher.fetch_discovery_documents(
                     ticker,
                     company_name,
                     limit_per_query=limit_per_query,
-                    document_types=document_types,
+                    document_types=missing_document_types or document_types,
                 )
                 retry_enriched_errors = enrich_company_filing_errors(retry_errors, ticker, company_name)
                 company_documents.extend(retry_documents)
@@ -323,7 +517,11 @@ class IngestionPipeline:
                         broad_enriched_errors,
                     )
                 )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+            missing_document_types = missing_company_filing_document_types(
+                company_documents,
+                list(target_document_types),
+            )
+            if not mops_attempted and "annual_report" in missing_document_types:
                 mops_documents, mops_errors = await fetcher.fetch_mops_annual_report_documents(
                     ticker,
                     company_name,
@@ -338,12 +536,16 @@ class IngestionPipeline:
                         mops_enriched_errors,
                     )
                 )
+            missing_document_types = missing_company_filing_document_types(
+                company_documents,
+                list(target_document_types),
+            )
             if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
                 official_documents, official_errors = await fetcher.fetch_official_website_documents(
                     ticker,
                     company_name,
                     limit=limit_per_query + 5,
-                    document_types=document_types,
+                    document_types=missing_document_types or document_types,
                 )
                 official_enriched_errors = enrich_company_filing_errors(official_errors, ticker, company_name)
                 company_documents.extend(official_documents)
@@ -355,12 +557,16 @@ class IngestionPipeline:
                         official_enriched_errors,
                     )
                 )
+            missing_document_types = missing_company_filing_document_types(
+                company_documents,
+                list(target_document_types),
+            )
             if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
                 web_documents, web_errors = await fetcher.fetch_web_search_documents(
                     ticker,
                     company_name,
                     limit_per_query=limit_per_query + 3,
-                    document_types=document_types,
+                    document_types=missing_document_types or document_types,
                 )
                 web_enriched_errors = enrich_company_filing_errors(web_errors, ticker, company_name)
                 company_documents.extend(web_documents)
@@ -515,6 +721,32 @@ class IngestionPipeline:
             return ""
         return ""
 
+    @staticmethod
+    def _cached_company_filings_by_ticker(
+        tickers: list[str],
+        limit_per_ticker: int = 8,
+    ) -> dict[str, list]:
+        if not tickers:
+            return {}
+        cached: dict[str, list] = {ticker: [] for ticker in tickers}
+        try:
+            with session_scope() as session:
+                repository = CompanyFilingRepository(session)
+                latest_by_tickers = getattr(repository, "latest_by_tickers", None)
+                if latest_by_tickers is None:
+                    return cached
+                documents = latest_by_tickers(tickers, limit_per_ticker=limit_per_ticker)
+        except Exception:
+            return cached
+        for document in documents:
+            ticker = str(getattr(document, "ticker", "") or "")
+            if ticker not in cached:
+                continue
+            company_name = str(getattr(document, "company_name", "") or "")
+            if is_high_quality_company_filing(document, ticker, company_name):
+                cached[ticker].append(document)
+        return cached
+
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
         end_date = today_taipei()
         start_date = end_date - timedelta(days=request.lookback_days)
@@ -657,10 +889,17 @@ def should_broaden_company_filing_search(
     errors: list[dict],
     document_types: list[str] | None,
 ) -> bool:
+    return bool(missing_company_filing_document_types(documents, document_types))
+
+
+def missing_company_filing_document_types(
+    documents: list,
+    document_types: list[str] | None,
+) -> list[str]:
     if not document_types:
-        return False
+        return []
     available_types = {getattr(document, "document_type", "") for document in documents}
-    return any(document_type not in available_types for document_type in document_types)
+    return [document_type for document_type in document_types if document_type not in available_types]
 
 
 def company_filing_attempt_result(strategy: str, documents: list, errors: list[dict]) -> dict:

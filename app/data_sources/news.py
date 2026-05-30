@@ -79,6 +79,7 @@ class NewsSourceStore:
                     "name": source.name,
                     "scope": source.scope,
                     "category": source.category,
+                    "url": source.url,
                     "match_score": source.match_score(topic),
                     "match_terms": source.match_terms(topic),
                     "source_intents": source.source_intents,

@@ -47,7 +47,7 @@ class LeadingSignal:
         factors = self.bullish_factors if self.score >= 0 else self.bearish_factors
         if not factors:
             factors = self.neutral_factors
-        return "；".join(factors[:3]) if factors else "目前無足夠領先訊號。"
+        return "；".join(factors[:3]) if factors else "目前無足夠近況訊號。"
 
 
 class LeadingSignalAnalyzer:
@@ -145,12 +145,12 @@ class LeadingSignalAnalyzer:
                 bearish.append(f"營收成長放緩 {abs(revenue_acceleration_pct):.1f} 個百分點")
 
         valuation_label = self._valuation_label(valuation, peer_valuation_summary or {})
-        if valuation_label == "低於同業":
+        if valuation_label == "目前估值低於同業":
             upside_bonus += 2
-            bullish.append("估值低於同業")
-        elif valuation_label == "高於同業":
+            bullish.append("目前估值低於同業")
+        elif valuation_label == "目前估值高於同業":
             downside_penalty += 2
-            bearish.append("估值高於同業")
+            bearish.append("目前估值高於同業")
 
         return LeadingSignal(
             ticker=ticker,
@@ -215,7 +215,7 @@ class LeadingSignalAnalyzer:
             low_count += int(valuation.pb_ratio < pb_avg * 0.9)
             high_count += int(valuation.pb_ratio > pb_avg * 1.1)
         if low_count > high_count:
-            return "低於同業"
+            return "目前估值低於同業"
         if high_count > low_count:
-            return "高於同業"
-        return "接近同業"
+            return "目前估值高於同業"
+        return "目前估值接近同業"

@@ -72,6 +72,69 @@ def test_company_data_audit_flags_per_company_gaps() -> None:
     assert "缺高品質必要公司文件：annual_report" in rows["9999"]["missing"]
 
 
+def test_company_data_audit_does_not_block_on_cache_only_risk_gap() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        report = GeneratedReport(
+            title="機器人 產業鏈 自動分析報告",
+            topic="機器人 產業鏈",
+            tickers_json=json.dumps(["3037"]),
+            findings_json="[]",
+            markdown="""
+## 個別公司分析
+### 3037 欣興
+- 個股結論摘要：有 19 筆公司相關文本、P/E 20.0；主要檢查點：需追蹤 1 筆風險/機會歸因。
+""",
+        )
+        session.add(report)
+        session.flush()
+        _seed_complete_market_data(session, "3037")
+        session.query(RiskClassificationCache).delete()
+        session.commit()
+
+        audit = audit_report_company_data(session, report.id)
+
+    row = audit["rows"][0]
+    assert audit["status"] == "sufficient"
+    assert row["status"] == "sufficient"
+    assert row["checks"]["persisted_risk_findings"] is False
+    assert "可稽核入庫 AI 歸因不足" not in row["missing"]
+
+
+def test_company_data_audit_counts_high_quality_filing_as_company_text() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        report = GeneratedReport(
+            title="機器人 產業鏈 自動分析報告",
+            topic="機器人 產業鏈",
+            tickers_json=json.dumps(["1590"]),
+            findings_json="[]",
+            markdown="""
+## 個別公司分析
+### 1590 亞德客-KY
+- 個股結論摘要：有 1 筆公司相關文本；主要檢查點：需追蹤 1 筆風險/機會歸因。
+""",
+        )
+        session.add(report)
+        session.flush()
+        _seed_complete_market_data(session, "1590")
+        session.query(NewsArticle).filter(NewsArticle.id == "1590-doc-1").delete()
+        session.commit()
+
+        audit = audit_report_company_data(session, report.id)
+
+    row = audit["rows"][0]
+    assert row["status"] == "sufficient"
+    assert row["evidence"]["db_text_count"] == 1
+    assert row["evidence"]["company_filing_text_count"] == 1
+    assert row["evidence"]["effective_text_count"] == 2
+    assert "公司層級文本證據不足" not in row["missing"]
+
+
 def _seed_complete_market_data(session, ticker: str) -> None:
     for index in range(20):
         day = 25 - min(index, 24)

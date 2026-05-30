@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.time import today_taipei
 from app.models.schemas import NewsDocument
 from app.services.candidate_confidence import confidence_level, is_high_confidence
+from app.services.entity_mapping import company_filing_owner_ticker
 from app.services.llm_client import LLMClient
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -159,6 +160,8 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _fallback_plan(topic: str) -> TopicDiscoveryPlan:
+        if TopicDiscoveryService._is_robotics_topic(topic):
+            return TopicDiscoveryService._robotics_fallback_plan(topic)
         if "AI" not in topic.upper() and "人工智慧" not in topic:
             return TopicDiscoveryService.enrich_plan(
                 TopicDiscoveryPlan(
@@ -377,6 +380,108 @@ class TopicDiscoveryService:
                     evidence_keywords=["散熱", "均熱片", "AI 伺服器"],
                 ),
             ],
+            )
+        )
+
+    @staticmethod
+    def _is_robotics_topic(topic: str) -> bool:
+        normalized = topic.lower()
+        return any(term in normalized for term in ["機器人", "robot", "robotics", "humanoid", "協作機器人"])
+
+    @staticmethod
+    def _robotics_fallback_plan(topic: str) -> TopicDiscoveryPlan:
+        return TopicDiscoveryService.enrich_plan(
+            TopicDiscoveryPlan(
+                subtopics=[
+                    DiscoverySubtopic(
+                        name="協作與人形機器人需求",
+                        rationale="確認機器人導入是否從題材進入實際採購",
+                        objective="追蹤協作機器人、人形機器人與工廠自動化的出貨、訂單與導入進度",
+                        required_evidence=["協作機器人出貨", "人形機器人導入", "訂單", "營收"],
+                        risk_focus=["商業化延遲", "客戶導入放緩", "需求下修"],
+                        search_queries=[
+                            "協作機器人 出貨 訂單 營收 台廠",
+                            "協作機器人出貨 humanoid robot commercialization orders revenue Taiwan suppliers",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="伺服馬達與控制系統",
+                        rationale="控制與驅動是機器人核心零組件",
+                        objective="查核伺服馬達、控制器、工業電腦與邊緣運算供應商是否有機器人訂單與毛利改善",
+                        required_evidence=["伺服馬達", "控制器", "工業電腦", "毛利率"],
+                        risk_focus=["價格競爭", "中國供應商競爭", "毛利下滑"],
+                        search_queries=[
+                            "伺服馬達 控制器 機器人 訂單 毛利率 台股",
+                            "伺服馬達 servo motor robot controller Taiwan supplier margin",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="減速器與線性傳動",
+                        rationale="精密傳動影響機器人關節成本與供給",
+                        objective="追蹤諧波減速器、滾珠螺桿、線性滑軌與微型滑軌的產能、技術瓶頸與供應鏈地位",
+                        required_evidence=["諧波減速器", "滾珠螺桿", "線性滑軌", "產能"],
+                        risk_focus=["良率瓶頸", "技術門檻不足", "產能過剩"],
+                        search_queries=[
+                            "諧波減速器 滾珠螺桿 線性滑軌 機器人 產能",
+                            "諧波減速器 harmonic reducer ball screw linear guide robot capacity Taiwan",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="視覺感測與機構件",
+                        rationale="機器人需要感測、鏡頭與輕量化機構件",
+                        objective="確認 3D 視覺、光學鏡頭、鎂鋁機構件與轉軸是否有機器人供應鏈實績",
+                        required_evidence=["3D 視覺", "光學鏡頭", "機構件", "轉軸"],
+                        risk_focus=["認證延遲", "單一客戶", "規格變更"],
+                        search_queries=[
+                            "3D 視覺 光學鏡頭 機器人 機構件 台股",
+                            "機器視覺 robot vision sensor hinge lightweight component Taiwan supplier",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="財務與估值檢查",
+                        rationale="避免只因機器人題材追高",
+                        objective="比較候選公司的月營收、毛利率、本益比、資本支出與機器人業務佔比",
+                        required_evidence=["月營收", "毛利率", "本益比", "資本支出", "業務佔比"],
+                        risk_focus=["估值過高", "營收未反映", "題材占比過低"],
+                        search_queries=[
+                            "機器人 台股 月營收 毛利率 本益比 估值",
+                            "機器人 月營收 毛利率 本益比 robotics Taiwan stocks valuation capex",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="政策與國際競爭",
+                        rationale="機器人供應鏈受中國、日本與歐美競爭影響",
+                        objective="評估政策補助、出口管制、國際競爭與客戶移轉對台廠機器人供應鏈的影響",
+                        required_evidence=["政策補助", "出口管制", "國際競爭", "客戶移轉"],
+                        risk_focus=["政策退場", "地緣政治", "國際大廠競爭"],
+                        search_queries=[
+                            "機器人 政策補助 出口管制 國際競爭 台灣",
+                            "機器人 政策補助 出口管制 國際競爭 robotics subsidy Taiwan",
+                        ],
+                    ),
+                ],
+                candidate_companies=[
+                    CandidateCompany(ticker="2308", name="台達電", segment="伺服驅動與控制系統", rationale="工業自動化、伺服驅動與電源管理完整", evidence_keywords=["伺服馬達", "控制器", "智慧製造"]),
+                    CandidateCompany(ticker="2359", name="所羅門", segment="AI 3D 視覺軟體", rationale="AI 視覺與機器人辨識題材", evidence_keywords=["AI 視覺", "3D 視覺", "機器人"]),
+                    CandidateCompany(ticker="2049", name="上銀", segment="滾珠螺桿與線性滑軌", rationale="精密傳動元件與自動化需求相關", evidence_keywords=["滾珠螺桿", "線性滑軌", "機器人"]),
+                    CandidateCompany(ticker="1590", name="亞德客-KY", segment="氣動與線性傳動", rationale="自動化氣動元件受惠工廠自動化", evidence_keywords=["氣動元件", "自動化", "線性傳動"]),
+                    CandidateCompany(ticker="2395", name="研華", segment="工業電腦與邊緣運算", rationale="工業電腦、邊緣 AI 與機器人控制應用", evidence_keywords=["工業電腦", "邊緣運算", "機器人"]),
+                    CandidateCompany(ticker="6235", name="華孚", segment="鎂鋁合金機構件", rationale="輕量化金屬機構件可用於機器人與電動載具", evidence_keywords=["鎂鋁合金", "機構件", "輕量化"]),
+                    CandidateCompany(ticker="4583", name="大銀微系統", segment="直驅馬達與定位平台", rationale="精密定位平台與直驅元件具機器人關聯", evidence_keywords=["直驅馬達", "定位平台", "精密傳動"]),
+                    CandidateCompany(ticker="1597", name="直得", segment="微型線性滑軌", rationale="微型線性滑軌可切入精密自動化與機器人", evidence_keywords=["微型線性滑軌", "機器人", "自動化"]),
+                    CandidateCompany(ticker="3059", name="華晶科", segment="3D 感測相機", rationale="影像與 3D 感測可支援機器視覺", evidence_keywords=["3D 感測", "機器視覺", "鏡頭"]),
+                    CandidateCompany(ticker="4540", name="盟立", segment="自動化系統整合", rationale="自動化設備與系統整合具機器人導入題材", evidence_keywords=["自動化", "系統整合", "機器人"]),
+                    CandidateCompany(ticker="6188", name="廣明", segment="協作型機器人", rationale="協作型機器人與自動化設備題材", evidence_keywords=["協作機器人", "自動化", "機器人"]),
+                    CandidateCompany(ticker="2421", name="建準", segment="散熱模組與風扇", rationale="機器人與工業設備散熱需求", evidence_keywords=["散熱", "風扇", "機器人"]),
+                    CandidateCompany(ticker="2301", name="光寶科", segment="電源管理系統", rationale="電源與感測模組可用於機器人平台", evidence_keywords=["電源", "感測", "機器人"]),
+                    CandidateCompany(ticker="6274", name="台燿", segment="高頻高速材料", rationale="高頻材料可支援感測與邊緣運算硬體", evidence_keywords=["高速材料", "邊緣運算", "機器人"]),
+                    CandidateCompany(ticker="1504", name="東元", segment="伺服馬達與 AGV", rationale="馬達、電控與 AGV 自動化應用", evidence_keywords=["伺服馬達", "AGV", "自動化"]),
+                    CandidateCompany(ticker="3019", name="亞光", segment="光學鏡頭", rationale="光學鏡頭與感測可支援機器視覺", evidence_keywords=["光學鏡頭", "機器視覺", "感測"]),
+                    CandidateCompany(ticker="3548", name="兆利", segment="精密轉軸與關節機構", rationale="轉軸與精密機構件可對應機器人關節", evidence_keywords=["轉軸", "關節", "機構件"]),
+                    CandidateCompany(ticker="5443", name="均豪", segment="半導體自動化與機械手臂整合", rationale="自動化設備與機械手臂整合經驗", evidence_keywords=["自動化", "機械手臂", "半導體設備"]),
+                    CandidateCompany(ticker="8374", name="羅昇", segment="自動化驅動與視覺代理", rationale="代理自動化零組件與視覺控制產品", evidence_keywords=["自動化", "驅動", "機器視覺"]),
+                    CandidateCompany(ticker="3037", name="欣興", segment="PCB 與載板", rationale="機器人控制板與邊緣運算硬體供應鏈可追蹤", evidence_keywords=["PCB", "載板", "邊緣運算"]),
+                ],
             )
         )
 
@@ -629,6 +734,8 @@ class TopicDiscoveryService:
         urls: list[str] = []
         metadata: list[dict] = []
         queries: list[dict] = []
+        subtopic_primary_queries: list[dict] = []
+        subtopic_extra_queries: list[dict] = []
         for subtopic in plan.subtopics:
             task_terms = " ".join(
                 [subtopic.name, *subtopic.required_evidence[:2], *subtopic.risk_focus[:2]]
@@ -636,7 +743,7 @@ class TopicDiscoveryService:
                 else []
             )
             if task_terms.strip():
-                queries.append(
+                subtopic_primary_queries.append(
                     self._query_item(
                         task_terms.strip(),
                         "research_task",
@@ -645,18 +752,20 @@ class TopicDiscoveryService:
                         self._primary_source_intent(subtopic),
                     )
                 )
-            for query in subtopic.search_queries:
-                queries.append(
-                    self._query_item(
-                        query,
-                        "subtopic",
-                        self._subtopic_hypothesis(subtopic),
-                        self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
-                        self._primary_source_intent(subtopic),
-                    )
+            for query_index, query in enumerate(subtopic.search_queries):
+                item = self._query_item(
+                    query,
+                    "subtopic",
+                    self._subtopic_hypothesis(subtopic),
+                    self._evidence_type(subtopic.required_evidence, subtopic.risk_focus),
+                    self._primary_source_intent(subtopic),
                 )
+                if query_index == 0:
+                    subtopic_primary_queries.append(item)
+                else:
+                    subtopic_extra_queries.append(item)
                 if include_international:
-                    queries.append(
+                    international_item = (
                         self._query_item(
                             f"{query} global market",
                             "subtopic_international",
@@ -665,6 +774,11 @@ class TopicDiscoveryService:
                             "international_context",
                         )
                     )
+                    if query_index == 0:
+                        subtopic_primary_queries.append(international_item)
+                    else:
+                        subtopic_extra_queries.append(international_item)
+        queries.extend(subtopic_primary_queries)
         for candidate in plan.candidate_companies:
             keywords = " ".join(candidate.evidence_keywords[:2])
             candidate_hypothesis = f"驗證 {candidate.ticker} {candidate.name} 是否與「{candidate.segment}」及主題證據直接相關。"
@@ -706,6 +820,7 @@ class TopicDiscoveryService:
                         "international_context",
                     )
                 )
+        queries.extend(subtopic_extra_queries)
         if topic:
             plan_quality = self.evaluate_plan_quality(plan)
             queries.extend(
@@ -1009,8 +1124,7 @@ class TopicDiscoveryService:
             entity_terms = self._candidate_entity_terms(candidate)
             context_terms = self._candidate_context_terms(candidate, plan)
             for document in documents:
-                haystack = f"{document.title}\n{document.text}"
-                if self._has_entity_and_context(haystack, entity_terms, context_terms):
+                if self._document_supports_candidate(document, entity_terms, context_terms):
                     evidence_documents.append(document)
             deduped_titles = list(dict.fromkeys(document.title for document in evidence_documents))[:5]
             source_count = self._evidence_source_count(evidence_documents)
@@ -1082,13 +1196,61 @@ class TopicDiscoveryService:
                 "server",
             ]
         )
+        if TopicDiscoveryService._plan_or_candidate_mentions_robotics(candidate, plan):
+            terms.extend(
+                [
+                    "機器人",
+                    "自動化",
+                    "協作機器人",
+                    "人形機器人",
+                    "工業機器人",
+                    "機器視覺",
+                    "3D 視覺",
+                    "感測",
+                    "伺服",
+                    "伺服馬達",
+                    "控制器",
+                    "減速器",
+                    "滾珠螺桿",
+                    "線性滑軌",
+                    "精密傳動",
+                    "AGV",
+                    "robot",
+                    "robotics",
+                    "automation",
+                    "servo",
+                    "machine vision",
+                    "motion control",
+                ]
+            )
         return list(dict.fromkeys(term.strip() for term in terms if term and term.strip()))
+
+    @staticmethod
+    def _plan_or_candidate_mentions_robotics(candidate: CandidateCompany, plan: TopicDiscoveryPlan | None = None) -> bool:
+        parts = [
+            candidate.segment,
+            candidate.rationale,
+            *candidate.evidence_keywords,
+        ]
+        if plan:
+            for subtopic in plan.subtopics:
+                parts.extend(
+                    [
+                        subtopic.name,
+                        subtopic.rationale,
+                        subtopic.objective,
+                        *subtopic.required_evidence,
+                        *subtopic.risk_focus,
+                    ]
+                )
+        text = " ".join(part for part in parts if part).lower()
+        return any(term in text for term in ["機器人", "robot", "robotics", "automation", "自動化", "agv"])
 
     @staticmethod
     def _context_phrases(text: str) -> list[str]:
         if not text:
             return []
-        normalized = re.sub(r"[，,。；;：:（）()、/|]+", " ", text)
+        normalized = re.sub(r"[，,。；;：:（）()、/|與及和]+", " ", text)
         parts = [part.strip() for part in normalized.split() if len(part.strip()) >= 2]
         phrases = [text.strip()]
         phrases.extend(parts)
@@ -1097,12 +1259,100 @@ class TopicDiscoveryService:
     @staticmethod
     def _has_entity_and_context(haystack: str, entity_terms: list[str], context_terms: list[str]) -> bool:
         normalized = haystack.lower()
-        has_entity = any(term and term.lower() in normalized for term in entity_terms)
+        has_entity = any(TopicDiscoveryService._contains_entity_term(normalized, term) for term in entity_terms)
         if not has_entity:
             return False
         if not context_terms:
             return True
         return any(term and term.lower() in normalized for term in context_terms)
+
+    @staticmethod
+    def _has_entity_and_context_nearby(
+        haystack: str,
+        entity_terms: list[str],
+        context_terms: list[str],
+        window: int = 900,
+    ) -> bool:
+        normalized = haystack.lower()
+        entity_positions = TopicDiscoveryService._term_positions(normalized, entity_terms)
+        if not entity_positions:
+            return False
+        if not context_terms:
+            return True
+        context_positions = TopicDiscoveryService._term_positions(normalized, context_terms)
+        if not context_positions:
+            return False
+        if len(normalized) <= 1500:
+            return True
+        return any(abs(entity - context) <= window for entity in entity_positions for context in context_positions)
+
+    @staticmethod
+    def _document_supports_candidate(
+        document: NewsDocument,
+        entity_terms: list[str],
+        context_terms: list[str],
+    ) -> bool:
+        haystack = f"{document.title}\n{document.text}"
+        owner_ticker = company_filing_owner_ticker(document)
+        if owner_ticker:
+            ticker_terms = {term for term in entity_terms if term.isdigit()}
+            if ticker_terms and owner_ticker not in ticker_terms:
+                return False
+        if not TopicDiscoveryService._has_entity_and_context_nearby(haystack, entity_terms, context_terms):
+            return False
+        if not TopicDiscoveryService._looks_like_unrelated_release_document(document):
+            return True
+        named_terms = [term for term in entity_terms if term and not term.isdigit()]
+        normalized = haystack.lower()
+        return any(TopicDiscoveryService._contains_entity_term(normalized, term) for term in named_terms)
+
+    @staticmethod
+    def _term_positions(haystack: str, terms: list[str]) -> list[int]:
+        positions: list[int] = []
+        for term in terms:
+            normalized_term = (term or "").lower()
+            if not normalized_term:
+                continue
+            if normalized_term.isdigit():
+                pattern = re.compile(rf"(?<!\d){re.escape(normalized_term)}(?!\d)")
+                positions.extend(match.start() for match in pattern.finditer(haystack))
+                continue
+            start = 0
+            while True:
+                index = haystack.find(normalized_term, start)
+                if index == -1:
+                    break
+                positions.append(index)
+                start = index + len(normalized_term)
+        return positions
+
+    @staticmethod
+    def _contains_entity_term(haystack: str, term: str) -> bool:
+        if not term:
+            return False
+        normalized_term = term.lower()
+        if normalized_term.isdigit():
+            return bool(re.search(rf"(?<!\d){re.escape(normalized_term)}(?!\d)", haystack))
+        return normalized_term in haystack
+
+    @staticmethod
+    def _looks_like_unrelated_release_document(document: NewsDocument) -> bool:
+        haystack = " ".join(
+            [
+                document.title,
+                document.source.title or "",
+                document.source.publisher or "",
+                document.source.url or "",
+            ]
+        ).lower()
+        release_markers = (
+            "google cloud release notes",
+            "release notes",
+            "changelog",
+            "版本資訊",
+            "更新日誌",
+        )
+        return any(marker in haystack for marker in release_markers)
 
     @staticmethod
     def _evidence_source_count(documents: list[NewsDocument]) -> int:
@@ -1270,9 +1520,11 @@ class TopicDiscoveryService:
 - rationale 每欄最多 25 個中文字；search query 每筆最多 30 個中文字。
 - 子題應是一個可執行研究任務，不只是關鍵字。
 - 每個子題需包含 objective、required_evidence、risk_focus，說明研究目的、需要查核的資料、需監控的風險。
-- 每個子題需包含 source_intents，表示應抓取的資料類型，例如 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context。
+- 每個子題需包含 source_intents，表示應抓取的資料類型，例如 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context、early_signal。
 - 子題應能驅動資料抓取，例如 CoWoS、HBM、AI 伺服器、液冷、地緣政治、缺電等，但不要固定死在這些範例。
-- candidate_companies 是「候選研究清單」，不是正式投資推薦。
+- candidate_companies 是「候選研究清單」，不是正式投資推薦；要優先列出具備可驗證未來升值假設、但仍需用資料驗證或排除的公司。
+- 除大型龍頭外，候選清單必須保留一部分「報導較少但訊號可能轉強」的中小型或供應鏈二線公司；這些公司仍需被後續來源、月營收、估值與風險資料驗證，不能只因冷門就升格。
+- 每個候選公司都要有清楚產業鏈位置、升值假設與 evidence_keywords，讓後續報告能產出具體投資理由，而不是只列概念股。
 - 若主題是大型產業鏈，候選清單應保持寬口徑；AI 產業鏈通常至少列出 15 檔可驗證台股候選，再交由後續證據升格。
 - 公司必須是台股 4 碼 ticker。
 - 不確定 ticker 時不要輸出該公司。
@@ -1323,12 +1575,14 @@ JSON schema:
 - 保留合理的原子題與候選公司，但必須補齊品質缺口。
 - subtopics 最多 8 筆；candidate_companies 最多 20 筆。
 - 每個子題都要有 objective、required_evidence、risk_focus、search_queries。
-- 每個子題都要有 source_intents，讓系統知道應補哪類來源；可用值包含 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context。
+- 每個子題都要有 source_intents，讓系統知道應補哪類來源；可用值包含 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context、early_signal。
 - 子題必須是可執行研究任務，不能只是熱門股、概念股或單一關鍵字。
 - search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料；每個子題至少保留 1 筆英文或中英混合國際查詢。
 - search_queries 必須能說明要驗證哪個投資假設，不可只是公司名、熱門股或籠統題材詞。
 - 至少涵蓋品質缺口中提到的研究面向；若主題不適用，需用同一子題合併處理但不能空缺。
-- candidate_companies 只是候選研究清單，不是投資推薦；公司必須是台股 4 碼 ticker，不確定 ticker 不要輸出。
+- candidate_companies 只是候選研究清單，不是投資推薦；請優先修正成「可驗證未來升值假設候選」，公司必須是台股 4 碼 ticker，不確定 ticker 不要輸出。
+- 若原候選過度集中在市場已高度關注的龍頭，請補入可驗證的長尾供應鏈候選，例如二線設備、材料、電源、散熱、PCB、載板或零組件公司；仍需列 evidence_keywords 供後續驗證。
+- 每個候選公司都要能說明產業鏈位置、可能升值假設與需驗證的 evidence_keywords，避免只輸出概念股名稱。
 - evidence_keywords 必須能用來驗證公司與主題的真實關聯，不能只寫「AI」或「熱門」。
 
 JSON schema:

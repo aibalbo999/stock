@@ -28,6 +28,7 @@ from app.models.schemas import (
     Source,
     ValuationMetric,
 )
+from app.services.report_integrity import assert_report_integrity
 
 
 class NewsRepository:
@@ -188,7 +189,13 @@ class CompanyFilingRepository:
     def to_news_document(document: CompanyFilingDocument) -> NewsDocument:
         label = f"公司公開文件/{document.document_type}"
         company = f"{document.ticker} {document.company_name or ''}".strip()
-        text = f"{company}\n文件類型：{document.document_type}\n{document.text}"
+        text = (
+            f"股票代號：{document.ticker}\n"
+            f"公司名稱：{document.company_name or ''}\n"
+            f"文件類型：{document.document_type}\n"
+            f"{company}\n"
+            f"{document.text}"
+        )
         return NewsDocument(
             id=f"filing-{document.id}",
             title=document.title,
@@ -208,6 +215,7 @@ class ReportRepository:
         self.session = session
 
     def create(self, request: ReportRequest, response: ReportResponse) -> GeneratedReport:
+        assert_report_integrity(response.markdown)
         report = GeneratedReport(
             title=response.title,
             topic=request.topic,

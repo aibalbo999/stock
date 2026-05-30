@@ -137,6 +137,7 @@ def _audit_one_ticker(
     valuation = _valuation_stats(session, ticker)
     filings = _company_filing_stats(session, ticker)
     evidence = _evidence_stats(session, ticker, report_count)
+    evidence = include_company_filings_in_evidence_stats(evidence, filings)
 
     checks = {
         "price": _fresh_count_check(price["rows"], price["latest_date"], PRICE_MIN_ROWS, PRICE_MAX_AGE_DAYS, today),
@@ -309,6 +310,17 @@ def _evidence_stats(
     }
 
 
+def include_company_filings_in_evidence_stats(evidence: dict, filings: dict) -> dict:
+    filing_text_count = int(filings.get("high_quality_rows") or 0)
+    db_text_count = int(evidence.get("db_text_count") or 0)
+    effective_text_count = int(evidence.get("effective_text_count") or 0)
+    return {
+        **evidence,
+        "company_filing_text_count": filing_text_count,
+        "effective_text_count": max(effective_text_count, db_text_count + filing_text_count),
+    }
+
+
 def _dated_row_stats(session: Session, model: Any, ticker: str, date_column: Any) -> dict:
     row = session.execute(
         select(func.count(), func.max(date_column)).where(model.ticker == ticker)
@@ -351,8 +363,6 @@ def _missing_reasons(checks: dict[str, bool], financial: dict, filings: dict | N
         "company_evidence": "公司層級文本證據不足",
         "company_filings": "公司原始公開文件不足或來源品質偏低",
         "risk_findings": "公司層級 AI 風險/機會歸因不足",
-        "persisted_company_evidence": "可稽核入庫公司文本不足",
-        "persisted_risk_findings": "可稽核入庫 AI 歸因不足",
     }
     missing = [label for key, label in labels.items() if not checks[key]]
     if financial.get("missing_core_metrics"):

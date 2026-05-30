@@ -15,6 +15,7 @@ from app.services.persistence import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
+    NewsRepository,
     ValuationMetricRepository,
 )
 
@@ -38,6 +39,11 @@ TRACKING_FRESHNESS_THRESHOLDS = {
     "ingest_company_filings": 365,
 }
 TRACKING_CANDIDATE_LIMIT = 5
+FOLLOW_UP_ACTION_CONCURRENCY = 4
+FOLLOW_UP_ACTION_TIMEOUT_SECONDS = 90
+FOLLOW_UP_NEWS_QUERY_TIMEOUT_SECONDS = 8
+FOLLOW_UP_NEWS_FALLBACK_TIMEOUT_SECONDS = 20
+FOLLOW_UP_NEWS_WEB_SEARCH_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -123,7 +129,7 @@ class FollowUpActionPlanner:
                 FollowUpAction(
                     "ingest_news",
                     "來源覆蓋審計缺口：缺少來源覆蓋子題：" + "、".join(missing[:6]),
-                    tickers,
+                    (),
                     "high",
                     "weekly",
                     "required",
@@ -133,7 +139,7 @@ class FollowUpActionPlanner:
                 FollowUpAction(
                     "rerun_discovery",
                     "補齊缺來源子題後，重新驗證主題拆解、候選白名單與來源覆蓋。",
-                    tickers,
+                    (),
                     "high",
                     "once",
                     "required",
@@ -144,7 +150,7 @@ class FollowUpActionPlanner:
                 FollowUpAction(
                     "ingest_news",
                     "來源覆蓋審計缺口：弱來源子題需補不同發布者或缺少的資料意圖：" + "、".join(weak[:6]),
-                    tickers,
+                    (),
                     "medium",
                     "weekly",
                     "required",
@@ -163,9 +169,9 @@ class FollowUpActionPlanner:
         actions: list[FollowUpAction] = []
         if not issue_text:
             return actions
-        if self._has(issue_text, "股價", "成交量", "領先訊號"):
+        if self._has(issue_text, "股價", "成交量", "領先訊號", "近況訊號"):
             actions.append(
-                FollowUpAction("refresh_market", "補齊股價歷史、成交量與領先訊號。", tickers, "high", "weekly")
+                FollowUpAction("refresh_market", "補齊股價歷史、成交量與近況訊號。", tickers, "high", "weekly")
             )
         if self._has(issue_text, "月營收", "營收"):
             actions.append(FollowUpAction("refresh_monthly_revenue", "補齊月營收與成長加速資料。", tickers, "high", "monthly"))
@@ -174,7 +180,16 @@ class FollowUpActionPlanner:
         if self._has(issue_text, "估值", "P/E", "DCF", "同業"):
             actions.append(FollowUpAction("refresh_valuations", "補齊估值與同業比較資料。", tickers, "medium", "weekly"))
         if self._has(issue_text, "資料來源", "來源", "新聞", "國際", "發布者", "時間戳", "近期資料"):
-            actions.append(FollowUpAction("ingest_news", "補抓近期與國際資料源，提高 RAG 證據覆蓋。", tickers, "high", "weekly"))
+            target_tickers = () if self._has(issue_text, "主題拆解子題", "來源覆蓋子題") else tickers
+            actions.append(
+                FollowUpAction(
+                    "ingest_news",
+                    "補抓近期與國際資料源，提高 RAG 證據覆蓋。",
+                    target_tickers,
+                    "high",
+                    "weekly",
+                )
+            )
         if self._has(issue_text, "AI 拆解任務", "候選公司", "證據驗證", "正式分析股票"):
             actions.append(FollowUpAction("rerun_discovery", "重新執行 AI 主題拆解與候選白名單驗證。", tickers, "high", "once"))
         if self._has(issue_text, "LLM 補充分析", "模型恢復"):
@@ -216,7 +231,7 @@ class FollowUpActionPlanner:
                         "required",
                     )
                 )
-            if self._has(missing_text, "公司文本", "AI 歸因", "入庫"):
+            if self._has(missing_text, "公司文本", "公司層級文本", "文本證據", "AI 歸因", "入庫"):
                 actions.append(
                     FollowUpAction(
                         "ingest_news",
@@ -272,6 +287,8 @@ class FollowUpActionPlanner:
             status = row.get("狀態", "")
             if "正式分析" in status:
                 continue
+            if "補查後未升格" in status:
+                continue
             ticker = self._extract_ticker(row.get("股票", ""))
             tickers = (ticker,) if ticker else fallback_tickers
             reason = "；".join(
@@ -297,6 +314,17 @@ class FollowUpActionPlanner:
                     purpose,
                 )
             )
+            if needs_company_filing_sources(reason):
+                actions.append(
+                    FollowUpAction(
+                        "ingest_company_filings",
+                        f"候選公司公開文件不足，需補官方年報、法說會或 IR 文字來源：{reason}",
+                        tickers,
+                        priority,
+                        "monthly",
+                        purpose,
+                    )
+                )
             weak_or_missing.append(ticker)
         if weak_or_missing:
             actions.append(
@@ -340,7 +368,7 @@ class FollowUpActionPlanner:
 
     def _actions_from_trigger(self, trigger: str, tickers: tuple[str, ...]) -> list[FollowUpAction]:
         actions: list[FollowUpAction] = []
-        if self._has(trigger, "股價歷史", "股價", "成交量", "領先訊號"):
+        if self._has(trigger, "股價歷史", "股價", "成交量", "領先訊號", "近況訊號"):
             actions.append(FollowUpAction("refresh_market", f"監控條件觸發：{trigger}", tickers, "high", "weekly", "tracking"))
         if self._has(trigger, "月營收", "營收"):
             actions.append(FollowUpAction("refresh_monthly_revenue", f"監控條件觸發：{trigger}", tickers, "high", "monthly", "tracking"))
@@ -601,6 +629,7 @@ def summarize_follow_up_execution(execution: dict) -> dict:
                 "stored_count": stored_count,
                 "error_count": error_count,
                 "source": value.get("source"),
+                "target_terms": value.get("target_terms") or [],
                 "completion": follow_up_completion_status(key, value),
             }
         )
@@ -610,10 +639,10 @@ def summarize_follow_up_execution(execution: dict) -> dict:
     incomplete_tasks = [
         task
         for task in completion["blocked_tasks"]
-        if not (task.startswith("ingest_company_filings") and unique_blocked)
+        if not _nonblocking_partial_candidate_task(task, rows, unique_blocked, total_items)
     ]
     rerun_blockers = []
-    if unique_blocked:
+    if unique_blocked and total_items <= 0:
         rerun_blockers.append(f"公司公開文件仍不足：{', '.join(unique_blocked)}")
     if incomplete_tasks:
         rerun_blockers.append("補強任務未達完成條件：" + "、".join(incomplete_tasks))
@@ -630,6 +659,34 @@ def summarize_follow_up_execution(execution: dict) -> dict:
         "retryable_company_filing_tickers": unique_retryable,
         "items": rows,
 }
+
+
+def _nonblocking_partial_candidate_task(
+    task: str,
+    rows: list[dict],
+    blocked_company_filing_tickers: list[str],
+    total_items: int,
+) -> bool:
+    row = next((item for item in rows if item.get("task") == task), {})
+    if task.startswith("ingest_news"):
+        is_candidate_guard = row.get("source") == "follow-up action guard"
+        completion = row.get("completion") or {}
+        observed = completion.get("observed") or {}
+        matched_target_count = int(observed.get("matched_target_count") or 0)
+        return (bool(row.get("target_terms")) or is_candidate_guard) and total_items > 0 and (
+            matched_target_count > 0
+            or int(row.get("error_count") or 0) > 0
+        )
+    if task.startswith("ingest_company_filings") and blocked_company_filing_tickers and total_items <= 0:
+        return True
+    if task.startswith("ingest_company_filings") and blocked_company_filing_tickers and total_items > 0:
+        return True
+    if task.startswith("ingest_company_filings") and total_items > 0:
+        is_candidate_guard = row.get("source") == "follow-up action guard"
+        return (bool(row.get("target_terms")) or is_candidate_guard) and (
+            int(row.get("error_count") or 0) > 0
+        )
+    return False
 
 
 def follow_up_completion_blocker_actions(rows: list[dict], incomplete_tasks: list[str]) -> list[dict]:
@@ -732,12 +789,25 @@ def follow_up_completion_status(task: str, result: dict) -> dict:
         }
     if action_type == "ingest_news":
         target_tickers = [ticker for ticker in task.split(":", 1)[1].split(",") if ticker] if ":" in task else []
-        matched_count = _matched_target_item_count(result.get("items") or [], target_tickers)
+        matched_count = _matched_target_item_count(
+            result.get("items") or [],
+            target_tickers,
+            result.get("target_terms") or [],
+        )
+        coverage_fallback_count = int(result.get("coverage_fallback_count") or 0)
+        completed = stored_count > 0 and matched_count > 0
+        if not target_tickers and coverage_fallback_count > 0:
+            completed = stored_count > 0
         return {
             "check": "company_evidence_sources",
-            "completed": stored_count > 0 and matched_count > 0 and error_count == 0,
-            "observed": {"stored_count": stored_count, "matched_target_count": matched_count, "error_count": error_count},
-            "required": {"min_documents": 1, "min_matched_target_documents": 1, "error_count": 0},
+            "completed": completed,
+            "observed": {
+                "stored_count": stored_count,
+                "matched_target_count": matched_count,
+                "coverage_fallback_count": coverage_fallback_count,
+                "error_count": error_count,
+            },
+            "required": {"min_documents": 1, "min_matched_target_documents": 1},
         }
     if action_type == "rerun_discovery":
         status = result.get("status")
@@ -769,16 +839,28 @@ def _stored_count(result: dict) -> int:
     return 0
 
 
-def _matched_target_item_count(items: list, target_tickers: list[str]) -> int:
-    if not target_tickers:
+def _matched_target_item_count(items: list, target_tickers: list[str], target_terms: list[str] | None = None) -> int:
+    if not target_tickers and not target_terms:
         return len(items)
     targets = set(target_tickers)
+    text_terms = [
+        term.lower()
+        for term in [*target_tickers, *(target_terms or [])]
+        if term
+    ]
     matched = 0
     for item in items:
         if not isinstance(item, dict):
             continue
         matches = item.get("entity_matches") or []
         if any(isinstance(match, dict) and match.get("ticker") in targets for match in matches):
+            matched += 1
+            continue
+        haystack = " ".join(
+            str(item.get(key) or "")
+            for key in ["title", "publisher", "url", "id", "excerpt", "text"]
+        ).lower()
+        if haystack and any(term in haystack for term in text_terms):
             matched += 1
     return matched
 
@@ -789,61 +871,37 @@ async def execute_follow_up_actions(
     news_limit: int = 30,
 ) -> dict:
     today = today_taipei()
-    pipeline = IngestionPipeline()
     result: dict[str, object] = {"actions": [action.to_dict() for action in actions], "results": {}}
     executable = [action for action in actions if action.action_type != "rerun_analysis"]
-    for action in executable:
-        tickers = list(action.tickers or tuple(request.tickers))
-        result_key = action.action_type if not tickers else f"{action.action_type}:{','.join(tickers)}"
-        if action.action_type == "ingest_news":
-            result["results"][result_key] = await ingest_follow_up_news(
-                pipeline,
+    semaphore = asyncio.Semaphore(FOLLOW_UP_ACTION_CONCURRENCY)
+
+    async def run_action(action: FollowUpAction) -> tuple[str, dict]:
+        result_key = follow_up_result_key(action, request)
+        tickers = list(action.tickers)
+        try:
+            async with semaphore:
+                action_result = await asyncio.wait_for(
+                    execute_single_follow_up_action(action, request, news_limit, today),
+                    timeout=FOLLOW_UP_ACTION_TIMEOUT_SECONDS,
+                )
+        except asyncio.TimeoutError:
+            action_result = follow_up_action_error_result(
                 action,
-                request,
-                news_limit,
-                today,
-            )
-        elif action.action_type == "ingest_company_filings":
-            document_types = company_filing_document_types_from_reason(action.reason)
-            result["results"][result_key] = await pipeline.ingest_company_filings(
                 tickers,
-                limit_per_query=max(2, min(5, news_limit // 10)),
-                filter_allowed=False,
-                document_types=document_types,
+                f"補強任務超過 {FOLLOW_UP_ACTION_TIMEOUT_SECONDS} 秒，已先記錄為可重試缺口。",
+                "timeout",
             )
-        elif action.action_type == "refresh_market":
-            result["results"][result_key] = await pipeline.refresh_market(
+        except Exception as exc:
+            action_result = follow_up_action_error_result(
+                action,
                 tickers,
-                today - timedelta(days=max(request.lookback_days, 240)),
-                today,
-                filter_allowed=False,
+                str(exc) or exc.__class__.__name__,
+                "execution_error",
             )
-        elif action.action_type == "refresh_monthly_revenue":
-            result["results"][result_key] = await pipeline.refresh_monthly_revenue(
-                tickers,
-                today - timedelta(days=450),
-                today,
-                filter_allowed=False,
-            )
-        elif action.action_type == "refresh_financial_metrics":
-            result["results"][result_key] = await pipeline.refresh_financial_metrics(
-                tickers,
-                today - timedelta(days=365 * 6),
-                today,
-                filter_allowed=False,
-            )
-        elif action.action_type == "refresh_valuations":
-            result["results"][result_key] = await pipeline.refresh_valuations(
-                tickers,
-                today - timedelta(days=max(request.lookback_days, 30)),
-                today,
-                filter_allowed=False,
-            )
-        elif action.action_type == "rerun_discovery":
-            result["results"][result_key] = {
-                "status": "planned",
-                "reason": "主題拆解重跑需使用 /pipeline/run_discovered 或排程任務觸發。",
-            }
+        return result_key, action_result
+
+    for result_key, action_result in await asyncio.gather(*(run_action(action) for action in executable)):
+        result["results"][result_key] = action_result
     result["execution_summary"] = summarize_follow_up_execution(result)
     return result
 
@@ -852,16 +910,113 @@ def execute_follow_up_actions_sync(actions: list[FollowUpAction], request: Repor
     return asyncio.run(execute_follow_up_actions(actions, request, news_limit))
 
 
+async def execute_single_follow_up_action(
+    action: FollowUpAction,
+    request: ReportRequest,
+    news_limit: int,
+    today,
+) -> dict:
+    pipeline = IngestionPipeline()
+    tickers = list(action.tickers or tuple(request.tickers))
+    if action.action_type == "ingest_news":
+        return await ingest_follow_up_news(
+            pipeline,
+            action,
+            request,
+            news_limit,
+            today,
+        )
+    if action.action_type == "ingest_company_filings":
+        document_types = company_filing_document_types_from_reason(action.reason)
+        company_name = company_name_from_follow_up_reason(action.reason)
+        company_names = {ticker: company_name for ticker in tickers if company_name}
+        result = await pipeline.ingest_company_filings(
+            tickers,
+            limit_per_query=max(2, min(5, news_limit // 10)),
+            filter_allowed=False,
+            document_types=document_types,
+            company_names=company_names,
+        )
+        result["target_terms"] = follow_up_target_terms(action)
+        return result
+    if action.action_type == "refresh_market":
+        return await pipeline.refresh_market(
+            tickers,
+            today - timedelta(days=max(request.lookback_days, 240)),
+            today,
+            filter_allowed=False,
+        )
+    if action.action_type == "refresh_monthly_revenue":
+        return await pipeline.refresh_monthly_revenue(
+            tickers,
+            today - timedelta(days=450),
+            today,
+            filter_allowed=False,
+        )
+    if action.action_type == "refresh_financial_metrics":
+        return await pipeline.refresh_financial_metrics(
+            tickers,
+            today - timedelta(days=365 * 6),
+            today,
+            filter_allowed=False,
+        )
+    if action.action_type == "refresh_valuations":
+        return await pipeline.refresh_valuations(
+            tickers,
+            today - timedelta(days=max(request.lookback_days, 30)),
+            today,
+            filter_allowed=False,
+        )
+    if action.action_type == "rerun_discovery":
+        return {
+            "status": "planned",
+            "reason": "主題拆解重跑會在補強後重新產生報告時執行。",
+        }
+    return follow_up_action_error_result(action, tickers, f"未知補強任務：{action.action_type}", "unknown_action")
+
+
+def follow_up_result_key(action: FollowUpAction, request: ReportRequest) -> str:
+    tickers = list(action.tickers)
+    return action.action_type if not tickers else f"{action.action_type}:{','.join(tickers)}"
+
+
+def follow_up_action_error_result(
+    action: FollowUpAction,
+    tickers: list[str],
+    message: str,
+    category: str,
+) -> dict:
+    return {
+        "count": 0,
+        "items": [],
+        "target_terms": follow_up_target_terms(action),
+        "errors": [
+            {
+                "action_type": action.action_type,
+                "tickers": tickers,
+                "error": message,
+                "category": category,
+            }
+        ],
+        "source": "follow-up action guard",
+    }
+
+
 def company_filing_document_types_from_reason(reason: str) -> list[str] | None:
+    document_types = []
     if "annual_report" in reason or "年報" in reason:
-        return ["annual_report"]
+        document_types.append("annual_report")
     if "investor_presentation" in reason or "法說" in reason or "法人說明" in reason:
-        return ["investor_presentation"]
+        document_types.append("investor_presentation")
     if "prospectus" in reason or "公開說明書" in reason:
-        return ["prospectus"]
+        document_types.append("prospectus")
     if "material_information" in reason or "重大訊息" in reason:
-        return ["material_information"]
-    return None
+        document_types.append("material_information")
+    return list(dict.fromkeys(document_types)) or None
+
+
+def needs_company_filing_sources(reason: str) -> bool:
+    return any(keyword in reason for keyword in ["年報", "法說", "法人說明", "IR", "公開文件"])
 
 
 async def ingest_follow_up_news(
@@ -886,52 +1041,319 @@ async def ingest_follow_up_news(
     results = []
     items = []
     errors = []
-    for query in queries:
+    target_terms = follow_up_target_terms(action)
+    target_tickers = list(action.tickers)
+    cached_items = cached_follow_up_news_items(pipeline, target_tickers, target_terms, news_limit)
+    if _has_follow_up_target_match(cached_items, target_tickers, target_terms):
+        return {
+            "count": len(cached_items),
+            "items": cached_items,
+            "errors": [],
+            "suppressed_errors": [],
+            "queries": [],
+            "web_search": None,
+            "fallback": None,
+            "target_terms": target_terms,
+            "source": "cached follow-up news evidence",
+        }
+    semaphore = asyncio.Semaphore(4)
+
+    async def fetch_query(query: str) -> tuple[dict, dict]:
         url = google_news_rss_url(query)
-        result = await pipeline.ingest_feeds(
-            url=url,
-            publisher="Google News follow-up",
-            limit=per_query_limit,
-            enabled_sources_only=False,
-            start_date=start_date,
-            end_date=today,
-        )
-        results.append(
-            {
-                "query": query,
-                "url": url,
-                "count": result.get("count", 0),
-                "errors": result.get("errors", []),
+        try:
+            async with semaphore:
+                result = await asyncio.wait_for(
+                    pipeline.ingest_feeds(
+                        url=url,
+                        publisher="Google News follow-up",
+                        limit=per_query_limit,
+                        enabled_sources_only=False,
+                        start_date=start_date,
+                        end_date=today,
+                    ),
+                    timeout=FOLLOW_UP_NEWS_QUERY_TIMEOUT_SECONDS,
+                )
+        except Exception as exc:
+            result = {
+                "count": 0,
+                "items": [],
+                "errors": [{"source": url, "error": str(exc) or exc.__class__.__name__}],
             }
-        )
+        return result, {
+            "query": query,
+            "url": url,
+            "count": result.get("count", 0),
+            "errors": result.get("errors", []),
+        }
+
+    for result, query_result in await asyncio.gather(*(fetch_query(query) for query in queries)):
+        results.append(query_result)
         items.extend(result.get("items", []) or [])
         errors.extend(result.get("errors", []) or [])
-    deduped_items = list({item.get("id") or item.get("title"): item for item in items if isinstance(item, dict)}.values())
+    deduped_items = filter_follow_up_target_items(
+        dedupe_follow_up_items(items),
+        target_tickers,
+        target_terms,
+    )
+    fallback = None
+    coverage_fallback_count = 0
+    suppressed_errors = []
+    if coverage_fallback_count <= 0 and not _has_follow_up_target_match(deduped_items, target_tickers, target_terms):
+        google_errors = list(errors)
+        fallback_topic = follow_up_fallback_topic(action, request)
+        try:
+            fallback = await asyncio.wait_for(
+                pipeline.ingest_feeds(
+                    enabled_sources_only=True,
+                    topic=fallback_topic,
+                    limit=news_limit,
+                    start_date=start_date,
+                    end_date=today,
+                ),
+                timeout=FOLLOW_UP_NEWS_FALLBACK_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            fallback = {
+                "count": 0,
+                "items": [],
+                "errors": [{"source": fallback_topic, "error": str(exc) or exc.__class__.__name__}],
+            }
+        items.extend(fallback.get("items", []) or [])
+        fallback_errors = fallback.get("errors", []) or []
+        errors = fallback_errors if fallback.get("items") else [*google_errors, *fallback_errors]
+        suppressed_errors = google_errors if fallback.get("items") else []
+        deduped_items = filter_follow_up_target_items(
+            dedupe_follow_up_items(items),
+            target_tickers,
+            target_terms,
+        )
+        if not target_tickers and not deduped_items and fallback.get("items"):
+            fallback_items = dedupe_follow_up_items(fallback.get("items") or [])
+            coverage_fallback_count = len(fallback_items)
+            deduped_items = fallback_items[:news_limit]
+    web_search = None
+    if coverage_fallback_count <= 0 and not _has_follow_up_target_match(deduped_items, target_tickers, target_terms):
+        prior_errors = list(errors)
+        try:
+            web_search = await asyncio.wait_for(
+                pipeline.ingest_web_search(
+                    queries=queries,
+                    topic=follow_up_fallback_topic(action, request),
+                    limit_per_query=max(2, min(5, news_limit // max(1, len(queries)))),
+                    start_date=start_date,
+                    end_date=today,
+                    target_terms=target_terms,
+                ),
+                timeout=FOLLOW_UP_NEWS_WEB_SEARCH_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            web_search = {
+                "count": 0,
+                "items": [],
+                "errors": [{"source": "targeted web search", "error": str(exc) or exc.__class__.__name__}],
+                "queries": [],
+                "target_terms": target_terms,
+            }
+        items.extend(web_search.get("items", []) or [])
+        web_errors = web_search.get("errors", []) or []
+        if web_search.get("items"):
+            suppressed_errors.extend(prior_errors)
+            errors = web_errors
+        else:
+            errors.extend(web_errors)
+        deduped_items = filter_follow_up_target_items(
+            dedupe_follow_up_items(items),
+            target_tickers,
+            target_terms,
+        )
+    source_parts = ["Google News targeted follow-up"]
+    if fallback:
+        source_parts.append("enabled-source fallback")
+    if web_search:
+        source_parts.append("targeted web search")
     return {
         "count": len(deduped_items),
         "items": deduped_items,
         "errors": errors,
+        "suppressed_errors": suppressed_errors,
         "queries": results,
-        "source": "Google News targeted follow-up",
+        "web_search": web_search,
+        "fallback": fallback,
+        "coverage_fallback_count": coverage_fallback_count,
+        "target_terms": target_terms,
+        "source": " + ".join(source_parts),
     }
 
 
+def cached_follow_up_news_items(
+    pipeline: IngestionPipeline,
+    target_tickers: list[str],
+    target_terms: list[str],
+    limit: int,
+) -> list[dict]:
+    mapper = getattr(pipeline, "mapper", None)
+    if mapper is None:
+        return []
+    queries = dedupe_terms([*target_tickers, *target_terms], limit=8)
+    if not queries:
+        return []
+    try:
+        with session_scope() as session:
+            repository = NewsRepository(session)
+            filing_repository = CompanyFilingRepository(session)
+            documents = []
+            for query in queries:
+                documents.extend(repository.search_documents(query, limit=max(5, limit)))
+                filing_documents = filing_repository.search_documents(
+                    query,
+                    tickers=target_tickers or None,
+                    limit=max(5, limit),
+                )
+                documents.extend(
+                    CompanyFilingRepository.to_news_document(document)
+                    for document in filing_documents
+                )
+    except Exception:
+        return []
+    deduped_documents = IngestionPipeline._dedupe_documents(documents)
+    items = []
+    for document in deduped_documents[: max(5, limit * 2)]:
+        matches = mapper.match_document(document)
+        items.append(
+            {
+                "id": document.id,
+                "title": document.title,
+                "publisher": document.source.publisher,
+                "published_at": document.source.published_at.isoformat()
+                if document.source.published_at
+                else None,
+                "url": document.source.url,
+                "excerpt": document.text[:500],
+                "entity_matches": [match.model_dump(mode="json") for match in matches],
+            }
+        )
+    return filter_follow_up_target_items(items, target_tickers, target_terms)[:limit]
+
+
+def dedupe_follow_up_items(items: list) -> list[dict]:
+    return list(
+        {
+            item.get("id") or item.get("url") or item.get("title"): item
+            for item in items
+            if isinstance(item, dict)
+        }.values()
+    )
+
+
+def filter_follow_up_target_items(
+    items: list[dict],
+    target_tickers: list[str],
+    target_terms: list[str],
+) -> list[dict]:
+    if not target_tickers and not target_terms:
+        return items
+    return [
+        item
+        for item in items
+        if _matched_target_item_count([item], target_tickers, target_terms) > 0
+    ]
+
+
+def follow_up_target_terms(action: FollowUpAction) -> list[str]:
+    terms = [*list(action.tickers), company_name_from_follow_up_reason(action.reason)]
+    terms.extend(follow_up_query_terms(action.reason)[:3])
+    return dedupe_terms(terms, limit=8)
+
+
 def follow_up_news_queries(action: FollowUpAction, request: ReportRequest) -> list[str]:
-    tickers = list(action.tickers or tuple(request.tickers))
-    context = compact_query_text(action.reason)
+    tickers = list(action.tickers)
+    company_name = company_name_from_follow_up_reason(action.reason)
+    context_terms = follow_up_query_terms(action.reason)
+    context = " ".join(context_terms[:4])
     queries = []
     for ticker in tickers:
         if ticker:
-            queries.append(f"{ticker} {request.topic} {context}".strip())
+            ticker_context = " ".join(part for part in [ticker, company_name, request.topic, context] if part)
+            queries.append(ticker_context.strip())
             queries.append(f"{ticker} 台股 {request.topic} 供應鏈 證據".strip())
+            queries.append(" ".join(part for part in [ticker, company_name, context, "公司公告 法說會"] if part))
+            queries.append(" ".join(part for part in [ticker, company_name, context, "site:mops.twse.com.tw"] if part))
+            if needs_company_filing_sources(action.reason):
+                queries.append(" ".join(part for part in [ticker, company_name, "年報 法說會 IR"] if part))
             if needs_confidence_sources(action.reason):
                 queries.append(f"{ticker} {request.topic} 法說會 近期 來源 日期".strip())
                 queries.append(f"{ticker} {request.topic} monthly revenue investor conference".strip())
-    if context:
-        queries.append(f"{request.topic} {context}".strip())
-        if needs_confidence_sources(action.reason):
-            queries.append(f"{request.topic} 近期 公司來源 發布日期 多來源".strip())
+    for term in context_terms[:4]:
+        queries.append(f"{request.topic} {term}".strip())
+    if context_terms and needs_confidence_sources(action.reason):
+        queries.append(f"{request.topic} 近期 公司來源 發布日期 多來源".strip())
     return dedupe_queries(queries, limit=8)
+
+
+def _has_follow_up_target_match(items: list[dict], target_tickers: list[str], target_terms: list[str]) -> bool:
+    if not items:
+        return False
+    if not target_tickers and not target_terms:
+        return True
+    return _matched_target_item_count(items, target_tickers, target_terms) > 0
+
+
+def company_name_from_follow_up_reason(reason: str) -> str:
+    match = re.search(r"股票：\d+\s+([^；]+)", reason)
+    return match.group(1).strip() if match else ""
+
+
+def follow_up_fallback_topic(action: FollowUpAction, request: ReportRequest) -> str:
+    parts = [request.topic, *list(action.tickers), company_name_from_follow_up_reason(action.reason)]
+    parts.extend(follow_up_query_terms(action.reason)[:3])
+    return " ".join(part for part in parts if part).strip() or request.topic
+
+
+def follow_up_query_terms(reason: str) -> list[str]:
+    terms = []
+    segment = re.search(r"產業位置：([^；]+)", reason)
+    if segment:
+        terms.append(segment.group(1).strip())
+    source_gap = re.search(r"(?:缺少來源覆蓋子題|缺少的資料意圖|資料意圖)：([^；]+)", reason)
+    if source_gap:
+        for part in re.split(r"[、,，]", source_gap.group(1)):
+            if part.strip():
+                terms.append(part.strip())
+            for subpart in re.split(r"與|和", part):
+                if subpart.strip() and subpart.strip() != part.strip():
+                    terms.append(subpart.strip())
+    for keyword in [
+        "協作機器人",
+        "人形機器人",
+        "減速器",
+        "伺服馬達",
+        "滾珠螺桿",
+        "線性滑軌",
+        "法說會",
+        "月營收",
+        "毛利率",
+        "估值",
+        "資本支出",
+    ]:
+        if keyword in reason:
+            terms.append(keyword)
+    if not terms:
+        terms.extend(compact_query_text(reason).split()[:4])
+    return dedupe_terms(terms, limit=6)
+
+
+def dedupe_terms(terms: list[str], limit: int) -> list[str]:
+    deduped = []
+    seen = set()
+    for term in terms:
+        normalized = re.sub(r"\s+", " ", term).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+        if len(deduped) >= limit:
+            break
+    return deduped
 
 
 def needs_confidence_sources(reason: str) -> bool:

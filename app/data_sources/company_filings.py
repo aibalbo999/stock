@@ -4,6 +4,7 @@ from datetime import date, datetime
 from hashlib import sha1
 from ipaddress import ip_address
 from io import BytesIO
+import re
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import httpx
@@ -17,8 +18,11 @@ DOCUMENT_QUERY_TEMPLATES = (
     "{ticker} {name} 年報 法說會 公開說明書 filetype:pdf",
     "{ticker} {name} investor presentation annual report filetype:pdf",
     "{ticker} {name} 公開資訊觀測站 年報 site:mops.twse.com.tw",
+    "{ticker} {name} 股東會年報 site:doc.twse.com.tw",
     "{ticker} {name} 法人說明會 site:mops.twse.com.tw",
+    "{ticker} {name} 法說會 簡報 site:doc.twse.com.tw",
     "{ticker} {name} investor relations presentation",
+    "{ticker} {name} IR annual report investor relations",
 )
 
 DOCUMENT_TYPE_KEYWORDS = {
@@ -51,6 +55,7 @@ HIGH_QUALITY_FILING_SCORE = 70
 MIN_FETCHED_DOCUMENT_CHARS = 120
 MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
+OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 PDF_IMPORT_MISSING_PYPDF_MESSAGE = "PDF 匯入需要安裝 pypdf，請先完成系統相依套件安裝後再重試。"
 PDF_IMPORT_PARSE_ERROR_MESSAGE = "PDF 公司文件無法解析，可能是檔案加密、損毀或格式不支援；請改用官方 HTML 頁面，或人工貼上文字版內容。"
 PDF_IMPORT_NO_TEXT_MESSAGE = "PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。"
@@ -60,6 +65,7 @@ RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
 
 class CompanyFilingFetcher:
     _twse_profile_cache: list[dict] | None = None
+    _tpex_profile_cache: list[dict] | None = None
 
     def __init__(self) -> None:
         self.news_fetcher = NewsFetcher()
@@ -400,15 +406,18 @@ class CompanyFilingFetcher:
         errors = []
         for page_url in urls_to_scan:
             try:
-                page_html = await self._fetch_url_text(page_url)
+                page_html, final_page_url = await self._fetch_url_text_with_final_url(
+                    page_url,
+                    timeout=OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS,
+                )
                 soup = BeautifulSoup(page_html, "html.parser")
                 page = NewsDocument(
-                    id=sha1(page_url.encode("utf-8")).hexdigest(),
-                    title=NewsFetcher._title(soup) or page_url,
+                    id=sha1(final_page_url.encode("utf-8")).hexdigest(),
+                    title=NewsFetcher._title(soup) or final_page_url,
                     text=NewsFetcher._article_text(soup),
                     source=Source(
-                        title=NewsFetcher._title(soup) or page_url,
-                        url=page_url,
+                        title=NewsFetcher._title(soup) or final_page_url,
+                        url=final_page_url,
                         publisher="TWSE company profile website",
                         published_at=NewsFetcher._published_date(soup),
                         fetched_at=datetime.utcnow(),
@@ -417,7 +426,7 @@ class CompanyFilingFetcher:
             except Exception as exc:
                 errors.append({"source": page_url, "error": str(exc)})
                 continue
-            candidate_links.extend(extract_company_filing_links(page_html, page_url))
+            candidate_links.extend(extract_company_filing_links(page_html, final_page_url))
             if is_document_text_relevant(page, ticker, company_name, document_types):
                 candidate_links.append(
                     {
@@ -457,16 +466,44 @@ class CompanyFilingFetcher:
         return documents, errors
 
     @staticmethod
-    async def _fetch_url_text(url: str, encoding: str | None = None) -> str:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-        content_length = int(response.headers.get("content-length") or 0)
-        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-            raise ValueError("company filing content is too large to import")
-        if encoding:
-            response.encoding = encoding
-        return response.text
+    async def _fetch_url_text(
+        url: str,
+        encoding: str | None = None,
+        timeout: int = 20,
+    ) -> str:
+        text, _ = await CompanyFilingFetcher._fetch_url_text_with_final_url(
+            url,
+            encoding=encoding,
+            timeout=timeout,
+        )
+        return text
+
+    @staticmethod
+    async def _fetch_url_text_with_final_url(
+        url: str,
+        encoding: str | None = None,
+        timeout: int = 20,
+        max_html_redirects: int = 2,
+    ) -> tuple[str, str]:
+        current_url = url
+        visited = set()
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            for _ in range(max_html_redirects + 1):
+                response = await client.get(current_url)
+                response.raise_for_status()
+                content_length = int(response.headers.get("content-length") or 0)
+                if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+                    raise ValueError("company filing content is too large to import")
+                if encoding:
+                    response.encoding = encoding
+                final_url = str(response.url)
+                text = response.text
+                redirect_url = extract_html_redirect_url(text, final_url)
+                if not redirect_url or redirect_url in visited:
+                    return text, final_url
+                visited.add(final_url)
+                current_url = redirect_url
+        return text, final_url
 
     @classmethod
     async def twse_company_profile(cls, ticker: str) -> dict:
@@ -476,7 +513,24 @@ class CompanyFilingFetcher:
                 response = await client.get(url)
                 response.raise_for_status()
             cls._twse_profile_cache = response.json()
-        return next((row for row in cls._twse_profile_cache if str(row.get("公司代號") or "") == ticker), {})
+        twse_row = next((row for row in cls._twse_profile_cache if str(row.get("公司代號") or "") == ticker), None)
+        if twse_row:
+            return twse_row
+        if cls._tpex_profile_cache is None:
+            url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            cls._tpex_profile_cache = response.json()
+        tpex_row = next(
+            (
+                row
+                for row in cls._tpex_profile_cache
+                if str(row.get("SecuritiesCompanyCode") or "") == ticker
+            ),
+            None,
+        )
+        return normalize_tpex_company_profile(tpex_row) if tpex_row else {}
 
     @staticmethod
     async def _duckduckgo_search(query_text: str, limit: int = 5) -> list[dict]:
@@ -606,6 +660,36 @@ def normalize_company_website(url: str) -> str:
     return url.rstrip("/")
 
 
+def normalize_tpex_company_profile(row: dict | None) -> dict:
+    if not row:
+        return {}
+    return {
+        "公司代號": row.get("SecuritiesCompanyCode") or "",
+        "公司名稱": row.get("CompanyName") or "",
+        "公司簡稱": row.get("CompanyAbbreviation") or "",
+        "網址": row.get("WebAddress") or "",
+        "電子郵件信箱": row.get("EmailAddress") or "",
+    }
+
+
+def extract_html_redirect_url(html: str, base_url: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    meta_refresh = soup.find("meta", attrs={"http-equiv": lambda value: value and value.lower() == "refresh"})
+    if meta_refresh:
+        content = meta_refresh.get("content") or ""
+        match = re.search(r"url\s*=\s*['\"]?([^;'\"\s]+)", content, flags=re.IGNORECASE)
+        if match:
+            return urljoin(base_url, match.group(1))
+    match = re.search(
+        r"(?:window\.)?location(?:\.href)?\s*=\s*['\"]([^'\"]+)['\"]",
+        html or "",
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return urljoin(base_url, match.group(1))
+    return ""
+
+
 def official_website_seed_urls(website: str) -> list[str]:
     parsed = urlparse(website)
     root = f"{parsed.scheme}://{parsed.netloc}"
@@ -615,11 +699,19 @@ def official_website_seed_urls(website: str) -> list[str]:
         "/investors",
         "/ir",
         "/investor-relations",
+        "/investor/financial-reports",
+        "/investor/financials",
+        "/investor/shareholder-services",
+        "/investor-service",
         "/annual-reports",
         "/annual-report",
         "/zh-TW/investor",
+        "/zh-TW/investor-relations",
+        "/zh-TW/ir",
         "/zh-Hant/investor",
+        "/zh-Hant/investor-relations",
         "/chinese/investor",
+        "/chinese/ir",
         "/chinese/annual-reports",
     ]
     urls = [website, *[root + path for path in paths if root + path != website]]
@@ -662,11 +754,16 @@ def pdf_title_from_url(url: str) -> str:
 def extract_pdf_text(content: bytes) -> str:
     try:
         from pypdf import PdfReader
+        from pypdf.errors import DependencyError
     except ImportError as exc:
         raise ValueError(PDF_IMPORT_MISSING_PYPDF_MESSAGE) from exc
     try:
         reader = PdfReader(BytesIO(content))
+        if getattr(reader, "is_encrypted", False):
+            reader.decrypt("")
         pages = [page.extract_text() or "" for page in reader.pages]
+    except DependencyError as exc:
+        raise ValueError("PDF 公司文件使用加密格式，請安裝 cryptography 後再重試解析。") from exc
     except Exception as exc:
         raise ValueError(PDF_IMPORT_PARSE_ERROR_MESSAGE) from exc
     text = "\n".join(page.strip() for page in pages if page.strip())
@@ -759,6 +856,8 @@ def document_query_templates(document_types: list[str] | tuple[str, ...] | None 
                 "{ticker} {name} 年報 filetype:pdf",
                 "{ticker} {name} annual report filetype:pdf",
                 "{ticker} {name} 公開資訊觀測站 年報 site:mops.twse.com.tw",
+                "{ticker} {name} 股東會年報 site:doc.twse.com.tw",
+                "{ticker} {name} IR 年報",
             ]
         )
     if "investor_presentation" in wanted:
@@ -767,6 +866,8 @@ def document_query_templates(document_types: list[str] | tuple[str, ...] | None 
                 "{ticker} {name} 法人說明會 filetype:pdf",
                 "{ticker} {name} investor presentation filetype:pdf",
                 "{ticker} {name} 法人說明會 site:mops.twse.com.tw",
+                "{ticker} {name} 法說會 簡報 site:doc.twse.com.tw",
+                "{ticker} {name} IR presentation",
             ]
         )
     if "prospectus" in wanted:

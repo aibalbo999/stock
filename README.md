@@ -26,7 +26,8 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - RAG/檢索：新聞文本進向量庫，報告生成時會取回相關證據。
 - 白名單與候選驗證：靜態白名單仍是安全底線；AI 自組候選清單需通過來源驗證後才會升格。
 - 弱證據分級：單一文章、單一來源或證據信心低於 75 分只會標成 `weak_evidence`，不會直接進正式分析股票。
-- 品質門檻：報告會檢查 AI 拆解任務完整度、候選證據信心、來源篇數、來源家數、時間戳覆蓋、近期資料比例、股價/月營收/財務/估值覆蓋。
+- 品質門檻：報告會檢查 AI 拆解任務完整度、候選證據信心、來源篇數、來源家數、來源時間戳覆蓋、回看區間內來源比例、股價/月營收/財務/估值覆蓋。
+- 報告可信度檢查：報告會先列出可追溯來源、來源多樣性、來源日期新鮮度、公司層級證據、市場/財務覆蓋與風險/機會歸因，並逐檔標示高/中/低可信度與主要限制。
 - 風險控制：資料不足時報告自動降級為研究草稿，並限制可投入資金上限。
 - 個股分析：包含商業模式、護城河、產業趨勢、財務健康、估值、情境分析、12-24 個月展望。
 - 前端介面：Streamlit 提供分析、報告、資料、設定頁；報告以 HTML 卡片式閱讀為主。
@@ -65,6 +66,15 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
+macOS 一鍵啟動：
+
+```bash
+./start_system.command
+```
+
+也可以在 Finder 直接雙擊 `start_system.command`。它會啟動 API 與 Streamlit，避免重複開相同 port，並在視窗中顯示本機與同網路手機可用網址。
+需要停止背景服務時，雙擊 `stop_system.command`。
+
 啟動 Redis / PostgreSQL：
 
 ```bash
@@ -99,8 +109,11 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 啟動 Streamlit：
 
 ```bash
-.venv/bin/python -m streamlit run streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+.venv/bin/python -m streamlit run streamlit_app.py
 ```
+
+專案已設定 Streamlit 監聽 `0.0.0.0:8501`。同一個區域網路內的手機可用電腦 IP 開啟，例如 `http://192.168.1.117:8501`。
+若手機仍無法連線，請確認啟動指令沒有覆蓋成 `--server.address 127.0.0.1`，並允許 macOS 防火牆讓 Python/Streamlit 接受傳入連線。
 
 啟動 Celery worker + beat：
 
@@ -144,7 +157,7 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 報告產生後，系統會把品質門檻、監控清單與重新研究條件轉成可執行任務。任務分成兩類：
 
 - `required`：資料缺口補強，例如缺股價、月營收、五年財務、估值或來源不足。
-- `tracking`：追蹤更新，例如資料品質可用，但監控條件要求重新確認股價、月營收或領先訊號。
+- `tracking`：追蹤更新，例如資料品質可用，但監控條件要求重新確認股價、月營收或近況訊號。
 
 若報告含有「候選公司審計」，弱證據或待補證據公司會自動轉成 `required` 補強任務。補抓資料源時，系統會依股票代號、公司名、產業位置、分析主題與排除原因建立 Google News 目標查詢，而不是只掃固定 RSS，讓鴻海、雙鴻、台達電、弘塑等未升格候選能被精準補資料後再驗證。
 

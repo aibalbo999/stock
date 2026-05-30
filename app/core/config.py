@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     llm_max_retries_per_key: int = 2
     llm_base_retry_delay_seconds: float = 0.5
     llm_max_retry_delay_seconds: float = 5.0
+    llm_total_timeout_seconds: float = 60.0
+    auto_follow_up_enabled: bool = True
+    auto_follow_up_news_limit: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

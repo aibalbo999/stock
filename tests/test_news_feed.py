@@ -101,7 +101,7 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
     urls = [source.url for source in sources]
     categories = {source.category for source in sources}
 
-    assert len(sources) >= 31
+    assert len(sources) >= 35
     assert len(names) == len(set(names))
     assert len(urls) == len(set(urls))
     assert all(source.category for source in sources)
@@ -120,4 +120,8 @@ def test_default_news_sources_have_research_categories_and_unique_urls() -> None
         "thermal_liquid_cooling",
         "policy_export_controls",
         "semiconductor_industry",
+        "emerging_momentum",
     }.issubset(categories)
+    assert any("early_signal" in source.source_intents for source in sources)
+    selection = NewsSourceStore(Path("data/news_sources.json")).selection_for_topic("AI 潛力股")
+    assert all(item["url"].startswith("http") for item in selection["selected"])

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from types import SimpleNamespace
 
@@ -7,12 +8,14 @@ from sqlalchemy.orm import sessionmaker
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     PDF_IMPORT_NO_TEXT_MESSAGE,
+    extract_html_redirect_url,
     extract_pdf_text,
     filing_quality_score,
     filing_source_tier,
     infer_document_type,
     is_relevant_company_filing_result,
     normalize_search_result_url,
+    normalize_tpex_company_profile,
     parse_mops_annual_report_rows,
     parse_mops_roc_datetime,
     validate_fetched_company_filing_document,
@@ -90,6 +93,59 @@ def test_search_result_url_normalizes_duckduckgo_redirect() -> None:
     url = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Finvestor.tsmc.com%2Fannual-report.pdf"
 
     assert normalize_search_result_url(url) == "https://investor.tsmc.com/annual-report.pdf"
+
+
+def test_html_redirect_url_extracts_meta_and_location_href() -> None:
+    assert (
+        extract_html_redirect_url(
+            '<meta http-equiv="refresh" content="0.1;url=page/en/index.html">',
+            "https://www.qsitw.com/",
+        )
+        == "https://www.qsitw.com/page/en/index.html"
+    )
+    assert (
+        extract_html_redirect_url(
+            'location.href = "https://www.tuc.com.tw/index";',
+            "https://www.tuc.com.tw/",
+        )
+        == "https://www.tuc.com.tw/index"
+    )
+
+
+def test_tpex_profile_is_normalized_for_official_website_discovery() -> None:
+    profile = normalize_tpex_company_profile(
+        {
+            "SecuritiesCompanyCode": "6188",
+            "CompanyName": "廣明光電股份有限公司",
+            "CompanyAbbreviation": "廣明",
+            "WebAddress": "www.qsitw.com",
+            "EmailAddress": "ir@example.com",
+        }
+    )
+
+    assert profile["公司代號"] == "6188"
+    assert profile["公司簡稱"] == "廣明"
+    assert profile["網址"] == "www.qsitw.com"
+
+
+def test_company_profile_falls_back_to_tpex_cache() -> None:
+    CompanyFilingFetcher._twse_profile_cache = []
+    CompanyFilingFetcher._tpex_profile_cache = [
+        {
+            "SecuritiesCompanyCode": "6274",
+            "CompanyName": "台燿科技股份有限公司",
+            "CompanyAbbreviation": "台燿",
+            "WebAddress": "www.tuc.com.tw",
+        }
+    ]
+    try:
+        profile = asyncio.run(CompanyFilingFetcher.twse_company_profile("6274"))
+    finally:
+        CompanyFilingFetcher._twse_profile_cache = None
+        CompanyFilingFetcher._tpex_profile_cache = None
+
+    assert profile["公司簡稱"] == "台燿"
+    assert profile["網址"] == "www.tuc.com.tw"
 
 
 def test_parse_mops_annual_report_rows_keeps_chinese_annual_report() -> None:

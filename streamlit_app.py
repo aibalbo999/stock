@@ -35,7 +35,7 @@ from app.services.persistence import (
     ReportRepository,
     ValuationMetricRepository,
 )
-from app.services.report_generator import ReportGenerator
+from app.services.report_generator import ReportGenerator, report_execution_summary
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,
@@ -49,69 +49,69 @@ from app.services.whitelist import SupplyChainWhitelist
 st.set_page_config(page_title="台股 AI 產業鏈分析", layout="wide")
 init_db()
 
+tabs = st.tabs(["1 建立分析", "2 報告中心", "3 資料與補充", "4 設定與維護"])
+
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
     :root {
-        --stock-primary: #6366f1;
-        --stock-accent: #10b981;
-        --stock-accent-soft: rgba(16, 185, 129, 0.15);
-        --stock-info: #3b82f6;
-        --stock-info-soft: rgba(59, 130, 246, 0.15);
-        --stock-bg: #0f172a;
-        --stock-surface: rgba(30, 41, 59, 0.6);
-        --stock-surface-alt: rgba(15, 23, 42, 0.6);
-        --stock-text: #f8fafc;
-        --stock-muted: #94a3b8;
-        --stock-border: rgba(255, 255, 255, 0.1);
-        --stock-danger: #ef4444;
-        --stock-danger-soft: rgba(239, 68, 68, 0.15);
-        --stock-warning: #f59e0b;
-        --stock-warning-soft: rgba(245, 158, 11, 0.15);
-        --stock-focus: #8b5cf6;
+        --stock-primary: #0f172a;
+        --stock-primary-strong: #1e3a8a;
+        --stock-accent: #0f766e;
+        --stock-accent-soft: rgba(15, 118, 110, 0.12);
+        --stock-info: #1d4ed8;
+        --stock-info-soft: rgba(29, 78, 216, 0.12);
+        --stock-bg: #edf2f7;
+        --stock-surface: #ffffff;
+        --stock-surface-alt: #f8fafc;
+        --stock-text: #0f172a;
+        --stock-muted: #475569;
+        --stock-border: #cbd5e1;
+        --stock-border-soft: #e2e8f0;
+        --stock-danger: #b42318;
+        --stock-danger-soft: #fff1f0;
+        --stock-warning: #92400e;
+        --stock-warning-soft: #fffbeb;
+        --stock-focus: #1d4ed8;
+        --stock-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
     }
     html, body, [class*="css"] {
-        font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+        background: var(--stock-bg);
         color: var(--stock-text);
     }
     /* Hide Streamlit header/footer for cleaner app-like feel */
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .block-container {
-        padding-top: 1.1rem;
+        padding-top: 0.9rem;
         padding-bottom: 3rem;
-        max-width: 1240px;
+        max-width: 1480px;
     }
     h1, h2, h3 {
-        letter-spacing: -0.02em;
+        letter-spacing: 0;
         color: var(--stock-text);
     }
     h1 {
         font-size: 2.5rem;
         font-weight: 700;
         margin-bottom: 0.25rem;
-        background: linear-gradient(to right, #f8fafc, #818cf8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: var(--stock-text);
     }
     div[data-testid="stMetric"] {
         background: var(--stock-surface);
         border: 1px solid var(--stock-border);
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        border-radius: 8px;
+        padding: 14px 16px;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+        transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
     }
     div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-        border-color: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.09);
+        border-color: #93c5fd;
+        background: #fbfdff;
     }
     div[data-testid="stMetric"] label {
         color: var(--stock-muted) !important;
@@ -122,116 +122,342 @@ st.markdown(
     div[data-testid="stForm"] {
         background: var(--stock-surface);
         border: 1px solid var(--stock-border);
-        border-radius: 16px;
+        border-top: 4px solid var(--stock-primary-strong);
+        border-radius: 8px;
         padding: 24px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        box-shadow: var(--stock-shadow);
     }
     div.stButton > button,
     div.stDownloadButton > button {
         min-height: 48px;
-        border-radius: 12px;
+        border-radius: 8px;
         font-weight: 600;
-        letter-spacing: 0.5px;
-        background: linear-gradient(135deg, var(--stock-primary), var(--stock-focus));
+        letter-spacing: 0;
+        background: var(--stock-primary-strong);
         color: white;
         border: none;
-        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.22);
+        transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+    }
+    button[data-testid^="stBaseButton"] {
+        background: var(--stock-primary-strong) !important;
+        color: #ffffff !important;
+        border: 1px solid var(--stock-primary-strong) !important;
+    }
+    button[data-testid^="stBaseButton"] p,
+    button[data-testid^="stBaseButton"] span {
+        color: #ffffff !important;
+    }
+    button[data-testid^="stBaseButton"][disabled],
+    div.stButton > button:disabled,
+    div.stDownloadButton > button:disabled {
+        background: #e2e8f0 !important;
+        color: #475569 !important;
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: none !important;
+        transform: none !important;
+        cursor: not-allowed !important;
+    }
+    button[data-testid^="stBaseButton"][disabled] p,
+    button[data-testid^="stBaseButton"][disabled] span,
+    div.stButton > button:disabled p,
+    div.stButton > button:disabled span {
+        color: #475569 !important;
     }
     div.stButton > button:hover,
     div.stDownloadButton > button:hover {
-        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        background: #1d4ed8;
+        box-shadow: 0 6px 18px rgba(29, 78, 216, 0.28);
         transform: translateY(-2px);
+    }
+    button[data-testid^="stBaseButton"]:hover {
+        background: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+    button[data-testid="stBaseButton-elementToolbar"],
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] {
+        min-width: 44px !important;
+        min-height: 40px !important;
+        background: #ffffff !important;
+        color: var(--stock-text) !important;
+        border: 1px solid #64748b !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+    button[data-testid="stBaseButton-elementToolbar"] svg,
+    button[data-testid="stNumberInputStepDown"] svg,
+    button[data-testid="stNumberInputStepUp"] svg {
+        color: var(--stock-text) !important;
+        fill: var(--stock-text) !important;
+    }
+    button[data-testid="stBaseButton-elementToolbar"]:hover,
+    button[data-testid="stNumberInputStepDown"]:hover,
+    button[data-testid="stNumberInputStepUp"]:hover {
+        background: #eef4ff !important;
+        border-color: var(--stock-primary-strong) !important;
+        transform: none !important;
     }
     div.stButton > button:active,
     div.stDownloadButton > button:active {
         transform: translateY(1px);
-        box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.24);
     }
-    div[data-baseweb="tab-list"] {
+    div.stButton > button:focus-visible,
+    div.stDownloadButton > button:focus-visible,
+    [data-baseweb="tab"]:focus-visible {
+        outline: 3px solid rgba(29, 78, 216, 0.35);
+        outline-offset: 2px;
+    }
+    [data-baseweb="tab-list"] {
         gap: 8px;
-        background: rgba(15, 23, 42, 0.4);
+        background: #ffffff;
         border: 1px solid var(--stock-border);
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 6px;
-        backdrop-filter: blur(8px);
+        margin-bottom: 14px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        overflow-x: auto;
+        scrollbar-width: thin;
     }
-    div[data-baseweb="tab"] {
+    [data-baseweb="tab"] {
         min-height: 44px;
         border-radius: 8px;
+        border: 1px solid transparent;
         padding-left: 18px;
         padding-right: 18px;
-        color: var(--stock-muted);
-        transition: all 0.2s ease;
+        min-width: max-content;
+        color: var(--stock-text) !important;
+        background: #f8fafc;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
     }
-    div[data-baseweb="tab"]:hover {
+    [data-baseweb="tab"] p {
+        color: var(--stock-text) !important;
+        font-weight: 700;
+    }
+    [data-baseweb="tab"]:hover {
         color: var(--stock-text);
+        background: #eef4ff;
+        border-color: #93c5fd;
     }
-    div[data-baseweb="tab"][aria-selected="true"] {
-        background: rgba(255, 255, 255, 0.1);
-        color: var(--stock-text);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    [data-baseweb="tab"][aria-selected="true"] {
+        background: var(--stock-primary-strong);
+        border-color: var(--stock-primary-strong);
+        color: #ffffff !important;
+        box-shadow: 0 6px 14px rgba(30, 58, 138, 0.24);
     }
-    .stock-hero {
-        background: var(--stock-surface);
-        border: 1px solid var(--stock-border);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+    [data-baseweb="tab"][aria-selected="true"] p {
+        color: #ffffff !important;
+    }
+    input,
+    textarea,
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"],
+    [data-baseweb="base-input"],
+    [data-testid="stTextInputRootElement"],
+    [data-testid="stDateInput"] [data-baseweb="input"],
+    [data-testid="stNumberInput"] [data-baseweb="input"] {
+        background: #ffffff !important;
+        color: var(--stock-text) !important;
+        border-color: #64748b !important;
+    }
+    [data-testid="stWidgetLabel"],
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] span {
+        color: var(--stock-text) !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stDateInputField"],
+    [data-testid="stNumberInputField"],
+    [data-testid="stTextInputRootElement"] input,
+    [data-baseweb="input"] input {
+        background: #ffffff !important;
+        color: var(--stock-text) !important;
+        -webkit-text-fill-color: var(--stock-text) !important;
+    }
+    input::placeholder,
+    textarea::placeholder {
+        color: #334155 !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSlider"] [role="slider"] {
+        background: var(--stock-primary-strong) !important;
+        color: #ffffff !important;
+        border: 2px solid #ffffff !important;
+        box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.24) !important;
+    }
+    [data-testid="stSliderThumbValue"] {
+        background: var(--stock-primary-strong) !important;
+        color: #ffffff !important;
+        border-radius: 999px !important;
+        padding: 2px 7px !important;
+        font-weight: 800 !important;
+    }
+    [data-testid="stSliderTickBar"] span {
+        color: var(--stock-text) !important;
+        opacity: 1 !important;
+        font-weight: 700 !important;
+    }
+    [data-baseweb="tag"] {
+        min-height: 40px !important;
+        background: #e0ecff !important;
+        border: 1px solid #bfdbfe !important;
+        color: var(--stock-primary-strong) !important;
+        align-items: center !important;
+    }
+    [data-baseweb="tag"] span,
+    [data-baseweb="tag"] svg {
+        color: var(--stock-primary-strong) !important;
+        fill: var(--stock-primary-strong) !important;
+    }
+    [data-baseweb="select"] svg[role="button"] {
+        width: 32px !important;
+        height: 32px !important;
+        padding: 6px !important;
+        box-sizing: content-box !important;
+        color: var(--stock-text) !important;
+        fill: var(--stock-text) !important;
+    }
+    [data-testid="stJson"] *,
+    [data-testid="stCode"] * {
+        color: var(--stock-text) !important;
+    }
+    [data-testid="stCode"] pre,
+    [data-testid="stCode"] code {
+        white-space: pre-wrap !important;
+        overflow-wrap: anywhere !important;
+    }
+    [data-testid="stAlert"] {
+        border: 1px solid var(--stock-border) !important;
+    }
+    [data-testid="stAlert"] * {
+        color: var(--stock-text) !important;
+    }
+    input:focus,
+    textarea:focus,
+    [data-baseweb="select"] > div:focus-within,
+    [data-baseweb="input"]:focus-within,
+    [data-baseweb="base-input"]:focus-within {
+        outline: 3px solid rgba(37, 99, 235, 0.16);
+        border-color: var(--stock-primary-strong) !important;
+    }
+    .workspace-topbar {
+        background: var(--stock-primary);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        padding: 20px 22px;
+        margin-bottom: 12px;
         display: grid;
-        grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.9fr);
-        gap: 20px;
-        align-items: center;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: start;
+        box-shadow: var(--stock-shadow);
         position: relative;
         overflow: hidden;
     }
-    .stock-hero::before {
-        content: '';
+    .workspace-topbar::after {
+        content: "";
         position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 50%);
-        pointer-events: none;
+        inset: auto 0 0;
+        height: 4px;
+        background: linear-gradient(90deg, #0f766e, #1d4ed8, #a16207);
     }
-    .stock-kicker {
-        color: var(--stock-accent);
+    .workspace-kicker {
+        color: #99f6e4;
         font-weight: 700;
         margin-bottom: 6px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0;
         font-size: 0.85rem;
     }
-    .stock-subtitle {
-        color: var(--stock-muted);
-        font-size: 1.05rem;
-        line-height: 1.6;
+    .workspace-topbar h1 {
+        font-size: 1.65rem;
+        margin: 0 0 6px;
+        letter-spacing: 0;
+        color: #f8fafc;
+    }
+    .workspace-subtitle {
+        color: #cbd5e1;
+        font-size: 0.98rem;
+        line-height: 1.55;
         max-width: 720px;
     }
-    .hero-actions {
-        display: grid;
-        gap: 10px;
+    .workspace-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
-    .hero-pill {
-        background: rgba(255, 255, 255, 0.05);
+    .workspace-chip {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.16);
+        border-radius: 999px;
+        padding: 7px 10px;
+        color: #f8fafc;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+    .workspace-chip.is-accent {
+        background: rgba(20, 184, 166, 0.18);
+        border-color: rgba(153, 246, 228, 0.36);
+        color: #ccfbf1;
+    }
+    .workflow-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+    .workflow-step {
+        background: #ffffff;
         border: 1px solid var(--stock-border);
-        border-radius: 10px;
-        padding: 12px 16px;
+        border-top: 3px solid var(--stock-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+    }
+    .workflow-step:nth-child(1) { border-top-color: #1d4ed8; }
+    .workflow-step:nth-child(2) { border-top-color: #0f766e; }
+    .workflow-step:nth-child(3) { border-top-color: #a16207; }
+    .workflow-step:nth-child(4) { border-top-color: #334155; }
+    .workspace-ledger {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin: -4px 0 18px;
+    }
+    .ledger-item {
+        background: #ffffff;
+        border: 1px solid var(--stock-border);
+        border-radius: 8px;
+        padding: 13px 14px;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+    }
+    .ledger-item span {
+        display: block;
+        color: var(--stock-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .ledger-item strong {
+        display: block;
+        color: var(--stock-text);
+        font-size: 0.98rem;
+        line-height: 1.35;
+    }
+    .workflow-step span {
+        display: block;
+        color: var(--stock-muted);
+        font-size: 0.76rem;
+        font-weight: 700;
+        margin-bottom: 3px;
+    }
+    .workflow-step strong {
         color: var(--stock-text);
         font-size: 0.92rem;
-        display: flex;
-        align-items: center;
-        backdrop-filter: blur(4px);
-        transition: background 0.2s;
-    }
-    .hero-pill:hover {
-        background: rgba(255, 255, 255, 0.1);
     }
     .section-head {
         display: flex;
@@ -244,7 +470,7 @@ st.markdown(
         font-size: 1.15rem;
         font-weight: 600;
         color: var(--stock-text);
-        border-left: 3px solid var(--stock-focus);
+        border-left: 4px solid var(--stock-focus);
         padding-left: 8px;
     }
     .section-note {
@@ -261,32 +487,28 @@ st.markdown(
     .result-shell {
         background: var(--stock-surface);
         border: 1px solid var(--stock-border);
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 16px;
         margin-top: 14px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(12px);
+        box-shadow: var(--stock-shadow);
     }
     .status-supported {
         color: var(--stock-accent);
         font-weight: 700;
-        text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
     }
     .status-pending {
         color: var(--stock-warning);
         font-weight: 700;
-        text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
     }
     /* Streamlit specific elements */
     [data-testid="stExpander"] {
         background: var(--stock-surface) !important;
         border: 1px solid var(--stock-border) !important;
-        border-radius: 12px !important;
-        backdrop-filter: blur(8px);
+        border-radius: 8px !important;
     }
     [data-testid="stDataFrame"] {
         border: 1px solid var(--stock-border);
-        border-radius: 12px;
+        border-radius: 8px;
         overflow: hidden;
     }
     @media (max-width: 640px) {
@@ -294,11 +516,35 @@ st.markdown(
             padding-left: 1rem;
             padding-right: 1rem;
         }
+        [data-baseweb="tab-list"] {
+            flex-wrap: wrap;
+            overflow-x: visible;
+        }
+        [data-baseweb="tab"] {
+            flex: 1 1 calc(50% - 8px);
+            justify-content: center;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
         h1 {
             font-size: 1.75rem;
         }
-        .stock-hero {
+        .workspace-topbar {
             padding: 18px;
+            grid-template-columns: 1fr;
+        }
+        .workspace-meta {
+            justify-content: flex-start;
+        }
+        .workflow-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .workspace-ledger {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 420px) {
+        .workflow-strip {
             grid-template-columns: 1fr;
         }
     }
@@ -326,6 +572,31 @@ def api_get(path: str) -> dict:
     response = requests.get(f"{API_BASE_URL}{path}", timeout=10)
     response.raise_for_status()
     return response.json()
+
+
+def hydrate_active_report_result(result: dict) -> dict:
+    active_report_id = result.get("active_report_id")
+    source_report_id = result.get("report_id")
+    if not active_report_id or active_report_id == source_report_id:
+        return result
+    try:
+        payload = api_get(f"/reports/{int(active_report_id)}")
+    except requests.RequestException:
+        return result
+    hydrated = {
+        **result,
+        "report_id": active_report_id,
+        "source_report_id": source_report_id,
+        "quality_gate": payload.get("quality_gate") or parse_quality_gate_from_markdown(payload.get("markdown") or ""),
+        "candidate_whitelist": payload.get("candidate_whitelist") or result.get("candidate_whitelist") or [],
+        "candidate_audit": payload.get("candidate_audit") or result.get("candidate_audit") or {},
+        "report": {
+            **(result.get("report") or {}),
+            "title": payload.get("title") or (result.get("report") or {}).get("title"),
+            "markdown": payload.get("markdown") or (result.get("report") or {}).get("markdown"),
+        },
+    }
+    return hydrated
 
 
 def parse_json_object(value: str) -> dict:
@@ -411,6 +682,12 @@ def markdown_table_rows(markdown: str, heading: str, limit: int = 6) -> list[lis
     return rows
 
 
+def summary_table_items(markdown: str) -> list[str]:
+    rows = markdown_table_rows(markdown, "一頁摘要", limit=10)
+    important = {"可小額研究", "觀察/待補", "避開/降低曝險", "本次股票範圍"}
+    return [f"{row[0]}：{row[1]}" for row in rows if len(row) >= 2 and row[0] in important]
+
+
 def markdown_table_rows_by_header(
     markdown: str,
     heading: str,
@@ -443,8 +720,8 @@ def markdown_table_rows_by_header(
     return rows
 
 
-def detail_html(markdown: str, title: str, heading: str) -> str:
-    items = markdown_items(markdown, heading, limit=4)
+def detail_html(markdown: str, title: str, heading: str, limit: int = 4) -> str:
+    items = markdown_items(markdown, heading, limit=limit)
     if not items:
         return ""
     body = "".join(f"<li>{escape(item)}</li>" for item in items)
@@ -475,6 +752,7 @@ def company_analysis_html(markdown: str) -> str:
                 text.startswith(("產業鏈位置", "市場資料", "月營收"))
                 or "財務體質判斷" in text
                 or "是否低估或高估" in text
+                or "本次操作結論" in text
                 or "最終結論" in text
             ):
                 highlights.append(text)
@@ -509,19 +787,33 @@ def comparison_matrix_html(markdown: str) -> str:
     watch_count = 0
     risk_count = 0
     for row in rows:
-        stock = escape(row[0]) if len(row) > 0 else "-"
-        decision_raw = row[1] if len(row) > 1 else "-"
+        if len(row) >= 9:
+            stock_raw, decision_raw, price_raw, price_label_raw = row[0], row[1], row[2], row[3]
+            upside_raw, downside_raw, valuation_raw, confidence_raw = row[4], row[5], row[6], row[7]
+            reminder_raw = row[8]
+        else:
+            stock_raw = row[0] if len(row) > 0 else "-"
+            decision_raw = row[1] if len(row) > 1 else "-"
+            price_raw = "-"
+            price_label_raw = "未標示"
+            upside_raw = row[2] if len(row) > 2 else "-"
+            downside_raw = row[3] if len(row) > 3 else "-"
+            valuation_raw = row[4] if len(row) > 4 else "-"
+            confidence_raw = row[5] if len(row) > 5 else "-"
+            reminder_raw = row[6] if len(row) > 6 else ""
+        stock = escape(stock_raw)
         decision = escape(decision_raw)
-        upside = escape(row[2]) if len(row) > 2 else "-"
-        downside_raw = row[3] if len(row) > 3 else "-"
+        price = escape(price_raw)
+        price_label = escape(price_label_raw)
+        upside = escape(upside_raw)
         downside = escape(downside_raw)
-        valuation_raw = row[4] if len(row) > 4 else "-"
         valuation = escape(valuation_raw)
-        confidence = escape(row[5]) if len(row) > 5 else "-"
-        reminder = escape(row[6]) if len(row) > 6 else ""
+        confidence = escape(confidence_raw)
+        reminder = escape(reminder_raw)
         decision_class = decision_badge_class(decision_raw)
         valuation_class = valuation_badge_class(valuation_raw)
         downside_class = downside_badge_class(downside_raw)
+        price_class = current_price_badge_class(price_label_raw)
         if decision_class == "decision-action":
             action_count += 1
         elif decision_class == "decision-risk":
@@ -539,9 +831,11 @@ def comparison_matrix_html(markdown: str) -> str:
                 <span class="decision {decision_class}">{decision}</span>
               </div>
               <div class="mini-grid">
-                <div><span>升值</span><strong>{upside}</strong></div>
-                <div class="{downside_class}"><span>降值</span><strong>{downside}</strong></div>
-                <div class="{valuation_class}"><span>估值</span><strong>{valuation}</strong></div>
+                <div><span>目前股價</span><strong>{price}</strong></div>
+                <div class="{price_class}"><span>當下股價標籤</span><strong>{price_label}</strong></div>
+                <div><span>目前情境升值分</span><strong>{upside}</strong></div>
+                <div class="{downside_class}"><span>目前情境降值分</span><strong>{downside}</strong></div>
+                <div class="{valuation_class}"><span>目前估值</span><strong>{valuation}</strong></div>
                 <div><span>信心</span><strong>{confidence}</strong></div>
               </div>
             </article>
@@ -555,6 +849,160 @@ def comparison_matrix_html(markdown: str) -> str:
         f"</div>"
     )
     return summary + "".join(cards)
+
+
+def early_potential_radar_html(markdown: str) -> str:
+    rows = markdown_table_rows(markdown, "早期潛力雷達", limit=8)
+    if not rows:
+        return ""
+    cards = []
+    for row in rows:
+        stock = escape(row[0]) if len(row) > 0 else "-"
+        score = escape(row[1]) if len(row) > 1 else "-"
+        attention_raw = row[2] if len(row) > 2 else "-"
+        attention = escape(attention_raw)
+        upside = escape(row[3]) if len(row) > 3 else "-"
+        downside_raw = row[4] if len(row) > 4 else "-"
+        downside = escape(downside_raw)
+        reason = escape(row[5]) if len(row) > 5 else ""
+        source = escape(row[6]) if len(row) > 6 else ""
+        attention_class = (
+            "attention-low"
+            if any(term in attention_raw for term in ["報導較少", "報導偏少", "低關注"])
+            else "attention-known"
+        )
+        cards.append(
+            f"""
+            <article class="radar-card {attention_class}">
+              <div class="matrix-top">
+                <div>
+                  <div class="ticker">{stock}</div>
+                  <div class="reason">{reason}</div>
+                </div>
+                <span class="decision {attention_class}">{attention}</span>
+              </div>
+              <div class="mini-grid">
+                <div><span>早期線索分</span><strong>{score}</strong></div>
+                <div><span>目前情境升值分</span><strong>{upside}</strong></div>
+                <div class="{downside_badge_class(downside_raw)}"><span>目前情境降值分</span><strong>{downside}</strong></div>
+              </div>
+              <div class="thesis-source">{source or "目前無足夠代表來源。"}</div>
+            </article>
+            """
+        )
+    return "".join(cards)
+
+
+def investment_thesis_html(markdown: str) -> str:
+    section = markdown_section_or_none(markdown, "投資理由地圖")
+    if not section:
+        return ""
+    company_blocks = re.split(r"(?m)^### (?=\d{4}\s)", section)
+    cards = []
+    for block in company_blocks[1:]:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        title = lines[0].replace("**", "")
+        facts = {}
+        for line in lines[1:]:
+            if not line.startswith("- "):
+                continue
+            text = line[2:].replace("**", "").strip()
+            if "：" not in text:
+                continue
+            key, value = text.split("：", 1)
+            facts[key.strip()] = value.strip()
+        cards.append(
+            f"""
+            <article class="thesis-card">
+              <div class="thesis-head">
+                <div>
+                  <div class="ticker">{escape(title)}</div>
+                  <div class="reason">{escape(facts.get("目前判斷", "先看資料品質，再決定是否研究。"))}</div>
+                </div>
+              </div>
+              <div class="thesis-body">
+                <div><span>值得研究的理由</span><p>{escape(facts.get("具體投資理由", "目前投資理由尚未完整。"))}</p></div>
+                <div><span>成長假設</span><p>{escape(facts.get("成長假設", "目前無足夠數據判斷。"))}</p></div>
+                <div><span>主要風險</span><p>{escape(facts.get("主要風險", "目前無足夠數據判斷。"))}</p></div>
+                <div><span>需要再確認</span><p>{escape(facts.get("需要再確認", "等待下一批資料確認。"))}</p></div>
+              </div>
+              <div class="thesis-source">{escape(facts.get("代表性來源", "目前無足夠公司層級來源。"))}</div>
+            </article>
+            """
+        )
+    return "".join(cards)
+
+
+def credibility_badge_class(value: str) -> str:
+    if any(term in value for term in ["高", "可追溯", "多來源", "可用", "可檢查", "可判讀"]):
+        return "credibility-good"
+    if any(term in value for term in ["中", "偏少", "需", "觀察"]):
+        return "credibility-caution"
+    if any(term in value for term in ["低", "不足", "缺"]):
+        return "credibility-risk"
+    return "credibility-neutral"
+
+
+def credibility_html(markdown: str) -> str:
+    overview_rows = markdown_table_rows_by_header(markdown, "可信度檢查", "檢查項目", limit=8)
+    company_rows = markdown_table_rows_by_header(markdown, "可信度檢查", "股票", limit=20)
+    rules = markdown_items(markdown, "可信度檢查", limit=5)
+    if not overview_rows and not company_rows and not rules:
+        return ""
+    overview_cards = []
+    for row in overview_rows:
+        item = escape(row[0]) if len(row) > 0 else "-"
+        status_raw = row[1] if len(row) > 1 else "-"
+        status = escape(status_raw)
+        evidence = escape(row[2]) if len(row) > 2 else "-"
+        impact = escape(row[3]) if len(row) > 3 else ""
+        overview_cards.append(
+            f"""
+            <article class="credibility-card">
+              <div class="credibility-head">
+                <strong>{item}</strong>
+                <span class="credibility-badge {credibility_badge_class(status_raw)}">{status}</span>
+              </div>
+              <p>{evidence}</p>
+              <small>{impact}</small>
+            </article>
+            """
+        )
+    company_cards = []
+    for row in company_rows:
+        stock = escape(row[0]) if len(row) > 0 else "-"
+        status_raw = row[1] if len(row) > 1 else "-"
+        status = escape(status_raw)
+        documents = escape(row[2]) if len(row) > 2 else "-"
+        findings = escape(row[3]) if len(row) > 3 else "-"
+        latest = escape(row[4]) if len(row) > 4 else "-"
+        limits = escape(row[5]) if len(row) > 5 else ""
+        company_cards.append(
+            f"""
+            <article class="credibility-company {credibility_badge_class(status_raw)}">
+              <div class="credibility-head">
+                <strong>{stock}</strong>
+                <span class="credibility-badge {credibility_badge_class(status_raw)}">{status}</span>
+              </div>
+              <div class="mini-grid">
+                <div><span>公司文本</span><strong>{documents}</strong></div>
+                <div><span>歸因證據</span><strong>{findings}</strong></div>
+                <div><span>最近來源</span><strong>{latest}</strong></div>
+              </div>
+              <small>{limits}</small>
+            </article>
+            """
+        )
+    rules_html = "".join(f"<li>{escape(rule)}</li>" for rule in rules)
+    return (
+        "<div class='credibility-grid'>"
+        + "".join(overview_cards)
+        + "</div>"
+        + ("<h3>個股可信度核對</h3><div class='credibility-companies'>" + "".join(company_cards) + "</div>" if company_cards else "")
+        + ("<details><summary>可信度判讀規則</summary><ul>" + rules_html + "</ul></details>" if rules_html else "")
+    )
 
 
 def follow_up_tasks_html(markdown: str) -> str:
@@ -596,6 +1044,8 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
             "evidence_supported": "正式分析",
             "weak_evidence": "弱證據觀察",
             "needs_evidence": "待補證據",
+            "evidence_limited": "補查後未升格",
+            "evidence_unavailable": "資料不足排除",
         }
         for candidate in candidates:
             evidence_sources = candidate.get("evidence_sources") or []
@@ -631,6 +1081,8 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
     supported = [row for row in rows if len(row) > 2 and "正式分析" in row[2]]
     weak = [row for row in rows if len(row) > 2 and "弱證據" in row[2]]
     needs = [row for row in rows if len(row) > 2 and "待補" in row[2]]
+    limited = [row for row in rows if len(row) > 2 and "補查後未升格" in row[2]]
+    unavailable = [row for row in rows if len(row) > 2 and "資料不足排除" in row[2]]
     cards = []
     for row in rows:
         stock = escape(row[0]) if len(row) > 0 else "-"
@@ -647,6 +1099,10 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
             if "正式分析" in status_raw
             else "audit-weak"
             if "弱證據" in status_raw
+            else "audit-limited"
+            if "補查後未升格" in status_raw
+            else "audit-unavailable"
+            if "資料不足排除" in status_raw
             else "audit-needs"
         )
         cards.append(
@@ -672,6 +1128,8 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
         f"<span>正式分析 {len(supported)}</span>"
         f"<span>弱證據 {len(weak)}</span>"
         f"<span>待補證據 {len(needs)}</span>"
+        f"<span>補查後未升格 {len(limited)}</span>"
+        f"<span>資料不足排除 {len(unavailable)}</span>"
         "</div>"
     )
     return summary + "".join(cards)
@@ -693,6 +1151,16 @@ def valuation_badge_class(value: str) -> str:
     return "valuation-neutral"
 
 
+def current_price_badge_class(value: str) -> str:
+    if "可小額" in value or "可研究" in value:
+        return "price-action"
+    if "不適合" in value or "等止跌" in value or "風險" in value:
+        return "price-risk"
+    if "等回檔" in value or "觀察" in value or "勿追高" in value:
+        return "price-watch"
+    return "price-neutral"
+
+
 def downside_badge_class(value: str) -> str:
     digits = re.sub(r"[^\d.]", "", value)
     if not digits:
@@ -709,12 +1177,12 @@ def quality_issue_html(gate: dict) -> str:
         return ""
     items = []
     for blocker in blockers:
-        items.append(f"<li><strong>阻擋：</strong>{escape(str(blocker))}</li>")
+        items.append(f"<li><strong>阻擋：</strong>{escape(investor_friendly_quality_text(blocker))}</li>")
     for warning in warnings:
-        items.append(f"<li><strong>警示：</strong>{escape(str(warning))}</li>")
+        items.append(f"<li><strong>警示：</strong>{escape(investor_friendly_quality_text(warning))}</li>")
     for observation in observations:
-        items.append(f"<li><strong>觀察：</strong>{escape(str(observation))}</li>")
-    action_items = "".join(f"<li>{escape(str(action))}</li>" for action in actions)
+        items.append(f"<li><strong>觀察：</strong>{escape(investor_friendly_quality_text(observation))}</li>")
+    action_items = "".join(f"<li>{escape(investor_friendly_quality_text(action))}</li>" for action in actions)
     action_html = (
         "<div class='quality-actions'><strong>建議補強</strong><ul>" + action_items + "</ul></div>"
         if action_items
@@ -736,6 +1204,93 @@ def quality_issue_html(gate: dict) -> str:
     return f"<section class='panel quality-issues {severity_class}'><h2>{title}</h2>{issue_html}{action_html}</section>"
 
 
+def auto_follow_up_status_html(auto_follow_up: Optional[dict]) -> str:
+    if not isinstance(auto_follow_up, dict) or not auto_follow_up:
+        return ""
+    status = auto_follow_up.get("status")
+    if status in {None, "not_needed", "disabled"}:
+        return ""
+    summary = auto_follow_up.get("summary") or {}
+    selected = summary.get("selected") or {}
+    execution = summary.get("execution") or {}
+    rerun_raw = auto_follow_up.get("rerun_report")
+    rerun = rerun_raw if isinstance(rerun_raw, dict) else {}
+    next_report = rerun.get("report_id")
+    skipped_reason = rerun.get("reason")
+    if status == "failed":
+        title = "自動補強未完成"
+        body = escape(str(auto_follow_up.get("reason") or "補強流程執行失敗，請稍後重試。"))
+        tone = "auto-failed"
+    elif status == "unavailable":
+        title = "自動補強暫時無法啟動"
+        body = escape(str(auto_follow_up.get("reason") or "後端補強服務暫時無法連線。"))
+        tone = "auto-paused"
+    elif status == "running":
+        title = "自動補強執行中"
+        body = (
+            f"系統正在處理 {len(auto_follow_up.get('planned_actions') or [])} 項補強任務；"
+            "完成後會更新補強紀錄，必要時產生新版報告。"
+        )
+        tone = "auto-started"
+    elif status == "queued":
+        title = "已排入自動補強"
+        body = (
+            f"系統已偵測到必要資料缺口，排入 {int(selected.get('required_count') or selected.get('total_count') or 0)} "
+            "項補強任務；完成後會依完成檢查決定是否重跑報告。"
+        )
+        tone = "auto-started"
+    elif next_report:
+        title = "已自動補強並產生新版報告"
+        body = (
+            f"系統偵測到資料缺口後已啟動 {int(selected.get('total_count') or 0)} 項補強，"
+            f"補入/更新 {int(execution.get('stored_count') or 0)} 筆資料，並產生報告 #{escape(str(next_report))}。"
+        )
+        tone = "auto-started"
+    elif skipped_reason:
+        title = "已自動補強，重跑暫停"
+        body = escape(str(skipped_reason))
+        tone = "auto-paused"
+    else:
+        title = "已自動啟動補強"
+        body = (
+            f"系統偵測到資料缺口後已啟動 {int(selected.get('total_count') or 0)} 項補強，"
+            f"補入/更新 {int(execution.get('stored_count') or 0)} 筆資料。"
+        )
+        tone = "auto-started"
+    return f"""
+    <section class="auto-follow-up {tone}">
+      <div>
+        <strong>{escape(title)}</strong>
+        <p>{body}</p>
+      </div>
+    </section>
+    """
+
+
+def investor_friendly_quality_text(item: object) -> str:
+    text = str(item)
+    replacements = {
+        "LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿": (
+            "模型補充分析未啟用或呼叫失敗，個股結論主要由資料規則產生，需人工覆核"
+        ),
+        "LLM 補充分析已完成，且仍受來源與白名單驗證約束": (
+            "模型補充分析已完成，仍只採用可追溯來源與白名單公司"
+        ),
+        "AI 動態資料來源": "自動搜尋資料來源",
+        "AI 拆解": "主題拆解",
+        "LLM 補充分析": "模型補充分析",
+        "檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。": (
+            "請系統管理者恢復模型補充分析，恢復後重新產生報告並保留事實核查。"
+        ),
+        "LLM API key": "模型連線設定",
+        "官方 IR 文件": "官方投資人關係文件",
+        "規則引擎草稿": "資料規則草稿",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
 def metric_percent(value: object) -> str:
     return "未評估" if value is None else f"{float(value or 0):.0%}"
 
@@ -751,8 +1306,38 @@ def metric_number(value: object) -> str:
     return str(int(number)) if number.is_integer() else f"{number:.1f}"
 
 
+def metric_count_from_payload(
+    result: Optional[dict],
+    list_key: str,
+    metrics: dict,
+    metric_key: str,
+    default: object = "-",
+) -> object:
+    if result and list_key in result and isinstance(result.get(list_key), list):
+        return len(result.get(list_key) or [])
+    value = metrics.get(metric_key)
+    return value if value is not None else default
+
+
 def confidence_label(value: object) -> str:
-    return format_confidence_score(float(value)) if value is not None else "未評估"
+    return format_confidence_score(float(value)) if value is not None else "未匯入"
+
+
+def plan_quality_label(metrics: dict) -> str:
+    status = metrics.get("discovery_plan_status")
+    score = metrics.get("discovery_plan_score")
+    if status is None and score is None:
+        return "未評估"
+    labels = {
+        "ready": "完整",
+        "caution": "可用",
+        "insufficient": "不足",
+        "unknown": "未評估",
+    }
+    label = labels.get(str(status or "unknown"), str(status or "未評估"))
+    if score is None:
+        return label
+    return f"{label}（{int(float(score))} 分）"
 
 
 def report_html(markdown: str, result: Optional[dict] = None) -> str:
@@ -769,10 +1354,16 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     }
     status_class = status if status in {"ready", "caution", "insufficient"} else "unknown"
     quality_html = quality_issue_html(gate)
+    auto_html = auto_follow_up_status_html(result.get("auto_follow_up") if result else None)
     amount = action_policy.get("max_deployable_amount")
     amount_label = f"{int(amount):,} 元" if amount is not None else "-"
+    current_allocation_label = "0 元" if "目前無可配置標的" in markdown else amount_label
     report_id = result.get("report_id") if result else "-"
-    promoted = len(result.get("promoted_tickers", [])) if result else metrics.get("promoted_count", "-")
+    request_payload = result.get("request") if result else {}
+    request_payload = request_payload if isinstance(request_payload, dict) else {}
+    lookback_days = request_payload.get("lookback_days") or metrics.get("source_lookback_days")
+    recent_source_label = f"近 {int(lookback_days)} 天來源" if lookback_days else "近況來源"
+    promoted = metric_count_from_payload(result, "promoted_tickers", metrics, "promoted_count")
     candidate_count = len(result.get("candidate_whitelist", [])) if result else "-"
     source_count = metrics.get("dynamic_source_count", 0)
     publisher_count = metric_int(metrics.get("source_unique_publishers"))
@@ -780,29 +1371,52 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     recent_coverage = metric_percent(metrics.get("source_recent_coverage"))
     leading_signal_coverage = metric_percent(metrics.get("leading_signal_coverage"))
     confidence_min = confidence_label(metrics.get("formal_confidence_min"))
+    discovery_plan_quality = plan_quality_label(metrics)
 
-    summary_items = markdown_items(markdown, "一頁摘要", limit=3)
-    action_items = markdown_items(markdown, "下一步行動", limit=3)
+    summary_items = summary_table_items(markdown) + markdown_items(markdown, "一頁摘要", limit=3)
+    time_scope_items = markdown_items(markdown, "時間口徑說明", limit=5)
+    criteria_items = markdown_items(markdown, "判斷準則說明", limit=5)
+    action_items = markdown_items(markdown, "下一步行動", limit=8)
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
-    investment_rows = markdown_table_rows(markdown, "投資建議", limit=6)
+    investment_rows = markdown_table_rows(markdown, "投資建議", limit=20)
+    early_radar_html = early_potential_radar_html(markdown)
     comparison_html = comparison_matrix_html(markdown)
+    thesis_html = investment_thesis_html(markdown)
+    credibility_panel = credibility_html(markdown)
     follow_up_html = follow_up_tasks_html(markdown)
     audit_html = candidate_audit_html(markdown, result)
     final_items = markdown_items(markdown, "二次綜合篩選", limit=3)
 
     summary_html = "".join(f"<li>{escape(item)}</li>" for item in summary_items) or "<li>目前無足夠數據判斷。</li>"
+    time_scope_html = "".join(f"<li>{escape(item)}</li>" for item in time_scope_items)
+    criteria_html = "".join(f"<li>{escape(item)}</li>" for item in criteria_items)
     action_html = "".join(f"<li>{escape(item)}</li>" for item in action_items) or "<li>先補資料後再重新分析。</li>"
     guard_html = "".join(f"<li>{escape(item)}</li>" for item in guard_items)
     cards = []
     for row in investment_rows:
-        ticker = escape(row[0]) if len(row) > 0 else "-"
-        decision = escape(row[1]) if len(row) > 1 else "-"
-        reason = escape(row[2]) if len(row) > 2 else ""
+        if len(row) >= 7:
+            ticker_raw, price_raw, price_label_raw, decision_raw, reason_raw = row[0], row[1], row[2], row[3], row[4]
+        else:
+            ticker_raw = row[0] if len(row) > 0 else "-"
+            price_raw = "-"
+            price_label_raw = "未標示"
+            decision_raw = row[1] if len(row) > 1 else "-"
+            reason_raw = row[2] if len(row) > 2 else ""
+        ticker = escape(ticker_raw)
+        price = escape(price_raw)
+        price_label = escape(price_label_raw)
+        decision = escape(decision_raw)
+        reason = escape(reason_raw)
+        price_class = current_price_badge_class(price_label_raw)
         cards.append(
             f"""
             <article class="stock-card">
               <div>
                 <div class="ticker">{ticker}</div>
+                <div class="stock-meta">
+                  <span>{price}</span>
+                  <strong class="{price_class}">{price_label}</strong>
+                </div>
                 <div class="reason">{reason}</div>
               </div>
               <span class="decision">{decision}</span>
@@ -813,12 +1427,14 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     final_html = "".join(f"<li>{escape(item)}</li>" for item in final_items)
     details = "".join(
         [
-            detail_html(markdown, "資金控管", "資金控管建議"),
+            detail_html(markdown, "資金控管", "資金控管建議", limit=8),
             company_analysis_html(markdown),
             detail_html(markdown, "主要風險", "主要風險與瓶頸"),
             detail_html(markdown, "資料完整度", "資料完整度"),
             detail_html(markdown, "來源覆蓋", "來源覆蓋"),
             detail_html(markdown, "評分明細", "評分明細"),
+            detail_html(markdown, "時間口徑", "時間口徑說明"),
+            detail_html(markdown, "判斷準則", "判斷準則說明"),
         ]
     )
     return f"""
@@ -826,48 +1442,78 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#182230; background:#F4F7FB; }}
-  .report {{ max-width:1040px; margin:0 auto; padding:18px 4px 30px; }}
-  .hero {{ background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%); border:1px solid #D7DEE8; border-radius:8px; padding:20px; box-shadow:0 8px 22px rgba(32,48,71,0.06); }}
-  .kicker {{ color:#0E9F6E; font-weight:700; font-size:14px; margin-bottom:6px; }}
-  h1 {{ font-size:28px; line-height:1.25; margin:0 0 10px; }}
-  h2 {{ font-size:18px; margin:22px 0 10px; }}
-  .muted {{ color:#667085; }}
+  :root {{ --navy:#0f172a; --blue:#1e3a8a; --teal:#0f766e; --amber:#92400e; --danger:#b42318; --surface:#ffffff; --bg:#edf2f7; --text:#0f172a; --muted:#475569; --border:#cbd5e1; }}
+  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:var(--bg); }}
+  .report {{ max-width:1360px; margin:0 auto; padding:18px 12px 34px; }}
+  .hero {{ background:var(--navy); color:#f8fafc; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:22px 24px 24px; box-shadow:0 14px 34px rgba(15,23,42,0.16); }}
+  .kicker {{ color:#99f6e4; font-weight:700; font-size:14px; margin-bottom:6px; }}
+  h1 {{ font-size:28px; line-height:1.25; margin:0 0 10px; letter-spacing:0; color:inherit; }}
+  h2 {{ font-size:18px; margin:0 0 10px; }}
+  .muted {{ color:#475569; }}
+  .hero .muted {{ color:#cbd5e1; }}
   .grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:14px; }}
-  .trust-grid {{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-top:10px; }}
-  .metric {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:14px; }}
-  .metric span {{ display:block; color:#667085; font-size:13px; }}
+  .trust-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:10px; }}
+  .metric {{ background:#FFFFFF; border:1px solid var(--border); border-radius:8px; padding:14px; }}
+  .hero .metric {{ background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.16); color:#f8fafc; }}
+  .metric span {{ display:block; color:#475569; font-size:13px; font-weight:700; }}
+  .hero .metric span {{ color:#cbd5e1; }}
   .metric strong {{ display:block; margin-top:4px; font-size:20px; }}
   .status {{ display:inline-block; border-radius:999px; padding:6px 10px; font-size:13px; font-weight:700; }}
   .ready {{ background:#E4F8F0; color:#087443; }}
   .caution {{ background:#FFF4DA; color:#8A5A12; }}
   .insufficient {{ background:#FDEAE7; color:#B42318; }}
   .unknown {{ background:#E8EEF6; color:#344054; }}
-  .panel {{ background:#FFFFFF; border:1px solid #D7DEE8; border-radius:8px; padding:16px; margin-top:12px; }}
-  .quality-blockers {{ border-color:#F2A09A; background:#FFF7F5; }}
+  .report-grid {{ display:block; margin-top:14px; }}
+  .decision-rail {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 4px; }}
+  .rail-block {{ background:#FFFFFF; border:1px solid var(--border); border-left:4px solid #1e3a8a; border-radius:8px; padding:14px; box-shadow:0 3px 10px rgba(15,23,42,0.04); }}
+  .rail-block:nth-child(2) {{ border-left-color:#0f766e; }}
+  .rail-block:nth-child(3) {{ border-left-color:#92400e; }}
+  .rail-block strong {{ display:block; font-size:13px; color:#0f172a; margin-bottom:6px; }}
+  .rail-block p {{ margin:0; color:#475569; line-height:1.55; font-size:13px; }}
+  .report-main {{ min-width:0; }}
+  .panel {{ background:transparent; border:0; border-bottom:1px solid #cbd5e1; border-radius:0; padding:18px 0; margin-top:0; }}
+  .panel:first-child {{ padding-top:0; }}
+  .quality-issues {{ border:1px solid #cbd5e1; border-left:5px solid #1e3a8a; border-radius:8px; padding:16px; margin:0 0 10px; background:#ffffff; }}
+  .quality-blockers {{ border-color:#F2A09A; border-left-color:#B42318; background:#FFF7F5; }}
   .quality-blockers strong {{ color:#B42318; }}
-  .quality-warnings {{ border-color:#F5C97B; background:#FFFCF2; }}
-  .quality-warnings strong {{ color:#8A5A12; }}
-  .quality-actions-only {{ border-color:#ADC8FF; background:#F6F9FF; }}
-  .quality-actions-only strong {{ color:#1D4ED8; }}
-  .quality-observations {{ border-color:#B9E4D2; background:#F4FBF8; }}
+  .quality-warnings {{ border-color:#F5C97B; border-left-color:#92400E; background:#FFFCF2; }}
+  .quality-warnings strong {{ color:#92400E; }}
+  .quality-actions-only {{ border-color:#ADC8FF; border-left-color:#1E3A8A; background:#F6F9FF; }}
+  .quality-actions-only strong {{ color:#1E3A8A; }}
+  .quality-observations {{ border-color:#B9E4D2; border-left-color:#087443; background:#F4FBF8; }}
   .quality-observations strong {{ color:#087443; }}
   .quality-actions {{ margin-top:12px; border-top:1px solid #D7DEE8; padding-top:12px; }}
   .quality-actions strong {{ display:block; margin-bottom:2px; }}
+  .auto-follow-up {{ background:#FFFFFF; border:1px solid #B9D7FE; border-left:5px solid #1E3A8A; border-radius:8px; padding:14px 16px; margin-top:12px; box-shadow:0 3px 10px rgba(15,23,42,0.04); }}
+  .auto-follow-up strong {{ display:block; color:#1E3A8A; margin-bottom:4px; }}
+  .auto-follow-up p {{ margin:0; color:#334155; line-height:1.55; }}
+  .auto-paused {{ border-color:#F5C97B; border-left-color:#92400E; }}
+  .auto-paused strong {{ color:#92400E; }}
+  .auto-failed {{ border-color:#F2A09A; border-left-color:#D92D20; }}
+  .auto-failed strong {{ color:#B42318; }}
   ul {{ margin:8px 0 0; padding-left:20px; }}
   li {{ margin:7px 0; line-height:1.55; }}
   .stock-list {{ display:grid; gap:10px; }}
-  .stock-card {{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
-  .task-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#F9FBFD; margin:8px 0; }}
+  .stock-card {{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; border:1px solid var(--border); border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .stock-meta {{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:2px 0 8px; color:#344054; font-size:12px; font-weight:700; }}
+  .stock-meta span,.stock-meta strong {{ border-radius:999px; padding:4px 8px; background:#F4F7FB; color:#344054; }}
+  .stock-meta strong.price-action {{ background:#E4F8F0; color:#087443; }}
+  .stock-meta strong.price-watch {{ background:#FFF4DA; color:#8A5A12; }}
+  .stock-meta strong.price-risk {{ background:#FDEAE7; color:#B42318; }}
+  .stock-meta strong.price-neutral {{ background:#EEF2F6; color:#344054; }}
+  .task-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid var(--border); border-radius:8px; padding:14px; background:#F9FBFD; margin:8px 0; }}
   .task-meta {{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-content:flex-start; min-width:220px; }}
   .task-meta span {{ background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:700; }}
   .audit-summary {{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }}
   .audit-summary span {{ background:#F4F7FB; border:1px solid #D7DEE8; border-radius:999px; padding:6px 10px; font-size:13px; color:#344054; font-weight:700; }}
-  .audit-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; margin:8px 0; }}
+  .audit-card {{ display:flex; justify-content:space-between; gap:14px; border:1px solid var(--border); border-radius:8px; padding:14px; background:#FFFFFF; margin:8px 0; }}
   .audit-card.audit-supported {{ border-left:4px solid #0E9F6E; }}
   .audit-card.audit-weak {{ border-left:4px solid #F59E0B; }}
   .audit-card.audit-needs {{ border-left:4px solid #667085; }}
+  .audit-card.audit-limited {{ border-left:4px solid #8A5A12; background:#FFFCF2; }}
+  .audit-card.audit-unavailable {{ border-left:4px solid #98A2B3; background:#F8FAFC; }}
   .audit-reason {{ margin-top:8px; color:#344054; font-size:13px; line-height:1.45; }}
   .audit-next {{ margin-top:5px; color:#53657D; font-size:13px; line-height:1.45; }}
   .audit-source {{ margin-top:8px; color:#667085; font-size:12px; line-height:1.45; border-top:1px solid #EAECF0; padding-top:8px; }}
@@ -876,30 +1522,61 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .matrix-list {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
   .matrix-summary {{ grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px; }}
   .matrix-summary span {{ background:#F4F7FB; border:1px solid #D7DEE8; border-radius:999px; padding:6px 10px; font-size:13px; color:#344054; font-weight:700; }}
-  .matrix-card {{ border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .matrix-card {{ border:1px solid var(--border); border-radius:8px; padding:14px; background:#FFFFFF; }}
   .matrix-card.decision-action {{ border-left:4px solid #0E9F6E; }}
   .matrix-card.decision-watch {{ border-left:4px solid #F59E0B; }}
   .matrix-card.decision-risk {{ border-left:4px solid #D92D20; }}
+  .radar-card {{ border:1px solid var(--border); border-left:4px solid #0E9F6E; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .radar-card.attention-known {{ border-left-color:#F59E0B; }}
   .matrix-top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }}
-  .mini-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }}
+  .mini-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }}
   .mini-grid div {{ background:#F4F7FB; border-radius:8px; padding:8px; }}
   .mini-grid .valuation-high {{ background:#FFF4DA; }}
   .mini-grid .valuation-low {{ background:#E4F8F0; }}
   .mini-grid .risk-high {{ background:#FDEAE7; }}
   .mini-grid .risk-low {{ background:#E4F8F0; }}
-  .mini-grid span {{ display:block; color:#667085; font-size:12px; }}
-  .mini-grid strong {{ display:block; margin-top:3px; font-size:14px; }}
+  .mini-grid .price-action {{ background:#E4F8F0; }}
+  .mini-grid .price-watch {{ background:#FFF4DA; }}
+  .mini-grid .price-risk {{ background:#FDEAE7; }}
+  .mini-grid .price-neutral {{ background:#EEF2F6; }}
+  .mini-grid span {{ display:block; color:#344054; font-size:12px; font-weight:700; }}
+  .mini-grid strong {{ display:block; margin-top:3px; color:#0f172a; font-size:14px; }}
+  .thesis-list {{ display:grid; gap:10px; }}
+  .thesis-card {{ border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .thesis-head {{ display:flex; justify-content:space-between; gap:12px; margin-bottom:10px; }}
+  .thesis-body {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
+  .thesis-body div {{ background:#F9FBFD; border:1px solid #EAECF0; border-radius:8px; padding:10px; }}
+  .thesis-body span {{ display:block; color:#667085; font-size:12px; font-weight:700; margin-bottom:5px; }}
+  .thesis-body p {{ margin:0; color:#344054; line-height:1.55; font-size:14px; }}
+  .thesis-source {{ margin-top:10px; color:#667085; font-size:12px; line-height:1.5; border-top:1px solid #EAECF0; padding-top:10px; }}
+  .credibility-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }}
+  .credibility-card,.credibility-company {{ border:1px solid #D7DEE8; border-radius:8px; padding:14px; background:#FFFFFF; }}
+  .credibility-company {{ border-left:4px solid #667085; margin:8px 0; }}
+  .credibility-company.credibility-good {{ border-left-color:#0E9F6E; }}
+  .credibility-company.credibility-caution {{ border-left-color:#F59E0B; }}
+  .credibility-company.credibility-risk {{ border-left-color:#D92D20; }}
+  .credibility-head {{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }}
+  .credibility-card p {{ margin:0 0 8px; color:#344054; line-height:1.5; }}
+  .credibility-card small,.credibility-company small {{ display:block; margin-top:8px; color:#667085; line-height:1.45; }}
+  .credibility-badge {{ display:inline-flex; border-radius:999px; padding:5px 9px; font-size:12px; font-weight:800; white-space:nowrap; background:#F4F7FB; color:#344054; }}
+  .credibility-badge.credibility-good {{ background:#E4F8F0; color:#087443; }}
+  .credibility-badge.credibility-caution {{ background:#FFF4DA; color:#8A5A12; }}
+  .credibility-badge.credibility-risk {{ background:#FDEAE7; color:#B42318; }}
   .ticker {{ font-weight:800; margin-bottom:6px; }}
   .reason {{ color:#53657D; font-size:14px; line-height:1.5; }}
   .decision {{ white-space:nowrap; background:#E7F0FF; color:#1D4ED8; border-radius:999px; padding:6px 10px; font-weight:700; font-size:13px; }}
   .decision.decision-action {{ background:#E4F8F0; color:#087443; }}
   .decision.decision-watch {{ background:#FFF4DA; color:#8A5A12; }}
   .decision.decision-risk {{ background:#FDEAE7; color:#B42318; }}
-  details {{ background:#F9FBFD; border:1px solid #D7DEE8; border-radius:8px; padding:12px 14px; margin:8px 0; }}
+  .decision.attention-low {{ background:#E4F8F0; color:#087443; }}
+  .decision.attention-known {{ background:#FFF4DA; color:#8A5A12; }}
+  details {{ background:#F9FBFD; border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin:8px 0; }}
   summary {{ cursor:pointer; font-weight:700; }}
   .company-detail {{ background:#FFFFFF; margin:10px 0 0; }}
   .company-detail summary {{ color:#1D4ED8; }}
-  @media (max-width:760px) {{ .grid,.trust-grid,.matrix-list {{ grid-template-columns:1fr; }} .stock-card,.task-card,.audit-card,.matrix-top {{ display:block; }} .decision,.task-meta,.audit-meta {{ display:inline-flex; margin-top:10px; justify-content:flex-start; min-width:0; }} }}
+  @media (max-width:900px) {{ .decision-rail {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+  @media (max-width:760px) {{ .grid,.trust-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .matrix-list,.thesis-body,.credibility-grid {{ grid-template-columns:1fr; }} .stock-card,.task-card,.audit-card,.matrix-top,.credibility-head {{ display:block; }} .decision,.task-meta,.audit-meta,.credibility-badge {{ display:inline-flex; margin-top:10px; justify-content:flex-start; min-width:0; }} }}
+  @media (max-width:520px) {{ .grid,.trust-grid,.mini-grid,.decision-rail {{ grid-template-columns:1fr; }} }}
 </style>
 </head>
 <body>
@@ -909,31 +1586,49 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     <h1>先看能不能用，再看要不要研究</h1>
     <span class="status {status_class}">{escape(status_labels.get(status, status))}</span>
     <p class="muted">{escape(action_policy.get("label", "請先檢查資料品質與來源覆蓋。"))}</p>
+    <p class="muted">本頁的「目前情境升值分」與「目前情境降值分」是依已取得資料計算的研究排序分數，不是未來報酬率、目標價或買賣指令。</p>
     <div class="grid">
       <div class="metric"><span>報告</span><strong>#{escape(str(report_id))}</strong></div>
-      <div class="metric"><span>可投入上限</span><strong>{escape(amount_label)}</strong></div>
-      <div class="metric"><span>正式股票</span><strong>{escape(str(promoted))}</strong></div>
+      <div class="metric"><span>本次配置</span><strong>{escape(current_allocation_label)}</strong></div>
+      <div class="metric"><span>正式分析股票</span><strong>{escape(str(promoted))}</strong></div>
       <div class="metric"><span>候選清單</span><strong>{escape(str(candidate_count))}</strong></div>
     </div>
     <div class="trust-grid">
       <div class="metric"><span>來源篇數</span><strong>{escape(str(source_count))}</strong></div>
       <div class="metric"><span>來源家數</span><strong>{escape(publisher_count)}</strong></div>
-      <div class="metric"><span>日期可查</span><strong>{escape(timestamp_coverage)}</strong></div>
-      <div class="metric"><span>近期資料</span><strong>{escape(recent_coverage)}</strong></div>
-      <div class="metric"><span>領先訊號</span><strong>{escape(leading_signal_coverage)}</strong></div>
+      <div class="metric"><span>來源有日期</span><strong>{escape(timestamp_coverage)}</strong></div>
+      <div class="metric"><span>{escape(recent_source_label)}</span><strong>{escape(recent_coverage)}</strong></div>
+      <div class="metric"><span>近況訊號覆蓋</span><strong>{escape(leading_signal_coverage)}</strong></div>
       <div class="metric"><span>最低信心</span><strong>{escape(confidence_min)}</strong></div>
+      <div class="metric"><span>拆解任務品質</span><strong>{escape(discovery_plan_quality)}</strong></div>
     </div>
   </section>
-  {quality_html}
-  <section class="panel"><h2>重點摘要</h2><ul>{summary_html}</ul></section>
-  {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
-  <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>
-  {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
-  {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
-  {"<section class='panel'><h2>個股比較矩陣</h2><div class='matrix-list'>" + comparison_html + "</div></section>" if comparison_html else ""}
-  <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
-  {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}
-  <section class="panel"><h2>展開看細節</h2>{details or "<p class='muted'>目前沒有更多細節。</p>"}</section>
+  {auto_html}
+  <section class="decision-rail" aria-label="閱讀提示">
+      <div class="rail-block"><strong>閱讀順序</strong><p>先看本次配置與可研究檔數，再看避開名單，最後展開查核來源。</p></div>
+      <div class="rail-block"><strong>投資口徑</strong><p>正式分析只代表資料通過門檻，不等於買進名單；所有分數只用於排序與風險控管。</p></div>
+      <div class="rail-block"><strong>時間口徑</strong><p>「目前」代表本報告生成前已取得的資料；「情境」代表假設分數，不是未來保證。</p></div>
+      <div class="rail-block"><strong>補強狀態</strong><p>若有必要缺口，系統會啟動補資料任務，完成後才重跑報告。</p></div>
+  </section>
+  <div class="report-grid">
+    <div class="report-main">
+      {quality_html}
+      <section class="panel"><h2>重點摘要</h2><ul>{summary_html}</ul></section>
+      {"<section class='panel'><h2>可信度檢查</h2>" + credibility_panel + "</section>" if credibility_panel else ""}
+      {"<section class='panel'><h2>時間口徑</h2><ul>" + time_scope_html + "</ul></section>" if time_scope_html else ""}
+      {"<section class='panel'><h2>判斷準則</h2><ul>" + criteria_html + "</ul></section>" if criteria_html else ""}
+      {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
+      <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>
+      {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
+      {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
+      {"<section class='panel'><h2>早期潛力雷達</h2><p class='muted'>專看截至目前報導較少、但近況訊號轉強的研究線索；不是買賣指令，也不是自選股狀態。</p><div class='matrix-list'>" + early_radar_html + "</div></section>" if early_radar_html else ""}
+      {"<section class='panel'><h2>個股比較矩陣</h2><div class='matrix-list'>" + comparison_html + "</div></section>" if comparison_html else ""}
+      {"<section class='panel'><h2>投資理由地圖</h2><div class='thesis-list'>" + thesis_html + "</div></section>" if thesis_html else ""}
+      <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
+      {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}
+      <section class="panel"><h2>展開看細節</h2>{details or "<p class='muted'>目前沒有更多細節。</p>"}</section>
+    </div>
+  </div>
 </main>
 </body>
 </html>
@@ -941,7 +1636,9 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
 
 
 def candidate_revalidation_summary(result: dict) -> dict:
-    revalidation = ((result.get("rerun_report") or {}).get("candidate_revalidation") or {})
+    rerun = result.get("rerun_report")
+    rerun = rerun if isinstance(rerun, dict) else {}
+    revalidation = rerun.get("candidate_revalidation") or {}
     candidates = revalidation.get("candidate_whitelist") or []
     promoted = set(revalidation.get("promoted_tickers") or [])
     supported = [
@@ -959,12 +1656,24 @@ def candidate_revalidation_summary(result: dict) -> dict:
         for candidate in candidates
         if candidate.get("status") == "needs_evidence"
     ]
+    limited = [
+        candidate
+        for candidate in candidates
+        if candidate.get("status") == "evidence_limited"
+    ]
+    unavailable = [
+        candidate
+        for candidate in candidates
+        if candidate.get("status") == "evidence_unavailable"
+    ]
     return {
         "changed": bool(revalidation.get("changed")),
         "total": len(candidates),
         "promoted_count": len(promoted) if promoted else len(supported),
         "weak_count": len(weak),
         "needs_evidence_count": len(needs),
+        "limited_count": len(limited),
+        "unavailable_count": len(unavailable),
         "document_query_count": int(revalidation.get("document_query_count") or 0),
         "document_count": int(revalidation.get("document_count") or 0),
         "newly_promoted": revalidation.get("newly_promoted") or [],
@@ -1001,7 +1710,8 @@ def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
 
 
 def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]:
-    rerun = result.get("rerun_report") or {}
+    rerun = result.get("rerun_report")
+    rerun = rerun if isinstance(rerun, dict) else {}
     if rerun.get("report_id"):
         return "success", f"{summary_text}，已產生新報告 #{rerun['report_id']}。"
     if rerun.get("status") == "skipped":
@@ -1042,7 +1752,9 @@ def follow_up_check_value_text(value: Optional[dict]) -> str:
 
 def follow_up_blocker_action_rows(result: dict) -> list[dict]:
     rows = []
-    rerun_actions = (result.get("rerun_report") or {}).get("next_actions") or []
+    rerun = result.get("rerun_report")
+    rerun = rerun if isinstance(rerun, dict) else {}
+    rerun_actions = rerun.get("next_actions") or []
     action_sources = [{"next_actions": rerun_actions}] if rerun_actions else (result.get("results") or {}).values()
     for task_result in action_sources:
         if not isinstance(task_result, dict):
@@ -1067,7 +1779,7 @@ def follow_up_blocker_action_rows(result: dict) -> list[dict]:
             )
     if rows:
         return rows
-    for blocker in (result.get("rerun_report") or {}).get("blockers") or []:
+    for blocker in rerun.get("blockers") or []:
         rows.append(
             {
                 "股票": "-",
@@ -1093,6 +1805,8 @@ def candidate_rows(candidates: list[dict]) -> list[dict]:
         "evidence_supported": "已驗證",
         "weak_evidence": "弱證據",
         "needs_evidence": "待補資料",
+        "evidence_limited": "補查後未升格",
+        "evidence_unavailable": "資料不足排除",
     }
     for candidate in candidates:
         rows.append(
@@ -1161,7 +1875,7 @@ def render_source_audit(result: dict) -> None:
         f"深度分析：{'開啟' if audit.get('deep_analysis') else '關閉'}｜"
         f"國際來源：{'納入' if audit.get('include_international') else '未納入'}｜"
         f"每來源抓取上限：{audit.get('limit_per_query')}｜"
-        f"報告證據上限：{audit.get('evidence_limit')}"
+        f"摘要使用證據上限：{audit.get('evidence_limit')}"
     )
     support_ratio = candidate_support.get("supported_ratio", 0)
     st.caption(
@@ -1240,6 +1954,23 @@ def render_source_audit(result: dict) -> None:
             width="stretch",
             hide_index=True,
         )
+    fixed_selection = (fixed_sources.get("source_selection") or {}).get("selected_sample") or []
+    if fixed_selection:
+        st.markdown("**固定資料源抓取清單樣本**")
+        st.dataframe(
+            [
+                {
+                    "來源": item.get("name"),
+                    "類別": item.get("category"),
+                    "抓取 URL": item.get("url"),
+                    "資料意圖": "、".join(item.get("source_intents") or []),
+                    "命中詞": "、".join(item.get("match_terms") or []),
+                }
+                for item in fixed_selection
+            ],
+            width="stretch",
+            hide_index=True,
+        )
     if remediation.get("supplemented"):
         st.info(
             f"第一次抓取後資料覆蓋不足，系統已自動補抓 "
@@ -1307,17 +2038,19 @@ def render_quality_gate(result: dict) -> None:
     cols[1].metric("正式股票", metrics.get("promoted_count", 0))
     cols[2].metric("正式證據", f"{float(metrics.get('candidate_supported_ratio') or 0):.0%}")
     amount = action_policy.get("max_deployable_amount")
-    cols[3].metric("可投入上限", f"{int(amount):,}" if amount is not None else "-")
+    cols[3].metric("品質額度上限", f"{int(amount):,}" if amount is not None else "-")
     source_cols = st.columns(6)
+    lookback_days = metrics.get("source_lookback_days")
+    recent_label = f"近 {int(lookback_days)} 天來源" if lookback_days else "近況來源"
     source_cols[0].metric("來源篇數", metrics.get("dynamic_source_count", 0))
     source_cols[1].metric("來源家數", metric_int(metrics.get("source_unique_publishers")))
-    source_cols[2].metric("日期可查", metric_percent(metrics.get("source_timestamp_coverage")))
-    source_cols[3].metric("近期資料", metric_percent(metrics.get("source_recent_coverage")))
-    source_cols[4].metric("領先訊號", metric_percent(metrics.get("leading_signal_coverage")))
+    source_cols[2].metric("來源有日期", metric_percent(metrics.get("source_timestamp_coverage")))
+    source_cols[3].metric(recent_label, metric_percent(metrics.get("source_recent_coverage")))
+    source_cols[4].metric("近況訊號", metric_percent(metrics.get("leading_signal_coverage")))
     source_cols[5].metric("最低信心", confidence_label(metrics.get("formal_confidence_min")))
     llm_status = metrics.get("llm_analysis_status")
     if llm_status:
-        st.caption("模型補充分析：" + ("已啟用" if llm_status == "enabled" else "退回規則引擎"))
+        st.caption("模型補充分析：" + ("已啟用" if llm_status == "enabled" else "改用資料規則判讀"))
     if action_policy.get("label"):
         st.caption(f"投資行動狀態：{action_policy['label']}")
 
@@ -1381,7 +2114,8 @@ def render_company_data_audit(report_id: int) -> None:
         st.caption(note)
 
 
-def render_follow_up_controls(report_id: int, markdown: str) -> None:
+def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report") -> None:
+    key_suffix = f"{scope}_{report_id}"
     rows = markdown_table_rows(markdown, "自動補強任務", limit=20)
     planned_actions = []
     plan_next_actions = []
@@ -1482,7 +2216,7 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
         force_refresh = st.checkbox(
             "忽略新鮮度，強制更新已略過的追蹤資料",
             value=False,
-            key=f"followup_force_refresh_{report_id}",
+            key=f"followup_force_refresh_{key_suffix}",
         )
     purpose_options = {
         "全部任務": "all",
@@ -1497,7 +2231,7 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
         options=list(purpose_options.keys()),
         index=list(purpose_options.keys()).index(default_purpose),
         horizontal=True,
-        key=f"followup_purpose_{report_id}",
+        key=f"followup_purpose_{key_suffix}",
     )
     selected_purpose = purpose_options[selected_purpose_label]
     action_pool = planned_actions + skipped_actions if force_refresh else planned_actions
@@ -1517,14 +2251,14 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
         selected_tracking = sum(1 for action in executable_actions if action.get("purpose") == "tracking")
         st.caption(f"本次將執行：資料缺口補強 {selected_required} 項，追蹤更新 {selected_tracking} 項。")
     cols = st.columns([0.62, 0.38])
-    rerun_report = cols[0].checkbox("完成後重新產生一份報告", value=True, key=f"followup_rerun_{report_id}")
+    rerun_report = cols[0].checkbox("完成後重新產生一份報告", value=True, key=f"followup_rerun_{key_suffix}")
     news_limit = cols[1].number_input(
         "補抓資料量",
         min_value=10,
         max_value=100,
         value=30,
         step=10,
-        key=f"followup_news_limit_{report_id}",
+        key=f"followup_news_limit_{key_suffix}",
     )
     button_label = (
         "補資料缺口並重跑"
@@ -1536,7 +2270,7 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
     if st.button(
         button_label,
         type="primary",
-        key=f"followup_run_{report_id}",
+        key=f"followup_run_{key_suffix}",
         disabled=not has_executable_actions,
     ):
         with st.spinner("正在補資料、重算訊號並更新報告..."):
@@ -1588,7 +2322,7 @@ def render_follow_up_controls(report_id: int, markdown: str) -> None:
                         "message": message_text,
                         "result": result,
                     }
-                    st.session_state["selected_report_id"] = int(new_report["report_id"])
+                    st.session_state["pending_selected_report_id"] = int(new_report["report_id"])
                     st.rerun()
                 elif new_report.get("status") == "skipped":
                     st.warning(message_text)
@@ -1684,29 +2418,37 @@ def render_task_status(task_status: dict) -> None:
         )
 
 
-st.markdown(
-    """
-    <section class="stock-hero">
-        <div>
-            <div class="stock-kicker">AI 台股投資工作台</div>
-            <h1>先判斷資料能不能用，再決定股票能不能研究</h1>
-            <div class="stock-subtitle">
-                從主題拆解、資料抓取、候選公司驗證到資金上限，集中在同一個工作流程完成。
-            </div>
-        </div>
-        <div class="hero-actions">
-            <div class="hero-pill">流程：主題分析 → 來源驗證 → 個股評估 → 投資行動限制</div>
-            <div class="hero-pill">時間：Asia/Taipei，本日 {today}</div>
-            <div class="hero-pill">原則：資料不足時自動降級為研究草稿</div>
-        </div>
-    </section>
-    """.format(today=today_taipei().isoformat()),
-    unsafe_allow_html=True,
-)
-
-tabs = st.tabs(["分析", "報告", "資料", "設定"])
-
 with tabs[0]:
+    st.markdown(
+        """
+        <section class="workspace-topbar">
+            <div>
+                <div class="workspace-kicker">AI 台股投資工作台</div>
+                <h1>研究主題、補資料、看報告，集中在同一個工作台</h1>
+                <div class="workspace-subtitle">
+                    先確認本次配置與避開名單，再檢視候選標的與投資理由。必要資料缺口會自動排入補強流程。
+                </div>
+            </div>
+            <div class="workspace-meta">
+                <span class="workspace-chip">Asia/Taipei {today}</span>
+                <span class="workspace-chip">資料不足自動降級</span>
+                <span class="workspace-chip is-accent">缺口自動補強</span>
+            </div>
+        </section>
+        <section class="workflow-strip" aria-label="分析流程">
+            <div class="workflow-step"><span>01</span><strong>主題拆解</strong></div>
+            <div class="workflow-step"><span>02</span><strong>來源驗證</strong></div>
+            <div class="workflow-step"><span>03</span><strong>個股評估</strong></div>
+            <div class="workflow-step"><span>04</span><strong>補強與重跑</strong></div>
+        </section>
+        <section class="workspace-ledger" aria-label="報告判讀基準">
+            <div class="ledger-item"><span>品質門檻</span><strong>未過門檻先標示，不包裝成建議</strong></div>
+            <div class="ledger-item"><span>資料來源</span><strong>新聞、市場、財務、公司文件分開查核</strong></div>
+            <div class="ledger-item"><span>投資口徑</span><strong>正式分析不等於買進，分數只用於排序</strong></div>
+        </section>
+        """.format(today=today_taipei().isoformat()),
+        unsafe_allow_html=True,
+    )
     render_section_header("建立一次分析", "預設使用 AI 拆解主題並抓取國內外資料；不確定時維持預設即可。")
     analysis_config_col, analysis_result_col = st.columns([0.36, 0.64], gap="large")
     with analysis_config_col:
@@ -1790,7 +2532,14 @@ with tabs[0]:
                             },
                         )
                         st.session_state["last_analysis_result"] = result
-                        st.success(f"已完成報告 #{result['report_id']}")
+                        active_report_id = result.get("active_report_id") or result["report_id"]
+                        if active_report_id != result["report_id"]:
+                            st.session_state["pending_selected_report_id"] = int(active_report_id)
+                            st.success(f"已完成報告 #{result['report_id']}，系統已自動補強並產生新版報告 #{active_report_id}")
+                        elif (result.get("auto_follow_up") or {}).get("status") == "started":
+                            st.success(f"已完成報告 #{result['report_id']}，系統已自動啟動補強任務")
+                        else:
+                            st.success(f"已完成報告 #{result['report_id']}")
                     except requests.RequestException as exc:
                         st.error(f"AI 探索式流程失敗：{exc}")
             else:
@@ -1838,15 +2587,28 @@ with tabs[0]:
                                 "ingestion": ingestion_summary,
                                 "quality_gate": quality_gate,
                                 "evidence_count": len(generator.last_evidence_documents),
+                                "report_execution": report_execution_summary(generator),
                             },
                         )
                         AnalysisRunRepository(session).mark_success(run_id, report.id)
+                    try:
+                        auto_follow_up = api_post(f"/reports/{report.id}/follow-up/auto-start", {})
+                    except requests.RequestException:
+                        auto_follow_up = {
+                            "status": "unavailable",
+                            "reason": "後端自動補強服務暫時無法連線；可稍後在報告中心手動啟動。",
+                        }
+                    auto_rerun = auto_follow_up.get("rerun_report") if isinstance(auto_follow_up, dict) else {}
+                    auto_rerun = auto_rerun if isinstance(auto_rerun, dict) else {}
                     st.session_state["last_analysis_result"] = {
                         "run_id": run_id,
                         "report_id": report.id,
+                        "active_report_id": (auto_rerun.get("report_id") or report.id),
+                        "auto_follow_up": auto_follow_up,
                         "candidate_whitelist": [],
                         "promoted_tickers": tickers,
                         "quality_gate": quality_gate,
+                        "report_execution": report_execution_summary(generator),
                         "report": response.model_dump(mode="json"),
                     }
                     st.success(f"已完成報告 #{report.id}")
@@ -1909,16 +2671,21 @@ with tabs[0]:
     with analysis_result_col:
         result = st.session_state.get("last_analysis_result")
         if result:
+            result = hydrate_active_report_result(result)
             report_markdown = result["report"]["markdown"]
+            analysis_metrics = (result.get("quality_gate") or {}).get("metrics") or {}
             metric_cols = st.columns(4)
             metric_cols[0].metric("報告", f"#{result['report_id']}")
-            metric_cols[1].metric("正式分析股票", len(result.get("promoted_tickers", [])))
+            metric_cols[1].metric(
+                "正式分析股票",
+                metric_count_from_payload(result, "promoted_tickers", analysis_metrics, "promoted_count", 0),
+            )
             metric_cols[2].metric("候選清單", len(result.get("candidate_whitelist", [])))
-            metric_cols[3].metric("資金上限", f"{int(investor_capital):,}")
+            metric_cols[3].metric("設定總資金", f"{int(investor_capital):,}")
             render_market_errors(result)
 
             render_section_header("本次分析結果", "先看重點報告；資料細節只在需要查核時展開。")
-            result_tabs = st.tabs(["重點報告", "資料說明"])
+            result_tabs = st.tabs(["重點報告", "資料查核"])
             with result_tabs[0]:
                 st.download_button(
                     "下載 HTML 報告",
@@ -1930,7 +2697,7 @@ with tabs[0]:
             with result_tabs[1]:
                 render_quality_gate(result)
                 render_company_data_audit(int(result["report_id"]))
-                render_follow_up_controls(int(result["report_id"]), report_markdown)
+                render_follow_up_controls(int(result["report_id"]), report_markdown, scope="analysis_result")
                 with st.expander("資料來源概況"):
                     render_source_audit(result)
                 if result.get("candidate_whitelist"):
@@ -1954,7 +2721,6 @@ with tabs[0]:
 with tabs[1]:
     render_section_header("報告中心", "查看已產出的 HTML 報告與下載檔案。")
     render_follow_up_flash()
-    report_nav_col, report_preview_col = st.columns([0.30, 0.70], gap="large")
     with session_scope() as session:
         reports = ReportRepository(session).latest(20)
         report_options = [
@@ -1964,95 +2730,102 @@ with tabs[1]:
             }
             for report in reports
         ]
-    with report_nav_col:
-        if report_options:
-            report_ids = [report["id"] for report in report_options]
-            if st.session_state.get("selected_report_id") not in report_ids:
-                st.session_state["selected_report_id"] = report_ids[0]
-            selected_id = st.selectbox(
-                "選擇報告",
-                options=report_ids,
-                key="selected_report_id",
-                format_func=lambda report_id: next(
-                    report["label"] for report in report_options if report["id"] == report_id
-                ),
-            )
-        else:
-            selected_id = None
-            st.info("尚無歷史報告。")
 
-        report_markdown = None
-        report_title = "report"
-        history_result = None
-        if selected_id:
-            try:
-                report_payload = api_get(f"/reports/{int(selected_id)}")
-                report_markdown = report_payload.get("markdown")
-                report_title = report_payload.get("title") or "report"
-                history_result = {
-                    "report_id": selected_id,
-                    "quality_gate": report_payload.get("quality_gate") or parse_quality_gate_from_markdown(report_markdown or ""),
-                    "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
-                    "candidate_audit": report_payload.get("candidate_audit") or {},
-                }
-            except requests.RequestException:
-                with session_scope() as session:
-                    report = ReportRepository(session).get(int(selected_id))
-                    report_markdown = report.markdown if report else None
-                    report_title = report.title if report else "report"
-            if report_markdown:
-                history_result = history_result or {
-                    "report_id": selected_id,
-                    "quality_gate": parse_quality_gate_from_markdown(report_markdown),
-                }
-        if selected_id and report_markdown:
-            history_html = report_html(report_markdown, history_result)
+    if report_options:
+        report_ids = [report["id"] for report in report_options]
+        pending_report_id = st.session_state.pop("pending_selected_report_id", None)
+        if pending_report_id in report_ids:
+            st.session_state["selected_report_id"] = pending_report_id
+        if st.session_state.get("selected_report_id") not in report_ids:
+            st.session_state["selected_report_id"] = report_ids[0]
+        selected_id = st.selectbox(
+            "選擇報告",
+            options=report_ids,
+            key="selected_report_id",
+            format_func=lambda report_id: next(
+                report["label"] for report in report_options if report["id"] == report_id
+            ),
+        )
+    else:
+        selected_id = None
+        st.info("尚無歷史報告。")
+
+    report_markdown = None
+    report_title = "report"
+    history_result = None
+    if selected_id:
+        try:
+            report_payload = api_get(f"/reports/{int(selected_id)}")
+            report_markdown = report_payload.get("markdown")
+            report_title = report_payload.get("title") or "report"
+            history_result = {
+                "report_id": selected_id,
+                "quality_gate": report_payload.get("quality_gate") or parse_quality_gate_from_markdown(report_markdown or ""),
+                "auto_follow_up": report_payload.get("auto_follow_up"),
+                "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
+                "candidate_audit": report_payload.get("candidate_audit") or {},
+            }
+        except requests.RequestException:
+            with session_scope() as session:
+                report = ReportRepository(session).get(int(selected_id))
+                report_markdown = report.markdown if report else None
+                report_title = report.title if report else "report"
+        if report_markdown:
+            history_result = history_result or {
+                "report_id": selected_id,
+                "quality_gate": parse_quality_gate_from_markdown(report_markdown),
+            }
+
+    if selected_id and report_markdown:
+        history_html = report_html(report_markdown, history_result)
+        report_action_cols = st.columns([0.16, 0.16, 0.68], gap="small")
+        with report_action_cols[0]:
             st.download_button(
                 "下載 HTML",
                 data=history_html,
                 file_name=f"report_{selected_id}.html",
                 mime="text/html",
             )
-            with st.expander("進階"):
-                st.download_button(
-                    "下載 Markdown",
-                    data=report_markdown,
-                    file_name=f"report_{selected_id}.md",
-                    mime="text/markdown",
-                )
+        with report_action_cols[1]:
+            st.download_button(
+                "下載 Markdown",
+                data=report_markdown,
+                file_name=f"report_{selected_id}.md",
+                mime="text/markdown",
+            )
+        with report_action_cols[2]:
+            with st.expander("報告管理"):
                 if st.button("刪除此報告"):
                     with session_scope() as session:
                         ReportRepository(session).delete(int(selected_id))
                     st.success(f"已刪除報告 #{selected_id}｜{report_title}")
 
-    with report_preview_col:
-        if selected_id and report_markdown:
-            history_tabs = st.tabs(["重點報告", "資料說明", "完整文字"])
-            with history_tabs[0]:
-                render_reader_report(report_markdown, history_result)
-            with history_tabs[1]:
-                if history_result:
-                    render_quality_gate(history_result)
-                    render_company_data_audit(int(selected_id))
-                    render_follow_up_controls(int(selected_id), report_markdown)
-                    candidates = history_result.get("candidate_whitelist") or []
-                    if candidates:
-                        with st.expander("候選公司審計"):
-                            st.dataframe(candidate_rows(candidates), width="stretch", hide_index=True)
-                else:
-                    st.info("此份報告尚無可解析的品質門檻。")
-            with history_tabs[2]:
-                st.markdown(report_markdown)
-        else:
-            st.markdown(
-                """
-                <div class="result-shell">
-                    <div class="section-title">尚未選擇報告</div>
-                    <div class="section-note">左側選擇一份歷史報告後，這裡會顯示 HTML 重點版。</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        history_tabs = st.tabs(["重點報告", "資料查核", "完整文字"])
+        with history_tabs[0]:
+            render_reader_report(report_markdown, history_result)
+        with history_tabs[1]:
+            if history_result:
+                render_quality_gate(history_result)
+                render_company_data_audit(int(selected_id))
+                render_follow_up_controls(int(selected_id), report_markdown, scope="history_report")
+                candidates = history_result.get("candidate_whitelist") or []
+                if candidates:
+                    with st.expander("候選公司審計"):
+                        st.dataframe(candidate_rows(candidates), width="stretch", hide_index=True)
+            else:
+                st.info("此份報告尚無可解析的品質門檻。")
+        with history_tabs[2]:
+            st.markdown(report_markdown)
+    else:
+        st.markdown(
+            """
+            <div class="result-shell">
+                <div class="section-title">尚未選擇報告</div>
+                <div class="section-note">上方選擇一份歷史報告後，這裡會顯示 HTML 重點版。</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with st.expander("疑難排解：分析紀錄"):
         render_section_header("分析紀錄", "一般閱讀報告不需要查看；只有查錯或追蹤背景分析時使用。")
@@ -2111,41 +2884,54 @@ with tabs[1]:
             st.info("尚無任務執行紀錄。")
 
 with tabs[2]:
-    render_section_header("市場資料", "刷新股價、五年財報與估值資料；這些資料會影響品質門檻與投資行動限制。")
     whitelist = SupplyChainWhitelist()
     allowed_tickers = sorted(whitelist.allowed_tickers())
-    status_snapshot = db_status()
-    table_counts = status_snapshot.get("tables", {})
-    count_cols = st.columns(5)
-    count_cols[0].metric("股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0)
-    count_cols[1].metric("月營收快取", table_counts.get("monthly_revenue_snapshots", {}).get("count") or 0)
-    count_cols[2].metric("財報三表快取", table_counts.get("financial_metric_snapshots", {}).get("count") or 0)
-    count_cols[3].metric("估值快取", table_counts.get("valuation_metric_snapshots", {}).get("count") or 0)
-    count_cols[4].metric("公司文件", table_counts.get("company_filings", {}).get("count") or 0)
+    data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])
 
-    selected_market_tickers = st.multiselect(
-        "刷新個股",
-        options=allowed_tickers,
-        default=["2330"] if "2330" in allowed_tickers else [],
-    )
-    col_start, col_end = st.columns(2)
-    with col_start:
-        market_start = st.date_input("起始日期", value=today_taipei().replace(day=1), key="market_start")
-    with col_end:
-        market_end = st.date_input("結束日期", value=today_taipei(), key="market_end")
+    with data_tabs[0]:
+        render_section_header("市場資料", "刷新股價、五年財報與估值資料；這些資料會影響品質門檻與投資行動限制。")
+        status_snapshot = db_status()
+        table_counts = status_snapshot.get("tables", {})
+        count_cols = st.columns(5)
+        count_cols[0].metric("股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0)
+        count_cols[1].metric("月營收快取", table_counts.get("monthly_revenue_snapshots", {}).get("count") or 0)
+        count_cols[2].metric("財報三表快取", table_counts.get("financial_metric_snapshots", {}).get("count") or 0)
+        count_cols[3].metric("估值快取", table_counts.get("valuation_metric_snapshots", {}).get("count") or 0)
+        count_cols[4].metric("公司文件", table_counts.get("company_filings", {}).get("count") or 0)
 
-    refresh_cols = st.columns(4)
-    refresh_price = refresh_cols[0].button("刷新股價", type="primary")
-    refresh_financials = refresh_cols[1].button("刷新 5 年財報")
-    refresh_valuations = refresh_cols[2].button("刷新估值")
-    refresh_filings = refresh_cols[3].button("補抓公司文件")
+        default_market_tickers = ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
+        selected_market_tickers = st.multiselect(
+            "選擇要刷新或補文件的股票",
+            options=allowed_tickers,
+            default=default_market_tickers,
+        )
+        col_start, col_end = st.columns(2)
+        with col_start:
+            market_start = st.date_input("起始日期", value=today_taipei().replace(day=1), key="market_start")
+        with col_end:
+            market_end = st.date_input("結束日期", value=today_taipei(), key="market_end")
 
-    if refresh_price:
-        if market_start > market_end:
+        has_market_selection = bool(selected_market_tickers)
+        has_valid_market_range = market_start <= market_end
+        if not has_market_selection:
+            st.caption("請先選擇至少一檔股票。")
+        if not has_valid_market_range:
             st.error("起始日期不可晚於結束日期。")
-        elif not selected_market_tickers:
-            st.warning("請至少選擇一檔白名單股票。")
-        else:
+
+        refresh_cols = st.columns(4)
+        refresh_price = refresh_cols[0].button(
+            "刷新股價",
+            type="primary",
+            disabled=not (has_market_selection and has_valid_market_range),
+        )
+        refresh_financials = refresh_cols[1].button("刷新 5 年財報", disabled=not has_market_selection)
+        refresh_valuations = refresh_cols[2].button(
+            "刷新估值",
+            disabled=not (has_market_selection and has_valid_market_range),
+        )
+        refresh_filings = refresh_cols[3].button("補抓公司文件", disabled=not has_market_selection)
+
+        if refresh_price:
             with st.spinner("正在抓取 FinMind 資料..."):
                 snapshots, errors = asyncio.run(
                     MarketDataClient().get_latest_snapshots_with_errors(
@@ -2160,10 +2946,7 @@ with tabs[2]:
             if errors:
                 render_market_errors({"market_errors": [error.model_dump() for error in errors]})
 
-    if refresh_financials:
-        if not selected_market_tickers:
-            st.warning("請至少選擇一檔白名單股票。")
-        else:
+        if refresh_financials:
             with st.spinner("正在抓取 FinMind 財報三表..."):
                 result = asyncio.run(
                     IngestionPipeline().refresh_financial_metrics(
@@ -2176,12 +2959,7 @@ with tabs[2]:
             if result["errors"]:
                 st.warning(result["errors"])
 
-    if refresh_valuations:
-        if market_start > market_end:
-            st.error("起始日期不可晚於結束日期。")
-        elif not selected_market_tickers:
-            st.warning("請至少選擇一檔白名單股票。")
-        else:
+        if refresh_valuations:
             with st.spinner("正在抓取 FinMind 估值資料..."):
                 result = asyncio.run(
                     IngestionPipeline().refresh_valuations(
@@ -2194,10 +2972,7 @@ with tabs[2]:
             if result["errors"]:
                 st.warning(result["errors"])
 
-    if refresh_filings:
-        if not selected_market_tickers:
-            st.warning("請至少選擇一檔白名單股票。")
-        else:
+        if refresh_filings:
             with st.spinner("正在搜尋官方/MOPS/IR 公司文件..."):
                 result = asyncio.run(
                     IngestionPipeline().ingest_company_filings(
@@ -2280,166 +3055,188 @@ with tabs[2]:
             if result["errors"]:
                 st.warning(result["errors"])
 
-    with session_scope() as session:
-        cached_snapshots = MarketRepository(session).latest_by_tickers(allowed_tickers)
-        cached_valuations = ValuationMetricRepository(session).latest_by_tickers(allowed_tickers)
-        cached_filings = CompanyFilingRepository(session).latest_by_tickers(allowed_tickers, limit_per_ticker=2)
-        cached_financial_count = len(FinancialMetricRepository(session).by_tickers(allowed_tickers))
-    if cached_snapshots:
-        st.caption("最新股價快取")
-        st.dataframe(
-            [
-                {
-                    "ticker": snapshot.ticker,
-                    "trade_date": snapshot.trade_date.isoformat(),
-                    "close": snapshot.close,
-                    "spread": snapshot.spread,
-                    "volume": snapshot.trading_volume,
-                    "source": snapshot.source,
-                    "fetched_at_utc": snapshot.fetched_at.isoformat(timespec="seconds"),
-                }
-                for snapshot in cached_snapshots
-            ],
-            width="stretch",
-            hide_index=True,
-        )
-    else:
-        st.info("尚無市場資料快取。")
-    if cached_valuations:
-        st.caption("最新估值快取")
-        st.dataframe(
-            [
-                {
-                    "ticker": valuation.ticker,
-                    "trade_date": valuation.trade_date.isoformat(),
-                    "pe_ratio": valuation.pe_ratio,
-                    "pb_ratio": valuation.pb_ratio,
-                    "dividend_yield": valuation.dividend_yield,
-                    "source": valuation.source,
-                    "fetched_at_utc": valuation.fetched_at.isoformat(timespec="seconds"),
-                }
-                for valuation in cached_valuations
-            ],
-            width="stretch",
-            hide_index=True,
-        )
-    else:
-        st.info("尚無估值資料快取。")
-    st.caption(f"目前財報三表科目快取：{cached_financial_count} 筆")
-    if cached_filings:
-        st.caption("公司文件快取")
-        st.dataframe(
-            [
-                {
-                    "股票": filing.ticker,
-                    "類型": filing.document_type,
-                    "標題": filing.title,
-                    "來源": filing.source.publisher,
-                    "日期": filing.source.published_at.isoformat()
-                    if filing.source.published_at
-                    else None,
-                }
-                for filing in cached_filings
-            ],
-            width="stretch",
-            hide_index=True,
-        )
+        with session_scope() as session:
+            cached_snapshots = MarketRepository(session).latest_by_tickers(allowed_tickers)
+            cached_valuations = ValuationMetricRepository(session).latest_by_tickers(allowed_tickers)
+            cached_filings = CompanyFilingRepository(session).latest_by_tickers(allowed_tickers, limit_per_ticker=2)
+            cached_financial_count = len(FinancialMetricRepository(session).by_tickers(allowed_tickers))
 
-with tabs[2]:
-    render_section_header("補充資料", "手動補充新聞、法說或研究摘要，讓報告可以引用具體來源。")
-    input_tabs = st.tabs(["新聞/研究摘要", "公司公開文件"])
-    with input_tabs[0]:
-        title = st.text_input("標題")
-        publisher = st.text_input("來源", value="manual")
-        published_at = st.date_input("日期", value=today_taipei())
-        url = st.text_input("URL")
-        text = st.text_area("內文", height=260)
-        if st.button("匯入 RAG"):
-            document = NewsFetcher.from_manual_text(
-                title=title,
-                text=text,
-                publisher=publisher,
-                published_at=published_at,
-                url=url or None,
-            )
-            VectorStore().upsert_documents([document])
-            matches = EntityMapper().match_document(document)
-            with session_scope() as session:
-                NewsRepository(session).upsert_document(
-                    document,
-                    [match.model_dump(mode="json") for match in matches],
+        cache_tabs = st.tabs(["股價快取", "估值快取", "公司文件"])
+        with cache_tabs[0]:
+            if cached_snapshots:
+                st.dataframe(
+                    [
+                        {
+                            "股票": snapshot.ticker,
+                            "交易日": snapshot.trade_date.isoformat(),
+                            "收盤價": snapshot.close,
+                            "漲跌": snapshot.spread,
+                            "成交量": snapshot.trading_volume,
+                            "來源": snapshot.source,
+                            "更新時間 UTC": snapshot.fetched_at.isoformat(timespec="seconds"),
+                        }
+                        for snapshot in cached_snapshots
+                    ],
+                    width="stretch",
+                    hide_index=True,
                 )
-            st.success(f"已匯入：{document.id}")
-
-    with input_tabs[1]:
-        filing_ticker = st.selectbox("股票代號", options=allowed_tickers, index=allowed_tickers.index("2330") if "2330" in allowed_tickers else 0)
-        filing_company = st.text_input("公司名稱", value=next((company.name for company in whitelist.companies() if company.ticker == filing_ticker), ""))
-        filing_type = st.selectbox(
-            "文件類型",
-            options=["annual_report", "investor_presentation", "prospectus", "material_information", "company_disclosure"],
-            format_func=lambda value: {
-                "annual_report": "年報",
-                "investor_presentation": "法說/投資人簡報",
-                "prospectus": "公開說明書",
-                "material_information": "重大訊息",
-                "company_disclosure": "其他公司揭露",
-            }.get(value, value),
-        )
-        filing_title = st.text_input("文件標題", key="filing_title")
-        filing_publisher = st.text_input("文件來源", value="公司 IR / MOPS", key="filing_publisher")
-        filing_date = st.date_input("文件日期", value=today_taipei(), key="filing_date")
-        filing_url = st.text_input("文件 URL", key="filing_url")
-        filing_text = st.text_area("文件文字", height=260, key="filing_text")
-        filing_import_cols = st.columns(2)
-        import_text_filing = filing_import_cols[0].button("匯入公司文件")
-        import_url_filing = filing_import_cols[1].button("從 URL 抓取並匯入")
-        if import_text_filing:
-            if not filing_title or not filing_text:
-                st.warning("請輸入文件標題與文字。")
             else:
-                document = CompanyFilingFetcher.from_manual_text(
-                    ticker=filing_ticker,
-                    company_name=filing_company,
-                    document_type=filing_type,
-                    title=filing_title,
-                    text=filing_text,
-                    publisher=filing_publisher,
-                    published_at=filing_date,
-                    url=filing_url or None,
+                st.info("尚無市場資料快取。")
+            st.caption(f"目前財報三表科目快取：{cached_financial_count} 筆")
+        with cache_tabs[1]:
+            if cached_valuations:
+                st.dataframe(
+                    [
+                        {
+                            "股票": valuation.ticker,
+                            "交易日": valuation.trade_date.isoformat(),
+                            "本益比": valuation.pe_ratio,
+                            "股價淨值比": valuation.pb_ratio,
+                            "殖利率": valuation.dividend_yield,
+                            "來源": valuation.source,
+                            "更新時間 UTC": valuation.fetched_at.isoformat(timespec="seconds"),
+                        }
+                        for valuation in cached_valuations
+                    ],
+                    width="stretch",
+                    hide_index=True,
                 )
-                news_document = CompanyFilingRepository.to_news_document(document)
-                VectorStore().upsert_documents([news_document])
+            else:
+                st.info("尚無估值資料快取。")
+        with cache_tabs[2]:
+            if cached_filings:
+                st.dataframe(
+                    [
+                        {
+                            "股票": filing.ticker,
+                            "類型": filing.document_type,
+                            "標題": filing.title,
+                            "來源": filing.source.publisher,
+                            "日期": filing.source.published_at.isoformat()
+                            if filing.source.published_at
+                            else None,
+                        }
+                        for filing in cached_filings
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+            else:
+                st.info("尚無公司文件快取。")
+
+    with data_tabs[1]:
+        render_section_header("手動補充", "補充新聞、法說或研究摘要，讓報告可以引用具體來源。")
+        input_tabs = st.tabs(["新聞/研究摘要", "公司公開文件"])
+        with input_tabs[0]:
+            title = st.text_input("標題")
+            publisher = st.text_input("來源", value="manual")
+            published_at = st.date_input("日期", value=today_taipei())
+            url = st.text_input("URL")
+            text = st.text_area("內文", height=260)
+            manual_news_ready = bool(title.strip() and text.strip())
+            if not manual_news_ready:
+                st.caption("請先填入標題與內文。")
+            if st.button("匯入新聞/研究摘要", type="primary", disabled=not manual_news_ready):
+                document = NewsFetcher.from_manual_text(
+                    title=title.strip(),
+                    text=text.strip(),
+                    publisher=(publisher or "manual").strip(),
+                    published_at=published_at,
+                    url=url.strip() or None,
+                )
+                VectorStore().upsert_documents([document])
+                matches = EntityMapper().match_document(document)
                 with session_scope() as session:
-                    CompanyFilingRepository(session).upsert_document(document)
-                tier = filing_source_tier(document)
-                score = filing_quality_score(document, filing_ticker, filing_company)
-                st.success(f"已匯入公司文件：{document.id}")
-                st.caption(f"來源分級：{tier}；品質分數：{score}")
-        if import_url_filing:
-            if not filing_url:
-                st.warning("請輸入文件 URL。")
+                    NewsRepository(session).upsert_document(
+                        document,
+                        [match.model_dump(mode="json") for match in matches],
+                    )
+                st.success(f"已匯入：{document.id}")
+
+        with input_tabs[1]:
+            if not allowed_tickers:
+                st.warning("目前沒有可選股票代號。")
             else:
-                with st.spinner("正在抓取 URL 並匯入公司文件..."):
-                    document = asyncio.run(
-                        CompanyFilingFetcher().fetch_url_document(
-                            url=filing_url,
-                            ticker=filing_ticker,
-                            company_name=filing_company,
-                            document_type=filing_type,
-                            publisher=filing_publisher,
-                            published_at=filing_date,
-                        )
+                filing_ticker = st.selectbox(
+                    "股票代號",
+                    options=allowed_tickers,
+                    index=allowed_tickers.index("2330") if "2330" in allowed_tickers else 0,
+                )
+                filing_company = st.text_input(
+                    "公司名稱",
+                    value=next((company.name for company in whitelist.companies() if company.ticker == filing_ticker), ""),
+                )
+                filing_type = st.selectbox(
+                    "文件類型",
+                    options=["annual_report", "investor_presentation", "prospectus", "material_information", "company_disclosure"],
+                    format_func=lambda value: {
+                        "annual_report": "年報",
+                        "investor_presentation": "法說/投資人簡報",
+                        "prospectus": "公開說明書",
+                        "material_information": "重大訊息",
+                        "company_disclosure": "其他公司揭露",
+                    }.get(value, value),
+                )
+                filing_title = st.text_input("文件標題", key="filing_title")
+                filing_publisher = st.text_input("文件來源", value="公司 IR / MOPS", key="filing_publisher")
+                filing_date = st.date_input("文件日期", value=today_taipei(), key="filing_date")
+                filing_url = st.text_input("文件 URL", key="filing_url")
+                filing_text = st.text_area("文件文字", height=260, key="filing_text")
+                filing_text_ready = bool(filing_title.strip() and filing_text.strip())
+                filing_url_ready = bool(filing_url.strip())
+                if not filing_text_ready and not filing_url_ready:
+                    st.caption("貼上文件文字時需有標題；或提供文件 URL 後從 URL 匯入。")
+                filing_import_cols = st.columns(2)
+                import_text_filing = filing_import_cols[0].button(
+                    "匯入公司文件",
+                    type="primary",
+                    disabled=not filing_text_ready,
+                )
+                import_url_filing = filing_import_cols[1].button(
+                    "從 URL 抓取並匯入",
+                    disabled=not filing_url_ready,
+                )
+                if import_text_filing:
+                    document = CompanyFilingFetcher.from_manual_text(
+                        ticker=filing_ticker,
+                        company_name=filing_company,
+                        document_type=filing_type,
+                        title=filing_title.strip(),
+                        text=filing_text.strip(),
+                        publisher=(filing_publisher or "公司 IR / MOPS").strip(),
+                        published_at=filing_date,
+                        url=filing_url.strip() or None,
                     )
                     news_document = CompanyFilingRepository.to_news_document(document)
                     VectorStore().upsert_documents([news_document])
                     with session_scope() as session:
                         CompanyFilingRepository(session).upsert_document(document)
-                tier = filing_source_tier(document)
-                score = filing_quality_score(document, filing_ticker, filing_company)
-                st.success(f"已從 URL 匯入公司文件：{document.id}")
-                st.caption(f"來源分級：{tier}；品質分數：{score}")
+                    tier = filing_source_tier(document)
+                    score = filing_quality_score(document, filing_ticker, filing_company)
+                    st.success(f"已匯入公司文件：{document.id}")
+                    st.caption(f"來源分級：{tier}；品質分數：{score}")
+                if import_url_filing:
+                    with st.spinner("正在抓取 URL 並匯入公司文件..."):
+                        document = asyncio.run(
+                            CompanyFilingFetcher().fetch_url_document(
+                                url=filing_url.strip(),
+                                ticker=filing_ticker,
+                                company_name=filing_company,
+                                document_type=filing_type,
+                                publisher=(filing_publisher or "公司 IR / MOPS").strip(),
+                                published_at=filing_date,
+                            )
+                        )
+                        news_document = CompanyFilingRepository.to_news_document(document)
+                        VectorStore().upsert_documents([news_document])
+                        with session_scope() as session:
+                            CompanyFilingRepository(session).upsert_document(document)
+                    tier = filing_source_tier(document)
+                    score = filing_quality_score(document, filing_ticker, filing_company)
+                    st.success(f"已從 URL 匯入公司文件：{document.id}")
+                    st.caption(f"來源分級：{tier}；品質分數：{score}")
 
-    with st.expander("進階：從 RSS 匯入"):
+    with data_tabs[2]:
         render_section_header("RSS 匯入", "從既有資料源或指定 URL 抓取最新文本。")
         source_store = NewsSourceStore()
         configured_sources = source_store.load()
@@ -2452,121 +3249,168 @@ with tabs[2]:
         feed_url = st.text_input("RSS URL")
         feed_publisher = st.text_input("來源名稱", value="rss")
         feed_limit = st.number_input("抓取筆數", min_value=1, max_value=50, value=10)
-        if st.button("抓取 RSS"):
-            if not feed_url:
-                st.warning("請輸入 RSS URL。")
-            else:
-                with st.spinner("正在抓取 RSS..."):
-                    result = asyncio.run(
-                        IngestionPipeline().ingest_feeds(
-                            url=feed_url,
-                            publisher=feed_publisher,
-                            limit=int(feed_limit),
-                        )
+        feed_ready = bool(feed_url.strip())
+        if not feed_ready:
+            st.caption("請先輸入 RSS URL。")
+        if st.button("抓取 RSS", type="primary", disabled=not feed_ready):
+            with st.spinner("正在抓取 RSS..."):
+                result = asyncio.run(
+                    IngestionPipeline().ingest_feeds(
+                        url=feed_url.strip(),
+                        publisher=(feed_publisher or "rss").strip(),
+                        limit=int(feed_limit),
                     )
-                st.success(f"已匯入 {result['count']} 筆 RSS 內容。")
-                if result["errors"]:
-                    st.warning(result["errors"])
+                )
+            st.success(f"已匯入 {result['count']} 筆 RSS 內容。")
+            if result["errors"]:
+                st.warning(result["errors"])
 
 with tabs[3]:
-    render_section_header("股票範圍", "這裡是系統可辨識的台股公司範圍；正式報告仍會再用資料證據篩選。")
-    with st.expander("查看完整公司範圍"):
-        st.json(SupplyChainWhitelist().raw)
+    settings_whitelist = SupplyChainWhitelist()
+    settings_tickers = sorted(settings_whitelist.allowed_tickers())
+    settings_tabs = st.tabs(["股票範圍", "自動排程", "維護"])
 
-with tabs[3]:
-    render_section_header("自動排程", "設定固定時間自動產生分析。")
-    schedule_store = ScheduleConfigStore()
-    schedule_config = schedule_store.load()
-    schedule_enabled = st.toggle("啟用每日排程", value=schedule_config.enabled)
-    col_hour, col_minute = st.columns(2)
-    with col_hour:
-        schedule_hour = st.number_input("小時", min_value=0, max_value=23, value=schedule_config.hour)
-    with col_minute:
-        schedule_minute = st.number_input("分鐘", min_value=0, max_value=59, value=schedule_config.minute)
-    schedule_topic = st.text_input("排程主題", value=schedule_config.topic)
-    schedule_tickers = st.multiselect(
-        "排程個股",
-        options=sorted(SupplyChainWhitelist().allowed_tickers()),
-        default=schedule_config.tickers,
-    )
-    schedule_lookback = st.number_input(
-        "排程回看天數",
-        min_value=1,
-        max_value=180,
-        value=schedule_config.lookback_days,
-    )
-    if st.button("儲存排程設定", type="primary"):
-        if schedule_enabled and not schedule_tickers:
-            st.warning("啟用每日排程時，請至少選擇一檔白名單股票。")
+    with settings_tabs[0]:
+        render_section_header("股票範圍", "這裡是系統可辨識的台股公司範圍；正式報告仍會再用資料證據篩選。")
+        segments = settings_whitelist.segments
+        scope_cols = st.columns(3)
+        scope_cols[0].metric("產業分類", len(segments))
+        scope_cols[1].metric("股票數", len(settings_whitelist.companies()))
+        scope_cols[2].metric("風險詞組", len(settings_whitelist.risk_keywords))
+        segment_filter = st.selectbox(
+            "產業分類篩選",
+            options=["全部"] + [segment.name for segment in segments],
+        )
+        segment_rows = []
+        for segment in segments:
+            if segment_filter != "全部" and segment.name != segment_filter:
+                continue
+            for company in segment.companies:
+                segment_rows.append(
+                    {
+                        "股票": company.ticker,
+                        "公司": company.name,
+                        "產業分類": segment.name,
+                        "證據關鍵字": "、".join(company.evidence_keywords[:5]) or "-",
+                    }
+                )
+        if segment_rows:
+            st.dataframe(segment_rows, width="stretch", hide_index=True)
         else:
-            saved = schedule_store.save(
-                ScheduleConfig(
-                    enabled=schedule_enabled,
-                    hour=int(schedule_hour),
-                    minute=int(schedule_minute),
-                    topic=schedule_topic,
-                    tickers=schedule_tickers,
-                    lookback_days=int(schedule_lookback),
-                    timezone="Asia/Taipei",
-                )
-            )
-            st.success(f"已儲存：每日 {saved.timezone} {saved.hour:02d}:{saved.minute:02d}")
-    with st.expander("進階：背景服務啟動指令"):
-        st.info("只有需要啟動自動排程服務時才需要使用。")
-        st.code(
-            ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker -B --loglevel=INFO --pool=solo",
-            language="bash",
-        )
+            st.info("目前沒有符合篩選的公司。")
+        with st.expander("進階：原始白名單 JSON"):
+            st.json(settings_whitelist.raw)
 
-with tabs[3]:
-    render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
-    status = db_status()
-    service_snapshot = service_status()
-    service_metrics = maintenance_service_metrics(status, service_snapshot)
-    service_cols = st.columns(len(service_metrics))
-    for column, (label, value) in zip(service_cols, service_metrics.items()):
-        column.metric(label, value)
-    with st.expander("進階：服務細節"):
-        st.json(status["settings"])
-        st.json(status["integrity"])
-        st.json(service_snapshot)
-        st.dataframe(
-            [
-                {"table": table, **details}
-                for table, details in status["tables"].items()
-            ],
-            width="stretch",
-            hide_index=True,
+    with settings_tabs[1]:
+        render_section_header("自動排程", "設定固定時間自動產生分析。")
+        schedule_store = ScheduleConfigStore()
+        schedule_config = schedule_store.load()
+        schedule_enabled = st.toggle("啟用每日排程", value=schedule_config.enabled)
+        col_hour, col_minute = st.columns(2)
+        with col_hour:
+            schedule_hour = st.number_input("小時", min_value=0, max_value=23, value=schedule_config.hour)
+        with col_minute:
+            schedule_minute = st.number_input("分鐘", min_value=0, max_value=59, value=schedule_config.minute)
+        schedule_topic = st.text_input("排程主題", value=schedule_config.topic)
+        schedule_default_tickers = [
+            ticker for ticker in schedule_config.tickers if ticker in settings_tickers
+        ]
+        schedule_tickers = st.multiselect(
+            "排程個股",
+            options=settings_tickers,
+            default=schedule_default_tickers,
         )
-    with st.expander("進階：資料清理"):
-        st.warning("清理操作會刪除歷史紀錄；不確定時請不要使用。")
-        if st.button("清除失敗紀錄"):
-            with session_scope() as session:
-                deleted = AnalysisRunRepository(session).delete_failed()
-            st.success(f"已清除 {deleted} 筆失敗紀錄。")
-        stale_minutes = st.number_input("執行逾時分鐘", min_value=5, max_value=1440, value=60)
-        if st.button("標記逾時任務"):
-            stale_before = datetime.utcnow() - timedelta(minutes=int(stale_minutes))
-            with session_scope() as session:
-                marked = AnalysisRunRepository(session).mark_stale_running_failed(
-                    stale_before,
-                    "marked failed from Streamlit maintenance",
+        schedule_lookback = st.number_input(
+            "排程回看天數",
+            min_value=1,
+            max_value=180,
+            value=schedule_config.lookback_days,
+        )
+        schedule_ready = (not schedule_enabled) or (bool(schedule_topic.strip()) and bool(schedule_tickers))
+        if not schedule_ready:
+            st.caption("啟用每日排程時，請填入主題並至少選擇一檔股票。")
+        if st.button("儲存排程設定", type="primary", disabled=not schedule_ready):
+            try:
+                saved = schedule_store.save(
+                    ScheduleConfig(
+                        enabled=schedule_enabled,
+                        hour=int(schedule_hour),
+                        minute=int(schedule_minute),
+                        topic=schedule_topic.strip(),
+                        tickers=schedule_tickers,
+                        lookback_days=int(schedule_lookback),
+                        timezone="Asia/Taipei",
+                    )
                 )
-            st.success(f"已標記 {marked} 筆逾時任務。")
-        if st.button("修復失效報告連結"):
-            with session_scope() as session:
-                cleared = AnalysisRunRepository(session).clear_orphan_report_refs()
-            st.success(f"已修復 {cleared} 筆報告連結。")
-        cleanup_days = st.number_input("保留天數", min_value=1, max_value=3650, value=90)
-        cleanup_before = datetime.combine(today_taipei() - timedelta(days=int(cleanup_days)), time.min)
-        col_runs, col_reports = st.columns(2)
-        with col_runs:
-            if st.button("清除舊分析紀錄"):
+            except ValueError as exc:
+                st.error(f"儲存失敗：{exc}")
+            else:
+                st.success(f"已儲存：每日 {saved.timezone} {saved.hour:02d}:{saved.minute:02d}")
+        with st.expander("進階：背景服務啟動指令"):
+            st.info("只有需要啟動自動排程服務時才需要使用。")
+            st.code(
+                ".venv/bin/python -m celery \\\n"
+                "  -A app.tasks.celery_app.celery_app worker -B \\\n"
+                "  --loglevel=INFO --pool=solo",
+                language="bash",
+            )
+
+    with settings_tabs[2]:
+        render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
+        status = db_status()
+        service_snapshot = service_status()
+        service_metrics = maintenance_service_metrics(status, service_snapshot)
+        service_cols = st.columns(len(service_metrics))
+        for column, (label, value) in zip(service_cols, service_metrics.items()):
+            column.metric(label, value)
+        with st.expander("進階：服務細節"):
+            st.json(status["settings"])
+            st.json(status["integrity"])
+            st.json(service_snapshot)
+            st.dataframe(
+                [
+                    {"table": table, **details}
+                    for table, details in status["tables"].items()
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        with st.expander("進階：資料清理"):
+            st.warning("清理操作會刪除歷史紀錄；不確定時請不要使用。")
+            cleanup_confirmed = st.checkbox(
+                "我了解這裡會改動或刪除歷史資料",
+                value=False,
+                key="confirm_maintenance_cleanup",
+            )
+            if not cleanup_confirmed:
+                st.caption("勾選確認後才會啟用下方維護按鈕，避免手機或滑鼠誤觸。")
+            if st.button("清除失敗紀錄", disabled=not cleanup_confirmed):
                 with session_scope() as session:
-                    deleted = AnalysisRunRepository(session).delete_before(cleanup_before)
-                st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的分析紀錄。")
-        with col_reports:
-            if st.button("清除舊報告"):
+                    deleted = AnalysisRunRepository(session).delete_failed()
+                st.success(f"已清除 {deleted} 筆失敗紀錄。")
+            stale_minutes = st.number_input("執行逾時分鐘", min_value=5, max_value=1440, value=60)
+            if st.button("標記逾時任務", disabled=not cleanup_confirmed):
+                stale_before = datetime.utcnow() - timedelta(minutes=int(stale_minutes))
                 with session_scope() as session:
-                    deleted = ReportRepository(session).delete_before(cleanup_before)
-                st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的報告。")
+                    marked = AnalysisRunRepository(session).mark_stale_running_failed(
+                        stale_before,
+                        "marked failed from Streamlit maintenance",
+                    )
+                st.success(f"已標記 {marked} 筆逾時任務。")
+            if st.button("修復失效報告連結", disabled=not cleanup_confirmed):
+                with session_scope() as session:
+                    cleared = AnalysisRunRepository(session).clear_orphan_report_refs()
+                st.success(f"已修復 {cleared} 筆報告連結。")
+            cleanup_days = st.number_input("保留天數", min_value=1, max_value=3650, value=90)
+            cleanup_before = datetime.combine(today_taipei() - timedelta(days=int(cleanup_days)), time.min)
+            col_runs, col_reports = st.columns(2)
+            with col_runs:
+                if st.button("清除舊分析紀錄", disabled=not cleanup_confirmed):
+                    with session_scope() as session:
+                        deleted = AnalysisRunRepository(session).delete_before(cleanup_before)
+                    st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的分析紀錄。")
+            with col_reports:
+                if st.button("清除舊報告", disabled=not cleanup_confirmed):
+                    with session_scope() as session:
+                        deleted = ReportRepository(session).delete_before(cleanup_before)
+                    st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的報告。")

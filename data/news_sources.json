@@ -758,6 +758,195 @@
         "capacity_supply",
         "international_context"
       ]
+    },
+    {
+      "name": "google-news-ai-small-mid-cap-revenue",
+      "url": "https://news.google.com/rss/search?q=AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8%20%E6%9C%88%E7%87%9F%E6%94%B6%20%E5%89%B5%E9%AB%98%20%E4%B8%AD%E5%B0%8F%E5%9E%8B%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null,
+      "category": "emerging_momentum",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "伺服器",
+        "月營收",
+        "潛力股",
+        "中小型股",
+        "轉機"
+      ],
+      "source_intents": [
+        "industry_news",
+        "financial_metrics",
+        "early_signal"
+      ]
+    },
+    {
+      "name": "google-news-ai-thermal-hidden-suppliers",
+      "url": "https://news.google.com/rss/search?q=AI%20%E6%B6%B2%E5%86%B7%20%E6%95%A3%E7%86%B1%20%E4%BE%9B%E6%87%89%E9%8F%88%20%E6%9C%88%E7%87%9F%E6%94%B6%20%E5%8F%B0%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null,
+      "category": "emerging_momentum",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "散熱",
+        "液冷",
+        "水冷",
+        "電源",
+        "潛力股",
+        "供應鏈"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "early_signal"
+      ]
+    },
+    {
+      "name": "google-news-ai-pcb-substrate-hidden-suppliers",
+      "url": "https://news.google.com/rss/search?q=AI%20%E4%BC%BA%E6%9C%8D%E5%99%A8%20PCB%20ABF%20%E8%BC%89%E6%9D%BF%20%E6%9C%88%E7%87%9F%E6%94%B6%20%E5%8F%B0%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null,
+      "category": "emerging_momentum",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "PCB",
+        "ABF",
+        "載板",
+        "CCL",
+        "高速材料",
+        "潛力股"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "early_signal"
+      ]
+    },
+    {
+      "name": "the-robot-report",
+      "url": "https://www.therobotreport.com/feed/",
+      "enabled": true,
+      "publisher": "The Robot Report",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "robotics-and-automation-news",
+      "url": "https://roboticsandautomationnews.com/feed/",
+      "enabled": true,
+      "publisher": "Robotics & Automation News",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "ieee-spectrum-robotics",
+      "url": "https://spectrum.ieee.org/feeds/topic/robotics.rss",
+      "enabled": true,
+      "publisher": "IEEE Spectrum Robotics",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "digitimes-daily",
+      "url": "https://www.digitimes.com/rss/daily.xml",
+      "enabled": true,
+      "publisher": "DIGITIMES",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺",
+        "AI",
+        "人工智慧"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "google-news-ai-equipment-backlog-hidden-suppliers",
+      "url": "https://news.google.com/rss/search?q=AI%20CoWoS%20%E8%A8%AD%E5%82%99%20%E6%8E%A5%E5%96%AE%20%E6%93%B4%E7%94%A2%20%E6%9C%88%E7%87%9F%E6%94%B6%20%E5%8F%B0%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+      "enabled": true,
+      "publisher": null,
+      "category": "emerging_momentum",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "CoWoS",
+        "設備",
+        "擴產",
+        "接單",
+        "先進封裝",
+        "潛力股"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "early_signal"
+      ]
     }
   ]
 }

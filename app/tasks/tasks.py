@@ -9,7 +9,7 @@ from app.models.schemas import ReportRequest
 from app.services.followup_actions import FollowUpActionPlanner, execute_follow_up_actions_sync
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import AnalysisRunRepository, ReportRepository
-from app.services.report_generator import ReportGenerator
+from app.services.report_generator import ReportGenerator, report_execution_summary
 from app.services.report_quality import attach_quality_gate_to_report, build_quality_gate_for_request
 from app.tasks.celery_app import celery_app
 
@@ -77,6 +77,7 @@ def generate_report_task(self, payload: dict) -> dict:
                     **build_run_payload(payload, task_id, ingestion_summary),
                     "quality_gate": quality_gate,
                     "follow_up": follow_up_summary,
+                    "report_execution": report_execution_summary(generator),
                 },
             )
         with session_scope() as session:

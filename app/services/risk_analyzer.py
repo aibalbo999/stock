@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from app.core.prompts import RISK_CLASSIFICATION_BATCH_PROMPT, RISK_CLASSIFICATION_PROMPT
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument, RiskFinding, RiskType
-from app.services.entity_mapping import EntityMapper
+from app.services.entity_mapping import EntityMapper, company_filing_owner_ticker
 from app.services.llm_client import LLMClient
 from app.services.persistence import RiskClassificationRepository
 from app.services.whitelist import SupplyChainWhitelist
@@ -22,6 +22,7 @@ class RiskClassification:
 
 
 MIN_LLM_RISK_CONFIDENCE = 0.55
+MAX_LLM_RISK_DOCUMENTS = 32
 
 
 class LLMRiskClassifier:
@@ -226,9 +227,9 @@ class RiskAnalyzer:
                 keyword_map[document.id] = keywords
                 if keywords:
                     ai_items.append((document, keywords))
-            if hasattr(self.classifier, "classify_many"):
+            if hasattr(self.classifier, "classify_many") and ai_items:
                 ai_classifications = self.classifier.classify_many(
-                    ai_items,
+                    ai_items[:MAX_LLM_RISK_DOCUMENTS],
                     self.whitelist.as_prompt_context(),
                 )
 
@@ -251,11 +252,16 @@ class RiskAnalyzer:
                 continue
 
             if structural_hits and self._has_structural_risk_context(text, structural_hits):
+                evidence = self._structural_evidence_sentence(text, structural_hits)
+                if not evidence:
+                    continue
+                if self._is_generic_company_filing_risk(document, evidence, structural_hits):
+                    continue
                 findings.append(
                     RiskFinding(
                         risk_type=RiskType.structural_bottleneck,
                         topic=", ".join(structural_hits[:3]),
-                        evidence=self._evidence_sentence(text, structural_hits),
+                        evidence=evidence,
                         source=document.source,
                         related_companies=companies,
                     )
@@ -465,9 +471,12 @@ class RiskAnalyzer:
 
     @staticmethod
     def _has_structural_risk_context(text: str, hits: list[str]) -> bool:
+        return bool(RiskAnalyzer._structural_evidence_sentence(text, hits))
+
+    @staticmethod
+    def _structural_evidence_sentence(text: str, hits: list[str]) -> str:
         direct_risk_hits = {
             "產能滿載",
-            "良率",
             "封裝瓶頸",
             "電網負荷",
             "缺電",
@@ -475,8 +484,6 @@ class RiskAnalyzer:
             "出口管制",
             "地緣政治",
         }
-        if any(hit in direct_risk_hits for hit in hits):
-            return True
 
         risk_terms = [
             "瓶頸",
@@ -496,8 +503,65 @@ class RiskAnalyzer:
             "風險",
             "重挫",
             "下滑",
+            "不佳",
+            "偏低",
+            "不穩",
         ]
-        return any(term in text for term in risk_terms)
+        sentences = [part.strip() for part in text.replace("。", ".").split(".") if part.strip()]
+        for sentence in sentences:
+            lowered_sentence = sentence.lower()
+            if any(hit.lower() in lowered_sentence for hit in hits if hit in direct_risk_hits):
+                return sentence[:240]
+        for sentence in sentences:
+            lowered_sentence = sentence.lower()
+            if not any(hit.lower() in lowered_sentence for hit in hits):
+                continue
+            if any(term in sentence for term in risk_terms):
+                return sentence[:240]
+        return ""
+
+    @staticmethod
+    def _is_generic_company_filing_risk(document: NewsDocument, evidence: str, hits: list[str]) -> bool:
+        if not company_filing_owner_ticker(document):
+            return False
+        lowered = evidence.lower()
+        generic_markers = [
+            "全球總體經濟",
+            "地緣政治",
+            "法規環境",
+            "外部競爭環境",
+            "變因仍舊存在",
+            "不確定因素",
+            "未來公司發展策略",
+        ]
+        company_specific_markers = [
+            "訂單",
+            "客戶",
+            "毛利",
+            "產能",
+            "良率",
+            "出貨",
+            "庫存",
+            "應收",
+            "產品",
+            "技術",
+            "研發",
+            "擴產",
+            "缺料",
+            "供應鏈",
+            "電力",
+            "液冷",
+            "水冷",
+            "伺服",
+            "機器人",
+            "ai",
+            "hbm",
+            "cowos",
+        ]
+        generic_hit = any(marker in lowered for marker in generic_markers)
+        specific_hit = any(marker in lowered for marker in company_specific_markers)
+        broad_macro_hits = {"地緣政治", "美國晶片法案", "出口管制"}
+        return generic_hit and not specific_hit and any(hit in broad_macro_hits for hit in hits)
 
     @staticmethod
     def _evidence_sentence(text: str, hits: list[str]) -> str:

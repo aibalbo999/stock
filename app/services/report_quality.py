@@ -68,6 +68,10 @@ def build_report_quality_gate(
     source_relevance = source_audit.get("source_relevance") or {}
     missing_subtopic_count = int(source_relevance.get("missing_subtopic_count") or 0)
     weak_subtopic_count = int(source_relevance.get("weak_subtopic_count") or 0)
+    unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
+    timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0) if source_quality else 0
+    recent_coverage = float(source_quality.get("recent_coverage") or 0) if source_quality else 0
+    source_lookback_days = int(source_quality.get("lookback_days") or 90) if source_quality else 90
 
     blockers = []
     warnings = []
@@ -89,11 +93,11 @@ def build_report_quality_gate(
     if missing_subtopic_count:
         blockers.append(f"AI 拆解子題仍有 {missing_subtopic_count} 個完全缺少相關來源")
     if weak_subtopic_count:
-        warnings.append(f"AI 拆解子題仍有 {weak_subtopic_count} 個來源或資料意圖不足")
+        if not missing_subtopic_count and source_count >= 100 and unique_publishers >= 20:
+            observations.append(f"主題拆解仍有 {weak_subtopic_count} 個子題可持續追蹤，已由多來源資料覆蓋主要結論")
+        else:
+            warnings.append(f"AI 拆解子題仍有 {weak_subtopic_count} 個來源或資料意圖不足")
     if source_quality:
-        timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0)
-        unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
-        recent_coverage = float(source_quality.get("recent_coverage") or 0)
         if timestamp_coverage < 0.5:
             blockers.append("來源時間戳覆蓋率低於 50%")
         elif timestamp_coverage < 0.8:
@@ -103,7 +107,7 @@ def build_report_quality_gate(
         elif source_count >= 8 and unique_publishers < 3:
             warnings.append("資料來源多樣性偏低")
         if source_count >= 8 and recent_coverage < 0.4:
-            warnings.append("近期資料比例偏低，可能混入過舊產業假設")
+            warnings.append(f"近 {source_lookback_days} 天來源比例偏低，可能混入過舊產業假設")
     if plan_quality:
         plan_status = str(plan_quality.get("status") or "unknown")
         plan_score = int(plan_quality.get("score") or 0)
@@ -127,12 +131,12 @@ def build_report_quality_gate(
         warnings.append("估值資料覆蓋偏低")
     if promoted_count and leading_signal_coverage is not None:
         if leading_signal_coverage < 0.5:
-            warnings.append("領先訊號覆蓋偏低，潛力/風險排序信心需下修")
+            warnings.append("近況訊號覆蓋偏低，目前情境升值/降值排序信心需下修")
         elif leading_signal_coverage < 1:
-            observations.append("部分股票領先訊號不足，系統已降低排序信心")
+            observations.append("部分股票近況訊號不足，系統已降低排序信心")
     if promoted_count and company_filing_coverage is not None:
         if company_filing_coverage < 0.5:
-            blockers.append("公司公開文件覆蓋率低於 50%")
+            warnings.append("公司公開文件覆蓋率低於 50%，正式投入前需補年報或法說會")
         elif company_filing_coverage < 1:
             warnings.append("部分股票缺少高品質公司公開文件")
     if llm_status:
@@ -157,7 +161,7 @@ def build_report_quality_gate(
     else:
         action_policy = "actionable"
         max_deployable_multiplier = 1.0
-        action_label = "通過品質門檻，可依資金控管建議分批研究"
+        action_label = "品質門檻通過，可進入個股研究；是否投入仍以後續投資建議與風險控管為準"
     deployable_amount = None
     if investor_capital is not None and cash_reserve_pct is not None:
         deployable_base = max(0, int(investor_capital * (1 - cash_reserve_pct)))
@@ -197,6 +201,7 @@ def build_report_quality_gate(
             "source_unique_publishers": source_quality.get("unique_publisher_count"),
             "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
             "source_recent_coverage": source_quality.get("recent_coverage"),
+            "source_lookback_days": source_quality.get("lookback_days"),
             "discovery_plan_status": plan_quality.get("status") if plan_quality else None,
             "discovery_plan_score": plan_quality.get("score") if plan_quality else None,
         },
@@ -239,8 +244,8 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
             "補入不同發布者與國際資料源，避免單一媒體或單一市場觀點主導結論。",
         ),
         (
-            ("近期資料比例偏低",),
-            "補抓最近期間資料，確認產能、訂單、法規與估值假設仍然有效。",
+            ("來源比例偏低", "近期資料比例偏低"),
+            "補抓最近期間資料，確認產能、訂單、法規與目前估值假設仍然有效。",
         ),
         (
             ("AI 拆解任務品質",),
@@ -271,8 +276,8 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
             "補抓或人工匯入年報、法說會與官方 IR 文件；未補齊前不得把個股列為可投入資金標的。",
         ),
         (
-            ("領先訊號覆蓋",),
-            "補齊股價歷史、成交量、月營收與估值資料，避免只靠新聞排序潛力與風險標的。",
+            ("近況訊號覆蓋", "領先訊號覆蓋"),
+            "補齊股價歷史、成交量、月營收與估值資料，避免只靠新聞排序目前情境升值與降值標的。",
         ),
         (
             ("LLM 補充分析",),
@@ -308,6 +313,7 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
             "timestamp_coverage": 0,
             "recent_count": 0,
             "recent_coverage": 0,
+            "lookback_days": lookback_days,
             "publisher_sample": [],
         }
     cutoff = now_taipei().date() - timedelta(days=max(1, lookback_days))
@@ -329,6 +335,7 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
         "timestamp_coverage": len(published_dates) / total,
         "recent_count": recent_count,
         "recent_coverage": recent_count / total,
+        "lookback_days": lookback_days,
         "publisher_sample": sorted(publishers)[:5],
     }
 
@@ -360,6 +367,8 @@ def build_quality_gate_for_request(
     source_count: int | None = None,
     llm_result: object | None = None,
     company_filing_sufficient_count: int | None = None,
+    candidate_support: dict | None = None,
+    plan_quality: dict | None = None,
 ) -> dict:
     tickers = list(dict.fromkeys(request.tickers))
     if not tickers:
@@ -367,7 +376,7 @@ def build_quality_gate_for_request(
     source_count = len(documents or []) if source_count is None else source_count
     source_quality = summarize_document_source_quality(documents or [], request.lookback_days) if documents else None
     source_audit = {
-        "candidate_support": {
+        "candidate_support": candidate_support or {
             "total": len(tickers),
             "supported": len(tickers),
             "unsupported": 0,
@@ -397,6 +406,7 @@ def build_quality_gate_for_request(
         investor_capital=request.investor_capital,
         cash_reserve_pct=request.cash_reserve_pct,
         source_quality=source_quality,
+        plan_quality=plan_quality,
         leading_signal_count=leading_signal_count,
         llm_status=summarize_llm_status(llm_result),
         company_filing_sufficient_count=company_filing_sufficient_count,
@@ -431,32 +441,35 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 探索候選覆蓋率：{float(metrics.get('exploration_candidate_supported_ratio') or 0):.0%}",
         f"- 正式股票證據信心：平均 {_format_confidence_score(metrics.get('formal_confidence_avg'))} / "
         f"最低 {_format_confidence_score(metrics.get('formal_confidence_min'))}",
-        f"- AI 動態來源入庫：{metrics.get('dynamic_source_count', 0)} 篇",
+        f"- 自動搜尋來源入庫：{metrics.get('dynamic_source_count', 0)} 篇",
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
-        f"- 近期資料比例：{_format_optional_percent(metrics.get('source_recent_coverage'))}",
+        f"- 近 {int(metrics.get('source_lookback_days') or 90)} 天來源比例：{_format_optional_percent(metrics.get('source_recent_coverage'))}",
         f"- 拆解任務品質：{_format_plan_quality(metrics)}",
-        f"- LLM 補充分析：{_format_llm_status(metrics)}",
+        f"- 模型補充分析：{_format_llm_status(metrics)}",
         f"- 股價資料覆蓋率：{float(metrics.get('market_coverage') or 0):.0%}",
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
-        f"- 領先訊號覆蓋率：{_format_optional_percent(metrics.get('leading_signal_coverage'))}",
+        f"- 近況訊號覆蓋率：{_format_optional_percent(metrics.get('leading_signal_coverage'))}",
         f"- 公司公開文件覆蓋率：{_format_optional_percent(metrics.get('company_filing_coverage'))}",
     ]
     if action_policy.get("max_deployable_amount") is not None:
-        lines.append(f"- 本輪品質門檻後可投入上限：約 {int(action_policy['max_deployable_amount']):,} 元")
+        lines.append(
+            f"- 品質門檻研究額度上限：約 {int(action_policy['max_deployable_amount']):,} 元"
+            "（不是本次配置或買進指令；本次是否投入仍以投資建議與資金控管為準）"
+        )
     blockers = quality_gate.get("blockers") or []
     warnings = quality_gate.get("warnings") or []
     observations = quality_gate.get("observations") or []
     if blockers:
-        lines.append("- 阻擋項：" + "；".join(blockers))
+        lines.append("- 阻擋項：" + "；".join(_investor_friendly_issue(item) for item in blockers))
     if warnings:
-        lines.append("- 警示項：" + "；".join(warnings))
+        lines.append("- 警示項：" + "；".join(_investor_friendly_issue(item) for item in warnings))
     if observations:
-        lines.append("- 觀察項：" + "；".join(str(item) for item in observations))
+        lines.append("- 觀察項：" + "；".join(_investor_friendly_issue(item) for item in observations))
     remediation_actions = quality_gate.get("remediation_actions") or []
     if remediation_actions:
-        lines.append("- 建議補強：" + "；".join(str(action) for action in remediation_actions))
+        lines.append("- 建議補強：" + "；".join(_investor_friendly_issue(action) for action in remediation_actions))
     if not blockers and not warnings:
         lines.append("- 阻擋/警示：無")
     return "\n".join(lines)
@@ -474,7 +487,7 @@ def _format_optional_number(value: object) -> str:
 
 
 def _format_confidence_score(value: object) -> str:
-    return format_confidence_score(float(value)) if value is not None else "未評估"
+    return format_confidence_score(float(value)) if value is not None else "信心分數未匯入品質門檻"
 
 
 def _format_optional_percent(value: object) -> str:
@@ -499,12 +512,34 @@ def _format_llm_status(metrics: dict) -> str:
     status = metrics.get("llm_analysis_status")
     if status == "enabled":
         model = metrics.get("llm_model") or "unknown"
-        key_index = metrics.get("llm_key_index")
-        key_note = f"，key_pool_index={key_index}" if key_index is not None else ""
-        return f"已啟用（model={model}{key_note}）"
+        return f"已啟用（模型：{model}）"
     if status == "fallback":
-        return "未啟用或呼叫失敗，已退回規則引擎"
+        return "未啟用或呼叫失敗，已改用資料規則判讀"
     return "未評估"
+
+
+def _investor_friendly_issue(item: object) -> str:
+    text = str(item)
+    replacements = {
+        "LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿": (
+            "模型補充分析未啟用或呼叫失敗，個股結論主要由資料規則產生，需人工覆核"
+        ),
+        "LLM 補充分析已完成，且仍受來源與白名單驗證約束": (
+            "模型補充分析已完成，仍只採用可追溯來源與白名單公司"
+        ),
+        "AI 動態資料來源": "自動搜尋資料來源",
+        "AI 拆解": "主題拆解",
+        "LLM 補充分析": "模型補充分析",
+        "檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。": (
+            "請系統管理者恢復模型補充分析，恢復後重新產生報告並保留事實核查。"
+        ),
+        "LLM API key": "模型連線設定",
+        "官方 IR 文件": "官方投資人關係文件",
+        "規則引擎草稿": "資料規則草稿",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
 
 
 def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
@@ -525,6 +560,9 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
         "資料不足": "insufficient",
     }
     action_label = fields.get("投資行動狀態", "目前無足夠數據判斷。")
+    dynamic_source_field = fields.get("自動搜尋來源入庫") or fields.get("AI 動態來源入庫")
+    llm_field = fields.get("模型補充分析") or fields.get("LLM 補充分析")
+    recent_source_field = _first_matching_value(fields, r"近\s*\d+\s*天來源比例") or fields.get("近期資料比例")
     return {
         "status": status_map.get(fields.get("狀態", ""), "unknown"),
         "blockers": _split_issue_field(fields.get("阻擋項")),
@@ -533,7 +571,11 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
         "remediation_actions": _split_issue_field(fields.get("建議補強")),
         "action_policy": {
             "label": action_label,
-            "max_deployable_amount": _parse_amount(fields.get("本輪品質門檻後可投入上限")),
+            "max_deployable_amount": _parse_amount(
+                fields.get("品質門檻研究額度上限")
+                or fields.get("品質通過後研究資金上限")
+                or fields.get("本輪品質門檻後可投入上限")
+            ),
         },
         "metrics": {
             "promoted_count": _parse_int(fields.get("正式分析股票")),
@@ -541,17 +583,20 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "exploration_candidate_supported_ratio": _parse_percent(fields.get("探索候選覆蓋率")),
             "formal_confidence_avg": _parse_confidence_value(fields.get("正式股票證據信心"), "平均"),
             "formal_confidence_min": _parse_confidence_value(fields.get("正式股票證據信心"), "最低"),
-            "dynamic_source_count": _parse_int(fields.get("AI 動態來源入庫")),
+            "dynamic_source_count": _parse_int(dynamic_source_field),
             "source_unique_publishers": _parse_optional_int(fields.get("來源發布者數")),
             "source_timestamp_coverage": _parse_optional_percent(fields.get("來源時間戳覆蓋率")),
-            "source_recent_coverage": _parse_optional_percent(fields.get("近期資料比例")),
+            "source_recent_coverage": _parse_optional_percent(recent_source_field),
+            "source_lookback_days": _parse_int(_first_matching_field(fields, r"近\s*(\d+)\s*天來源比例")),
             "discovery_plan_status": _parse_plan_quality_status(fields.get("拆解任務品質")),
             "discovery_plan_score": _parse_plan_quality_score(fields.get("拆解任務品質")),
-            "llm_analysis_status": _parse_llm_status(fields.get("LLM 補充分析")),
+            "llm_analysis_status": _parse_llm_status(llm_field),
             "market_coverage": _parse_percent(fields.get("股價資料覆蓋率")),
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
-            "leading_signal_coverage": _parse_optional_percent(fields.get("領先訊號覆蓋率")),
+            "leading_signal_coverage": _parse_optional_percent(
+                fields.get("近況訊號覆蓋率") or fields.get("領先訊號覆蓋率")
+            ),
             "company_filing_coverage": _parse_optional_percent(fields.get("公司公開文件覆蓋率")),
         },
         "recommendation": fields.get("系統判斷", "目前無足夠數據判斷。"),
@@ -567,6 +612,21 @@ def _split_issue_field(value: str | None) -> list[str]:
     if not value or value == "無":
         return []
     return [item.strip() for item in value.split("；") if item.strip()]
+
+
+def _first_matching_field(fields: dict[str, str], pattern: str) -> str | None:
+    for key in fields:
+        match = re.search(pattern, key)
+        if match:
+            return match.group(1) if match.groups() else key
+    return None
+
+
+def _first_matching_value(fields: dict[str, str], pattern: str) -> str | None:
+    for key, value in fields.items():
+        if re.search(pattern, key):
+            return value
+    return None
 
 
 def _parse_int(value: str | None) -> int:
@@ -644,9 +704,9 @@ def render_quality_action_guard_markdown(quality_gate: dict) -> str:
     action_policy = quality_gate.get("action_policy") or {}
     amount = action_policy.get("max_deployable_amount")
     amount_line = (
-        f"- 品質門檻後本輪可投入上限：{int(amount):,} 元；此數字優先於後續摘要或表格中的一般資金上限。"
+        f"- 品質門檻後本輪研究資金上限：{int(amount):,} 元；此數字不是買進指令，且優先於後續摘要或表格中的一般資金上限。"
         if amount is not None
-        else "- 品質門檻後本輪可投入上限以本段限制為準，優先於後續摘要或表格中的一般資金上限。"
+        else "- 品質門檻後本輪研究資金上限以本段限制為準，優先於後續摘要或表格中的一般資金上限。"
     )
     if status == "insufficient":
         return "\n".join(
@@ -655,7 +715,7 @@ def render_quality_action_guard_markdown(quality_gate: dict) -> str:
                 "- 本次報告品質狀態為「資料不足」。",
                 amount_line,
                 "- 所有個股結論自動降級為「觀察 / 補資料」，不得視為買入清單。",
-                "- 若報告其他章節出現升值情境或可研究字樣，僅代表研究線索，不代表可投入資金。",
+                "- 若報告其他章節出現目前情境升值分或可研究字樣，僅代表研究線索，不代表可投入資金。",
                 "- 下一步應先補齊阻擋項，再重新執行分析。",
             ]
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from typing import Literal, Optional
@@ -17,15 +18,19 @@ from app.data_sources.company_filings import (
     filing_quality_score,
     filing_source_tier,
 )
-from app.data_sources.market import MarketDataClient
+from app.data_sources.market import MarketDataClient, MarketFetchError
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.db.status import db_status
 from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest, ReportResponse
 from app.rag.vector_store import VectorStore
-from app.services.candidate_audit import candidate_audit_summary, render_candidate_audit_markdown
+from app.services.candidate_audit import (
+    candidate_audit_summary,
+    dedupe_reason_fragments,
+    render_candidate_audit_markdown,
+)
 from app.services.candidate_confidence import is_low_formal_confidence
-from app.services.company_data_audit import audit_report_company_data
+from app.services.company_data_audit import audit_company_data, audit_report_company_data
 from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import (
     FollowUpActionPlanner,
@@ -36,7 +41,13 @@ from app.services.followup_actions import (
     split_fresh_tracking_actions,
     summarize_follow_up_execution,
 )
-from app.services.ingestion import IngestionPipeline
+from app.services.ingestion import (
+    IngestionPipeline,
+    company_filing_attempt_result,
+    company_filing_gap_summary,
+    company_filing_next_actions,
+    company_filing_ticker_result,
+)
 from app.services.persistence import (
     AnalysisRunRepository,
     CompanyFilingRepository,
@@ -47,7 +58,7 @@ from app.services.persistence import (
     ReportRepository,
     ValuationMetricRepository,
 )
-from app.services.report_generator import ReportGenerator
+from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,
@@ -66,6 +77,9 @@ from app.tasks.celery_app import celery_app
 from app.tasks.tasks import generate_report_task
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 def serialize_run(run) -> dict:
     return {
         "id": run.id,
@@ -80,9 +94,25 @@ def serialize_run(run) -> dict:
     }
 
 
-def count_sufficient_company_filings(tickers: list[str]) -> int:
+def latest_follow_up_run_for_report(repository: AnalysisRunRepository, report_id: int) -> dict | None:
+    latest = getattr(repository, "latest", None)
+    if not callable(latest):
+        return None
+    for run in latest(100):
+        payload = parse_run_payload(run.payload_json)
+        if run.source == "follow_up_api" and payload.get("source_report_id") == report_id:
+            return {
+                **serialize_run(run),
+                "summary": payload.get("summary") or {},
+                "planned_actions": payload.get("planned_actions") or [],
+                "rerun_report": payload.get("rerun_report"),
+            }
+    return None
+
+
+def sufficient_company_filing_tickers(tickers: list[str]) -> set[str]:
     if not tickers:
-        return 0
+        return set()
     with session_scope() as session:
         documents = CompanyFilingRepository(session).latest_by_tickers(tickers, limit_per_ticker=8)
     high_quality_types_by_ticker: dict[str, set[str]] = {ticker: set() for ticker in tickers}
@@ -90,11 +120,70 @@ def count_sufficient_company_filings(tickers: list[str]) -> int:
     for document in documents:
         if filing_quality_score(document, document.ticker, company_names.get(document.ticker, "")) >= 70:
             high_quality_types_by_ticker.setdefault(document.ticker, set()).add(document.document_type)
-    return sum(
-        1
+    return {
+        ticker
         for ticker in tickers
         if all(document_type in high_quality_types_by_ticker.get(ticker, set()) for document_type in REQUIRED_CORE_DOCUMENT_TYPES)
-    )
+    }
+
+
+def count_sufficient_company_filings(tickers: list[str]) -> int:
+    return len(sufficient_company_filing_tickers(tickers))
+
+
+def summarize_candidate_support_payload(candidates: list[dict]) -> dict:
+    total = len(candidates)
+    supported = sum(1 for candidate in candidates if candidate.get("status") == "evidence_supported")
+    weak = sum(1 for candidate in candidates if candidate.get("status") == "weak_evidence")
+    unsupported = sum(1 for candidate in candidates if candidate.get("status") == "needs_evidence")
+    unavailable = sum(1 for candidate in candidates if candidate.get("status") == "evidence_unavailable")
+    limited = sum(1 for candidate in candidates if candidate.get("status") == "evidence_limited")
+    supported_scores = [
+        int(candidate.get("evidence_confidence_score") or 0)
+        for candidate in candidates
+        if candidate.get("status") == "evidence_supported"
+    ]
+    supported_ratio = supported / total if total else 0
+    return {
+        "total": total,
+        "supported": supported,
+        "weak": weak,
+        "unsupported": unsupported,
+        "unavailable": unavailable,
+        "limited": limited,
+        "supported_ratio": supported_ratio,
+        "exploration_supported_ratio": supported_ratio,
+        "formal_supported_ratio": 1.0 if supported else 0,
+        "formal_confidence_avg": round(sum(supported_scores) / len(supported_scores), 1) if supported_scores else None,
+        "formal_confidence_min": min(supported_scores) if supported_scores else None,
+        "formal_low_confidence_count": sum(1 for score in supported_scores if is_low_formal_confidence(score)),
+    }
+
+
+def apply_company_filing_gate_to_candidate_payload(candidates: list[dict]) -> list[dict]:
+    supported_tickers = [
+        str(candidate.get("ticker") or "")
+        for candidate in candidates
+        if candidate.get("status") == "evidence_supported"
+    ]
+    sufficient_tickers = sufficient_company_filing_tickers(supported_tickers)
+    gated = []
+    for candidate in candidates:
+        row = dict(candidate)
+        ticker = str(row.get("ticker") or "")
+        if row.get("status") == "evidence_supported" and ticker not in sufficient_tickers:
+            reason = row.get("validation_reason") or "通過新聞與市場證據門檻"
+            row["status"] = "weak_evidence"
+            row["promotion_eligible"] = False
+            row["evidence_confidence_score"] = min(int(row.get("evidence_confidence_score") or 0), 74)
+            row["evidence_confidence_label"] = "中"
+            row["validation_reason"] = (
+                f"{reason}；系統尚未取得或解析到可用官方年報/法說文字，先降回候選觀察；"
+                "這是資料管線缺口，不代表公司沒有公開年報。"
+            )
+            row["next_action"] = "補抓或匯入官方年報、法說會或公司 IR 文字版後再升格為正式分析。"
+        gated.append(row)
+    return gated
 
 
 def safe_mark_run_failed(run_id: int, error: str) -> None:
@@ -164,11 +253,13 @@ def load_report_follow_up_context(report_id: int) -> dict:
             tickers = []
         markdown = report.markdown
         topic = report.topic
-        try:
-            company_data_audit = audit_report_company_data(session, report_id)
-        except ValueError:
-            company_data_audit = {}
-    run_payload = parse_run_payload(run_payload_json)
+        run_payload = parse_run_payload(run_payload_json)
+        company_data_audit = audit_company_data(
+            session,
+            tickers,
+            markdown=markdown,
+            run_payload=run_payload,
+        ) if tickers else {}
     request = request_from_report_record(topic, tickers, run_payload_json)
     candidates = candidate_audit_from_run_payload(run_payload)
     markdown = append_candidate_audit_if_missing(markdown, candidates, request.tickers)
@@ -183,12 +274,59 @@ def load_report_follow_up_context(report_id: int) -> dict:
     }
 
 
-def should_require_candidate_audit_follow_up(quality_gate: dict, company_data_audit: dict) -> bool:
-    if quality_gate.get("status") != "ready":
-        return True
+def candidate_audit_has_data_gaps(candidates: list[dict] | None) -> bool:
+    return any(
+        candidate.get("status") in {"weak_evidence", "needs_evidence", "evidence_unavailable"}
+        for candidate in (candidates or [])
+        if candidate.get("ticker")
+    )
+
+
+def should_require_candidate_audit_follow_up(
+    quality_gate: dict,
+    company_data_audit: dict,
+    candidates: list[dict] | None = None,
+) -> bool:
     if company_data_audit and company_data_audit.get("status") != "sufficient":
         return True
-    return False
+    if candidate_audit_has_data_gaps(candidates):
+        return True
+    if quality_gate.get("status") == "ready":
+        return False
+    metrics = quality_gate.get("metrics") or {}
+    issue_text = "；".join(str(item) for item in [*(quality_gate.get("blockers") or []), *(quality_gate.get("warnings") or [])])
+    source_only_gap = (
+        bool(issue_text)
+        and "主題拆解子題" in issue_text
+        and not any(term in issue_text for term in ["缺少候選公司", "正式分析股票", "候選公司證據覆蓋率低於"])
+    )
+    if (
+        source_only_gap
+        and int(metrics.get("promoted_count") or 0) > 0
+        and float(metrics.get("candidate_supported_ratio") or 0) >= 0.6
+        and metrics.get("discovery_plan_status") == "ready"
+    ):
+        return False
+    return True
+
+
+def plan_quality_from_quality_gate(quality_gate: dict) -> dict | None:
+    metrics = quality_gate.get("metrics") or {}
+    status = metrics.get("discovery_plan_status")
+    score = metrics.get("discovery_plan_score")
+    if status is None and score is None:
+        return None
+    return {
+        "status": status,
+        "score": score,
+    }
+
+
+def can_rerun_candidate_revalidation_from_existing_evidence(context: dict, actions: list) -> bool:
+    return bool(context.get("candidate_whitelist")) and any(
+        action.action_type == "rerun_discovery"
+        for action in actions
+    )
 
 
 def revalidate_candidate_whitelist(run_payload: dict, fallback_candidates: list[dict], limit: int = 500) -> dict:
@@ -211,8 +349,25 @@ def revalidate_candidate_whitelist(run_payload: dict, fallback_candidates: list[
     with session_scope() as session:
         repository = NewsRepository(session)
         documents = collect_revalidation_documents(repository, queries, limit)
+        candidate_tickers = [
+            candidate.get("ticker")
+            for candidate in fallback_candidates
+            if candidate.get("ticker")
+        ]
+        filing_documents = [
+            CompanyFilingRepository.to_news_document(document)
+            for document in CompanyFilingRepository(session).latest_by_tickers(
+                candidate_tickers,
+                limit_per_ticker=4,
+            )
+        ]
+    documents = dedupe_documents([*filing_documents, *documents])[:limit]
     candidates = TopicDiscoveryService().validate_candidates(plan, documents)
-    candidate_payload = [candidate.model_dump() for candidate in candidates]
+    candidate_payload = apply_company_filing_gate_to_candidate_payload(
+        [candidate.model_dump() for candidate in candidates]
+    )
+    candidate_payload = mark_unavailable_candidates_after_revalidation(candidate_payload, len(documents))
+    candidate_payload = preserve_previous_supported_candidates(candidate_payload, fallback_candidates)
     promoted_tickers = [
         candidate["ticker"]
         for candidate in candidate_payload
@@ -250,11 +405,81 @@ def revalidate_candidate_whitelist(run_payload: dict, fallback_candidates: list[
         "promoted_tickers": promoted_tickers,
         "document_query_count": len(queries),
         "document_count": len(documents),
+        "company_filing_document_count": len(filing_documents),
         "newly_promoted": newly_promoted,
         "no_longer_promoted": no_longer_promoted,
         "status_changes": status_changes,
         "changed": bool(newly_promoted or no_longer_promoted or status_changes),
     }
+
+
+def preserve_previous_supported_candidates(current_candidates: list[dict], previous_candidates: list[dict]) -> list[dict]:
+    current_by_ticker = {
+        candidate.get("ticker"): dict(candidate)
+        for candidate in current_candidates
+        if candidate.get("ticker")
+    }
+    previous_supported = {
+        candidate.get("ticker"): candidate
+        for candidate in previous_candidates
+        if candidate.get("ticker") and candidate.get("status") == "evidence_supported"
+    }
+    for ticker, previous in previous_supported.items():
+        current = current_by_ticker.get(ticker)
+        if current and current.get("status") == "evidence_supported":
+            continue
+        restored = dict(previous)
+        reason = dedupe_reason_fragments(
+            restored.get("validation_reason") or "上一版已通過正式分析門檻"
+        )
+        restored["validation_reason"] = (
+            dedupe_reason_fragments(
+                f"{reason}；本次補強重驗證未穩定重建既有正式證據，先保留上一版正式分析，"
+                "後續再用更多公司層級來源確認是否調整。"
+            )
+        )
+        restored["next_action"] = restored.get("next_action") or "持續補抓公司層級來源與官方文件，確認是否維持正式分析。"
+        current_by_ticker[ticker] = restored
+    ordered = []
+    seen = set()
+    for candidate in current_candidates:
+        ticker = candidate.get("ticker")
+        if ticker in current_by_ticker and ticker not in seen:
+            ordered.append(current_by_ticker[ticker])
+            seen.add(ticker)
+    for ticker, candidate in current_by_ticker.items():
+        if ticker not in seen:
+            ordered.append(candidate)
+    return ordered
+
+
+def mark_unavailable_candidates_after_revalidation(candidates: list[dict], document_count: int) -> list[dict]:
+    if document_count < 200:
+        return candidates
+    updated = []
+    for candidate in candidates:
+        row = dict(candidate)
+        status = row.get("status")
+        evidence_count = int(row.get("evidence_count") or 0)
+        if status == "needs_evidence" and evidence_count <= 0:
+            row["status"] = "evidence_unavailable"
+            row["promotion_eligible"] = False
+            row["validation_reason"] = (
+                f"已自動補查 {document_count} 份近期與公司層級資料，仍找不到公司實體與主題上下文同時成立的公開來源；"
+                "暫時排除正式分析，避免用題材聯想替代證據。"
+            )
+            row["next_action"] = "等公司公告、法說會、年報或可信新聞出現直接證據後再重新納入候選。"
+        elif status == "weak_evidence":
+            row["status"] = "evidence_limited"
+            row["promotion_eligible"] = False
+            row["validation_reason"] = (
+                f"已自動補查 {document_count} 份近期與公司層級資料，仍未達正式分析門檻；"
+                f"目前只有 {evidence_count} 篇、{int(row.get('evidence_source_count') or 0)} 個來源，"
+                "或缺少足夠近期/官方佐證，先列為補查完成但未升格。"
+            )
+            row["next_action"] = "後續只有在新增公司公告、法說會、年報或多來源新聞時才重新評估。"
+        updated.append(row)
+    return updated
 
 
 def candidate_revalidation_queries(plan: TopicDiscoveryPlan, topic: str = "", limit: int = 80) -> list[str]:
@@ -286,8 +511,8 @@ def collect_revalidation_documents(repository: NewsRepository, queries: list[str
         documents.extend(repository.search_documents(query, limit=per_query_limit))
         if len(documents) >= limit * 2:
             break
-    if not documents:
-        documents = repository.latest_documents(limit)
+    latest_documents = repository.latest_documents(limit)
+    documents = [*documents, *latest_documents]
     return dedupe_documents(documents)[:limit]
 
 
@@ -318,14 +543,13 @@ def persist_candidate_entity_matches(
     with session_scope() as session:
         repository = NewsRepository(session)
         for document in documents:
-            haystack = f"{document.title}\n{document.text}"
             dynamic_matches = []
             for plan_candidate in plan.candidate_companies:
                 candidate = candidate_lookup.get(plan_candidate.ticker)
                 if candidate is None:
                     continue
-                if not service._has_entity_and_context(
-                    haystack,
+                if not service._document_supports_candidate(
+                    document,
                     service._candidate_entity_terms(plan_candidate),
                     service._candidate_context_terms(plan_candidate),
                 ):
@@ -505,9 +729,9 @@ def follow_up_plan_action_target(action) -> str | None:
 
 def follow_up_plan_action_next_step(action) -> str:
     steps = {
-        "ingest_news": "依股票與主題補抓近期多來源資料，補足公司層級證據。",
+        "ingest_news": "依股票與主題補抓設定回看區間內的多來源資料，補足公司層級證據。",
         "ingest_company_filings": "先自動搜尋官方/MOPS/IR 文件；若仍不足，系統會列出需人工匯入的文件。",
-        "refresh_market": "刷新近期股價、量能與波動資料，用於降值風險與進出場檢查。",
+        "refresh_market": "刷新近 120 天股價、量能與波動資料，用於目前情境降值分與進出場檢查。",
         "refresh_monthly_revenue": "補齊近月營收序列，用於成長加速或轉弱判斷。",
         "refresh_financial_metrics": "補齊多年財報指標，用於財務體質、利潤率與負債檢查。",
         "refresh_valuations": "刷新本益比、股價淨值比與殖利率，用於同業估值比較。",
@@ -519,7 +743,7 @@ def follow_up_plan_action_next_step(action) -> str:
 
 def follow_up_plan_action_completion_criteria(action) -> str:
     criteria = {
-        "ingest_news": "每檔至少補到 2 個以上來源或足以支撐/排除產業鏈關聯的近期證據。",
+        "ingest_news": "每檔至少補到 2 個以上來源或足以支撐/排除產業鏈關聯的回看區間內證據。",
         "ingest_company_filings": "每檔至少有必要類型的高品質官方文件；若仍缺件，列入人工匯入清單。",
         "refresh_market": "目標股票近 120 天內有可用股價與量能資料。",
         "refresh_monthly_revenue": "目標股票至少取得近 12 個月月營收資料。",
@@ -654,6 +878,36 @@ class TopicDiscoveryRequest(BaseModel):
     cash_reserve_pct: float = 0.30
 
 
+def merge_latest_by_ticker(tickers: list[str], fetched_items: list, cached_items: list, date_attr: str) -> list:
+    merged = {}
+    for item in [*cached_items, *fetched_items]:
+        ticker = getattr(item, "ticker", "")
+        if ticker not in tickers:
+            continue
+        current = merged.get(ticker)
+        if current is None:
+            merged[ticker] = item
+            continue
+        item_date = getattr(item, date_attr, None)
+        current_date = getattr(current, date_attr, None)
+        if current_date is None or (item_date is not None and item_date >= current_date):
+            merged[ticker] = item
+    return [merged[ticker] for ticker in tickers if ticker in merged]
+
+
+def merge_financial_metric_history(fetched_metrics: list, cached_metrics: list) -> list:
+    merged = {}
+    for metric in [*cached_metrics, *fetched_metrics]:
+        key = (
+            getattr(metric, "ticker", ""),
+            getattr(metric, "report_date", None),
+            getattr(metric, "statement_type", ""),
+            getattr(metric, "metric", ""),
+        )
+        merged[key] = metric
+    return list(merged.values())
+
+
 def discovery_analysis_mode(payload: TopicDiscoveryRequest) -> str:
     return "deep" if payload.deep_analysis else payload.analysis_mode
 
@@ -670,7 +924,7 @@ def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, 
     if mode == "deep":
         limit_per_query = max(limit_per_query, 20)
         evidence_limit = max(evidence_limit, 180)
-        max_queries = 72
+        max_queries = 24
     return limit_per_query, evidence_limit, max_queries
 
 
@@ -716,6 +970,46 @@ def candidate_filing_revalidation_tickers(candidates: list[dict], payload: Topic
     ]
     fallback = [str(candidate.get("ticker")) for candidate in candidates if candidate.get("ticker")]
     return list(dict.fromkeys([*prioritized, *fallback]))[:limit]
+
+
+def market_timeout_errors(tickers: list[str], dataset: str, exc: Exception) -> list[MarketFetchError]:
+    message = f"{dataset} fetch timed out or failed: {str(exc) or exc.__class__.__name__}"
+    return [MarketFetchError(ticker=ticker, dataset=dataset, error=message) for ticker in tickers]
+
+
+def company_filing_timeout_result(tickers: list[str], exc: Exception, source: str) -> dict:
+    errors = [
+        {
+            "ticker": ticker,
+            "company_name": "",
+            "source": source,
+            "error": str(exc) or exc.__class__.__name__,
+            "category": "retryable_source_error",
+        }
+        for ticker in tickers
+    ]
+    per_ticker_results = [
+        company_filing_ticker_result(
+            ticker,
+            "",
+            [],
+            ("annual_report",),
+            [error],
+            [company_filing_attempt_result(source, [], [error])],
+        )
+        for ticker, error in zip(tickers, errors)
+    ]
+    return {
+        "requested_tickers": tickers,
+        "stored_count": 0,
+        "items": [],
+        "errors": errors,
+        "per_ticker_results": per_ticker_results,
+        "missing_tickers": list(tickers),
+        "gap_summary": company_filing_gap_summary(per_ticker_results),
+        "next_actions": company_filing_next_actions(per_ticker_results),
+        "source": f"{source} timed out",
+    }
 
 
 def summarize_ingestion_stage(results: list[dict]) -> dict:
@@ -853,6 +1147,7 @@ def query_intent_label(source_intent: str) -> dict:
         "capacity_supply": ("產能供給", "追蹤產能、良率、交期與供應鏈瓶頸。"),
         "regulatory_policy": ("政策法規", "追蹤出口管制、地緣政治、法規與政策變化。"),
         "international_context": ("國際脈絡", "追蹤海外需求、國際供應鏈與全球市場訊號。"),
+        "early_signal": ("早期訊號", "追蹤報導較少、月營收或產能訊號正在轉強的長尾線索。"),
         "unknown": ("未分類意圖", "尚未分類的資料需求。"),
     }
     label, description = labels.get(source_intent, labels["unknown"])
@@ -864,6 +1159,8 @@ def summarize_candidate_support(candidates) -> dict:
     supported = sum(1 for candidate in candidates if candidate.status == "evidence_supported")
     weak = sum(1 for candidate in candidates if candidate.status == "weak_evidence")
     unsupported = sum(1 for candidate in candidates if candidate.status == "needs_evidence")
+    unavailable = sum(1 for candidate in candidates if candidate.status == "evidence_unavailable")
+    limited = sum(1 for candidate in candidates if candidate.status == "evidence_limited")
     supported_scores = [
         int(candidate.evidence_confidence_score or 0)
         for candidate in candidates
@@ -875,6 +1172,8 @@ def summarize_candidate_support(candidates) -> dict:
         "supported": supported,
         "weak": weak,
         "unsupported": unsupported,
+        "unavailable": unavailable,
+        "limited": limited,
         "supported_ratio": exploration_supported_ratio,
         "exploration_supported_ratio": exploration_supported_ratio,
         "formal_supported_ratio": 1.0 if supported else 0,
@@ -906,7 +1205,7 @@ def discovery_query_budget(max_queries: int, analysis_mode: str = "standard", de
     settings = {
         "fast": {"initial_floor": 8, "initial_ratio": 0.65, "rounds": 1, "batch": 6, "no_gain_stop": 1},
         "standard": {"initial_floor": 12, "initial_ratio": 0.55, "rounds": 3, "batch": 10, "no_gain_stop": 2},
-        "deep": {"initial_floor": 20, "initial_ratio": 0.45, "rounds": 5, "batch": 12, "no_gain_stop": 2},
+        "deep": {"initial_floor": 10, "initial_ratio": 0.55, "rounds": 2, "batch": 4, "no_gain_stop": 1},
     }.get(mode, {})
     initial_queries = max(settings.get("initial_floor", 12), int(max_queries * settings.get("initial_ratio", 0.55)))
     return {
@@ -981,29 +1280,81 @@ async def ingest_dynamic_news_urls(
     start_date: date,
     end_date: date,
 ) -> list[dict]:
-    ingestion_results = []
-    for url in urls:
-        try:
-            ingestion_results.append(
-                await asyncio.wait_for(
-                    IngestionPipeline().ingest_feeds(
-                        url=url,
-                        publisher=None,
-                        limit=limit_per_query,
-                        start_date=start_date,
-                        end_date=end_date,
-                    ),
-                    timeout=12,
+    if not urls:
+        return []
+
+    fetch_limit = limit_per_query * 4
+    semaphore = asyncio.Semaphore(6)
+    fetcher = NewsFetcher()
+
+    async def fetch_one(url: str) -> dict:
+        async with semaphore:
+            documents = []
+            errors = []
+            try:
+                fetched = await asyncio.wait_for(
+                    fetcher.fetch_feed(url, publisher=None, limit=fetch_limit),
+                    timeout=10,
                 )
-            )
-        except Exception as exc:
-            ingestion_results.append(
-                {
-                    "count": 0,
-                    "items": [],
-                    "errors": [{"source": url, "error": str(exc) or exc.__class__.__name__}],
-                }
-            )
+                documents = IngestionPipeline._filter_documents(
+                    fetched,
+                    start_date,
+                    end_date,
+                    quality_filter=True,
+                )[:limit_per_query]
+            except Exception as exc:
+                errors.append({"source": url, "error": str(exc) or exc.__class__.__name__})
+            return {"url": url, "documents": documents, "errors": errors}
+
+    fetched_results = await asyncio.gather(*(fetch_one(url) for url in urls))
+    all_documents = IngestionPipeline._dedupe_documents(
+        [
+            document
+            for result in fetched_results
+            for document in result["documents"]
+        ]
+    )
+    matches_by_id = {}
+    if all_documents:
+        mapper = EntityMapper()
+        VectorStore().upsert_documents(all_documents)
+        with session_scope() as session:
+            repository = NewsRepository(session)
+            for document in all_documents:
+                matches = mapper.match_document(document)
+                matches_payload = [match.model_dump(mode="json") for match in matches]
+                repository.upsert_document(document, matches_payload)
+                matches_by_id[document.id] = matches_payload
+
+    ingestion_results = []
+    for result in fetched_results:
+        documents = IngestionPipeline._dedupe_documents(result["documents"])
+        ingested = [
+            {
+                "id": document.id,
+                "title": document.title,
+                "publisher": document.source.publisher,
+                "published_at": document.source.published_at.isoformat()
+                if document.source.published_at
+                else None,
+                "entity_matches": matches_by_id.get(document.id, []),
+            }
+            for document in documents
+        ]
+        ingestion_results.append(
+            {
+                "count": len(ingested),
+                "items": ingested,
+                "errors": result["errors"],
+                "source_results": [],
+                "source_category_counts": {},
+                "source_selection": {
+                    "mode": "single_url",
+                    "selected_count": 1,
+                    "available_count": 1,
+                },
+            }
+        )
     return ingestion_results
 
 
@@ -1437,10 +1788,15 @@ def generate_report(request: ReportRequest) -> ReportResponse:
                     "request": request.model_dump(mode="json"),
                     "quality_gate": quality_gate,
                     "evidence_count": len(generator.last_evidence_documents),
+                    "report_execution": report_execution_summary(generator),
                 },
             )
             AnalysisRunRepository(session).mark_success(run_id, report.id)
         return response
+    except ReportExecutionError as exc:
+        with session_scope() as session:
+            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         with session_scope() as session:
             AnalysisRunRepository(session).mark_failed(run_id, str(exc))
@@ -1468,9 +1824,11 @@ def get_report(report_id: int) -> dict:
         report = ReportRepository(session).get(report_id)
         if report is None:
             raise HTTPException(status_code=404, detail="report not found")
-        run = AnalysisRunRepository(session).get_by_report_id(report_id)
+        run_repository = AnalysisRunRepository(session)
+        run = run_repository.get_by_report_id(report_id)
         run_payload = parse_run_payload(run.payload_json if run is not None else None)
         candidates = candidate_audit_from_run_payload(run_payload)
+        auto_follow_up = latest_follow_up_run_for_report(run_repository, report_id)
         try:
             promoted_tickers = json.loads(report.tickers_json)
         except json.JSONDecodeError:
@@ -1482,6 +1840,7 @@ def get_report(report_id: int) -> dict:
             "generated_at": report.generated_at.isoformat(),
             "markdown": append_candidate_audit_if_missing(report.markdown, candidates, promoted_tickers),
             "quality_gate": parse_quality_gate_from_markdown(report.markdown),
+            "auto_follow_up": auto_follow_up,
             "candidate_whitelist": candidates,
             "candidate_audit": {
                 "summary": candidate_audit_summary(candidates, promoted_tickers),
@@ -1529,7 +1888,11 @@ def get_report_follow_up_plan(report_id: int) -> dict:
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
     source_audit = context["source_audit"]
-    candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
+    candidate_audit_required = should_require_candidate_audit_follow_up(
+        quality_gate,
+        company_data_audit,
+        context.get("candidate_whitelist") or [],
+    )
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
@@ -1560,6 +1923,77 @@ def get_report_follow_up_plan(report_id: int) -> dict:
     }
 
 
+async def maybe_auto_start_required_follow_up(report_id: int, run_in_background: bool = True) -> dict:
+    settings = get_settings()
+    if not settings.auto_follow_up_enabled:
+        return {"status": "disabled", "reason": "AUTO_FOLLOW_UP_ENABLED=false"}
+
+    plan = get_report_follow_up_plan(report_id)
+    required_count = int((plan.get("summary") or {}).get("required_count") or 0)
+    if required_count <= 0:
+        return {
+            "status": "not_needed",
+            "reason": "quality_gate_ready" if plan.get("quality_gate_status") == "ready" else "no_required_data_gap",
+            "plan": {
+                "summary": plan.get("summary") or {},
+                "next_actions": plan.get("next_actions") or [],
+            },
+        }
+
+    payload = FollowUpRunRequest(
+        rerun_report=True,
+        news_limit=settings.auto_follow_up_news_limit,
+        purpose="required",
+        record_noop=True,
+    )
+    if run_in_background:
+        asyncio.create_task(run_required_follow_up_background(report_id, payload))
+        return {
+            "status": "queued",
+            "source_report_id": report_id,
+            "summary": {
+                "selected": plan.get("summary") or {},
+            },
+            "actions": plan.get("actions") or [],
+            "next_actions": plan.get("next_actions") or [],
+        }
+
+    try:
+        result = await run_report_follow_up(report_id, payload)
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "reason": str(exc),
+            "plan": {
+                "summary": plan.get("summary") or {},
+                "next_actions": plan.get("next_actions") or [],
+            },
+        }
+
+    return {
+        "status": "started",
+        "source_report_id": report_id,
+        "run_id": result.get("run_id"),
+        "summary": result.get("summary") or {},
+        "freshness": result.get("freshness") or {},
+        "actions": result.get("actions") or [],
+        "rerun_report": result.get("rerun_report"),
+        "results": result.get("results") or {},
+    }
+
+
+async def run_required_follow_up_background(report_id: int, payload: FollowUpRunRequest) -> None:
+    try:
+        await run_report_follow_up(report_id, payload)
+    except Exception:
+        LOGGER.exception("auto follow-up failed for report %s", report_id)
+
+
+@app.post("/reports/{report_id}/follow-up/auto-start")
+async def auto_start_report_follow_up(report_id: int) -> dict:
+    return await maybe_auto_start_required_follow_up(report_id)
+
+
 @app.post("/reports/{report_id}/follow-up/run")
 async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequest] = None) -> dict:
     payload = payload or FollowUpRunRequest()
@@ -1569,7 +2003,11 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     quality_gate = context["quality_gate"]
     company_data_audit = context["company_data_audit"]
     source_audit = context["source_audit"]
-    candidate_audit_required = should_require_candidate_audit_follow_up(quality_gate, company_data_audit)
+    candidate_audit_required = should_require_candidate_audit_follow_up(
+        quality_gate,
+        company_data_audit,
+        context.get("candidate_whitelist") or [],
+    )
     planner = FollowUpActionPlanner()
     candidate_actions = planner.plan(
         request,
@@ -1704,7 +2142,17 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
         "results": execution["results"],
         "rerun_report": None,
     }
-    if payload.rerun_report and execution_summary.get("rerun_blocked"):
+    can_revalidate_from_existing = can_rerun_candidate_revalidation_from_existing_evidence(context, actions)
+    if can_revalidate_from_existing and execution_summary.get("rerun_blocked"):
+        execution_summary = {
+            **execution_summary,
+            "rerun_blocked": False,
+            "rerun_blockers": [],
+            "rerun_blocker_actions": [],
+            "revalidation_from_existing_evidence": True,
+        }
+        response_payload["summary"]["execution"] = execution_summary
+    if payload.rerun_report and execution_summary.get("rerun_blocked") and not can_revalidate_from_existing:
         response_payload["rerun_report"] = {
             "status": "skipped",
             "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
@@ -1716,12 +2164,26 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
         rerun_request = rerun_context["request"]
         whitelist = rerun_context["whitelist"]
         generator = ReportGenerator(whitelist=whitelist) if whitelist else ReportGenerator()
-        response = generator.generate(rerun_request)
+        try:
+            response = generator.generate(rerun_request)
+        except ReportExecutionError as exc:
+            safe_mark_run_failed(run_id, str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        candidate_revalidation = rerun_context["candidate_revalidation"]
+        rerun_candidate_support = summarize_candidate_support_payload(
+            candidate_revalidation.get("candidate_whitelist") or []
+        )
         refreshed_quality_gate = build_quality_gate_for_request(
             rerun_request,
             documents=generator.last_evidence_documents,
             llm_result=getattr(generator, "last_llm_result", None),
             company_filing_sufficient_count=count_sufficient_company_filings(rerun_request.tickers),
+            candidate_support=rerun_candidate_support,
+            plan_quality=(
+                (context.get("run_payload") or {}).get("plan_quality")
+                or ((context.get("run_payload") or {}).get("discovery") or {}).get("plan_quality")
+                or plan_quality_from_quality_gate(context.get("quality_gate") or {})
+            ),
         )
         response = attach_quality_gate_to_report(response, refreshed_quality_gate)
         with session_scope() as session:
@@ -1731,12 +2193,18 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
             "report_id": new_report_id,
             "request": rerun_request.model_dump(mode="json"),
             "quality_gate": refreshed_quality_gate,
-            "candidate_revalidation": rerun_context["candidate_revalidation"],
+            "report_execution": report_execution_summary(generator),
+            "candidate_revalidation": candidate_revalidation,
             "follow_up_section": render_follow_up_actions_markdown(
                 FollowUpActionPlanner().plan(
                     rerun_request,
                     quality_gate=refreshed_quality_gate,
                     markdown=response.markdown,
+                    candidate_audit_required=should_require_candidate_audit_follow_up(
+                        refreshed_quality_gate,
+                        {"status": "sufficient"},
+                        candidate_revalidation.get("candidate_whitelist") or [],
+                    ),
                 )
             ),
         }
@@ -1941,17 +2409,24 @@ async def run_pipeline(request: ReportRequest) -> dict:
                 "request": request.model_dump(mode="json"),
                 "ingestion": ingestion_summary,
                 "quality_gate": quality_gate,
+                "report_execution": report_execution_summary(generator),
             },
             report_id,
         )
+        auto_follow_up = await maybe_auto_start_required_follow_up(report_id)
         return {
             "run_id": run_id,
             "run_record_updated": run_record_updated,
             "report_id": report_id,
+            "active_report_id": ((auto_follow_up.get("rerun_report") or {}).get("report_id") or report_id),
+            "auto_follow_up": auto_follow_up,
             "ingestion": ingestion_summary,
             "quality_gate": quality_gate,
             "report": response.model_dump(mode="json"),
         }
+    except ReportExecutionError as exc:
+        safe_mark_run_failed(run_id, str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         safe_mark_run_failed(run_id, str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -1989,9 +2464,10 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         candidate_filing_ingestion = None
         if should_revalidate_candidate_filings(candidate_payload):
             candidate_tickers = candidate_filing_revalidation_tickers(candidate_payload, payload)
-            candidate_filing_ingestion = await IngestionPipeline().ingest_mops_annual_reports(
+            candidate_filing_ingestion = company_filing_timeout_result(
                 candidate_tickers,
-                filter_allowed=False,
+                RuntimeError("skipped during synchronous deep analysis; queued as follow-up"),
+                "candidate MOPS annual report discovery",
             )
             with session_scope() as session:
                 candidate_filing_documents = [
@@ -2017,19 +2493,22 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
                     ],
                     "requested_tickers": candidate_tickers,
                 }
+        candidate_payload = apply_company_filing_gate_to_candidate_payload(candidate_payload)
+        source_audit["candidate_support"] = summarize_candidate_support_payload(candidate_payload)
         promoted_tickers = [
             candidate["ticker"]
             for candidate in candidate_payload
             if candidate["status"] == "evidence_supported"
         ]
         dynamic_whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidate_payload)
-        company_filing_ingestion = (
-            await IngestionPipeline().ingest_mops_annual_reports(
+        if promoted_tickers:
+            company_filing_ingestion = company_filing_timeout_result(
                 promoted_tickers,
-                filter_allowed=False,
+                RuntimeError("skipped during synchronous deep analysis; queued as follow-up"),
+                "promoted MOPS annual report discovery",
             )
-            if promoted_tickers
-            else {
+        else:
+            company_filing_ingestion = {
                 "requested_tickers": [],
                 "stored_count": 0,
                 "per_ticker_results": [],
@@ -2037,7 +2516,6 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
                 "errors": [],
                 "source": "Company filing discovery skipped: no promoted candidates",
             }
-        )
         with session_scope() as session:
             company_filing_documents = [
                 CompanyFilingRepository.to_news_document(document)
@@ -2051,46 +2529,102 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         market_client = MarketDataClient()
         market_start_date = end_date - timedelta(days=discovery_market_history_days(payload))
         valuation_start_date = end_date - timedelta(days=discovery_valuation_history_days(payload))
-        price_histories, market_errors = await market_client.get_price_histories_with_errors(
-            promoted_tickers,
-            market_start_date,
-            end_date,
-        )
+        try:
+            price_histories, market_errors = await asyncio.wait_for(
+                market_client.get_price_histories_with_errors(
+                    promoted_tickers,
+                    market_start_date,
+                    end_date,
+                ),
+                timeout=60,
+            )
+        except Exception as exc:
+            price_histories = {}
+            market_errors = market_timeout_errors(promoted_tickers, "TaiwanStockPrice", exc)
         snapshots = [
             sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
             for history in price_histories.values()
             if history
         ]
         price_history_snapshots = [snapshot for history in price_histories.values() for snapshot in history]
-        monthly_revenues, monthly_revenue_errors = await market_client.get_monthly_revenue_histories_with_errors(
-            promoted_tickers,
-            end_date - timedelta(days=450),
-            end_date,
-        )
-        financial_metrics, financial_metric_errors = await market_client.get_financial_metrics_histories_with_errors(
-            promoted_tickers,
-            end_date - timedelta(days=365 * 6),
-            end_date,
-        )
-        valuations, valuation_errors = await market_client.get_latest_valuations_with_errors(
-            promoted_tickers,
-            valuation_start_date,
-            end_date,
-        )
-        monthly_tickers = {revenue.ticker for revenue in monthly_revenues}
+        try:
+            monthly_revenues, monthly_revenue_errors = await asyncio.wait_for(
+                market_client.get_monthly_revenue_histories_with_errors(
+                    promoted_tickers,
+                    end_date - timedelta(days=450),
+                    end_date,
+                ),
+                timeout=60,
+            )
+        except Exception as exc:
+            monthly_revenues = []
+            monthly_revenue_errors = market_timeout_errors(
+                promoted_tickers,
+                "TaiwanStockMonthRevenue",
+                exc,
+            )
+        try:
+            financial_metrics, financial_metric_errors = await asyncio.wait_for(
+                market_client.get_financial_metrics_histories_with_errors(
+                    promoted_tickers,
+                    end_date - timedelta(days=365 * 6),
+                    end_date,
+                ),
+                timeout=90,
+            )
+        except Exception as exc:
+            financial_metrics = []
+            financial_metric_errors = market_timeout_errors(
+                promoted_tickers,
+                "FinMindFinancialStatements",
+                exc,
+            )
+        try:
+            valuations, valuation_errors = await asyncio.wait_for(
+                market_client.get_latest_valuations_with_errors(
+                    promoted_tickers,
+                    valuation_start_date,
+                    end_date,
+                ),
+                timeout=45,
+            )
+        except Exception as exc:
+            valuations = []
+            valuation_errors = market_timeout_errors(promoted_tickers, "TaiwanStockPER", exc)
+        with session_scope() as session:
+            market_repository = MarketRepository(session)
+            monthly_repository = MonthlyRevenueRepository(session)
+            financial_repository = FinancialMetricRepository(session)
+            valuation_repository = ValuationMetricRepository(session)
+            market_repository.upsert_snapshots(price_history_snapshots)
+            monthly_repository.upsert_revenues(monthly_revenues)
+            financial_repository.upsert_metrics(financial_metrics)
+            valuation_repository.upsert_valuations(valuations)
+            snapshots = merge_latest_by_ticker(
+                promoted_tickers,
+                snapshots,
+                market_repository.latest_by_tickers(promoted_tickers),
+                "trade_date",
+            )
+            financial_metrics = merge_financial_metric_history(
+                financial_metrics,
+                financial_repository.by_tickers(promoted_tickers),
+            )
+            valuations = merge_latest_by_ticker(
+                promoted_tickers,
+                valuations,
+                valuation_repository.latest_by_tickers(promoted_tickers),
+                "trade_date",
+            )
+            latest_monthly_revenues = monthly_repository.latest_by_tickers(promoted_tickers)
+        market_tickers = {snapshot.ticker for snapshot in snapshots}
+        monthly_tickers = {revenue.ticker for revenue in latest_monthly_revenues}
         valuation_tickers = {valuation.ticker for valuation in valuations}
         leading_signal_count = sum(
             1
             for ticker in promoted_tickers
-            if price_histories.get(ticker) or ticker in monthly_tickers or ticker in valuation_tickers
+            if ticker in market_tickers or ticker in monthly_tickers or ticker in valuation_tickers
         )
-        with session_scope() as session:
-            MarketRepository(session).upsert_snapshots(price_history_snapshots)
-            monthly_repository = MonthlyRevenueRepository(session)
-            monthly_repository.upsert_revenues(monthly_revenues)
-            FinancialMetricRepository(session).upsert_metrics(financial_metrics)
-            ValuationMetricRepository(session).upsert_valuations(valuations)
-            latest_monthly_revenues = monthly_repository.latest_by_tickers(promoted_tickers)
         request = ReportRequest(
             topic=payload.topic,
             tickers=promoted_tickers,
@@ -2104,6 +2638,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
         )
         generator = ReportGenerator(whitelist=dynamic_whitelist)
         response = generator.generate(request, documents=documents)
+        company_filing_sufficient_count = count_sufficient_company_filings(promoted_tickers)
         quality_gate = build_report_quality_gate(
             source_audit,
             promoted_tickers,
@@ -2117,11 +2652,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             plan_quality=source_audit.get("plan_quality"),
             leading_signal_count=leading_signal_count,
             llm_status=summarize_llm_status(generator.last_llm_result),
-            company_filing_sufficient_count=sum(
-                1
-                for row in company_filing_ingestion.get("per_ticker_results", [])
-                if row.get("status") == "sufficient"
-            ),
+            company_filing_sufficient_count=company_filing_sufficient_count,
         )
         response = attach_quality_gate_to_report(response, quality_gate)
         with session_scope() as session:
@@ -2159,12 +2690,16 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "valuation_history_days": discovery_valuation_history_days(payload),
             "valuation_errors": [error.model_dump() for error in valuation_errors],
             "quality_gate": quality_gate,
+            "report_execution": report_execution_summary(generator),
         }
         run_record_updated = safe_update_run_success(run_id, run_payload, report_id)
+        auto_follow_up = await maybe_auto_start_required_follow_up(report_id)
         return {
             "run_id": run_id,
             "run_record_updated": run_record_updated,
             "report_id": report_id,
+            "active_report_id": ((auto_follow_up.get("rerun_report") or {}).get("report_id") or report_id),
+            "auto_follow_up": auto_follow_up,
             "discovery": discovery,
             "queries": urls,
             "fixed_source_ingestion": fixed_source_ingestion,
@@ -2191,8 +2726,12 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "valuations": [valuation.model_dump(mode="json") for valuation in valuations],
             "valuation_errors": [error.model_dump() for error in valuation_errors],
             "quality_gate": quality_gate,
+            "report_execution": report_execution_summary(generator),
             "report": response.model_dump(mode="json"),
         }
+    except ReportExecutionError as exc:
+        safe_mark_run_failed(run_id, str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         safe_mark_run_failed(run_id, str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -2200,7 +2739,18 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
 
 @app.post("/reports/generate_async")
 def generate_report_async(request: ReportRequest) -> dict:
-    if not EntityMapper().filter_allowed_tickers(request.tickers):
+    mapper = EntityMapper()
+    filtered_tickers = mapper.filter_allowed_tickers(request.tickers)
+    dropped_tickers = [ticker for ticker in request.tickers if ticker not in set(filtered_tickers)]
+    if dropped_tickers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "async report generation received tickers outside the static whitelist: "
+                + ", ".join(dropped_tickers)
+            ),
+        )
+    if not filtered_tickers:
         raise HTTPException(
             status_code=400,
             detail="async report generation requires at least one whitelisted ticker",

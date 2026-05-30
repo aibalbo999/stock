@@ -419,6 +419,62 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
     assert "缺少新聞、財報或法說證據" in recommendations
 
 
+def test_report_reading_order_groups_by_decision_then_current_price() -> None:
+    contexts = [
+        {
+            "ticker": "9999",
+            "decision": "避開 / 降低曝險",
+            "snapshot": MarketSnapshot(ticker="9999", trade_date=date(2026, 5, 22), close=5000.0),
+            "estimate": {"upside_pct": 30, "downside_pct": 40},
+        },
+        {
+            "ticker": "2382",
+            "decision": "可小額分批研究",
+            "snapshot": MarketSnapshot(ticker="2382", trade_date=date(2026, 5, 22), close=300.0),
+            "estimate": {"upside_pct": 18, "downside_pct": 3},
+        },
+        {
+            "ticker": "2330",
+            "decision": "可小額分批研究",
+            "snapshot": MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=1000.0),
+            "estimate": {"upside_pct": 12, "downside_pct": 4},
+        },
+        {
+            "ticker": "2308",
+            "decision": "觀察 / 等風險降低",
+            "snapshot": MarketSnapshot(ticker="2308", trade_date=date(2026, 5, 22), close=200.0),
+            "estimate": {"upside_pct": 24, "downside_pct": 11},
+        },
+    ]
+
+    ordered = ReportGenerator._sort_decision_contexts(contexts)
+
+    assert [context["ticker"] for context in ordered] == ["2330", "2382", "2308", "9999"]
+
+
+def test_company_analysis_orders_rows_and_details_for_readability() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2382", "2330"])
+    snapshots = [
+        MarketSnapshot(ticker="2382", trade_date=date(2026, 5, 22), close=300.0),
+        MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=1000.0),
+    ]
+
+    company_analysis = generator._render_company_analysis(
+        ["2382", "2330"],
+        [],
+        [],
+        snapshots,
+        request=request,
+    )
+
+    assert "排序：先依判斷結果分組" in company_analysis
+    assert company_analysis.index("| 2330 台積電 |") < company_analysis.index("| 2382 廣達 |")
+    assert company_analysis.index("### 2330 台積電") < company_analysis.index("### 2382 廣達")
+
+
 def test_complete_market_data_still_requires_company_filings_for_actionable_rating() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()

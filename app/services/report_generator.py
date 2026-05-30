@@ -39,6 +39,10 @@ from app.services.whitelist import SupplyChainWhitelist
 
 MAX_LLM_EVIDENCE_DOCUMENTS = 60
 MAX_LLM_EVIDENCE_TEXT_CHARS = 300
+REPORT_READING_SORT_NOTE = (
+    "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
+    "同組再依目前股價由高到低；缺股價者排在同組後段。"
+)
 
 
 class ReportExecutionError(ValueError):
@@ -78,6 +82,7 @@ class ReportGenerator:
         self.last_llm_result: LLMResult | None = None
         self.last_filtered_tickers: list[str] = []
         self.last_dropped_tickers: list[str] = []
+        self._document_match_cache: dict[tuple[str, str, str, int], list] = {}
 
     def generate(self, request: ReportRequest, documents: list[NewsDocument] | None = None) -> ReportResponse:
         evidence_docs = documents or self._retrieve_evidence(request)
@@ -293,6 +298,17 @@ class ReportGenerator:
                 )
                 for ticker, signal in leading_signals.items()
             }
+        ordered_tickers = self._ordered_tickers_for_reading(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
         lines = [
             f"# {request.topic} 自動分析報告",
             "",
@@ -301,7 +317,7 @@ class ReportGenerator:
             "## 一頁摘要",
             self._render_executive_snapshot(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -314,7 +330,7 @@ class ReportGenerator:
             "## 可信度檢查",
             self._render_credibility_check(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -338,7 +354,7 @@ class ReportGenerator:
             "## 下一步行動",
             self._render_action_checklist(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -351,7 +367,7 @@ class ReportGenerator:
             "## 監控清單",
             self._render_monitoring_checklist(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -364,7 +380,7 @@ class ReportGenerator:
             "## 自動補強任務",
             self._render_follow_up_actions(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -378,11 +394,11 @@ class ReportGenerator:
             self._summary(findings),
             "",
             "## 候選公司審計",
-            self._render_candidate_audit(tickers),
+            self._render_candidate_audit(ordered_tickers),
             "",
             "## 資料完整度",
             self._render_data_quality(
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -393,15 +409,15 @@ class ReportGenerator:
             ),
             "",
             "## 來源覆蓋",
-            self._render_source_coverage(request, tickers, documents),
+            self._render_source_coverage(request, ordered_tickers, documents),
             "",
             "## 近況訊號檢查",
-            self._render_leading_signal_check(tickers, leading_signals),
+            self._render_leading_signal_check(ordered_tickers, leading_signals),
             "",
             "## 早期潛力雷達",
             self._render_early_potential_radar(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -414,7 +430,7 @@ class ReportGenerator:
             "## 資金控管建議",
             self._render_beginner_portfolio_plan(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -427,7 +443,7 @@ class ReportGenerator:
             "## 投資建議",
             self._render_investment_recommendations(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -440,7 +456,7 @@ class ReportGenerator:
             "## 個股比較矩陣",
             self._render_company_comparison_matrix(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -453,7 +469,7 @@ class ReportGenerator:
             "## 投資理由地圖",
             self._render_investment_thesis_map(
                 request,
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -465,7 +481,7 @@ class ReportGenerator:
             "",
             "## 二次綜合篩選",
             self._render_final_potential_screen(
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -477,7 +493,7 @@ class ReportGenerator:
             "",
             "## 評分明細",
             self._render_score_breakdown(
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -488,11 +504,11 @@ class ReportGenerator:
             ),
             "",
             "## 基本面月營收檢查",
-            self._render_revenue_check(tickers, monthly_revenues),
+            self._render_revenue_check(ordered_tickers, monthly_revenues),
             "",
             "## 個別公司分析",
             self._render_company_analysis(
-                tickers,
+                ordered_tickers,
                 documents,
                 findings,
                 market_snapshots,
@@ -507,7 +523,7 @@ class ReportGenerator:
             self._render_risk_overview(findings),
             "",
             "## 分析範圍",
-            self._render_scope(tickers, market_snapshots, monthly_revenues),
+            self._render_scope(ordered_tickers, market_snapshots, monthly_revenues),
             "",
             "## 附錄：AI 補充與資料來源",
             self._render_appendix(llm_result, documents, market_snapshots),
@@ -734,6 +750,70 @@ class ReportGenerator:
             )
         return contexts
 
+    def _ordered_tickers_for_reading(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> list[str]:
+        contexts = self._decision_contexts(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
+        return [context["ticker"] for context in self._sort_decision_contexts(contexts)]
+
+    @classmethod
+    def _sort_decision_contexts(cls, contexts: list[dict]) -> list[dict]:
+        return sorted(contexts, key=cls._decision_sort_key)
+
+    @classmethod
+    def _decision_sort_key(cls, context: dict) -> tuple:
+        estimate = context.get("estimate") or {}
+        return (
+            cls._decision_rank(context.get("decision")),
+            -cls._context_current_price(context),
+            -float(estimate.get("upside_pct") or 0),
+            float(estimate.get("downside_pct") or 0),
+            str(context.get("ticker") or ""),
+        )
+
+    @staticmethod
+    def _decision_rank(decision: str | None) -> int:
+        ranks = {
+            "可小額分批研究": 0,
+            "觀察 / 等風險降低": 1,
+            "觀察": 2,
+            "觀察 / 資料待補": 3,
+            "觀察 / 資料不足": 4,
+            "資料不足": 5,
+            "避開 / 降低曝險": 6,
+        }
+        return ranks.get(decision or "", 99)
+
+    @staticmethod
+    def _context_current_price(context: dict) -> float:
+        snapshot = context.get("snapshot")
+        close = getattr(snapshot, "close", None)
+        if close is None:
+            return -1.0
+        try:
+            return float(close)
+        except (TypeError, ValueError):
+            return -1.0
+
     def _render_action_checklist(
         self,
         request: ReportRequest,
@@ -749,16 +829,18 @@ class ReportGenerator:
         if not tickers:
             return "1. 先補足新聞與市場資料，再重新執行分析。"
 
-        contexts = self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         )
         research = [item for item in contexts if item["decision"] == "可小額分批研究"]
         watch = [
@@ -872,16 +954,18 @@ class ReportGenerator:
         if not tickers:
             return "目前無可監控股票。"
         downside_gate = self._downside_gate(request)
-        contexts = self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         )
         lines = [
             "這張表把觀察與避開名單轉成可執行監控規則；條件未改善前，不把觀察股升級為買進研究。",
@@ -915,16 +999,18 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        contexts = self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         )
         downside_gate = self._downside_gate(request)
         for context in contexts:
@@ -993,16 +1079,18 @@ class ReportGenerator:
         watch = 0
         avoid = 0
         weak = 0
-        for item in self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        for item in self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         ):
             decision = item["decision"]
             quality = item["quality"]
@@ -1052,6 +1140,8 @@ class ReportGenerator:
             f"| 避開/降低曝險 | {avoid} 檔 |",
             "",
             "### 決策總覽",
+            REPORT_READING_SORT_NOTE,
+            "",
             "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |",
             "|---|---|---|---|---|---:|---:|---|---|",
             *rows,
@@ -1581,8 +1671,11 @@ class ReportGenerator:
             decision = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
             rows.append(
                 {
+                    "ticker": ticker,
                     "label": f"{ticker} {company.name if company else ticker}",
                     "decision": decision,
+                    "snapshot": snapshot,
+                    "estimate": estimate,
                     "current_price": self._current_price_text(snapshot),
                     "current_price_label": self._current_price_label(
                         snapshot,
@@ -1608,9 +1701,10 @@ class ReportGenerator:
                     ),
                 }
             )
-        rows.sort(key=lambda row: (row["decision"] != "可小額分批研究", -row["upside"], row["downside"]))
+        rows.sort(key=self._decision_sort_key)
         lines = [
             "這張表用來比較正式分析股票的相對位置；它是研究排序工具，不是買賣指令。",
+            REPORT_READING_SORT_NOTE,
             "",
             "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |",
             "|---|---|---|---|---:|---:|---|---|---|",
@@ -1648,26 +1742,22 @@ class ReportGenerator:
         if not tickers:
             return "目前沒有通過證據門檻的正式分析股票；先補候選公司證據，再建立投資理由。"
 
-        contexts = self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
-        )
-        contexts.sort(
-            key=lambda item: (
-                item["decision"] != "可小額分批研究",
-                -int(item["estimate"]["upside_pct"]),
-                int(item["estimate"]["downside_pct"]),
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
             )
         )
         lines = [
             "本段把每檔股票拆成「為什麼值得研究」與「為什麼可能不成立」。這是研究假設，不是報酬保證或買賣指令。",
+            REPORT_READING_SORT_NOTE,
         ]
         for context in contexts:
             estimate = context["estimate"]
@@ -1758,9 +1848,20 @@ class ReportGenerator:
         valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
         peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
         companies = {company.ticker: company for company in self.whitelist.companies()}
+        ordered_tickers = self._ordered_tickers_for_reading(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
         overview_rows: list[str] = []
         detail_blocks: list[str] = []
-        for ticker in tickers:
+        for ticker in ordered_tickers:
             company = companies.get(ticker)
             segment = self.whitelist.segment_for_ticker(ticker)
             snapshot = snapshots.get(ticker)
@@ -1931,6 +2032,8 @@ class ReportGenerator:
 
         lines = [
             "### 個股速覽",
+            REPORT_READING_SORT_NOTE,
+            "",
             "| 股票 | 產業位置 | 股價 | 當下股價標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |",
             "|---|---|---|---|---|---|---|---|",
             *overview_rows,
@@ -2093,13 +2196,25 @@ class ReportGenerator:
         valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
         peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
         companies = {company.ticker: company for company in self.whitelist.companies()}
+        ordered_tickers = self._ordered_tickers_for_reading(
+            request,
+            tickers,
+            documents,
+            findings,
+            market_snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuation_metrics,
+            leading_signals,
+        )
         lines = [
             "以下為非個人化研究建議；未納入投資人風險承受度、持股成本與資金配置，不構成個別買賣指令。",
+            REPORT_READING_SORT_NOTE,
             "",
             "| 股票 | 目前股價 | 當下股價標籤 | 建議 | 理由 | 單檔上限 | 來源 |",
             "|---|---|---|---|---|---:|---|",
         ]
-        for ticker in tickers:
+        for ticker in ordered_tickers:
             company = companies.get(ticker)
             snapshot = snapshots.get(ticker)
             revenue = revenues.get(ticker)
@@ -3250,11 +3365,26 @@ class ReportGenerator:
             return True
         return "hl=en" in url or "ceid=us:en" in url
 
+    def _document_matches(self, document: NewsDocument) -> list:
+        cache = getattr(self, "_document_match_cache", None)
+        if cache is None:
+            cache = {}
+            self._document_match_cache = cache
+        key = (
+            document.id or "",
+            document.source.url or "",
+            document.title,
+            len(document.text or ""),
+        )
+        if key not in cache:
+            cache[key] = self.mapper.match_document(document)
+        return cache[key]
+
     def _related_documents(self, ticker: str, documents: list[NewsDocument]) -> list[NewsDocument]:
         return [
             document
             for document in documents
-            if any(match.ticker == ticker for match in self.mapper.match_document(document))
+            if any(match.ticker == ticker for match in self._document_matches(document))
         ]
 
     def _candidate_audit_evidence_counts(self) -> dict[str, dict[str, int]]:
@@ -3299,16 +3429,18 @@ class ReportGenerator:
         max_position = self._max_position_amount(request)
         first_tranche = int(max_position * self._first_tranche_ratio(request))
         downside_gate = self._downside_gate(request)
-        contexts = self._decision_contexts(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         )
 
         candidate_rows = []

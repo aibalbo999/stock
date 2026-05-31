@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Optional
 
+from app.core.time import today_taipei
 from app.services.candidate_confidence import format_confidence_score, is_low_formal_confidence
 
+STALE_CANDIDATE_EVIDENCE_DAYS = 180
 
 STATUS_LABELS = {
     "evidence_supported": "正式分析",
@@ -73,23 +76,31 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
             source_count = 0
         confidence_score = candidate.get("evidence_confidence_score")
         reason = normalize_candidate_audit_text(
-            dedupe_reason_fragments(
-                "來源標題未直接指向公司實體，已排除為候選證據，需重新補抓公司層級來源。"
-                if invalid_sources_only
-                else candidate.get("validation_reason")
-                or candidate_audit_reason(
-                    evidence_count,
-                    source_count,
-                    confidence_score,
-                )
+            append_stale_evidence_note(
+                candidate,
+                dedupe_reason_fragments(
+                    "來源標題未直接指向公司實體，已排除為候選證據，需重新補抓公司層級來源。"
+                    if invalid_sources_only
+                    else candidate.get("validation_reason")
+                    or candidate_audit_reason(
+                        evidence_count,
+                        source_count,
+                        confidence_score,
+                    )
+                ),
             )
         )
         next_action = normalize_candidate_audit_text(
-            candidate.get("next_action")
-            or candidate_audit_next_action(
-                evidence_count,
-                source_count,
-                confidence_score,
+            append_stale_next_action(
+                candidate,
+                "重新補抓公司層級來源。"
+                if invalid_sources_only
+                else candidate.get("next_action")
+                or candidate_audit_next_action(
+                    evidence_count,
+                    source_count,
+                    confidence_score,
+                ),
             )
         )
         confidence = candidate_confidence_text(candidate)
@@ -216,6 +227,43 @@ def normalize_candidate_audit_text(value: object) -> str:
     for old, new in replacements.items():
         text = text.replace(old, new)
     return text
+
+
+def append_stale_evidence_note(candidate: dict, text: str) -> str:
+    age_days = candidate_evidence_age_days(candidate)
+    if age_days is None or age_days <= STALE_CANDIDATE_EVIDENCE_DAYS:
+        return text
+    latest = candidate.get("latest_evidence_date")
+    note = f"最新候選來源為 {latest}，距今約 {age_days} 天，已超過 180 天新鮮度門檻"
+    if note in text or "新鮮度門檻" in text:
+        return text
+    return dedupe_reason_fragments(f"{text}；{note}。")
+
+
+def append_stale_next_action(candidate: dict, text: str) -> str:
+    age_days = candidate_evidence_age_days(candidate)
+    if age_days is None or age_days <= STALE_CANDIDATE_EVIDENCE_DAYS:
+        return text
+    if "最近 180 天" in text:
+        return text
+    return dedupe_reason_fragments(f"{text}；優先補抓最近 180 天內官方公告、法說會、月營收與公司新聞後再驗證。")
+
+
+def candidate_evidence_age_days(candidate: dict) -> Optional[int]:
+    raw_age = candidate.get("evidence_age_days")
+    if raw_age is not None:
+        try:
+            return int(raw_age)
+        except (TypeError, ValueError):
+            pass
+    latest = candidate.get("latest_evidence_date")
+    if not latest:
+        return None
+    try:
+        latest_date = date.fromisoformat(str(latest)[:10])
+    except ValueError:
+        return None
+    return (today_taipei() - latest_date).days
 
 
 def candidate_audit_reason(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:

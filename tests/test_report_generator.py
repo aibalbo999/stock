@@ -1592,6 +1592,84 @@ def test_financial_red_flag_blocks_actionable_decision() -> None:
     assert "財務/估值紅旗" in reason
 
 
+def test_severe_annual_decline_gets_high_financial_risk_score() -> None:
+    snapshot = MarketSnapshot(ticker="1303", trade_date=date(2026, 5, 22), close=40)
+    revenue = MonthlyRevenue(
+        ticker="1303",
+        revenue_date=date(2026, 5, 10),
+        revenue=10_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=19.4,
+    )
+    metrics = []
+    for year, sales, profit in [(2022, 100.0, 10.0), (2025, 59.7, 2.84)]:
+        metrics.extend(
+            [
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="營業收入",
+                    value=sales,
+                    source="test",
+                ),
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="本期淨利",
+                    value=profit,
+                    source="test",
+                ),
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="balance_sheet",
+                    metric="負債總額",
+                    value=100.0,
+                    source="test",
+                ),
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="balance_sheet",
+                    metric="權益總額",
+                    value=200.0,
+                    source="test",
+                ),
+            ]
+        )
+
+    estimate = ReportGenerator._estimate_potential(
+        [
+            NewsFetcher.from_manual_text(
+                title="南亞 工程塑膠需求觀察",
+                text="南亞 工程塑膠需求觀察。",
+                publisher="測試新聞A",
+                published_at=date(2026, 5, 20),
+            ),
+            NewsFetcher.from_manual_text(
+                title="南亞 電子材料受惠題材",
+                text="南亞 電子材料受惠題材。",
+                publisher="測試新聞B",
+                published_at=date(2026, 5, 21),
+            ),
+        ],
+        [],
+        snapshot,
+        revenue,
+        None,
+        metrics,
+        None,
+    )
+
+    assert estimate["financial_assessment"]["risk_score"] >= 7
+    assert estimate["downside_pct"] >= 13
+    assert "2022-2025 年度營收下滑 40.3%" in estimate["downside_reason"]
+    assert "2022-2025 年度淨利下滑 71.6%" in estimate["downside_reason"]
+
+
 def test_score_breakdown_explains_factors_and_data_quality() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
@@ -1899,6 +1977,35 @@ def test_candidate_audit_fallback_uses_low_confidence_reason() -> None:
     assert "弱證據：篇數與來源數達標，但證據信心只有 60 分" in markdown
     assert "補抓有日期、近期且不同發布者" in markdown
     assert "中 60" in markdown
+
+
+def test_candidate_audit_marks_stale_candidate_sources() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "3059",
+                "name": "華晶科",
+                "segment": "3D 感測相機",
+                "rationale": "",
+                "evidence_keywords": ["3D 感測"],
+                "evidence_count": 4,
+                "evidence_source_count": 2,
+                "evidence_titles": [],
+                "evidence_confidence_score": 63,
+                "evidence_confidence_label": "中",
+                "latest_evidence_date": "2025-08-08",
+                "status": "weak_evidence",
+                "validation_reason": "弱證據：篇數與來源數達標。",
+            },
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+
+    markdown = generator._render_candidate_audit([])
+
+    assert "最新候選來源為 2025-08-08" in markdown
+    assert "超過 180 天新鮮度門檻" in markdown
+    assert "最近 180 天內官方公告" in markdown
 
 
 def test_candidate_audit_dedupes_repeated_revalidation_reason() -> None:
@@ -2400,8 +2507,10 @@ def test_allocation_plan_caps_each_first_tranche_and_total_budget() -> None:
         first_tranche=100_000,
     )
 
-    assert rows[0] == "本輪首筆配置合計約 50,000 元；可投入上限 50,000 元。"
+    assert rows[0].startswith("本輪首筆配置合計約 50,000 元；可投入上限 50,000 元。")
+    assert "套用單檔首筆上限與萬元取整" in rows[0]
     assert "2382 廣達：首筆配置約 30,000 元" in rows[1]
+    assert "淨分 19" in rows[1]
     assert "3324 雙鴻：首筆配置約 20,000 元" in rows[2]
 
 
@@ -2412,6 +2521,28 @@ def test_risk_warning_reason_distinguishes_threshold_from_relative_risk() -> Non
     assert ReportGenerator._risk_warning_reason({"upside_pct": 8, "downside_pct": 13}) == (
         "目前情境降值分高於升值分，風險權重已壓過投資理由，不適合追價。"
     )
+
+
+def test_thesis_reason_for_avoid_does_not_read_like_buy_reason() -> None:
+    reason = ReportGenerator._thesis_reason(
+        {
+            "decision": "避開 / 降低曝險",
+            "estimate": {
+                "upside_pct": 33,
+                "downside_pct": 17,
+                "financial_assessment": {
+                    "red_flag": True,
+                    "risk_score": 10,
+                    "risk_summary": "2021-2025 年度營收下滑 40.3%",
+                },
+            },
+            "quality": {"grade": "supported", "missing": []},
+        },
+        ReportRequest(topic="機器人 產業鏈", tickers=["1303"], investor_profile=InvestorProfile.aggressive),
+    )
+
+    assert "本段不是買進理由" in reason
+    assert "財務/估值紅旗偏重" in reason
 
 
 def test_aggressive_profile_observes_high_upside_when_downside_exceeds_gate_only() -> None:
@@ -2500,6 +2631,23 @@ def test_estimate_potential_uses_leading_signal_bonus() -> None:
     assert any("近況訊號偏多" in label for label, _score in estimate["upside_factors"])
 
 
+def test_bearish_leading_signal_does_not_create_positive_score_text() -> None:
+    snapshot = MarketSnapshot(ticker="6235", trade_date=date(2026, 5, 22), close=100)
+    signal = LeadingSignal(
+        ticker="6235",
+        score=-7,
+        upside_bonus=4,
+        downside_penalty=7,
+        bearish_factors=["20 日股價轉弱 -12.0%"],
+    )
+
+    estimate = ReportGenerator._estimate_potential([], [], snapshot, None, signal)
+
+    assert "近況訊號偏空觸發正向加分" not in estimate["upside_reason"]
+    assert not any("近況訊號偏多" in label for label, _score in estimate["upside_factors"])
+    assert "近況訊號偏空觸發風險加分 7 點" in estimate["downside_reason"]
+
+
 def test_bearish_leading_signal_blocks_actionable_rating() -> None:
     signal = LeadingSignal(
         ticker="2330",
@@ -2551,6 +2699,45 @@ def test_structural_bottleneck_reason_names_specific_evidence() -> None:
     assert rating == "觀察 / 等風險降低"
     assert "瓶頸/限制證據：產能吃緊造成交期延長" in reason
     assert "存在結構性瓶頸證據" not in reason
+
+
+def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1597",
+                "name": "直得",
+                "segment": "微型線性滑軌",
+                "rationale": "微型線性滑軌可切入精密自動化與機器人",
+                "evidence_keywords": ["微型線性滑軌", "機器人", "自動化"],
+                "evidence_count": 2,
+                "evidence_source_count": 2,
+                "status": "evidence_supported",
+            }
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+    finding = RiskFinding(
+        risk_type=RiskType.structural_bottleneck,
+        topic="HBM, 良率, 先進封裝",
+        evidence="直得微型線性滑軌良率仍需觀察。",
+        source=Source(title="直得風險", publisher="測試新聞", published_at=date(2026, 5, 22)),
+        related_companies=[
+            EntityMatch(
+                ticker="1597",
+                name="直得",
+                segment_id="robotics",
+                segment_name="微型線性滑軌",
+                matched_alias="直得",
+            )
+        ],
+    )
+
+    overview = generator._render_risk_overview([finding], ["1597"])
+
+    assert "良率(1)" in overview
+    assert "HBM" not in overview
+    assert "先進封裝" not in overview
 
 
 def test_investment_recommendations_escape_source_title_pipes() -> None:

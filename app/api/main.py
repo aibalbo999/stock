@@ -25,7 +25,9 @@ from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest, ReportResponse
 from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import (
+    STALE_CANDIDATE_EVIDENCE_DAYS,
     candidate_audit_summary,
+    candidate_evidence_age_days,
     dedupe_reason_fragments,
     render_candidate_audit_markdown,
 )
@@ -488,6 +490,9 @@ def preserve_previous_supported_candidates(current_candidates: list[dict], previ
         if candidate.get("ticker") and candidate.get("status") == "evidence_supported"
     }
     for ticker, previous in previous_supported.items():
+        age_days = candidate_evidence_age_days(previous)
+        if age_days is not None and age_days > STALE_CANDIDATE_EVIDENCE_DAYS:
+            continue
         current = current_by_ticker.get(ticker)
         if current and current.get("status") == "evidence_supported":
             continue

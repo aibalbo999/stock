@@ -1098,6 +1098,49 @@ def test_validate_candidates_requires_high_confidence_before_promotion() -> None
     assert "有日期、近期" in candidates[0].next_action
 
 
+def test_validate_candidates_marks_old_sources_as_stale() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "3059",
+              "name": "華晶科",
+              "segment": "3D 感測相機",
+              "rationale": "影像與 3D 感測可支援機器視覺",
+              "evidence_keywords": ["3D 感測", "機器視覺"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="華晶科 3D 感測相機應用",
+            text="華晶科 3059 3D 感測與機器視覺應用。",
+            publisher="test-a",
+            published_at=date(2025, 8, 8),
+        ),
+        NewsFetcher.from_manual_text(
+            title="華晶科 機器視覺布局",
+            text="華晶科 3D 感測相機與機器視覺布局。",
+            publisher="test-b",
+            published_at=date(2025, 5, 29),
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].status == "weak_evidence"
+    assert candidates[0].promotion_eligible is False
+    assert candidates[0].evidence_stale is True
+    assert candidates[0].latest_evidence_date == "2025-08-08"
+    assert "超過 180 天新鮮度門檻" in candidates[0].validation_reason
+    assert "最近 180 天內" in candidates[0].next_action
+
+
 def test_validate_candidates_requires_company_entity_evidence() -> None:
     service = TopicDiscoveryService()
     plan = TopicDiscoveryService.parse_plan(

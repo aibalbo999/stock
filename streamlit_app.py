@@ -1687,6 +1687,8 @@ def candidate_revalidation_summary(result: dict) -> dict:
                     "evidence_supported": "正式分析",
                     "weak_evidence": "弱證據",
                     "needs_evidence": "待補證據",
+                    "evidence_limited": "補查後未升格",
+                    "evidence_unavailable": "資料不足排除",
                 }.get(candidate.get("status"), "待補證據"),
                 "證據": f"{candidate.get('evidence_count', 0)} 篇 / {candidate.get('evidence_source_count', 0)} 來源",
                 "原因": candidate.get("validation_reason") or "-",

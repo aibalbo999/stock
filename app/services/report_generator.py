@@ -43,6 +43,47 @@ REPORT_READING_SORT_NOTE = (
     "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
     "同組再依目前股價由高到低；缺股價者排在同組後段。"
 )
+AI_INFRA_RISK_TERMS = {
+    "CoWoS",
+    "cowos",
+    "HBM",
+    "hbm",
+    "先進封裝",
+    "先進製程",
+    "液冷",
+    "水冷",
+    "缺電",
+}
+AI_INFRA_CONTEXT_TERMS = {
+    "AI 伺服器",
+    "AI伺服器",
+    "資料中心",
+    "data center",
+    "datacenter",
+    "server",
+    "伺服器",
+    "晶圓",
+    "半導體",
+    "封裝",
+    "CoWoS",
+    "cowos",
+    "HBM",
+    "hbm",
+    "PCB",
+    "pcb",
+    "載板",
+    "ABF",
+    "abf",
+    "CCL",
+    "ccl",
+    "矽晶圓",
+    "AI 晶片",
+    "散熱",
+    "液冷",
+    "水冷",
+    "CSP",
+    "GPU",
+}
 
 
 class ReportExecutionError(ValueError):
@@ -520,7 +561,7 @@ class ReportGenerator:
             ),
             "",
             "## 主要風險與瓶頸",
-            self._render_risk_overview(findings),
+            self._render_risk_overview(findings, ordered_tickers),
             "",
             "## 分析範圍",
             self._render_scope(ordered_tickers, market_snapshots, monthly_revenues),
@@ -1785,10 +1826,30 @@ class ReportGenerator:
         estimate = context.get("estimate") or {}
         quality = context.get("quality") or {}
         decision = context.get("decision") or "觀察"
+        downside_gate = ReportGenerator._downside_gate(request)
+        if decision == "避開 / 降低曝險":
+            positive = (
+                f"雖然目前情境升值分有 {estimate.get('upside_pct', 0)} 分，"
+                if estimate.get("upside_pct", 0) > 10
+                else ""
+            )
+            return (
+                f"{positive}但{ReportGenerator._risk_warning_reason(estimate)}"
+                "因此本段不是買進理由，而是說明為何暫不投入或降低曝險。"
+            )
+        if decision == "觀察 / 等風險降低":
+            return (
+                f"目前情境降值分 {estimate.get('downside_pct', 0)} 分，"
+                f"高於或接近投資人設定門檻 {downside_gate} 分；"
+                "即使有題材或近況動能，也需等風險證據、財務紅旗或近況訊號改善後再研究配置。"
+            )
+        if decision == "觀察 / 資料待補":
+            missing = "、".join(quality.get("missing") or [])
+            return f"目前有初步題材分數，但資料層仍待補足（{missing or '公司層級證據不足'}），暫不視為可配置理由。"
         reasons = []
         if estimate.get("upside_pct", 0) > 10:
             reasons.append(f"目前情境升值分 {estimate['upside_pct']} 高於 10 分的研究門檻")
-        if estimate.get("downside_pct", 0) <= ReportGenerator._downside_gate(request):
+        if estimate.get("downside_pct", 0) <= downside_gate:
             reasons.append(f"目前情境降值分 {estimate['downside_pct']} 未超過投資人設定門檻")
         if quality.get("grade") == "supported":
             reasons.append("新聞/主題歸因、股價、營收、財務/估值與公司文件的資料層較完整")
@@ -2611,6 +2672,30 @@ class ReportGenerator:
         return round((last - first) / abs(first) * 100, 2)
 
     @staticmethod
+    def _series_period_text(series: dict[int, float]) -> str:
+        years = sorted(series)
+        if len(years) < 2:
+            return "已揭露年度"
+        return f"{years[0]}-{years[-1]} 年度"
+
+    @staticmethod
+    def _decline_risk_points(growth_pct: float, *, metric: str) -> int:
+        decline = abs(growth_pct)
+        if metric == "net_income":
+            if decline >= 70:
+                return 5
+            if decline >= 50:
+                return 4
+            if decline >= 20:
+                return 3
+            return 1
+        if decline >= 40:
+            return 4
+        if decline >= 20:
+            return 3
+        return 1
+
+    @staticmethod
     def _financial_valuation_assessment(
         financial_metrics: list[FinancialMetric] | None = None,
         valuation: ValuationMetric | None = None,
@@ -2661,18 +2746,19 @@ class ReportGenerator:
 
         revenue_growth = ReportGenerator._series_growth_pct(revenue)
         if revenue_growth is not None:
+            revenue_period = ReportGenerator._series_period_text(revenue)
             if revenue_growth >= 30:
                 upside_score += 2
-                strengths.append(f"已揭露年度營收成長 {revenue_growth:.1f}%")
+                strengths.append(f"{revenue_period}營收成長 {revenue_growth:.1f}%")
             elif revenue_growth >= 5:
                 upside_score += 1
-                strengths.append(f"已揭露年度營收成長 {revenue_growth:.1f}%")
+                strengths.append(f"{revenue_period}營收成長 {revenue_growth:.1f}%")
             elif revenue_growth <= -20:
-                risk_score += 2
-                red_flags.append(f"已揭露年度營收下滑 {abs(revenue_growth):.1f}%")
+                risk_score += ReportGenerator._decline_risk_points(revenue_growth, metric="revenue")
+                red_flags.append(f"{revenue_period}營收下滑 {abs(revenue_growth):.1f}%")
             elif revenue_growth < 0:
                 risk_score += 1
-                cautions.append(f"已揭露年度營收小幅下滑 {abs(revenue_growth):.1f}%")
+                cautions.append(f"{revenue_period}營收小幅下滑 {abs(revenue_growth):.1f}%")
         elif metrics:
             cautions.append("已揭露年度營收趨勢不足")
 
@@ -2683,18 +2769,19 @@ class ReportGenerator:
             risk_score += 3
             red_flags.append("最新財報期間淨利為負或接近虧損")
         elif net_income_growth is not None:
+            net_income_period = ReportGenerator._series_period_text(net_income)
             if net_income_growth >= 20:
                 upside_score += 2
-                strengths.append(f"已揭露年度淨利成長 {net_income_growth:.1f}%")
+                strengths.append(f"{net_income_period}淨利成長 {net_income_growth:.1f}%")
             elif net_income_growth > 0:
                 upside_score += 1
-                strengths.append(f"已揭露年度淨利成長 {net_income_growth:.1f}%")
+                strengths.append(f"{net_income_period}淨利成長 {net_income_growth:.1f}%")
             elif net_income_growth <= -20:
-                risk_score += 2
-                red_flags.append(f"已揭露年度淨利下滑 {abs(net_income_growth):.1f}%")
+                risk_score += ReportGenerator._decline_risk_points(net_income_growth, metric="net_income")
+                red_flags.append(f"{net_income_period}淨利下滑 {abs(net_income_growth):.1f}%")
             else:
                 risk_score += 1
-                cautions.append(f"已揭露年度淨利小幅下滑 {abs(net_income_growth):.1f}%")
+                cautions.append(f"{net_income_period}淨利小幅下滑 {abs(net_income_growth):.1f}%")
         elif metrics:
             cautions.append("已揭露年度淨利趨勢不足")
 
@@ -2756,8 +2843,17 @@ class ReportGenerator:
         elif not valuation:
             cautions.append("缺估值資料")
 
+        if (
+            revenue_growth is not None
+            and net_income_growth is not None
+            and revenue_growth <= -20
+            and net_income_growth <= -20
+        ):
+            risk_score += 1
+            red_flags.append("營收與淨利同步大幅下滑")
+
         upside_score = min(6, upside_score)
-        risk_score = min(6, risk_score)
+        risk_score = min(10, risk_score)
         red_flag = bool(red_flags) or risk_score >= 4
         return {
             "has_inputs": bool(metrics or valuation),
@@ -3026,11 +3122,12 @@ class ReportGenerator:
         close = snapshot.close if snapshot.close is not None else "NA"
         return f"{snapshot.trade_date.isoformat()} 收盤價 {close}。"
 
-    @staticmethod
-    def _company_risk_summary(related_findings) -> str:
+    def _company_risk_summary(self, related_findings) -> str:
         if not related_findings:
             return "目前無足夠數據判斷。"
-        topics = [finding.topic for finding in related_findings[:3]]
+        topics = []
+        for finding in related_findings[:3]:
+            topics.append(self._sanitized_risk_topic_for_finding(finding))
         return "、".join(topics)
 
     @staticmethod
@@ -3216,20 +3313,90 @@ class ReportGenerator:
             return "持有"
         return "持有/觀察"
 
-    def _render_risk_overview(self, findings) -> str:
-        if not findings:
+    def _sanitized_risk_topic_for_finding(self, finding) -> str:
+        return self._sanitize_risk_topic(
+            finding.topic,
+            [company.ticker for company in finding.related_companies],
+        )
+
+    def _sanitize_risk_topic(self, topic: str, tickers: list[str] | None = None) -> str:
+        raw_parts = (
+            str(topic or "")
+            .replace("，", ",")
+            .replace("、", ",")
+            .replace("/", ",")
+            .split(",")
+        )
+        parts = [part.strip() for part in raw_parts if part.strip()]
+        if not parts:
+            return "營運與供應鏈風險"
+        allows_ai_infra = self._companies_allow_ai_infra_risk(tickers or [])
+        sanitized = [
+            part
+            for part in parts
+            if allows_ai_infra or not self._is_ai_infra_specific_risk_term(part)
+        ]
+        if sanitized:
+            return ", ".join(dict.fromkeys(sanitized))
+        return "營運與供應鏈風險"
+
+    def _companies_allow_ai_infra_risk(self, tickers: list[str]) -> bool:
+        if not tickers:
+            return True
+        return any(self._company_allows_ai_infra_risk(ticker) for ticker in tickers)
+
+    def _company_allows_ai_infra_risk(self, ticker: str) -> bool:
+        companies = {company.ticker: company for company in self.whitelist.companies()}
+        company = companies.get(ticker)
+        segment = self.whitelist.segment_for_ticker(ticker)
+        context = " ".join(
+            [
+                company.name if company else "",
+                " ".join(company.evidence_keywords) if company else "",
+                segment.name if segment else "",
+                segment.notes or "" if segment else "",
+            ]
+        ).lower()
+        return any(term.lower() in context for term in AI_INFRA_CONTEXT_TERMS)
+
+    @staticmethod
+    def _is_ai_infra_specific_risk_term(term: str) -> bool:
+        lowered = term.lower()
+        return any(marker.lower() == lowered or marker.lower() in lowered for marker in AI_INFRA_RISK_TERMS)
+
+    @staticmethod
+    def _finding_scope_companies(finding, scope_tickers: set[str] | None = None) -> list:
+        companies = list(finding.related_companies)
+        if not scope_tickers:
+            return companies
+        return [company for company in companies if company.ticker in scope_tickers]
+
+    def _risk_findings_for_scope(self, findings, tickers: list[str] | None = None) -> list:
+        scope_tickers = set(tickers or [])
+        if not scope_tickers:
+            return list(findings)
+        scoped = []
+        for finding in findings:
+            if self._finding_scope_companies(finding, scope_tickers):
+                scoped.append(finding)
+        return scoped
+
+    def _render_risk_overview(self, findings, tickers: list[str] | None = None) -> str:
+        scoped_findings = self._risk_findings_for_scope(findings, tickers)
+        if not scoped_findings:
             return "目前無足夠數據判斷。"
 
-        topic_counts = Counter(finding.topic for finding in findings)
+        scope_tickers = set(tickers or [])
+        topic_counts = Counter(self._sanitized_risk_topic_for_finding(finding) for finding in scoped_findings)
         company_counts: Counter[str] = Counter()
-        for finding in findings:
-            for company in finding.related_companies:
+        for finding in scoped_findings:
+            for company in self._finding_scope_companies(finding, scope_tickers):
                 company_counts[f"{company.ticker} {company.name}"] += 1
 
         lines = [
-            f"- 結構性瓶頸：{sum(1 for finding in findings if finding.risk_type == RiskType.structural_bottleneck)} 筆",
-            f"- 短期波動：{sum(1 for finding in findings if finding.risk_type == RiskType.short_term_volatility)} 筆",
-            f"- 機會/成長：{sum(1 for finding in findings if finding.risk_type == RiskType.opportunity_or_growth)} 筆",
+            f"- 結構性瓶頸：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.structural_bottleneck)} 筆",
+            f"- 短期波動：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.short_term_volatility)} 筆",
+            f"- 機會/成長：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.opportunity_or_growth)} 筆",
             "- 主要歸因主題："
             + ("、".join(f"{topic}({count})" for topic, count in topic_counts.most_common(5)) or "目前無足夠數據判斷"),
             "- 受影響公司："
@@ -3237,15 +3404,19 @@ class ReportGenerator:
             "",
             "### 代表性證據",
         ]
-        for finding in findings[:8]:
+        for finding in scoped_findings[:8]:
             source_date = finding.source.published_at.isoformat() if finding.source.published_at else "日期不明"
-            companies = ", ".join(f"{c.ticker} {c.name}" for c in finding.related_companies) or "未明確對應公司"
+            companies = (
+                ", ".join(f"{c.ticker} {c.name}" for c in self._finding_scope_companies(finding, scope_tickers))
+                or "未明確對應公司"
+            )
+            topic = self._sanitized_risk_topic_for_finding(finding)
             lines.append(
-                f"- {finding.topic}：{companies}；來源：{source_date} "
+                f"- {topic}：{companies}；來源：{source_date} "
                 f"{finding.source.publisher or ''} {finding.source.title}"
             )
-        if len(findings) > 8:
-            lines.append(f"- 其餘 {len(findings) - 8} 筆歸因證據已保留於系統資料庫，不在主報告逐條展開。")
+        if len(scoped_findings) > 8:
+            lines.append(f"- 其餘 {len(scoped_findings) - 8} 筆歸因證據已保留於系統資料庫，不在主報告逐條展開。")
         return "\n".join(lines)
 
     def _render_scope(
@@ -3443,7 +3614,7 @@ class ReportGenerator:
             )
         )
 
-        candidate_rows = []
+        candidate_contexts = []
         allocation_candidates = []
         avoid_rows = []
         watch_rows = []
@@ -3483,10 +3654,13 @@ class ReportGenerator:
                         "source": source,
                     }
                 )
-                candidate_rows.append(
-                    f"- {label}：可列小額分批研究。首筆約 {first_tranche:,} 元，"
-                    f"單檔上限約 {max_position:,} 元；目前情境升值分 {estimate['upside_pct']} 分，"
-                    f"目前情境降值分 {estimate['downside_pct']} 分。原因：{reason}來源：{source}。"
+                candidate_contexts.append(
+                    {
+                        "label": label,
+                        "estimate": estimate,
+                        "reason": reason,
+                        "source": source,
+                    }
                 )
             elif decision == "避開 / 降低曝險":
                 avoid_rows.append(
@@ -3497,6 +3671,22 @@ class ReportGenerator:
                 watch_rows.append(
                     f"- {label}：{decision}。原因：{reason}來源：{source}。"
                 )
+
+        allocation_amounts = self._allocation_amounts(allocation_candidates, deployable, first_tranche)
+        allocation_amount_by_label = {
+            candidate["label"]: amount
+            for candidate, amount in zip(allocation_candidates, allocation_amounts)
+        }
+        candidate_rows = []
+        for context in candidate_contexts:
+            estimate = context["estimate"]
+            allocation_amount = allocation_amount_by_label.get(context["label"], first_tranche)
+            candidate_rows.append(
+                f"- {context['label']}：可列小額分批研究。首筆約 {allocation_amount:,} 元（配置草案），"
+                f"單檔上限約 {max_position:,} 元；目前情境升值分 {estimate['upside_pct']} 分，"
+                f"目前情境降值分 {estimate['downside_pct']} 分。原因：{context['reason']}"
+                f"來源：{context['source']}。"
+            )
 
         lines = [
             f"資金設定：總資金 {capital:,} 元以內；建議保留現金約 {reserve:,} 元，"
@@ -3530,6 +3720,32 @@ class ReportGenerator:
     ) -> list[str]:
         if not candidates:
             return ["目前無可配置標的。"]
+        amounts = ReportGenerator._allocation_amounts(candidates, deployable, first_tranche)
+
+        rows = []
+        allocated_total = sum(amounts)
+        rows.insert(
+            0,
+            f"本輪首筆配置合計約 {allocated_total:,} 元；可投入上限 {deployable:,} 元。"
+            "配置採淨分（升值分 - 降值分）排序與權重，再套用單檔首筆上限與萬元取整。"
+        )
+        for candidate, amount in zip(candidates, amounts):
+            cap_note = "；本檔已達首筆上限，並非完整等比例配置" if amount >= first_tranche else ""
+            rows.append(
+                f"- {candidate['label']}：首筆配置約 {amount:,} 元；"
+                f"淨分 {candidate['upside_pct'] - candidate['downside_pct']}，"
+                f"升值分 {candidate['upside_pct']} / 降值分 {candidate['downside_pct']}{cap_note}。"
+            )
+        return rows
+
+    @staticmethod
+    def _allocation_amounts(
+        candidates: list[dict],
+        deployable: int,
+        first_tranche: int,
+    ) -> list[int]:
+        if not candidates:
+            return []
         weights = []
         for candidate in candidates:
             score = max(1, candidate["upside_pct"] - candidate["downside_pct"])
@@ -3551,16 +3767,7 @@ class ReportGenerator:
             amounts.append(amount)
             remaining_budget -= amount
             remaining_weight -= weight
-
-        rows = []
-        allocated_total = sum(amounts)
-        for candidate, amount in zip(candidates, amounts):
-            rows.append(
-                f"- {candidate['label']}：首筆配置約 {amount:,} 元；"
-                f"依目前情境升值分 {candidate['upside_pct']} / 降值分 {candidate['downside_pct']} 權重分配。"
-            )
-        rows.insert(0, f"本輪首筆配置合計約 {allocated_total:,} 元；可投入上限 {deployable:,} 元。")
-        return rows
+        return amounts
 
     @staticmethod
     def _round_lot_amount(amount: int) -> int:
@@ -3995,10 +4202,10 @@ class ReportGenerator:
             confidence_notes.append("缺少月營收資料")
 
         if leading_signal:
-            if leading_signal.upside_bonus:
+            if leading_signal.upside_bonus and leading_signal.direction != "偏空":
                 upside_pct = max(11, upside_pct) + leading_signal.upside_bonus
                 upside_factors.append((f"近況訊號偏多：{leading_signal.summary}", leading_signal.upside_bonus))
-            if leading_signal.downside_penalty:
+            if leading_signal.downside_penalty and leading_signal.direction != "偏多":
                 downside_pct = max(6, downside_pct) + leading_signal.downside_penalty
                 downside_factors.append((f"近況訊號偏空：{leading_signal.summary}", leading_signal.downside_penalty))
             confidence_notes.append(f"近況訊號 {leading_signal.direction}（分數 {leading_signal.score}）")
@@ -4014,7 +4221,7 @@ class ReportGenerator:
             upside_pct = max(11, upside_pct) + financial_assessment["upside_score"]
             upside_factors.append(
                 (
-                    f"財務/估值加分：{financial_assessment['upside_summary']}",
+                    f"長期/已揭露財務與目前估值加分：{financial_assessment['upside_summary']}",
                     financial_assessment["upside_score"],
                 )
             )
@@ -4022,7 +4229,7 @@ class ReportGenerator:
             downside_pct = max(6, downside_pct) + financial_assessment["risk_score"]
             downside_factors.append(
                 (
-                    f"財務/估值風險：{financial_assessment['risk_summary']}",
+                    f"長期/已揭露財務與目前估值風險：{financial_assessment['risk_summary']}",
                     financial_assessment["risk_score"],
                 )
             )
@@ -4169,6 +4376,10 @@ class ReportGenerator:
     def _leading_signal_reason(leading_signal: LeadingSignal | None, positive: bool) -> str:
         if not leading_signal:
             return ""
+        if positive and leading_signal.direction == "偏空":
+            return ""
+        if not positive and leading_signal.direction == "偏多":
+            return ""
         score = leading_signal.upside_bonus if positive else leading_signal.downside_penalty
         if score <= 0:
             return ""
@@ -4185,7 +4396,8 @@ class ReportGenerator:
             return ""
         label = assessment.get("upside_summary" if positive else "risk_summary")
         direction = "正向加分" if positive else "風險加分"
-        return f"，財務/估值{direction} {score} 點（{label}）"
+        scope = "長期/已揭露財務與目前估值"
+        return f"，{scope}{direction} {score} 點（{label}）"
 
     @staticmethod
     def _scoring_text_for_document(document: NewsDocument) -> str:

@@ -1160,6 +1160,31 @@ def test_preserve_previous_supported_candidates_avoids_sampling_demotions() -> N
     assert preserved_again[0]["validation_reason"].count("本次補強重驗證未穩定重建既有正式證據") == 1
 
 
+def test_preserve_previous_supported_candidates_does_not_keep_stale_evidence() -> None:
+    preserved = main.preserve_previous_supported_candidates(
+        [
+            {
+                "ticker": "3059",
+                "name": "華晶科",
+                "status": "weak_evidence",
+                "validation_reason": "本次只找到偏舊資料",
+            }
+        ],
+        [
+            {
+                "ticker": "3059",
+                "name": "華晶科",
+                "status": "evidence_supported",
+                "latest_evidence_date": "2025-08-08",
+                "validation_reason": "上一版通過正式分析門檻",
+            }
+        ],
+    )
+
+    assert preserved[0]["status"] == "weak_evidence"
+    assert "保留上一版正式分析" not in preserved[0]["validation_reason"]
+
+
 def test_mark_unavailable_candidates_after_large_revalidation() -> None:
     candidates = main.mark_unavailable_candidates_after_revalidation(
         [

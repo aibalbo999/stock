@@ -15,6 +15,8 @@ from app.services.entity_mapping import company_filing_owner_ticker
 from app.services.llm_client import LLMClient
 from app.services.whitelist import SupplyChainWhitelist
 
+STALE_CANDIDATE_EVIDENCE_DAYS = 180
+
 
 class DiscoverySubtopic(BaseModel):
     name: str = Field(min_length=1)
@@ -63,6 +65,8 @@ class ValidatedCandidate(BaseModel):
     evidence_confidence_score: int = 0
     evidence_confidence_label: str = "低"
     latest_evidence_date: Optional[str] = None
+    evidence_age_days: Optional[int] = None
+    evidence_stale: bool = False
     status: str
     validation_reason: str = ""
     next_action: str = ""
@@ -1230,7 +1234,12 @@ class TopicDiscoveryService:
             source_count = self._evidence_source_count(evidence_documents)
             evidence_sources = self._candidate_evidence_sources(evidence_documents)
             confidence = self._candidate_evidence_confidence(evidence_documents, source_count)
-            status = self._candidate_status(len(evidence_documents), source_count, confidence["score"])
+            status = self._candidate_status(
+                len(evidence_documents),
+                source_count,
+                confidence["score"],
+                confidence["evidence_stale"],
+            )
             validated.append(
                 ValidatedCandidate(
                     ticker=candidate.ticker,
@@ -1245,13 +1254,23 @@ class TopicDiscoveryService:
                     evidence_confidence_score=confidence["score"],
                     evidence_confidence_label=confidence["label"],
                     latest_evidence_date=confidence["latest_evidence_date"],
+                    evidence_age_days=confidence["evidence_age_days"],
+                    evidence_stale=confidence["evidence_stale"],
                     status=status,
                     validation_reason=self._candidate_validation_reason(
                         len(evidence_documents),
                         source_count,
                         confidence["score"],
+                        confidence["latest_evidence_date"],
+                        confidence["evidence_age_days"],
+                        confidence["evidence_stale"],
                     ),
-                    next_action=self._candidate_next_action(len(evidence_documents), source_count, confidence["score"]),
+                    next_action=self._candidate_next_action(
+                        len(evidence_documents),
+                        source_count,
+                        confidence["score"],
+                        confidence["evidence_stale"],
+                    ),
                     promotion_eligible=status == "evidence_supported",
                 )
             )
@@ -1514,6 +1533,8 @@ class TopicDiscoveryService:
         evidence_count = len(documents)
         dated_documents = [document for document in documents if document.source.published_at]
         latest_date = max((document.source.published_at for document in dated_documents), default=None)
+        evidence_age_days = (today_taipei() - latest_date).days if latest_date else None
+        evidence_stale = evidence_age_days is not None and evidence_age_days > STALE_CANDIDATE_EVIDENCE_DAYS
         evidence_score = min(evidence_count, 3) / 3 * 35
         source_score = min(source_count, 3) / 3 * 35
         timestamp_score = (len(dated_documents) / evidence_count * 10) if evidence_count else 0
@@ -1523,6 +1544,8 @@ class TopicDiscoveryService:
             "score": min(score, 100),
             "label": TopicDiscoveryService._confidence_label(score),
             "latest_evidence_date": latest_date.isoformat() if latest_date else None,
+            "evidence_age_days": evidence_age_days,
+            "evidence_stale": evidence_stale,
         }
 
     @staticmethod
@@ -1543,25 +1566,58 @@ class TopicDiscoveryService:
         return confidence_level(score)
 
     @staticmethod
-    def _candidate_status(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
+    def _candidate_status(
+        evidence_count: int,
+        source_count: int,
+        confidence_score: int = 0,
+        evidence_stale: bool = False,
+    ) -> str:
         if evidence_count == 0:
             return "needs_evidence"
+        if evidence_stale:
+            return "weak_evidence"
         if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
             return "evidence_supported"
         return "weak_evidence"
 
     @staticmethod
-    def _candidate_validation_reason(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
+    def _candidate_validation_reason(
+        evidence_count: int,
+        source_count: int,
+        confidence_score: int = 0,
+        latest_evidence_date: Optional[str] = None,
+        evidence_age_days: Optional[int] = None,
+        evidence_stale: bool = False,
+    ) -> str:
+        stale_note = ""
+        if evidence_stale and latest_evidence_date:
+            stale_note = (
+                f"最新候選來源為 {latest_evidence_date}，距今約 {evidence_age_days} 天，"
+                "已超過 180 天新鮮度門檻；"
+            )
         if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
-            return "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。"
+            return stale_note + "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。"
         if evidence_count >= 2 and source_count >= 2:
-            return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分，需補近期或有日期來源。"
+            return (
+                stale_note
+                + f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分，需補近期或有日期來源。"
+            )
         if evidence_count > 0:
-            return f"弱證據：目前只有 {evidence_count} 篇、{source_count} 個來源，避免單一來源造成誤判。"
+            return (
+                stale_note
+                + f"弱證據：目前只有 {evidence_count} 篇、{source_count} 個來源，避免單一來源造成誤判。"
+            )
         return "待補證據：尚未找到公司實體與主題上下文同時成立的來源。"
 
     @staticmethod
-    def _candidate_next_action(evidence_count: int, source_count: int, confidence_score: int = 0) -> str:
+    def _candidate_next_action(
+        evidence_count: int,
+        source_count: int,
+        confidence_score: int = 0,
+        evidence_stale: bool = False,
+    ) -> str:
+        if evidence_stale:
+            return "優先補抓最近 180 天內官方公告、法說會、月營收與公司新聞後再驗證。"
         if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
             return "納入正式分析。"
         if evidence_count >= 2 and source_count >= 2:

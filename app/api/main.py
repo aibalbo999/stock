@@ -4,14 +4,14 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.time import today_taipei
+from app.core.time import TAIPEI_TZ, today_taipei
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     REQUIRED_CORE_DOCUMENT_TYPES,
@@ -94,13 +94,62 @@ def serialize_run(run) -> dict:
     }
 
 
-def latest_follow_up_run_for_report(repository: AnalysisRunRepository, report_id: int) -> dict | None:
+def _report_tickers(report) -> list[str]:
+    try:
+        tickers = json.loads(report.tickers_json)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return [str(ticker) for ticker in tickers if str(ticker).strip()]
+
+
+def _datetime_identity_value(value: datetime | None, *, naive_timezone=timezone.utc) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.replace(tzinfo=naive_timezone).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _datetime_iso_or_none(value: datetime | None) -> str | None:
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
+def _follow_up_run_matches_report(run, payload: dict, report) -> bool:
+    if run.source != "follow_up_api":
+        return False
+    if payload.get("source_report_id") != report.id:
+        return False
+
+    source_topic = payload.get("source_report_topic")
+    if source_topic and source_topic != report.topic:
+        return False
+    request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    request_topic = request_payload.get("topic")
+    if request_topic and request_topic != report.topic:
+        return False
+
+    report_tickers = _report_tickers(report)
+    source_tickers = payload.get("source_report_tickers")
+    request_tickers = request_payload.get("tickers")
+    candidate_tickers = source_tickers if isinstance(source_tickers, list) and source_tickers else request_tickers
+    if isinstance(candidate_tickers, list) and candidate_tickers and report_tickers:
+        if [str(ticker) for ticker in candidate_tickers] != report_tickers:
+            return False
+
+    generated_at = _datetime_identity_value(getattr(report, "generated_at", None), naive_timezone=TAIPEI_TZ)
+    started_at = _datetime_identity_value(getattr(run, "started_at", None), naive_timezone=timezone.utc)
+    if generated_at and started_at and started_at < generated_at:
+        return False
+    return True
+
+
+def latest_follow_up_run_for_report(repository: AnalysisRunRepository, report) -> dict | None:
     latest = getattr(repository, "latest", None)
     if not callable(latest):
         return None
     for run in latest(100):
         payload = parse_run_payload(run.payload_json)
-        if run.source == "follow_up_api" and payload.get("source_report_id") == report_id:
+        if _follow_up_run_matches_report(run, payload, report):
             return {
                 **serialize_run(run),
                 "summary": payload.get("summary") or {},
@@ -264,6 +313,11 @@ def load_report_follow_up_context(report_id: int) -> dict:
     candidates = candidate_audit_from_run_payload(run_payload)
     markdown = append_candidate_audit_if_missing(markdown, candidates, request.tickers)
     return {
+        "source_report_id": report_id,
+        "source_report_topic": topic,
+        "source_report_tickers": tickers,
+        "source_report_generated_at": _datetime_iso_or_none(getattr(report, "generated_at", None)),
+        "source_report_created_at": _datetime_iso_or_none(getattr(report, "created_at", None)),
         "request": request,
         "markdown": markdown,
         "quality_gate": parse_quality_gate_from_markdown(markdown) or {},
@@ -1828,7 +1882,7 @@ def get_report(report_id: int) -> dict:
         run = run_repository.get_by_report_id(report_id)
         run_payload = parse_run_payload(run.payload_json if run is not None else None)
         candidates = candidate_audit_from_run_payload(run_payload)
-        auto_follow_up = latest_follow_up_run_for_report(run_repository, report_id)
+        auto_follow_up = latest_follow_up_run_for_report(run_repository, report)
         try:
             promoted_tickers = json.loads(report.tickers_json)
         except json.JSONDecodeError:
@@ -2049,6 +2103,10 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
             "follow_up_api",
             {
                 "source_report_id": report_id,
+                "source_report_topic": context.get("source_report_topic"),
+                "source_report_tickers": context.get("source_report_tickers") or [],
+                "source_report_generated_at": context.get("source_report_generated_at"),
+                "source_report_created_at": context.get("source_report_created_at"),
                 "request": request.model_dump(mode="json"),
                 "quality_gate_before": quality_gate,
                 "company_data_audit_before": company_data_audit,
@@ -2073,6 +2131,10 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
                 run_id,
                 {
                     "source_report_id": report_id,
+                    "source_report_topic": context.get("source_report_topic"),
+                    "source_report_tickers": context.get("source_report_tickers") or [],
+                    "source_report_generated_at": context.get("source_report_generated_at"),
+                    "source_report_created_at": context.get("source_report_created_at"),
                     "request": request.model_dump(mode="json"),
                     "quality_gate_before": quality_gate,
                     "company_data_audit_before": company_data_audit,
@@ -2220,6 +2282,10 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
             run_id,
             {
                 "source_report_id": report_id,
+                "source_report_topic": context.get("source_report_topic"),
+                "source_report_tickers": context.get("source_report_tickers") or [],
+                "source_report_generated_at": context.get("source_report_generated_at"),
+                "source_report_created_at": context.get("source_report_created_at"),
                 "request": persisted_request,
                 "quality_gate_before": quality_gate,
                 "available_actions": [action.to_dict() for action in all_actions],
@@ -2413,7 +2479,7 @@ async def run_pipeline(request: ReportRequest) -> dict:
             },
             report_id,
         )
-        auto_follow_up = await maybe_auto_start_required_follow_up(report_id)
+        auto_follow_up = await maybe_auto_start_required_follow_up(report_id, run_in_background=False)
         return {
             "run_id": run_id,
             "run_record_updated": run_record_updated,
@@ -2693,7 +2759,7 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             "report_execution": report_execution_summary(generator),
         }
         run_record_updated = safe_update_run_success(run_id, run_payload, report_id)
-        auto_follow_up = await maybe_auto_start_required_follow_up(report_id)
+        auto_follow_up = await maybe_auto_start_required_follow_up(report_id, run_in_background=False)
         return {
             "run_id": run_id,
             "run_record_updated": run_record_updated,

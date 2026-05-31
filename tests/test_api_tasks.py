@@ -1789,7 +1789,7 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
         topic = "AI 產業鏈"
         tickers_json = '["2330"]'
         markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n測試"
-        generated_at = now_taipei()
+        generated_at = datetime(2026, 5, 28, 10, 0, 0)
 
     class ReportRun:
         payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2330"]}}'
@@ -1799,14 +1799,17 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
         source = "follow_up_api"
         status = "success"
         payload_json = (
-            '{"source_report_id":7,"summary":{"selected":{"required_count":2}},'
+            '{"source_report_id":7,"source_report_topic":"AI 產業鏈",'
+            '"source_report_tickers":["2330"],'
+            '"request":{"topic":"AI 產業鏈","tickers":["2330","2382"]},'
+            '"summary":{"selected":{"required_count":2}},'
             '"planned_actions":[{"action_type":"ingest_news"}],'
             '"rerun_report":{"report_id":8}}'
         )
         report_id = 8
         output_path = None
         error = None
-        started_at = datetime(2026, 5, 28, 10, 0, 0)
+        started_at = datetime(2026, 5, 28, 10, 1, 0)
         finished_at = datetime(2026, 5, 28, 10, 5, 0)
 
     class FakeReportRepository:
@@ -1839,6 +1842,74 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
     assert auto_follow_up["status"] == "success"
     assert auto_follow_up["summary"]["selected"]["required_count"] == 2
     assert auto_follow_up["rerun_report"]["report_id"] == 8
+
+
+def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run(monkeypatch) -> None:
+    class FakeReport:
+        id = 7
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n測試"
+        generated_at = datetime(2026, 5, 28, 10, 0, 0)
+
+    class ReportRun:
+        payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2330"]}}'
+
+    class MismatchedFollowUpRun:
+        id = 31
+        source = "follow_up_api"
+        status = "success"
+        payload_json = (
+            '{"source_report_id":7,"request":{"topic":"機器人 產業鏈","tickers":["2308"]},'
+            '"summary":{"selected":{"required_count":2}}}'
+        )
+        report_id = 8
+        output_path = None
+        error = None
+        started_at = datetime(2026, 5, 28, 10, 2, 0)
+        finished_at = datetime(2026, 5, 28, 10, 5, 0)
+
+    class StaleFollowUpRun:
+        id = 30
+        source = "follow_up_api"
+        status = "success"
+        payload_json = (
+            '{"source_report_id":7,"request":{"topic":"AI 產業鏈","tickers":["2330"]},'
+            '"summary":{"selected":{"required_count":1}}}'
+        )
+        report_id = 7
+        output_path = None
+        error = None
+        started_at = datetime(2026, 5, 28, 1, 59, 0)
+        finished_at = datetime(2026, 5, 28, 1, 59, 30)
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int) -> FakeReport | None:
+            assert report_id == 7
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int) -> ReportRun:
+            assert report_id == 7
+            return ReportRun()
+
+        def latest(self, limit: int = 100) -> list:
+            return [MismatchedFollowUpRun(), StaleFollowUpRun()]
+
+    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+
+    response = TestClient(main.app).get("/reports/7")
+
+    assert response.status_code == 200
+    assert response.json()["auto_follow_up"] is None
 
 
 def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:

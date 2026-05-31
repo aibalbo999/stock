@@ -143,20 +143,29 @@ def _follow_up_run_matches_report(run, payload: dict, report) -> bool:
     return True
 
 
+def _run_completion_identity_value(run) -> datetime:
+    value = getattr(run, "finished_at", None) or getattr(run, "started_at", None)
+    return _datetime_identity_value(value, naive_timezone=timezone.utc) or datetime.min
+
+
 def latest_follow_up_run_for_report(repository: AnalysisRunRepository, report) -> dict | None:
     latest = getattr(repository, "latest", None)
     if not callable(latest):
         return None
+    matches = []
     for run in latest(100):
         payload = parse_run_payload(run.payload_json)
         if _follow_up_run_matches_report(run, payload, report):
-            return {
-                **serialize_run(run),
-                "summary": payload.get("summary") or {},
-                "planned_actions": payload.get("planned_actions") or [],
-                "rerun_report": payload.get("rerun_report"),
-            }
-    return None
+            matches.append((run, payload))
+    if not matches:
+        return None
+    run, payload = max(matches, key=lambda item: _run_completion_identity_value(item[0]))
+    return {
+        **serialize_run(run),
+        "summary": payload.get("summary") or {},
+        "planned_actions": payload.get("planned_actions") or [],
+        "rerun_report": payload.get("rerun_report"),
+    }
 
 
 def sufficient_company_filing_tickers(tickers: list[str]) -> set[str]:

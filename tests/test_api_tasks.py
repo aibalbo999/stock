@@ -1912,6 +1912,49 @@ def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run(monkeypatch) 
     assert response.json()["auto_follow_up"] is None
 
 
+def test_latest_follow_up_prefers_latest_finished_matching_run() -> None:
+    report = SimpleNamespace(
+        id=7,
+        topic="AI 產業鏈",
+        tickers_json='["2330"]',
+        generated_at=datetime(2026, 5, 28, 10, 0, 0),
+    )
+    newer_started_run = SimpleNamespace(
+        id=31,
+        source="follow_up_api",
+        status="success",
+        payload_json=(
+            '{"source_report_id":7,"source_report_topic":"AI 產業鏈",'
+            '"source_report_tickers":["2330"],"rerun_report":{"report_id":8}}'
+        ),
+        report_id=8,
+        output_path=None,
+        error=None,
+        started_at=datetime(2026, 5, 28, 3, 30, 0),
+        finished_at=datetime(2026, 5, 28, 3, 35, 0),
+    )
+    later_finished_run = SimpleNamespace(
+        id=30,
+        source="follow_up_api",
+        status="success",
+        payload_json=(
+            '{"source_report_id":7,"source_report_topic":"AI 產業鏈",'
+            '"source_report_tickers":["2330"],"rerun_report":{"report_id":9}}'
+        ),
+        report_id=9,
+        output_path=None,
+        error=None,
+        started_at=datetime(2026, 5, 28, 3, 0, 0),
+        finished_at=datetime(2026, 5, 28, 3, 40, 0),
+    )
+    repository = SimpleNamespace(latest=lambda limit=100: [newer_started_run, later_finished_run])
+
+    auto_follow_up = main.latest_follow_up_run_for_report(repository, report)
+
+    assert auto_follow_up["id"] == 30
+    assert auto_follow_up["rerun_report"]["report_id"] == 9
+
+
 def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:
     refreshed = {}
 

@@ -35,8 +35,8 @@ class CandidateCompany(BaseModel):
 
 
 class TopicDiscoveryPlan(BaseModel):
-    subtopics: list[DiscoverySubtopic] = Field(default_factory=list, max_length=8)
-    candidate_companies: list[CandidateCompany] = Field(default_factory=list, max_length=20)
+    subtopics: list[DiscoverySubtopic] = Field(default_factory=list, max_length=10)
+    candidate_companies: list[CandidateCompany] = Field(default_factory=list, max_length=24)
 
 
 class DiscoveryPlanQuality(BaseModel):
@@ -90,7 +90,7 @@ class TopicDiscoveryService:
                 "fallback_plan_applied": True,
             }
         try:
-            plan = self.parse_plan(result.text)
+            plan = self.enrich_plan(self.parse_plan(result.text), topic=topic)
         except ValueError as exc:
             fallback_plan = self._fallback_plan(topic)
             fallback_quality = self.evaluate_plan_quality(fallback_plan)
@@ -148,7 +148,7 @@ class TopicDiscoveryService:
         if result.fallback:
             return None
         try:
-            repaired_plan = self.parse_plan(result.text)
+            repaired_plan = self.enrich_plan(self.parse_plan(result.text), topic=topic)
         except ValueError:
             return None
         return {
@@ -214,12 +214,26 @@ class TopicDiscoveryService:
                     search_queries=["AI 伺服器 液冷訂單 散熱滲透率 電源規格", "AI data center liquid cooling 電源規格"],
                 ),
                 DiscoverySubtopic(
-                    name="高速 PCB 與載板",
+                    name="高速 PCB、載板與上游材料",
                     rationale="訊號與材料升級",
-                    objective="確認 AI 伺服器 PCB、載板與高速材料是否受惠或形成供給瓶頸",
-                    required_evidence=["PCB 訂單", "載板需求", "高速材料"],
-                    risk_focus=["良率瓶頸", "價格下修", "庫存調整"],
-                    search_queries=["AI 伺服器 PCB 載板 高速材料", "AI server PCB substrate CCL Taiwan"],
+                    objective="確認 AI 伺服器 PCB、載板、CCL、銅箔與玻纖布是否受惠或形成供給瓶頸",
+                    required_evidence=["PCB 訂單", "載板需求", "CCL", "銅箔", "玻纖布"],
+                    risk_focus=["良率瓶頸", "材料缺貨", "價格下修", "庫存調整"],
+                    search_queries=[
+                        "AI 伺服器 PCB 載板 CCL 銅箔 玻纖布",
+                        "AI server PCB substrate CCL copper foil glass fiber Taiwan",
+                    ],
+                ),
+                DiscoverySubtopic(
+                    name="半導體上游材料與特化",
+                    rationale="晶圓與化學材料",
+                    objective="查核矽晶圓、電子級化學品、特用氣體、光阻與 CMP 材料是否形成成本或供給瓶頸",
+                    required_evidence=["矽晶圓", "電子級化學品", "特用氣體", "光阻", "CMP 材料"],
+                    risk_focus=["材料漲價", "供應受限", "認證週期", "客戶集中"],
+                    search_queries=[
+                        "AI 晶片 半導體材料 矽晶圓 電子級化學品 特用氣體",
+                        "AI semiconductor materials silicon wafer specialty chemicals photoresist CMP Taiwan",
+                    ],
                 ),
                 DiscoverySubtopic(
                     name="財務與估值",
@@ -317,34 +331,6 @@ class TopicDiscoveryService:
                     evidence_keywords=["AI 伺服器", "機櫃", "CSP"],
                 ),
                 CandidateCompany(
-                    ticker="2356",
-                    name="英業達",
-                    segment="AI 伺服器代工",
-                    rationale="伺服器代工",
-                    evidence_keywords=["AI 伺服器", "雲端", "出貨"],
-                ),
-                CandidateCompany(
-                    ticker="2376",
-                    name="技嘉",
-                    segment="AI 伺服器與主機板",
-                    rationale="伺服器板卡",
-                    evidence_keywords=["AI 伺服器", "主機板", "GPU"],
-                ),
-                CandidateCompany(
-                    ticker="2377",
-                    name="微星",
-                    segment="AI 伺服器與板卡",
-                    rationale="伺服器板卡",
-                    evidence_keywords=["AI 伺服器", "GPU", "主機板"],
-                ),
-                CandidateCompany(
-                    ticker="3706",
-                    name="神達",
-                    segment="AI 伺服器",
-                    rationale="伺服器系統",
-                    evidence_keywords=["AI 伺服器", "資料中心", "系統"],
-                ),
-                CandidateCompany(
                     ticker="2368",
                     name="金像電",
                     segment="AI 伺服器 PCB",
@@ -373,11 +359,39 @@ class TopicDiscoveryService:
                     evidence_keywords=["CCL", "高速材料", "AI 伺服器"],
                 ),
                 CandidateCompany(
-                    ticker="3653",
-                    name="健策",
-                    segment="散熱與金屬件",
-                    rationale="高功耗散熱",
-                    evidence_keywords=["散熱", "均熱片", "AI 伺服器"],
+                    ticker="2383",
+                    name="台光電",
+                    segment="高速 CCL / 低損耗材料",
+                    rationale="AI 伺服器高速板材",
+                    evidence_keywords=["CCL", "低損耗材料", "AI 伺服器"],
+                ),
+                CandidateCompany(
+                    ticker="6213",
+                    name="聯茂",
+                    segment="高速 CCL",
+                    rationale="高速材料需求提升",
+                    evidence_keywords=["CCL", "高速材料", "資料中心"],
+                ),
+                CandidateCompany(
+                    ticker="1815",
+                    name="富喬",
+                    segment="玻纖布",
+                    rationale="PCB 上游玻纖材料",
+                    evidence_keywords=["玻纖布", "PCB", "AI 伺服器"],
+                ),
+                CandidateCompany(
+                    ticker="8358",
+                    name="金居",
+                    segment="銅箔",
+                    rationale="高階 PCB 上游銅箔",
+                    evidence_keywords=["銅箔", "PCB", "AI 伺服器"],
+                ),
+                CandidateCompany(
+                    ticker="6488",
+                    name="環球晶",
+                    segment="矽晶圓",
+                    rationale="半導體上游晶圓材料",
+                    evidence_keywords=["矽晶圓", "半導體材料", "AI 晶片"],
                 ),
             ],
             )
@@ -438,6 +452,17 @@ class TopicDiscoveryService:
                         ],
                     ),
                     DiscoverySubtopic(
+                        name="上游材料與關鍵原料",
+                        rationale="材料決定成本良率",
+                        objective="查核磁材、電磁鋼、軸承鋼/特殊鋼、工程塑膠、碳纖與鎂鋁合金是否限制機器人成本、重量與供給",
+                        required_evidence=["稀土磁材", "電磁鋼", "特殊鋼", "工程塑膠", "碳纖", "鎂鋁合金"],
+                        risk_focus=["原料漲價", "供應集中", "認證週期", "替代材料競爭"],
+                        search_queries=[
+                            "機器人 上游材料 稀土磁材 電磁鋼 特殊鋼 工程塑膠",
+                            "robotics upstream materials 稀土磁材 electrical steel 工程塑膠 carbon fiber Taiwan",
+                        ],
+                    ),
+                    DiscoverySubtopic(
                         name="財務與估值檢查",
                         rationale="避免只因機器人題材追高",
                         objective="比較候選公司的月營收、毛利率、本益比、資本支出與機器人業務佔比",
@@ -472,15 +497,15 @@ class TopicDiscoveryService:
                     CandidateCompany(ticker="3059", name="華晶科", segment="3D 感測相機", rationale="影像與 3D 感測可支援機器視覺", evidence_keywords=["3D 感測", "機器視覺", "鏡頭"]),
                     CandidateCompany(ticker="4540", name="盟立", segment="自動化系統整合", rationale="自動化設備與系統整合具機器人導入題材", evidence_keywords=["自動化", "系統整合", "機器人"]),
                     CandidateCompany(ticker="6188", name="廣明", segment="協作型機器人", rationale="協作型機器人與自動化設備題材", evidence_keywords=["協作機器人", "自動化", "機器人"]),
-                    CandidateCompany(ticker="2421", name="建準", segment="散熱模組與風扇", rationale="機器人與工業設備散熱需求", evidence_keywords=["散熱", "風扇", "機器人"]),
                     CandidateCompany(ticker="2301", name="光寶科", segment="電源管理系統", rationale="電源與感測模組可用於機器人平台", evidence_keywords=["電源", "感測", "機器人"]),
-                    CandidateCompany(ticker="6274", name="台燿", segment="高頻高速材料", rationale="高頻材料可支援感測與邊緣運算硬體", evidence_keywords=["高速材料", "邊緣運算", "機器人"]),
                     CandidateCompany(ticker="1504", name="東元", segment="伺服馬達與 AGV", rationale="馬達、電控與 AGV 自動化應用", evidence_keywords=["伺服馬達", "AGV", "自動化"]),
                     CandidateCompany(ticker="3019", name="亞光", segment="光學鏡頭", rationale="光學鏡頭與感測可支援機器視覺", evidence_keywords=["光學鏡頭", "機器視覺", "感測"]),
                     CandidateCompany(ticker="3548", name="兆利", segment="精密轉軸與關節機構", rationale="轉軸與精密機構件可對應機器人關節", evidence_keywords=["轉軸", "關節", "機構件"]),
                     CandidateCompany(ticker="5443", name="均豪", segment="半導體自動化與機械手臂整合", rationale="自動化設備與機械手臂整合經驗", evidence_keywords=["自動化", "機械手臂", "半導體設備"]),
                     CandidateCompany(ticker="8374", name="羅昇", segment="自動化驅動與視覺代理", rationale="代理自動化零組件與視覺控制產品", evidence_keywords=["自動化", "驅動", "機器視覺"]),
-                    CandidateCompany(ticker="3037", name="欣興", segment="PCB 與載板", rationale="機器人控制板與邊緣運算硬體供應鏈可追蹤", evidence_keywords=["PCB", "載板", "邊緣運算"]),
+                    CandidateCompany(ticker="2002", name="中鋼", segment="電磁鋼 / 特殊鋼材", rationale="馬達與結構材料上游", evidence_keywords=["電磁鋼", "特殊鋼", "機器人"]),
+                    CandidateCompany(ticker="5009", name="榮剛", segment="特殊合金鋼", rationale="齒輪與關節用鋼材", evidence_keywords=["特殊鋼", "合金鋼", "精密機械"]),
+                    CandidateCompany(ticker="1303", name="南亞", segment="工程塑膠 / 電子材料", rationale="輕量化與絕緣材料", evidence_keywords=["工程塑膠", "電子材料", "複合材料"]),
                 ],
             )
         )
@@ -514,6 +539,8 @@ class TopicDiscoveryService:
                 missing.append(f"{label} 搜尋 query 未對應研究證據或風險：{query}")
 
         coverage = TopicDiscoveryService._plan_theme_coverage(plan)
+        if TopicDiscoveryService._requires_upstream_material_coverage(plan):
+            coverage["上游材料"] = TopicDiscoveryService._has_upstream_material_coverage(plan)
         for theme, covered in coverage.items():
             if not covered:
                 missing.append(f"缺少{theme}任務")
@@ -612,9 +639,78 @@ class TopicDiscoveryService:
             "風險/瓶頸": ["風險", "瓶頸", "限制", "缺電", "地緣", "管制", "risk", "bottleneck"],
         }
         return {
-            theme: any(keyword in joined for keyword in keywords)
+            theme: any(TopicDiscoveryService._keyword_in_text(joined, keyword) for keyword in keywords)
             for theme, keywords in themes.items()
         }
+
+    @staticmethod
+    def _keyword_in_text(text: str, keyword: str) -> bool:
+        normalized = keyword.lower()
+        if normalized in {"pe", "pb"}:
+            return bool(re.search(rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", text))
+        return normalized in text
+
+    @staticmethod
+    def _requires_upstream_material_coverage(plan: TopicDiscoveryPlan, topic: str | None = None) -> bool:
+        text = " ".join([topic or "", TopicDiscoveryService._plan_search_text(plan)]).lower()
+        return any(
+            term in text
+            for term in [
+                "ai 伺服器",
+                "ai伺服器",
+                "資料中心",
+                "半導體",
+                "晶圓",
+                "cowos",
+                "hbm",
+                "pcb",
+                "載板",
+                "機器人",
+                "robot",
+                "robotics",
+                "自動化",
+                "伺服",
+                "馬達",
+                "減速器",
+                "供應鏈",
+            ]
+        )
+
+    @staticmethod
+    def _has_upstream_material_coverage(plan: TopicDiscoveryPlan) -> bool:
+        text = TopicDiscoveryService._plan_search_text(plan)
+        ai_material_groups = [
+            ["矽晶圓", "晶圓材料", "電子級", "特用氣體", "化學品", "光阻", "cmp", "silicon wafer", "photoresist"],
+            ["ccl", "銅箔", "玻纖", "玻纖布", "abf", "樹脂", "低損耗材料", "copper foil", "glass fiber"],
+        ]
+        robotics_material_groups = [
+            ["磁材", "稀土", "rare earth", "magnet"],
+            ["特殊鋼", "軸承鋼", "電磁鋼", "鋼材", "合金鋼", "steel"],
+            ["工程塑膠", "碳纖", "複合材料", "engineering plastics", "carbon fiber", "composite"],
+            ["鎂鋁", "鋁鎂", "輕量化金屬", "magnesium", "aluminum"],
+        ]
+        groups = ai_material_groups if not TopicDiscoveryService._is_robotics_plan(plan) else robotics_material_groups
+        covered_groups = sum(1 for group in groups if any(term in text for term in group))
+        return covered_groups >= 2
+
+    @staticmethod
+    def _plan_search_text(plan: TopicDiscoveryPlan) -> str:
+        parts = []
+        for subtopic in plan.subtopics:
+            parts.extend(
+                [
+                    subtopic.name,
+                    subtopic.rationale,
+                    subtopic.objective,
+                    *subtopic.required_evidence,
+                    *subtopic.risk_focus,
+                    *subtopic.search_queries,
+                    *subtopic.source_intents,
+                ]
+            )
+        for candidate in plan.candidate_companies:
+            parts.extend([candidate.name, candidate.segment, candidate.rationale, *candidate.evidence_keywords])
+        return " ".join(part for part in parts if part).lower()
 
     @staticmethod
     def _plan_query_quality(plan: TopicDiscoveryPlan) -> dict:
@@ -932,6 +1028,7 @@ class TopicDiscoveryService:
             "財務/營收": ["營收 毛利 獲利", "財報 現金流"],
             "估值/股價": ["股價 估值 本益比", "同業 比較"],
             "風險/瓶頸": ["風險 瓶頸 限制", "地緣政治 缺電 管制"],
+            "上游材料": ["上游材料 原料 供給 瓶頸", "材料端 成本 認證 供應鏈"],
         }
         queries = []
         for theme, covered in quality.coverage.items():
@@ -1107,9 +1204,12 @@ class TopicDiscoveryService:
             "NVIDIA AI server supply chain Taiwan ODM",
             "NVIDIA GB200 GB300 Rubin AI server supply chain",
             "CoWoS HBM capacity bottleneck global AI chips",
+            "AI server upstream materials CCL copper foil glass fiber Taiwan",
+            "semiconductor materials silicon wafer specialty chemicals AI chip Taiwan",
             "AI data center liquid cooling supply chain",
             "AI data center power grid constraint semiconductor",
             "US export controls AI chips Taiwan supply chain",
+            "robotics upstream materials rare earth magnet special steel engineering plastics",
             "North American cloud AI server capex TrendForce",
         ]
 
@@ -1221,9 +1321,29 @@ class TopicDiscoveryService:
                     "servo",
                     "machine vision",
                     "motion control",
+                    "磁材",
+                    "稀土",
+                    "電磁鋼",
+                    "特殊鋼",
+                    "工程塑膠",
+                    "碳纖",
+                    "鎂鋁合金",
+                    "rare earth",
+                    "magnet",
+                    "special steel",
+                    "engineering plastics",
+                    "carbon fiber",
                 ]
             )
         return list(dict.fromkeys(term.strip() for term in terms if term and term.strip()))
+
+    @staticmethod
+    def _is_robotics_plan(plan: TopicDiscoveryPlan, topic: str | None = None) -> bool:
+        text = " ".join([topic or "", TopicDiscoveryService._plan_search_text(plan)]).lower()
+        return "機器人" in text or any(
+            term in text
+            for term in ["robot", "robotics", "humanoid", "servo", "automation", "agv"]
+        )
 
     @staticmethod
     def _plan_or_candidate_mentions_robotics(candidate: CandidateCompany, plan: TopicDiscoveryPlan | None = None) -> bool:
@@ -1459,11 +1579,101 @@ class TopicDiscoveryService:
             raise ValueError("invalid topic discovery json") from exc
 
     @staticmethod
-    def enrich_plan(plan: TopicDiscoveryPlan) -> TopicDiscoveryPlan:
+    def enrich_plan(plan: TopicDiscoveryPlan, topic: str | None = None) -> TopicDiscoveryPlan:
+        plan = plan.model_copy(deep=True)
+        plan = TopicDiscoveryService._ensure_upstream_material_layer(plan, topic=topic)
         for subtopic in plan.subtopics:
             if not subtopic.source_intents:
                 subtopic.source_intents = TopicDiscoveryService.infer_source_intents(subtopic)
         return plan
+
+    @staticmethod
+    def _ensure_upstream_material_layer(plan: TopicDiscoveryPlan, topic: str | None = None) -> TopicDiscoveryPlan:
+        if not topic:
+            return plan
+        if not TopicDiscoveryService._requires_upstream_material_coverage(plan, topic=topic):
+            return plan
+        if TopicDiscoveryService._has_upstream_material_coverage(plan):
+            return plan
+
+        if TopicDiscoveryService._is_robotics_plan(plan, topic=topic):
+            material_subtopics = TopicDiscoveryService._robotics_upstream_material_subtopics()
+            material_candidates = TopicDiscoveryService._robotics_upstream_material_candidates()
+        else:
+            material_subtopics = TopicDiscoveryService._ai_upstream_material_subtopics()
+            material_candidates = TopicDiscoveryService._ai_upstream_material_candidates()
+
+        existing_subtopic_names = {subtopic.name for subtopic in plan.subtopics}
+        for subtopic in material_subtopics:
+            if subtopic.name in existing_subtopic_names:
+                continue
+            if len(plan.subtopics) >= 10:
+                break
+            plan.subtopics.append(subtopic)
+            existing_subtopic_names.add(subtopic.name)
+
+        existing_tickers = {candidate.ticker for candidate in plan.candidate_companies}
+        for candidate in material_candidates:
+            if candidate.ticker in existing_tickers:
+                continue
+            if len(plan.candidate_companies) >= 24:
+                break
+            plan.candidate_companies.append(candidate)
+            existing_tickers.add(candidate.ticker)
+        return plan
+
+    @staticmethod
+    def _ai_upstream_material_subtopics() -> list[DiscoverySubtopic]:
+        return [
+            DiscoverySubtopic(
+                name="上游半導體與板材材料",
+                rationale="材料端常先吃緊",
+                objective="補查矽晶圓、電子級化學品、特用氣體、光阻、CCL、銅箔與玻纖布是否形成 AI 供應鏈瓶頸",
+                required_evidence=["矽晶圓", "電子級化學品", "特用氣體", "CCL", "銅箔", "玻纖布"],
+                risk_focus=["材料漲價", "供應受限", "認證週期", "庫存調整"],
+                search_queries=[
+                    "AI 供應鏈 上游材料 矽晶圓 電子級化學品 CCL 銅箔 玻纖布",
+                    "AI supply chain upstream materials silicon wafer CCL copper foil glass fiber Taiwan",
+                ],
+                source_intents=["industry_news", "capacity_supply", "material_supply", "international_context"],
+            )
+        ]
+
+    @staticmethod
+    def _robotics_upstream_material_subtopics() -> list[DiscoverySubtopic]:
+        return [
+            DiscoverySubtopic(
+                name="上游材料與關鍵原料",
+                rationale="材料決定成本良率",
+                objective="補查磁材、電磁鋼、軸承鋼/特殊鋼、工程塑膠、碳纖與鎂鋁合金是否限制機器人成本、重量與供給",
+                required_evidence=["稀土磁材", "電磁鋼", "特殊鋼", "工程塑膠", "碳纖", "鎂鋁合金"],
+                risk_focus=["原料漲價", "供應集中", "認證週期", "替代材料競爭"],
+                search_queries=[
+                    "機器人 上游材料 稀土磁材 電磁鋼 特殊鋼 工程塑膠",
+                    "robotics upstream materials 稀土磁材 electrical steel 工程塑膠 carbon fiber Taiwan",
+                ],
+                source_intents=["industry_news", "capacity_supply", "material_supply", "international_context"],
+            )
+        ]
+
+    @staticmethod
+    def _ai_upstream_material_candidates() -> list[CandidateCompany]:
+        return [
+            CandidateCompany(ticker="2383", name="台光電", segment="高速 CCL / 低損耗材料", rationale="AI 伺服器高速板材", evidence_keywords=["CCL", "低損耗材料", "AI 伺服器"]),
+            CandidateCompany(ticker="6213", name="聯茂", segment="高速 CCL", rationale="高速材料需求提升", evidence_keywords=["CCL", "高速材料", "資料中心"]),
+            CandidateCompany(ticker="1815", name="富喬", segment="玻纖布", rationale="PCB 上游玻纖材料", evidence_keywords=["玻纖布", "PCB", "AI 伺服器"]),
+            CandidateCompany(ticker="8358", name="金居", segment="銅箔", rationale="高階 PCB 上游銅箔", evidence_keywords=["銅箔", "PCB", "AI 伺服器"]),
+            CandidateCompany(ticker="6488", name="環球晶", segment="矽晶圓", rationale="半導體上游晶圓材料", evidence_keywords=["矽晶圓", "半導體材料", "AI 晶片"]),
+        ]
+
+    @staticmethod
+    def _robotics_upstream_material_candidates() -> list[CandidateCompany]:
+        return [
+            CandidateCompany(ticker="2002", name="中鋼", segment="電磁鋼 / 特殊鋼材", rationale="馬達與結構材料上游", evidence_keywords=["電磁鋼", "特殊鋼", "機器人"]),
+            CandidateCompany(ticker="5009", name="榮剛", segment="特殊合金鋼", rationale="齒輪與關節用鋼材", evidence_keywords=["特殊鋼", "合金鋼", "精密機械"]),
+            CandidateCompany(ticker="1303", name="南亞", segment="工程塑膠 / 電子材料", rationale="輕量化與絕緣材料", evidence_keywords=["工程塑膠", "電子材料", "複合材料"]),
+            CandidateCompany(ticker="6235", name="華孚", segment="鎂鋁合金機構件", rationale="輕量化金屬機構件", evidence_keywords=["鎂鋁合金", "機構件", "輕量化"]),
+        ]
 
     @staticmethod
     def infer_source_intents(subtopic: DiscoverySubtopic) -> list[str]:
@@ -1483,6 +1693,26 @@ class TopicDiscoveryService:
             ("company_disclosure", ["法說", "年報", "公開說明書", "重大訊息", "訂單", "出貨", "客戶"]),
             ("industry_news", ["產業", "市場", "需求", "供給", "成長", "market", "demand", "supply"]),
             ("capacity_supply", ["產能", "良率", "瓶頸", "交期", "capacity", "yield", "bottleneck"]),
+            (
+                "material_supply",
+                [
+                    "材料",
+                    "原料",
+                    "矽晶圓",
+                    "化學品",
+                    "特用氣體",
+                    "光阻",
+                    "ccl",
+                    "銅箔",
+                    "玻纖",
+                    "磁材",
+                    "特殊鋼",
+                    "工程塑膠",
+                    "carbon fiber",
+                    "silicon wafer",
+                    "copper foil",
+                ],
+            ),
             ("regulatory_policy", ["政策", "法規", "管制", "禁令", "地緣", "regulation", "export control"]),
             ("international_context", ["國際", "全球", "美國", "global", "us ", "worldwide"]),
         ]
@@ -1516,12 +1746,15 @@ class TopicDiscoveryService:
 約束：
 - 只能輸出 JSON，不要 Markdown，不要解釋，不要前後文。
 - 回覆第一個字元必須是 {{，最後一個字元必須是 }}。
-- subtopics 最多 6 筆；candidate_companies 最多 20 筆。
+- subtopics 最多 8 筆；candidate_companies 最多 24 筆。
 - rationale 每欄最多 25 個中文字；search query 每筆最多 30 個中文字。
 - 子題應是一個可執行研究任務，不只是關鍵字。
 - 每個子題需包含 objective、required_evidence、risk_focus，說明研究目的、需要查核的資料、需監控的風險。
-- 每個子題需包含 source_intents，表示應抓取的資料類型，例如 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context、early_signal。
+- 每個子題需包含 source_intents，表示應抓取的資料類型，例如 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、material_supply、regulatory_policy、international_context、early_signal。
 - 子題應能驅動資料抓取，例如 CoWoS、HBM、AI 伺服器、液冷、地緣政治、缺電等，但不要固定死在這些範例。
+- 若主題是硬體、半導體、AI 伺服器、機器人或大型供應鏈，第一階段必須往更上游拆到材料端，不能只停在組裝、零組件或系統整合。
+- 上游材料端至少要查核一個獨立子題；AI/半導體可包含矽晶圓、電子級化學品、特用氣體、光阻/CMP、CCL、銅箔、玻纖布、ABF/樹脂；機器人可包含稀土磁材、電磁鋼、軸承鋼/特殊鋼、工程塑膠、碳纖/複合材料、鎂鋁合金。
+- source_intents 可包含 material_supply，用於標記上游材料、原料、特用化學品、磁材、鋼材或板材供給檢查。
 - candidate_companies 是「候選研究清單」，不是正式投資推薦；要優先列出具備可驗證未來升值假設、但仍需用資料驗證或排除的公司。
 - 除大型龍頭外，候選清單必須保留一部分「報導較少但訊號可能轉強」的中小型或供應鏈二線公司；這些公司仍需被後續來源、月營收、估值與風險資料驗證，不能只因冷門就升格。
 - 每個候選公司都要有清楚產業鏈位置、升值假設與 evidence_keywords，讓後續報告能產出具體投資理由，而不是只列概念股。
@@ -1573,9 +1806,11 @@ JSON schema:
 - 只能輸出 JSON，不要 Markdown，不要解釋，不要前後文。
 - 回覆第一個字元必須是 {{，最後一個字元必須是 }}。
 - 保留合理的原子題與候選公司，但必須補齊品質缺口。
-- subtopics 最多 8 筆；candidate_companies 最多 20 筆。
+- subtopics 最多 10 筆；candidate_companies 最多 24 筆。
 - 每個子題都要有 objective、required_evidence、risk_focus、search_queries。
-- 每個子題都要有 source_intents，讓系統知道應補哪類來源；可用值包含 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、regulatory_policy、international_context、early_signal。
+- 每個子題都要有 source_intents，讓系統知道應補哪類來源；可用值包含 industry_news、company_disclosure、financial_metrics、valuation、capacity_supply、material_supply、regulatory_policy、international_context、early_signal。
+- 若主題是硬體、半導體、AI 伺服器、機器人或大型供應鏈，必須補齊上游材料端子題與候選公司，不可只列組裝、零組件、設備或系統整合。
+- 上游材料端可用 source_intents=material_supply；AI/半導體材料需涵蓋矽晶圓、電子級化學品、特用氣體、光阻/CMP、CCL、銅箔、玻纖布、ABF/樹脂之一組以上；機器人材料需涵蓋稀土磁材、電磁鋼、軸承鋼/特殊鋼、工程塑膠、碳纖/複合材料、鎂鋁合金之一組以上。
 - 子題必須是可執行研究任務，不能只是熱門股、概念股或單一關鍵字。
 - search_queries 要能直接用於 Google News RSS，並兼顧台灣與國際資料；每個子題至少保留 1 筆英文或中英混合國際查詢。
 - search_queries 必須能說明要驗證哪個投資假設，不可只是公司名、熱門股或籠統題材詞。

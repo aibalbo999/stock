@@ -172,6 +172,14 @@ def test_evaluate_plan_quality_marks_complete_research_tasks_ready() -> None:
               "search_queries": ["CoWoS HBM 產能 良率"]
             },
             {
+              "name": "上游材料",
+              "rationale": "材料供給",
+              "objective": "確認矽晶圓、CCL、銅箔與玻纖布是否形成供給瓶頸",
+              "required_evidence": ["矽晶圓", "CCL", "銅箔", "玻纖布"],
+              "risk_focus": ["材料缺貨", "價格上漲"],
+              "search_queries": ["AI 伺服器 上游材料 CCL 銅箔 玻纖布", "AI upstream materials silicon wafer CCL copper foil"]
+            },
+            {
               "name": "估值股價",
               "rationale": "股價反映程度",
               "objective": "比較估值與本益比",
@@ -187,7 +195,21 @@ def test_evaluate_plan_quality_marks_complete_research_tasks_ready() -> None:
               "segment": "晶圓代工",
               "rationale": "CoWoS",
               "evidence_keywords": ["CoWoS"]
-            }
+            },
+            {"ticker": "2382", "name": "廣達", "segment": "AI 伺服器代工", "rationale": "出貨", "evidence_keywords": ["AI 伺服器"]},
+            {"ticker": "3231", "name": "緯創", "segment": "AI 伺服器代工", "rationale": "出貨", "evidence_keywords": ["AI 伺服器"]},
+            {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "rationale": "散熱", "evidence_keywords": ["液冷"]},
+            {"ticker": "3017", "name": "奇鋐", "segment": "散熱模組", "rationale": "散熱", "evidence_keywords": ["散熱"]},
+            {"ticker": "2059", "name": "川湖", "segment": "伺服器導軌", "rationale": "導軌", "evidence_keywords": ["導軌"]},
+            {"ticker": "3131", "name": "弘塑", "segment": "先進封裝設備", "rationale": "設備", "evidence_keywords": ["CoWoS"]},
+            {"ticker": "3583", "name": "辛耘", "segment": "半導體設備", "rationale": "設備", "evidence_keywords": ["先進封裝"]},
+            {"ticker": "2308", "name": "台達電", "segment": "電源", "rationale": "電源", "evidence_keywords": ["電源"]},
+            {"ticker": "6669", "name": "緯穎", "segment": "AI 伺服器", "rationale": "伺服器", "evidence_keywords": ["資料中心"]},
+            {"ticker": "2368", "name": "金像電", "segment": "PCB", "rationale": "PCB", "evidence_keywords": ["PCB"]},
+            {"ticker": "3037", "name": "欣興", "segment": "ABF 載板", "rationale": "載板", "evidence_keywords": ["ABF"]},
+            {"ticker": "8046", "name": "南電", "segment": "ABF 載板", "rationale": "載板", "evidence_keywords": ["ABF"]},
+            {"ticker": "6274", "name": "台燿", "segment": "高速材料 / CCL", "rationale": "材料", "evidence_keywords": ["CCL"]},
+            {"ticker": "2383", "name": "台光電", "segment": "高速 CCL", "rationale": "材料", "evidence_keywords": ["CCL"]}
           ]
         }
         """
@@ -199,6 +221,7 @@ def test_evaluate_plan_quality_marks_complete_research_tasks_ready() -> None:
     assert quality.score >= 80
     assert quality.missing == []
     assert all(quality.coverage.values())
+    assert quality.coverage["上游材料"] is True
 
 
 def test_evaluate_plan_quality_flags_incomplete_research_tasks() -> None:
@@ -412,7 +435,9 @@ def test_discover_repairs_incomplete_plan_once() -> None:
     assert result["repair_attempted"] is True
     assert result["repair_applied"] is True
     assert result["initial_plan_quality"]["status"] == "insufficient"
-    assert result["plan_quality"]["status"] == "ready"
+    assert result["plan_quality"]["status"] == "caution"
+    assert "AI 產業鏈候選公司少於 15 檔" in "；".join(result["plan_quality"]["missing"])
+    assert any(subtopic["name"] == "上游半導體與板材材料" for subtopic in result["plan"]["subtopics"])
     assert result["plan"]["subtopics"][0]["name"] == "需求成長"
     assert "品質狀態" in llm.prompts[1]
 
@@ -480,8 +505,55 @@ def test_robotics_fallback_plan_provides_ready_candidate_pool() -> None:
     assert quality.score == 100
     assert len(plan.subtopics) >= 6
     assert len(plan.candidate_companies) == 20
-    assert {"2308", "2049", "6188", "3037"}.issubset(tickers)
+    assert {"2308", "2049", "6188", "2002", "5009", "1303"}.issubset(tickers)
     assert any("協作" in subtopic.name for subtopic in plan.subtopics)
+    assert any("上游材料" in subtopic.name for subtopic in plan.subtopics)
+    assert quality.coverage["上游材料"] is True
+
+
+def test_ai_fallback_plan_includes_upstream_material_layer() -> None:
+    plan = TopicDiscoveryService._fallback_plan("AI 產業鏈低關注潛力股")
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+    tickers = {candidate.ticker for candidate in plan.candidate_companies}
+    material_segments = {candidate.segment for candidate in plan.candidate_companies}
+
+    assert quality.status == "ready"
+    assert quality.coverage["上游材料"] is True
+    assert {"2383", "6213", "1815", "8358", "6488"}.issubset(tickers)
+    assert any("矽晶圓" in segment for segment in material_segments)
+    assert any("銅箔" in segment or "玻纖" in segment or "CCL" in segment for segment in material_segments)
+
+
+def test_enrich_plan_adds_upstream_material_layer_for_hardware_supply_chain() -> None:
+    plan = TopicDiscoveryService.enrich_plan(
+        TopicDiscoveryPlan(
+            subtopics=[
+                {
+                    "name": "機器人需求",
+                    "objective": "確認人形機器人訂單與出貨",
+                    "required_evidence": ["訂單", "出貨"],
+                    "risk_focus": ["需求下修"],
+                    "search_queries": ["機器人 訂單 出貨", "robotics orders shipment Taiwan"],
+                }
+            ],
+            candidate_companies=[
+                {
+                    "ticker": "2308",
+                    "name": "台達電",
+                    "segment": "伺服驅動",
+                    "rationale": "控制系統",
+                    "evidence_keywords": ["伺服", "機器人"],
+                }
+            ],
+        ),
+        topic="機器人 產業鏈",
+    )
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+    tickers = {candidate.ticker for candidate in plan.candidate_companies}
+
+    assert any("上游材料" in subtopic.name for subtopic in plan.subtopics)
+    assert {"2002", "5009", "1303"}.issubset(tickers)
+    assert quality.coverage["上游材料"] is True
 
 
 def test_discover_uses_robotics_fallback_when_llm_returns_non_json() -> None:
@@ -1291,4 +1363,7 @@ def test_topic_discovery_prompt_requests_early_signal_and_low_attention_candidat
 
     assert "early_signal" in prompt
     assert "報導較少但訊號可能轉強" in prompt
+    assert "上游材料端" in prompt
+    assert "material_supply" in prompt
     assert "長尾供應鏈候選" in repair
+    assert "上游材料端" in repair

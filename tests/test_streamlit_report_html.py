@@ -124,6 +124,29 @@ def test_report_html_renders_comparison_matrix_cards() -> None:
     assert "目前情境降值分" in html
 
 
+def test_report_html_renders_all_comparison_matrix_rows() -> None:
+    helpers = load_report_helpers()
+    rows = "\n".join(
+        f"| {1000 + index} 測試{index} | 觀察 / 等風險降低 | 2026-05-22 收盤 {index} | 等風險下降 | 20 分 | 7 分 | 目前估值接近同業 | 高 | 測試 |"
+        for index in range(1, 21)
+    )
+    markdown = f"""
+# AI 產業鏈 自動分析報告
+
+## 個股比較矩陣
+| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
+|---|---|---|---|---:|---:|---|---|---|
+{rows}
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert html.count('class="matrix-card') == 20
+    assert "共 20 檔" in html
+    assert "觀察 20" in html
+    assert "1020 測試20" in html
+
+
 def test_report_html_renders_credibility_panel() -> None:
     helpers = load_report_helpers()
     markdown = """
@@ -210,12 +233,41 @@ def test_report_html_prioritizes_zero_allocation_and_all_investment_rows() -> No
     assert "避開 / 降低曝險" in html
 
 
+def test_report_html_shows_all_first_tranche_allocation_rows() -> None:
+    helpers = load_report_helpers()
+    markdown = """
+# 機器人 產業鏈 自動分析報告
+
+## 一頁摘要
+| 項目 | 結果 |
+|---|---|
+| 可小額研究 | 4 檔 |
+
+## 資金控管建議
+資金設定：總資金 1,000,000 元以內。
+投資人設定：積極成長。
+原則：先控風險再追報酬。
+
+### 首筆配置草案
+本輪首筆配置合計約 180,000 元；可投入上限 700,000 元。
+- 2308 台達電：首筆配置約 50,000 元。
+- 4583 大銀微系統：首筆配置約 40,000 元。
+- 2359 所羅門：首筆配置約 40,000 元。
+- 1504 東元：首筆配置約 50,000 元。
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 18, "quality_gate": {}})
+
+    assert "本輪首筆配置合計約 180,000 元" in html
+    assert "1504 東元：首筆配置約 50,000 元" in html
+
+
 def test_report_html_renders_auto_follow_up_status_and_reader_rail() -> None:
     helpers = load_report_helpers()
     html = helpers["report_html"](
         "# AI 產業鏈 自動分析報告\n",
         {
-            "report_id": 1,
+            "report_id": 8,
             "quality_gate": {"status": "caution"},
             "auto_follow_up": {
                 "status": "started",
@@ -233,6 +285,50 @@ def test_report_html_renders_auto_follow_up_status_and_reader_rail() -> None:
     assert "decision-rail" in html
     assert 'aria-label="閱讀提示"' in html
     assert "先看本次配置與可研究檔數" in html
+
+
+def test_report_html_marks_old_report_when_auto_follow_up_created_new_report() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# AI 產業鏈 自動分析報告\n",
+        {
+            "report_id": 12,
+            "quality_gate": {"status": "caution"},
+            "auto_follow_up": {
+                "status": "started",
+                "summary": {
+                    "selected": {"total_count": 2},
+                    "execution": {"stored_count": 5},
+                },
+                "rerun_report": {"report_id": 14},
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" in html
+    assert "目前畫面是報告 #12" in html
+    assert "新版報告 #14" in html
+    assert "避免把舊版內容誤認為已更新" in html
+
+
+def test_report_html_ignores_auto_follow_up_from_another_source_report() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "source_report_id": 19,
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {"report_id": 20},
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #20" not in html
 
 
 def test_report_html_renders_auto_follow_up_unavailable_state() -> None:
@@ -319,6 +415,7 @@ def test_report_html_renders_investment_thesis_cards() -> None:
 - 具體投資理由：目前情境升值分 22 高於 10 的研究門檻。
 - 需要再確認：下一期月營收、法說或官方文件是否延續目前假設
 - 代表性來源：2026-05-20 測試新聞《台積電 AI 需求成長》
+- 風險來源：2026-05-18 測試新聞《台積電 產能吃緊》
 """
 
     html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
@@ -328,6 +425,7 @@ def test_report_html_renders_investment_thesis_cards() -> None:
     assert "值得研究的理由" in html
     assert "目前情境升值分 22" in html
     assert "不是未來報酬率、目標價或買賣指令" in html
+    assert "風險來源：2026-05-18 測試新聞" in html
 
 
 def test_report_html_renders_early_potential_radar_cards() -> None:
@@ -351,6 +449,55 @@ def test_report_html_renders_early_potential_radar_cards() -> None:
     assert "不是買賣指令" in html
     assert "不是自選股狀態" in html
     assert "英業達" in html
+
+
+def test_report_html_does_not_render_empty_early_potential_card() -> None:
+    helpers = load_report_helpers()
+    markdown = """
+# AI 產業鏈早期潛力股 自動分析報告
+
+## 早期潛力雷達
+本段專門找「截至目前報導較少、但近況訊號轉強」的研究線索。
+
+目前沒有同時符合「報導較少」與「近況訊號轉強」的標的。
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert "早期潛力雷達" not in html
+    assert 'class="radar-card' not in html
+    assert "目前無足夠數據判斷 | 0" not in html
+
+
+def test_report_html_renders_full_next_step_groups() -> None:
+    helpers = load_report_helpers()
+    watch_rows = "\n".join(
+        f"- {1000 + index} 測試{index}：觀察 / 等風險降低；下一步補查 等待新證據。"
+        for index in range(1, 20)
+    )
+    markdown = f"""
+# AI 產業鏈 自動分析報告
+
+## 下一步行動
+1. 先處理資料缺口。
+2. 只把資料完整且通過門檻的股票放進研究清單。
+
+### 可立即研究
+- 目前沒有同時通過資料完整度與風險門檻的標的。
+
+### 待補資料 / 觀察
+{watch_rows}
+
+### 先避開
+- 8046 南電：目前情境降值分 18 分，暫不列入買進研究。
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert "處理原則（2 項）" in html
+    assert "待補資料 / 觀察（19 項）" in html
+    assert "1019 測試19" in html
+    assert "8046 南電" in html
 
 
 def test_report_html_renders_quality_warnings() -> None:
@@ -542,17 +689,43 @@ def test_report_html_renders_candidate_audit_from_result_payload() -> None:
                     "validation_reason": "弱證據：來源不足",
                     "next_action": "補抓公司新聞",
                 },
+                {
+                    "ticker": "3059",
+                    "name": "華晶科",
+                    "segment": "3D 感測相機",
+                    "status": "evidence_limited",
+                    "evidence_count": 4,
+                    "evidence_source_count": 2,
+                    "validation_reason": "已自動補查，仍未達正式分析門檻。",
+                    "next_action": "後續只有在新增公司公告時才重新評估。",
+                    "latest_evidence_date": "2025-08-08",
+                    "evidence_age_days": 296,
+                    "evidence_stale": True,
+                    "evidence_sources": [
+                        {
+                            "title": "華晶科 股東會年報",
+                            "publisher": "公開資訊觀測站 MOPS",
+                            "published_at": "2025-08-08",
+                            "url": "https://example.com/3059",
+                        }
+                    ],
+                    "evidence_confidence_score": 63,
+                    "evidence_confidence_label": "中",
+                },
             ],
         },
     )
 
     assert "候選公司審計" in html
-    assert "候選清單</span><strong>2</strong>" in html
+    assert "候選清單</span><strong>3</strong>" in html
+    assert "候選卡片 3" in html
     assert "2382 廣達" in html
     assert "3324 雙鴻" in html
+    assert "3059 華晶科" in html
     assert "廣達 AI 伺服器訂單" in html
     assert "測試新聞" in html
     assert "高 92" in html
+    assert "超過 180 天新鮮度門檻" in html
 
 
 def test_report_html_uses_quality_promoted_count_when_report_payload_has_no_promoted_list() -> None:

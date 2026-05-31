@@ -16,6 +16,12 @@ from app.core.config import get_settings
 from app.models.schemas import NewsDocument, Source
 
 
+FETCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; StockAIResearchBot/1.0; +https://localhost)",
+    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.5",
+}
+
+
 class NewsSourceConfig(BaseModel):
     name: str
     url: str
@@ -105,7 +111,7 @@ class NewsSourceStore:
 class NewsFetcher:
     async def fetch_url(self, url: str, publisher: str | None = None) -> NewsDocument:
         async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(url)
+            response = await client.get(url, headers=FETCH_HEADERS)
             response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         title = self._title(soup) or url
@@ -146,7 +152,7 @@ class NewsFetcher:
         limit: int = 10,
     ) -> list[NewsDocument]:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            response = await client.get(url)
+            response = await client.get(url, headers=FETCH_HEADERS)
             response.raise_for_status()
         return self.parse_feed(response.text, feed_url=url, publisher=publisher, limit=limit)
 

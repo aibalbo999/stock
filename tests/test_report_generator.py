@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from app.data_sources.news import NewsFetcher
@@ -18,6 +18,7 @@ from app.models.schemas import (
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
+from app.services.llm_client import LLMResult
 from app.services.report_generator import ReportExecutionError, ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -893,7 +894,45 @@ def test_investment_thesis_map_explains_reasons_sources_and_limits() -> None:
     assert "### 2330 台積電" in thesis
     assert "具體投資理由" in thesis
     assert "目前情境升值分" in thesis
-    assert "代表性來源：2026-05-20 測試新聞A《台積電 AI 需求成長》" in thesis
+    assert "代表性來源：2026-05-21 測試新聞B《台積電 CoWoS 大單》" in thesis
+    assert "2026-05-20 測試新聞A《台積電 AI 需求成長》" in thesis
+
+
+def test_representative_sources_dedupes_and_sorts_newest_first() -> None:
+    older = NewsFetcher.from_manual_text(
+        title="台積電 AI 需求成長",
+        text="台積電 AI 需求成長。",
+        publisher="測試新聞A",
+        published_at=date(2026, 5, 20),
+    )
+    newer = NewsFetcher.from_manual_text(
+        title="台積電 CoWoS 大單",
+        text="台積電 CoWoS 大單。",
+        publisher="測試新聞B",
+        published_at=date(2026, 5, 21),
+    )
+    duplicate_newer = NewsFetcher.from_manual_text(
+        title="台積電 CoWoS 大單",
+        text="台積電 CoWoS 大單重複來源。",
+        publisher="測試新聞B",
+        published_at=date(2026, 5, 21),
+    ).model_copy(
+        update={
+            "id": "duplicate-with-different-url",
+            "source": Source(
+                title="台積電 CoWoS 大單",
+                url="https://example.com/duplicate",
+                publisher="測試新聞B",
+                published_at=date(2026, 5, 21),
+            ),
+        }
+    )
+
+    sources = ReportGenerator._representative_sources([older, newer, duplicate_newer])
+
+    assert sources.startswith("2026-05-21 測試新聞B《台積電 CoWoS 大單》")
+    assert sources.count("台積電 CoWoS 大單") == 1
+    assert "2026-05-20 測試新聞A《台積電 AI 需求成長》" in sources
 
 
 def test_early_potential_radar_prioritizes_low_attention_strengthening_signals() -> None:
@@ -1355,6 +1394,48 @@ def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     assert "| 可小額研究 | 1 檔 |" in snapshot_text
 
 
+def test_executive_snapshot_warns_low_attention_topic_needs_radar_check() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    request = ReportRequest(topic="AI 產業鏈低關注潛力股", tickers=["2330"], investor_capital=1_000_000)
+    snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=2255.0)
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 10),
+        revenue=349567000000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=18.5,
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台積電 AI 需求成長",
+            text="台積電 AI 需求成長。",
+            publisher="測試新聞A",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電 AI 伺服器需求延續",
+            text="台積電 AI 伺服器需求延續。",
+            publisher="測試新聞B",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+
+    snapshot_text = generator._render_executive_snapshot(
+        request,
+        ["2330"],
+        documents,
+        [make_finding("2330", "台積電", "台積電 AI 需求成長", RiskType.opportunity_or_growth)],
+        [snapshot],
+        [revenue],
+    )
+
+    assert "| 低關注核對 | 可小額研究不等於低關注" in snapshot_text
+    assert "早期潛力雷達" in snapshot_text
+
+
 def test_action_checklist_groups_research_and_watch_items() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
@@ -1467,7 +1548,8 @@ def test_final_potential_screen_reports_upside_and_downside_thresholds() -> None
 
     screen = generator._render_final_potential_screen(["2330"], documents, findings, [snapshot], [revenue])
 
-    assert "目前證據的情境升值分約" in screen
+    assert "### 升值分高但仍需觀察" in screen
+    assert "升值分約" in screen
     assert "目前證據的情境降值分約" in screen
     assert "2330 台積電" in screen
 
@@ -1789,7 +1871,31 @@ def test_source_coverage_summarizes_international_sources() -> None:
     assert "報告證據上限" not in section
     assert "實際納入證據" not in section
     assert "### 個股來源覆蓋" in section
-    assert "| 2382 廣達 | 2 | 1 | 2026-05-24 |" in section
+    assert "| 2382 廣達 | 2 | 1 | 2026-05-24 | 2026-05-24 NVIDIA Blog" in section
+
+
+def test_appendix_lists_more_source_references_with_urls() -> None:
+    generator = object.__new__(ReportGenerator)
+    documents = [
+        NewsFetcher.from_manual_text(
+            title=f"source-{index:02d}",
+            text="測試來源內容",
+            publisher="測試來源",
+            published_at=date(2026, 1, 1) + timedelta(days=index),
+            url=f"https://example.com/{index}",
+        )
+        for index in range(85)
+    ]
+
+    appendix = generator._render_appendix(
+        LLMResult(text="", fallback=True),
+        documents,
+        [],
+    )
+
+    assert "2026-03-26 測試來源《source-84》（https://example.com/84）" in appendix
+    assert "其餘 5 筆來源已存入資料庫，本報告僅列前 80 筆" in appendix
+    assert "source-00" not in appendix
 
 
 def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
@@ -1834,9 +1940,12 @@ def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
     assert "| 可追溯來源 | 可追溯 | 共 2 筆文本 |" in section
     assert "| 來源多樣性 | 偏少 | 2 個發布者 |" in section
     assert "### 個股可信度核對" in section
-    assert "| 2330 台積電 | 中 | 2 筆 / 2 來源 | 1 筆 | 2026-05-21 |" in section
+    assert "本段檢查正式報告的分析可信度" in section
+    assert "| 全體來源時間戳 | 可判讀 | 2/2 筆 有日期；近 21 天 2/2 筆 |" in section
+    assert "| 公司層級分析完整度 | 可用 | 高分析可信度 1 檔、中分析可信度 0 檔、低分析可信度 0 檔 |" in section
+    assert "| 2330 台積電 | 高 | 2 筆 / 2 來源 | 1 筆 | 2026-05-21 |" in section
     assert "缺已揭露年度財報" in section
-    assert "### 可信度判讀規則" in section
+    assert "### 分析可信度判讀規則" in section
 
 
 def test_evidence_ranking_expands_topic_with_company_aliases() -> None:
@@ -1945,6 +2054,9 @@ def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
     assert "| 正式分析 | 1 |" in markdown
     assert "3324 雙鴻" in markdown
     assert "弱證據觀察" in markdown
+    assert "入選支持度只表示候選公司與主題的來源支持度" in markdown
+    assert "分析可信度仍需另看風險/機會歸因" in markdown
+    assert "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 入選支持度 |" in markdown
     assert "補抓公司新聞" in markdown
     assert "候選公司代表來源" in markdown
     assert "廣達 AI 伺服器訂單" in markdown
@@ -1974,7 +2086,7 @@ def test_candidate_audit_fallback_uses_low_confidence_reason() -> None:
 
     markdown = generator._render_candidate_audit([])
 
-    assert "弱證據：篇數與來源數達標，但證據信心只有 60 分" in markdown
+    assert "弱證據：篇數與來源數達標，但入選支持度只有 60 分" in markdown
     assert "補抓有日期、近期且不同發布者" in markdown
     assert "中 60" in markdown
 
@@ -2005,7 +2117,55 @@ def test_candidate_audit_marks_stale_candidate_sources() -> None:
 
     assert "最新候選來源為 2025-08-08" in markdown
     assert "超過 180 天新鮮度門檻" in markdown
+    assert "最新 2025-08-08（距今約" in markdown
+    assert "超過 180 天）" in markdown
     assert "最近 180 天內官方公告" in markdown
+
+
+def test_candidate_audit_representative_sources_are_newest_first() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1815",
+                "name": "富喬",
+                "segment": "玻纖布",
+                "evidence_keywords": ["AI"],
+                "evidence_count": 4,
+                "evidence_source_count": 3,
+                "evidence_sources": [
+                    {
+                        "title": "股東會年報(股東會後修訂本)",
+                        "publisher": "公開資訊觀測站 MOPS",
+                        "published_at": "2025-08-26",
+                        "url": "https://example.com/old1",
+                    },
+                    {
+                        "title": "股東會年報(尚未適用永續揭露準則)",
+                        "publisher": "公開資訊觀測站 MOPS",
+                        "published_at": "2025-05-23",
+                        "url": "https://example.com/old2",
+                    },
+                    {
+                        "title": "玻纖布 AI 需求增",
+                        "publisher": "UDN",
+                        "published_at": "2026-03-25",
+                        "url": "https://example.com/newer",
+                    },
+                ],
+                "evidence_confidence_score": 92,
+                "evidence_confidence_label": "高",
+                "latest_evidence_date": "2026-03-25",
+                "status": "evidence_supported",
+            },
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+
+    markdown = generator._render_candidate_audit(["1815"])
+
+    company_block = markdown[markdown.find("- 1815 富喬") :]
+    assert company_block.find("玻纖布 AI 需求增") < company_block.find("股東會年報(股東會後修訂本)")
+    assert "股東會年報(尚未適用永續揭露準則)" not in company_block[:300]
 
 
 def test_candidate_audit_dedupes_repeated_revalidation_reason() -> None:
@@ -2068,6 +2228,56 @@ def test_candidate_audit_filters_unrelated_release_note_sources() -> None:
 
     assert "Google Cloud Release Notes" not in markdown
     assert "| 5443 均豪 | 半導體自動化 | 弱證據觀察 | 0 篇 / 0 來源 |" in markdown
+
+
+def test_stale_company_text_downgrades_actionable_decision() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2059",
+                "name": "川湖",
+                "segment": "伺服器導軌",
+                "status": "evidence_supported",
+                "evidence_keywords": ["AI 伺服器"],
+            }
+        ]
+    )
+    generator.mapper = EntityMapper(generator.whitelist)
+    generator._company_filing_missing = lambda ticker, documents: []
+    request = ReportRequest(topic="AI 產業鏈低關注潛力股", tickers=["2059"], lookback_days=120)
+    old_document = NewsFetcher.from_manual_text(
+        title="川湖 AI 伺服器導軌需求成長",
+        text="文件類型：annual_report\n川湖 AI 伺服器導軌需求成長。",
+        publisher="公開資訊觀測站 MOPS",
+        published_at=date(2025, 6, 6),
+    )
+    snapshot = MarketSnapshot(ticker="2059", trade_date=date(2026, 5, 29), close=5065)
+    revenue = MonthlyRevenue(
+        ticker="2059",
+        revenue_date=date(2026, 5, 1),
+        revenue=100,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=79.1,
+    )
+    metrics = make_financial_metrics("2059", [100, 130, 160, 200], [10, 15, 22, 32])
+    valuation = ValuationMetric(ticker="2059", trade_date=date(2026, 5, 29), pe_ratio=20, pb_ratio=3)
+
+    context = generator._decision_contexts(
+        request,
+        ["2059"],
+        [old_document],
+        [],
+        [snapshot],
+        [revenue],
+        metrics,
+        [valuation],
+        {},
+    )[0]
+
+    assert "缺近 120 天公司文本" in context["quality"]["missing"]
+    assert context["decision"] == "觀察 / 資料待補"
 
 
 def test_partial_quality_upside_stays_on_watchlist_without_allocation() -> None:
@@ -2197,6 +2407,202 @@ def test_final_screen_does_not_promote_weak_evidence_revenue_only_score() -> Non
     assert "目前證據的情境升值分約" in screen
     assert "資料品質不足" in screen
     assert "情境升值潛力約" not in screen
+
+
+def test_final_screen_separates_high_upside_but_blocked_risk() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1303",
+                "name": "南亞",
+                "segment": "塑化材料",
+                "status": "evidence_supported",
+                "evidence_keywords": ["工程塑膠"],
+            }
+        ]
+    )
+    generator.mapper = EntityMapper(generator.whitelist)
+    generator._company_filing_missing = lambda ticker, documents: []
+    request = ReportRequest(
+        topic="機器人 產業鏈",
+        tickers=["1303"],
+        beginner_mode=False,
+        investor_profile=InvestorProfile.aggressive,
+    )
+    snapshot = MarketSnapshot(ticker="1303", trade_date=date(2026, 5, 22), close=40)
+    revenue = MonthlyRevenue(
+        ticker="1303",
+        revenue_date=date(2026, 5, 10),
+        revenue=10_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=19.4,
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="南亞 工程塑膠需求成長",
+            text="南亞 工程塑膠需求成長。",
+            publisher="測試新聞A",
+            published_at=date(2026, 5, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="南亞 電子材料受惠",
+            text="南亞 電子材料受惠題材。",
+            publisher="測試新聞B",
+            published_at=date(2026, 5, 21),
+        ),
+    ]
+    metrics = []
+    for year, sales, profit in [(2022, 100.0, 10.0), (2025, 59.7, 2.84)]:
+        metrics.extend(
+            [
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="營業收入",
+                    value=sales,
+                    source="test",
+                ),
+                FinancialMetric(
+                    ticker="1303",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="本期淨利",
+                    value=profit,
+                    source="test",
+                ),
+            ]
+        )
+
+    screen = generator._render_final_potential_screen(
+        ["1303"],
+        documents,
+        [],
+        [snapshot],
+        [revenue],
+        metrics,
+        [ValuationMetric(ticker="1303", trade_date=date(2026, 5, 22), pb_ratio=1.2)],
+        request=request,
+    )
+
+    assert "### 升值分高但風險壓過" in screen
+    assert "1303 南亞：升值分約" in screen
+    assert "最終判斷為「避開 / 降低曝險」" in screen
+    assert "### 目前情境升值分較高" not in screen
+
+
+def test_severe_financial_red_flags_cap_upside_score() -> None:
+    documents = [
+        NewsFetcher.from_manual_text(
+            title=f"南電 ABF 載板 AI 需求受惠 {index}",
+            text="南電 ABF 載板 AI 需求受惠，產能與訂單題材升溫。",
+            publisher=f"測試新聞{index}",
+            published_at=date(2026, 5, 20),
+        )
+        for index in range(6)
+    ]
+    snapshot = MarketSnapshot(ticker="8046", trade_date=date(2026, 5, 22), close=800)
+    revenue = MonthlyRevenue(
+        ticker="8046",
+        revenue_date=date(2026, 5, 10),
+        revenue=10_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=39.4,
+    )
+    metrics = []
+    for year, sales, profit in [(2021, 100.0, 30.0), (2025, 75.6, 10.1)]:
+        metrics.extend(
+            [
+                FinancialMetric(
+                    ticker="8046",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="營業收入",
+                    value=sales,
+                    source="test",
+                ),
+                FinancialMetric(
+                    ticker="8046",
+                    report_date=date(year, 12, 31),
+                    statement_type="income_statement",
+                    metric="本期淨利",
+                    value=profit,
+                    source="test",
+                ),
+            ]
+        )
+
+    estimate = ReportGenerator._estimate_potential(
+        documents,
+        [make_finding("8046", "南電", "ABF 供需吃緊", RiskType.structural_bottleneck)],
+        snapshot,
+        revenue,
+        financial_metrics=metrics,
+    )
+
+    assert estimate["upside_pct"] <= 20
+    assert "基本面紅旗" in estimate["upside_reason"]
+    assert "已將升值分" in estimate["upside_cap_note"]
+
+
+def test_yoy_growth_and_mom_decline_are_explained_together() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["AI 電源"],
+            }
+        ]
+    )
+    generator.mapper = EntityMapper(generator.whitelist)
+    generator._company_filing_missing = lambda ticker, documents: []
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2308"], investor_profile=InvestorProfile.balanced)
+    snapshot = MarketSnapshot(ticker="2308", trade_date=date(2026, 5, 22), close=1000)
+    revenue = MonthlyRevenue(
+        ticker="2308",
+        revenue_date=date(2026, 5, 10),
+        revenue=10_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=43.92,
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台達電4月營收下滑 仍寫次高",
+            text="台達電 4 月營收較上月下滑，但年增仍維持高檔。",
+            publisher="測試新聞",
+            published_at=date(2026, 5, 10),
+        ),
+        NewsFetcher.from_manual_text(
+            title="台達電 AI 電源需求成長",
+            text="台達電 AI 電源需求成長。",
+            publisher="測試新聞B",
+            published_at=date(2026, 5, 11),
+        ),
+    ]
+
+    thesis = generator._render_investment_thesis_map(
+        request,
+        ["2308"],
+        documents,
+        [],
+        [snapshot],
+        [revenue],
+        [],
+        [],
+        {},
+    )
+
+    assert "營收口徑提醒" in thesis
+    assert "YoY 年增" in thesis
+    assert "MoM 月減" in thesis
 
 
 def test_beginner_plan_keeps_downside_over_five_on_watchlist() -> None:
@@ -2514,6 +2920,29 @@ def test_allocation_plan_caps_each_first_tranche_and_total_budget() -> None:
     assert "3324 雙鴻：首筆配置約 20,000 元" in rows[2]
 
 
+def test_formal_sources_exclude_investor_forum_posts() -> None:
+    forum = NewsFetcher.from_manual_text(
+        title="1815 富喬- 追買低檔群創也不要去追高高檔的富喬住套房-股市爆料同學會 - CMoney",
+        text="富喬 AI 玻纖布 需求 成長，但這是散戶閒聊。",
+        publisher="CMoney",
+        published_at=date(2026, 5, 12),
+    )
+    formal = NewsFetcher.from_manual_text(
+        title="富喬 4月營收創歷史新高 受高階薄布需求帶動",
+        text="1815 富喬 4月營收創歷史新高，受 AI 高階薄布需求帶動。",
+        publisher="CMoney投資網誌",
+        published_at=date(2026, 5, 8),
+    )
+
+    sources = ReportGenerator._representative_sources([forum, formal], limit=3)
+    evidence = ReportGenerator._format_llm_evidence([forum, formal])
+
+    assert "股市爆料同學會" not in sources
+    assert "股市爆料同學會" not in evidence
+    assert "富喬 4月營收創歷史新高" in sources
+    assert "富喬 4月營收創歷史新高" in evidence
+
+
 def test_risk_warning_reason_distinguishes_threshold_from_relative_risk() -> None:
     assert ReportGenerator._risk_warning_reason({"upside_pct": 16, "downside_pct": 13}) == (
         "財務或估值紅旗偏重，需先等基本面修復或補充來源驗證。"
@@ -2628,7 +3057,51 @@ def test_estimate_potential_uses_leading_signal_bonus() -> None:
     estimate = ReportGenerator._estimate_potential([], [], snapshot, None, signal)
 
     assert estimate["upside_pct"] > 10
-    assert any("近況訊號偏多" in label for label, _score in estimate["upside_factors"])
+    assert any("近況" in label for label, _score in estimate["upside_factors"])
+
+
+def test_estimate_potential_does_not_call_zero_news_hits_a_positive_reason() -> None:
+    snapshot = MarketSnapshot(ticker="2059", trade_date=date(2026, 5, 22), close=100)
+    revenue = MonthlyRevenue(
+        ticker="2059",
+        revenue_date=date(2026, 4, 10),
+        revenue=100,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=79.1,
+    )
+    document = NewsFetcher.from_manual_text(
+        title="川湖 伺服器滑軌出貨",
+        text="川湖 伺服器滑軌出貨。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    estimate = ReportGenerator._estimate_potential([document], [], snapshot, revenue)
+
+    assert estimate["upside_pct"] > 10
+    assert "新聞/RAG 本身未形成主要升值加分" in estimate["upside_reason"]
+    assert "正向關鍵證據 0 項" not in estimate["upside_reason"]
+
+
+def test_estimate_potential_explains_valuation_risk_without_zero_news_risk() -> None:
+    snapshot = MarketSnapshot(ticker="2383", trade_date=date(2026, 5, 22), close=100)
+    valuation = ValuationMetric(ticker="2383", trade_date=date(2026, 5, 22), pe_ratio=60, pb_ratio=10)
+
+    estimate = ReportGenerator._estimate_potential(
+        [],
+        [],
+        snapshot,
+        None,
+        None,
+        [],
+        valuation,
+        {"pe_avg": 20, "pb_avg": 3},
+    )
+
+    assert estimate["downside_pct"] > 5
+    assert "新聞/RAG 未偵測到主要負向或瓶頸證據" in estimate["downside_reason"]
+    assert "負向/瓶頸證據 0 項" not in estimate["downside_reason"]
 
 
 def test_bearish_leading_signal_does_not_create_positive_score_text() -> None:
@@ -2646,6 +3119,27 @@ def test_bearish_leading_signal_does_not_create_positive_score_text() -> None:
     assert "近況訊號偏空觸發正向加分" not in estimate["upside_reason"]
     assert not any("近況訊號偏多" in label for label, _score in estimate["upside_factors"])
     assert "近況訊號偏空觸發風險加分 7 點" in estimate["downside_reason"]
+
+
+def test_neutral_leading_signal_describes_subitems_not_directional_trigger() -> None:
+    snapshot = MarketSnapshot(ticker="3131", trade_date=date(2026, 5, 22), close=100)
+    signal = LeadingSignal(
+        ticker="3131",
+        score=0,
+        upside_bonus=6,
+        downside_penalty=8,
+        bullish_factors=["月營收年增 28.0%"],
+        bearish_factors=["目前估值偏高"],
+    )
+
+    estimate = ReportGenerator._estimate_potential([], [], snapshot, None, signal)
+
+    assert "近況正向子項目加分 6 點" in estimate["upside_reason"]
+    assert "近況風險子項目風險加分 8 點" in estimate["downside_reason"]
+    assert "近況訊號中性觸發" not in estimate["upside_reason"]
+    assert "近況訊號中性觸發" not in estimate["downside_reason"]
+    assert any("近況正向子項目" in label for label, _score in estimate["upside_factors"])
+    assert any("近況風險子項目" in label for label, _score in estimate["downside_factors"])
 
 
 def test_bearish_leading_signal_blocks_actionable_rating() -> None:

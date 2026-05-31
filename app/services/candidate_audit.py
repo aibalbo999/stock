@@ -6,6 +6,8 @@ from typing import Optional
 
 from app.core.time import today_taipei
 from app.services.candidate_confidence import format_confidence_score, is_low_formal_confidence
+from app.services.entity_mapping import CONFUSING_ENTITY_PREFIXES, alias_matches_text
+from app.services.source_quality import is_low_quality_investor_forum_source
 
 STALE_CANDIDATE_EVIDENCE_DAYS = 180
 
@@ -48,7 +50,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
     promoted = set(promoted_tickers or [])
     summary = candidate_audit_summary(candidates, list(promoted))
     lines = [
-        "本段保留 AI 初始候選到正式分析的完整軌跡；沒有升格不代表公司無關。官方文件缺口代表系統尚未成功取得或解析，不代表公司沒有公告資料。",
+        "本段保留 AI 初始候選到正式分析的完整軌跡；沒有升格不代表公司無關。官方文件缺口代表系統尚未成功取得或解析，不代表公司沒有公告資料。入選支持度只表示候選公司與主題的來源支持度，不等於前段正式報告的分析可信度或投資建議強度；分析可信度仍需另看風險/機會歸因、財報、估值、公司文件與近況資料。",
         "",
         "| 項目 | 數量 |",
         "|---|---:|",
@@ -59,7 +61,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
         f"| 補查後未升格 | {summary['limited_count']} |",
         f"| 資料不足排除 | {summary['unavailable_count']} |",
         "",
-        "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 信心 |",
+        "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 | 入選支持度 |",
         "|---|---|---|---:|---|---|---:|",
     ]
     for candidate in candidates:
@@ -69,6 +71,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
         sources = candidate.get("evidence_sources") or []
         valid_sources = filter_candidate_evidence_sources(candidate, sources)
         invalid_sources_only = bool(sources and not valid_sources)
+        filtered_source_count = max(0, len(sources) - len(valid_sources))
         evidence_count = int(candidate.get("evidence_count") or 0)
         source_count = int(candidate.get("evidence_source_count") or 0)
         if invalid_sources_only:
@@ -90,6 +93,10 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
                 ),
             )
         )
+        if filtered_source_count and not invalid_sources_only:
+            reason = dedupe_reason_fragments(
+                f"{reason}；已排除 {filtered_source_count} 筆疑似同名或非本公司的來源"
+            )
         next_action = normalize_candidate_audit_text(
             append_stale_next_action(
                 candidate,
@@ -132,7 +139,11 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
 def render_candidate_evidence_markdown(candidates: list[dict]) -> list[str]:
     lines = []
     for candidate in candidates:
-        sources = filter_candidate_evidence_sources(candidate, candidate.get("evidence_sources") or [])
+        sources = sort_candidate_evidence_sources(
+            dedupe_candidate_evidence_sources(
+                filter_candidate_evidence_sources(candidate, candidate.get("evidence_sources") or [])
+            )
+        )
         if not sources:
             continue
         ticker = str(candidate.get("ticker") or "")
@@ -150,6 +161,43 @@ def render_candidate_evidence_markdown(candidates: list[dict]) -> list[str]:
     return lines
 
 
+def dedupe_candidate_evidence_sources(sources: list[dict]) -> list[dict]:
+    seen: set[tuple[str, str, str]] = set()
+    deduped = []
+    for source in sources:
+        key = (
+            str(source.get("title") or ""),
+            str(source.get("publisher") or ""),
+            str(source.get("published_at") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(source)
+    return deduped
+
+
+def sort_candidate_evidence_sources(sources: list[dict]) -> list[dict]:
+    return sorted(
+        sources,
+        key=lambda source: (
+            parse_candidate_source_date(source.get("published_at")) or date.min,
+            str(source.get("publisher") or ""),
+            str(source.get("title") or ""),
+        ),
+        reverse=True,
+    )
+
+
+def parse_candidate_source_date(value: object) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
 def filter_candidate_evidence_sources(candidate: dict, sources: list[dict]) -> list[dict]:
     ticker = str(candidate.get("ticker") or "")
     name = str(candidate.get("name") or "")
@@ -157,8 +205,20 @@ def filter_candidate_evidence_sources(candidate: dict, sources: list[dict]) -> l
     return [
         source
         for source in sources
-        if not _looks_like_unrelated_release_source(source, entity_terms)
+        if _source_matches_candidate_entity(source, entity_terms)
+        and not _looks_like_unrelated_release_source(source, entity_terms)
+        and not _looks_like_low_quality_forum_source(source)
     ]
+
+
+def _source_matches_candidate_entity(source: dict, entity_terms: list[str]) -> bool:
+    haystack = " ".join(
+        str(source.get(field) or "")
+        for field in ("title", "publisher", "url")
+    ).lower()
+    if any(_contains_entity_term(haystack, term) for term in entity_terms):
+        return True
+    return not _mentions_confusing_entity_alias(haystack, entity_terms)
 
 
 def _looks_like_unrelated_release_source(source: dict, entity_terms: list[str]) -> bool:
@@ -179,12 +239,27 @@ def _looks_like_unrelated_release_source(source: dict, entity_terms: list[str]) 
     return not any(_contains_entity_term(haystack, term) for term in named_terms)
 
 
+def _looks_like_low_quality_forum_source(source: dict) -> bool:
+    return is_low_quality_investor_forum_source(
+        title=source.get("title"),
+        publisher=source.get("publisher"),
+        url=source.get("url"),
+    )
+
+
 def _contains_entity_term(haystack: str, term: str) -> bool:
-    if not term:
-        return False
-    if term.isdigit():
-        return bool(re.search(rf"(?<!\d){re.escape(term)}(?!\d)", haystack))
-    return term.lower() in haystack
+    return alias_matches_text(haystack, term) if term else False
+
+
+def _mentions_confusing_entity_alias(haystack: str, entity_terms: list[str]) -> bool:
+    for term in entity_terms:
+        normalized = (term or "").lower()
+        if not normalized or normalized.isdigit():
+            continue
+        for confusing_alias in CONFUSING_ENTITY_PREFIXES.get(normalized, ()):
+            if confusing_alias.lower() in haystack:
+                return True
+    return False
 
 
 def dedupe_reason_fragments(reason: object) -> str:
@@ -223,6 +298,12 @@ def normalize_candidate_audit_text(value: object) -> str:
         "補官方年報、法說會或公司 IR 文字版後再升格為正式分析": (
             "補抓或匯入官方年報、法說會或公司 IR 文字版後再升格為正式分析"
         ),
+        "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分": (
+            "通過候選入選門檻：至少 2 篇公司主題證據、2 個以上來源，且入選支持度達高分；"
+            "正式分析可信度仍需另看風險/機會歸因、財報、估值與公司文件"
+        ),
+        "通過正式分析門檻": "通過候選入選門檻",
+        "證據信心": "入選支持度",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
@@ -268,9 +349,9 @@ def candidate_evidence_age_days(candidate: dict) -> Optional[int]:
 
 def candidate_audit_reason(evidence_count: int, source_count: int, confidence_score: Optional[int] = None) -> str:
     if evidence_count >= 2 and source_count >= 2 and is_low_formal_confidence(confidence_score):
-        return f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分。"
+        return f"弱證據：篇數與來源數達標，但入選支持度只有 {confidence_score} 分。"
     if evidence_count >= 2 and source_count >= 2:
-        return "通過正式分析門檻。"
+        return "通過候選入選門檻；正式分析可信度仍需另看風險/機會歸因、財報、估值與公司文件。"
     if evidence_count > 0:
         return f"弱證據：目前只有 {evidence_count} 篇、{source_count} 個來源。"
     return "待補證據：缺少公司與主題同時成立的來源。"
@@ -293,6 +374,9 @@ def candidate_confidence_text(candidate: dict) -> str:
     if score is None:
         return "未評分"
     date_text = f"，最新 {latest}" if latest else ""
+    age_days = candidate_evidence_age_days(candidate)
+    if age_days is not None and age_days > STALE_CANDIDATE_EVIDENCE_DAYS:
+        date_text += f"（距今約 {age_days} 天，超過 180 天）"
     confidence = format_confidence_score(float(score))
     if label and not confidence.startswith(label):
         confidence = f"{label} {int(score)}"

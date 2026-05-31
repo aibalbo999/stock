@@ -25,6 +25,132 @@
       ]
     },
     {
+      "name": "twse-official-news",
+      "url": "https://www.twse.com.tw/rwd/zh/news/feed?type=rss",
+      "enabled": true,
+      "publisher": "臺灣證券交易所",
+      "category": "official_exchange",
+      "scope": "topic",
+      "topics": [
+        "台股",
+        "上市",
+        "公開資訊",
+        "法說",
+        "財報",
+        "月營收",
+        "AI",
+        "人工智慧",
+        "半導體",
+        "機器人"
+      ],
+      "source_intents": [
+        "company_disclosure",
+        "financial_metrics",
+        "regulatory_policy"
+      ]
+    },
+    {
+      "name": "moneydj-news",
+      "url": "https://www.moneydj.com/KMDJ/RssCenter.aspx",
+      "enabled": true,
+      "publisher": "MoneyDJ",
+      "category": "taiwan_market_news",
+      "scope": "topic",
+      "topics": [
+        "台股",
+        "上市",
+        "上櫃",
+        "AI",
+        "人工智慧",
+        "半導體",
+        "伺服器",
+        "機器人",
+        "月營收",
+        "法說"
+      ],
+      "source_intents": [
+        "industry_news",
+        "financial_metrics",
+        "valuation"
+      ]
+    },
+    {
+      "name": "udn-stock-news",
+      "url": "https://money.udn.com/rssfeed/news/1001/5591/5591?ch=money",
+      "enabled": true,
+      "publisher": "經濟日報台股",
+      "category": "taiwan_market_news",
+      "scope": "topic",
+      "topics": [
+        "台股",
+        "上市",
+        "上櫃",
+        "AI",
+        "人工智慧",
+        "半導體",
+        "伺服器",
+        "機器人",
+        "月營收",
+        "法說"
+      ],
+      "source_intents": [
+        "industry_news",
+        "financial_metrics",
+        "valuation"
+      ]
+    },
+    {
+      "name": "wealth-magazine",
+      "url": "https://www.wealth.com.tw/rss",
+      "enabled": true,
+      "publisher": "財訊",
+      "category": "taiwan_market_news",
+      "scope": "topic",
+      "topics": [
+        "台股",
+        "上市",
+        "上櫃",
+        "AI",
+        "人工智慧",
+        "半導體",
+        "伺服器",
+        "機器人",
+        "供應鏈",
+        "月營收",
+        "法說"
+      ],
+      "source_intents": [
+        "industry_news",
+        "financial_metrics",
+        "valuation"
+      ]
+    },
+    {
+      "name": "gvm-business",
+      "url": "https://www.gvm.com.tw/rss",
+      "enabled": true,
+      "publisher": "遠見雜誌",
+      "category": "taiwan_business_news",
+      "scope": "topic",
+      "topics": [
+        "台股",
+        "AI",
+        "人工智慧",
+        "半導體",
+        "伺服器",
+        "機器人",
+        "供應鏈",
+        "輝達",
+        "資料中心",
+        "雲端"
+      ],
+      "source_intents": [
+        "industry_news",
+        "early_signal",
+        "international_context"
+      ]
+    },
+    {
       "name": "technews",
       "url": "https://technews.tw/feed/",
       "enabled": true,
@@ -127,6 +253,85 @@
       ]
     },
     {
+      "name": "amd-press-releases",
+      "url": "https://ir.amd.com/news-events/press-releases/rss",
+      "enabled": true,
+      "publisher": "AMD Press Releases",
+      "category": "ai_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GPU",
+        "加速器",
+        "AMD"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "samsung-newsroom-global",
+      "url": "https://news.samsung.com/global/feed",
+      "enabled": true,
+      "publisher": "Samsung Global Newsroom",
+      "category": "memory_chip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "HBM",
+        "DRAM",
+        "記憶體",
+        "Samsung"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "arm-newsroom",
+      "url": "https://newsroom.arm.com/news/feed/",
+      "enabled": true,
+      "publisher": "Arm Newsroom",
+      "category": "cpu_ip_vendor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "CPU",
+        "edge AI",
+        "Arm"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
       "name": "aws-news-blog",
       "url": "https://aws.amazon.com/blogs/aws/feed/",
       "enabled": true,
@@ -148,6 +353,56 @@
       ],
       "source_intents": [
         "industry_news",
+        "international_context"
+      ]
+    },
+    {
+      "name": "microsoft-azure-blog",
+      "url": "https://azure.microsoft.com/en-us/blog/feed/",
+      "enabled": true,
+      "publisher": "Microsoft Azure Blog",
+      "category": "cloud_capex",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "capex",
+        "雲端資本支出",
+        "Azure"
+      ],
+      "source_intents": [
+        "industry_news",
+        "international_context"
+      ]
+    },
+    {
+      "name": "cloudflare-blog",
+      "url": "https://blog.cloudflare.com/rss",
+      "enabled": true,
+      "publisher": "Cloudflare Blog",
+      "category": "cloud_infrastructure",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "edge AI",
+        "網路",
+        "資安",
+        "資料平台"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
         "international_context"
       ]
     },
@@ -252,6 +507,81 @@
       ]
     },
     {
+      "name": "venturebeat-ai",
+      "url": "https://venturebeat.com/category/ai/feed/",
+      "enabled": true,
+      "publisher": "VentureBeat AI",
+      "category": "ai_demand",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "生成式AI",
+        "大型語言模型",
+        "LLM",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "enterprise AI",
+        "agentic AI"
+      ],
+      "source_intents": [
+        "industry_news",
+        "early_signal",
+        "international_context"
+      ]
+    },
+    {
+      "name": "the-decoder-ai",
+      "url": "https://the-decoder.com/feed/",
+      "enabled": true,
+      "publisher": "The Decoder",
+      "category": "ai_demand",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "生成式AI",
+        "大型語言模型",
+        "LLM",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "agentic AI",
+        "model"
+      ],
+      "source_intents": [
+        "industry_news",
+        "early_signal",
+        "international_context"
+      ]
+    },
+    {
+      "name": "siliconangle",
+      "url": "https://siliconangle.com/feed/",
+      "enabled": true,
+      "publisher": "SiliconANGLE",
+      "category": "cloud_infrastructure",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "生成式AI",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "cloud",
+        "enterprise AI",
+        "data platform",
+        "infrastructure"
+      ],
+      "source_intents": [
+        "industry_news",
+        "early_signal",
+        "international_context"
+      ]
+    },
+    {
       "name": "open-compute-project",
       "url": "https://www.opencompute.org/blog/rss",
       "enabled": true,
@@ -330,6 +660,294 @@
       "source_intents": [
         "industry_news",
         "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "trendforce-semiconductors",
+      "url": "https://www.trendforce.com/feed/Semiconductors.html",
+      "enabled": true,
+      "publisher": "TrendForce Semiconductors",
+      "category": "semiconductor_research",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "晶圓",
+        "先進製程",
+        "封裝",
+        "CoWoS",
+        "HBM"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "trendforce-energy",
+      "url": "https://www.trendforce.com/feed/Energy.html",
+      "enabled": true,
+      "publisher": "TrendForce Energy",
+      "category": "datacenter_power",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電力",
+        "缺電",
+        "電網",
+        "儲能",
+        "power",
+        "grid",
+        "energy"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
+      ]
+    },
+    {
+      "name": "power-and-beyond",
+      "url": "https://www.power-and-beyond.com/rss/news.xml",
+      "enabled": true,
+      "publisher": "Power & Beyond",
+      "category": "power_electronics",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "電源",
+        "電力",
+        "散熱",
+        "GaN",
+        "SiC",
+        "power electronics",
+        "datacenter power"
+      ],
+      "source_intents": [
+        "capacity_supply",
+        "regulatory_policy",
+        "international_context"
+      ]
+    },
+    {
+      "name": "semiconductor-today-news",
+      "url": "https://www.semiconductor-today.com/rss/news.xml",
+      "enabled": true,
+      "publisher": "Semiconductor Today",
+      "category": "compound_semiconductor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GaN",
+        "SiC",
+        "compound semiconductor",
+        "power semiconductor",
+        "光電"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "semiconductor-today-features",
+      "url": "https://www.semiconductor-today.com/rss/features.xml",
+      "enabled": true,
+      "publisher": "Semiconductor Today Features",
+      "category": "compound_semiconductor",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "GaN",
+        "SiC",
+        "compound semiconductor",
+        "power semiconductor",
+        "光電"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "electronics-weekly",
+      "url": "https://www.electronicsweekly.com/feed/",
+      "enabled": true,
+      "publisher": "Electronics Weekly",
+      "category": "electronics_engineering",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "power",
+        "embedded",
+        "edge AI",
+        "electronics"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "embedded-news",
+      "url": "https://www.embedded.com/feed/",
+      "enabled": true,
+      "publisher": "Embedded",
+      "category": "embedded_edge_ai",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "邊緣運算",
+        "工業電腦",
+        "機器人",
+        "robotics",
+        "embedded",
+        "edge AI",
+        "IoT",
+        "industrial automation"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "ee-journal",
+      "url": "https://www.eejournal.com/feed/",
+      "enabled": true,
+      "publisher": "EEJournal",
+      "category": "electronics_engineering",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "半導體",
+        "晶片",
+        "邊緣運算",
+        "機器人",
+        "embedded",
+        "FPGA",
+        "edge AI",
+        "electronics"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "electronic-design",
+      "url": "https://www.electronicdesign.com/rss.xml",
+      "enabled": true,
+      "publisher": "Electronic Design",
+      "category": "electronics_engineering",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "半導體",
+        "晶片",
+        "邊緣運算",
+        "機器人",
+        "embedded",
+        "physical AI",
+        "edge AI",
+        "electronics"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "ieee-spectrum-semiconductors",
+      "url": "https://spectrum.ieee.org/feeds/topic/semiconductors.rss",
+      "enabled": true,
+      "publisher": "IEEE Spectrum Semiconductors",
+      "category": "semiconductor_research",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "晶圓",
+        "先進製程",
+        "封裝"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "ieee-spectrum-ai",
+      "url": "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss",
+      "enabled": true,
+      "publisher": "IEEE Spectrum AI",
+      "category": "ai_demand",
+      "scope": "topic",
+      "topics": [
+        "AI",
+        "人工智慧",
+        "算力",
+        "半導體",
+        "晶片",
+        "資料中心",
+        "伺服器",
+        "雲端",
+        "生成式AI",
+        "大型語言模型",
+        "LLM"
+      ],
+      "source_intents": [
+        "industry_news",
         "international_context"
       ]
     },
@@ -868,6 +1486,79 @@
         "伺服馬達",
         "減速器",
         "機器視覺"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "robotics-business-review",
+      "url": "https://www.roboticsbusinessreview.com/feed/",
+      "enabled": true,
+      "publisher": "Robotics Business Review",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "robotics-tomorrow",
+      "url": "https://www.roboticstomorrow.com/rss/news",
+      "enabled": true,
+      "publisher": "Robotics Tomorrow",
+      "category": "robotics_industry",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "robot",
+        "humanoid",
+        "協作機器人",
+        "自動化",
+        "伺服馬達",
+        "減速器",
+        "機器視覺",
+        "industrial automation"
+      ],
+      "source_intents": [
+        "industry_news",
+        "capacity_supply",
+        "international_context"
+      ]
+    },
+    {
+      "name": "manufacturing-tomorrow",
+      "url": "https://www.manufacturingtomorrow.com/rss/news",
+      "enabled": true,
+      "publisher": "Manufacturing Tomorrow",
+      "category": "industrial_automation",
+      "scope": "topic",
+      "topics": [
+        "機器人",
+        "robotics",
+        "工業自動化",
+        "智慧製造",
+        "自動化",
+        "工業電腦",
+        "邊緣運算",
+        "industrial automation",
+        "smart manufacturing"
       ],
       "source_intents": [
         "industry_news",

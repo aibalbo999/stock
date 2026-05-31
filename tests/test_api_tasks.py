@@ -421,7 +421,7 @@ def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> Non
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (20, 180, 24)
+    assert main.discovery_fetch_settings(payload) == (20, 180, 72)
     assert main.discovery_effective_lookback_days(payload) == 120
     assert main.discovery_document_limit(payload, 180) == 1000
     assert main.discovery_market_history_days(payload) == 720
@@ -447,9 +447,9 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
     assert normal_budget["supplemental_rounds"] == 3
     assert deep_budget["initial_queries"] < 80
     assert deep_budget["supplemental_queries"] > normal_budget["supplemental_queries"]
-    assert deep_budget["supplemental_rounds"] == 2
-    assert deep_budget["supplemental_batch_size"] == 4
-    assert deep_budget["no_gain_stop_rounds"] == 1
+    assert deep_budget["supplemental_rounds"] == 4
+    assert deep_budget["supplemental_batch_size"] == 12
+    assert deep_budget["no_gain_stop_rounds"] == 2
 
 
 def test_discovery_budget_auto_escalates_on_source_coverage_gaps() -> None:
@@ -510,6 +510,38 @@ def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:
         "supported": 2,
         "unsupported": 3,
         "supported_ratio": 0.4,
+    }
+
+    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+
+
+def test_source_audit_supplements_when_multiple_candidates_still_have_gaps() -> None:
+    audit = {
+        "dynamic_queries": {"stored_count": 40},
+        "analysis_mode": "standard",
+    }
+    candidate_support = {
+        "total": 10,
+        "supported": 8,
+        "weak": 1,
+        "unsupported": 1,
+        "supported_ratio": 0.8,
+    }
+
+    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+
+
+def test_deep_source_audit_requires_higher_candidate_coverage() -> None:
+    audit = {
+        "dynamic_queries": {"stored_count": 40},
+        "analysis_mode": "deep",
+    }
+    candidate_support = {
+        "total": 10,
+        "supported": 7,
+        "weak": 1,
+        "unsupported": 0,
+        "supported_ratio": 0.7,
     }
 
     assert main.should_supplement_discovery_sources(audit, candidate_support) is True

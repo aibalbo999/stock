@@ -300,7 +300,7 @@ class FollowUpActionPlanner:
                     row.get("證據", ""),
                     row.get("排除 / 升格原因", ""),
                     row.get("下一步", ""),
-                    f"信心：{row.get('信心', '')}" if row.get("信心") else "",
+                    f"信心：{self._candidate_confidence_field(row)}" if self._candidate_confidence_field(row) else "",
                 ]
                 if item
             )
@@ -348,9 +348,15 @@ class FollowUpActionPlanner:
     def _tracking_candidate_rank(row: dict[str, str]) -> tuple[int, int, int, str]:
         status = row.get("狀態", "")
         evidence_count, source_count = FollowUpActionPlanner._parse_evidence_counts(row.get("證據", ""))
-        confidence = FollowUpActionPlanner._parse_confidence_score(row.get("信心", ""))
+        confidence = FollowUpActionPlanner._parse_confidence_score(
+            FollowUpActionPlanner._candidate_confidence_field(row)
+        )
         status_rank = 0 if "弱證據" in status else 1
         return (status_rank, -evidence_count, -source_count, -confidence, row.get("股票", ""))
+
+    @staticmethod
+    def _candidate_confidence_field(row: dict[str, str]) -> str:
+        return row.get("入選支持度") or row.get("入選證據信心") or row.get("信心", "")
 
     @staticmethod
     def _parse_evidence_counts(value: str) -> tuple[int, int]:
@@ -1361,6 +1367,7 @@ def needs_confidence_sources(reason: str) -> bool:
         keyword in reason
         for keyword in [
             "證據信心",
+            "入選支持度",
             "信心：",
             "有日期",
             "近期",
@@ -1376,7 +1383,7 @@ def compact_query_text(text: str) -> str:
         term
         for term in cleaned.split()
         if term
-        and term not in {"候選公司未升格", "需補齊公司層級證據", "股票", "產業位置", "下一步"}
+        and term not in {"候選公司未升格", "需補齊公司層級證據", "股票", "產業位置", "下一步", "候選入選門檻"}
     ]
     return " ".join(terms[:12])
 

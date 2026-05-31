@@ -75,12 +75,47 @@ def test_google_news_urls_deduplicate_queries() -> None:
         """
     )
 
-    urls = TopicDiscoveryService().google_news_urls(plan, include_international=False)
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        include_metadata=True,
+    )
+    queries = [item["query"] for item in metadata]
 
-    assert len(urls) == 2
-    assert "news.google.com/rss/search" in urls[0]
-    assert "hl=zh-TW" in urls[0]
-    assert any("2330" in url for url in urls)
+    assert len(queries) == len(set(queries))
+    assert queries.count("台積電 CoWoS") == 1
+    assert "news.google.com/rss/search" in metadata[0]["url"]
+    assert "hl=zh-TW" in metadata[0]["url"]
+    assert any("2330" in query for query in queries)
+
+
+def test_google_news_urls_round_robin_candidate_queries() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {"ticker": "2330", "name": "台積電", "segment": "先進封裝", "rationale": "CoWoS", "evidence_keywords": ["CoWoS"]},
+            {"ticker": "2382", "name": "廣達", "segment": "AI 伺服器", "rationale": "出貨", "evidence_keywords": ["GB200"]},
+            {"ticker": "3231", "name": "緯創", "segment": "AI 伺服器", "rationale": "訂單", "evidence_keywords": ["CSP"]}
+          ]
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().google_news_urls(
+        plan,
+        include_international=False,
+        max_urls=9,
+        include_metadata=True,
+    )
+    first_round_queries = [item["query"] for item in metadata[:3]]
+    source_intents = [item["source_intent"] for item in metadata]
+
+    assert ["2330", "2382", "3231"] == [query.split()[0] for query in first_round_queries]
+    assert source_intents[:3] == ["industry_news", "industry_news", "industry_news"]
+    assert "company_disclosure" in source_intents
+    assert "financial_metrics" in source_intents
 
 
 def test_google_news_urls_include_research_task_terms() -> None:
@@ -862,6 +897,33 @@ def test_supplemental_google_news_urls_focuses_on_unsupported_candidates() -> No
     assert not any("2330+%E5%8F%B0%E7%A9%8D%E9%9B%BB" in url for url in urls)
 
 
+def test_supplemental_google_news_query_metadata_round_robin_weak_candidates() -> None:
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {"ticker": "2330", "name": "台積電", "segment": "先進封裝", "rationale": "CoWoS", "evidence_keywords": ["CoWoS"]},
+            {"ticker": "2382", "name": "廣達", "segment": "AI 伺服器", "rationale": "出貨", "evidence_keywords": ["GB200"]},
+            {"ticker": "3231", "name": "緯創", "segment": "AI 伺服器", "rationale": "訂單", "evidence_keywords": ["CSP"]}
+          ]
+        }
+        """
+    )
+
+    metadata = TopicDiscoveryService().supplemental_google_news_query_metadata(
+        plan,
+        validated_candidates=[],
+        include_international=False,
+        max_urls=6,
+    )
+    first_round_queries = [item["query"] for item in metadata[:3]]
+
+    assert ["2330", "2382", "3231"] == [query.split()[0] for query in first_round_queries]
+    assert any("法說會 年報 月營收" in item["query"] for item in metadata)
+    assert all(item["source_type"] == "supplemental" for item in metadata)
+
+
 def test_candidate_validation_does_not_credit_other_company_filing_mentions() -> None:
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -1007,7 +1069,8 @@ def test_validate_candidates_marks_evidence_supported() -> None:
 
     assert candidates[0].status == "evidence_supported"
     assert candidates[0].promotion_eligible is True
-    assert "通過正式分析門檻" in candidates[0].validation_reason
+    assert "通過候選入選門檻" in candidates[0].validation_reason
+    assert "正式分析可信度仍需另看風險/機會歸因" in candidates[0].validation_reason
     assert candidates[0].evidence_count == 2
     assert candidates[0].evidence_source_count == 2
     assert candidates[0].evidence_sources[0]["title"] == "台積電 CoWoS 產能擴張"
@@ -1016,6 +1079,85 @@ def test_validate_candidates_marks_evidence_supported() -> None:
     assert candidates[0].evidence_confidence_score >= HIGH_CONFIDENCE_THRESHOLD
     assert candidates[0].evidence_confidence_label == "高"
     assert candidates[0].latest_evidence_date == "2026-05-24"
+
+
+def test_validate_candidates_lists_newest_evidence_sources_first() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "2330",
+              "name": "台積電",
+              "segment": "晶圓代工",
+              "rationale": "CoWoS",
+              "evidence_keywords": ["CoWoS"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台積電 CoWoS 舊資料",
+            text="台積電 CoWoS 產能擴張支撐 AI 需求。",
+            publisher="test-old",
+            published_at=date(2026, 4, 20),
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電 CoWoS 最新資料",
+            text="台積電 CoWoS 與先進封裝需求升溫。",
+            publisher="test-new",
+            published_at=date(2026, 5, 24),
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].evidence_sources[0]["title"] == "台積電 CoWoS 最新資料"
+    assert candidates[0].evidence_sources[0]["published_at"] == "2026-05-24"
+
+
+def test_validate_candidates_excludes_investor_forum_sources() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "1815",
+              "name": "富喬",
+              "segment": "玻纖布",
+              "rationale": "AI 高階材料",
+              "evidence_keywords": ["AI", "玻纖布"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="1815 富喬- 追買低檔群創也不要去追高高檔的富喬住套房-股市爆料同學會 - CMoney",
+            text="富喬 AI 玻纖布 需求 成長，但這是散戶閒聊。",
+            publisher="CMoney",
+            published_at=date(2026, 5, 12),
+        ),
+        NewsFetcher.from_manual_text(
+            title="富喬 4月營收創歷史新高 受高階薄布需求帶動",
+            text="1815 富喬 玻纖布與 AI 高階薄布需求成長。",
+            publisher="CMoney投資網誌",
+            published_at=date(2026, 5, 8),
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].evidence_count == 1
+    assert candidates[0].evidence_sources[0]["title"] == "富喬 4月營收創歷史新高 受高階薄布需求帶動"
+    assert all("股市爆料同學會" not in source["title"] for source in candidates[0].evidence_sources)
 
 
 def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:

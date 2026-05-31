@@ -4,7 +4,7 @@ from datetime import date
 
 from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
-from app.data_sources.news import NewsFetcher
+from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.models.schemas import MarketSnapshot, ReportRequest
 from app.services.ingestion import (
     IngestionPipeline,
@@ -47,6 +47,38 @@ def test_select_diverse_sources_keeps_long_tail_categories() -> None:
         "emerging_momentum",
         "thermal_liquid_cooling",
     ]
+
+
+def test_source_selection_limit_scales_for_deep_fetches() -> None:
+    assert IngestionPipeline._source_selection_limit(8) == 24
+    assert IngestionPipeline._source_selection_limit(20) == 36
+    assert IngestionPipeline._source_selection_limit(40) == 40
+
+
+def test_default_news_sources_include_official_and_research_feeds() -> None:
+    sources = {source.name: source for source in NewsSourceStore().load()}
+
+    assert sources["twse-official-news"].category == "official_exchange"
+    assert "company_disclosure" in sources["twse-official-news"].source_intents
+    assert sources["arm-newsroom"].category == "cpu_ip_vendor"
+    assert sources["cloudflare-blog"].category == "cloud_infrastructure"
+    assert sources["venturebeat-ai"].category == "ai_demand"
+    assert sources["siliconangle"].category == "cloud_infrastructure"
+    assert sources["trendforce-semiconductors"].category == "semiconductor_research"
+    assert "capacity_supply" in sources["trendforce-semiconductors"].source_intents
+    assert sources["trendforce-energy"].category == "datacenter_power"
+    assert sources["amd-press-releases"].category == "ai_chip_vendor"
+    assert sources["samsung-newsroom-global"].category == "memory_chip_vendor"
+    assert sources["semiconductor-today-news"].category == "compound_semiconductor"
+    assert sources["embedded-news"].category == "embedded_edge_ai"
+    assert sources["power-and-beyond"].category == "power_electronics"
+    assert sources["electronic-design"].category == "electronics_engineering"
+    assert sources["moneydj-news"].category == "taiwan_market_news"
+    assert sources["udn-stock-news"].category == "taiwan_market_news"
+    assert sources["wealth-magazine"].category == "taiwan_market_news"
+    assert sources["robotics-business-review"].category == "robotics_industry"
+    assert sources["robotics-tomorrow"].category == "robotics_industry"
+    assert sources["manufacturing-tomorrow"].category == "industrial_automation"
 
 
 def test_ingest_web_search_stores_only_target_company_documents(monkeypatch) -> None:

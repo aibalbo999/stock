@@ -2,6 +2,7 @@ from datetime import date
 
 from app.data_sources.news import NewsFetcher
 from app.services.entity_mapping import EntityMapper
+from app.services.whitelist import SupplyChainWhitelist
 
 
 def test_mapper_only_matches_whitelisted_companies() -> None:
@@ -56,3 +57,49 @@ def test_company_filing_matches_only_owner_company() -> None:
     matches = mapper.match_document(document)
 
     assert [(match.ticker, match.name) for match in matches] == [("2330", "台積電")]
+
+
+def test_short_company_name_does_not_match_longer_confusing_entity() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1303",
+                "name": "南亞",
+                "segment": "工程塑膠 / 電子材料",
+                "status": "evidence_supported",
+                "evidence_keywords": ["工程塑膠", "電子材料"],
+            }
+        ]
+    )
+    mapper = EntityMapper(whitelist)
+    document = NewsFetcher.from_manual_text(
+        title="記憶體最狂時代 南亞科卡位戰略曝光",
+        text="南亞科為 DRAM 公司，本文只討論記憶體供需。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    assert mapper.match_document(document) == []
+
+
+def test_short_company_name_still_matches_own_ticker_or_clean_name() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1303",
+                "name": "南亞",
+                "segment": "工程塑膠 / 電子材料",
+                "status": "evidence_supported",
+                "evidence_keywords": ["工程塑膠", "電子材料"],
+            }
+        ]
+    )
+    mapper = EntityMapper(whitelist)
+    document = NewsFetcher.from_manual_text(
+        title="1303 南亞工程塑膠需求回升",
+        text="南亞電子材料與工程塑膠需求改善。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    assert [(match.ticker, match.name) for match in mapper.match_document(document)] == [("1303", "南亞")]

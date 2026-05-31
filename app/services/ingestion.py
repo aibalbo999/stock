@@ -64,7 +64,8 @@ class IngestionPipeline:
                 if enabled_sources_only
                 else available_sources
             )
-            sources = self._select_diverse_sources(sources, limit=18)
+            source_limit = self._source_selection_limit(limit)
+            sources = self._select_diverse_sources(sources, limit=source_limit)
             selection = source_store.selection_for_topic(topic)
             source_selection = {
                 "mode": "topic_filtered" if enabled_sources_only else "all_sources",
@@ -244,6 +245,10 @@ class IngestionPipeline:
             "source": "DuckDuckGo targeted web search",
             "source_selection": {"mode": "targeted_web_search", "topic": topic, "selected_count": len(queries)},
         }
+
+    @staticmethod
+    def _source_selection_limit(limit: int) -> int:
+        return max(20, min(40, limit + 16))
 
     @staticmethod
     def _select_diverse_sources(sources: list, limit: int) -> list:

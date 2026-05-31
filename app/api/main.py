@@ -72,6 +72,7 @@ from app.services.report_quality import (
 from app.services.llm_client import LLMClient
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
 from app.services.service_status import service_status
+from app.services.source_quality import filter_formal_evidence_documents
 from app.services.source_relevance import SourceRelevanceAnalyzer
 from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
 from app.services.whitelist import SupplyChainWhitelist
@@ -164,6 +165,9 @@ def latest_follow_up_run_for_report(repository: AnalysisRunRepository, report) -
     run, payload = max(matches, key=lambda item: _run_completion_identity_value(item[0]))
     return {
         **serialize_run(run),
+        "source_report_id": payload.get("source_report_id"),
+        "source_report_topic": payload.get("source_report_topic"),
+        "source_report_tickers": payload.get("source_report_tickers") or [],
         "summary": payload.get("summary") or {},
         "planned_actions": payload.get("planned_actions") or [],
         "rerun_report": payload.get("rerun_report"),
@@ -992,7 +996,7 @@ def discovery_fetch_settings(payload: TopicDiscoveryRequest) -> tuple[int, int, 
     if mode == "deep":
         limit_per_query = max(limit_per_query, 20)
         evidence_limit = max(evidence_limit, 180)
-        max_queries = 24
+        max_queries = 72
     return limit_per_query, evidence_limit, max_queries
 
 
@@ -1263,7 +1267,15 @@ def should_supplement_discovery_sources(source_audit: dict, candidate_support: d
         return True
     if candidate_support["total"] == 0:
         return source_audit["dynamic_queries"]["stored_count"] < 8
-    if candidate_support["supported_ratio"] < 0.6:
+    supported_ratio = float(candidate_support.get("supported_ratio") or 0)
+    target_supported_ratio = 0.75 if source_audit.get("analysis_mode") == "deep" else 0.65
+    if supported_ratio < target_supported_ratio:
+        return True
+    candidate_gap_count = sum(
+        int(candidate_support.get(key) or 0)
+        for key in ("weak", "unsupported", "limited", "unavailable")
+    )
+    if candidate_gap_count >= max(2, int(candidate_support["total"] * 0.2)):
         return True
     return source_audit["dynamic_queries"]["stored_count"] < 12
 
@@ -1273,7 +1285,7 @@ def discovery_query_budget(max_queries: int, analysis_mode: str = "standard", de
     settings = {
         "fast": {"initial_floor": 8, "initial_ratio": 0.65, "rounds": 1, "batch": 6, "no_gain_stop": 1},
         "standard": {"initial_floor": 12, "initial_ratio": 0.55, "rounds": 3, "batch": 10, "no_gain_stop": 2},
-        "deep": {"initial_floor": 10, "initial_ratio": 0.55, "rounds": 2, "batch": 4, "no_gain_stop": 1},
+        "deep": {"initial_floor": 24, "initial_ratio": 0.45, "rounds": 4, "batch": 12, "no_gain_stop": 2},
     }.get(mode, {})
     initial_queries = max(settings.get("initial_floor", 12), int(max_queries * settings.get("initial_ratio", 0.55)))
     return {
@@ -1351,7 +1363,7 @@ async def ingest_dynamic_news_urls(
     if not urls:
         return []
 
-    fetch_limit = limit_per_query * 4
+    fetch_limit = limit_per_query * 6
     semaphore = asyncio.Semaphore(6)
     fetcher = NewsFetcher()
 
@@ -2728,7 +2740,10 @@ async def run_discovered_pipeline(payload: TopicDiscoveryRequest) -> dict:
             valuation_count=len(valuations),
             investor_capital=payload.investor_capital,
             cash_reserve_pct=payload.cash_reserve_pct,
-            source_quality=summarize_document_source_quality(documents, discovery_effective_lookback_days(payload)),
+            source_quality=summarize_document_source_quality(
+                filter_formal_evidence_documents(documents),
+                discovery_effective_lookback_days(payload),
+            ),
             plan_quality=source_audit.get("plan_quality"),
             leading_signal_count=leading_signal_count,
             llm_status=summarize_llm_status(generator.last_llm_result),

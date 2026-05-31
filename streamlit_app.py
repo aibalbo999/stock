@@ -655,7 +655,10 @@ def markdown_items(markdown: str, heading: str, limit: int = 5) -> list[str]:
             continue
         if line.startswith("|"):
             continue
-        line = line.lstrip("-0123456789. ")
+        if line.startswith("- "):
+            line = line[2:].strip()
+        elif re.match(r"^\d+\.\s+", line):
+            line = re.sub(r"^\d+\.\s+", "", line).strip()
         line = line.replace("**", "").replace("###", "").replace("##", "").strip()
         if line:
             rows.append(line)
@@ -728,6 +731,54 @@ def detail_html(markdown: str, title: str, heading: str, limit: int = 4) -> str:
     return f"<details><summary>{escape(title)}</summary><ul>{body}</ul></details>"
 
 
+def next_steps_html(markdown: str) -> str:
+    section = markdown_section_or_none(markdown, "下一步行動")
+    if not section:
+        return "<p class='muted'>先補資料後再重新分析。</p>"
+
+    groups: list[dict] = []
+    current: dict = {"title": "處理原則", "items": []}
+    for raw_line in section.splitlines()[1:]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("### "):
+            if current["items"]:
+                groups.append(current)
+            current = {"title": line.replace("###", "").strip(), "items": []}
+            continue
+        if line.startswith("|"):
+            continue
+        text = ""
+        if line.startswith("- "):
+            text = line[2:].strip()
+        elif re.match(r"^\d+\.\s+", line):
+            text = re.sub(r"^\d+\.\s+", "", line).strip()
+        if text:
+            current["items"].append(text)
+    if current["items"]:
+        groups.append(current)
+
+    if not groups:
+        return "<p class='muted'>先補資料後再重新分析。</p>"
+
+    blocks = []
+    for group in groups:
+        items = group["items"]
+        if not isinstance(items, list) or not items:
+            continue
+        body = "".join(f"<li>{escape(item)}</li>" for item in items)
+        blocks.append(
+            f"""
+            <div class="next-step-group">
+              <strong>{escape(str(group["title"]))}（{len(items)} 項）</strong>
+              <ul>{body}</ul>
+            </div>
+            """
+        )
+    return "".join(blocks) or "<p class='muted'>先補資料後再重新分析。</p>"
+
+
 def company_analysis_html(markdown: str) -> str:
     section = markdown_section_or_none(markdown, "個別公司分析")
     if not section:
@@ -778,8 +829,64 @@ def company_analysis_html(markdown: str) -> str:
     return f"<details open><summary>個別公司分析（{len(cards)} 檔）</summary>{''.join(cards)}</details>"
 
 
+def normalize_candidate_audit_display_text(value: object) -> str:
+    text = str(value or "")
+    replacements = {
+        "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分": (
+            "通過候選入選門檻：至少 2 篇公司主題證據、2 個以上來源，且入選支持度達高分；"
+            "正式分析可信度仍需另看風險/機會歸因、財報、估值與公司文件"
+        ),
+        "通過正式分析門檻": "通過候選入選門檻",
+        "證據信心": "入選支持度",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
+def candidate_payload_confidence_text(candidate: dict) -> str:
+    score = candidate.get("evidence_confidence_score")
+    label = candidate.get("evidence_confidence_label") or "未評分"
+    latest = candidate.get("latest_evidence_date")
+    if score is None:
+        confidence = label
+    else:
+        confidence = format_confidence_score(float(score))
+        if label and not confidence.startswith(str(label)):
+            confidence = f"{label} {int(float(score))}"
+    if latest:
+        confidence += f"，最新 {latest}"
+    age = candidate.get("evidence_age_days")
+    if candidate.get("evidence_stale") and age is not None:
+        confidence += f"（距今約 {int(age)} 天，超過 180 天）"
+    return confidence
+
+
+def candidate_payload_stale_note(candidate: dict) -> str:
+    if not candidate.get("evidence_stale"):
+        return ""
+    latest = candidate.get("latest_evidence_date") or "未標示日期"
+    age = candidate.get("evidence_age_days")
+    age_text = f"距今約 {int(age)} 天，" if age is not None else ""
+    return f"最新候選來源為 {latest}，{age_text}已超過 180 天新鮮度門檻。"
+
+
+def candidate_source_matches_display_entity(candidate: dict, source: dict) -> bool:
+    haystack = " ".join(
+        str(source.get(field) or "")
+        for field in ("title", "publisher", "url")
+    ).lower()
+    if "股市爆料同學會" in haystack or "爆料同學會" in haystack:
+        return False
+    ticker = str(candidate.get("ticker") or "")
+    name = str(candidate.get("name") or "")
+    if name == "南亞" and "南亞科" in haystack and ticker not in haystack:
+        return False
+    return True
+
+
 def comparison_matrix_html(markdown: str) -> str:
-    rows = markdown_table_rows(markdown, "個股比較矩陣", limit=8)
+    rows = markdown_table_rows(markdown, "個股比較矩陣", limit=60)
     if not rows:
         return ""
     cards = []
@@ -843,6 +950,7 @@ def comparison_matrix_html(markdown: str) -> str:
         )
     summary = (
         f"<div class='matrix-summary'>"
+        f"<span>共 {len(rows)} 檔</span>"
         f"<span>可研究 {action_count}</span>"
         f"<span>觀察 {watch_count}</span>"
         f"<span>風險 {risk_count}</span>"
@@ -857,6 +965,8 @@ def early_potential_radar_html(markdown: str) -> str:
         return ""
     cards = []
     for row in rows:
+        if not row or row[0] in {"目前無足夠數據判斷", "目前無足夠數據判斷。"}:
+            continue
         stock = escape(row[0]) if len(row) > 0 else "-"
         score = escape(row[1]) if len(row) > 1 else "-"
         attention_raw = row[2] if len(row) > 2 else "-"
@@ -913,6 +1023,9 @@ def investment_thesis_html(markdown: str) -> str:
                 continue
             key, value = text.split("：", 1)
             facts[key.strip()] = value.strip()
+        source_text = facts.get("代表性來源", "目前無足夠公司層級來源。")
+        if facts.get("風險來源"):
+            source_text = f"{source_text}｜風險來源：{facts['風險來源']}"
         cards.append(
             f"""
             <article class="thesis-card">
@@ -926,9 +1039,10 @@ def investment_thesis_html(markdown: str) -> str:
                 <div><span>值得研究的理由</span><p>{escape(facts.get("具體投資理由", "目前投資理由尚未完整。"))}</p></div>
                 <div><span>成長假設</span><p>{escape(facts.get("成長假設", "目前無足夠數據判斷。"))}</p></div>
                 <div><span>主要風險</span><p>{escape(facts.get("主要風險", "目前無足夠數據判斷。"))}</p></div>
+                {"<div><span>營收口徑提醒</span><p>" + escape(facts.get("營收口徑提醒", "")) + "</p></div>" if facts.get("營收口徑提醒") else ""}
                 <div><span>需要再確認</span><p>{escape(facts.get("需要再確認", "等待下一批資料確認。"))}</p></div>
               </div>
-              <div class="thesis-source">{escape(facts.get("代表性來源", "目前無足夠公司層級來源。"))}</div>
+              <div class="thesis-source">{escape(source_text)}</div>
             </article>
             """
         )
@@ -1048,7 +1162,18 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
             "evidence_unavailable": "資料不足排除",
         }
         for candidate in candidates:
-            evidence_sources = candidate.get("evidence_sources") or []
+            raw_sources = candidate.get("evidence_sources") or []
+            evidence_sources = [
+                source
+                for source in raw_sources
+                if candidate_source_matches_display_entity(candidate, source)
+            ]
+            filtered_source_count = max(0, len(raw_sources) - len(evidence_sources))
+            filtered_note = (
+                f"已排除 {filtered_source_count} 筆疑似同名或非本公司的來源。"
+                if filtered_source_count
+                else ""
+            )
             source_summary = "；".join(
                 " / ".join(
                     part
@@ -1066,11 +1191,19 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
                     f"{candidate.get('ticker')} {candidate.get('name')}",
                     candidate.get("segment") or "未分類",
                     status_labels.get(candidate.get("status"), "待補證據"),
-                    f"{int(candidate.get('evidence_count') or 0)} 篇 / {int(candidate.get('evidence_source_count') or 0)} 來源",
-                    candidate.get("validation_reason") or "",
-                    candidate.get("next_action") or "",
+                    (
+                        f"{int(candidate.get('evidence_count') or 0)} 篇 / "
+                        f"{int(candidate.get('evidence_source_count') or 0)} 來源"
+                        + (f"（排除 {filtered_source_count}）" if filtered_source_count else "")
+                    ),
+                    normalize_candidate_audit_display_text(
+                        f"{candidate_payload_stale_note(candidate)}"
+                        f"{filtered_note}"
+                        f"{candidate.get('validation_reason') or ''}"
+                    ),
+                    normalize_candidate_audit_display_text(candidate.get("next_action") or ""),
                     source_summary,
-                    f"{candidate.get('evidence_confidence_label') or '未評分'} {candidate.get('evidence_confidence_score', '-')}",
+                    candidate_payload_confidence_text(candidate),
                 ]
             )
     else:
@@ -1125,6 +1258,7 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
         )
     summary = (
         "<div class='audit-summary'>"
+        f"<span>候選卡片 {len(rows)}</span>"
         f"<span>正式分析 {len(supported)}</span>"
         f"<span>弱證據 {len(weak)}</span>"
         f"<span>待補證據 {len(needs)}</span>"
@@ -1204,7 +1338,7 @@ def quality_issue_html(gate: dict) -> str:
     return f"<section class='panel quality-issues {severity_class}'><h2>{title}</h2>{issue_html}{action_html}</section>"
 
 
-def auto_follow_up_status_html(auto_follow_up: Optional[dict]) -> str:
+def auto_follow_up_status_html(auto_follow_up: Optional[dict], current_report_id: object = None) -> str:
     if not isinstance(auto_follow_up, dict) or not auto_follow_up:
         return ""
     status = auto_follow_up.get("status")
@@ -1216,6 +1350,9 @@ def auto_follow_up_status_html(auto_follow_up: Optional[dict]) -> str:
     rerun_raw = auto_follow_up.get("rerun_report")
     rerun = rerun_raw if isinstance(rerun_raw, dict) else {}
     next_report = rerun.get("report_id")
+    source_report_id = auto_follow_up.get("source_report_id")
+    if source_report_id and current_report_id and str(source_report_id) != str(current_report_id):
+        return ""
     skipped_reason = rerun.get("reason")
     if status == "failed":
         title = "自動補強未完成"
@@ -1239,6 +1376,14 @@ def auto_follow_up_status_html(auto_follow_up: Optional[dict]) -> str:
             "項補強任務；完成後會依完成檢查決定是否重跑報告。"
         )
         tone = "auto-started"
+    elif next_report and current_report_id and str(next_report) != str(current_report_id):
+        title = "已有新版報告可查看"
+        body = (
+            f"目前畫面是報告 #{escape(str(current_report_id))}；"
+            f"自動補強已另產生新版報告 #{escape(str(next_report))}。"
+            "請切換到新版檢視補強後結論，避免把舊版內容誤認為已更新。"
+        )
+        tone = "auto-paused"
     elif next_report:
         title = "已自動補強並產生新版報告"
         body = (
@@ -1354,11 +1499,11 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     }
     status_class = status if status in {"ready", "caution", "insufficient"} else "unknown"
     quality_html = quality_issue_html(gate)
-    auto_html = auto_follow_up_status_html(result.get("auto_follow_up") if result else None)
     amount = action_policy.get("max_deployable_amount")
     amount_label = f"{int(amount):,} 元" if amount is not None else "-"
     current_allocation_label = "0 元" if "目前無可配置標的" in markdown else amount_label
     report_id = result.get("report_id") if result else "-"
+    auto_html = auto_follow_up_status_html(result.get("auto_follow_up") if result else None, report_id)
     request_payload = result.get("request") if result else {}
     request_payload = request_payload if isinstance(request_payload, dict) else {}
     lookback_days = request_payload.get("lookback_days") or metrics.get("source_lookback_days")
@@ -1376,7 +1521,6 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     summary_items = summary_table_items(markdown) + markdown_items(markdown, "一頁摘要", limit=3)
     time_scope_items = markdown_items(markdown, "時間口徑說明", limit=5)
     criteria_items = markdown_items(markdown, "判斷準則說明", limit=5)
-    action_items = markdown_items(markdown, "下一步行動", limit=8)
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
     investment_rows = markdown_table_rows(markdown, "投資建議", limit=20)
     early_radar_html = early_potential_radar_html(markdown)
@@ -1390,7 +1534,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     summary_html = "".join(f"<li>{escape(item)}</li>" for item in summary_items) or "<li>目前無足夠數據判斷。</li>"
     time_scope_html = "".join(f"<li>{escape(item)}</li>" for item in time_scope_items)
     criteria_html = "".join(f"<li>{escape(item)}</li>" for item in criteria_items)
-    action_html = "".join(f"<li>{escape(item)}</li>" for item in action_items) or "<li>先補資料後再重新分析。</li>"
+    action_html = next_steps_html(markdown)
     guard_html = "".join(f"<li>{escape(item)}</li>" for item in guard_items)
     cards = []
     for row in investment_rows:
@@ -1427,7 +1571,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     final_html = "".join(f"<li>{escape(item)}</li>" for item in final_items)
     details = "".join(
         [
-            detail_html(markdown, "資金控管", "資金控管建議", limit=8),
+            detail_html(markdown, "資金控管", "資金控管建議", limit=24),
             company_analysis_html(markdown),
             detail_html(markdown, "主要風險", "主要風險與瓶頸"),
             detail_html(markdown, "資料完整度", "資料完整度"),
@@ -1486,6 +1630,9 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
   .quality-observations strong {{ color:#087443; }}
   .quality-actions {{ margin-top:12px; border-top:1px solid #D7DEE8; padding-top:12px; }}
   .quality-actions strong {{ display:block; margin-bottom:2px; }}
+  .next-step-group {{ background:#FFFFFF; border:1px solid var(--border); border-radius:8px; padding:14px; margin:10px 0; }}
+  .next-step-group strong {{ display:block; color:#0f172a; margin-bottom:6px; }}
+  .next-step-group ul {{ margin-top:6px; }}
   .auto-follow-up {{ background:#FFFFFF; border:1px solid #B9D7FE; border-left:5px solid #1E3A8A; border-radius:8px; padding:14px 16px; margin-top:12px; box-shadow:0 3px 10px rgba(15,23,42,0.04); }}
   .auto-follow-up strong {{ display:block; color:#1E3A8A; margin-bottom:4px; }}
   .auto-follow-up p {{ margin:0; color:#334155; line-height:1.55; }}
@@ -1618,7 +1765,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       {"<section class='panel'><h2>時間口徑</h2><ul>" + time_scope_html + "</ul></section>" if time_scope_html else ""}
       {"<section class='panel'><h2>判斷準則</h2><ul>" + criteria_html + "</ul></section>" if criteria_html else ""}
       {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
-      <section class="panel"><h2>下一步</h2><ul>{action_html}</ul></section>
+      <section class="panel"><h2>下一步</h2>{action_html}</section>
       {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
       {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
       {"<section class='panel'><h2>早期潛力雷達</h2><p class='muted'>專看截至目前報導較少、但近況訊號轉強的研究線索；不是買賣指令，也不是自選股狀態。</p><div class='matrix-list'>" + early_radar_html + "</div></section>" if early_radar_html else ""}

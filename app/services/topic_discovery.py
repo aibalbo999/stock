@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.time import today_taipei
 from app.models.schemas import NewsDocument
 from app.services.candidate_confidence import confidence_level, is_high_confidence
-from app.services.entity_mapping import company_filing_owner_ticker
+from app.services.entity_mapping import alias_matches_text, alias_positions, company_filing_owner_ticker
 from app.services.llm_client import LLMClient
+from app.services.source_quality import is_low_quality_investor_forum_document
 from app.services.whitelist import SupplyChainWhitelist
 
 STALE_CANDIDATE_EVIDENCE_DAYS = 180
@@ -879,47 +880,12 @@ class TopicDiscoveryService:
                     else:
                         subtopic_extra_queries.append(international_item)
         queries.extend(subtopic_primary_queries)
-        for candidate in plan.candidate_companies:
-            keywords = " ".join(candidate.evidence_keywords[:2])
-            candidate_hypothesis = f"驗證 {candidate.ticker} {candidate.name} 是否與「{candidate.segment}」及主題證據直接相關。"
-            queries.append(
-                self._query_item(
-                    f"{candidate.name} {keywords}".strip(),
-                    "candidate",
-                    candidate_hypothesis,
-                    "候選公司證據",
-                    "company_disclosure",
-                )
-            )
-            queries.append(
-                self._query_item(
-                    f"{candidate.ticker} {candidate.name}",
-                    "candidate",
-                    candidate_hypothesis,
-                    "公司實體驗證",
-                    "company_disclosure",
-                )
-            )
-            if include_international:
-                english_terms = " ".join(candidate.evidence_keywords[:3])
-                queries.append(
-                    self._query_item(
-                        f"{candidate.name} {candidate.ticker} {english_terms} Taiwan stock",
-                        "candidate_international",
-                        candidate_hypothesis,
-                        "國際供應鏈證據",
-                        "international_context",
-                    )
-                )
-                queries.append(
-                    self._query_item(
-                        f"{candidate.segment} {english_terms} global supply chain",
-                        "candidate_international",
-                        candidate_hypothesis,
-                        "國際供應鏈證據",
-                        "international_context",
-                    )
-                )
+        queries.extend(self._round_robin_query_groups(
+            [
+                self._candidate_query_items(candidate, include_international=include_international)
+                for candidate in plan.candidate_companies
+            ]
+        ))
         queries.extend(subtopic_extra_queries)
         if topic:
             plan_quality = self.evaluate_plan_quality(plan)
@@ -1099,22 +1065,25 @@ class TopicDiscoveryService:
             for candidate in plan.candidate_companies
             if candidate.ticker not in supported_tickers
         ]
-        queries: list[str] = []
-        for candidate in weak_candidates:
-            keywords = " ".join(candidate.evidence_keywords[:3])
-            queries.append(f"{candidate.ticker} {candidate.name} {candidate.segment} {keywords}".strip())
-            queries.append(f"{candidate.name} {candidate.segment} 最新消息")
-            if keywords:
-                queries.append(f"{candidate.name} {keywords} 營收")
-            if include_international:
-                queries.append(f"{candidate.name} {candidate.ticker} Taiwan supplier {keywords}".strip())
-                queries.append(f"{candidate.segment} {keywords} Taiwan listed company".strip())
+        query_items: list[dict] = []
+        query_items.extend(
+            self._round_robin_query_groups(
+                [
+                    self._supplemental_candidate_query_items(
+                        candidate,
+                        include_international=include_international,
+                    )
+                    for candidate in weak_candidates
+                ]
+            )
+        )
         target_names = set(missing_subtopics or [])
         target_subtopics = [
             subtopic
             for subtopic in plan.subtopics
             if not target_names or (subtopic.name or "未命名子題") in target_names
         ]
+        queries: list[str] = []
         for subtopic in target_subtopics:
             evidence_terms = " ".join(subtopic.required_evidence[:2])
             risk_terms = " ".join(subtopic.risk_focus[:2])
@@ -1124,15 +1093,148 @@ class TopicDiscoveryService:
             for query in subtopic.search_queries[:2]:
                 queries.append(f"{query} 最新")
 
-        return self._google_news_metadata_from_queries(
-            queries,
-            source_type="supplemental",
-            hypothesis="補強弱證據候選與低覆蓋子題，重新驗證是否可進入正式分析。",
-            evidence_type="補抓資料源",
-            source_intent="company_disclosure",
+        query_items.extend(
+            self._google_news_metadata_from_queries(
+                queries,
+                source_type="supplemental",
+                hypothesis="補強弱證據候選與低覆蓋子題，重新驗證是否可進入正式分析。",
+                evidence_type="補抓資料源",
+                source_intent="company_disclosure",
+                max_urls=None,
+                existing_urls=[],
+            )
+        )
+        return self._dedupe_query_metadata(
+            query_items,
             max_urls=max_urls,
             existing_urls=existing_urls or [],
         )
+
+    @staticmethod
+    def _candidate_query_items(candidate: CandidateCompany, include_international: bool = True) -> list[dict]:
+        keywords = " ".join(candidate.evidence_keywords[:3])
+        candidate_hypothesis = f"驗證 {candidate.ticker} {candidate.name} 是否與「{candidate.segment}」及主題證據直接相關。"
+        items = [
+            TopicDiscoveryService._query_item(
+                f"{candidate.ticker} {candidate.name} {candidate.segment} {keywords}".strip(),
+                "candidate",
+                candidate_hypothesis,
+                "候選公司證據",
+                "industry_news",
+            ),
+            TopicDiscoveryService._query_item(
+                f"{candidate.ticker} {candidate.name} 法說會 年報 月營收".strip(),
+                "candidate",
+                candidate_hypothesis,
+                "公司公開資訊",
+                "company_disclosure",
+            ),
+            TopicDiscoveryService._query_item(
+                f"{candidate.name} {candidate.segment} 訂單 營收 出貨".strip(),
+                "candidate",
+                candidate_hypothesis,
+                "財務/營收",
+                "financial_metrics",
+            ),
+            TopicDiscoveryService._query_item(
+                f"{candidate.ticker} {candidate.name} 公開資訊觀測站 法人說明會".strip(),
+                "candidate",
+                candidate_hypothesis,
+                "公司公開資訊",
+                "company_disclosure",
+            ),
+        ]
+        if include_international:
+            items.extend(
+                [
+                    TopicDiscoveryService._query_item(
+                        f"{candidate.name} {candidate.ticker} Taiwan supplier {keywords}".strip(),
+                        "candidate_international",
+                        candidate_hypothesis,
+                        "國際供應鏈證據",
+                        "international_context",
+                    ),
+                    TopicDiscoveryService._query_item(
+                        f"{candidate.segment} {keywords} global supply chain Taiwan listed company".strip(),
+                        "candidate_international",
+                        candidate_hypothesis,
+                        "國際供應鏈證據",
+                        "international_context",
+                    ),
+                ]
+            )
+        return TopicDiscoveryService._dedupe_query_items(items)
+
+    @staticmethod
+    def _supplemental_candidate_query_items(
+        candidate: CandidateCompany,
+        include_international: bool = True,
+    ) -> list[dict]:
+        return [
+            {
+                **item,
+                "source_type": "supplemental",
+                "hypothesis": "補強弱證據候選與低覆蓋子題，重新驗證是否可進入正式分析。",
+                "evidence_type": "補抓資料源",
+            }
+            for item in TopicDiscoveryService._candidate_query_items(
+                candidate,
+                include_international=include_international,
+            )
+        ]
+
+    @staticmethod
+    def _round_robin_query_groups(groups: list[list[dict]]) -> list[dict]:
+        items: list[dict] = []
+        max_depth = max((len(group) for group in groups), default=0)
+        for index in range(max_depth):
+            for group in groups:
+                if index < len(group):
+                    items.append(group[index])
+        return TopicDiscoveryService._dedupe_query_items(items)
+
+    @staticmethod
+    def _dedupe_query_items(items: list[dict]) -> list[dict]:
+        deduped = []
+        seen = set()
+        for item in items:
+            normalized = re.sub(r"\s+", " ", str(item.get("query") or "")).strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append({**item, "query": normalized})
+        return deduped
+
+    @staticmethod
+    def _dedupe_query_metadata(
+        items: list[dict],
+        max_urls: int | None = None,
+        existing_urls: list[str] | None = None,
+    ) -> list[dict]:
+        seen_urls = set(existing_urls or [])
+        seen_queries = set()
+        metadata = []
+        for item in items:
+            normalized = re.sub(r"\s+", " ", str(item.get("query") or "")).strip()
+            url = item.get("url") or (
+                "https://news.google.com/rss/search?"
+                f"q={quote_plus(normalized)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            )
+            if not normalized or normalized in seen_queries or url in seen_urls:
+                continue
+            seen_queries.add(normalized)
+            seen_urls.add(url)
+            metadata.append(
+                {
+                    **item,
+                    "url": url,
+                    "query": normalized,
+                    "language": TopicDiscoveryService._query_language(normalized),
+                }
+            )
+            if max_urls and len(metadata) >= max_urls:
+                break
+        return metadata
 
     @staticmethod
     def missing_subtopic_names(source_relevance: dict) -> list[str]:
@@ -1228,6 +1330,8 @@ class TopicDiscoveryService:
             entity_terms = self._candidate_entity_terms(candidate)
             context_terms = self._candidate_context_terms(candidate, plan)
             for document in documents:
+                if is_low_quality_investor_forum_document(document):
+                    continue
                 if self._document_supports_candidate(document, entity_terms, context_terms):
                     evidence_documents.append(document)
             deduped_titles = list(dict.fromkeys(document.title for document in evidence_documents))[:5]
@@ -1452,27 +1556,12 @@ class TopicDiscoveryService:
             normalized_term = (term or "").lower()
             if not normalized_term:
                 continue
-            if normalized_term.isdigit():
-                pattern = re.compile(rf"(?<!\d){re.escape(normalized_term)}(?!\d)")
-                positions.extend(match.start() for match in pattern.finditer(haystack))
-                continue
-            start = 0
-            while True:
-                index = haystack.find(normalized_term, start)
-                if index == -1:
-                    break
-                positions.append(index)
-                start = index + len(normalized_term)
+            positions.extend(alias_positions(haystack, normalized_term))
         return positions
 
     @staticmethod
     def _contains_entity_term(haystack: str, term: str) -> bool:
-        if not term:
-            return False
-        normalized_term = term.lower()
-        if normalized_term.isdigit():
-            return bool(re.search(rf"(?<!\d){re.escape(normalized_term)}(?!\d)", haystack))
-        return normalized_term in haystack
+        return alias_matches_text(haystack, term) if term else False
 
     @staticmethod
     def _looks_like_unrelated_release_document(document: NewsDocument) -> bool:
@@ -1506,11 +1595,15 @@ class TopicDiscoveryService:
     def _candidate_evidence_sources(documents: list[NewsDocument], limit: int = 5) -> list[dict]:
         sources = []
         seen = set()
-        for document in documents:
+        dated_documents = sorted(
+            enumerate(documents),
+            key=lambda pair: (pair[1].source.published_at or date.min, -pair[0]),
+            reverse=True,
+        )
+        for _, document in dated_documents:
             source_key = (
                 document.title,
                 document.source.publisher,
-                document.source.url,
                 document.source.published_at.isoformat() if document.source.published_at else "",
             )
             if source_key in seen:
@@ -1596,11 +1689,15 @@ class TopicDiscoveryService:
                 "已超過 180 天新鮮度門檻；"
             )
         if evidence_count >= 2 and source_count >= 2 and is_high_confidence(confidence_score):
-            return stale_note + "通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。"
+            return (
+                stale_note
+                + "通過候選入選門檻：至少 2 篇公司主題證據、2 個以上來源，且入選支持度達高分；"
+                "正式分析可信度仍需另看風險/機會歸因、財報、估值與公司文件。"
+            )
         if evidence_count >= 2 and source_count >= 2:
             return (
                 stale_note
-                + f"弱證據：篇數與來源數達標，但證據信心只有 {confidence_score} 分，需補近期或有日期來源。"
+                + f"弱證據：篇數與來源數達標，但入選支持度只有 {confidence_score} 分，需補近期或有日期來源。"
             )
         if evidence_count > 0:
             return (

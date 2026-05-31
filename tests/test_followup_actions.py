@@ -496,7 +496,7 @@ def test_candidate_follow_up_news_queries_stay_compact_for_long_reasons() -> Non
     action = FollowUpAction(
         "ingest_news",
         "候選公司未升格，需補齊公司層級證據：股票：2308 台達電；產業位置：伺服驅動與控制系統；"
-        "弱證據觀察；3 篇 / 3 來源；通過正式分析門檻：至少 2 篇公司主題證據、2 個以上來源，且證據信心達高分。；"
+        "弱證據觀察；3 篇 / 3 來源；通過候選入選門檻：至少 2 篇公司主題證據、2 個以上來源，且入選支持度達高分。；"
         "系統尚未取得或解析到可用官方年報/法說文字，先降回候選觀察；這是資料管線缺口，不代表公司沒有公開年報；補抓或匯入官方年報、法說會或公司 IR 文字版後再升格為正式分析。",
         ("2308",),
         "high",
@@ -508,7 +508,7 @@ def test_candidate_follow_up_news_queries_stay_compact_for_long_reasons() -> Non
 
     assert any("2308 台達電 機器人 產業鏈 伺服驅動與控制系統" in query for query in queries)
     assert all(len(query) <= 80 for query in queries)
-    assert all("通過正式分析門檻" not in query for query in queries)
+    assert all("候選入選門檻" not in query for query in queries)
 
 
 def test_source_audit_follow_up_news_queries_work_without_tickers() -> None:
@@ -531,7 +531,7 @@ def test_candidate_follow_up_queries_prioritize_fresh_sources_for_low_confidence
     action = FollowUpAction(
         "ingest_news",
         "候選公司未升格，需補齊公司層級證據：股票：3324 雙鴻；產業位置：散熱模組；"
-        "弱證據：篇數與來源數達標，但證據信心只有 60 分，需補近期或有日期來源；信心：中 60",
+        "弱證據：篇數與來源數達標，但入選支持度只有 60 分，需補近期或有日期來源；信心：中 60",
         ("3324",),
         "high",
         "weekly",

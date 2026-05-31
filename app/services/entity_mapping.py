@@ -5,6 +5,10 @@ import re
 from app.models.schemas import EntityMatch, NewsDocument
 from app.services.whitelist import SupplyChainWhitelist
 
+CONFUSING_ENTITY_PREFIXES = {
+    "南亞": ("南亞科", "南亞科技"),
+}
+
 
 def company_filing_owner_ticker(document: NewsDocument) -> str | None:
     if not document.id.startswith("filing-"):
@@ -61,10 +65,7 @@ class EntityMapper:
 
     @staticmethod
     def _alias_matches(lowered_text: str, alias: str) -> bool:
-        lowered_alias = alias.lower()
-        if lowered_alias.isdigit():
-            return bool(re.search(rf"(?<!\d){re.escape(lowered_alias)}(?!\d)", lowered_text))
-        return lowered_alias in lowered_text
+        return alias_matches_text(lowered_text, alias)
 
     @staticmethod
     def _looks_like_release_notes(document: NewsDocument) -> bool:
@@ -92,7 +93,38 @@ class EntityMapper:
                     continue
                 aliases = [company.name, *company.aliases]
                 return any(
-                    alias and not alias.isdigit() and alias.lower() in lowered_text
+                    alias and not alias.isdigit() and alias_matches_text(lowered_text, alias)
                     for alias in aliases
                 )
         return False
+
+
+def alias_matches_text(lowered_text: str, alias: str) -> bool:
+    lowered_alias = alias.lower()
+    if lowered_alias.isdigit():
+        return bool(re.search(rf"(?<!\d){re.escape(lowered_alias)}(?!\d)", lowered_text))
+    return bool(alias_positions(lowered_text, alias))
+
+
+def alias_positions(lowered_text: str, alias: str) -> list[int]:
+    lowered_alias = alias.lower()
+    if not lowered_alias:
+        return []
+    if lowered_alias.isdigit():
+        pattern = re.compile(rf"(?<!\d){re.escape(lowered_alias)}(?!\d)")
+        return [match.start() for match in pattern.finditer(lowered_text)]
+    positions = []
+    start = 0
+    while True:
+        index = lowered_text.find(lowered_alias, start)
+        if index == -1:
+            break
+        if not _is_confusing_prefix_occurrence(lowered_text, lowered_alias, index):
+            positions.append(index)
+        start = index + len(lowered_alias)
+    return positions
+
+
+def _is_confusing_prefix_occurrence(lowered_text: str, lowered_alias: str, index: int) -> bool:
+    confusing_prefixes = CONFUSING_ENTITY_PREFIXES.get(lowered_alias, ())
+    return any(lowered_text.startswith(prefix.lower(), index) for prefix in confusing_prefixes)

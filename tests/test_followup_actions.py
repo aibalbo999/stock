@@ -45,6 +45,34 @@ def test_quality_gate_remediation_becomes_executable_actions() -> None:
     assert "rerun_analysis" in action_types
 
 
+def test_stale_market_quality_metrics_become_required_refresh_actions() -> None:
+    gate = {
+        "status": "caution",
+        "metrics": {
+            "market_stale_count": 1,
+            "monthly_revenue_stale_count": 1,
+            "financial_metrics_stale_ticker_count": 1,
+            "valuation_stale_count": 1,
+        },
+    }
+
+    actions = FollowUpActionPlanner().plan(
+        ReportRequest(topic="AI 產業鏈", tickers=["2330", "2382"]),
+        quality_gate=gate,
+    )
+
+    action_types = {action.action_type for action in actions}
+    assert {
+        "refresh_market",
+        "refresh_monthly_revenue",
+        "refresh_financial_metrics",
+        "refresh_valuations",
+        "rerun_analysis",
+    }.issubset(action_types)
+    assert all(action.purpose == "required" for action in actions)
+    assert any("快取救援資料" in action.reason for action in actions)
+
+
 def test_llm_fallback_warning_becomes_rerun_action() -> None:
     gate = {
         "status": "caution",
@@ -759,6 +787,27 @@ def test_summarize_follow_up_execution_counts_stored_items_and_errors() -> None:
     assert summary["rerun_blocker_actions"][0]["required"] == {"min_days": 120, "error_count": 0}
 
 
+def test_summarize_follow_up_execution_blocks_when_refresh_still_uses_stale_cache() -> None:
+    summary = summarize_follow_up_execution(
+        {
+            "results": {
+                "refresh_market:2330": {
+                    "stored_history_count": 120,
+                    "stale_source_count": 120,
+                    "errors": [],
+                }
+            }
+        }
+    )
+
+    completion = summary["items"][0]["completion"]
+
+    assert completion["completed"] is False
+    assert completion["observed"] == {"stored_count": 120, "error_count": 0, "stale_source_count": 120}
+    assert completion["required"] == {"min_days": 120, "error_count": 0, "stale_source_count": 0}
+    assert summary["rerun_blockers"] == ["補強任務未達完成條件：refresh_market:2330"]
+
+
 def test_summarize_follow_up_execution_requires_news_to_match_target_company() -> None:
     summary = summarize_follow_up_execution(
         {
@@ -920,5 +969,56 @@ def test_tracking_actions_are_skipped_when_cached_data_is_fresh(monkeypatch) -> 
         )
         assert details[0]["freshness"]["latest_dates"]["2330"] == "2026-05-24"
         assert details[0]["freshness"]["max_age_days"] == TRACKING_FRESHNESS_THRESHOLDS["refresh_market"]
+    finally:
+        session.close()
+
+
+def test_tracking_actions_are_not_skipped_when_cached_data_is_stale(monkeypatch) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        MarketRepository(session).upsert_snapshots(
+            [
+                MarketSnapshot(
+                    ticker="2330",
+                    trade_date=date(2026, 5, 24),
+                    close=100,
+                    source="FinMind TaiwanStockPrice; cached-stale",
+                )
+            ]
+        )
+        session.commit()
+
+        @contextmanager
+        def fake_session_scope():
+            yield session
+
+        monkeypatch.setattr("app.services.followup_actions.session_scope", fake_session_scope)
+        monkeypatch.setattr("app.services.followup_actions.today_taipei", lambda: date(2026, 5, 25))
+
+        markdown = """
+## 監控清單
+| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |
+|---|---|---|---|---|
+| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號轉偏多且量價同步改善 | 降值風險高於 5% | 每週 |
+"""
+
+        actions = FollowUpActionPlanner().plan(
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            markdown=markdown,
+        )
+
+        assert [action.action_type for action in actions] == ["refresh_market", "rerun_analysis"]
+        details = skipped_fresh_tracking_details(
+            FollowUpActionPlanner().plan(
+                ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+                markdown=markdown,
+                apply_freshness=False,
+            ),
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+        )
+        assert details == []
     finally:
         session.close()

@@ -19,11 +19,21 @@ task_id = "task-abc"
 def test_security_scan_detects_realistic_api_keys(tmp_path) -> None:
     path = tmp_path / "sample.py"
     path.write_text(
-        'key = "AIza' + "A" * 35 + '"\nopenai = "sk-' + "b" * 40 + '"\n',
+        'key = "AIza'
+        + "A" * 35
+        + '"\nopenai = "sk-'
+        + "b" * 40
+        + '"\nanthropic = "sk-ant-'
+        + "c" * 40
+        + '"\n',
         encoding="utf-8",
     )
 
     findings = scan_paths([path], tmp_path)
 
-    assert {finding["type"] for finding in findings} == {"google_api_key", "openai_api_key"}
+    assert {finding["type"] for finding in findings} == {
+        "anthropic_api_key",
+        "google_api_key",
+        "openai_api_key",
+    }
     assert all(finding["path"] == Path("sample.py").as_posix() for finding in findings)

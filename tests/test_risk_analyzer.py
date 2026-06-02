@@ -59,6 +59,26 @@ def test_cowos_capacity_tightness_is_structural_bottleneck() -> None:
     assert any(finding.risk_type == RiskType.structural_bottleneck for finding in findings)
 
 
+def test_risk_analyzer_excludes_non_formal_sources_from_findings() -> None:
+    forum = NewsFetcher.from_manual_text(
+        title="台積電 CoWoS 產能吃緊 - 股市爆料同學會",
+        text="台積電 CoWoS 產能吃緊，AI 供應鏈尋找替代方案。",
+        publisher="CMoney",
+        published_at=date(2026, 5, 12),
+        url="https://www.cmoney.tw/forum/stock/2330",
+    )
+    blog = NewsFetcher.from_manual_text(
+        title="【即時新聞】台積電 CoWoS 供不應求 - CMoney投資網誌",
+        text="台積電 CoWoS 產能吃緊，AI 供應鏈尋找替代方案。",
+        publisher="CMoney投資網誌",
+        published_at=date(2026, 5, 12),
+    )
+
+    findings = RiskAnalyzer().analyze_documents([forum, blog])
+
+    assert findings == []
+
+
 def test_company_filing_boilerplate_macro_risk_is_not_reported_as_company_bottleneck() -> None:
     document = NewsFetcher.from_manual_text(
         title="股東會年報",

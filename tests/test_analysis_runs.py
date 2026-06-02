@@ -48,6 +48,28 @@ def test_analysis_run_failed_state() -> None:
         session.close()
 
 
+def test_analysis_run_can_be_marked_running_for_resume() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repository = AnalysisRunRepository(session)
+        run = repository.start("pipeline_api", {"topic": "AI 產業鏈"})
+        repository.mark_failed(run.id, "boom")
+        session.commit()
+
+        repository.mark_running(run.id)
+        session.commit()
+
+        resumed = repository.get(run.id)
+        assert resumed.status == "running"
+        assert resumed.error is None
+        assert resumed.finished_at is None
+    finally:
+        session.close()
+
+
 def test_analysis_run_get_and_delete() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

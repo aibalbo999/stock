@@ -50,6 +50,34 @@ class DummyRun:
     finished_at = datetime(2026, 5, 24, 4, 52, 50)
 
 
+def test_serialize_run_exposes_parsed_workflow() -> None:
+    run = SimpleNamespace(
+        id=1,
+        source="pipeline_api",
+        status="success",
+        payload_json=(
+            '{"workflow":{"name":"standard_report_pipeline","status":"success"},'
+            '"workflow_orchestration":{"mode":"prefect_flow","executed_engine":"prefect"}}'
+        ),
+        report_id=2,
+        output_path=None,
+        error=None,
+        started_at=datetime(2026, 5, 31, 9, 0, 0),
+        finished_at=datetime(2026, 5, 31, 9, 1, 0),
+    )
+
+    serialized = main.serialize_run(run)
+
+    assert serialized["workflow"] == {
+        "name": "standard_report_pipeline",
+        "status": "success",
+    }
+    assert serialized["workflow_orchestration"] == {
+        "mode": "prefect_flow",
+        "executed_engine": "prefect",
+    }
+
+
 def test_merge_latest_by_ticker_uses_cached_data_when_fetch_fails() -> None:
     cached = [
         MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 29), close=1200.0),
@@ -207,6 +235,117 @@ def test_generate_report_async_requires_whitelisted_ticker(monkeypatch) -> None:
     assert response.json() == {
         "detail": "async report generation requires at least one whitelisted ticker"
     }
+
+
+def test_pipeline_run_returns_503_when_workflow_engine_is_unavailable(monkeypatch) -> None:
+    class FakeRunner:
+        async def run(self, workflow_name, local_runner, **kwargs):
+            raise main.WorkflowOrchestrationError(
+                engine="airflow",
+                reason="missing_settings:airflow_api_url",
+            )
+
+    monkeypatch.setattr(main._api_services, "workflow_orchestration_runner", lambda: FakeRunner())
+
+    response = TestClient(main.app).post(
+        "/pipeline/run",
+        json={
+            "topic": "機器人 產業鏈",
+            "tickers": ["1504"],
+            "lookback_days": 7,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Workflow engine airflow is not available: missing_settings:airflow_api_url"
+    )
+
+
+def test_pipeline_worker_execute_endpoint_delegates_to_local_dispatch(monkeypatch) -> None:
+    captured = {}
+
+    class FakePipelineApi:
+        async def run_dispatch_payload_locally(self, payload: dict) -> dict:
+            captured["payload"] = payload
+            return {
+                "run_id": 77,
+                "report_id": 88,
+                "workflow_orchestration": {"mode": "external_worker_local_execution"},
+            }
+
+    monkeypatch.setattr(main._api_services, "pipeline_api", lambda: FakePipelineApi())
+
+    response = TestClient(main.app).post(
+        "/pipeline/worker/execute",
+        json={"operation": "resume_standard", "run_id": 77},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": 77,
+        "report_id": 88,
+        "workflow_orchestration": {"mode": "external_worker_local_execution"},
+    }
+    assert captured["payload"] == {"operation": "resume_standard", "run_id": 77}
+
+
+def test_pipeline_worker_execute_endpoint_returns_400_for_invalid_dispatch(monkeypatch) -> None:
+    class FakePipelineApi:
+        async def run_dispatch_payload_locally(self, payload: dict) -> dict:
+            raise main.ReportExecutionError("unsupported workflow dispatch operation: run_sideways")
+
+    monkeypatch.setattr(main._api_services, "pipeline_api", lambda: FakePipelineApi())
+
+    response = TestClient(main.app).post(
+        "/pipeline/worker/execute",
+        json={"operation": "run_sideways"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "unsupported workflow dispatch operation: run_sideways"
+
+
+def test_pipeline_resume_endpoint_delegates_to_pipeline_service(monkeypatch) -> None:
+    captured = {}
+
+    class FakePipelineApi:
+        async def resume_standard_run(self, run_id: int) -> dict:
+            captured["run_id"] = run_id
+            return {"run_id": run_id, "report_id": 88, "resumed_from_step": "report_build"}
+
+    monkeypatch.setattr(main._api_services, "pipeline_api", lambda: FakePipelineApi())
+
+    response = TestClient(main.app).post("/pipeline/runs/77/resume")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": 77,
+        "report_id": 88,
+        "resumed_from_step": "report_build",
+    }
+    assert captured == {"run_id": 77}
+
+
+def test_pipeline_discovered_resume_endpoint_delegates_to_pipeline_service(monkeypatch) -> None:
+    captured = {}
+
+    class FakePipelineApi:
+        async def resume_discovered_run(self, run_id: int) -> dict:
+            captured["run_id"] = run_id
+            return {"run_id": run_id, "report_id": 88, "resumed_from_step": "auto_follow_up"}
+
+    monkeypatch.setattr(main._api_services, "pipeline_api", lambda: FakePipelineApi())
+
+    response = TestClient(main.app).post("/pipeline/discovered-runs/77/resume")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": 77,
+        "report_id": 88,
+        "resumed_from_step": "auto_follow_up",
+    }
+    assert captured == {"run_id": 77}
 
 
 def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypatch) -> None:
@@ -635,6 +774,39 @@ def test_summarize_document_source_quality_measures_diversity_and_recency() -> N
     assert quality["timestamp_coverage"] == 0.75
     assert quality["recent_count"] == 2
     assert quality["recent_coverage"] == 0.5
+    assert quality["high_credibility_count"] == 0
+    assert quality["low_credibility_count"] == 0
+
+
+def test_summarize_document_source_quality_measures_source_credibility() -> None:
+    recent = now_taipei().date() - timedelta(days=2)
+    documents = [
+        NewsDocument(
+            id="official",
+            title="台積電股東會年報",
+            text="公開資訊觀測站年報。",
+            source=Source(title="台積電股東會年報", publisher="公開資訊觀測站 MOPS", published_at=recent),
+        ),
+        NewsDocument(
+            id="news",
+            title="台積電月營收創同期高",
+            text="台積電月營收年增。",
+            source=Source(title="台積電月營收創同期高", publisher="經濟日報", published_at=recent),
+        ),
+        NewsDocument(
+            id="blog",
+            title="台積電還能追嗎",
+            text="投資網誌評論。",
+            source=Source(title="台積電還能追嗎", publisher="CMoney投資網誌", published_at=recent),
+        ),
+    ]
+
+    quality = summarize_document_source_quality(documents, lookback_days=14)
+
+    assert quality["high_credibility_count"] == 2
+    assert quality["low_credibility_count"] == 1
+    assert quality["credibility_tier_counts"]["official"] == 1
+    assert quality["credibility_tier_counts"]["investment_blog"] == 1
 
 
 def test_report_quality_gate_blocks_undated_sources() -> None:
@@ -679,6 +851,31 @@ def test_report_quality_gate_warns_on_low_source_diversity() -> None:
 
     assert gate["status"] == "caution"
     assert "資料來源多樣性偏低" in gate["warnings"]
+
+
+def test_report_quality_gate_warns_when_low_credibility_sources_dominate() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0},
+            "dynamic_queries": {"stored_count": 12},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        source_quality={
+            "unique_publisher_count": 4,
+            "timestamp_coverage": 1,
+            "recent_coverage": 1,
+            "high_credibility_ratio": 0.25,
+            "low_credibility_ratio": 0.58,
+        },
+    )
+
+    assert gate["status"] == "caution"
+    assert "高可信來源比例偏低，正式結論需補官方文件或主流財經新聞" in gate["warnings"]
+    assert "投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由" in gate["warnings"]
 
 
 def test_report_quality_gate_blocks_weak_research_inputs() -> None:
@@ -880,6 +1077,73 @@ def test_quality_gate_for_request_uses_dynamic_request_tickers(monkeypatch) -> N
     assert captured["promoted_tickers"] == ["2059"]
 
 
+def test_quality_gate_for_request_marks_stale_market_cache(monkeypatch) -> None:
+    captured = {}
+
+    def fake_build_report_quality_gate(source_audit, promoted_tickers, **kwargs):
+        captured.update(kwargs)
+        return {"status": "caution", "metrics": kwargs}
+
+    class FakeMarketRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return [SimpleNamespace(ticker=tickers[0], source="FinMind TaiwanStockPrice; cached-stale")]
+
+        def history_by_tickers(self, tickers, limit=90):
+            return {}
+
+    class FakeMonthlyRevenueRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return [SimpleNamespace(ticker=tickers[0], source="FinMind TaiwanStockMonthRevenue; cached-stale")]
+
+        def history_by_tickers(self, tickers, limit=18):
+            return {}
+
+    class FakeFinancialMetricRepository:
+        def __init__(self, session):
+            pass
+
+        def by_tickers(self, tickers):
+            return [SimpleNamespace(ticker=tickers[0], source="FinMind TaiwanStockFinancialStatements; cached-stale")]
+
+    class FakeValuationMetricRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return [
+                SimpleNamespace(
+                    ticker=tickers[0],
+                    pe_ratio=20,
+                    pb_ratio=5,
+                    source="FinMind TaiwanStockPER; cached-stale",
+                )
+            ]
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(report_quality, "build_report_quality_gate", fake_build_report_quality_gate)
+    monkeypatch.setattr("app.services.report_quality.MarketRepository", FakeMarketRepository)
+    monkeypatch.setattr("app.services.report_quality.MonthlyRevenueRepository", FakeMonthlyRevenueRepository)
+    monkeypatch.setattr("app.services.report_quality.FinancialMetricRepository", FakeFinancialMetricRepository)
+    monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", FakeValuationMetricRepository)
+    monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
+
+    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
+
+    assert gate["metrics"]["market_stale_count"] == 1
+    assert gate["metrics"]["monthly_revenue_stale_count"] == 1
+    assert gate["metrics"]["financial_metrics_stale_ticker_count"] == 1
+    assert gate["metrics"]["valuation_stale_count"] == 1
+
+
 def test_quality_gate_for_request_can_use_revalidated_candidate_confidence(monkeypatch) -> None:
     captured = {}
 
@@ -938,6 +1202,59 @@ def test_quality_gate_for_request_can_use_revalidated_candidate_confidence(monke
     assert captured["candidate_support"]["supported_ratio"] == 0.05
 
 
+def test_quality_gate_for_request_passes_runtime_rag_status(monkeypatch) -> None:
+    captured = {}
+    rag_status = {
+        "retrieval_mode": "memory_hybrid",
+        "embedding_status": {"provider": "sentence_transformers"},
+        "reranker_status": {"provider": "keyword"},
+    }
+
+    def fake_build_report_quality_gate(source_audit, promoted_tickers, **kwargs):
+        captured["rag_status"] = kwargs["rag_status"]
+        return {"status": "ready", "metrics": {}}
+
+    class FakeMarketRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=90):
+            return {}
+
+    class EmptyRepository:
+        def __init__(self, session):
+            pass
+
+        def latest_by_tickers(self, tickers):
+            return []
+
+        def by_tickers(self, tickers):
+            return []
+
+        def history_by_tickers(self, tickers, limit=18):
+            return {}
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(report_quality, "build_report_quality_gate", fake_build_report_quality_gate)
+    monkeypatch.setattr(report_quality, "rag_runtime_status", lambda: rag_status)
+    monkeypatch.setattr("app.services.report_quality.MarketRepository", FakeMarketRepository)
+    monkeypatch.setattr("app.services.report_quality.MonthlyRevenueRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.FinancialMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
+    monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
+
+    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
+
+    assert gate["status"] == "ready"
+    assert captured["rag_status"] == rag_status
+
+
 def test_report_quality_gate_warns_when_llm_falls_back() -> None:
     gate = main.build_report_quality_gate(
         source_audit={
@@ -953,13 +1270,191 @@ def test_report_quality_gate_warns_when_llm_falls_back() -> None:
         monthly_revenue_count=1,
         financial_metrics_count=12,
         valuation_count=1,
-        llm_status={"fallback": True, "model": None, "key_index": None},
+        llm_status={
+            "fallback": True,
+            "model": None,
+            "key_index": None,
+            "provider": "litellm",
+            "attempt_summary": {
+                "attempt_count": 2,
+                "primary_failure_category": "rate_limited",
+                "retryable_failure_count": 2,
+            },
+        },
     )
 
     assert gate["status"] == "caution"
     assert "LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿" in gate["warnings"]
     assert gate["metrics"]["llm_analysis_status"] == "fallback"
+    assert gate["metrics"]["llm_provider"] == "litellm"
+    assert gate["metrics"]["llm_attempt_count"] == 2
+    assert gate["metrics"]["llm_primary_failure_category"] == "rate_limited"
+    assert gate["metrics"]["llm_retryable_failure_count"] == 2
     assert any("檢查 LLM API key" in action for action in gate["remediation_actions"])
+
+
+def test_report_quality_gate_warns_when_rag_embedding_falls_back() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        rag_status={
+            "use_chroma": True,
+            "chroma_available": True,
+            "persistent_collection_enabled": False,
+            "retrieval_mode": "memory_hybrid",
+            "embedding_status": {
+                "provider": "sentence_transformers",
+                "custom_embedding_requested": True,
+                "custom_embedding_enabled": False,
+                "chroma_default_fallback_allowed": False,
+                "fallback_reason": "missing_dependency:sentence_transformers",
+            },
+            "reranker_status": {
+                "provider": "keyword",
+                "normalized_provider": "keyword",
+                "available": True,
+                "execution_mode": "keyword",
+                "fallback_reason": None,
+            },
+            "retrieval_status": {
+                "strategy": "hybrid-vector-bm25",
+                "hybrid_search_enabled": True,
+                "bm25_enabled": True,
+                "keyword_corpus_limit": 2000,
+                "vector_weight": 0.6,
+                "keyword_weight": 0.4,
+                "rerank_top_k": 40,
+            },
+        },
+    )
+
+    assert gate["status"] == "caution"
+    assert "RAG 自訂 embedding 未啟用，已停用持久化向量庫並退回關鍵字檢索" in gate["warnings"]
+    assert gate["metrics"]["rag_embedding_enabled"] is False
+    assert gate["metrics"]["rag_embedding_fallback_reason"] == "missing_dependency:sentence_transformers"
+    assert gate["metrics"]["rag_retrieval_strategy"] == "hybrid-vector-bm25"
+    assert gate["metrics"]["rag_bm25_enabled"] is True
+    assert gate["metrics"]["rag_keyword_corpus_limit"] == 2000
+    assert gate["metrics"]["rag_vector_weight"] == 0.6
+    assert gate["metrics"]["rag_keyword_weight"] == 0.4
+    assert gate["metrics"]["rag_rerank_top_k"] == 40
+    assert any("檢查 RAG embedding" in action for action in gate["remediation_actions"])
+
+
+def test_report_quality_gate_warns_when_cross_encoder_reranker_falls_back() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        rag_status={
+            "use_chroma": True,
+            "chroma_available": True,
+            "persistent_collection_enabled": True,
+            "retrieval_mode": "chroma_hybrid",
+            "embedding_status": {
+                "provider": "sentence_transformers",
+                "custom_embedding_requested": True,
+                "custom_embedding_enabled": True,
+                "fallback_reason": None,
+            },
+            "reranker_status": {
+                "provider": "bge",
+                "normalized_provider": "bge",
+                "available": False,
+                "execution_mode": "input_order_fallback",
+                "fallback_reason": "missing_dependency:sentence_transformers",
+            },
+        },
+    )
+
+    assert gate["status"] == "caution"
+    assert "RAG reranker 未啟用或推論失敗，檢索排序信心需人工覆核" in gate["warnings"]
+    assert gate["metrics"]["rag_reranker_available"] is False
+    assert gate["metrics"]["rag_reranker_model_ready"] is False
+    assert gate["metrics"]["rag_reranker_fallback_reason"] == "missing_dependency:sentence_transformers"
+
+
+def test_report_quality_gate_warns_when_reranker_is_keyword_only() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        rag_status={
+            "use_chroma": True,
+            "chroma_available": True,
+            "persistent_collection_enabled": True,
+            "retrieval_mode": "chroma_hybrid",
+            "embedding_status": {
+                "provider": "sentence_transformers",
+                "custom_embedding_requested": True,
+                "custom_embedding_enabled": True,
+                "fallback_reason": None,
+            },
+            "reranker_status": {
+                "provider": "keyword",
+                "normalized_provider": "keyword",
+                "available": True,
+                "execution_mode": "keyword",
+                "quality_tier": "lexical_fallback",
+                "keyword_fallback": True,
+                "model_reranker_ready": False,
+                "model_reranker_gap": "keyword_provider_selected",
+                "fallback_reason": None,
+            },
+        },
+    )
+
+    assert gate["status"] == "caution"
+    assert "RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核" in gate[
+        "warnings"
+    ]
+    assert gate["metrics"]["rag_reranker_available"] is True
+    assert gate["metrics"]["rag_reranker_model_ready"] is False
+    assert gate["metrics"]["rag_reranker_keyword_fallback"] is True
+    assert gate["metrics"]["rag_reranker_model_gap"] == "keyword_provider_selected"
+
+
+def test_report_quality_gate_warns_when_market_data_uses_stale_cache() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        market_stale_count=1,
+        monthly_revenue_stale_count=1,
+        financial_metrics_stale_ticker_count=1,
+        valuation_stale_count=1,
+    )
+
+    assert gate["status"] == "caution"
+    assert "部分市場或財務資料使用快取救援，需刷新確認最新資料" in gate["warnings"]
+    assert gate["metrics"]["stale_market_dataset_count"] == 4
+    assert gate["metrics"]["market_fresh_coverage"] == 0
+    assert any("快取救援資料只能作暫時參考" in action for action in gate["remediation_actions"])
 
 
 def test_report_company_data_audit_endpoint(monkeypatch) -> None:
@@ -1395,14 +1890,66 @@ def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
         monthly_revenue_count=1,
         financial_metrics_count=12,
         valuation_count=1,
-        llm_status={"fallback": False, "model": "gemini-test", "key_index": 2},
+        llm_status={
+            "fallback": False,
+            "model": "gemini-test",
+            "key_index": 2,
+            "provider": "google_genai",
+            "attempt_summary": {"attempt_count": 1, "retryable_failure_count": 0},
+        },
     )
 
     assert gate["status"] == "ready"
     assert gate["metrics"]["llm_analysis_status"] == "enabled"
     assert gate["metrics"]["llm_model"] == "gemini-test"
     assert gate["metrics"]["llm_key_index"] == 2
+    assert gate["metrics"]["llm_provider"] == "google_genai"
+    assert gate["metrics"]["llm_attempt_count"] == 1
     assert "LLM 補充分析已完成，且仍受來源與白名單驗證約束" in gate["observations"]
+
+
+def test_report_quality_gate_discloses_llm_recovery_path() -> None:
+    gate = main.build_report_quality_gate(
+        source_audit={
+            "candidate_support": {
+                "supported_ratio": 1.0,
+                "formal_confidence_avg": 88.5,
+                "formal_confidence_min": 80,
+            },
+            "dynamic_queries": {"stored_count": 24},
+        },
+        promoted_tickers=["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=12,
+        valuation_count=1,
+        llm_status={
+            "fallback": False,
+            "model": "gemini/gemini-backup",
+            "provider": "litellm",
+            "attempt_summary": {
+                "attempt_count": 2,
+                "failed_attempt_count": 1,
+                "success_after_failure": True,
+                "retry_used": False,
+                "fallback_path_used": True,
+                "provider_fallback_used": False,
+                "model_fallback_used": True,
+                "primary_failure_category": "rate_limited",
+                "retryable_failure_count": 1,
+                "final_outcome": "success",
+            },
+        },
+    )
+
+    assert gate["status"] == "ready"
+    assert gate["metrics"]["llm_analysis_status"] == "enabled"
+    assert gate["metrics"]["llm_failed_attempt_count"] == 1
+    assert gate["metrics"]["llm_success_after_failure"] is True
+    assert gate["metrics"]["llm_fallback_path_used"] is True
+    assert "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察" in gate[
+        "observations"
+    ]
 
 
 def test_candidate_support_summarizes_formal_confidence_scores() -> None:
@@ -1845,11 +2392,18 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
         title = "AI 產業鏈 自動分析報告"
         topic = "AI 產業鏈"
         tickers_json = '["2330"]'
-        markdown = "# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n測試"
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 一頁摘要\n測試\n"
+            "- 2026-05-12 CMoney《1815 富喬-股市爆料同學會》\n"
+        )
         generated_at = datetime(2026, 5, 28, 10, 0, 0)
 
     class ReportRun:
-        payload_json = '{"request":{"topic":"AI 產業鏈","tickers":["2330"]}}'
+        payload_json = (
+            '{"request":{"topic":"AI 產業鏈","tickers":["2330"]},'
+            '"workflow":{"name":"standard_report_pipeline","status":"success"}}'
+        )
 
     class FollowUpRun:
         id = 31
@@ -1873,9 +2427,19 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
         def __init__(self, session: object) -> None:
             self.session = session
 
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
+        def get(self, report_id: int):
+            if report_id == 7:
+                return FakeReport()
+            if report_id == 8:
+                return SimpleNamespace(
+                    id=8,
+                    title="AI 產業鏈 自動分析報告",
+                    topic="AI 產業鏈",
+                    tickers_json='["2330","2382"]',
+                    markdown="# AI 產業鏈 自動分析報告\n",
+                    generated_at=datetime(2026, 5, 28, 10, 6, 0),
+                )
+            raise AssertionError(f"unexpected report_id: {report_id}")
 
     class FakeAnalysisRunRepository:
         def __init__(self, session: object) -> None:
@@ -1899,6 +2463,8 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
     assert auto_follow_up["status"] == "success"
     assert auto_follow_up["summary"]["selected"]["required_count"] == 2
     assert auto_follow_up["rerun_report"]["report_id"] == 8
+    assert response.json()["workflow"]["name"] == "standard_report_pipeline"
+    assert "股市爆料同學會" not in response.json()["markdown"]
 
 
 def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run(monkeypatch) -> None:
@@ -2010,6 +2576,42 @@ def test_latest_follow_up_prefers_latest_finished_matching_run() -> None:
 
     assert auto_follow_up["id"] == 30
     assert auto_follow_up["rerun_report"]["report_id"] == 9
+
+
+def test_latest_follow_up_rejects_rerun_report_with_different_actual_topic() -> None:
+    report = SimpleNamespace(
+        id=18,
+        topic="機器人 產業鏈",
+        tickers_json='["2308"]',
+        generated_at=datetime(2026, 5, 31, 22, 8, 0),
+    )
+    run = SimpleNamespace(
+        id=147,
+        source="follow_up_api",
+        status="success",
+        payload_json=(
+            '{"source_report_id":18,'
+            '"request":{"topic":"機器人 產業鏈","tickers":["2308"]},'
+            '"rerun_report":{"report_id":19}}'
+        ),
+        report_id=19,
+        output_path=None,
+        error=None,
+        started_at=datetime(2026, 5, 31, 22, 9, 0),
+        finished_at=datetime(2026, 5, 31, 22, 10, 0),
+    )
+    report_repository = SimpleNamespace(
+        get=lambda report_id: SimpleNamespace(
+            id=report_id,
+            topic="AI 產業鏈低關注潛力股",
+            generated_at=datetime(2026, 5, 31, 22, 10, 0),
+        )
+    )
+    repository = SimpleNamespace(latest=lambda limit=100: [run])
+
+    auto_follow_up = main.latest_follow_up_run_for_report(repository, report, report_repository)
+
+    assert auto_follow_up is None
 
 
 def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:
@@ -2332,6 +2934,7 @@ def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
     def fake_plan(report_id: int) -> dict:
         assert report_id == 7
         return {
+            "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
             "summary": {"required_count": 2, "tracking_count": 1, "total_count": 3},
             "next_actions": [{"action": "ingest_company_filings"}],
         }
@@ -2361,6 +2964,8 @@ def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
     assert result["status"] == "started"
     assert result["run_id"] == 31
     assert result["rerun_report"]["report_id"] == 8
+    assert result["source_report_topic"] == "AI 產業鏈"
+    assert result["source_report_tickers"] == ["2330"]
     assert captured["payload"].purpose == "required"
     assert captured["payload"].rerun_report is True
     assert captured["payload"].news_limit == 40
@@ -2383,6 +2988,7 @@ def test_auto_start_required_follow_up_queues_background_task_by_default(monkeyp
         main,
         "get_report_follow_up_plan",
         lambda report_id: {
+            "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
             "summary": {"required_count": 2, "total_count": 3},
             "actions": [{"action_type": "ingest_news"}],
             "next_actions": [{"action": "ingest_news"}],
@@ -2395,6 +3001,8 @@ def test_auto_start_required_follow_up_queues_background_task_by_default(monkeyp
     assert result["status"] == "queued"
     assert captured["queued"] is True
     assert result["summary"]["selected"]["required_count"] == 2
+    assert result["source_report_topic"] == "AI 產業鏈"
+    assert result["source_report_tickers"] == ["2330"]
     assert result["next_actions"][0]["action"] == "ingest_news"
 
 
@@ -2441,6 +3049,7 @@ def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_r
         main,
         "get_report_follow_up_plan",
         lambda report_id: {
+            "request": {"topic": "機器人 產業鏈", "tickers": ["2308"]},
             "quality_gate_status": "ready",
             "summary": {"required_count": 4, "total_count": 4},
             "next_actions": [{"action": "ingest_news"}],
@@ -2463,6 +3072,8 @@ def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_r
 
     assert result["status"] == "started"
     assert result["run_id"] == 31
+    assert result["source_report_topic"] == "機器人 產業鏈"
+    assert result["source_report_tickers"] == ["2308"]
     assert captured["payload"].purpose == "required"
 
 
@@ -3131,6 +3742,9 @@ def test_get_run_by_task_id(monkeypatch) -> None:
         "source": "celery",
         "status": "success",
         "payload": '{"celery_task_id": "task-linked"}',
+        "workflow": None,
+        "workflow_summary": None,
+        "workflow_orchestration": None,
         "report_id": 11,
         "output_path": "reports/demo.md",
         "error": None,

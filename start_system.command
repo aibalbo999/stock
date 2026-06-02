@@ -1,6 +1,6 @@
 #!/bin/zsh
 cd "$(dirname "$0")"
-.venv/bin/python scripts/start_system.py --open-browser
+.venv/bin/python scripts/start_system.py --open-browser --start-dependencies
 echo ""
 echo "系統啟動流程已結束。服務會在背景持續執行。"
 echo "可關閉這個視窗；需要停止時雙擊 stop_system.command。"

@@ -12,6 +12,9 @@ SECRET_PATTERNS = {
     "openai_api_key": re.compile(
         r"(?<![A-Za-z0-9_-])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])"
     ),
+    "anthropic_api_key": re.compile(
+        r"(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])"
+    ),
     "private_key": re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
 }
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -25,10 +25,12 @@ from app.models.schemas import (
     NewsDocument,
     ReportRequest,
     ReportResponse,
+    RiskFinding,
     Source,
     ValuationMetric,
 )
 from app.services.report_integrity import assert_report_integrity
+from app.services.source_quality import is_formal_evidence_source, remove_low_quality_investor_forum_lines
 
 
 class NewsRepository:
@@ -85,6 +87,7 @@ class NewsRepository:
 
     @staticmethod
     def _to_document(article: NewsArticle) -> NewsDocument:
+        entity_matches = _parse_entity_matches(article.entity_matches_json)
         return NewsDocument(
             id=article.id,
             title=article.title,
@@ -96,6 +99,8 @@ class NewsRepository:
                 published_at=article.published_at,
                 fetched_at=article.fetched_at,
             ),
+            entity_tickers=_entity_match_values(entity_matches, "ticker"),
+            entity_names=_entity_match_values(entity_matches, "name"),
         )
 
 
@@ -207,7 +212,44 @@ class CompanyFilingRepository:
                 published_at=document.source.published_at,
                 fetched_at=document.source.fetched_at,
             ),
+            entity_tickers=[document.ticker],
+            entity_names=[document.company_name] if document.company_name else [],
         )
+
+
+def _parse_entity_matches(value: str | None) -> list[dict]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _entity_match_values(matches: list[dict], key: str) -> list[str]:
+    values = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        value = str(match.get(key) or "").strip()
+        if value:
+            values.append(value)
+    return list(dict.fromkeys(values))
+
+
+def _formal_report_findings(findings: list[RiskFinding]) -> list[RiskFinding]:
+    return [
+        finding
+        for finding in findings
+        if is_formal_evidence_source(
+            title=finding.source.title,
+            publisher=finding.source.publisher,
+            url=finding.source.url,
+            source_title=finding.source.title,
+            text=f"{finding.topic}\n{finding.evidence}",
+        )
+    ]
 
 
 class ReportRepository:
@@ -215,16 +257,18 @@ class ReportRepository:
         self.session = session
 
     def create(self, request: ReportRequest, response: ReportResponse) -> GeneratedReport:
-        assert_report_integrity(response.markdown)
+        markdown = remove_low_quality_investor_forum_lines(response.markdown)
+        assert_report_integrity(markdown)
+        findings = _formal_report_findings(response.findings)
         report = GeneratedReport(
             title=response.title,
             topic=request.topic,
             tickers_json=json.dumps(request.tickers, ensure_ascii=False),
             findings_json=json.dumps(
-                [finding.model_dump(mode="json") for finding in response.findings],
+                [finding.model_dump(mode="json") for finding in findings],
                 ensure_ascii=False,
             ),
-            markdown=response.markdown,
+            markdown=markdown,
             generated_at=response.generated_at,
         )
         self.session.add(report)
@@ -288,6 +332,10 @@ class MarketRepository:
             if row:
                 snapshots.append(self._to_snapshot(row))
         return snapshots
+
+    def latest_trade_date(self) -> date | None:
+        statement = select(StockPriceSnapshot.trade_date).order_by(StockPriceSnapshot.trade_date.desc()).limit(1)
+        return self.session.scalars(statement).first()
 
     def history_by_tickers(self, tickers: list[str], limit: int = 80) -> dict[str, list[MarketSnapshot]]:
         histories: dict[str, list[MarketSnapshot]] = {}
@@ -583,6 +631,16 @@ class AnalysisRunRepository:
         if run is None:
             raise ValueError(f"analysis run not found: {run_id}")
         run.payload_json = json.dumps(payload, ensure_ascii=False)
+        self.session.flush()
+        return run
+
+    def mark_running(self, run_id: int) -> AnalysisRun:
+        run = self.session.get(AnalysisRun, run_id)
+        if run is None:
+            raise ValueError(f"analysis run not found: {run_id}")
+        run.status = "running"
+        run.error = None
+        run.finished_at = None
         self.session.flush()
         return run
 

@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any
+
+from app.services.service_status import service_status
+
+
+@dataclass(frozen=True)
+class UpgradeAuditRequirement:
+    area: str
+    capability: str
+    label: str
+    status_path: tuple[str, ...]
+    required_statuses: tuple[str, ...] = ("ready",)
+    optional: bool = False
+    remediation: str = ""
+
+
+REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "multilingual_embedding",
+        "明確使用繁中/多語 embedding",
+        ("upgrade_capability_matrix", "ai_rag", "multilingual_embedding"),
+        remediation="設定 RAG_EMBEDDING_PROVIDER / RAG_EMBEDDING_MODEL，並安裝對應 embedding 依賴或 API key。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "llm_sdk_and_fallback",
+        "LLM SDK 與模型降級能力",
+        ("upgrade_capability_matrix", "ai_rag", "llm_sdk_and_fallback"),
+        remediation="確認 LLM_PROVIDER、fallback model、LiteLLM/google-genai 依賴與對應 API key。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "hybrid_search",
+        "Hybrid Search / BM25 關鍵字檢索",
+        ("upgrade_capability_matrix", "ai_rag", "hybrid_search"),
+        remediation="啟用 RAG_HYBRID_SEARCH_ENABLED，確認 BM25 tokenizer 與 retrieval trace 可用。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "reranking",
+        "模型級 reranking",
+        ("upgrade_capability_matrix", "ai_rag", "reranking"),
+        remediation="安裝 sentence-transformers / 設定 Cohere key / 啟用 LLM reranker，避免只退回 keyword fallback。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "graphrag_context",
+        "GraphRAG 檢索脈絡",
+        ("upgrade_capability_matrix", "ai_rag", "graphrag_context"),
+        remediation="確認供應鏈 graph、retrieval_plan 與 evidence policy 生成成功。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "neo4j_payload_export",
+        "Neo4j parameterized payload export",
+        ("upgrade_capability_matrix", "ai_rag", "neo4j_payload_export"),
+        remediation="確認 /supply-chain/graph/neo4j 可輸出 parameterized Cypher payload。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "neo4j_import",
+        "外部 Neo4j 匯入連線",
+        ("upgrade_capability_matrix", "ai_rag", "neo4j_import"),
+        optional=True,
+        remediation="若正式部署需要 live graph import，設定 NEO4J_URI / 帳密並啟動 Neo4j。",
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
+        "thin_api_controller",
+        "API controller/service 分層",
+        ("upgrade_capability_matrix", "architecture", "thin_api_controller"),
+        remediation="將 main.py 中殘留業務邏輯抽到 router/service/facade。",
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
+        "workflow_orchestration",
+        "可恢復 workflow orchestration",
+        ("upgrade_capability_matrix", "architecture", "workflow_orchestration"),
+        remediation="確認 WORKFLOW_ENGINE 狀態、checkpoint store 與 local/external fallback policy。",
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
+        "database_migrations",
+        "Alembic database migrations",
+        ("upgrade_capability_matrix", "architecture", "database_migrations"),
+        remediation="執行 alembic upgrade head 或 stamp head，並確認 DB schema 與 head revision 對齊。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "market_data_cache",
+        "Redis 市場/財務資料快取",
+        ("upgrade_capability_matrix", "data_business_logic", "market_data_cache"),
+        remediation="啟動 Redis 並確認 MARKET_DATA_CACHE_ENABLED 與 TTL 設定。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "market_data_provider_fallback",
+        "FinMind/Fugle/官方 OpenAPI fallback",
+        ("upgrade_capability_matrix", "data_business_logic", "market_data_provider_fallback"),
+        remediation="設定 FinMind/Fugle 授權來源或啟用官方 OpenAPI 最新資料救援。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "company_filing_fetch_hardening",
+        "公司文件反爬蟲與 PDF/HTML 表格解析",
+        ("upgrade_capability_matrix", "data_business_logic", "company_filing_fetch_hardening"),
+        remediation="確認 User-Agent、重試、PDF/HTML table extraction、Browserless/Playwright 後援設定。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "company_filing_pdf_table_parser_runtime",
+        "PDF 表格 parser runtime",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_pdf_table_parser_runtime",
+        ),
+        optional=True,
+        remediation="若需要從 PDF 財報抽取表格，安裝 pip install -e \".[pdf]\" 或至少安裝 pdfplumber / unstructured[pdf]。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "company_filing_browser_or_proxy_fallback",
+        "公司文件 Proxy / Browserless / Playwright 後援",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_browser_or_proxy_fallback",
+        ),
+        optional=True,
+        remediation=(
+            "正式部署若常遇到 MOPS/IR 入口被擋、空殼頁或動態頁，設定 COMPANY_FILING_PROXY_URLS、"
+            "COMPANY_FILING_BROWSER_RENDER_URL 或 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "company_filing_cache",
+        "公司文件 URL 解析快取",
+        ("upgrade_capability_matrix", "data_business_logic", "company_filing_cache"),
+        remediation="啟動 Redis 並確認 COMPANY_FILING_CACHE_ENABLED。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "source_quality_weighting",
+        "來源可信度分層與低品質來源降權",
+        ("upgrade_capability_matrix", "data_business_logic", "source_quality_weighting"),
+        remediation="確認 source credibility weights 與候選升格規則仍排除論壇/投資網誌作高可信證據。",
+    ),
+)
+
+EXTERNAL_INTEGRATION_CAPABILITIES = frozenset(
+    {
+        ("ai_rag", "neo4j_import"),
+        ("data_business_logic", "company_filing_pdf_table_parser_runtime"),
+        ("data_business_logic", "company_filing_browser_or_proxy_fallback"),
+    }
+)
+
+
+def audit_upgrade_capabilities(
+    status: dict | None = None,
+    *,
+    strict_external: bool = False,
+) -> dict:
+    status = status or service_status()
+    checks = [
+        _requirement_result(requirement, status, strict_external=strict_external)
+        for requirement in REQUIREMENTS
+    ]
+    failures = [check for check in checks if check["severity"] == "fail"]
+    warnings = [check for check in checks if check["severity"] == "warn"]
+    implementation_checks = [check for check in checks if not check.get("external_integration")]
+    deployment_checks = [check for check in checks if check.get("external_integration")]
+    implementation = _summarize_checks(implementation_checks)
+    deployment = _summarize_checks(deployment_checks)
+    areas = defaultdict(lambda: {"ready": 0, "warnings": 0, "failures": 0, "checks": 0})
+    for check in checks:
+        area = areas[check["area"]]
+        area["checks"] += 1
+        if check["severity"] == "fail":
+            area["failures"] += 1
+        elif check["severity"] == "warn":
+            area["warnings"] += 1
+        else:
+            area["ready"] += 1
+
+    return {
+        "overall_status": "failed" if failures else "caution" if warnings else "ready",
+        "strict_external": strict_external,
+        "summary": {
+            "total_checks": len(checks),
+            "ready": sum(1 for check in checks if check["severity"] == "pass"),
+            "warnings": len(warnings),
+            "failures": len(failures),
+            "implementation_status": implementation["status"],
+            "deployment_status": deployment["status"],
+        },
+        "implementation": implementation,
+        "deployment": deployment,
+        "areas": dict(sorted(areas.items())),
+        "checks": checks,
+        "failures": failures,
+        "warnings": warnings,
+    }
+
+
+def _requirement_result(
+    requirement: UpgradeAuditRequirement,
+    status: dict,
+    *,
+    strict_external: bool,
+) -> dict:
+    capability = _path_get(status, requirement.status_path) or {}
+    actual_status = str(capability.get("status") or "missing")
+    is_optional = requirement.optional and not strict_external
+    passed = actual_status in requirement.required_statuses
+    severity = "pass" if passed else "warn" if is_optional else "fail"
+    external_integration = (requirement.area, requirement.capability) in EXTERNAL_INTEGRATION_CAPABILITIES
+    return {
+        "area": requirement.area,
+        "capability": requirement.capability,
+        "label": requirement.label,
+        "status": actual_status,
+        "required_statuses": list(requirement.required_statuses),
+        "optional": is_optional,
+        "external_integration": external_integration,
+        "severity": severity,
+        "detail": capability.get("detail"),
+        "evidence": capability.get("evidence") or {},
+        "remediation": None if passed else requirement.remediation,
+    }
+
+
+def _summarize_checks(checks: list[dict]) -> dict:
+    failures = sum(1 for check in checks if check["severity"] == "fail")
+    warnings = sum(1 for check in checks if check["severity"] == "warn")
+    ready = sum(1 for check in checks if check["severity"] == "pass")
+    return {
+        "status": "failed" if failures else "caution" if warnings else "ready",
+        "total_checks": len(checks),
+        "ready": ready,
+        "warnings": warnings,
+        "failures": failures,
+    }
+
+
+def _path_get(payload: dict, path: tuple[str, ...]) -> Any:
+    current: Any = payload
+    for part in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current

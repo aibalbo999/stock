@@ -7,6 +7,7 @@ from typing import Optional
 import re
 
 from app.services.candidate_confidence import format_confidence_score
+from app.services.source_quality import is_low_quality_investor_forum_source
 
 
 def load_report_helpers() -> dict:
@@ -18,6 +19,7 @@ def load_report_helpers() -> dict:
         "Optional": Optional,
         "re": re,
         "format_confidence_score": format_confidence_score,
+        "is_low_quality_investor_forum_source": is_low_quality_investor_forum_source,
     }
     exec(source[start:end], namespace)
     return namespace
@@ -37,6 +39,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "workspace-ledger" in source
     assert "credibility_html" in source
     assert "credibility-grid" in source
+    assert "upgrade_audit_html" in source
+    assert "upgrade-audit-grid" in source
     assert '[data-baseweb="tab"] p' in source
     assert 'tabs = st.tabs(["1 建立分析", "2 報告中心", "3 資料與補充", "4 設定與維護"])' in source
     assert 'data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])' in source
@@ -69,6 +73,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'button[data-testid^="stBaseButton"][disabled]' in source
     assert "input:focus" in source
     assert 'key="confirm_maintenance_cleanup"' in source
+    assert '"正式部署檢查"' in source
+    assert "audit_upgrade_capabilities" in source
     assert "避免手機或滑鼠誤觸" in source
     assert "disabled=not cleanup_confirmed" in source
     assert "正式分析不等於買進" in source
@@ -88,19 +94,32 @@ def test_follow_up_controls_use_scoped_widget_keys() -> None:
     assert 'key=f"followup_purpose_{report_id}"' not in source
 
 
+def test_candidate_source_display_filters_low_quality_forum_urls() -> None:
+    helpers = load_report_helpers()
+
+    assert helpers["candidate_source_matches_display_entity"](
+        {"ticker": "1504", "name": "東元"},
+        {
+            "title": "1504 東元 一堆看新聞做股票不是真的分析走勢",
+            "publisher": "CMoney",
+            "url": "https://www.cmoney.tw/forum/stock/1504",
+        },
+    ) is False
+
+
 def test_report_html_renders_comparison_matrix_cards() -> None:
     helpers = load_report_helpers()
     markdown = """
 # AI 產業鏈 自動分析報告
 
 ## 個股比較矩陣
-| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
+| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
 |---|---|---|---|---:|---:|---|---|---|
 | 3017 奇鋐 | 可小額分批研究 | 2026-05-22 收盤 100 | 可研究但勿追高 | 30 分 | 0 分 | 目前估值偏高 | 高 | 目前估值偏高，分批觀察 |
 | 2382 廣達 | 觀察 / 等風險降低 | 2026-05-22 收盤 80 | 等風險下降 | 30 分 | 7 分 | 目前估值低於同業 | 高 | 先追蹤目前情境降值分 7 分 |
 
 ## 投資建議
-| 股票 | 目前股價 | 當下股價標籤 | 建議 | 理由 | 單檔上限 | 來源 |
+| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |
 |---|---|---|---|---|---:|---|
 | 3017 奇鋐 | 2026-05-22 收盤 100 | 可研究但勿追高 | 可小額分批研究 | 測試 | 約 100,000 元 | 測試 |
 """
@@ -115,7 +134,7 @@ def test_report_html_renders_comparison_matrix_cards() -> None:
     assert "decision-watch" in html
     assert "valuation-high" in html
     assert "risk-high" in html
-    assert "當下股價標籤" in html
+    assert "追價風險標籤" in html
     assert "可研究但勿追高" in html
     assert "等風險下降" in html
     assert "price-watch" in html
@@ -134,7 +153,7 @@ def test_report_html_renders_all_comparison_matrix_rows() -> None:
 # AI 產業鏈 自動分析報告
 
 ## 個股比較矩陣
-| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
+| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
 |---|---|---|---|---:|---:|---|---|---|
 {rows}
 """
@@ -226,7 +245,7 @@ def test_report_html_prioritizes_zero_allocation_and_all_investment_rows() -> No
     )
 
     assert "本次配置" in html
-    assert ">0 元<" in html
+    assert "<strong>0 元</strong>" in html
     assert "可小額研究：0 檔" in html
     assert "避開/降低曝險：1 檔" in html
     assert "2421 建準" in html
@@ -259,6 +278,7 @@ def test_report_html_shows_all_first_tranche_allocation_rows() -> None:
     html = helpers["report_html"](markdown, {"report_id": 18, "quality_gate": {}})
 
     assert "本輪首筆配置合計約 180,000 元" in html
+    assert "<strong>180,000 元</strong>" in html
     assert "1504 東元：首筆配置約 50,000 元" in html
 
 
@@ -296,11 +316,14 @@ def test_report_html_marks_old_report_when_auto_follow_up_created_new_report() -
             "quality_gate": {"status": "caution"},
             "auto_follow_up": {
                 "status": "started",
+                "source_report_id": 12,
+                "source_report_topic": "AI 產業鏈",
+                "source_report_tickers": ["2330"],
                 "summary": {
                     "selected": {"total_count": 2},
                     "execution": {"stored_count": 5},
                 },
-                "rerun_report": {"report_id": 14},
+                "rerun_report": {"report_id": 14, "request": {"topic": "AI 產業鏈"}},
             },
         },
     )
@@ -309,6 +332,92 @@ def test_report_html_marks_old_report_when_auto_follow_up_created_new_report() -
     assert "目前畫面是報告 #12" in html
     assert "新版報告 #14" in html
     assert "避免把舊版內容誤認為已更新" in html
+
+
+def test_report_html_does_not_mark_old_report_without_source_metadata() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "topic": "機器人 產業鏈",
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {"report_id": 19},
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #19" not in html
+
+
+def test_report_html_does_not_mark_newer_report_when_current_topic_is_unknown() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "source_report_id": 18,
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {"report_id": 19},
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #19" not in html
+
+
+def test_report_html_does_not_mark_old_report_when_source_topic_missing() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "topic": "機器人 產業鏈",
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "source_report_id": 18,
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {
+                    "report_id": 19,
+                    "request": {"topic": "機器人 產業鏈"},
+                },
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #19" not in html
+
+
+def test_report_html_does_not_mark_new_report_when_rerun_topic_is_unknown() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "topic": "機器人 產業鏈",
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "source_report_id": 18,
+                "source_report_topic": "機器人 產業鏈",
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {"report_id": 19},
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #19" not in html
 
 
 def test_report_html_ignores_auto_follow_up_from_another_source_report() -> None:
@@ -329,6 +438,30 @@ def test_report_html_ignores_auto_follow_up_from_another_source_report() -> None
 
     assert "已有新版報告可查看" not in html
     assert "新版報告 #20" not in html
+
+
+def test_report_html_ignores_auto_follow_up_when_rerun_topic_differs() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# 機器人 產業鏈 自動分析報告\n",
+        {
+            "report_id": 18,
+            "quality_gate": {"status": "ready"},
+            "auto_follow_up": {
+                "status": "started",
+                "source_report_id": 18,
+                "source_report_topic": "機器人 產業鏈",
+                "summary": {"selected": {"total_count": 2}},
+                "rerun_report": {
+                    "report_id": 19,
+                    "request": {"topic": "AI 伺服器", "tickers": ["2330"]},
+                },
+            },
+        },
+    )
+
+    assert "已有新版報告可查看" not in html
+    assert "新版報告 #19" not in html
 
 
 def test_report_html_renders_auto_follow_up_unavailable_state() -> None:
@@ -601,6 +734,84 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
     assert metrics["AI Key"] == 5
     assert metrics["市場資料"] == "可用"
     assert metrics["升格門檻"] == "高 75"
+
+
+def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
+    helpers = load_report_helpers()
+
+    audit = {
+        "overall_status": "caution",
+        "strict_external": False,
+        "summary": {
+            "total_checks": 17,
+            "ready": 14,
+            "warnings": 3,
+            "failures": 0,
+            "implementation_status": "ready",
+            "deployment_status": "caution",
+        },
+        "implementation": {"status": "ready", "ready": 14, "total_checks": 14, "warnings": 0, "failures": 0},
+        "deployment": {"status": "caution", "ready": 0, "total_checks": 3, "warnings": 3, "failures": 0},
+        "areas": {
+            "ai_rag": {"ready": 5, "warnings": 1, "failures": 0, "checks": 6},
+            "architecture": {"ready": 3, "warnings": 0, "failures": 0, "checks": 3},
+            "data_business_logic": {"ready": 5, "warnings": 1, "failures": 0, "checks": 6},
+        },
+        "checks": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "severity": "warn",
+                "status": "degraded",
+                "detail": "missing_settings:neo4j_uri",
+                "remediation": "設定 NEO4J_URI。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_pdf_table_parser_runtime",
+                "label": "PDF 表格 parser runtime",
+                "severity": "warn",
+                "status": "not_configured",
+                "detail": "missing_table_pdf_parser_dependency:pdfplumber_or_unstructured",
+                "remediation": "安裝 .[pdf]。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_browser_or_proxy_fallback",
+                "label": "公司文件 Proxy / Browserless / Playwright 後援",
+                "severity": "warn",
+                "status": "not_configured",
+                "detail": "browser_or_proxy_fallback_configured=false",
+                "remediation": "設定 COMPANY_FILING_PROXY_URLS。",
+            }
+        ],
+    }
+
+    html = helpers["upgrade_audit_html"](audit)
+    rows = helpers["upgrade_audit_rows"](audit)
+
+    assert "升級稽核" in html
+    assert "核心升級" in html
+    assert "外部整合" in html
+    assert "注意" in html
+    assert "通過" in html
+    assert "一般檢查" in html
+    assert "14/17" in html
+    assert "核心 14/14 通過，外部 0/3 通過" in html
+    assert "AI / RAG" in html
+    assert rows[0] == {
+        "面向": "AI / RAG",
+        "能力": "外部 Neo4j 匯入連線",
+        "結果": "注意",
+        "目前狀態": "degraded",
+        "說明": "missing_settings:neo4j_uri",
+        "處理方向": "設定 NEO4J_URI。",
+    }
+    assert rows[1]["能力"] == "PDF 表格 parser runtime"
+    assert rows[1]["處理方向"] == "安裝 .[pdf]。"
+    assert rows[2]["能力"] == "公司文件 Proxy / Browserless / Playwright 後援"
+    assert rows[2]["處理方向"] == "設定 COMPANY_FILING_PROXY_URLS。"
 
 
 def test_report_html_renders_follow_up_tasks() -> None:

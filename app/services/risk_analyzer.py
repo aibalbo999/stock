@@ -10,6 +10,7 @@ from app.models.schemas import NewsDocument, RiskFinding, RiskType
 from app.services.entity_mapping import EntityMapper, company_filing_owner_ticker
 from app.services.llm_client import LLMClient
 from app.services.persistence import RiskClassificationRepository
+from app.services.source_quality import is_formal_evidence_document
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -216,6 +217,7 @@ class RiskAnalyzer:
         self.classifier = classifier or (LLMRiskClassifier() if use_llm else None)
 
     def analyze_documents(self, documents: list[NewsDocument]) -> list[RiskFinding]:
+        documents = [document for document in documents if is_formal_evidence_document(document)]
         findings: list[RiskFinding] = []
         keyword_map: dict[str, list[str]] = {}
         ai_classifications: dict[str, RiskClassification] = {}

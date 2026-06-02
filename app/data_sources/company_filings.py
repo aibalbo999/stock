@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 from hashlib import sha1
+import importlib
 from ipaddress import ip_address
 from io import BytesIO
+from pathlib import Path
 import re
-from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
+import socket
+from urllib.parse import parse_qs, quote, quote_plus, unquote, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
+from app.core.config import get_settings
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
+from app.services.company_filing_cache import RedisCompanyFilingCache
 
 
 DOCUMENT_QUERY_TEMPLATES = (
@@ -56,19 +62,489 @@ MIN_FETCHED_DOCUMENT_CHARS = 120
 MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
+COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
+PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
+RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES = {
+    "blocked_or_forbidden",
+    "blocked_or_placeholder",
+    "browser_render_failed",
+    "network_error",
+    "rate_limited",
+    "timeout",
+    "upstream_retryable",
+}
+BLOCKED_OR_PLACEHOLDER_PAGE_PATTERNS = (
+    "access denied",
+    "captcha",
+    "cloudflare",
+    "enable javascript",
+    "forbidden",
+    "javascript is disabled",
+    "request blocked",
+    "too many requests",
+    "請先登入",
+    "請啟用 javascript",
+    "登入後查看",
+    "機器人驗證",
+    "驗證碼",
+)
+DEFAULT_COMPANY_FILING_USER_AGENTS = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+)
 PDF_IMPORT_MISSING_PYPDF_MESSAGE = "PDF 匯入需要安裝 pypdf，請先完成系統相依套件安裝後再重試。"
+PDF_IMPORT_MISSING_PDFPLUMBER_MESSAGE = "PDF 匯入設定為 pdfplumber，但尚未安裝 pdfplumber；請安裝 PDF 額外相依套件後再重試。"
+PDF_IMPORT_MISSING_UNSTRUCTURED_MESSAGE = "PDF 匯入設定為 unstructured，但尚未安裝 unstructured[pdf]；請安裝 PDF 額外相依套件後再重試。"
 PDF_IMPORT_PARSE_ERROR_MESSAGE = "PDF 公司文件無法解析，可能是檔案加密、損毀或格式不支援；請改用官方 HTML 頁面，或人工貼上文字版內容。"
 PDF_IMPORT_NO_TEXT_MESSAGE = "PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。"
 REQUIRED_CORE_DOCUMENT_TYPES = ("annual_report",)
 RECOMMENDED_DOCUMENT_TYPES = ("investor_presentation",)
+MAX_PDF_TABLES_PER_DOCUMENT = 80
+MAX_HTML_TABLES_PER_DOCUMENT = 80
+MAX_PDF_TABLE_ROWS = 120
+MAX_PDF_TABLE_COLUMNS = 14
+MAX_PDF_TABLE_CELL_CHARS = 160
+
+
+def _split_config_values(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[\n,]+", value or "") if item.strip()]
+
+
+def _stable_config_choice(
+    values: list[str] | tuple[str, ...],
+    key: str,
+    attempt: int = 0,
+) -> str:
+    if not values:
+        return ""
+    digest = sha1(key.encode("utf-8")).hexdigest()
+    offset = max(0, int(attempt))
+    return values[(int(digest[:8], 16) + offset) % len(values)]
+
+
+def company_filing_user_agents() -> list[str]:
+    configured = _split_config_values(get_settings().company_filing_user_agents)
+    return configured or list(DEFAULT_COMPANY_FILING_USER_AGENTS)
+
+
+def company_filing_proxy_urls() -> list[str]:
+    return _split_config_values(get_settings().company_filing_proxy_urls)
+
+
+def company_filing_identity_for_url(url: str, attempt: int = 0) -> dict:
+    user_agents = company_filing_user_agents()
+    proxy_urls = company_filing_proxy_urls()
+    return {
+        "attempt": max(0, int(attempt)),
+        "user_agent": _stable_config_choice(user_agents, url, attempt),
+        "proxy": _stable_config_choice(proxy_urls, url, attempt) or None,
+        "user_agent_count": len(user_agents),
+        "proxy_count": len(proxy_urls),
+    }
+
+
+def company_filing_user_agent_for_url(url: str, attempt: int = 0) -> str:
+    return str(company_filing_identity_for_url(url, attempt).get("user_agent") or "")
+
+
+def company_filing_proxy_for_url(url: str, attempt: int = 0) -> str | None:
+    proxy = company_filing_identity_for_url(url, attempt).get("proxy")
+    return str(proxy) if proxy else None
+
+
+def company_filing_browser_render_configured() -> bool:
+    settings = get_settings()
+    return bool(
+        settings.company_filing_browser_render_enabled
+        and settings.company_filing_browser_render_url.strip()
+    )
+
+
+def company_filing_browser_render_status(
+    *,
+    enabled: bool | None = None,
+    endpoint: str | None = None,
+    timeout_seconds: float | None = None,
+) -> dict:
+    settings = get_settings()
+    render_enabled = (
+        settings.company_filing_browser_render_enabled
+        if enabled is None
+        else bool(enabled)
+    )
+    render_endpoint = str(
+        settings.company_filing_browser_render_url if endpoint is None else endpoint
+    ).strip()
+    configured_timeout = (
+        settings.company_filing_browser_render_timeout_seconds
+        if timeout_seconds is None
+        else timeout_seconds
+    )
+    timeout = max(
+        0.2,
+        min(5.0, float(configured_timeout)),
+    )
+    status = {
+        "enabled": bool(render_enabled),
+        "url_configured": bool(render_endpoint),
+        "endpoint": render_endpoint,
+        "connection_checked": False,
+        "endpoint_reachable": False,
+        "runtime_available": False,
+        "fallback_reason": None,
+    }
+    if not render_enabled:
+        status["fallback_reason"] = "browser_render_disabled"
+        return status
+    if not render_endpoint:
+        status["fallback_reason"] = "missing_browser_render_url"
+        return status
+
+    parsed = urlparse(render_endpoint)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        status["fallback_reason"] = "invalid_browser_render_url"
+        return status
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout):
+            pass
+    except OSError as exc:
+        status["connection_checked"] = True
+        status["fallback_reason"] = f"browser_render_endpoint_unreachable:{exc.__class__.__name__}"
+        return status
+
+    status["connection_checked"] = True
+    status["endpoint_reachable"] = True
+    status["runtime_available"] = True
+    return status
+
+
+def company_filing_playwright_render_enabled() -> bool:
+    return bool(get_settings().company_filing_playwright_render_enabled)
+
+
+def company_filing_playwright_available() -> bool:
+    try:
+        return importlib.util.find_spec("playwright.async_api") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def company_filing_playwright_browser_status(browser_name: str | None = None) -> dict:
+    browser = (
+        str(browser_name or get_settings().company_filing_playwright_browser or "chromium")
+        .strip()
+        .lower()
+    )
+    dependency_available = company_filing_playwright_available()
+    status = {
+        "browser": browser,
+        "dependency_available": dependency_available,
+        "browser_available": False,
+        "browser_executable_exists": False,
+        "executable_path": None,
+        "fallback_reason": None,
+    }
+    if not dependency_available:
+        status["fallback_reason"] = "missing_dependency:playwright"
+        return status
+    try:
+        playwright_sync_api = importlib.import_module("playwright.sync_api")
+        sync_playwright = getattr(playwright_sync_api, "sync_playwright", None)
+        if sync_playwright is None:
+            status["fallback_reason"] = "missing_dependency:playwright.sync_api"
+            return status
+        with sync_playwright() as playwright:
+            launcher = getattr(playwright, browser, None)
+            if launcher is None:
+                status["fallback_reason"] = f"unsupported_browser:{browser}"
+                return status
+            executable_path = getattr(launcher, "executable_path", None)
+    except Exception as exc:
+        status["fallback_reason"] = f"browser_runtime_check_failed:{exc.__class__.__name__}"
+        return status
+
+    if not executable_path:
+        status["fallback_reason"] = f"missing_browser_executable_path:{browser}"
+        return status
+    status["executable_path"] = str(executable_path)
+    executable_exists = Path(str(executable_path)).exists()
+    status["browser_executable_exists"] = executable_exists
+    status["browser_available"] = executable_exists
+    if not executable_exists:
+        status["fallback_reason"] = (
+            f"missing_browser_binary:{browser}; run python -m playwright install {browser}"
+        )
+    return status
+
+
+def company_filing_render_fallback_configured() -> bool:
+    return company_filing_browser_render_configured() or company_filing_playwright_render_enabled()
+
+
+def company_filing_client_options(
+    url: str,
+    timeout: int | float = 20,
+    follow_redirects: bool = True,
+    identity_attempt: int = 0,
+) -> dict:
+    options: dict = {
+        "timeout": timeout,
+        "follow_redirects": follow_redirects,
+        "headers": company_filing_identity_headers_for_url(url, identity_attempt),
+    }
+    proxy_url = company_filing_proxy_for_url(url, identity_attempt)
+    if proxy_url:
+        options["proxy"] = proxy_url
+    return options
+
+
+def company_filing_identity_headers_for_url(url: str, attempt: int = 0) -> dict:
+    return {
+        "User-Agent": company_filing_user_agent_for_url(url, attempt),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    }
+
+
+def _company_filing_request_kwargs_with_identity(
+    kwargs: dict,
+    identity_url: str,
+    attempt: int,
+) -> dict:
+    request_kwargs = dict(kwargs)
+    headers = dict(request_kwargs.get("headers") or {})
+    identity_headers = company_filing_identity_headers_for_url(identity_url, attempt)
+    headers.setdefault("Accept", identity_headers["Accept"])
+    headers.setdefault("Accept-Language", identity_headers["Accept-Language"])
+    headers["User-Agent"] = identity_headers["User-Agent"]
+    request_kwargs["headers"] = headers
+    return request_kwargs
+
+
+def company_filing_request_attempts() -> int:
+    return max(0, int(get_settings().company_filing_http_retries)) + 1
+
+
+async def company_filing_request_with_retries(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    identity_url: str | None = None,
+    rotate_identity: bool = True,
+    **kwargs,
+) -> httpx.Response:
+    attempts = company_filing_request_attempts()
+    last_error: httpx.HTTPError | None = None
+    identity_key = identity_url or url
+    for attempt in range(attempts):
+        identity_attempt = attempt if rotate_identity else 0
+        request_kwargs = _company_filing_request_kwargs_with_identity(
+            kwargs,
+            identity_key,
+            identity_attempt,
+        )
+        try:
+            response = await client.request(method, url, **request_kwargs)
+            if (
+                response.status_code in COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+                and attempt < attempts - 1
+            ):
+                await company_filing_sleep_before_retry(response, attempt)
+                continue
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                raise
+            response = getattr(exc, "response", None)
+            if (
+                isinstance(response, httpx.Response)
+                and response.status_code not in COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+            ):
+                raise
+            await company_filing_sleep_before_retry(
+                response if isinstance(response, httpx.Response) else None,
+                attempt,
+            )
+    if last_error:
+        raise last_error
+    raise httpx.HTTPError("company filing request failed without a response")
+
+
+async def company_filing_fetch_response_with_retries(
+    method: str,
+    url: str,
+    *,
+    timeout: int | float = 20,
+    follow_redirects: bool = True,
+    identity_url: str | None = None,
+    **kwargs,
+) -> httpx.Response:
+    attempts = company_filing_request_attempts()
+    last_error: httpx.HTTPError | None = None
+    identity_key = identity_url or url
+    for attempt in range(attempts):
+        request_kwargs = _company_filing_request_kwargs_with_identity(
+            kwargs,
+            identity_key,
+            attempt,
+        )
+        try:
+            async with httpx.AsyncClient(
+                **company_filing_client_options(
+                    url,
+                    timeout=timeout,
+                    follow_redirects=follow_redirects,
+                    identity_attempt=attempt,
+                )
+            ) as client:
+                response = await client.request(method, url, **request_kwargs)
+            if (
+                response.status_code in COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+                and attempt < attempts - 1
+            ):
+                await company_filing_sleep_before_retry(response, attempt)
+                continue
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                raise
+            response = getattr(exc, "response", None)
+            if (
+                isinstance(response, httpx.Response)
+                and response.status_code not in COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+            ):
+                raise
+            await company_filing_sleep_before_retry(
+                response if isinstance(response, httpx.Response) else None,
+                attempt,
+            )
+    if last_error:
+        raise last_error
+    raise httpx.HTTPError("company filing request failed without a response")
+
+
+async def company_filing_sleep_before_retry(response: httpx.Response | None, attempt: int) -> None:
+    await asyncio.sleep(company_filing_retry_delay_seconds(response, attempt))
+
+
+def company_filing_retry_delay_seconds(response: httpx.Response | None, attempt: int) -> float:
+    settings = get_settings()
+    max_delay = max(0.0, float(settings.company_filing_max_retry_delay_seconds))
+    if response is not None:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return min(max_delay, max(0.0, float(retry_after)))
+            except ValueError:
+                pass
+    base_delay = max(0.0, float(settings.company_filing_base_retry_delay_seconds))
+    return min(max_delay, base_delay * (2**attempt))
+
+
+def company_filing_error(source: str, error: Exception | str, stage: str = "") -> dict:
+    category = categorize_company_filing_error(error)
+    if isinstance(error, Exception):
+        message = str(error) or error.__class__.__name__
+    else:
+        message = str(error)
+    payload = {
+        "source": source,
+        "error": message,
+        "category": category,
+        "retryable": is_retryable_company_filing_error_category(category),
+    }
+    if stage:
+        payload["stage"] = stage
+    return payload
+
+
+def categorize_company_filing_error(error: Exception | str) -> str:
+    if isinstance(error, httpx.HTTPStatusError):
+        return _company_filing_http_status_category(error.response.status_code)
+    if isinstance(error, httpx.TimeoutException) or isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, httpx.TransportError):
+        return "network_error"
+
+    message = str(error or "")
+    lowered = message.lower()
+    status_match = re.search(r"\b(403|404|429|500|502|503|504)\b", lowered)
+    if status_match and ("http" in lowered or "error" in lowered or "client" in lowered or "server" in lowered):
+        return _company_filing_http_status_category(int(status_match.group(1)))
+    if "timeout" in lowered or "timed out" in lowered or "逾時" in message:
+        return "timeout"
+    if "rate limit" in lowered or "too many requests" in lowered:
+        return "rate_limited"
+    if "network" in lowered or "connection error" in lowered or "connection reset" in lowered:
+        return "network_error"
+    if "ocr" in lowered or "extractable text" in lowered or "掃描" in message:
+        return "pdf_no_text"
+    if "render fallback failed" in lowered:
+        return "browser_render_failed"
+    if "browser render url is not configured" in lowered or "playwright render dependency is not installed" in lowered:
+        return "browser_render_not_configured"
+    if "company website not found" in lowered:
+        return "website_not_found"
+    if "mops did not return a pdf download link" in lowered:
+        return "missing_pdf_link"
+    if "content is too short" in lowered:
+        return "too_short"
+    if "content is too large" in lowered:
+        return "too_large"
+    if "blocked, login, or placeholder" in lowered or looks_like_blocked_or_placeholder_filing_page(lowered):
+        return "blocked_or_placeholder"
+    if "does not mention the target company" in lowered:
+        return "company_mismatch"
+    if "does not match the selected document type" in lowered:
+        return "document_type_mismatch"
+    if "pdf 匯入需要安裝" in message or "尚未安裝 pdfplumber" in message or "尚未安裝 unstructured" in message:
+        return "missing_pdf_dependency"
+    if "使用加密格式" in message:
+        return "encrypted_pdf"
+    if PDF_IMPORT_PARSE_ERROR_MESSAGE in message:
+        return "pdf_parse_error"
+    if PDF_IMPORT_NO_TEXT_MESSAGE in message:
+        return "pdf_no_text"
+    if "unsupported company filing pdf parser" in lowered:
+        return "unsupported_pdf_parser"
+    if "company filing url cannot target" in lowered or "company filing url must" in lowered:
+        return "unsafe_url"
+    return "unknown"
+
+
+def _company_filing_http_status_category(status_code: int) -> str:
+    if status_code == 403:
+        return "blocked_or_forbidden"
+    if status_code == 429:
+        return "rate_limited"
+    if status_code == 404:
+        return "http_not_found"
+    if status_code in {500, 502, 503, 504}:
+        return "upstream_retryable"
+    return "http_error"
+
+
+def is_retryable_company_filing_error_category(category: str) -> bool:
+    return category in RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES
 
 
 class CompanyFilingFetcher:
     _twse_profile_cache: list[dict] | None = None
     _tpex_profile_cache: list[dict] | None = None
 
-    def __init__(self) -> None:
+    def __init__(self, cache: RedisCompanyFilingCache | None = None) -> None:
         self.news_fetcher = NewsFetcher()
+        self.cache = cache or RedisCompanyFilingCache()
 
     @staticmethod
     def official_search_queries(
@@ -185,23 +661,126 @@ class CompanyFilingFetcher:
         published_at: date | None = None,
     ) -> CompanyFilingDocument:
         validate_public_document_url(url)
-        document = await self._fetch_url_as_document(url, publisher=publisher)
-        validate_fetched_company_filing_document(document, ticker, company_name, document_type)
+        document = self._cached_url_document(url)
+        if document is None:
+            document = await self._fetch_valid_url_as_document(
+                url,
+                ticker=ticker,
+                company_name=company_name,
+                document_type=document_type,
+                publisher=publisher,
+            )
+            self._store_cached_url_document(url, document)
+        else:
+            try:
+                validate_fetched_company_filing_document(document, ticker, company_name, document_type)
+            except ValueError:
+                document = await self._fetch_valid_url_as_document(
+                    url,
+                    ticker=ticker,
+                    company_name=company_name,
+                    document_type=document_type,
+                    publisher=publisher,
+                )
+                self._store_cached_url_document(url, document)
         return self.from_manual_text(
             ticker=ticker,
             company_name=company_name,
             document_type=document_type,
             title=document.title,
             text=document.text,
-            publisher=document.source.publisher or publisher or "company filing url",
+            publisher=publisher or document.source.publisher or "company filing url",
             published_at=published_at or document.source.published_at,
             url=document.source.url or url,
         )
 
+    async def _fetch_valid_url_as_document(
+        self,
+        url: str,
+        ticker: str,
+        company_name: str,
+        document_type: str,
+        publisher: str | None = None,
+    ) -> NewsDocument:
+        direct_error: Exception | None = None
+        try:
+            document = await self._fetch_url_as_document(url, publisher=publisher)
+            validate_fetched_company_filing_document(document, ticker, company_name, document_type)
+            return document
+        except Exception as exc:
+            direct_error = exc
+
+        if not company_filing_render_fallback_configured():
+            raise direct_error
+
+        render_errors: list[str] = []
+        last_render_error: Exception | None = None
+
+        if company_filing_browser_render_configured():
+            try:
+                rendered_document = await self._fetch_browser_rendered_url_as_document(
+                    url,
+                    publisher=publisher,
+                )
+                validate_fetched_company_filing_document(
+                    rendered_document,
+                    ticker,
+                    company_name,
+                    document_type,
+                )
+                return rendered_document
+            except Exception as render_error:
+                last_render_error = render_error
+                render_errors.append(f"browser render error: {render_error}")
+
+        if company_filing_playwright_render_enabled():
+            try:
+                rendered_document = await self._fetch_playwright_rendered_url_as_document(
+                    url,
+                    publisher=publisher,
+                )
+                validate_fetched_company_filing_document(
+                    rendered_document,
+                    ticker,
+                    company_name,
+                    document_type,
+                )
+                return rendered_document
+            except Exception as render_error:
+                last_render_error = render_error
+                render_errors.append(f"playwright render error: {render_error}")
+
+        raise ValueError(
+            "company filing render fallback failed after direct fetch issue: "
+            f"{direct_error}; {'; '.join(render_errors) if render_errors else 'no render fallback attempted'}"
+        ) from last_render_error
+
+    def _cached_url_document(self, url: str) -> NewsDocument | None:
+        settings = get_settings()
+        return self.cache.get_url_document(
+            url,
+            parser=settings.company_filing_pdf_parser,
+            extract_tables=settings.company_filing_pdf_extract_tables,
+            html_extract_tables=settings.company_filing_html_extract_tables,
+        )
+
+    def _store_cached_url_document(self, url: str, document: NewsDocument) -> None:
+        settings = get_settings()
+        self.cache.set_url_document(
+            url,
+            document,
+            parser=settings.company_filing_pdf_parser,
+            extract_tables=settings.company_filing_pdf_extract_tables,
+            html_extract_tables=settings.company_filing_html_extract_tables,
+        )
+
     async def _fetch_url_as_document(self, url: str, publisher: str | None = None) -> NewsDocument:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        response = await company_filing_fetch_response_with_retries(
+            "GET",
+            url,
+            timeout=20,
+            follow_redirects=True,
+        )
         content_length = int(response.headers.get("content-length") or 0)
         if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
             raise ValueError("company filing content is too large to import")
@@ -210,7 +789,7 @@ class CompanyFilingFetcher:
             return self._pdf_response_to_document(url, response.content, publisher)
         soup = BeautifulSoup(response.text, "html.parser")
         title = NewsFetcher._title(soup) or url
-        text = NewsFetcher._article_text(soup)
+        text = extract_company_filing_html_text(soup)
         return NewsDocument(
             id=sha1(url.encode("utf-8")).hexdigest(),
             title=title,
@@ -218,6 +797,120 @@ class CompanyFilingFetcher:
             source=Source(
                 title=title,
                 url=url,
+                publisher=publisher,
+                published_at=NewsFetcher._published_date(soup),
+                fetched_at=datetime.utcnow(),
+            ),
+        )
+
+    async def _fetch_browser_rendered_url_as_document(
+        self,
+        url: str,
+        publisher: str | None = None,
+    ) -> NewsDocument:
+        settings = get_settings()
+        endpoint = settings.company_filing_browser_render_url.strip()
+        if not endpoint:
+            raise ValueError("company filing browser render URL is not configured")
+        validate_public_document_url(url)
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": company_filing_user_agent_for_url(url),
+        }
+        token = settings.company_filing_browser_render_token.strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        timeout = max(1.0, float(settings.company_filing_browser_render_timeout_seconds))
+        rendered_url = endpoint
+        method = "POST"
+        request_kwargs: dict = {
+            "headers": headers,
+            "json": {"url": url, "waitUntil": "networkidle0"},
+        }
+        if "{url}" in endpoint:
+            rendered_url = endpoint.format(url=quote(url, safe=""))
+            method = "GET"
+            request_kwargs = {"headers": headers}
+        response = await company_filing_fetch_response_with_retries(
+            method,
+            rendered_url,
+            timeout=timeout,
+            follow_redirects=True,
+            identity_url=url,
+            **request_kwargs,
+        )
+        content_length = int(response.headers.get("content-length") or 0)
+        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+            raise ValueError("company filing browser-rendered content is too large to import")
+        content_type = response.headers.get("content-type", "").lower()
+        if "application/pdf" in content_type:
+            return self._pdf_response_to_document(url, response.content, publisher)
+        soup = BeautifulSoup(response.text, "html.parser")
+        title = NewsFetcher._title(soup) or url
+        text = extract_company_filing_html_text(soup)
+        return NewsDocument(
+            id=sha1(f"browser-rendered:{url}".encode("utf-8")).hexdigest(),
+            title=title,
+            text=text,
+            source=Source(
+                title=title,
+                url=url,
+                publisher=publisher,
+                published_at=NewsFetcher._published_date(soup),
+                fetched_at=datetime.utcnow(),
+            ),
+        )
+
+    async def _fetch_playwright_rendered_url_as_document(
+        self,
+        url: str,
+        publisher: str | None = None,
+    ) -> NewsDocument:
+        settings = get_settings()
+        validate_public_document_url(url)
+        try:
+            playwright_api = importlib.import_module("playwright.async_api")
+        except Exception as exc:
+            raise ValueError("company filing Playwright render dependency is not installed") from exc
+
+        async_playwright = getattr(playwright_api, "async_playwright", None)
+        if async_playwright is None:
+            raise ValueError("company filing Playwright render dependency is not installed")
+
+        browser_name = str(settings.company_filing_playwright_browser or "chromium").strip().lower()
+        wait_until = str(settings.company_filing_playwright_wait_until or "networkidle").strip()
+        timeout_ms = int(max(1.0, float(settings.company_filing_playwright_timeout_seconds)) * 1000)
+        html = ""
+        final_url = url
+
+        async with async_playwright() as playwright:
+            launcher = getattr(playwright, browser_name, None)
+            if launcher is None:
+                raise ValueError(f"unsupported company filing Playwright browser: {browser_name}")
+            browser = await launcher.launch(headless=True)
+            try:
+                page = await browser.new_page(
+                    user_agent=company_filing_user_agent_for_url(url),
+                    locale="zh-TW",
+                )
+                await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+                html = await page.content()
+                final_url = str(getattr(page, "url", "") or url)
+            finally:
+                await browser.close()
+
+        if len(html.encode("utf-8")) > MAX_FETCHED_DOCUMENT_BYTES:
+            raise ValueError("company filing Playwright-rendered content is too large to import")
+        soup = BeautifulSoup(html, "html.parser")
+        title = NewsFetcher._title(soup) or final_url
+        text = extract_company_filing_html_text(soup)
+        return NewsDocument(
+            id=sha1(f"playwright-rendered:{url}".encode("utf-8")).hexdigest(),
+            title=title,
+            text=text,
+            source=Source(
+                title=title,
+                url=final_url,
                 publisher=publisher,
                 published_at=NewsFetcher._published_date(soup),
                 fetched_at=datetime.utcnow(),
@@ -261,7 +954,7 @@ class CompanyFilingFetcher:
                     limit=limit_per_query,
                 )
             except Exception as exc:
-                errors.append({"source": url, "error": str(exc)})
+                errors.append(company_filing_error(url, exc, stage="discovery_feed"))
                 continue
             for document in feed_documents:
                 if not is_relevant_company_filing_result(document, ticker, company_name):
@@ -283,7 +976,7 @@ class CompanyFilingFetcher:
             try:
                 results = await self._duckduckgo_search(query_text, limit_per_query)
             except Exception as exc:
-                errors.append({"source": query_text, "error": str(exc)})
+                errors.append(company_filing_error(query_text, exc, stage="web_search_query"))
                 continue
             for result in results:
                 url = result.get("url") or ""
@@ -308,7 +1001,7 @@ class CompanyFilingFetcher:
                         publisher=preview.source.publisher or "web company filing discovery",
                     )
                 except Exception as exc:
-                    errors.append({"source": url, "error": str(exc)})
+                    errors.append(company_filing_error(url, exc, stage="web_search_fetch"))
                     continue
                 documents.append(document)
         return documents, errors
@@ -331,7 +1024,7 @@ class CompanyFilingFetcher:
                 html = await self._fetch_url_text(query_url, encoding="big5")
                 rows = parse_mops_annual_report_rows(html)
             except Exception as exc:
-                errors.append({"source": query_url, "error": str(exc)})
+                errors.append(company_filing_error(query_url, exc, stage="mops_query"))
                 continue
             for row in rows:
                 filename = row.get("filename") or ""
@@ -354,7 +1047,7 @@ class CompanyFilingFetcher:
                     )
                     validate_fetched_company_filing_document(document, ticker, company_name, "annual_report")
                 except Exception as exc:
-                    errors.append({"source": filename, "error": str(exc)})
+                    errors.append(company_filing_error(filename, exc, stage="mops_pdf"))
                     continue
                 documents.append(document)
             if documents:
@@ -363,9 +1056,12 @@ class CompanyFilingFetcher:
 
     @staticmethod
     async def _download_mops_pdf(ticker: str, filename: str, kind: str) -> tuple[str, bytes]:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            response = await client.post(
-                "https://doc.twse.com.tw/server-java/t57sb01",
+        entry_url = "https://doc.twse.com.tw/server-java/t57sb01"
+        async with httpx.AsyncClient(**company_filing_client_options(entry_url, timeout=30, follow_redirects=True)) as client:
+            response = await company_filing_request_with_retries(
+                client,
+                "POST",
+                entry_url,
                 data={
                     "step": "9",
                     "kind": kind,
@@ -374,15 +1070,13 @@ class CompanyFilingFetcher:
                     "colorchg": "1",
                 },
             )
-            response.raise_for_status()
             response.encoding = "big5"
             soup = BeautifulSoup(response.text, "html.parser")
             link = soup.find("a", href=True)
             if not link:
                 raise ValueError("MOPS did not return a PDF download link")
             pdf_url = urljoin("https://doc.twse.com.tw", link["href"])
-            pdf_response = await client.get(pdf_url)
-            pdf_response.raise_for_status()
+            pdf_response = await company_filing_request_with_retries(client, "GET", pdf_url)
         if len(pdf_response.content) > MAX_FETCHED_DOCUMENT_BYTES:
             raise ValueError("company filing content is too large to import")
         return pdf_url, pdf_response.content
@@ -399,7 +1093,13 @@ class CompanyFilingFetcher:
         website = normalize_company_website((profile or {}).get("網址") or "")
         company_name = company_name or profile_name
         if not website:
-            return [], [{"source": "TWSE company profile", "error": "company website not found"}]
+            return [], [
+                company_filing_error(
+                    "TWSE company profile",
+                    "company website not found",
+                    stage="official_profile",
+                )
+            ]
 
         urls_to_scan = official_website_seed_urls(website)
         candidate_links: list[dict] = []
@@ -424,7 +1124,7 @@ class CompanyFilingFetcher:
                     ),
                 )
             except Exception as exc:
-                errors.append({"source": page_url, "error": str(exc)})
+                errors.append(company_filing_error(page_url, exc, stage="official_seed_page"))
                 continue
             candidate_links.extend(extract_company_filing_links(page_html, final_page_url))
             if is_document_text_relevant(page, ticker, company_name, document_types):
@@ -458,7 +1158,7 @@ class CompanyFilingFetcher:
                     publisher=link.get("publisher") or "official company website",
                 )
             except Exception as exc:
-                errors.append({"source": url, "error": str(exc)})
+                errors.append(company_filing_error(url, exc, stage="official_document_fetch"))
                 continue
             documents.append(document)
             if len(documents) >= limit:
@@ -487,40 +1187,49 @@ class CompanyFilingFetcher:
     ) -> tuple[str, str]:
         current_url = url
         visited = set()
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            for _ in range(max_html_redirects + 1):
-                response = await client.get(current_url)
-                response.raise_for_status()
-                content_length = int(response.headers.get("content-length") or 0)
-                if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-                    raise ValueError("company filing content is too large to import")
-                if encoding:
-                    response.encoding = encoding
-                final_url = str(response.url)
-                text = response.text
-                redirect_url = extract_html_redirect_url(text, final_url)
-                if not redirect_url or redirect_url in visited:
-                    return text, final_url
-                visited.add(final_url)
-                current_url = redirect_url
+        for _ in range(max_html_redirects + 1):
+            response = await company_filing_fetch_response_with_retries(
+                "GET",
+                current_url,
+                timeout=timeout,
+                follow_redirects=True,
+            )
+            content_length = int(response.headers.get("content-length") or 0)
+            if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
+                raise ValueError("company filing content is too large to import")
+            if encoding:
+                response.encoding = encoding
+            final_url = str(response.url)
+            text = response.text
+            redirect_url = extract_html_redirect_url(text, final_url)
+            if not redirect_url or redirect_url in visited:
+                return text, final_url
+            visited.add(final_url)
+            current_url = redirect_url
         return text, final_url
 
     @classmethod
     async def twse_company_profile(cls, ticker: str) -> dict:
         if cls._twse_profile_cache is None:
             url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+            response = await company_filing_fetch_response_with_retries(
+                "GET",
+                url,
+                timeout=20,
+                follow_redirects=True,
+            )
             cls._twse_profile_cache = response.json()
         twse_row = next((row for row in cls._twse_profile_cache if str(row.get("公司代號") or "") == ticker), None)
         if twse_row:
             return twse_row
         if cls._tpex_profile_cache is None:
             url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
-            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+            response = await company_filing_fetch_response_with_retries(
+                "GET",
+                url,
+                timeout=20,
+                follow_redirects=True,
+            )
             cls._tpex_profile_cache = response.json()
         tpex_row = next(
             (
@@ -535,10 +1244,12 @@ class CompanyFilingFetcher:
     @staticmethod
     async def _duckduckgo_search(query_text: str, limit: int = 5) -> list[dict]:
         url = f"https://duckduckgo.com/html/?q={quote_plus(query_text)}"
-        headers = {"User-Agent": "Mozilla/5.0 stock-research-bot/1.0"}
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=headers) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        response = await company_filing_fetch_response_with_retries(
+            "GET",
+            url,
+            timeout=20,
+            follow_redirects=True,
+        )
         soup = BeautifulSoup(response.text, "html.parser")
         results = []
         for result in soup.select(".result"):
@@ -690,6 +1401,18 @@ def extract_html_redirect_url(html: str, base_url: str) -> str:
     return ""
 
 
+def extract_company_filing_html_text(soup: BeautifulSoup) -> str:
+    article_text = NewsFetcher._article_text(soup).strip()
+    if not get_settings().company_filing_html_extract_tables:
+        return article_text
+    table_blocks = _format_html_tables(soup)
+    if not table_blocks:
+        return article_text
+    parts = [article_text] if article_text else []
+    parts.extend(table_blocks)
+    return "\n\n".join(parts)
+
+
 def official_website_seed_urls(website: str) -> list[str]:
     parsed = urlparse(website)
     root = f"{parsed.scheme}://{parsed.netloc}"
@@ -752,6 +1475,66 @@ def pdf_title_from_url(url: str) -> str:
 
 
 def extract_pdf_text(content: bytes) -> str:
+    parser = get_settings().company_filing_pdf_parser.strip().lower() or "auto"
+    if parser == "auto":
+        return _extract_pdf_text_auto(content)
+    try:
+        if parser == "pdfplumber":
+            return _with_pdf_parser_provenance(
+                _extract_pdf_text_with_pdfplumber(content),
+                parser="pdfplumber",
+            )
+        if parser == "unstructured":
+            return _with_pdf_parser_provenance(
+                _extract_pdf_text_with_unstructured(content),
+                parser="unstructured",
+            )
+        if parser == "pypdf":
+            return _with_pdf_parser_provenance(
+                _extract_pdf_text_with_pypdf(content),
+                parser="pypdf",
+            )
+    except ImportError as exc:
+        raise ValueError(str(exc)) from exc
+    raise ValueError(f"unsupported company filing PDF parser: {parser}")
+
+
+def _extract_pdf_text_auto(content: bytes) -> str:
+    last_error: ValueError | None = None
+    for parser_name, extractor in (
+        ("pdfplumber", _extract_pdf_text_with_pdfplumber),
+        ("unstructured", _extract_pdf_text_with_unstructured),
+        ("pypdf", _extract_pdf_text_with_pypdf),
+    ):
+        try:
+            return _with_pdf_parser_provenance(
+                extractor(content),
+                parser=parser_name,
+                auto=True,
+            )
+        except ImportError:
+            continue
+        except ValueError as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise ValueError(PDF_IMPORT_MISSING_PYPDF_MESSAGE)
+
+
+def _with_pdf_parser_provenance(text: str, parser: str, auto: bool = False) -> str:
+    extract_tables = get_settings().company_filing_pdf_extract_tables
+    mode = "auto" if auto else "configured"
+    marker = (
+        f"{PDF_PARSER_PROVENANCE_PREFIX} parser={parser}; mode={mode}; "
+        f"extract_tables={str(bool(extract_tables)).lower()}"
+    )
+    if text.startswith(PDF_PARSER_PROVENANCE_PREFIX):
+        return text
+    return f"{marker}\n{text}"
+
+
+def _extract_pdf_text_with_pypdf(content: bytes) -> str:
     try:
         from pypdf import PdfReader
         from pypdf.errors import DependencyError
@@ -772,6 +1555,202 @@ def extract_pdf_text(content: bytes) -> str:
     return text
 
 
+def _extract_pdf_text_with_pdfplumber(content: bytes) -> str:
+    try:
+        pdfplumber = importlib.import_module("pdfplumber")
+    except ImportError as exc:
+        raise ImportError(PDF_IMPORT_MISSING_PDFPLUMBER_MESSAGE) from exc
+
+    try:
+        parts: list[str] = []
+        table_count = 0
+        table_limit_reached = False
+        with pdfplumber.open(BytesIO(content)) as pdf:
+            for page_index, page in enumerate(pdf.pages, start=1):
+                page_text = (page.extract_text() or "").strip()
+                if page_text:
+                    parts.append(page_text)
+                if get_settings().company_filing_pdf_extract_tables:
+                    for table_index, table in enumerate(page.extract_tables() or [], start=1):
+                        if table_count >= MAX_PDF_TABLES_PER_DOCUMENT:
+                            table_limit_reached = True
+                            continue
+                        table_text = _format_pdf_table(table, page_index, table_index)
+                        if table_text:
+                            table_count += 1
+                            parts.append(table_text)
+        if table_limit_reached:
+            parts.append(
+                f"[PDF 表格抽取限制] 表格超過 {MAX_PDF_TABLES_PER_DOCUMENT} 個，"
+                "僅保留前段可檢索表格文字。"
+            )
+    except Exception as exc:
+        raise ValueError(PDF_IMPORT_PARSE_ERROR_MESSAGE) from exc
+
+    return _validated_pdf_text("\n\n".join(parts))
+
+
+def _extract_pdf_text_with_unstructured(content: bytes) -> str:
+    try:
+        partition_pdf = importlib.import_module("unstructured.partition.pdf").partition_pdf
+    except ImportError as exc:
+        raise ImportError(PDF_IMPORT_MISSING_UNSTRUCTURED_MESSAGE) from exc
+
+    extract_tables = get_settings().company_filing_pdf_extract_tables
+    try:
+        elements = partition_pdf(file=BytesIO(content), infer_table_structure=extract_tables)
+    except Exception as exc:
+        raise ValueError(PDF_IMPORT_PARSE_ERROR_MESSAGE) from exc
+
+    parts = []
+    table_count = 0
+    table_limit_reached = False
+    for element in elements:
+        text = str(element).strip()
+        category = str(getattr(element, "category", "") or element.__class__.__name__).lower()
+        metadata = getattr(element, "metadata", None)
+        table_html = str(getattr(metadata, "text_as_html", "") or "")
+        if "table" in category:
+            if extract_tables:
+                if table_count >= MAX_PDF_TABLES_PER_DOCUMENT:
+                    table_limit_reached = True
+                    continue
+                table_text = _format_unstructured_pdf_table(text, table_html, metadata, table_count + 1)
+                if table_text:
+                    table_count += 1
+                    parts.append(table_text)
+                    continue
+            elif text:
+                parts.append(text)
+                continue
+        if text:
+            parts.append(text)
+    if table_limit_reached:
+        parts.append(
+            f"[PDF 表格抽取限制] 表格超過 {MAX_PDF_TABLES_PER_DOCUMENT} 個，"
+            "僅保留前段可檢索表格文字。"
+        )
+    return _validated_pdf_text("\n\n".join(parts))
+
+
+def _validated_pdf_text(text: str) -> str:
+    text = text.strip()
+    if not text:
+        raise ValueError(PDF_IMPORT_NO_TEXT_MESSAGE)
+    return text
+
+
+def _format_pdf_table(table: list[list[object]], page_index: int, table_index: int) -> str:
+    rows = []
+    for row in table or []:
+        cells = [_clean_pdf_table_cell(cell) for cell in (row or [])]
+        if any(cells):
+            rows.append(cells)
+    if not rows:
+        return ""
+    raw_row_count = len(rows)
+    raw_column_count = max(len(row) for row in rows)
+    max_columns = min(raw_column_count, MAX_PDF_TABLE_COLUMNS)
+    truncated_rows = rows[:MAX_PDF_TABLE_ROWS]
+    normalized = [
+        (row[:max_columns] + [""] * (max_columns - len(row[:max_columns])))
+        for row in truncated_rows
+    ]
+    lines = [f"[PDF 表格抽取 p.{page_index} #{table_index}]"]
+    lines.append(f"表格尺寸：{raw_row_count} 列 x {raw_column_count} 欄")
+    if raw_row_count > MAX_PDF_TABLE_ROWS or raw_column_count > MAX_PDF_TABLE_COLUMNS:
+        lines.append(
+            f"表格已截斷：保留前 {min(raw_row_count, MAX_PDF_TABLE_ROWS)} 列、"
+            f"前 {min(raw_column_count, MAX_PDF_TABLE_COLUMNS)} 欄。"
+        )
+    lines.extend(" | ".join(row).strip() for row in normalized)
+    return "\n".join(line for line in lines if line.strip())
+
+
+def _format_unstructured_pdf_table(
+    text: str,
+    table_html: str,
+    metadata: object,
+    table_index: int,
+) -> str:
+    table_text = _html_table_to_text(table_html) if table_html else text.strip()
+    if not table_text:
+        return ""
+    page_number = getattr(metadata, "page_number", None)
+    page_label = f" p.{page_number}" if page_number else ""
+    return f"[PDF 表格抽取{page_label} #{table_index}]\n{table_text}"
+
+
+def _html_table_to_text(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    rows = []
+    for table_row in soup.find_all("tr"):
+        cells = [
+            cell.get_text(" ", strip=True)
+            for cell in table_row.find_all(["th", "td"])
+        ]
+        if any(cells):
+            rows.append(" | ".join(cells))
+    if rows:
+        return "\n".join(rows)
+    return soup.get_text(" ", strip=True)
+
+
+def _format_html_tables(soup: BeautifulSoup) -> list[str]:
+    blocks = []
+    limit_reached = False
+    for table in soup.find_all("table"):
+        if len(blocks) >= MAX_HTML_TABLES_PER_DOCUMENT:
+            limit_reached = True
+            break
+        block = _format_html_table(table, len(blocks) + 1)
+        if block:
+            blocks.append(block)
+    if limit_reached:
+        blocks.append(
+            f"[HTML 表格抽取限制] 表格超過 {MAX_HTML_TABLES_PER_DOCUMENT} 個，"
+            "僅保留前段可檢索表格文字。"
+        )
+    return blocks
+
+
+def _format_html_table(table: object, table_index: int) -> str:
+    rows = []
+    for table_row in table.find_all("tr"):
+        cells = [
+            _clean_pdf_table_cell(cell.get_text(" ", strip=True))
+            for cell in table_row.find_all(["th", "td"])
+        ]
+        if any(cells):
+            rows.append(cells)
+    if not rows:
+        return ""
+    raw_row_count = len(rows)
+    raw_column_count = max(len(row) for row in rows)
+    max_columns = min(raw_column_count, MAX_PDF_TABLE_COLUMNS)
+    truncated_rows = rows[:MAX_PDF_TABLE_ROWS]
+    normalized = [
+        row[:max_columns] + [""] * (max_columns - len(row[:max_columns]))
+        for row in truncated_rows
+    ]
+    lines = [f"[HTML 表格抽取 #{table_index}]"]
+    lines.append(f"表格尺寸：{raw_row_count} 列 x {raw_column_count} 欄")
+    if raw_row_count > MAX_PDF_TABLE_ROWS or raw_column_count > MAX_PDF_TABLE_COLUMNS:
+        lines.append(
+            f"表格已截斷：保留前 {min(raw_row_count, MAX_PDF_TABLE_ROWS)} 列、"
+            f"前 {min(raw_column_count, MAX_PDF_TABLE_COLUMNS)} 欄。"
+        )
+    lines.extend(" | ".join(row).strip() for row in normalized)
+    return "\n".join(line for line in lines if line.strip())
+
+
+def _clean_pdf_table_cell(value: object) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "").replace("\n", " ")).strip()
+    if len(cleaned) > MAX_PDF_TABLE_CELL_CHARS:
+        return cleaned[: MAX_PDF_TABLE_CELL_CHARS - 3] + "..."
+    return cleaned
+
+
 def validate_fetched_company_filing_document(
     document: NewsDocument,
     ticker: str,
@@ -785,6 +1764,8 @@ def validate_fetched_company_filing_document(
         raise ValueError("company filing content is too large to import")
 
     lowered = text.lower()
+    if looks_like_blocked_or_placeholder_filing_page(lowered):
+        raise ValueError("company filing content looks like a blocked, login, or placeholder page")
     company_terms = [ticker.lower()]
     if company_name:
         company_terms.append(company_name.lower())
@@ -795,6 +1776,11 @@ def validate_fetched_company_filing_document(
         keywords = DOCUMENT_TYPE_KEYWORDS.get(document_type, ())
         if keywords and not any(keyword.lower() in lowered for keyword in keywords):
             raise ValueError("company filing content does not match the selected document type")
+
+
+def looks_like_blocked_or_placeholder_filing_page(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(pattern in lowered for pattern in BLOCKED_OR_PLACEHOLDER_PAGE_PATTERNS)
 
 
 def filing_quality_score(document: CompanyFilingDocument | NewsDocument, ticker: str = "", company_name: str = "") -> int:

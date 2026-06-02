@@ -64,6 +64,48 @@
           "aliases": ["雙鴻科技", "Auras"]
         }
       ]
+    },
+    {
+      "id": "memory",
+      "name": "記憶體",
+      "companies": [
+        {
+          "ticker": "2408",
+          "name": "南亞科",
+          "aliases": ["Nanya", "南亞科技"]
+        },
+        {
+          "ticker": "2344",
+          "name": "華邦電",
+          "aliases": ["Winbond", "華邦電子"]
+        },
+        {
+          "ticker": "8299",
+          "name": "群聯",
+          "aliases": ["Phison", "群聯電子"]
+        },
+        {
+          "ticker": "2451",
+          "name": "創見",
+          "aliases": ["Transcend", "創見資訊"]
+        },
+        {
+          "ticker": "3260",
+          "name": "威剛",
+          "aliases": ["ADATA", "威剛科技"]
+        },
+        {
+          "ticker": "4967",
+          "name": "十銓",
+          "aliases": ["TeamGroup", "十銓科技"]
+        },
+        {
+          "ticker": "2337",
+          "name": "旺宏",
+          "aliases": ["Macronix", "旺宏電子"]
+        }
+      ],
+      "notes": "記憶體循環與模組/控制晶片核心公司，不得與 AI 伺服器周邊混用。"
     }
   ],
   "risk_keywords": {

@@ -20,6 +20,8 @@ class NewsDocument(BaseModel):
     title: str
     text: str
     source: Source
+    entity_tickers: list[str] = Field(default_factory=list)
+    entity_names: list[str] = Field(default_factory=list)
 
 
 class CompanyFilingDocument(BaseModel):

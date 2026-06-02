@@ -44,6 +44,8 @@ from app.services.report_quality import (
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
 from app.services.service_status import service_status
 from app.services.candidate_confidence import format_confidence_score
+from app.services.source_quality import is_low_quality_investor_forum_source, remove_low_quality_investor_forum_lines
+from app.services.upgrade_audit import audit_upgrade_capabilities
 from app.services.whitelist import SupplyChainWhitelist
 
 st.set_page_config(page_title="台股 AI 產業鏈分析", layout="wide")
@@ -500,6 +502,86 @@ st.markdown(
         color: var(--stock-warning);
         font-weight: 700;
     }
+    .upgrade-audit-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin: 10px 0 14px;
+    }
+    .upgrade-audit-tile {
+        background: #ffffff;
+        border: 1px solid var(--stock-border);
+        border-radius: 8px;
+        padding: 14px;
+        min-height: 92px;
+    }
+    .upgrade-audit-tile span {
+        display: block;
+        color: #334155;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+    .upgrade-audit-tile strong {
+        display: block;
+        color: var(--stock-text);
+        font-size: 1.45rem;
+        line-height: 1.2;
+        margin-top: 6px;
+    }
+    .upgrade-audit-status {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.86rem;
+        font-weight: 800;
+        border: 1px solid var(--stock-border);
+        background: #f8fafc;
+        color: var(--stock-text);
+    }
+    .upgrade-audit-status.ready {
+        background: #e4f8f0;
+        border-color: #a7f3d0;
+        color: #065f46;
+    }
+    .upgrade-audit-status.caution {
+        background: #fff7ed;
+        border-color: #fed7aa;
+        color: #9a3412;
+    }
+    .upgrade-audit-status.failed {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #991b1b;
+    }
+    .upgrade-audit-note {
+        color: #334155;
+        font-size: 0.92rem;
+        line-height: 1.55;
+        margin: -4px 0 12px;
+    }
+    .upgrade-audit-areas {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .upgrade-audit-area {
+        background: #ffffff;
+        border: 1px solid var(--stock-border);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--stock-text);
+    }
+    .upgrade-audit-area strong,
+    .upgrade-audit-area span {
+        display: block;
+    }
+    .upgrade-audit-area span {
+        color: #475569;
+        margin-top: 4px;
+        line-height: 1.45;
+    }
     /* Streamlit specific elements */
     [data-testid="stExpander"] {
         background: var(--stock-surface) !important;
@@ -547,6 +629,10 @@ st.markdown(
         .workflow-strip {
             grid-template-columns: 1fr;
         }
+        .upgrade-audit-grid,
+        .upgrade-audit-areas {
+            grid-template-columns: 1fr;
+        }
     }
     @media (prefers-reduced-motion: reduce) {
         * {
@@ -583,11 +669,19 @@ def hydrate_active_report_result(result: dict) -> dict:
         payload = api_get(f"/reports/{int(active_report_id)}")
     except requests.RequestException:
         return result
+    current_topic = str(result.get("topic") or (result.get("request") or {}).get("topic") or "").strip()
+    active_topic = str(payload.get("topic") or (payload.get("request") or {}).get("topic") or "").strip()
+    if current_topic and active_topic and current_topic != active_topic:
+        return result
     hydrated = {
         **result,
         "report_id": active_report_id,
         "source_report_id": source_report_id,
+        "topic": payload.get("topic") or result.get("topic"),
+        "tickers": payload.get("tickers") or result.get("promoted_tickers") or [],
+        "request": payload.get("request") or result.get("request") or {},
         "quality_gate": payload.get("quality_gate") or parse_quality_gate_from_markdown(payload.get("markdown") or ""),
+        "auto_follow_up": payload.get("auto_follow_up"),
         "candidate_whitelist": payload.get("candidate_whitelist") or result.get("candidate_whitelist") or [],
         "candidate_audit": payload.get("candidate_audit") or result.get("candidate_audit") or {},
         "report": {
@@ -689,6 +783,16 @@ def summary_table_items(markdown: str) -> list[str]:
     rows = markdown_table_rows(markdown, "一頁摘要", limit=10)
     important = {"可小額研究", "觀察/待補", "避開/降低曝險", "本次股票範圍"}
     return [f"{row[0]}：{row[1]}" for row in rows if len(row) >= 2 and row[0] in important]
+
+
+def first_tranche_allocation_label(markdown: str) -> Optional[str]:
+    section = markdown_section_or_none(markdown, "資金控管建議")
+    if not section or "目前無可配置標的" in section:
+        return "0 元"
+    match = re.search(r"本輪首筆配置合計約\s*([\d,]+)\s*元", section)
+    if not match:
+        return None
+    return f"{match.group(1)} 元"
 
 
 def markdown_table_rows_by_header(
@@ -876,7 +980,11 @@ def candidate_source_matches_display_entity(candidate: dict, source: dict) -> bo
         str(source.get(field) or "")
         for field in ("title", "publisher", "url")
     ).lower()
-    if "股市爆料同學會" in haystack or "爆料同學會" in haystack:
+    if is_low_quality_investor_forum_source(
+        title=source.get("title"),
+        publisher=source.get("publisher"),
+        url=source.get("url"),
+    ):
         return False
     ticker = str(candidate.get("ticker") or "")
     name = str(candidate.get("name") or "")
@@ -938,8 +1046,8 @@ def comparison_matrix_html(markdown: str) -> str:
                 <span class="decision {decision_class}">{decision}</span>
               </div>
               <div class="mini-grid">
-                <div><span>目前股價</span><strong>{price}</strong></div>
-                <div class="{price_class}"><span>當下股價標籤</span><strong>{price_label}</strong></div>
+                <div><span>最新可取得收盤價</span><strong>{price}</strong></div>
+                <div class="{price_class}"><span>追價風險標籤</span><strong>{price_label}</strong></div>
                 <div><span>目前情境升值分</span><strong>{upside}</strong></div>
                 <div class="{downside_class}"><span>目前情境降值分</span><strong>{downside}</strong></div>
                 <div class="{valuation_class}"><span>目前估值</span><strong>{valuation}</strong></div>
@@ -1338,7 +1446,12 @@ def quality_issue_html(gate: dict) -> str:
     return f"<section class='panel quality-issues {severity_class}'><h2>{title}</h2>{issue_html}{action_html}</section>"
 
 
-def auto_follow_up_status_html(auto_follow_up: Optional[dict], current_report_id: object = None) -> str:
+def auto_follow_up_status_html(
+    auto_follow_up: Optional[dict],
+    current_report_id: object = None,
+    current_topic: object = None,
+    current_tickers: Optional[list] = None,
+) -> str:
     if not isinstance(auto_follow_up, dict) or not auto_follow_up:
         return ""
     status = auto_follow_up.get("status")
@@ -1351,7 +1464,27 @@ def auto_follow_up_status_html(auto_follow_up: Optional[dict], current_report_id
     rerun = rerun_raw if isinstance(rerun_raw, dict) else {}
     next_report = rerun.get("report_id")
     source_report_id = auto_follow_up.get("source_report_id")
+    source_topic = auto_follow_up.get("source_report_topic")
+    source_tickers = auto_follow_up.get("source_report_tickers") or []
+    rerun_request = rerun.get("request") if isinstance(rerun.get("request"), dict) else {}
+    rerun_topic = rerun_request.get("topic") or rerun.get("topic")
+    next_report_is_newer = bool(next_report and current_report_id and str(next_report) != str(current_report_id))
     if source_report_id and current_report_id and str(source_report_id) != str(current_report_id):
+        return ""
+    if next_report_is_newer and not source_topic:
+        return ""
+    if current_topic and source_topic and str(current_topic) != str(source_topic):
+        return ""
+    if current_topic and rerun_topic and str(current_topic) != str(rerun_topic):
+        return ""
+    if source_topic and rerun_topic and str(source_topic) != str(rerun_topic):
+        return ""
+    if next_report_is_newer and not rerun_topic:
+        return ""
+    if current_tickers and isinstance(source_tickers, list) and source_tickers:
+        if [str(ticker) for ticker in source_tickers] != [str(ticker) for ticker in current_tickers]:
+            return ""
+    if next_report_is_newer and not source_tickers:
         return ""
     skipped_reason = rerun.get("reason")
     if status == "failed":
@@ -1376,7 +1509,9 @@ def auto_follow_up_status_html(auto_follow_up: Optional[dict], current_report_id
             "項補強任務；完成後會依完成檢查決定是否重跑報告。"
         )
         tone = "auto-started"
-    elif next_report and current_report_id and str(next_report) != str(current_report_id):
+    elif next_report_is_newer:
+        if not source_report_id or str(source_report_id) != str(current_report_id):
+            return ""
         title = "已有新版報告可查看"
         body = (
             f"目前畫面是報告 #{escape(str(current_report_id))}；"
@@ -1501,11 +1636,18 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     quality_html = quality_issue_html(gate)
     amount = action_policy.get("max_deployable_amount")
     amount_label = f"{int(amount):,} 元" if amount is not None else "-"
-    current_allocation_label = "0 元" if "目前無可配置標的" in markdown else amount_label
+    current_allocation_label = first_tranche_allocation_label(markdown) or amount_label
     report_id = result.get("report_id") if result else "-"
-    auto_html = auto_follow_up_status_html(result.get("auto_follow_up") if result else None, report_id)
     request_payload = result.get("request") if result else {}
     request_payload = request_payload if isinstance(request_payload, dict) else {}
+    current_topic = (result or {}).get("topic") or request_payload.get("topic")
+    current_tickers = (result or {}).get("tickers") or (result or {}).get("promoted_tickers") or request_payload.get("tickers") or []
+    auto_html = auto_follow_up_status_html(
+        result.get("auto_follow_up") if result else None,
+        report_id,
+        current_topic,
+        current_tickers,
+    )
     lookback_days = request_payload.get("lookback_days") or metrics.get("source_lookback_days")
     recent_source_label = f"近 {int(lookback_days)} 天來源" if lookback_days else "近況來源"
     promoted = metric_count_from_payload(result, "promoted_tickers", metrics, "promoted_count")
@@ -1856,6 +1998,109 @@ def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
         "市場資料": "可用" if service_snapshot.get("finmind", {}).get("mode") else "檢查",
         "升格門檻": format_confidence_score(float(high_threshold)) if high_threshold is not None else "未評估",
     }
+
+
+def upgrade_audit_html(audit: dict) -> str:
+    summary = audit.get("summary") or {}
+    status = str(audit.get("overall_status") or "unknown")
+    implementation = audit.get("implementation") or {}
+    deployment = audit.get("deployment") or {}
+    implementation_status = str(
+        implementation.get("status") or summary.get("implementation_status") or "unknown"
+    )
+    deployment_status = str(deployment.get("status") or summary.get("deployment_status") or "unknown")
+    status_labels = {
+        "ready": "通過",
+        "caution": "注意",
+        "failed": "需處理",
+        "unknown": "未評估",
+    }
+    strict_label = "正式部署" if audit.get("strict_external") else "一般檢查"
+    total = int(summary.get("total_checks") or 0)
+    ready = int(summary.get("ready") or 0)
+    warnings = int(summary.get("warnings") or 0)
+    failures = int(summary.get("failures") or 0)
+    implementation_ready = int(implementation.get("ready") or 0)
+    implementation_total = int(implementation.get("total_checks") or 0)
+    deployment_ready = int(deployment.get("ready") or 0)
+    deployment_total = int(deployment.get("total_checks") or 0)
+    area_labels = {
+        "ai_rag": "AI / RAG",
+        "architecture": "系統架構",
+        "data_business_logic": "資料與業務邏輯",
+    }
+    area_cards = []
+    for area_key, area in sorted((audit.get("areas") or {}).items()):
+        area_cards.append(
+            '<div class="upgrade-audit-area"><strong>{label}</strong>'
+            "<span>通過 {ready} / 注意 {warnings} / 需處理 {failures}</span></div>".format(
+                label=escape(area_labels.get(area_key, str(area_key))),
+                ready=int(area.get("ready") or 0),
+                warnings=int(area.get("warnings") or 0),
+                failures=int(area.get("failures") or 0),
+            )
+        )
+    return """
+    <div class="result-shell">
+        <div class="section-title">升級稽核</div>
+        <div class="upgrade-audit-grid">
+            <div class="upgrade-audit-tile">
+                <span>核心升級</span>
+                <strong><span class="upgrade-audit-status {implementation_status_class}">{implementation_status_label}</span></strong>
+            </div>
+            <div class="upgrade-audit-tile">
+                <span>外部整合</span>
+                <strong><span class="upgrade-audit-status {deployment_status_class}">{deployment_status_label}</span></strong>
+            </div>
+            <div class="upgrade-audit-tile"><span>檢查模式</span><strong>{strict_label}</strong></div>
+            <div class="upgrade-audit-tile"><span>通過項目</span><strong>{ready}/{total}</strong></div>
+        </div>
+        <div class="upgrade-audit-note">
+            整體狀態：{status_label}；核心 {implementation_ready}/{implementation_total} 通過，外部 {deployment_ready}/{deployment_total} 通過；注意 {warnings} 項、需處理 {failures} 項。
+        </div>
+        <div class="upgrade-audit-areas">{areas}</div>
+    </div>
+    """.format(
+        status_label=escape(status_labels.get(status, status)),
+        implementation_status_class=escape(
+            implementation_status if implementation_status in {"ready", "caution", "failed"} else "unknown"
+        ),
+        implementation_status_label=escape(status_labels.get(implementation_status, implementation_status)),
+        deployment_status_class=escape(
+            deployment_status if deployment_status in {"ready", "caution", "failed"} else "unknown"
+        ),
+        deployment_status_label=escape(status_labels.get(deployment_status, deployment_status)),
+        strict_label=escape(strict_label),
+        ready=ready,
+        total=total,
+        implementation_ready=implementation_ready,
+        implementation_total=implementation_total,
+        deployment_ready=deployment_ready,
+        deployment_total=deployment_total,
+        warnings=warnings,
+        failures=failures,
+        areas="".join(area_cards) or "<div class='upgrade-audit-area'><strong>未評估</strong><span>尚無稽核資料</span></div>",
+    )
+
+
+def upgrade_audit_rows(audit: dict) -> list[dict]:
+    severity_labels = {"pass": "通過", "warn": "注意", "fail": "需處理"}
+    area_labels = {
+        "ai_rag": "AI / RAG",
+        "architecture": "系統架構",
+        "data_business_logic": "資料與業務邏輯",
+    }
+    return [
+        {
+            "面向": area_labels.get(str(check.get("area")), check.get("area")),
+            "能力": check.get("label") or check.get("capability"),
+            "結果": severity_labels.get(str(check.get("severity")), check.get("severity")),
+            "目前狀態": check.get("status"),
+            "說明": check.get("detail") or "-",
+            "處理方向": check.get("remediation") or "-",
+        }
+        for check in audit.get("checks") or []
+    ]
 
 
 def follow_up_result_message(result: dict, summary_text: str) -> tuple[str, str]:
@@ -2649,7 +2894,11 @@ with tabs[0]:
                     value=180 if analysis_mode == "deep" else 120 if analysis_mode == "standard" else 80,
                     step=20,
                 )
-                refresh_before_report = st.checkbox("手動模式產報告前刷新資料", value=False)
+                refresh_before_report = st.checkbox(
+                    "手動模式產報告前刷新資料",
+                    value=True,
+                    help="重新抓取候選股股價、月營收、估值與公司文件；股價刷新會跳過快取，避免使用稍早未完整更新的收盤價。",
+                )
                 tickers = st.multiselect(
                     "手動模式個股範圍",
                     options=sorted(SupplyChainWhitelist().allowed_tickers()),
@@ -2749,11 +2998,27 @@ with tabs[0]:
                         }
                     auto_rerun = auto_follow_up.get("rerun_report") if isinstance(auto_follow_up, dict) else {}
                     auto_rerun = auto_rerun if isinstance(auto_rerun, dict) else {}
+                    auto_source_report_id = auto_follow_up.get("source_report_id") if isinstance(auto_follow_up, dict) else None
+                    auto_source_topic = auto_follow_up.get("source_report_topic") if isinstance(auto_follow_up, dict) else None
+                    auto_rerun_request = auto_rerun.get("request") if isinstance(auto_rerun.get("request"), dict) else {}
+                    auto_rerun_topic = auto_rerun_request.get("topic") or auto_rerun.get("topic")
+                    active_report_id = (
+                        auto_rerun.get("report_id")
+                        if auto_source_report_id is not None
+                        and str(auto_source_report_id) == str(report.id)
+                        and auto_source_topic
+                        and str(auto_source_topic) == str(topic)
+                        and auto_rerun_topic
+                        and str(auto_rerun_topic) == str(topic)
+                        else None
+                    )
                     st.session_state["last_analysis_result"] = {
                         "run_id": run_id,
                         "report_id": report.id,
-                        "active_report_id": (auto_rerun.get("report_id") or report.id),
+                        "active_report_id": (active_report_id or report.id),
                         "auto_follow_up": auto_follow_up,
+                        "topic": topic,
+                        "request": request.model_dump(mode="json"),
                         "candidate_whitelist": [],
                         "promoted_tickers": tickers,
                         "quality_gate": quality_gate,
@@ -2909,6 +3174,9 @@ with tabs[1]:
             report_title = report_payload.get("title") or "report"
             history_result = {
                 "report_id": selected_id,
+                "topic": report_payload.get("topic"),
+                "tickers": report_payload.get("tickers") or [],
+                "request": report_payload.get("request") or {},
                 "quality_gate": report_payload.get("quality_gate") or parse_quality_gate_from_markdown(report_markdown or ""),
                 "auto_follow_up": report_payload.get("auto_follow_up"),
                 "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
@@ -2917,8 +3185,19 @@ with tabs[1]:
         except requests.RequestException:
             with session_scope() as session:
                 report = ReportRepository(session).get(int(selected_id))
-                report_markdown = report.markdown if report else None
+                report_markdown = remove_low_quality_investor_forum_lines(report.markdown) if report else None
                 report_title = report.title if report else "report"
+                if report:
+                    try:
+                        fallback_tickers = json.loads(report.tickers_json or "[]")
+                    except json.JSONDecodeError:
+                        fallback_tickers = []
+                    history_result = {
+                        "report_id": selected_id,
+                        "topic": report.topic,
+                        "tickers": fallback_tickers if isinstance(fallback_tickers, list) else [],
+                        "quality_gate": parse_quality_gate_from_markdown(report_markdown or ""),
+                    }
         if report_markdown:
             history_result = history_result or {
                 "report_id": selected_id,
@@ -3087,6 +3366,7 @@ with tabs[2]:
                         selected_market_tickers,
                         market_start,
                         market_end,
+                        force_refresh=True,
                     )
                 )
                 with session_scope() as session:
@@ -3508,6 +3788,18 @@ with tabs[3]:
         render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
         status = db_status()
         service_snapshot = service_status()
+        strict_upgrade_audit = st.toggle(
+            "正式部署檢查",
+            value=False,
+            help="啟用後會把外部 Neo4j live import 也視為必備項目。",
+        )
+        upgrade_audit = audit_upgrade_capabilities(
+            service_snapshot,
+            strict_external=bool(strict_upgrade_audit),
+        )
+        st.markdown(upgrade_audit_html(upgrade_audit), unsafe_allow_html=True)
+        with st.expander("升級稽核明細"):
+            st.dataframe(upgrade_audit_rows(upgrade_audit), width="stretch", hide_index=True)
         service_metrics = maintenance_service_metrics(status, service_snapshot)
         service_cols = st.columns(len(service_metrics))
         for column, (label, value) in zip(service_cols, service_metrics.items()):

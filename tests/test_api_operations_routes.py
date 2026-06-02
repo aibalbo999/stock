@@ -1,0 +1,123 @@
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.operations_routes import create_operations_router
+
+
+class FakeAsyncReportValidationError(Exception):
+    pass
+
+
+class FakeRunTaskNotFound(Exception):
+    pass
+
+
+def test_operations_router_delegates_manual_news_and_market_refresh() -> None:
+    captured = {}
+
+    class FakeDataApi:
+        def ingest_manual_news(self, **kwargs) -> dict:
+            captured["manual"] = kwargs
+            return {"document_id": "manual-1"}
+
+        async def refresh_market(self, **kwargs) -> dict:
+            captured["market"] = kwargs
+            return {"stored_count": 2}
+
+    client = _client(data_api=FakeDataApi())
+
+    manual_response = client.post(
+        "/ingest/manual",
+        json={"title": "台積電新聞", "text": "台積電 AI 需求成長。", "publisher": "manual"},
+    )
+    market_response = client.post(
+        "/market/refresh",
+        json={"tickers": ["2330"], "start_date": "2026-05-01", "end_date": "2026-05-02"},
+    )
+
+    assert manual_response.status_code == 200
+    assert manual_response.json() == {"document_id": "manual-1"}
+    assert captured["manual"]["title"] == "台積電新聞"
+    assert captured["manual"]["publisher"] == "manual"
+    assert market_response.status_code == 200
+    assert market_response.json() == {"stored_count": 2}
+    assert captured["market"]["tickers"] == ["2330"]
+
+
+def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
+    captured = {}
+
+    class FakeDataApi:
+        def list_news_sources(self) -> list[dict]:
+            return [{"name": "twse"}]
+
+        def get_schedule(self) -> dict:
+            return {"enabled": False}
+
+        def update_schedule(self, config) -> dict:
+            captured["schedule"] = config.model_dump(mode="json")
+            return {"enabled": True}
+
+        def maintenance_cleanup(self, **kwargs) -> dict:
+            captured["cleanup"] = kwargs
+            return {"failed_runs_deleted": 1}
+
+    client = _client(data_api=FakeDataApi())
+
+    assert client.get("/news/sources").json() == [{"name": "twse"}]
+    assert client.get("/schedule").json() == {"enabled": False}
+    assert client.put("/schedule", json={"enabled": True, "tickers": ["2330"]}).json() == {"enabled": True}
+    cleanup_response = client.post("/maintenance/cleanup", json={"failed_runs": True})
+
+    assert cleanup_response.status_code == 200
+    assert cleanup_response.json() == {"failed_runs_deleted": 1}
+    assert captured["schedule"]["enabled"] is True
+    assert captured["cleanup"]["failed_runs"] is True
+
+
+def test_operations_router_maps_run_and_async_task_errors() -> None:
+    class FakeRunTaskApi:
+        def get_run(self, run_id: int) -> dict:
+            raise FakeRunTaskNotFound("run not found")
+
+        def generate_report_async(self, request) -> dict:
+            raise FakeAsyncReportValidationError("async report generation requires at least one whitelisted ticker")
+
+        def get_run_by_task_id(self, task_id: str) -> dict:
+            raise FakeRunTaskNotFound("run not found for task")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    run_response = client.get("/runs/404")
+    async_response = client.post("/reports/generate_async", json={"topic": "AI 產業鏈", "tickers": []})
+    task_run_response = client.get("/tasks/missing/run")
+
+    assert run_response.status_code == 404
+    assert run_response.json()["detail"] == "run not found"
+    assert async_response.status_code == 400
+    assert "requires at least one" in async_response.json()["detail"]
+    assert task_run_response.status_code == 404
+    assert task_run_response.json()["detail"] == "run not found for task"
+
+
+def _client(data_api=None, run_task_api=None) -> TestClient:
+    app = FastAPI()
+    app.include_router(
+        create_operations_router(
+            _services(data_api=data_api, run_task_api=run_task_api),
+            async_report_validation_error_cls=FakeAsyncReportValidationError,
+            run_task_not_found_cls=FakeRunTaskNotFound,
+        )
+    )
+    return TestClient(app)
+
+
+def _services(data_api=None, run_task_api=None):
+    class FakeServices:
+        def data_operations_api(self):
+            return data_api
+
+        def run_task_api(self):
+            return run_task_api
+
+    return FakeServices()

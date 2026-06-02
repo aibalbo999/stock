@@ -5,12 +5,16 @@ description = "AI industry-chain Taiwan equities analysis and automated report g
 requires-python = ">=3.9"
 dependencies = [
   "beautifulsoup4>=4.12.3",
+  "alembic>=1.13.3",
   "celery>=5.4.0",
   "chromadb>=0.5.20",
   "cryptography>=42.0.0",
   "fastapi>=0.115.0",
+  "google-genai>=1.0.0",
   "httpx>=0.27.2",
+  "litellm>=1.70.0",
   "pandas>=2.2.3",
+  "pdfplumber>=0.11.4",
   "psycopg[binary]>=3.2.0",
   "pydantic>=2.9.2",
   "pydantic-settings>=2.6.1",
@@ -28,6 +32,25 @@ dev = [
   "pytest>=8.3.3",
   "pyyaml>=6.0.0",
   "ruff>=0.7.4"
+]
+rag = [
+  "sentence-transformers>=3.0.0",
+  "openai>=1.40.0",
+  "google-generativeai>=0.8.0",
+  "cohere>=5.0.0"
+]
+pdf = [
+  "unstructured[pdf]>=0.15.0"
+]
+browser = [
+  "playwright>=1.45.0"
+]
+workflow = [
+  "prefect>=3.0.0",
+  "temporalio>=1.6.0"
+]
+graph = [
+  "neo4j>=5.20.0"
 ]
 
 [build-system]

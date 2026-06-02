@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from sqlalchemy import create_engine
@@ -5,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.data_sources.news import NewsFetcher
 from app.db.models import Base, NewsArticle
-from app.models.schemas import ReportRequest
+from app.models.schemas import ReportRequest, ReportResponse, RiskFinding, RiskType, Source
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import NewsRepository, ReportRepository
 from app.services.llm_client import LLMResult
@@ -94,5 +95,88 @@ def test_news_repository_merges_dynamic_entity_matches() -> None:
         article = session.get(NewsArticle, document.id)
         assert '"ticker": "3324"' in article.entity_matches_json
         assert '"ticker": "3017"' in article.entity_matches_json
+        restored = repository.latest_documents(1)[0]
+        assert restored.entity_tickers == ["3324", "3017"]
+        assert restored.entity_names == ["雙鴻", "奇鋐"]
+    finally:
+        session.close()
+
+
+def test_report_repository_sanitizes_non_formal_sources_before_persisting() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        request = ReportRequest(topic="AI 產業鏈", tickers=["1815"])
+        response = ReportResponse(
+            title="AI 產業鏈 自動分析報告",
+            markdown="\n".join(
+                [
+                    "# AI 產業鏈 自動分析報告",
+                    "- 2026-05-08 CMoney投資網誌《富喬還能追嗎》",
+                    "- 2026-05-09 經濟日報《富喬月營收創高》",
+                    "| 股票 | 代表來源 |",
+                    "|---|---|",
+                    "| 1815 富喬 | 2026-05-08 CMoney投資網誌《富喬還能追嗎》；2026-05-09 經濟日報《富喬月營收創高》 |",
+                ]
+            ),
+        )
+
+        report = ReportRepository(session).create(request, response)
+        session.commit()
+
+        stored = ReportRepository(session).get(report.id)
+        assert stored is not None
+        assert "CMoney投資網誌" not in stored.markdown
+        assert "經濟日報《富喬月營收創高》" in stored.markdown
+    finally:
+        session.close()
+
+
+def test_report_repository_sanitizes_non_formal_findings_before_persisting() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        request = ReportRequest(topic="AI 產業鏈", tickers=["1815", "2330"])
+        response = ReportResponse(
+            title="AI 產業鏈 自動分析報告",
+            markdown="# AI 產業鏈 自動分析報告\n\n正式來源檢查通過。",
+            findings=[
+                RiskFinding(
+                    risk_type=RiskType.opportunity_or_growth,
+                    topic="散戶熱度",
+                    evidence="追買低檔群創也不要去追高高檔的富喬住套房",
+                    source=Source(
+                        title="1815 富喬-股市爆料同學會",
+                        publisher="CMoney",
+                        url="https://www.cmoney.tw/forum/stock/1815",
+                        published_at=date(2026, 5, 12),
+                    ),
+                ),
+                RiskFinding(
+                    risk_type=RiskType.structural_bottleneck,
+                    topic="CoWoS",
+                    evidence="台積電 CoWoS 產能吃緊",
+                    source=Source(
+                        title="台積電 CoWoS 產能吃緊",
+                        publisher="經濟日報",
+                        published_at=date(2026, 5, 13),
+                    ),
+                ),
+            ],
+        )
+
+        report = ReportRepository(session).create(request, response)
+        session.commit()
+
+        stored = ReportRepository(session).get(report.id)
+        assert stored is not None
+        persisted_findings = json.loads(stored.findings_json)
+        assert len(persisted_findings) == 1
+        assert persisted_findings[0]["source"]["publisher"] == "經濟日報"
+        assert "股市爆料同學會" not in stored.findings_json
     finally:
         session.close()

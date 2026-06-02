@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from datetime import date, timedelta
 
 from app.data_sources.company_filings import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
@@ -9,6 +10,7 @@ from app.core.prompts import REPORT_PROMPT_TEMPLATE, SYSTEM_PROMPT
 from app.db.session import session_scope
 from app.models.schemas import (
     FinancialMetric,
+    EntityMatch,
     InvestorProfile,
     MarketSnapshot,
     MonthlyRevenue,
@@ -22,7 +24,7 @@ from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import render_candidate_audit_markdown
 from app.services.entity_mapping import EntityMapper, alias_matches_text, company_filing_owner_ticker
 from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
-from app.services.llm_client import LLMClient, LLMResult
+from app.services.llm_client import LLMClient, LLMResult, summarize_llm_attempts
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.persistence import (
@@ -33,10 +35,14 @@ from app.services.persistence import (
     NewsRepository,
     ValuationMetricRepository,
 )
+from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
+from app.services.report_quality import is_stale_market_data_source
 from app.services.risk_analyzer import RiskAnalyzer
 from app.services.source_quality import (
     filter_formal_evidence_documents,
-    is_low_quality_investor_forum_document,
+    is_formal_evidence_document,
+    remove_low_quality_investor_forum_lines,
+    source_credibility_weight_for_document,
 )
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -46,7 +52,7 @@ MAX_LLM_EVIDENCE_TEXT_CHARS = 300
 SOURCE_APPENDIX_LIMIT = 80
 REPORT_READING_SORT_NOTE = (
     "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
-    "同組再依目前股價由高到低；缺股價者排在同組後段。"
+    "同組再依最新可取得收盤價由高到低；缺股價者排在同組後段。"
 )
 AI_INFRA_RISK_TERMS = {
     "CoWoS",
@@ -99,18 +105,24 @@ def report_execution_summary(generator: object) -> dict:
     evidence_documents = getattr(generator, "last_evidence_documents", None) or []
     excluded_low_quality = getattr(generator, "last_excluded_low_quality_documents", None) or []
     llm_result = getattr(generator, "last_llm_result", None)
+    vector_store = getattr(generator, "vector_store", None)
+    retrieval_trace = getattr(vector_store, "last_retrieval_trace", None) if vector_store is not None else None
     llm_status = None
     if llm_result is not None:
         llm_status = {
             "fallback": bool(getattr(llm_result, "fallback", False)),
             "model": getattr(llm_result, "model", None),
+            "provider": getattr(llm_result, "provider", None),
             "key_index": getattr(llm_result, "key_index", None),
+            "attempt_summary": summarize_llm_attempts(getattr(llm_result, "attempts", ())),
+            "attempts": list(getattr(llm_result, "attempts", ())[-10:]),
         }
     return {
         "filtered_tickers": list(getattr(generator, "last_filtered_tickers", None) or []),
         "dropped_tickers": list(getattr(generator, "last_dropped_tickers", None) or []),
         "evidence_count": len(evidence_documents),
         "excluded_low_quality_source_count": len(excluded_low_quality),
+        "retrieval_trace": retrieval_trace,
         "llm": llm_status,
     }
 
@@ -139,7 +151,7 @@ class ReportGenerator:
         self.last_excluded_low_quality_documents = [
             document
             for document in raw_evidence_docs
-            if is_low_quality_investor_forum_document(document)
+            if not is_formal_evidence_document(document)
         ]
         self.last_evidence_documents = list(evidence_docs)
         findings = self.risk_analyzer.analyze_documents(evidence_docs)
@@ -161,7 +173,7 @@ class ReportGenerator:
 
         prompt = SYSTEM_PROMPT + "\n\n" + REPORT_PROMPT_TEMPLATE.format(
             whitelist=self.whitelist.as_prompt_context(),
-            evidence=self._format_llm_evidence(evidence_docs),
+            evidence=self._format_llm_evidence(evidence_docs, self._document_company_labels),
             market_data=self._format_market_data(market_snapshots, monthly_revenues),
         )
         llm_result = self.llm.generate_with_metadata(prompt)
@@ -178,6 +190,8 @@ class ReportGenerator:
             valuation_metrics,
             leading_signals,
         )
+        markdown = remove_low_quality_investor_forum_lines(markdown)
+        self._assert_report_integrity(markdown)
         return ReportResponse(
             title=f"{request.topic} 自動分析報告",
             generated_at=now_taipei(),
@@ -185,8 +199,25 @@ class ReportGenerator:
             findings=findings,
         )
 
+    @staticmethod
+    def _assert_report_integrity(markdown: str) -> None:
+        try:
+            assert_report_integrity(markdown)
+        except ReportIntegrityError as exc:
+            raise ReportExecutionError(str(exc)) from exc
+
     def _retrieve_evidence(self, request: ReportRequest) -> list[NewsDocument]:
-        evidence_docs = self.vector_store.search(request.topic)
+        target_tickers = self.mapper.filter_allowed_tickers(request.tickers)
+        target_aliases = self._target_aliases_by_ticker(target_tickers)
+        evidence_docs = filter_formal_evidence_documents(
+            self._dedupe_documents(
+                [
+                    document
+                    for query in self._graph_rag_search_queries(request)
+                    for document in self._vector_search(query, target_tickers, target_aliases)
+                ]
+            )
+        )
         try:
             with session_scope() as session:
                 db_documents = NewsRepository(session).latest_documents(
@@ -209,13 +240,151 @@ class ReportGenerator:
         ranked = self._rank_evidence_documents(request, documents)
         if ranked:
             return ranked[: request.evidence_limit]
-        if evidence_docs:
-            return evidence_docs
+        if documents:
+            return documents[: request.evidence_limit]
         try:
             with session_scope() as session:
-                return NewsRepository(session).search_documents(request.topic, limit=20)
+                fallback_documents = [
+                    document
+                    for query in self._graph_rag_search_queries(request, limit=4)
+                    for document in NewsRepository(session).search_documents(query, limit=20)
+                ]
+                return filter_formal_evidence_documents(
+                    self._dedupe_documents(fallback_documents)
+                )
         except Exception:
             return []
+
+    def _vector_search(
+        self,
+        query: str,
+        target_tickers: list[str],
+        target_aliases: dict[str, list[str]] | None = None,
+    ) -> list[NewsDocument]:
+        try:
+            return self.vector_store.search(
+                query,
+                target_tickers=target_tickers,
+                target_aliases=target_aliases,
+            )
+        except TypeError:
+            try:
+                return self.vector_store.search(query, target_tickers=target_tickers)
+            except TypeError:
+                return self.vector_store.search(query)
+
+    def _target_aliases_by_ticker(self, tickers: list[str]) -> dict[str, list[str]]:
+        companies = {company.ticker: company for company in self.whitelist.companies()}
+        aliases: dict[str, list[str]] = {}
+        for ticker in tickers:
+            company = companies.get(ticker)
+            aliases[ticker] = [ticker]
+            if company:
+                aliases[ticker].extend([company.name, *company.aliases])
+            aliases[ticker] = list(dict.fromkeys(alias for alias in aliases[ticker] if alias))
+        return aliases
+
+    def _graph_rag_search_queries(self, request: ReportRequest, limit: int = 12) -> list[str]:
+        queries: list[str] = []
+        self._append_search_query(queries, request.topic, limit)
+        tickers = self.mapper.filter_allowed_tickers(request.tickers)
+        if not tickers or len(queries) >= limit:
+            return queries
+
+        try:
+            graph = self.whitelist.graph()
+        except Exception:
+            return queries
+        if hasattr(graph, "retrieval_plan"):
+            plan = graph.retrieval_plan(tickers, topic=request.topic)
+            for ticker_queries in (plan.get("queries_by_ticker") or {}).values():
+                for graph_query in ticker_queries:
+                    self._append_search_query(queries, str(graph_query.get("query") or ""), limit)
+                    if len(queries) >= limit:
+                        return queries
+            return queries
+        node_by_ticker = {node.ticker: node for node in graph.nodes}
+        for ticker in tickers:
+            if len(queries) >= limit:
+                break
+            node = node_by_ticker.get(ticker)
+            if node is None:
+                continue
+            neighbor_terms = self._graph_neighbor_search_terms(graph, ticker, node_by_ticker)
+            company_terms = self._compact_search_terms(
+                [
+                    request.topic,
+                    ticker,
+                    node.name,
+                    node.segment_name,
+                    *node.evidence_keywords,
+                    "供應鏈",
+                    "上下游",
+                    *neighbor_terms,
+                ],
+                max_terms=22,
+            )
+            self._append_search_query(queries, " ".join(company_terms), limit)
+            if len(queries) >= limit:
+                break
+            segment_terms = self._compact_search_terms(
+                [
+                    request.topic,
+                    node.segment_name,
+                    *node.evidence_keywords[:4],
+                    "同業",
+                    "財報",
+                    "月營收",
+                ],
+                max_terms=12,
+            )
+            self._append_search_query(queries, " ".join(segment_terms), limit)
+        return queries
+
+    @staticmethod
+    def _graph_neighbor_search_terms(graph, ticker: str, node_by_ticker: dict, max_neighbors: int = 4) -> list[str]:
+        terms: list[str] = []
+        if hasattr(graph, "retrieval_hints"):
+            for hint in graph.retrieval_hints(ticker, max_neighbors=max_neighbors):
+                terms.extend(hint.search_terms())
+            return ReportGenerator._compact_search_terms(terms, max_terms=max_neighbors * 7)
+
+        for edge in graph.neighbor_edges(ticker)[:max_neighbors]:
+            neighbor_ticker = edge.target_ticker if edge.source_ticker == ticker else edge.source_ticker
+            neighbor = node_by_ticker.get(neighbor_ticker)
+            if neighbor is None:
+                continue
+            relation_label = "同業比較" if edge.relation == "same_segment_peer" else "產業鏈相關"
+            terms.extend([relation_label, neighbor.ticker, neighbor.name, neighbor.segment_name])
+        return ReportGenerator._compact_search_terms(terms, max_terms=max_neighbors * 6)
+
+    @staticmethod
+    def _append_search_query(queries: list[str], query: str, limit: int) -> None:
+        if len(queries) >= limit:
+            return
+        normalized = " ".join((query or "").split())
+        if not normalized:
+            return
+        if normalized.lower() in {existing.lower() for existing in queries}:
+            return
+        queries.append(normalized)
+
+    @staticmethod
+    def _compact_search_terms(terms, max_terms: int = 18) -> list[str]:
+        compacted: list[str] = []
+        seen: set[str] = set()
+        for term in terms:
+            normalized = " ".join(str(term or "").split())
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            compacted.append(normalized)
+            if len(compacted) >= max_terms:
+                break
+        return compacted
 
     @staticmethod
     def _dedupe_documents(documents: list[NewsDocument]) -> list[NewsDocument]:
@@ -232,6 +401,7 @@ class ReportGenerator:
     ) -> list[NewsDocument]:
         topic_terms = [term for term in request.topic.replace("/", " ").split() if term]
         requested = self.mapper.filter_allowed_tickers(request.tickers)
+        requested_set = set(requested)
         companies = {company.ticker: company for company in self.whitelist.companies()}
         entity_terms: list[str] = []
         evidence_terms: list[str] = []
@@ -258,9 +428,16 @@ class ReportGenerator:
         ranked: list[tuple[int, NewsDocument]] = []
         for document in documents:
             text = f"{document.title}\n{document.text}"
-            if is_low_quality_investor_forum_document(document):
+            if not is_formal_evidence_document(document):
                 continue
-            entity_hits = sum(1 for term in entity_terms if term and alias_matches_text(text.lower(), term))
+            metadata_tickers = {ticker for ticker in document.entity_tickers if ticker}
+            matched_tickers = {match.ticker for match in self._document_matches(document)}
+            known_tickers = metadata_tickers or matched_tickers
+            if requested_set and known_tickers and known_tickers.isdisjoint(requested_set):
+                continue
+            lowered_text = text.lower()
+            metadata_hits = len(metadata_tickers & requested_set) if requested_set else 0
+            entity_hits = sum(1 for term in entity_terms if term and alias_matches_text(lowered_text, term))
             evidence_hits = sum(1 for term in evidence_terms if term and term in text)
             topic_hits = sum(1 for term in topic_terms if term and term in text)
             risk_hits = sum(
@@ -271,7 +448,7 @@ class ReportGenerator:
             )
             if not entity_hits and not evidence_hits and not topic_hits and not risk_hits:
                 continue
-            score = entity_hits * 5 + evidence_hits * 3 + topic_hits * 2 + risk_hits
+            score = metadata_hits * 7 + entity_hits * 5 + evidence_hits * 3 + topic_hits * 2 + risk_hits
             ranked.append((score, document))
         ranked.sort(
             key=lambda item: (
@@ -589,7 +766,7 @@ class ReportGenerator:
             self._render_scope(ordered_tickers, market_snapshots, monthly_revenues),
             "",
             "## 附錄：AI 補充與資料來源",
-            self._render_appendix(llm_result, documents, market_snapshots),
+            self._render_appendix(llm_result, documents, market_snapshots, tickers=ordered_tickers),
         ]
         return "\n".join(lines)
 
@@ -1104,7 +1281,7 @@ class ReportGenerator:
                 f"- 「目前」指本報告生成時間（台灣）{generated_text} 前已取得並通過資料品質檢查的內容，不代表未來一定維持。",
                 f"- 「近 {request.lookback_days} 天來源」指新聞/RAG 來源回看區間；公司公開文件、已揭露年度財報與估值仍以各自原始日期判讀。",
                 f"- 「目前估值」只比較最新估值日 {valuation_text} 的 P/E、P/B、殖利率與本次同業樣本，不是未來估值預測。",
-                "- 「當下股價標籤」會納入最新收盤價、近 20/60 日股價動能、量能、目前相對估值與目前情境降值分；它是追價風險提示，不是買賣指令。",
+                "- 「追價風險標籤」會納入最新可取得收盤價、近 20/60 日股價動能、量能、目前相對估值與目前情境降值分；它是追價風險提示，不是即時報價或買賣指令。",
                 "- 「目前情境升值分／目前情境降值分」是依目前證據計算的排序分數，不是預期報酬率、目標價或保證幅度。",
                 f"- 「近況訊號」使用最新股價日 {market_text}、月營收日 {revenue_text} 與估值日 {valuation_text} 的近 20/60 日或月資料，是追蹤警示，不是未來走勢預測。",
             ]
@@ -1119,7 +1296,7 @@ class ReportGenerator:
                 "- 「可小額分批研究」必須同時符合：資料等級完整、目前情境升值分高於 10 分、目前情境降值分未超過投資人門檻、近況訊號不偏空，且沒有結構性瓶頸、短期波動或財務/估值紅旗。",
                 "- 「觀察 / 等風險降低」代表題材與資料可以追蹤，但存在結構性瓶頸或尚未解除的財務/估值疑慮，不列入本次配置。",
                 "- 「避開 / 降低曝險」代表目前情境降值分已高於升值分，或財務/估值紅旗偏重；單純超過投資人門檻會先列觀察，不會一票否決。",
-                "- 「當下股價標籤」若顯示不適合追價、等止跌、等回檔或等風險下降，代表現在不應只因題材熱度就投入。",
+                "- 「追價風險標籤」若顯示不適合追價、等止跌、等回檔或等風險下降，代表現在不應只因題材熱度就投入。",
                 "- 財務/估值檢查會納入已揭露年度營收、淨利、負債權益比、ROE/淨利率與目前相對估值；若財務紅旗存在，題材分數不能單獨升級成可研究標的。",
             ]
         )
@@ -1214,7 +1391,7 @@ class ReportGenerator:
                 "### 決策總覽",
                 REPORT_READING_SORT_NOTE,
                 "",
-                "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |",
+                "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |",
                 "|---|---|---|---|---|---:|---:|---|---|",
                 *rows,
                 "",
@@ -1394,6 +1571,7 @@ class ReportGenerator:
         tickers: list[str],
         documents: list[NewsDocument],
     ) -> str:
+        documents = filter_formal_evidence_documents(documents)
         if not documents:
             return "目前無足夠數據判斷。"
 
@@ -1805,7 +1983,7 @@ class ReportGenerator:
             "這張表用來比較正式分析股票的相對位置；它是研究排序工具，不是買賣指令。",
             REPORT_READING_SORT_NOTE,
             "",
-            "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |",
+            "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |",
             "|---|---|---|---|---:|---:|---|---|---|",
         ]
         for row in rows:
@@ -1955,6 +2133,7 @@ class ReportGenerator:
         sorted_documents = sorted(
             documents,
             key=lambda document: (
+                source_credibility_weight_for_document(document),
                 document.source.published_at or date.min,
                 document.source.publisher or "",
                 document.title,
@@ -2014,6 +2193,7 @@ class ReportGenerator:
         for document in sorted(
             documents,
             key=lambda item: (
+                source_credibility_weight_for_document(item),
                 item.source.published_at or date.min,
                 item.source.publisher or "",
                 item.title,
@@ -2033,6 +2213,7 @@ class ReportGenerator:
         ordered = sorted(
             documents,
             key=lambda document: (
+                source_credibility_weight_for_document(document),
                 document.source.published_at or date.min,
                 document.source.publisher or "",
                 document.title,
@@ -2052,6 +2233,23 @@ class ReportGenerator:
             seen.add(key)
             deduped.append(document)
         return deduped
+
+    def _appendix_documents_for_tickers(
+        self,
+        documents: list[NewsDocument],
+        tickers: list[str] | None,
+    ) -> list[NewsDocument]:
+        target_tickers = {str(ticker) for ticker in tickers or [] if ticker}
+        if not target_tickers:
+            return documents
+        matched_documents = []
+        for document in documents:
+            metadata_tickers = {ticker for ticker in document.entity_tickers if ticker}
+            mapped_tickers = {match.ticker for match in self._document_matches(document)}
+            known_tickers = metadata_tickers or mapped_tickers
+            if known_tickers and not known_tickers.isdisjoint(target_tickers):
+                matched_documents.append(document)
+        return matched_documents or documents
 
     @staticmethod
     def _source_reference_line(document: NewsDocument) -> str:
@@ -2201,7 +2399,7 @@ class ReportGenerator:
             detail_blocks.append(
                 f"- 資料信心：{financial_confidence}；目前估值位置：{valuation_position}。"
             )
-            detail_blocks.append(f"- 當下股價標籤：{current_price_label}；目前股價：{price_label}。")
+            detail_blocks.append(f"- 追價風險標籤：{current_price_label}；最新可取得收盤價：{price_label}。")
             detail_blocks.append(f"- 產業鏈位置：{segment_name}")
             detail_blocks.extend(
                 self._company_basic_intro(
@@ -2269,7 +2467,7 @@ class ReportGenerator:
             "### 個股速覽",
             REPORT_READING_SORT_NOTE,
             "",
-            "| 股票 | 產業位置 | 股價 | 當下股價標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |",
+            "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |",
             "|---|---|---|---|---|---|---|---|",
             *overview_rows,
             "",
@@ -2446,7 +2644,7 @@ class ReportGenerator:
             "以下為非個人化研究建議；未納入投資人風險承受度、持股成本與資金配置，不構成個別買賣指令。",
             REPORT_READING_SORT_NOTE,
             "",
-            "| 股票 | 目前股價 | 當下股價標籤 | 建議 | 理由 | 單檔上限 | 來源 |",
+            "| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |",
             "|---|---|---|---|---|---:|---|",
         ]
         for ticker in ordered_tickers:
@@ -2883,6 +3081,8 @@ class ReportGenerator:
         strengths: list[str] = []
         cautions: list[str] = []
         red_flags: list[str] = []
+        if any(is_stale_market_data_source(metric.source) for metric in metrics):
+            cautions.append("財務資料為快取救援，需刷新後覆核")
 
         revenue = ReportGenerator._metric_series(
             metrics,
@@ -3000,7 +3200,9 @@ class ReportGenerator:
 
         has_negative_profitability = ReportGenerator._has_negative_profitability(metrics)
         valuation_label = ReportGenerator._valuation_position_label(valuation, peer_summary, has_negative_profitability)
-        if valuation_label == "獲利為負，不判低估":
+        if valuation_label == "估值為快取救援，需刷新":
+            cautions.append("估值資料為快取救援，刷新前不判定低估/高估")
+        elif valuation_label == "獲利為負，不判低估":
             risk_score += 1
             cautions.append("獲利為負或偏弱，低 P/B/P/E 不直接視為低估")
         elif valuation_label == "目前估值低於同業":
@@ -3097,6 +3299,8 @@ class ReportGenerator:
     ) -> str:
         if not valuation:
             return "缺估值"
+        if is_stale_market_data_source(valuation.source):
+            return "估值為快取救援，需刷新"
         pe_avg = (peer_summary or {}).get("pe_avg")
         pb_avg = (peer_summary or {}).get("pb_avg")
         pressure = 0
@@ -3233,14 +3437,19 @@ class ReportGenerator:
         revenue: MonthlyRevenue | None,
     ) -> str:
         score = 0
+        has_stale_inputs = any(is_stale_market_data_source(metric.source) for metric in financial_metrics)
         if len(financial_metrics) >= 8:
             score += 1
         if len(financial_metrics) >= 40:
             score += 1
         if valuation:
             score += 1
+            has_stale_inputs = has_stale_inputs or is_stale_market_data_source(valuation.source)
         if revenue:
             score += 1
+            has_stale_inputs = has_stale_inputs or is_stale_market_data_source(revenue.source)
+        if has_stale_inputs:
+            score = max(0, score - 1)
         if score >= 4:
             return "高"
         if score >= 2:
@@ -3299,7 +3508,7 @@ class ReportGenerator:
 
     def _company_risk_summary(self, related_findings) -> str:
         if not related_findings:
-            return "目前無足夠數據判斷。"
+            return "未偵測到可歸因的重大風險；仍需持續追蹤新聞、月營收與官方文件。"
         topics = []
         for finding in related_findings[:3]:
             topics.append(self._sanitized_risk_topic_for_finding(finding))
@@ -3657,6 +3866,7 @@ class ReportGenerator:
         llm_result: LLMResult,
         documents: list[NewsDocument],
         market_snapshots: list[MarketSnapshot],
+        tickers: list[str] | None = None,
     ) -> str:
         lines = ["### AI 補充分析"]
         if llm_result.fallback:
@@ -3667,12 +3877,20 @@ class ReportGenerator:
                     llm_result.text,
                     documents,
                     market_snapshots,
+                    news_ticker_resolver=lambda document: [
+                        match.ticker for match in self._document_matches(document)
+                    ],
+                    claim_ticker_resolver=lambda claim: [
+                        match.ticker for match in self.mapper.match_text(claim)
+                    ],
                 )
             )
 
         lines.extend(["", "### 資料來源與時間戳記"])
         if documents:
-            ordered_documents = self._ordered_source_documents(documents)
+            ordered_documents = self._ordered_source_documents(
+                self._appendix_documents_for_tickers(documents, tickers)
+            )
             for document in ordered_documents[:SOURCE_APPENDIX_LIMIT]:
                 lines.append(self._source_reference_line(document))
             if len(ordered_documents) > SOURCE_APPENDIX_LIMIT:
@@ -3740,8 +3958,29 @@ class ReportGenerator:
             len(document.text or ""),
         )
         if key not in cache:
-            cache[key] = self.mapper.match_document(document)
+            metadata_matches = self._document_metadata_matches(document)
+            cache[key] = metadata_matches or self.mapper.match_document(document)
         return cache[key]
+
+    def _document_metadata_matches(self, document: NewsDocument) -> list[EntityMatch]:
+        tickers = set(document.entity_tickers)
+        if not tickers:
+            return []
+        matches = []
+        for segment in self.whitelist.segments:
+            for company in segment.companies:
+                if company.ticker not in tickers:
+                    continue
+                matches.append(
+                    EntityMatch(
+                        ticker=company.ticker,
+                        name=company.name,
+                        segment_id=segment.id,
+                        segment_name=segment.name,
+                        matched_alias="metadata",
+                    )
+                )
+        return matches
 
     def _related_documents(self, ticker: str, documents: list[NewsDocument]) -> list[NewsDocument]:
         documents = filter_formal_evidence_documents(documents)
@@ -3750,6 +3989,12 @@ class ReportGenerator:
             for document in documents
             if any(match.ticker == ticker for match in self._document_matches(document))
         ]
+
+    def _document_company_labels(self, document: NewsDocument) -> list[str]:
+        try:
+            return [f"{match.ticker} {match.name}" for match in self._document_matches(document)]
+        except Exception:
+            return []
 
     def _candidate_audit_evidence_counts(self) -> dict[str, dict[str, int]]:
         counts: dict[str, dict[str, int]] = {}
@@ -4123,12 +4368,20 @@ class ReportGenerator:
             missing.append("缺主題歸因")
         if not snapshot:
             missing.append("缺股價")
+        elif is_stale_market_data_source(snapshot.source):
+            missing.append("股價為快取救援")
         if not monthly_revenue:
             missing.append("缺月營收")
+        elif is_stale_market_data_source(monthly_revenue.source):
+            missing.append("月營收為快取救援")
         if include_fundamentals and not financial_metrics:
             missing.append("缺已揭露年度財報")
+        elif include_fundamentals and any(is_stale_market_data_source(metric.source) for metric in financial_metrics or []):
+            missing.append("財報為快取救援")
         if include_fundamentals and not valuation:
             missing.append("缺估值")
+        elif include_fundamentals and valuation and is_stale_market_data_source(valuation.source):
+            missing.append("估值為快取救援")
         if include_fundamentals and leading_signal is not None and not leading_signal.has_signal_data:
             missing.append("缺近況訊號")
         if include_fundamentals and recent_source_days is not None and related_documents:
@@ -4748,7 +5001,10 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def _format_llm_evidence(documents: list[NewsDocument]) -> str:
+    def _format_llm_evidence(
+        documents: list[NewsDocument],
+        ticker_label_resolver: Callable[[NewsDocument], list[str]] | None = None,
+    ) -> str:
         documents = filter_formal_evidence_documents(documents)
         if not documents:
             return "目前無足夠數據判斷。"
@@ -4759,7 +5015,20 @@ class ReportGenerator:
         for doc in selected:
             text = " ".join(doc.text.split())[:MAX_LLM_EVIDENCE_TEXT_CHARS]
             source_date = doc.source.published_at or "日期不明"
-            lines.append(f"- {source_date} {doc.source.publisher or ''} {doc.title}: {text}")
+            company_labels = ticker_label_resolver(doc) if ticker_label_resolver else []
+            source_id = ",".join(
+                label.split(" ", 1)[0] for label in company_labels if label.split(" ", 1)[0]
+            )
+            company_mapping = "、".join(company_labels) if company_labels else "未明確對應白名單公司"
+            lines.append(
+                "- "
+                f"source_date={source_date} | "
+                f"source_publisher={doc.source.publisher or ''} | "
+                f"source_title={doc.title} | "
+                f"source_id={source_id} | "
+                f"公司對應={company_mapping} | "
+                f"text={text}"
+            )
         omitted = len(documents) - len(selected)
         if omitted > 0:
             lines.append(f"- 其餘 {omitted} 筆來源保留於系統資料庫，未放入模型提示以避免逾時。")

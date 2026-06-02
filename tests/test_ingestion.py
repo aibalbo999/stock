@@ -284,9 +284,17 @@ def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:
 def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
     pipeline = IngestionPipeline()
 
-    async def fake_histories(self, tickers: list[str], start_date: date, end_date: date):
+    async def fake_histories(self, tickers: list[str], start_date: date, end_date: date, *, force_refresh=False):
+        assert force_refresh is True
         return {
-            ticker: [MarketSnapshot(ticker=ticker, trade_date=end_date, close=100.0)]
+            ticker: [
+                MarketSnapshot(
+                    ticker=ticker,
+                    trade_date=end_date,
+                    close=100.0,
+                    source="Fugle historical stats" if ticker == "3017" else "FinMind TaiwanStockPrice",
+                )
+            ]
             for ticker in tickers
         }, []
 
@@ -303,6 +311,8 @@ def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
 
     assert result["requested_tickers"] == ["3017", "2059"]
     assert result["stored_history_count"] == 2
+    assert result["sources"] == ["Fugle historical stats", "FinMind TaiwanStockPrice"]
+    assert result["source"] == "Fugle historical stats, FinMind TaiwanStockPrice"
 
 
 def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
@@ -401,7 +411,8 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     assert by_ticker["2330"]["status"] == "sufficient"
     assert by_ticker["2382"]["status"] == "retry_recommended"
     assert by_ticker["2382"]["missing_required_types"] == ["annual_report"]
-    assert by_ticker["2382"]["error_categories"] == ["retryable_source_error"]
+    assert by_ticker["2382"]["error_categories"] == ["upstream_retryable"]
+    assert by_ticker["2382"]["retryable_error_count"] == 3
     assert [attempt["strategy"] for attempt in by_ticker["2382"]["attempts"]] == [
         "mops_annual_report",
         "targeted_search",
@@ -412,7 +423,9 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     ]
     assert result["missing_tickers"] == ["2382"]
     assert result["gap_summary"]["retryable_tickers"] == ["2382"]
+    assert result["gap_summary"]["error_category_counts"] == {"upstream_retryable": 3}
     assert result["next_actions"][0]["action"] == "retry_company_filing_search"
+    assert result["next_actions"][0]["error_categories"] == ["upstream_retryable"]
 
 
 def test_ingest_company_filings_counts_cached_official_documents(monkeypatch) -> None:
@@ -801,6 +814,9 @@ def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None
             "next_step": "retry",
             "missing_required_types": ["annual_report"],
             "missing_recommended_types": [],
+            "error_categories": ["timeout"],
+            "error_category_counts": {"timeout": 1},
+            "retryable_error_count": 1,
         },
         {
             "ticker": "3324",
@@ -809,6 +825,9 @@ def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None
             "next_step": "manual",
             "missing_required_types": ["annual_report"],
             "missing_recommended_types": ["investor_presentation"],
+            "error_categories": ["pdf_no_text"],
+            "error_category_counts": {"pdf_no_text": 1},
+            "retryable_error_count": 0,
         },
     ]
 
@@ -822,9 +841,11 @@ def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None
     }
     assert summary["retryable_tickers"] == ["2382"]
     assert summary["blocked_tickers"] == ["3324"]
+    assert summary["ocr_required_tickers"] == ["3324"]
+    assert summary["error_category_counts"] == {"pdf_no_text": 1, "timeout": 1}
     assert [action["action"] for action in actions] == [
         "retry_company_filing_search",
-        "manual_company_filing_import",
+        "ocr_or_manual_company_filing_text_import",
     ]
 
 
@@ -851,6 +872,13 @@ def test_ingestion_filter_removes_old_and_low_quality_political_noise() -> None:
             text="廣達 AI 伺服器出貨成長。",
             publisher="test",
             published_at=date(2025, 12, 1),
+        ),
+        NewsFetcher.from_manual_text(
+            title="1815 富喬-追買低檔群創也不要去追高高檔的富喬住套房-股市爆料同學會",
+            text="散戶閒聊：追買低檔群創也不要去追高高檔的富喬住套房。",
+            publisher="CMoney",
+            published_at=date(2026, 5, 20),
+            url="https://www.cmoney.tw/forum/stock/1815",
         ),
     ]
 

@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+from app.services.supply_chain_graph_api import SupplyChainGraphApiService
+
+
+def test_supply_chain_graph_api_filters_graph_to_requested_ticker_neighborhood() -> None:
+    class FakeGraph:
+        def to_dict(self):
+            return {
+                "nodes": [
+                    {"ticker": "2330", "name": "台積電"},
+                    {"ticker": "3711", "name": "日月光投控"},
+                    {"ticker": "9999", "name": "無關公司"},
+                ],
+                "edges": [
+                    {"source_ticker": "2330", "target_ticker": "3711"},
+                    {"source_ticker": "9999", "target_ticker": "8888"},
+                ],
+                "note": "taxonomy",
+            }
+
+        def render_prompt_context(self, tickers):
+            return "context:" + ",".join(tickers or [])
+
+        def retrieval_hints(self, ticker):
+            return [
+                type(
+                    "Hint",
+                    (),
+                    {"to_dict": lambda self: {"ticker": "3711", "direction": "downstream"}},
+                )()
+            ]
+
+        def retrieval_plan(self, tickers, topic=""):
+            return {
+                "tickers": tickers,
+                "topic": topic,
+                "queries_by_ticker": {"2330": [{"query": f"{topic} 2330 3711"}]},
+            }
+
+    class FakeWhitelist:
+        raw = {"segments": []}
+
+        def graph(self):
+            return FakeGraph()
+
+    service = SupplyChainGraphApiService(whitelist_cls=FakeWhitelist)
+
+    assert service.whitelist_payload() == {"segments": []}
+    payload = service.graph_payload("2330", topic="AI 供應鏈")
+
+    assert payload["context"] == "context:2330"
+    assert payload["retrieval_hints"] == {"2330": [{"ticker": "3711", "direction": "downstream"}]}
+    assert payload["retrieval_plan"]["topic"] == "AI 供應鏈"
+    assert payload["retrieval_plan"]["queries_by_ticker"]["2330"][0]["query"] == "AI 供應鏈 2330 3711"
+    assert {node["ticker"] for node in payload["nodes"]} == {"2330", "3711"}
+    assert payload["edges"] == [{"source_ticker": "2330", "target_ticker": "3711"}]
+
+
+def test_supply_chain_graph_api_returns_full_graph_without_requested_tickers() -> None:
+    class FakeGraph:
+        def to_dict(self):
+            return {
+                "nodes": [{"ticker": "2330"}, {"ticker": "9999"}],
+                "edges": [{"source_ticker": "2330", "target_ticker": "9999"}],
+            }
+
+        def render_prompt_context(self, tickers):
+            return "all" if tickers is None else "filtered"
+
+        def retrieval_hints(self, ticker):
+            raise AssertionError("full graph payload should not request ticker-specific hints")
+
+    class FakeWhitelist:
+        raw = {}
+
+        def graph(self):
+            return FakeGraph()
+
+    payload = SupplyChainGraphApiService(whitelist_cls=FakeWhitelist).graph_payload("")
+
+    assert payload["context"] == "all"
+    assert {node["ticker"] for node in payload["nodes"]} == {"2330", "9999"}
+
+
+def test_supply_chain_graph_api_delegates_neo4j_import_with_requested_tickers() -> None:
+    captured = {}
+
+    class FakeGraph:
+        pass
+
+    class FakeWhitelist:
+        def graph(self):
+            return FakeGraph()
+
+    class FakeImportService:
+        def import_graph(self, graph, tickers):
+            captured["graph"] = graph
+            captured["tickers"] = tickers
+            return {"status": "imported"}
+
+    service = SupplyChainGraphApiService(
+        whitelist_cls=FakeWhitelist,
+        neo4j_import_service_factory=lambda: FakeImportService(),
+    )
+
+    result = service.import_graph_to_neo4j("2330, 3324")
+
+    assert result == {"status": "imported"}
+    assert isinstance(captured["graph"], FakeGraph)
+    assert captured["tickers"] == ["2330", "3324"]

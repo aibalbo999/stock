@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, inspect, select
 
 from app.core.config import get_settings
+from app.db.migration_status import db_migration_status
 from app.db.models import (
     AnalysisRun,
     CompanyFiling,
@@ -48,6 +49,7 @@ def db_status() -> dict:
         )
     return {
         "database_url": _redact_database_url(settings.database_url),
+        "migration": db_migration_status(bind=engine),
         "tables": tables,
         "integrity": {"orphan_run_report_refs": orphan_run_count},
         "settings": {

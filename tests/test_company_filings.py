@@ -1,18 +1,35 @@
 import asyncio
 from datetime import date
+import sys
 from types import SimpleNamespace
 
+import httpx
+from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import get_settings
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     PDF_IMPORT_NO_TEXT_MESSAGE,
+    categorize_company_filing_error,
+    company_filing_browser_render_configured,
+    company_filing_browser_render_status,
+    company_filing_playwright_browser_status,
+    company_filing_playwright_render_enabled,
+    company_filing_client_options,
+    company_filing_fetch_response_with_retries,
+    company_filing_identity_for_url,
+    company_filing_error,
+    company_filing_request_with_retries,
+    company_filing_retry_delay_seconds,
     extract_html_redirect_url,
+    extract_company_filing_html_text,
     extract_pdf_text,
     filing_quality_score,
     filing_source_tier,
     infer_document_type,
+    is_retryable_company_filing_error_category,
     is_relevant_company_filing_result,
     normalize_search_result_url,
     normalize_tpex_company_profile,
@@ -89,6 +106,324 @@ def test_company_filing_search_plan_can_target_document_type() -> None:
     assert not any("法人說明會" in query for query in plan["queries"])
 
 
+def test_company_filing_client_options_use_configured_identity(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy.example:8080")
+    get_settings.cache_clear()
+    try:
+        options = company_filing_client_options(
+            "https://doc.twse.com.tw/server-java/t57sb01",
+            timeout=11,
+            follow_redirects=True,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert options["headers"]["User-Agent"] == "UA-A"
+    assert options["headers"]["Accept-Language"].startswith("zh-TW")
+    assert options["proxy"] == "http://proxy.example:8080"
+    assert options["timeout"] == 11
+    assert options["follow_redirects"] is True
+
+
+def test_company_filing_identity_rotates_by_retry_attempt(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A,UA-B")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080")
+    get_settings.cache_clear()
+    try:
+        first = company_filing_identity_for_url("https://doc.twse.com.tw/server-java/t57sb01", attempt=0)
+        second = company_filing_identity_for_url("https://doc.twse.com.tw/server-java/t57sb01", attempt=1)
+    finally:
+        get_settings.cache_clear()
+
+    assert {first["user_agent"], second["user_agent"]} == {"UA-A", "UA-B"}
+    assert {first["proxy"], second["proxy"]} == {
+        "http://proxy-a.example:8080",
+        "http://proxy-b.example:8080",
+    }
+
+
+def test_company_filing_browser_render_is_explicitly_configured(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
+    get_settings.cache_clear()
+    try:
+        assert company_filing_browser_render_configured() is True
+    finally:
+        get_settings.cache_clear()
+
+
+def test_company_filing_browser_render_status_checks_endpoint_reachability(monkeypatch) -> None:
+    captured = {}
+
+    class FakeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+    def fake_create_connection(address, timeout):
+        captured["address"] = address
+        captured["timeout"] = timeout
+        return FakeSocket()
+
+    monkeypatch.setattr("app.data_sources.company_filings.socket.create_connection", fake_create_connection)
+
+    status = company_filing_browser_render_status(
+        enabled=True,
+        endpoint="http://127.0.0.1:3000/content?token=secret",
+        timeout_seconds=0.5,
+    )
+
+    assert captured == {"address": ("127.0.0.1", 3000), "timeout": 0.5}
+    assert status["url_configured"] is True
+    assert status["connection_checked"] is True
+    assert status["endpoint_reachable"] is True
+    assert status["runtime_available"] is True
+    assert status["fallback_reason"] is None
+
+
+def test_company_filing_browser_render_status_reports_unreachable_endpoint(monkeypatch) -> None:
+    def fake_create_connection(address, timeout):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("app.data_sources.company_filings.socket.create_connection", fake_create_connection)
+
+    status = company_filing_browser_render_status(
+        enabled=True,
+        endpoint="http://127.0.0.1:3000/content?token=secret",
+        timeout_seconds=0.5,
+    )
+
+    assert status["connection_checked"] is True
+    assert status["endpoint_reachable"] is False
+    assert status["runtime_available"] is False
+    assert status["fallback_reason"] == "browser_render_endpoint_unreachable:TimeoutError"
+
+
+def test_company_filing_playwright_render_is_explicitly_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        assert company_filing_playwright_render_enabled() is True
+    finally:
+        get_settings.cache_clear()
+
+
+def test_company_filing_playwright_browser_status_requires_installed_browser(monkeypatch, tmp_path) -> None:
+    executable = tmp_path / "chromium"
+    executable.write_text("#!/bin/sh\n")
+
+    class FakeLauncher:
+        executable_path = str(executable)
+
+    class FakePlaywrightContext:
+        def __enter__(self):
+            return SimpleNamespace(chromium=FakeLauncher())
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+    def fake_import_module(name):
+        if name == "playwright.sync_api":
+            return SimpleNamespace(sync_playwright=lambda: FakePlaywrightContext())
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: True)
+    monkeypatch.setattr("app.data_sources.company_filings.importlib.import_module", fake_import_module)
+
+    status = company_filing_playwright_browser_status("chromium")
+
+    assert status["dependency_available"] is True
+    assert status["browser_available"] is True
+    assert status["browser_executable_exists"] is True
+    assert status["fallback_reason"] is None
+
+
+def test_company_filing_playwright_browser_status_reports_missing_browser_binary(monkeypatch, tmp_path) -> None:
+    missing_executable = tmp_path / "missing-chromium"
+
+    class FakeLauncher:
+        executable_path = str(missing_executable)
+
+    class FakePlaywrightContext:
+        def __enter__(self):
+            return SimpleNamespace(chromium=FakeLauncher())
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: True)
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.importlib.import_module",
+        lambda name: SimpleNamespace(sync_playwright=lambda: FakePlaywrightContext()),
+    )
+
+    status = company_filing_playwright_browser_status("chromium")
+
+    assert status["dependency_available"] is True
+    assert status["browser_available"] is False
+    assert status["fallback_reason"].startswith("missing_browser_binary:chromium")
+
+
+def test_company_filing_request_retries_retryable_status(monkeypatch) -> None:
+    class FakeRetryClient:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.request_headers = []
+
+        async def request(self, method, url, **kwargs):
+            self.calls += 1
+            self.request_headers.append(kwargs.get("headers") or {})
+            request = httpx.Request(method, url)
+            status_code = 429 if self.calls == 1 else 200
+            return httpx.Response(status_code, request=request, text="ok")
+
+    monkeypatch.setenv("COMPANY_FILING_HTTP_RETRIES", "1")
+    monkeypatch.setenv("COMPANY_FILING_BASE_RETRY_DELAY_SECONDS", "0")
+    monkeypatch.setenv("COMPANY_FILING_MAX_RETRY_DELAY_SECONDS", "0")
+    get_settings.cache_clear()
+    client = FakeRetryClient()
+    try:
+        response = asyncio.run(company_filing_request_with_retries(client, "GET", "https://example.com"))
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert client.calls == 2
+    assert len({headers["User-Agent"] for headers in client.request_headers}) == 2
+
+
+def test_company_filing_fetch_response_recreates_client_with_rotating_proxy(monkeypatch) -> None:
+    captured_options = []
+    captured_headers = []
+
+    class FakeAsyncClient:
+        calls = 0
+
+        def __init__(self, **options) -> None:
+            captured_options.append(options)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            FakeAsyncClient.calls += 1
+            captured_headers.append(kwargs.get("headers") or {})
+            request = httpx.Request(method, url)
+            status_code = 429 if FakeAsyncClient.calls == 1 else 200
+            return httpx.Response(status_code, request=request, text="ok")
+
+    monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A,UA-B")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080")
+    monkeypatch.setenv("COMPANY_FILING_HTTP_RETRIES", "1")
+    monkeypatch.setenv("COMPANY_FILING_BASE_RETRY_DELAY_SECONDS", "0")
+    monkeypatch.setenv("COMPANY_FILING_MAX_RETRY_DELAY_SECONDS", "0")
+    get_settings.cache_clear()
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    try:
+        response = asyncio.run(
+            company_filing_fetch_response_with_retries(
+                "GET",
+                "https://doc.twse.com.tw/server-java/t57sb01",
+                timeout=9,
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert [options["timeout"] for options in captured_options] == [9, 9]
+    assert {options["proxy"] for options in captured_options} == {
+        "http://proxy-a.example:8080",
+        "http://proxy-b.example:8080",
+    }
+    assert {headers["User-Agent"] for headers in captured_headers} == {"UA-A", "UA-B"}
+
+
+def test_company_filing_request_does_not_retry_non_retryable_status(monkeypatch) -> None:
+    class FakeRetryClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def request(self, method, url, **kwargs):
+            self.calls += 1
+            request = httpx.Request(method, url)
+            return httpx.Response(404, request=request, text="not found")
+
+    monkeypatch.setenv("COMPANY_FILING_HTTP_RETRIES", "3")
+    monkeypatch.setenv("COMPANY_FILING_BASE_RETRY_DELAY_SECONDS", "0")
+    get_settings.cache_clear()
+    client = FakeRetryClient()
+    try:
+        try:
+            asyncio.run(company_filing_request_with_retries(client, "GET", "https://example.com/missing"))
+        except httpx.HTTPStatusError:
+            pass
+        else:
+            raise AssertionError("404 should be raised without retry")
+    finally:
+        get_settings.cache_clear()
+
+    assert client.calls == 1
+
+
+def test_company_filing_retry_delay_uses_retry_after(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BASE_RETRY_DELAY_SECONDS", "0.5")
+    monkeypatch.setenv("COMPANY_FILING_MAX_RETRY_DELAY_SECONDS", "5")
+    get_settings.cache_clear()
+    try:
+        response = httpx.Response(
+            429,
+            headers={"Retry-After": "3.5"},
+            request=httpx.Request("GET", "https://example.com"),
+        )
+
+        assert company_filing_retry_delay_seconds(response, attempt=0) == 3.5
+    finally:
+        get_settings.cache_clear()
+
+
+def test_company_filing_error_classifies_http_status_and_retryability() -> None:
+    request = httpx.Request("GET", "https://mops.twse.com.tw/report")
+    rate_limited = httpx.HTTPStatusError(
+        "too many requests",
+        request=request,
+        response=httpx.Response(429, request=request),
+    )
+    not_found = httpx.HTTPStatusError(
+        "not found",
+        request=request,
+        response=httpx.Response(404, request=request),
+    )
+
+    error = company_filing_error("https://mops.twse.com.tw/report", rate_limited, stage="mops_query")
+
+    assert error["category"] == "rate_limited"
+    assert error["retryable"] is True
+    assert error["stage"] == "mops_query"
+    assert categorize_company_filing_error(not_found) == "http_not_found"
+    assert is_retryable_company_filing_error_category("http_not_found") is False
+
+
+def test_company_filing_error_classifies_validation_and_pdf_failures() -> None:
+    assert (
+        categorize_company_filing_error("company filing content does not mention the target company")
+        == "company_mismatch"
+    )
+    assert (
+        categorize_company_filing_error("company filing content looks like a blocked, login, or placeholder page")
+        == "blocked_or_placeholder"
+    )
+    assert categorize_company_filing_error(PDF_IMPORT_NO_TEXT_MESSAGE) == "pdf_no_text"
+    assert categorize_company_filing_error("MOPS did not return a PDF download link") == "missing_pdf_link"
+    assert categorize_company_filing_error("company website not found") == "website_not_found"
+
+
 def test_search_result_url_normalizes_duckduckgo_redirect() -> None:
     url = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Finvestor.tsmc.com%2Fannual-report.pdf"
 
@@ -110,6 +445,55 @@ def test_html_redirect_url_extracts_meta_and_location_href() -> None:
         )
         == "https://www.tuc.com.tw/index"
     )
+
+
+def test_company_filing_html_text_extracts_structured_tables(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_HTML_EXTRACT_TABLES", "true")
+    get_settings.cache_clear()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <head><title>台積電 年報</title></head>
+          <body>
+            <article>
+              <p>台積電 年報揭露 AI/HPC 需求與資本支出。</p>
+              <table>
+                <tr><th>年度</th><th>營收</th><th>毛利率</th></tr>
+                <tr><td>2025</td><td>3,000,000</td><td>53%</td></tr>
+              </table>
+            </article>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    try:
+        text = extract_company_filing_html_text(soup)
+    finally:
+        get_settings.cache_clear()
+
+    assert "台積電 年報揭露 AI/HPC 需求" in text
+    assert "[HTML 表格抽取 #1]" in text
+    assert "表格尺寸：2 列 x 3 欄" in text
+    assert "年度 | 營收 | 毛利率" in text
+    assert "2025 | 3,000,000 | 53%" in text
+
+
+def test_company_filing_html_text_table_extraction_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_HTML_EXTRACT_TABLES", "false")
+    get_settings.cache_clear()
+    soup = BeautifulSoup(
+        "<html><body><p>台積電 年報。</p><table><tr><td>年度</td><td>營收</td></tr></table></body></html>",
+        "html.parser",
+    )
+
+    try:
+        text = extract_company_filing_html_text(soup)
+    finally:
+        get_settings.cache_clear()
+
+    assert "[HTML 表格抽取" not in text
 
 
 def test_tpex_profile_is_normalized_for_official_website_discovery() -> None:
@@ -146,6 +530,28 @@ def test_company_profile_falls_back_to_tpex_cache() -> None:
 
     assert profile["公司簡稱"] == "台燿"
     assert profile["網址"] == "www.tuc.com.tw"
+
+
+def test_official_website_missing_profile_error_is_categorized(monkeypatch) -> None:
+    async def fake_profile(ticker: str):
+        return {"公司簡稱": "台積電", "網址": ""}
+
+    monkeypatch.setattr(CompanyFilingFetcher, "twse_company_profile", staticmethod(fake_profile))
+
+    documents, errors = asyncio.run(
+        CompanyFilingFetcher().fetch_official_website_documents("2330", "台積電")
+    )
+
+    assert documents == []
+    assert errors == [
+        {
+            "source": "TWSE company profile",
+            "error": "company website not found",
+            "category": "website_not_found",
+            "retryable": False,
+            "stage": "official_profile",
+        }
+    ]
 
 
 def test_parse_mops_annual_report_rows_keeps_chinese_annual_report() -> None:
@@ -220,6 +626,46 @@ def test_company_filing_web_search_fetches_candidate_documents(monkeypatch) -> N
     assert documents[0].source.url == "https://investor.tsmc.com/annual-report.pdf"
 
 
+def test_company_filing_web_search_errors_include_category(monkeypatch) -> None:
+    async def fake_search(query_text: str, limit: int = 5):
+        return [
+            {
+                "title": "台積電 2026 年報 PDF",
+                "url": "https://investor.tsmc.com/annual-report.pdf",
+                "snippet": "2330 台積電 年報 annual report",
+                "publisher": "investor.tsmc.com",
+            }
+        ]
+
+    async def fake_fetch_url_document(
+        self,
+        url,
+        ticker,
+        company_name="",
+        document_type="company_disclosure",
+        publisher=None,
+        published_at=None,
+    ):
+        raise ValueError("company filing content does not mention the target company")
+
+    monkeypatch.setattr(CompanyFilingFetcher, "_duckduckgo_search", staticmethod(fake_search))
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+
+    documents, errors = asyncio.run(
+        CompanyFilingFetcher().fetch_web_search_documents(
+            "2330",
+            "台積電",
+            document_types=["annual_report"],
+        )
+    )
+
+    assert documents == []
+    assert errors[0]["source"] == "https://investor.tsmc.com/annual-report.pdf"
+    assert errors[0]["category"] == "company_mismatch"
+    assert errors[0]["retryable"] is False
+    assert errors[0]["stage"] == "web_search_fetch"
+
+
 def test_company_filing_repository_roundtrip() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
@@ -279,6 +725,325 @@ def test_company_filing_fetch_url_document_uses_page_text(monkeypatch) -> None:
     assert document.title == "台積電 2026 年報"
 
 
+def test_company_filing_fetch_url_document_uses_parsed_cache(monkeypatch) -> None:
+    cached = NewsFetcher.from_manual_text(
+        title="台積電 2026 年報",
+        text="台積電 2026 年報揭露 AI/HPC 需求與風險因素。" * 8,
+        publisher="cached publisher",
+        published_at=date(2026, 5, 1),
+        url="https://investor.tsmc.com/annual-report.pdf",
+    )
+
+    class FakeCache:
+        def get_url_document(self, url, *, parser, extract_tables, html_extract_tables):
+            return cached
+
+        def set_url_document(self, *args, **kwargs):
+            raise AssertionError("cache hit should not write")
+
+    async def fail_fetch(self, url, publisher=None):
+        raise AssertionError("cache hit should not fetch network")
+
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", fail_fetch)
+
+    import asyncio
+
+    document = asyncio.run(
+        CompanyFilingFetcher(cache=FakeCache()).fetch_url_document(
+            "https://investor.tsmc.com/annual-report.pdf",
+            ticker="2330",
+            company_name="台積電",
+            document_type="annual_report",
+            publisher="台積電 IR",
+        )
+    )
+
+    assert document.title == "台積電 2026 年報"
+    assert document.source.publisher == "台積電 IR"
+
+
+def test_company_filing_fetch_url_document_refreshes_bad_cache_with_browser_render(monkeypatch) -> None:
+    cached = NewsFetcher.from_manual_text(
+        title="台積電 年報",
+        text="台積電 年報 請啟用 JavaScript 後查看文件內容。" * 8,
+        publisher="cached publisher",
+        url="https://investor.tsmc.com/annual-report",
+    )
+    stored = {}
+
+    class FakeCache:
+        def get_url_document(self, url, *, parser, extract_tables, html_extract_tables):
+            return cached
+
+        def set_url_document(self, url, document, *, parser, extract_tables, html_extract_tables):
+            stored["url"] = url
+            stored["title"] = document.title
+
+    async def blocked_direct_fetch(self, url, publisher=None):
+        return cached
+
+    async def fake_browser_render(self, url, publisher=None):
+        return NewsFetcher.from_manual_text(
+            title="台積電 2026 年報",
+            text="台積電 2026 年報 annual report 揭露 AI/HPC 需求與風險因素。" * 8,
+            publisher=publisher or "台積電 IR",
+            published_at=date(2026, 5, 1),
+            url=url,
+        )
+
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
+    get_settings.cache_clear()
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", blocked_direct_fetch)
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_browser_rendered_url_as_document", fake_browser_render)
+
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher(cache=FakeCache()).fetch_url_document(
+                "https://investor.tsmc.com/annual-report",
+                ticker="2330",
+                company_name="台積電",
+                document_type="annual_report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert document.title == "台積電 2026 年報"
+    assert stored == {
+        "url": "https://investor.tsmc.com/annual-report",
+        "title": "台積電 2026 年報",
+    }
+
+
+def test_company_filing_fetch_url_document_uses_playwright_render_when_browserless_absent(
+    monkeypatch,
+) -> None:
+    cached = NewsFetcher.from_manual_text(
+        title="台積電 年報",
+        text="台積電 年報 請啟用 JavaScript 後查看文件內容。" * 8,
+        publisher="cached publisher",
+        url="https://investor.tsmc.com/annual-report",
+    )
+    stored = {}
+
+    class FakeCache:
+        def get_url_document(self, url, *, parser, extract_tables, html_extract_tables):
+            return cached
+
+        def set_url_document(self, url, document, *, parser, extract_tables, html_extract_tables):
+            stored["url"] = url
+            stored["title"] = document.title
+
+    async def blocked_direct_fetch(self, url, publisher=None):
+        return cached
+
+    async def fake_playwright_render(self, url, publisher=None):
+        return NewsFetcher.from_manual_text(
+            title="台積電 2026 年報",
+            text="台積電 2026 年報 annual report 揭露 AI/HPC 需求與風險因素。" * 8,
+            publisher=publisher or "台積電 IR",
+            published_at=date(2026, 5, 1),
+            url=url,
+        )
+
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+    get_settings.cache_clear()
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", blocked_direct_fetch)
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_playwright_rendered_url_as_document", fake_playwright_render)
+
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher(cache=FakeCache()).fetch_url_document(
+                "https://investor.tsmc.com/annual-report",
+                ticker="2330",
+                company_name="台積電",
+                document_type="annual_report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert document.title == "台積電 2026 年報"
+    assert stored == {
+        "url": "https://investor.tsmc.com/annual-report",
+        "title": "台積電 2026 年報",
+    }
+
+
+def test_company_filing_fetch_url_document_stores_parsed_cache(monkeypatch) -> None:
+    stored = {}
+
+    class FakeCache:
+        def get_url_document(self, url, *, parser, extract_tables, html_extract_tables):
+            return None
+
+        def set_url_document(self, url, document, *, parser, extract_tables, html_extract_tables):
+            stored["url"] = url
+            stored["title"] = document.title
+            stored["parser"] = parser
+            stored["extract_tables"] = extract_tables
+            stored["html_extract_tables"] = html_extract_tables
+
+    async def fake_fetch_url_as_document(self, url, publisher=None):
+        return NewsFetcher.from_manual_text(
+            title="台積電 2026 年報",
+            text="台積電 2026 年報揭露 AI/HPC 需求與風險因素。" * 8,
+            publisher=publisher or "台積電 IR",
+            published_at=date(2026, 5, 1),
+            url=url,
+        )
+
+    monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", fake_fetch_url_as_document)
+
+    import asyncio
+
+    document = asyncio.run(
+        CompanyFilingFetcher(cache=FakeCache()).fetch_url_document(
+            "https://investor.tsmc.com/annual-report.pdf",
+            ticker="2330",
+            company_name="台積電",
+            document_type="annual_report",
+        )
+    )
+
+    assert document.title == "台積電 2026 年報"
+    assert stored == {
+        "url": "https://investor.tsmc.com/annual-report.pdf",
+        "title": "台積電 2026 年報",
+        "parser": get_settings().company_filing_pdf_parser,
+        "extract_tables": get_settings().company_filing_pdf_extract_tables,
+        "html_extract_tables": get_settings().company_filing_html_extract_tables,
+    }
+
+
+def test_company_filing_browser_render_posts_to_configured_endpoint(monkeypatch) -> None:
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **options) -> None:
+            captured["options"] = options
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html><head><title>台積電 2026 年報</title></head>"
+                    "<body>台積電 2026 annual report 揭露 AI/HPC 需求與風險因素。"
+                    "台積電 年報 公司治理 財務 風險。</body></html>"
+                ),
+            )
+
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TOKEN", "secret-token")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TIMEOUT_SECONDS", "12")
+    get_settings.cache_clear()
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher()._fetch_browser_rendered_url_as_document(
+                "https://investor.tsmc.com/annual-report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert document.title == "台積電 2026 年報"
+    assert "AI/HPC" in document.text
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://browserless.example/content"
+    assert captured["kwargs"]["json"]["url"] == "https://investor.tsmc.com/annual-report"
+    assert captured["kwargs"]["headers"]["Authorization"] == "Bearer secret-token"
+    assert captured["options"]["timeout"] == 12.0
+
+
+def test_company_filing_playwright_render_uses_async_api(monkeypatch) -> None:
+    captured = {}
+
+    class FakePage:
+        url = "https://investor.tsmc.com/rendered-annual-report"
+
+        async def goto(self, url, *, wait_until, timeout):
+            captured["goto_url"] = url
+            captured["wait_until"] = wait_until
+            captured["timeout"] = timeout
+
+        async def content(self):
+            return (
+                "<html><head><title>台積電 2026 年報</title></head>"
+                "<body>台積電 2026 annual report 揭露 AI/HPC 需求與風險因素。"
+                "台積電 年報 公司治理 財務 風險。</body></html>"
+            )
+
+    class FakeBrowser:
+        async def new_page(self, **kwargs):
+            captured["new_page"] = kwargs
+            return FakePage()
+
+        async def close(self):
+            captured["closed"] = True
+
+    class FakeLauncher:
+        async def launch(self, **kwargs):
+            captured["launch"] = kwargs
+            return FakeBrowser()
+
+    class FakePlaywrightContext:
+        async def __aenter__(self):
+            return SimpleNamespace(chromium=FakeLauncher())
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+    def fake_import_module(name):
+        if name == "playwright.async_api":
+            return SimpleNamespace(async_playwright=lambda: FakePlaywrightContext())
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_BROWSER", "chromium")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_WAIT_UNTIL", "networkidle")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_TIMEOUT_SECONDS", "12")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.data_sources.company_filings.importlib.import_module", fake_import_module)
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher()._fetch_playwright_rendered_url_as_document(
+                "https://investor.tsmc.com/annual-report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert document.title == "台積電 2026 年報"
+    assert document.source.url == "https://investor.tsmc.com/rendered-annual-report"
+    assert "AI/HPC" in document.text
+    assert captured["goto_url"] == "https://investor.tsmc.com/annual-report"
+    assert captured["wait_until"] == "networkidle"
+    assert captured["timeout"] == 12_000
+    assert captured["launch"] == {"headless": True}
+    assert captured["new_page"]["locale"] == "zh-TW"
+    assert captured["new_page"]["user_agent"]
+    assert captured["closed"] is True
+
+
 def test_company_filing_pdf_text_extraction(monkeypatch) -> None:
     import pypdf
 
@@ -301,6 +1066,119 @@ def test_company_filing_pdf_text_extraction(monkeypatch) -> None:
     )
 
     assert "台積電 2026 年報" in extract_pdf_text(b"%PDF fake")
+
+
+def test_company_filing_pdf_parser_extracts_tables_with_pdfplumber(monkeypatch) -> None:
+    class FakePdfPage:
+        def extract_text(self) -> str:
+            return "台積電 2026 年報"
+
+        def extract_tables(self):
+            return [[["年度", "營收"], ["2026", "AI/HPC 需求成長"]]]
+
+    class FakePdf:
+        pages = [FakePdfPage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+    fake_pdfplumber = SimpleNamespace(open=lambda _content: FakePdf())
+    monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "pdfplumber")
+    monkeypatch.setenv("COMPANY_FILING_PDF_EXTRACT_TABLES", "true")
+    get_settings.cache_clear()
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+
+    assert "台積電 2026 年報" in text
+    assert "[PDF 解析資訊] parser=pdfplumber; mode=configured; extract_tables=true" in text
+    assert "[PDF 表格抽取 p.1 #1]" in text
+    assert "表格尺寸：2 列 x 2 欄" in text
+    assert "年度 | 營收" in text
+    assert "2026 | AI/HPC 需求成長" in text
+
+
+def test_company_filing_pdf_parser_extracts_unstructured_tables_with_provenance(monkeypatch) -> None:
+    calls = {}
+
+    class FakeTableElement:
+        category = "Table"
+        metadata = SimpleNamespace(
+            page_number=3,
+            text_as_html=(
+                "<table>"
+                "<tr><th>年度</th><th>營收</th></tr>"
+                "<tr><td>2026</td><td>AI/HPC 成長</td></tr>"
+                "</table>"
+            ),
+        )
+
+        def __str__(self) -> str:
+            return "fallback table text"
+
+    def fake_partition_pdf(**kwargs):
+        calls["kwargs"] = kwargs
+        return [FakeTableElement()]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "unstructured.partition.pdf",
+        SimpleNamespace(partition_pdf=fake_partition_pdf),
+    )
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "unstructured")
+    monkeypatch.setenv("COMPANY_FILING_PDF_EXTRACT_TABLES", "true")
+    get_settings.cache_clear()
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+
+    assert calls["kwargs"]["infer_table_structure"] is True
+    assert "[PDF 解析資訊] parser=unstructured; mode=configured; extract_tables=true" in text
+    assert "[PDF 表格抽取 p.3 #1]" in text
+    assert "年度 | 營收" in text
+    assert "2026 | AI/HPC 成長" in text
+
+
+def test_company_filing_pdf_parser_unstructured_respects_table_toggle(monkeypatch) -> None:
+    calls = {}
+
+    class FakeTableElement:
+        category = "Table"
+        metadata = SimpleNamespace(
+            page_number=1,
+            text_as_html="<table><tr><td>年度</td><td>營收</td></tr></table>",
+        )
+
+        def __str__(self) -> str:
+            return "年度 營收 2026 成長"
+
+    def fake_partition_pdf(**kwargs):
+        calls["kwargs"] = kwargs
+        return [FakeTableElement()]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "unstructured.partition.pdf",
+        SimpleNamespace(partition_pdf=fake_partition_pdf),
+    )
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "unstructured")
+    monkeypatch.setenv("COMPANY_FILING_PDF_EXTRACT_TABLES", "false")
+    get_settings.cache_clear()
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+
+    assert calls["kwargs"]["infer_table_structure"] is False
+    assert "[PDF 解析資訊] parser=unstructured; mode=configured; extract_tables=false" in text
+    assert "[PDF 表格抽取" not in text
+    assert "年度 營收 2026 成長" in text
 
 
 def test_company_filing_pdf_without_text_has_actionable_error(monkeypatch) -> None:
@@ -354,6 +1232,7 @@ def test_fetched_company_filing_content_validation() -> None:
     cases = [
         NewsFetcher.from_manual_text(title="短頁", text="台積電 年報"),
         NewsFetcher.from_manual_text(title="登入頁", text="請登入後查看文件內容。" * 20),
+        NewsFetcher.from_manual_text(title="台積電 年報", text="台積電 年報 請啟用 JavaScript 後查看內容。" * 8),
         NewsFetcher.from_manual_text(title="台積電 新聞", text="台積電 今日股價上漲，市場關注短線表現。" * 8),
     ]
     for document in cases:

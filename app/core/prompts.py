@@ -22,9 +22,9 @@ REPORT_PROMPT_TEMPLATE = """請根據以下白名單、檢索證據與市場資�
 - 只能輸出 JSON，不要使用 Markdown。
 - JSON schema: {{"items":[{{"claim":"string","source_type":"news|market","source_date":"YYYY-MM-DD","source_publisher":"string","source_title":"string","source_id":"string"}}]}}
 - items 最多 3 筆。
-- 若引用新聞，source_type 必須是 "news"，source_date/source_publisher/source_title 必須逐字取自「檢索證據」，source_id 可留空。
+- 若引用新聞，source_type 必須是 "news"，source_date/source_publisher/source_title 必須逐字取自「檢索證據」的欄位；source_id 必須填入該來源「公司對應」中的股票代號。若該 claim 不指向單一公司，source_id 可留空。
 - 若引用市場資料，source_type 必須是 "market"，source_date 必須等於 trade_date，source_publisher 必須等於 source，source_id 必須等於 ticker，source_title 可留空。
-- claim 不得包含未由檢索證據或市場資料支撐的公司、數字、財務預測或因果關係。
+- claim 不得包含未由檢索證據或市場資料支撐的公司、數字、財務預測或因果關係；claim 中出現的公司必須與 source_id 和檢索證據的公司對應一致，不得把 A 公司來源寫成 B 公司結論。
 - 若無法替每一點附上來源，請輸出 {{"items":[]}}。
 """
 

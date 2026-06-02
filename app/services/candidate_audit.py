@@ -7,7 +7,7 @@ from typing import Optional
 from app.core.time import today_taipei
 from app.services.candidate_confidence import format_confidence_score, is_low_formal_confidence
 from app.services.entity_mapping import CONFUSING_ENTITY_PREFIXES, alias_matches_text
-from app.services.source_quality import is_low_quality_investor_forum_source
+from app.services.source_quality import is_formal_evidence_source
 
 STALE_CANDIDATE_EVIDENCE_DAYS = 180
 
@@ -23,6 +23,11 @@ STATUS_LABELS = {
 def candidate_audit_summary(candidates: list[dict], promoted_tickers: list[str] | None = None) -> dict:
     promoted = set(promoted_tickers or [])
     candidate_tickers = {str(candidate.get("ticker") or "") for candidate in candidates}
+    supported_tickers = {
+        str(candidate.get("ticker") or "")
+        for candidate in candidates
+        if candidate.get("status") == "evidence_supported"
+    }
     supported = sum(1 for candidate in candidates if candidate.get("status") == "evidence_supported")
     weak = sum(1 for candidate in candidates if candidate.get("status") == "weak_evidence")
     needs = sum(1 for candidate in candidates if candidate.get("status") == "needs_evidence")
@@ -30,7 +35,7 @@ def candidate_audit_summary(candidates: list[dict], promoted_tickers: list[str] 
     unavailable = sum(1 for candidate in candidates if candidate.get("status") == "evidence_unavailable")
     return {
         "total": len(candidates),
-        "promoted_count": len(promoted & candidate_tickers) if promoted else supported,
+        "promoted_count": len(promoted & candidate_tickers & supported_tickers) if promoted else supported,
         "supported_count": supported,
         "weak_count": weak,
         "needs_evidence_count": needs,
@@ -111,7 +116,7 @@ def render_candidate_audit_markdown(candidates: list[dict], promoted_tickers: li
             )
         )
         confidence = candidate_confidence_text(candidate)
-        if ticker in promoted and not invalid_sources_only:
+        if ticker in promoted and status == "evidence_supported" and not invalid_sources_only:
             status = "evidence_supported"
         elif invalid_sources_only and status == "evidence_supported":
             status = "weak_evidence"
@@ -207,7 +212,7 @@ def filter_candidate_evidence_sources(candidate: dict, sources: list[dict]) -> l
         for source in sources
         if _source_matches_candidate_entity(source, entity_terms)
         and not _looks_like_unrelated_release_source(source, entity_terms)
-        and not _looks_like_low_quality_forum_source(source)
+        and _looks_like_formal_evidence_source(source)
     ]
 
 
@@ -239,8 +244,8 @@ def _looks_like_unrelated_release_source(source: dict, entity_terms: list[str]) 
     return not any(_contains_entity_term(haystack, term) for term in named_terms)
 
 
-def _looks_like_low_quality_forum_source(source: dict) -> bool:
-    return is_low_quality_investor_forum_source(
+def _looks_like_formal_evidence_source(source: dict) -> bool:
+    return is_formal_evidence_source(
         title=source.get("title"),
         publisher=source.get("publisher"),
         url=source.get("url"),
@@ -380,4 +385,6 @@ def candidate_confidence_text(candidate: dict) -> str:
     confidence = format_confidence_score(float(score))
     if label and not confidence.startswith(label):
         confidence = f"{label} {int(score)}"
-    return f"{confidence}{date_text}"
+    source_credibility = candidate.get("source_credibility_label")
+    source_text = f"，來源品質 {source_credibility}" if source_credibility else ""
+    return f"{confidence}{source_text}{date_text}"

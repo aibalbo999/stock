@@ -86,3 +86,79 @@ def test_report_integrity_blocks_known_temporal_and_financial_smells() -> None:
 
     assert "future_full_year_financials" in codes
     assert "suspicious_zero_debt_ratio" in codes
+
+
+def test_report_integrity_blocks_low_quality_forum_sources() -> None:
+    markdown = """
+    ## 附錄：AI 補充與資料來源
+    ### 資料來源與時間戳記
+    - 2026-05-12 CMoney《1815 富喬-追買低檔群創也不要去追高高檔的富喬住套房-股市爆料同學會》
+    - 2026-05-20 CMoney《1504 東元 一堆看新聞做股票不是真的分析走勢》
+    """
+
+    with pytest.raises(ReportIntegrityError) as exc:
+        assert_report_integrity(markdown)
+
+    assert exc.value.issues[0].code == "low_quality_forum_source_in_report"
+
+
+def test_report_integrity_blocks_investment_blog_sources() -> None:
+    markdown = """
+    ## 投資理由地圖
+    ### 1815 富喬
+    - 成長假設：玻纖布需求升溫；代表性來源：2026-05-08 CMoney投資網誌《富喬還能追嗎》。
+    """
+
+    with pytest.raises(ReportIntegrityError) as exc:
+        assert_report_integrity(markdown)
+
+    assert exc.value.issues[0].code == "non_formal_source_in_report"
+
+
+def test_report_integrity_blocks_nanya_tech_source_inside_nanya_section() -> None:
+    markdown = """
+    ## 投資理由地圖
+    ### 1303 南亞
+    - 成長假設：電子材料需求回升；代表性來源：2026-05-20 測試新聞《南亞科記憶體供給吃緊》。
+    """
+
+    with pytest.raises(ReportIntegrityError) as exc:
+        assert_report_integrity(markdown)
+
+    assert exc.value.issues[0].code == "confusing_entity_in_company_section"
+
+
+def test_report_integrity_blocks_allocation_total_and_missing_research_candidate() -> None:
+    markdown = """
+    ## 一頁摘要
+    | 項目 | 結果 |
+    |---|---|
+    | 可小額研究 | 4 檔 |
+
+    ## 下一步
+    ### 可立即研究
+    - 2308 台達電：可看資金控管建議中的首筆配置；目前情境升值分 46 分，目前情境降值分 11 分。
+    - 4583 大銀微系統：可看資金控管建議中的首筆配置；目前情境升值分 24 分，目前情境降值分 8 分。
+    - 2359 所羅門：可看資金控管建議中的首筆配置；目前情境升值分 27 分，目前情境降值分 7 分。
+    - 1504 東元：可看資金控管建議中的首筆配置；目前情境升值分 30 分，目前情境降值分 0 分。
+
+    ## 資金控管建議
+    ### 首筆配置草案
+    本輪首筆配置合計約 180,000 元；可投入上限 700,000 元。
+    - 2308 台達電：首筆配置約 50,000 元；淨分 35。
+    - 4583 大銀微系統：首筆配置約 40,000 元；淨分 16。
+    - 2359 所羅門：首筆配置約 40,000 元；淨分 20。
+
+    ### 可小額分批研究
+    - 2308 台達電：可列小額分批研究。首筆約 50,000 元。
+    - 4583 大銀微系統：可列小額分批研究。首筆約 40,000 元。
+    - 2359 所羅門：可列小額分批研究。首筆約 40,000 元。
+    - 1504 東元：可列小額分批研究。首筆約 50,000 元。
+    """
+
+    audit = audit_report_integrity(markdown)
+    codes = {issue["code"] for issue in audit["blockers"]}
+
+    assert "allocation_total_mismatch" in codes
+    assert "allocation_count_mismatch" in codes
+    assert "allocation_missing_research_candidate" in codes

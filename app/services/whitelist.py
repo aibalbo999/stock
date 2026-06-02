@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.models.schemas import Company, SupplyChainSegment
+from app.services.supply_chain_graph import SupplyChainGraph
 
 
 class SupplyChainWhitelist:
@@ -81,4 +82,8 @@ class SupplyChainWhitelist:
                 or "無台股"
             )
             lines.append(f"- {segment.name}: {companies}")
-        return "\n".join(lines)
+        graph_context = self.graph().render_prompt_context()
+        return "\n".join([*lines, "", graph_context])
+
+    def graph(self) -> SupplyChainGraph:
+        return SupplyChainGraph.from_whitelist(self)

@@ -18,6 +18,7 @@ from app.services.persistence import (
     NewsRepository,
     ValuationMetricRepository,
 )
+from app.services.report_quality import is_stale_market_data_source
 
 
 ActionType = str
@@ -159,6 +160,24 @@ class FollowUpActionPlanner:
         return actions
 
     def from_quality_gate(self, quality_gate: dict, tickers: tuple[str, ...]) -> list[FollowUpAction]:
+        actions: list[FollowUpAction] = []
+        metrics = quality_gate.get("metrics") or {}
+        if int(metrics.get("market_stale_count") or 0) > 0:
+            actions.append(
+                FollowUpAction("refresh_market", "快取救援資料：刷新股價歷史、成交量與近況訊號。", tickers, "high", "weekly")
+            )
+        if int(metrics.get("monthly_revenue_stale_count") or 0) > 0:
+            actions.append(
+                FollowUpAction("refresh_monthly_revenue", "快取救援資料：刷新月營收與成長加速資料。", tickers, "high", "monthly")
+            )
+        if int(metrics.get("financial_metrics_stale_ticker_count") or 0) > 0:
+            actions.append(
+                FollowUpAction("refresh_financial_metrics", "快取救援資料：刷新近五年財務資料。", tickers, "high", "monthly")
+            )
+        if int(metrics.get("valuation_stale_count") or 0) > 0:
+            actions.append(
+                FollowUpAction("refresh_valuations", "快取救援資料：刷新估值與同業比較資料。", tickers, "high", "weekly")
+            )
         issue_text = "；".join(
             [
                 *[str(item) for item in quality_gate.get("blockers") or []],
@@ -166,7 +185,6 @@ class FollowUpActionPlanner:
                 *[str(item) for item in quality_gate.get("remediation_actions") or []],
             ]
         )
-        actions: list[FollowUpAction] = []
         if not issue_text:
             return actions
         if self._has(issue_text, "股價", "成交量", "領先訊號", "近況訊號"):
@@ -496,12 +514,30 @@ def tracking_freshness_details_by_action(actions: list[FollowUpAction], request:
         return {}
     try:
         with session_scope() as session:
-            latest_market = {item.ticker: item.trade_date for item in MarketRepository(session).latest_by_tickers(tickers)}
-            latest_revenue = {
-                item.ticker: item.revenue_date for item in MonthlyRevenueRepository(session).latest_by_tickers(tickers)
+            market_items = MarketRepository(session).latest_by_tickers(tickers)
+            latest_market = {item.ticker: item.trade_date for item in market_items}
+            stale_market = {
+                item.ticker: item.source
+                for item in market_items
+                if is_stale_market_data_source(item.source)
             }
+            revenue_items = MonthlyRevenueRepository(session).latest_by_tickers(tickers)
+            latest_revenue = {
+                item.ticker: item.revenue_date for item in revenue_items
+            }
+            stale_revenue = {
+                item.ticker: item.source
+                for item in revenue_items
+                if is_stale_market_data_source(item.source)
+            }
+            valuation_items = ValuationMetricRepository(session).latest_by_tickers(tickers)
             latest_valuation = {
-                item.ticker: item.trade_date for item in ValuationMetricRepository(session).latest_by_tickers(tickers)
+                item.ticker: item.trade_date for item in valuation_items
+            }
+            stale_valuation = {
+                item.ticker: item.source
+                for item in valuation_items
+                if is_stale_market_data_source(item.source)
             }
             latest_company_filing = {}
             for ticker in tickers:
@@ -510,19 +546,34 @@ def tracking_freshness_details_by_action(actions: list[FollowUpAction], request:
                     latest_company_filing[ticker] = date.fromisoformat(stats["latest_date"])
             metrics = FinancialMetricRepository(session).by_tickers(tickers)
             latest_financial: dict[str, object] = {}
+            latest_financial_source: dict[str, str] = {}
             for metric in metrics:
                 current = latest_financial.get(metric.ticker)
                 if current is None or metric.report_date > current:
                     latest_financial[metric.ticker] = metric.report_date
+                    latest_financial_source[metric.ticker] = metric.source
+            stale_financial = {
+                ticker: source
+                for ticker, source in latest_financial_source.items()
+                if is_stale_market_data_source(source)
+            }
     except Exception:
         return {}
     freshness = {}
     thresholds = {
-        "refresh_market": (latest_market, TRACKING_FRESHNESS_THRESHOLDS["refresh_market"]),
-        "refresh_monthly_revenue": (latest_revenue, TRACKING_FRESHNESS_THRESHOLDS["refresh_monthly_revenue"]),
-        "refresh_valuations": (latest_valuation, TRACKING_FRESHNESS_THRESHOLDS["refresh_valuations"]),
-        "refresh_financial_metrics": (latest_financial, TRACKING_FRESHNESS_THRESHOLDS["refresh_financial_metrics"]),
-        "ingest_company_filings": (latest_company_filing, TRACKING_FRESHNESS_THRESHOLDS["ingest_company_filings"]),
+        "refresh_market": (latest_market, TRACKING_FRESHNESS_THRESHOLDS["refresh_market"], stale_market),
+        "refresh_monthly_revenue": (
+            latest_revenue,
+            TRACKING_FRESHNESS_THRESHOLDS["refresh_monthly_revenue"],
+            stale_revenue,
+        ),
+        "refresh_valuations": (latest_valuation, TRACKING_FRESHNESS_THRESHOLDS["refresh_valuations"], stale_valuation),
+        "refresh_financial_metrics": (
+            latest_financial,
+            TRACKING_FRESHNESS_THRESHOLDS["refresh_financial_metrics"],
+            stale_financial,
+        ),
+        "ingest_company_filings": (latest_company_filing, TRACKING_FRESHNESS_THRESHOLDS["ingest_company_filings"], {}),
     }
     for action in tracking_actions:
         source = thresholds.get(action.action_type)
@@ -533,20 +584,27 @@ def tracking_freshness_details_by_action(actions: list[FollowUpAction], request:
                 "latest_dates": {},
             }
             continue
-        latest_by_ticker, max_age_days = source
+        latest_by_ticker, max_age_days, stale_by_ticker = source
         action_tickers = action.tickers or tuple(request.tickers)
         latest_dates = {
             ticker: latest_by_ticker[ticker].isoformat()
             for ticker in action_tickers
             if ticker in latest_by_ticker
         }
+        stale_sources = {
+            ticker: stale_by_ticker[ticker]
+            for ticker in action_tickers
+            if ticker in stale_by_ticker
+        }
         freshness[action.key()] = {
             "is_fresh": bool(action_tickers) and all(
                 ticker in latest_by_ticker and latest_by_ticker[ticker] >= today - timedelta(days=max_age_days)
                 for ticker in action_tickers
-            ),
+            ) and not stale_sources,
             "max_age_days": max_age_days,
             "latest_dates": latest_dates,
+            "has_stale_sources": bool(stale_sources),
+            "stale_sources": stale_sources,
         }
     return freshness
 
@@ -757,6 +815,7 @@ def follow_up_completion_status(task: str, result: dict) -> dict:
     stored_count = _stored_count(result)
     errors = result.get("errors") or []
     error_count = len(errors) if isinstance(errors, list) else 0
+    stale_source_count = int(result.get("stale_source_count") or 0)
     if action_type == "ingest_company_filings":
         blocked = ((result.get("gap_summary") or {}).get("blocked_tickers") or [])
         return {
@@ -768,30 +827,30 @@ def follow_up_completion_status(task: str, result: dict) -> dict:
     if action_type == "refresh_market":
         return {
             "check": "market_history_coverage",
-            "completed": stored_count >= 120 and error_count == 0,
-            "observed": {"stored_count": stored_count, "error_count": error_count},
-            "required": {"min_days": 120, "error_count": 0},
+            "completed": stored_count >= 120 and error_count == 0 and stale_source_count == 0,
+            "observed": _refresh_completion_observed(stored_count, error_count, stale_source_count),
+            "required": _refresh_completion_required("min_days", 120, stale_source_count),
         }
     if action_type == "refresh_monthly_revenue":
         return {
             "check": "monthly_revenue_coverage",
-            "completed": stored_count >= 12 and error_count == 0,
-            "observed": {"stored_count": stored_count, "error_count": error_count},
-            "required": {"min_months": 12, "error_count": 0},
+            "completed": stored_count >= 12 and error_count == 0 and stale_source_count == 0,
+            "observed": _refresh_completion_observed(stored_count, error_count, stale_source_count),
+            "required": _refresh_completion_required("min_months", 12, stale_source_count),
         }
     if action_type == "refresh_financial_metrics":
         return {
             "check": "financial_metric_coverage",
-            "completed": stored_count >= 5 and error_count == 0,
-            "observed": {"stored_count": stored_count, "error_count": error_count},
-            "required": {"min_years": 5, "error_count": 0},
+            "completed": stored_count >= 5 and error_count == 0 and stale_source_count == 0,
+            "observed": _refresh_completion_observed(stored_count, error_count, stale_source_count),
+            "required": _refresh_completion_required("min_years", 5, stale_source_count),
         }
     if action_type == "refresh_valuations":
         return {
             "check": "valuation_availability",
-            "completed": stored_count > 0 and error_count == 0,
-            "observed": {"stored_count": stored_count, "error_count": error_count},
-            "required": {"min_records": 1, "error_count": 0},
+            "completed": stored_count > 0 and error_count == 0 and stale_source_count == 0,
+            "observed": _refresh_completion_observed(stored_count, error_count, stale_source_count),
+            "required": _refresh_completion_required("min_records", 1, stale_source_count),
         }
     if action_type == "ingest_news":
         target_tickers = [ticker for ticker in task.split(":", 1)[1].split(",") if ticker] if ":" in task else []
@@ -829,6 +888,20 @@ def follow_up_completion_status(task: str, result: dict) -> dict:
         "observed": {"stored_count": stored_count, "error_count": error_count},
         "required": {"manual_review": True},
     }
+
+
+def _refresh_completion_observed(stored_count: int, error_count: int, stale_source_count: int) -> dict:
+    observed = {"stored_count": stored_count, "error_count": error_count}
+    if stale_source_count:
+        observed["stale_source_count"] = stale_source_count
+    return observed
+
+
+def _refresh_completion_required(count_key: str, count_value: int, stale_source_count: int) -> dict:
+    required = {count_key: count_value, "error_count": 0}
+    if stale_source_count:
+        required["stale_source_count"] = 0
+    return required
 
 
 def _stored_count(result: dict) -> int:

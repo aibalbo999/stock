@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -31,6 +32,8 @@ class LLMSupplementValidator:
         raw_text: str,
         documents: list[NewsDocument],
         market_snapshots: list[MarketSnapshot] | None = None,
+        news_ticker_resolver: Callable[[NewsDocument], list[str] | set[str] | tuple[str, ...]] | None = None,
+        claim_ticker_resolver: Callable[[str], list[str] | set[str] | tuple[str, ...]] | None = None,
     ) -> str:
         stripped = raw_text.strip()
         if not stripped:
@@ -46,7 +49,13 @@ class LLMSupplementValidator:
         valid_items = [
             item
             for item in supplement.items
-            if cls._source_exists(item, documents, market_snapshots or [])
+            if cls._source_exists(
+                item,
+                documents,
+                market_snapshots or [],
+                news_ticker_resolver,
+                claim_ticker_resolver,
+            )
         ]
         if not valid_items:
             return cls.failed
@@ -84,13 +93,30 @@ class LLMSupplementValidator:
         item: LLMSupplementItem,
         documents: list[NewsDocument],
         market_snapshots: list[MarketSnapshot],
+        news_ticker_resolver: Callable[[NewsDocument], list[str] | set[str] | tuple[str, ...]] | None = None,
+        claim_ticker_resolver: Callable[[str], list[str] | set[str] | tuple[str, ...]] | None = None,
     ) -> bool:
         if item.source_type == "market":
             return LLMSupplementValidator._market_source_exists(item, market_snapshots)
-        return LLMSupplementValidator._news_source_exists(item, documents)
+        return LLMSupplementValidator._news_source_exists(
+            item,
+            documents,
+            news_ticker_resolver,
+            claim_ticker_resolver,
+        )
 
     @staticmethod
-    def _news_source_exists(item: LLMSupplementItem, documents: list[NewsDocument]) -> bool:
+    def _news_source_exists(
+        item: LLMSupplementItem,
+        documents: list[NewsDocument],
+        news_ticker_resolver: Callable[[NewsDocument], list[str] | set[str] | tuple[str, ...]] | None = None,
+        claim_ticker_resolver: Callable[[str], list[str] | set[str] | tuple[str, ...]] | None = None,
+    ) -> bool:
+        source_ids = LLMSupplementValidator._ticker_ids(item.source_id)
+        claim_tickers = LLMSupplementValidator._safe_resolve_claim_tickers(
+            item.claim,
+            claim_ticker_resolver,
+        )
         for document in documents:
             if not document.source.published_at:
                 continue
@@ -101,8 +127,65 @@ class LLMSupplementValidator:
             publisher = document.source.publisher or ""
             if publisher != item.source_publisher:
                 continue
+            document_tickers = LLMSupplementValidator._safe_resolve_document_tickers(
+                document,
+                news_ticker_resolver,
+            )
+            if not LLMSupplementValidator._news_attribution_matches(
+                source_ids,
+                claim_tickers,
+                document_tickers,
+                resolver_provided=news_ticker_resolver is not None,
+            ):
+                continue
             return True
         return False
+
+    @staticmethod
+    def _news_attribution_matches(
+        source_ids: set[str],
+        claim_tickers: set[str],
+        document_tickers: set[str],
+        *,
+        resolver_provided: bool,
+    ) -> bool:
+        if resolver_provided and (source_ids or claim_tickers) and not document_tickers:
+            return False
+        if source_ids and document_tickers and not source_ids.intersection(document_tickers):
+            return False
+        if source_ids and claim_tickers and not source_ids.intersection(claim_tickers):
+            return False
+        if claim_tickers and document_tickers and not claim_tickers.intersection(document_tickers):
+            return False
+        return True
+
+    @staticmethod
+    def _ticker_ids(value: str) -> set[str]:
+        return set(re.findall(r"\b\d{4,6}\b", value or ""))
+
+    @staticmethod
+    def _safe_resolve_document_tickers(
+        document: NewsDocument,
+        resolver: Callable[[NewsDocument], list[str] | set[str] | tuple[str, ...]] | None,
+    ) -> set[str]:
+        if resolver is None:
+            return set()
+        try:
+            return {str(ticker) for ticker in resolver(document) if str(ticker)}
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _safe_resolve_claim_tickers(
+        claim: str,
+        resolver: Callable[[str], list[str] | set[str] | tuple[str, ...]] | None,
+    ) -> set[str]:
+        if resolver is None:
+            return set()
+        try:
+            return {str(ticker) for ticker in resolver(claim) if str(ticker)}
+        except Exception:
+            return set()
 
     @staticmethod
     def _market_source_exists(

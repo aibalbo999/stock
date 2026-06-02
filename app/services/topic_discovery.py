@@ -13,7 +13,8 @@ from app.models.schemas import NewsDocument
 from app.services.candidate_confidence import confidence_level, is_high_confidence
 from app.services.entity_mapping import alias_matches_text, alias_positions, company_filing_owner_ticker
 from app.services.llm_client import LLMClient
-from app.services.source_quality import is_low_quality_investor_forum_document
+from app.services.source_quality import is_formal_evidence_document
+from app.services.source_quality import summarize_source_credibility
 from app.services.whitelist import SupplyChainWhitelist
 
 STALE_CANDIDATE_EVIDENCE_DAYS = 180
@@ -65,6 +66,9 @@ class ValidatedCandidate(BaseModel):
     evidence_sources: list[dict] = Field(default_factory=list)
     evidence_confidence_score: int = 0
     evidence_confidence_label: str = "低"
+    source_credibility_score: int = 0
+    source_credibility_label: str = "未分級"
+    source_credibility_counts: dict = Field(default_factory=dict)
     latest_evidence_date: Optional[str] = None
     evidence_age_days: Optional[int] = None
     evidence_stale: bool = False
@@ -167,30 +171,10 @@ class TopicDiscoveryService:
     def _fallback_plan(topic: str) -> TopicDiscoveryPlan:
         if TopicDiscoveryService._is_robotics_topic(topic):
             return TopicDiscoveryService._robotics_fallback_plan(topic)
+        if TopicDiscoveryService._is_memory_topic(topic):
+            return TopicDiscoveryService._memory_fallback_plan(topic)
         if "AI" not in topic.upper() and "人工智慧" not in topic:
-            return TopicDiscoveryService.enrich_plan(
-                TopicDiscoveryPlan(
-                subtopics=[
-                    DiscoverySubtopic(
-                        name=f"{topic} 需求與成長",
-                        rationale="確認產業需求",
-                        objective="查核需求、訂單與營收是否支持投資假設",
-                        required_evidence=["需求", "訂單", "營收"],
-                        risk_focus=["需求下修", "競爭加劇"],
-                        search_queries=[f"{topic} 需求 訂單 營收", f"{topic} demand revenue outlook"],
-                    ),
-                    DiscoverySubtopic(
-                        name=f"{topic} 估值與風險",
-                        rationale="避免只看題材",
-                        objective="比較估值、股價與主要風險",
-                        required_evidence=["股價", "本益比", "風險"],
-                        risk_focus=["估值過高", "政策風險"],
-                        search_queries=[f"{topic} 台股 估值 本益比 風險", f"{topic} valuation risk"],
-                    ),
-                ],
-                candidate_companies=[],
-                )
-            )
+            return TopicDiscoveryService._generic_exploration_plan(topic)
         return TopicDiscoveryService.enrich_plan(
             TopicDiscoveryPlan(
             subtopics=[
@@ -403,9 +387,274 @@ class TopicDiscoveryService:
         )
 
     @staticmethod
+    def _generic_exploration_plan(topic: str) -> TopicDiscoveryPlan:
+        anchor_candidates = TopicDiscoveryService._generic_anchor_candidates(topic)
+        return TopicDiscoveryService.enrich_plan(
+            TopicDiscoveryPlan(
+                subtopics=[
+                    DiscoverySubtopic(
+                        name=f"{topic} 主題定義與範圍收斂",
+                        rationale="先確認主題是否有明確主線，避免一開始就展太開",
+                        objective="辨識核心產品、直接受惠公司、周邊公司與應排除的噪音標的",
+                        required_evidence=["產業定義", "核心產品", "直接受惠", "排除範圍"],
+                        risk_focus=["主題誤判", "範圍過寬", "噪音標的混入"],
+                        search_queries=[
+                            f"{topic} 產業定義 核心產品 直接受惠 公司",
+                            f"{topic} industry definition core product direct beneficiaries Taiwan",
+                        ],
+                        source_intents=["industry_news", "company_disclosure", "international_context"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 需求與成長",
+                        rationale="先確認這個主題到底對應哪一段需求鏈",
+                        objective="查核需求、訂單、出貨與市場規模是否支持投資假設",
+                        required_evidence=["需求", "訂單", "出貨", "市場規模"],
+                        risk_focus=["需求下修", "競爭加劇", "市場規模不如預期"],
+                        search_queries=[f"{topic} 需求 訂單 出貨 市場規模", f"{topic} 需求 demand 訂單 order 出貨 shipment"],
+                        source_intents=["industry_news", "international_context", "early_signal"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 供給與瓶頸",
+                        rationale="找出供給端或產能端的約束",
+                        objective="查核產能、良率、交期或供應瓶頸是否限制成長",
+                        required_evidence=["產能", "良率", "交期", "瓶頸"],
+                        risk_focus=["產能不足", "良率問題", "供給過剩"],
+                        search_queries=[f"{topic} 產能 良率 交期 瓶頸", f"{topic} 產能 capacity 良率 yield 交期 lead time"],
+                        source_intents=["capacity_supply", "industry_news", "international_context"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 財務與估值",
+                        rationale="先判斷市場是否已經過度反映",
+                        objective="比較月營收、毛利率、本益比與現金流是否匹配成長假設",
+                        required_evidence=["月營收", "毛利率", "本益比", "現金流"],
+                        risk_focus=["估值過高", "獲利下滑", "現金流惡化"],
+                        search_queries=[f"{topic} 月營收 毛利率 本益比 現金流", f"{topic} 月營收 revenue 毛利率 margin 本益比 valuation"],
+                        source_intents=["financial_metrics", "valuation", "company_disclosure"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 上游材料與設備",
+                        rationale="確認上游原料、材料或設備是否會成為新瓶頸",
+                        objective="追蹤材料、零組件、設備與供應商是否能支持主題成長",
+                        required_evidence=["材料", "設備", "供應商", "原料"],
+                        risk_focus=["材料漲價", "供應受限", "設備交期"],
+                        search_queries=[f"{topic} 材料 設備 供應商 原料", f"{topic} 材料 materials 設備 equipment 供應商 supplier"],
+                        source_intents=["material_supply", "capacity_supply", "company_disclosure"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 風險與外部變數",
+                        rationale="把政策、國際與執行風險先攤開",
+                        objective="評估政策、法規、地緣與市場情緒對主題的影響",
+                        required_evidence=["政策", "法規", "國際", "風險"],
+                        risk_focus=["政策變動", "地緣政治", "外部需求放緩"],
+                        search_queries=[f"{topic} 政策 法規 國際 風險", f"{topic} 政策 policy 法規 regulation 國際 global"],
+                        source_intents=["regulatory_policy", "international_context", "industry_news"],
+                    ),
+                    DiscoverySubtopic(
+                        name=f"{topic} 候選驗證與收斂",
+                        rationale="先用候選驗證把主題落到公司層級",
+                        objective="找出能被新聞、公司文件與財務資料共同驗證的候選公司",
+                        required_evidence=["公司文件", "新聞", "月營收", "財務資料"],
+                        risk_focus=["錯誤歸因", "過度題材化", "證據不足"],
+                        search_queries=[f"{topic} 公司文件 月營收 財務 資料", f"{topic} 公司文件 company disclosure 月營收 revenue 財務 financial"],
+                        source_intents=["company_disclosure", "financial_metrics", "industry_news"],
+                    ),
+                ],
+                candidate_companies=anchor_candidates,
+            )
+        )
+
+    @staticmethod
+    def _generic_anchor_candidates(topic: str) -> list[CandidateCompany]:
+        whitelist = SupplyChainWhitelist()
+        segment_lookup: dict[str, str] = {}
+        for segment in whitelist.segments:
+            for company in segment.companies:
+                segment_lookup[company.ticker] = segment.name
+        all_companies = whitelist.companies()
+        topic_text = topic.lower()
+        scored: list[tuple[int, CandidateCompany]] = []
+        for company in all_companies:
+            segment_name = segment_lookup.get(company.ticker, "探索錨點")
+            haystack = " ".join(
+                [
+                    company.ticker,
+                    company.name,
+                    segment_name,
+                    " ".join(getattr(company, "aliases", []) or []),
+                    " ".join(getattr(company, "evidence_keywords", []) or []),
+                    topic_text,
+                ]
+            ).lower()
+            score = 0
+            for keyword in [topic_text, *re.findall(r"[\u4e00-\u9fff]{2,}|[a-z]{3,}", topic_text)]:
+                if keyword and keyword in haystack:
+                    score += 2
+            score += len(getattr(company, "evidence_keywords", []) or [])
+            scored.append(
+                (
+                    score,
+                    CandidateCompany(
+                        ticker=company.ticker,
+                        name=company.name,
+                        segment=segment_name,
+                        rationale=f"以 {segment_name} 作為未知主題的探索錨點",
+                        evidence_keywords=list(getattr(company, "evidence_keywords", []) or [])[:6]
+                        or [company.name, company.ticker],
+                    ),
+                )
+            )
+        ranked = [candidate for _, candidate in sorted(scored, key=lambda item: (-item[0], item[1].ticker))]
+        if ranked:
+            return ranked[: max(6, min(12, len(ranked)))]
+        return []
+
+    @staticmethod
+    def _memory_fallback_plan(topic: str) -> TopicDiscoveryPlan:
+        return TopicDiscoveryService.enrich_plan(
+            TopicDiscoveryPlan(
+                subtopics=[
+                    DiscoverySubtopic(
+                        name="需求與庫存循環",
+                        rationale="記憶體景氣高度受供需循環影響",
+                        objective="確認 DRAM / NAND 價格、客戶庫存與出貨是否進入補庫存或下行修正循環",
+                        required_evidence=["價格", "庫存", "出貨", "合約價"],
+                        risk_focus=["報價下跌", "庫存調整", "需求轉弱"],
+                        search_queries=[
+                            f"{topic} DRAM NAND 價格 庫存 出貨",
+                            "DRAM NAND price inventory shipment contract price Taiwan memory",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="製程與產能",
+                        rationale="製程世代與產能利用率決定成本與供給",
+                        objective="查核先進製程、產能利用率、投片與良率是否影響記憶體供給",
+                        required_evidence=["製程", "產能利用率", "投片", "良率"],
+                        risk_focus=["產能擴張", "良率問題", "投資延遲"],
+                        search_queries=[
+                            f"{topic} 製程 產能利用率 良率 投片",
+                            f"{topic} memory 製程 產能利用率 良率 投片",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="下游模組與應用",
+                        rationale="模組與系統應用決定終端拉貨力道",
+                        objective="確認模組廠、PC / server / mobile / AI 應用需求是否拉動記憶體採購",
+                        required_evidence=["模組", "拉貨", "訂單", "終端需求"],
+                        risk_focus=["終端需求放緩", "通路去庫存", "訂單遞延"],
+                        search_queries=[
+                            f"{topic} 模組 拉貨 訂單 終端需求",
+                            "memory module demand server pc mobile AI ordering",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="財務與估值",
+                        rationale="記憶體股常受循環與估值雙重驅動",
+                        objective="比較月營收、毛利率、本益比與現金流，避免只因價格循環追高",
+                        required_evidence=["月營收", "毛利率", "本益比", "現金流"],
+                        risk_focus=["估值過高", "獲利回落", "資本支出壓力"],
+                        search_queries=[
+                            f"{topic} 月營收 毛利率 本益比 現金流",
+                            f"{topic} memory 月營收 毛利率 本益比 現金流",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="上游材料與設備",
+                        rationale="材料與設備決定供給擴張速度與成本",
+                        objective="追蹤矽晶圓、特用氣體、光阻、設備與封裝材料是否形成瓶頸或擴產契機",
+                        required_evidence=["矽晶圓", "特用氣體", "光阻", "設備"],
+                        risk_focus=["材料漲價", "設備交期", "擴產延遲"],
+                        search_queries=[
+                            f"{topic} 矽晶圓 特用氣體 光阻 設備",
+                            f"{topic} memory 矽晶圓 特用氣體 光阻 設備",
+                        ],
+                    ),
+                    DiscoverySubtopic(
+                        name="風險與國際競爭",
+                        rationale="記憶體價格與供應受國際大廠與地緣影響很大",
+                        objective="評估韓國、美國與中國供應擴張、出口管制與地緣政治對台廠的影響",
+                        required_evidence=["國際競爭", "出口管制", "供應擴張", "風險"],
+                        risk_focus=["價格戰", "出口管制", "需求轉弱"],
+                        search_queries=[
+                            f"{topic} 國際競爭 出口管制 供應擴張",
+                            f"{topic} memory 國際競爭 出口管制 供應擴張",
+                        ],
+                    ),
+                ],
+                candidate_companies=[
+                    CandidateCompany(
+                        ticker="2408",
+                        name="南亞科",
+                        segment="DRAM 記憶體",
+                        rationale="DRAM 原廠，直接反映記憶體循環",
+                        evidence_keywords=["DRAM", "記憶體", "月營收"],
+                    ),
+                    CandidateCompany(
+                        ticker="2344",
+                        name="華邦電",
+                        segment="DRAM / NOR Flash",
+                        rationale="記憶體產品組合完整，兼具循環與產品組合變化",
+                        evidence_keywords=["DRAM", "NOR Flash", "記憶體"],
+                    ),
+                    CandidateCompany(
+                        ticker="8299",
+                        name="群聯",
+                        segment="NAND 控制晶片 / SSD",
+                        rationale="NAND 與儲存應用需求可驗證終端拉貨與控制晶片景氣",
+                        evidence_keywords=["NAND", "SSD", "控制晶片"],
+                    ),
+                    CandidateCompany(
+                        ticker="2451",
+                        name="創見",
+                        segment="記憶體模組 / 儲存",
+                        rationale="模組與儲存應用可觀察終端需求與庫存循環",
+                        evidence_keywords=["記憶體模組", "SSD", "儲存"],
+                    ),
+                    CandidateCompany(
+                        ticker="3260",
+                        name="威剛",
+                        segment="記憶體模組 / 通路",
+                        rationale="模組通路可驗證拉貨與庫存回補",
+                        evidence_keywords=["記憶體模組", "拉貨", "庫存"],
+                    ),
+                    CandidateCompany(
+                        ticker="4967",
+                        name="十銓",
+                        segment="記憶體模組",
+                        rationale="模組需求與價格循環的中小型觀察點",
+                        evidence_keywords=["記憶體模組", "價格", "終端需求"],
+                    ),
+                    CandidateCompany(
+                        ticker="2337",
+                        name="旺宏",
+                        segment="NOR Flash / 記憶體",
+                        rationale="NOR Flash 與記憶體循環的核心觀察點",
+                        evidence_keywords=["NOR Flash", "記憶體", "月營收"],
+                    ),
+                    CandidateCompany(
+                        ticker="8150",
+                        name="南茂",
+                        segment="記憶體封裝 / 測試",
+                        rationale="記憶體封裝測試與供應鏈景氣觀察點",
+                        evidence_keywords=["記憶體", "封裝", "測試"],
+                    ),
+                ],
+            )
+        )
+
+    @staticmethod
     def _is_robotics_topic(topic: str) -> bool:
         normalized = topic.lower()
         return any(term in normalized for term in ["機器人", "robot", "robotics", "humanoid", "協作機器人"])
+
+    @staticmethod
+    def _is_memory_topic(topic: str) -> bool:
+        normalized = topic.lower()
+        return any(term in normalized for term in ["記憶體", "memory", "dram", "nand", "flash", "ssd"])
+
+    @staticmethod
+    def _is_memory_plan(plan: TopicDiscoveryPlan) -> bool:
+        text = TopicDiscoveryService._plan_search_text(plan)
+        return any(term in text for term in ["記憶體", "memory", "dram", "nand", "flash", "ssd"])
 
     @staticmethod
     def _robotics_fallback_plan(topic: str) -> TopicDiscoveryPlan:
@@ -544,7 +793,7 @@ class TopicDiscoveryService:
                 missing.append(f"{label} 搜尋 query 未對應研究證據或風險：{query}")
 
         coverage = TopicDiscoveryService._plan_theme_coverage(plan)
-        if TopicDiscoveryService._requires_upstream_material_coverage(plan):
+        if TopicDiscoveryService._requires_upstream_material_coverage(plan) and not TopicDiscoveryService._is_generic_exploration_plan(plan):
             coverage["上游材料"] = TopicDiscoveryService._has_upstream_material_coverage(plan)
         for theme, covered in coverage.items():
             if not covered:
@@ -589,6 +838,10 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _requires_broad_candidate_pool(plan: TopicDiscoveryPlan) -> bool:
+        if TopicDiscoveryService._is_generic_exploration_plan(plan):
+            return False
+        if TopicDiscoveryService._is_memory_plan(plan):
+            return False
         if len(plan.subtopics) < 4:
             return False
         text = " ".join(
@@ -613,11 +866,10 @@ class TopicDiscoveryService:
             ]
         ).lower()
         has_ai_theme = any(term in text for term in ["ai", "人工智慧", "伺服器", "server", "資料中心", "datacenter"])
-        has_supply_chain_theme = any(
-            term in text
-            for term in ["cowos", "hbm", "封裝", "散熱", "液冷", "電源", "pcb", "載板", "設備", "供應鏈"]
+        has_robotics_theme = any(
+            term in text for term in ["機器人", "robot", "robotics", "humanoid", "自動化", "servo", "馬達"]
         )
-        return has_ai_theme and has_supply_chain_theme
+        return has_ai_theme or has_robotics_theme
 
     @staticmethod
     def _plan_theme_coverage(plan: TopicDiscoveryPlan) -> dict[str, bool]:
@@ -657,29 +909,65 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _requires_upstream_material_coverage(plan: TopicDiscoveryPlan, topic: str | None = None) -> bool:
+        if TopicDiscoveryService._is_generic_exploration_plan(plan):
+            return False
         text = " ".join([topic or "", TopicDiscoveryService._plan_search_text(plan)]).lower()
-        return any(
-            term in text
-            for term in [
-                "ai 伺服器",
-                "ai伺服器",
-                "資料中心",
-                "半導體",
-                "晶圓",
-                "cowos",
-                "hbm",
-                "pcb",
-                "載板",
-                "機器人",
-                "robot",
-                "robotics",
-                "自動化",
-                "伺服",
-                "馬達",
-                "減速器",
-                "供應鏈",
-            ]
-        )
+        trigger_terms = [
+            "ai 伺服器",
+            "ai伺服器",
+            "資料中心",
+            "cowos",
+            "hbm",
+            "pcb",
+            "載板",
+            "機器人",
+            "robot",
+            "robotics",
+            "自動化",
+            "伺服",
+            "馬達",
+            "減速器",
+        ]
+        if not any(term in text for term in trigger_terms):
+            return False
+        material_terms = [
+            "矽晶圓",
+            "電子級化學品",
+            "特用氣體",
+            "光阻",
+            "cmp",
+            "ccl",
+            "銅箔",
+            "玻纖",
+            "abf",
+            "樹脂",
+            "稀土",
+            "磁材",
+            "電磁鋼",
+            "特殊鋼",
+            "工程塑膠",
+            "碳纖",
+            "複合材料",
+            "鎂鋁合金",
+        ]
+        return any(term in text for term in material_terms) or any(term in text for term in trigger_terms)
+
+    @staticmethod
+    def _is_generic_exploration_plan(plan: TopicDiscoveryPlan) -> bool:
+        if len(plan.subtopics) < 6:
+            return False
+        names = {subtopic.name for subtopic in plan.subtopics}
+        expected_suffixes = {
+            "主題定義與範圍收斂",
+            "需求與成長",
+            "供給與瓶頸",
+            "財務與估值",
+            "上游材料與設備",
+            "風險與外部變數",
+            "候選驗證與收斂",
+        }
+        matched = sum(1 for name in names if any(name.endswith(suffix) for suffix in expected_suffixes))
+        return matched >= 6
 
     @staticmethod
     def _has_upstream_material_coverage(plan: TopicDiscoveryPlan) -> bool:
@@ -766,7 +1054,13 @@ class TopicDiscoveryService:
     def _query_aligns_subtopic(query: str, subtopic: DiscoverySubtopic) -> bool:
         query_text = query.lower()
         terms = TopicDiscoveryService._research_terms(subtopic)
-        return any(term.lower() in query_text for term in terms)
+        if any(term.lower() in query_text for term in terms):
+            return True
+        query_tokens = set(TopicDiscoveryService._meaningful_tokens(query_text))
+        term_tokens = set()
+        for term in terms:
+            term_tokens.update(TopicDiscoveryService._meaningful_tokens(term))
+        return bool(query_tokens & term_tokens)
 
     @staticmethod
     def _research_terms(subtopic: DiscoverySubtopic) -> list[str]:
@@ -1325,14 +1619,20 @@ class TopicDiscoveryService:
         documents: list[NewsDocument],
     ) -> list[ValidatedCandidate]:
         validated: list[ValidatedCandidate] = []
+        relax_context_for_entity_match = self._is_memory_plan(plan)
         for candidate in plan.candidate_companies:
             evidence_documents = []
             entity_terms = self._candidate_entity_terms(candidate)
             context_terms = self._candidate_context_terms(candidate, plan)
             for document in documents:
-                if is_low_quality_investor_forum_document(document):
+                if not is_formal_evidence_document(document):
                     continue
-                if self._document_supports_candidate(document, entity_terms, context_terms):
+                if self._document_supports_candidate(
+                    document,
+                    entity_terms,
+                    context_terms,
+                    relax_context_for_entity_match=relax_context_for_entity_match,
+                ):
                     evidence_documents.append(document)
             deduped_titles = list(dict.fromkeys(document.title for document in evidence_documents))[:5]
             source_count = self._evidence_source_count(evidence_documents)
@@ -1357,6 +1657,9 @@ class TopicDiscoveryService:
                     evidence_sources=evidence_sources,
                     evidence_confidence_score=confidence["score"],
                     evidence_confidence_label=confidence["label"],
+                    source_credibility_score=confidence["source_credibility_score"],
+                    source_credibility_label=confidence["source_credibility_label"],
+                    source_credibility_counts=confidence["source_credibility_counts"],
                     latest_evidence_date=confidence["latest_evidence_date"],
                     evidence_age_days=confidence["evidence_age_days"],
                     evidence_stale=confidence["evidence_stale"],
@@ -1534,20 +1837,42 @@ class TopicDiscoveryService:
         document: NewsDocument,
         entity_terms: list[str],
         context_terms: list[str],
+        relax_context_for_entity_match: bool = False,
     ) -> bool:
         haystack = f"{document.title}\n{document.text}"
+        metadata_match = TopicDiscoveryService._document_entity_metadata_match(document, entity_terms)
+        if metadata_match is False:
+            return False
         owner_ticker = company_filing_owner_ticker(document)
         if owner_ticker:
             ticker_terms = {term for term in entity_terms if term.isdigit()}
             if ticker_terms and owner_ticker not in ticker_terms:
                 return False
-        if not TopicDiscoveryService._has_entity_and_context_nearby(haystack, entity_terms, context_terms):
-            return False
+        if metadata_match is True:
+            normalized = haystack.lower()
+            if context_terms and not TopicDiscoveryService._has_context_term(normalized, context_terms):
+                if not relax_context_for_entity_match:
+                    return False
+        else:
+            if not TopicDiscoveryService._has_entity_and_context_nearby(haystack, entity_terms, context_terms):
+                return False
         if not TopicDiscoveryService._looks_like_unrelated_release_document(document):
             return True
         named_terms = [term for term in entity_terms if term and not term.isdigit()]
         normalized = haystack.lower()
         return any(TopicDiscoveryService._contains_entity_term(normalized, term) for term in named_terms)
+
+    @staticmethod
+    def _document_entity_metadata_match(document: NewsDocument, entity_terms: list[str]) -> bool | None:
+        entity_tickers = {str(ticker) for ticker in document.entity_tickers if str(ticker)}
+        ticker_terms = {str(term) for term in entity_terms if str(term).isdigit()}
+        if not entity_tickers or not ticker_terms:
+            return None
+        return bool(entity_tickers & ticker_terms)
+
+    @staticmethod
+    def _has_context_term(normalized_haystack: str, context_terms: list[str]) -> bool:
+        return any(term and term.lower() in normalized_haystack for term in context_terms)
 
     @staticmethod
     def _term_positions(haystack: str, terms: list[str]) -> list[int]:
@@ -1628,18 +1953,55 @@ class TopicDiscoveryService:
         latest_date = max((document.source.published_at for document in dated_documents), default=None)
         evidence_age_days = (today_taipei() - latest_date).days if latest_date else None
         evidence_stale = evidence_age_days is not None and evidence_age_days > STALE_CANDIDATE_EVIDENCE_DAYS
+        credibility = summarize_source_credibility(documents)
+        credibility_weight = float(credibility["average_weight"] or 0)
         evidence_score = min(evidence_count, 3) / 3 * 35
         source_score = min(source_count, 3) / 3 * 35
         timestamp_score = (len(dated_documents) / evidence_count * 10) if evidence_count else 0
         recency_score = TopicDiscoveryService._recency_score(latest_date)
         score = int(round(evidence_score + source_score + timestamp_score + recency_score))
+        score = TopicDiscoveryService._cap_confidence_by_source_credibility(score, credibility)
         return {
             "score": min(score, 100),
             "label": TopicDiscoveryService._confidence_label(score),
+            "source_credibility_score": int(round(credibility_weight * 100)),
+            "source_credibility_label": TopicDiscoveryService._source_credibility_label(credibility_weight),
+            "source_credibility_counts": credibility["tier_counts"],
             "latest_evidence_date": latest_date.isoformat() if latest_date else None,
             "evidence_age_days": evidence_age_days,
             "evidence_stale": evidence_stale,
         }
+
+    @staticmethod
+    def _cap_confidence_by_source_credibility(score: int, credibility: dict) -> int:
+        high_ratio = credibility.get("high_credibility_ratio")
+        low_ratio = credibility.get("low_credibility_ratio")
+        average_weight = float(credibility.get("average_weight") or 0)
+        high_count = int(credibility.get("high_credibility_count") or 0)
+        low_count = int(credibility.get("low_credibility_count") or 0)
+        if low_count and high_count < 2:
+            return min(score, 74)
+        if low_count and low_ratio and low_ratio >= 0.34:
+            return min(score, 84)
+        if high_ratio == 0 and low_ratio and low_ratio >= 0.5:
+            return min(score, 74)
+        if high_ratio == 0:
+            return min(score, 88)
+        if average_weight < 0.65:
+            return min(score, 74)
+        if average_weight < 0.75:
+            return min(score, 84)
+        return score
+
+    @staticmethod
+    def _source_credibility_label(weight: float) -> str:
+        if weight >= 0.85:
+            return "高"
+        if weight >= 0.65:
+            return "中"
+        if weight > 0:
+            return "低"
+        return "未分級"
 
     @staticmethod
     def _recency_score(latest_date: Optional[date]) -> int:

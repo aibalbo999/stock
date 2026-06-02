@@ -2,19 +2,29 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
+from importlib.util import find_spec
 
+from app.core.config import get_settings
 from app.core.time import now_taipei
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument, ReportRequest, ReportResponse
+from app.rag.reranker import RagReranker
+from app.rag.vector_store import VectorStore
 from app.services.candidate_confidence import format_confidence_score
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignalAnalyzer
+from app.services.llm_client import summarize_llm_attempts
 from app.services.persistence import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
+from app.services.source_quality import summarize_source_credibility
+
+
+STALE_MARKET_SOURCE_MARKER = "cached-stale"
+LATEST_ONLY_MARKET_SOURCE_MARKER = "latest-only"
 
 
 def build_report_quality_gate(
@@ -31,6 +41,20 @@ def build_report_quality_gate(
     leading_signal_count: int | None = None,
     llm_status: dict | None = None,
     company_filing_sufficient_count: int | None = None,
+    market_stale_count: int = 0,
+    monthly_revenue_stale_count: int = 0,
+    financial_metrics_stale_ticker_count: int = 0,
+    valuation_stale_count: int = 0,
+    market_latest_only_count: int = 0,
+    monthly_revenue_latest_only_count: int = 0,
+    financial_metrics_latest_only_ticker_count: int = 0,
+    valuation_latest_only_count: int = 0,
+    rag_status: dict | None = None,
+    market_provider_summary: dict | None = None,
+    market_latest_trade_date: date | str | None = None,
+    market_latest_trade_date_coverage: float | None = None,
+    market_database_latest_trade_date: date | str | None = None,
+    market_older_than_database_latest_count: int = 0,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
@@ -57,6 +81,11 @@ def build_report_quality_gate(
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
+    market_fresh_coverage = max(0, market_count - market_stale_count) / promoted_count if promoted_count else 0
+    monthly_fresh_coverage = (
+        max(0, monthly_revenue_count - monthly_revenue_stale_count) / promoted_count if promoted_count else 0
+    )
+    valuation_fresh_coverage = max(0, valuation_count - valuation_stale_count) / promoted_count if promoted_count else 0
     leading_signal_coverage = leading_signal_count / promoted_count if promoted_count and leading_signal_count is not None else None
     company_filing_coverage = (
         company_filing_sufficient_count / promoted_count
@@ -66,12 +95,53 @@ def build_report_quality_gate(
     llm_status = llm_status or {}
     llm_fallback = bool(llm_status.get("fallback")) if llm_status else None
     source_relevance = source_audit.get("source_relevance") or {}
+    subtopic_readiness = source_relevance.get("subtopic_readiness") or {}
     missing_subtopic_count = int(source_relevance.get("missing_subtopic_count") or 0)
     weak_subtopic_count = int(source_relevance.get("weak_subtopic_count") or 0)
+    adjusted_missing_subtopics = []
+    adjusted_weak_subtopics = []
+    for name, readiness in subtopic_readiness.items():
+        status = str((readiness or {}).get("status") or "")
+        if status not in {"missing", "weak"}:
+            continue
+        lower_name = str(name).lower()
+        is_financial_subtopic = any(term in lower_name for term in ["財務", "估值", "股價", "營收", "現金流"])
+        if is_financial_subtopic and market_count > 0 and monthly_revenue_count > 0 and valuation_count > 0 and financial_metrics_count > 0:
+            continue
+        if status == "missing":
+            adjusted_missing_subtopics.append(name)
+        else:
+            adjusted_weak_subtopics.append(name)
+    if adjusted_missing_subtopics:
+        missing_subtopic_count = len(adjusted_missing_subtopics)
+    if adjusted_weak_subtopics:
+        weak_subtopic_count = len(adjusted_weak_subtopics)
     unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
     timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0) if source_quality else 0
     recent_coverage = float(source_quality.get("recent_coverage") or 0) if source_quality else 0
     source_lookback_days = int(source_quality.get("lookback_days") or 90) if source_quality else 90
+    high_credibility_ratio = source_quality.get("high_credibility_ratio")
+    low_credibility_ratio = source_quality.get("low_credibility_ratio")
+    rag_status = rag_status or {}
+    rag_embedding_status = rag_status.get("embedding_status") or {}
+    rag_reranker_status = rag_status.get("reranker_status") or {}
+    rag_reranker_provider = str(
+        rag_reranker_status.get("normalized_provider") or rag_reranker_status.get("provider") or ""
+    ).lower().replace("-", "_")
+    rag_retrieval_status = rag_status.get("retrieval_status") or {}
+    market_provider_summary = market_provider_summary or {}
+    stale_market_dataset_count = (
+        int(market_stale_count)
+        + int(monthly_revenue_stale_count)
+        + int(financial_metrics_stale_ticker_count)
+        + int(valuation_stale_count)
+    )
+    latest_only_market_dataset_count = (
+        int(market_latest_only_count)
+        + int(monthly_revenue_latest_only_count)
+        + int(financial_metrics_latest_only_ticker_count)
+        + int(valuation_latest_only_count)
+    )
 
     blockers = []
     warnings = []
@@ -108,6 +178,10 @@ def build_report_quality_gate(
             warnings.append("資料來源多樣性偏低")
         if source_count >= 8 and recent_coverage < 0.4:
             warnings.append(f"近 {source_lookback_days} 天來源比例偏低，可能混入過舊產業假設")
+        if high_credibility_ratio is not None and source_count >= 8 and float(high_credibility_ratio) < 0.35:
+            warnings.append("高可信來源比例偏低，正式結論需補官方文件或主流財經新聞")
+        if low_credibility_ratio is not None and source_count >= 8 and float(low_credibility_ratio) > 0.35:
+            warnings.append("投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由")
     if plan_quality:
         plan_status = str(plan_quality.get("status") or "unknown")
         plan_score = int(plan_quality.get("score") or 0)
@@ -123,12 +197,41 @@ def build_report_quality_gate(
         blockers.append("股價資料覆蓋率低於 50%")
     elif promoted_count and market_coverage < 1:
         warnings.append("部分股票缺少最新股價資料")
+    if promoted_count and market_latest_trade_date_coverage is not None and market_latest_trade_date_coverage < 0.8:
+        warnings.append("股價日期不一致，最新可取得交易日未覆蓋多數股票")
+    if promoted_count and market_older_than_database_latest_count:
+        older_ratio = market_older_than_database_latest_count / promoted_count
+        message = "部分股票未取得資料庫最新交易日股價，報告僅能使用最新可取得收盤價"
+        if older_ratio >= 0.5:
+            warnings.append(message)
+        else:
+            observations.append(message)
     if promoted_count and monthly_coverage < 0.5:
         warnings.append("月營收資料覆蓋偏低")
     if promoted_count and financial_metrics_count < promoted_count * 8:
         warnings.append("五年財務資料不足，個股財務判斷信心需下修")
     if promoted_count and valuation_coverage < 0.5:
         warnings.append("估值資料覆蓋偏低")
+    if stale_market_dataset_count:
+        warnings.append("部分市場或財務資料使用快取救援，需刷新確認最新資料")
+        if market_stale_count:
+            observations.append("股價資料含快取救援來源，價格與成交量解讀需以刷新後資料覆核")
+        if monthly_revenue_stale_count:
+            observations.append("月營收資料含快取救援來源，成長率判斷需以最新公告覆核")
+        if financial_metrics_stale_ticker_count:
+            observations.append("五年財務資料含快取救援來源，財務體質結論需以最新財報覆核")
+        if valuation_stale_count:
+            observations.append("估值資料含快取救援來源，目前估值結論需以刷新後資料覆核")
+    if latest_only_market_dataset_count:
+        warnings.append("部分市場或財務資料只使用官方最新救援資料，不能代表完整歷史趨勢")
+        if market_latest_only_count:
+            observations.append("股價資料含官方最新救援來源，動能與區間漲跌需等待完整歷史資料覆核")
+        if monthly_revenue_latest_only_count:
+            observations.append("月營收資料含官方最新救援來源，連續成長趨勢需等待完整月營收歷史覆核")
+        if financial_metrics_latest_only_ticker_count:
+            observations.append("財務資料含官方最新季報救援來源，五年財務趨勢需等待完整歷史財報覆核")
+        if valuation_latest_only_count:
+            observations.append("估值資料含官方最新救援來源，同業估值比較需等待完整估值歷史覆核")
     if promoted_count and leading_signal_coverage is not None:
         if leading_signal_coverage < 0.5:
             warnings.append("近況訊號覆蓋偏低，目前情境升值/降值排序信心需下修")
@@ -140,10 +243,42 @@ def build_report_quality_gate(
         elif company_filing_coverage < 1:
             warnings.append("部分股票缺少高品質公司公開文件")
     if llm_status:
+        llm_attempt_summary = llm_status.get("attempt_summary") or {}
         if llm_fallback:
             warnings.append("LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿")
+        elif llm_attempt_summary.get("success_after_failure"):
+            observations.append("LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察")
         else:
             observations.append("LLM 補充分析已完成，且仍受來源與白名單驗證約束")
+    if rag_status:
+        if rag_status.get("use_chroma") and not rag_status.get("chroma_available"):
+            warnings.append("RAG 向量庫套件不可用，檢索已退回本輪資料與關鍵字排序")
+        if (
+            rag_status.get("use_chroma")
+            and rag_embedding_status.get("custom_embedding_requested")
+            and not rag_embedding_status.get("custom_embedding_enabled")
+        ):
+            if rag_embedding_status.get("chroma_default_fallback_allowed"):
+                warnings.append("RAG 自訂 embedding 未啟用，已退回 Chroma 預設模型，繁中檢索信心需下修")
+            else:
+                warnings.append("RAG 自訂 embedding 未啟用，已停用持久化向量庫並退回關鍵字檢索")
+        if (
+            rag_reranker_status
+            and rag_reranker_provider in {"keyword", "hybrid"}
+        ):
+            warnings.append("RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核")
+        elif (
+            rag_reranker_status
+            and rag_reranker_status.get("keyword_fallback")
+            and not rag_reranker_status.get("model_reranker_ready")
+        ):
+            warnings.append("RAG reranker auto 模式已退回關鍵字排序，模型級重排序尚未可用，來源排序信心需人工覆核")
+        elif (
+            rag_reranker_status
+            and rag_reranker_provider not in {"", "none", "disabled", "off"}
+            and not rag_reranker_status.get("model_reranker_ready", rag_reranker_status.get("available"))
+        ):
+            warnings.append("RAG reranker 未啟用或推論失敗，檢索排序信心需人工覆核")
 
     status = "ready"
     if blockers:
@@ -193,15 +328,92 @@ def build_report_quality_gate(
             "monthly_revenue_coverage": monthly_coverage,
             "financial_metrics_count": financial_metrics_count,
             "valuation_coverage": valuation_coverage,
+            "market_fresh_coverage": market_fresh_coverage,
+            "monthly_revenue_fresh_coverage": monthly_fresh_coverage,
+            "valuation_fresh_coverage": valuation_fresh_coverage,
+            "market_stale_count": market_stale_count,
+            "monthly_revenue_stale_count": monthly_revenue_stale_count,
+            "financial_metrics_stale_ticker_count": financial_metrics_stale_ticker_count,
+            "valuation_stale_count": valuation_stale_count,
+            "stale_market_dataset_count": stale_market_dataset_count,
+            "market_latest_only_count": market_latest_only_count,
+            "monthly_revenue_latest_only_count": monthly_revenue_latest_only_count,
+            "financial_metrics_latest_only_ticker_count": financial_metrics_latest_only_ticker_count,
+            "valuation_latest_only_count": valuation_latest_only_count,
+            "latest_only_market_dataset_count": latest_only_market_dataset_count,
+            "market_latest_trade_date": _date_to_text(market_latest_trade_date),
+            "market_latest_trade_date_coverage": market_latest_trade_date_coverage,
+            "market_database_latest_trade_date": _date_to_text(market_database_latest_trade_date),
+            "market_older_than_database_latest_count": int(market_older_than_database_latest_count or 0),
             "leading_signal_coverage": leading_signal_coverage,
             "company_filing_coverage": company_filing_coverage,
             "llm_analysis_status": "fallback" if llm_fallback else "enabled" if llm_status else None,
             "llm_model": llm_status.get("model"),
             "llm_key_index": llm_status.get("key_index"),
+            "llm_provider": llm_status.get("provider"),
+            "llm_attempt_count": (llm_status.get("attempt_summary") or {}).get("attempt_count"),
+            "llm_failed_attempt_count": (llm_status.get("attempt_summary") or {}).get(
+                "failed_attempt_count"
+            ),
+            "llm_success_after_failure": (llm_status.get("attempt_summary") or {}).get(
+                "success_after_failure"
+            ),
+            "llm_retry_used": (llm_status.get("attempt_summary") or {}).get("retry_used"),
+            "llm_fallback_path_used": (llm_status.get("attempt_summary") or {}).get(
+                "fallback_path_used"
+            ),
+            "llm_provider_fallback_used": (llm_status.get("attempt_summary") or {}).get(
+                "provider_fallback_used"
+            ),
+            "llm_model_fallback_used": (llm_status.get("attempt_summary") or {}).get(
+                "model_fallback_used"
+            ),
+            "llm_final_outcome": (llm_status.get("attempt_summary") or {}).get("final_outcome"),
+            "llm_primary_failure_category": (llm_status.get("attempt_summary") or {}).get(
+                "primary_failure_category"
+            ),
+            "llm_retryable_failure_count": (llm_status.get("attempt_summary") or {}).get(
+                "retryable_failure_count"
+            ),
+            "rag_retrieval_mode": rag_status.get("retrieval_mode"),
+            "rag_retrieval_strategy": rag_retrieval_status.get("strategy"),
+            "rag_hybrid_search_enabled": rag_retrieval_status.get("hybrid_search_enabled"),
+            "rag_bm25_enabled": rag_retrieval_status.get("bm25_enabled"),
+            "rag_keyword_corpus_limit": rag_retrieval_status.get("keyword_corpus_limit"),
+            "rag_vector_weight": rag_retrieval_status.get("vector_weight"),
+            "rag_keyword_weight": rag_retrieval_status.get("keyword_weight"),
+            "rag_rerank_top_k": rag_retrieval_status.get("rerank_top_k"),
+            "rag_use_chroma": rag_status.get("use_chroma"),
+            "rag_chroma_available": rag_status.get("chroma_available"),
+            "rag_persistent_collection_enabled": rag_status.get("persistent_collection_enabled"),
+            "rag_embedding_provider": rag_embedding_status.get("provider"),
+            "rag_embedding_enabled": rag_embedding_status.get("custom_embedding_enabled"),
+            "rag_embedding_fallback_reason": rag_embedding_status.get("fallback_reason"),
+            "rag_reranker_provider": rag_reranker_status.get("provider"),
+            "rag_reranker_execution_mode": rag_reranker_status.get("execution_mode"),
+            "rag_reranker_available": rag_reranker_status.get("available"),
+            "rag_reranker_model_ready": (
+                rag_reranker_status.get("model_reranker_ready")
+                if "model_reranker_ready" in rag_reranker_status
+                else (
+                    None
+                    if rag_reranker_provider in {"", "none", "disabled", "off"}
+                    else bool(rag_reranker_status.get("available"))
+                    and rag_reranker_provider not in {"keyword", "hybrid"}
+                )
+            ),
+            "rag_reranker_quality_tier": rag_reranker_status.get("quality_tier"),
+            "rag_reranker_keyword_fallback": rag_reranker_status.get("keyword_fallback"),
+            "rag_reranker_model_gap": rag_reranker_status.get("model_reranker_gap"),
+            "rag_reranker_fallback_reason": rag_reranker_status.get("fallback_reason"),
+            "market_provider_summary": market_provider_summary,
             "source_unique_publishers": source_quality.get("unique_publisher_count"),
             "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
             "source_recent_coverage": source_quality.get("recent_coverage"),
             "source_lookback_days": source_quality.get("lookback_days"),
+            "source_high_credibility_ratio": source_quality.get("high_credibility_ratio"),
+            "source_low_credibility_ratio": source_quality.get("low_credibility_ratio"),
+            "source_average_credibility": source_quality.get("average_credibility"),
             "discovery_plan_status": plan_quality.get("status") if plan_quality else None,
             "discovery_plan_score": plan_quality.get("score") if plan_quality else None,
         },
@@ -244,6 +456,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
             "補入不同發布者與國際資料源，避免單一媒體或單一市場觀點主導結論。",
         ),
         (
+            ("高可信來源比例偏低", "投資網誌或社群型來源比例偏高"),
+            "優先補官方公告、交易所資料、法說會與主流財經新聞；投資網誌僅作輔助訊號，不可作為配置理由。",
+        ),
+        (
             ("來源比例偏低", "近期資料比例偏低"),
             "補抓最近期間資料，確認產能、訂單、法規與目前估值假設仍然有效。",
         ),
@@ -256,7 +472,7 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
             "針對缺來源或弱來源子題自動補抓資料；補足後重新驗證子題覆蓋，再重跑分析。",
         ),
         (
-            ("股價資料覆蓋率",),
+            ("股價資料覆蓋率", "股價日期不一致", "資料庫最新交易日股價"),
             "刷新股價與市值資料，缺資料股票不得產生買入或加碼建議。",
         ),
         (
@@ -272,6 +488,14 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
             "補齊同業估值、P/E 與 DCF 假設，估值缺口未補齊前只保留觀察結論。",
         ),
         (
+            ("快取救援",),
+            "重新刷新股價、月營收、五年財務與估值資料；快取救援資料只能作暫時參考，不可單獨支撐配置決策。",
+        ),
+        (
+            ("官方最新救援資料",),
+            "補齊完整歷史股價、月營收、五年財務與估值資料；官方最新救援資料只能確認近況，不可推論長期趨勢。",
+        ),
+        (
             ("公司公開文件覆蓋", "高品質公司公開文件"),
             "補抓或人工匯入年報、法說會與官方 IR 文件；未補齊前不得把個股列為可投入資金標的。",
         ),
@@ -282,6 +506,10 @@ def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> lis
         (
             ("LLM 補充分析",),
             "檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。",
+        ),
+        (
+            ("RAG 自訂 embedding", "RAG 向量庫", "RAG reranker"),
+            "檢查 RAG embedding、向量庫與 reranker 設定；恢復後重新產生報告並重新核對來源歸屬。",
         ),
     ]
     for keywords, action in rules:
@@ -315,6 +543,12 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
             "recent_coverage": 0,
             "lookback_days": lookback_days,
             "publisher_sample": [],
+            "average_credibility": None,
+            "high_credibility_count": 0,
+            "low_credibility_count": 0,
+            "high_credibility_ratio": None,
+            "low_credibility_ratio": None,
+            "credibility_tier_counts": {},
         }
     cutoff = now_taipei().date() - timedelta(days=max(1, lookback_days))
     publishers = {
@@ -337,6 +571,19 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
         "recent_coverage": recent_count / total,
         "lookback_days": lookback_days,
         "publisher_sample": sorted(publishers)[:5],
+        **_source_credibility_quality(documents),
+    }
+
+
+def _source_credibility_quality(documents: list[NewsDocument]) -> dict:
+    credibility = summarize_source_credibility(documents)
+    return {
+        "average_credibility": credibility["average_weight"],
+        "high_credibility_count": credibility["high_credibility_count"],
+        "low_credibility_count": credibility["low_credibility_count"],
+        "high_credibility_ratio": credibility["high_credibility_ratio"],
+        "low_credibility_ratio": credibility["low_credibility_ratio"],
+        "credibility_tier_counts": credibility["tier_counts"],
     }
 
 
@@ -348,8 +595,83 @@ def _source_date(value: date | datetime | None) -> date | None:
     return value
 
 
+def _date_to_text(value: date | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def _normalize_publisher(value: str | None) -> str:
     return (value or "").strip()
+
+
+def is_stale_market_data_source(source: object) -> bool:
+    return STALE_MARKET_SOURCE_MARKER in str(source or "").lower()
+
+
+def is_latest_only_market_data_source(source: object) -> bool:
+    return LATEST_ONLY_MARKET_SOURCE_MARKER in str(source or "").lower()
+
+
+def _is_stale_market_data(row: object) -> bool:
+    return is_stale_market_data_source(getattr(row, "source", ""))
+
+
+def _is_latest_only_market_data(row: object) -> bool:
+    return is_latest_only_market_data_source(getattr(row, "source", ""))
+
+
+def _stale_market_data_count(rows: list[object]) -> int:
+    return sum(1 for row in rows if _is_stale_market_data(row))
+
+
+def _stale_financial_metric_ticker_count(metrics: list[object]) -> int:
+    return len({str(getattr(metric, "ticker", "")) for metric in metrics if _is_stale_market_data(metric)})
+
+
+def _latest_only_market_data_count(rows: list[object]) -> int:
+    return sum(1 for row in rows if _is_latest_only_market_data(row))
+
+
+def _latest_only_financial_metric_ticker_count(metrics: list[object]) -> int:
+    return len({str(getattr(metric, "ticker", "")) for metric in metrics if _is_latest_only_market_data(metric)})
+
+
+def market_trade_date_summary(
+    snapshots: list[object],
+    promoted_tickers: list[str],
+    database_latest_trade_date: date | None = None,
+) -> dict:
+    ticker_dates = {
+        str(getattr(snapshot, "ticker", "")): getattr(snapshot, "trade_date", None)
+        for snapshot in snapshots
+        if getattr(snapshot, "ticker", None) and getattr(snapshot, "trade_date", None)
+    }
+    dates = list(ticker_dates.values())
+    if not dates:
+        return {
+            "latest_trade_date": None,
+            "latest_trade_date_coverage": None,
+            "database_latest_trade_date": database_latest_trade_date,
+            "older_than_database_latest_count": 0,
+        }
+    latest_trade_date = max(dates)
+    latest_count = sum(1 for value in dates if value == latest_trade_date)
+    promoted_count = len(promoted_tickers)
+    database_latest_trade_date = database_latest_trade_date or latest_trade_date
+    older_than_database_latest_count = sum(
+        1
+        for ticker in promoted_tickers
+        if ticker_dates.get(ticker) is not None and ticker_dates[ticker] < database_latest_trade_date
+    )
+    return {
+        "latest_trade_date": latest_trade_date,
+        "latest_trade_date_coverage": latest_count / promoted_count if promoted_count else None,
+        "database_latest_trade_date": database_latest_trade_date,
+        "older_than_database_latest_count": older_than_database_latest_count,
+    }
 
 
 def _peer_valuation_summary(valuations) -> dict[str, float | None]:
@@ -385,11 +707,29 @@ def build_quality_gate_for_request(
         "dynamic_queries": {"stored_count": source_count},
     }
     with session_scope() as session:
-        market_count = len(MarketRepository(session).latest_by_tickers(tickers))
-        monthly_revenue_count = len(MonthlyRevenueRepository(session).latest_by_tickers(tickers))
-        financial_metrics_count = len(FinancialMetricRepository(session).by_tickers(tickers))
+        snapshots = MarketRepository(session).latest_by_tickers(tickers)
+        monthly_revenues = MonthlyRevenueRepository(session).latest_by_tickers(tickers)
+        financial_metrics = FinancialMetricRepository(session).by_tickers(tickers)
         valuations = ValuationMetricRepository(session).latest_by_tickers(tickers)
+        market_count = len(snapshots)
+        monthly_revenue_count = len(monthly_revenues)
+        financial_metrics_count = len(financial_metrics)
         valuation_count = len(valuations)
+        market_stale_count = _stale_market_data_count(snapshots)
+        monthly_revenue_stale_count = _stale_market_data_count(monthly_revenues)
+        financial_metrics_stale_ticker_count = _stale_financial_metric_ticker_count(financial_metrics)
+        valuation_stale_count = _stale_market_data_count(valuations)
+        market_latest_only_count = _latest_only_market_data_count(snapshots)
+        monthly_revenue_latest_only_count = _latest_only_market_data_count(monthly_revenues)
+        financial_metrics_latest_only_ticker_count = _latest_only_financial_metric_ticker_count(
+            financial_metrics
+        )
+        valuation_latest_only_count = _latest_only_market_data_count(valuations)
+        market_date_summary = market_trade_date_summary(
+            snapshots,
+            tickers,
+            MarketRepository(session).latest_trade_date(),
+        )
         price_histories = MarketRepository(session).history_by_tickers(tickers, limit=90)
         revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
     valuation_map = {valuation.ticker: valuation for valuation in valuations}
@@ -410,17 +750,140 @@ def build_quality_gate_for_request(
         leading_signal_count=leading_signal_count,
         llm_status=summarize_llm_status(llm_result),
         company_filing_sufficient_count=company_filing_sufficient_count,
+        market_stale_count=market_stale_count,
+        monthly_revenue_stale_count=monthly_revenue_stale_count,
+        financial_metrics_stale_ticker_count=financial_metrics_stale_ticker_count,
+        valuation_stale_count=valuation_stale_count,
+        market_latest_only_count=market_latest_only_count,
+        monthly_revenue_latest_only_count=monthly_revenue_latest_only_count,
+        financial_metrics_latest_only_ticker_count=financial_metrics_latest_only_ticker_count,
+        valuation_latest_only_count=valuation_latest_only_count,
+        rag_status=rag_runtime_status(),
+        market_provider_summary=market_provider_summary(
+            snapshots,
+            monthly_revenues,
+            financial_metrics,
+            valuations,
+        ),
+        market_latest_trade_date=market_date_summary["latest_trade_date"],
+        market_latest_trade_date_coverage=market_date_summary["latest_trade_date_coverage"],
+        market_database_latest_trade_date=market_date_summary["database_latest_trade_date"],
+        market_older_than_database_latest_count=market_date_summary["older_than_database_latest_count"],
     )
 
 
 def summarize_llm_status(llm_result: object | None) -> dict | None:
     if llm_result is None:
         return None
+    attempts = getattr(llm_result, "attempts", ())
     return {
         "fallback": bool(getattr(llm_result, "fallback", False)),
         "model": getattr(llm_result, "model", None),
         "key_index": getattr(llm_result, "key_index", None),
+        "provider": getattr(llm_result, "provider", None),
+        "attempt_summary": summarize_llm_attempts(attempts),
+        "attempts": list(attempts[-10:]) if isinstance(attempts, (tuple, list)) else [],
     }
+
+
+def rag_runtime_status() -> dict:
+    settings = get_settings()
+    embedding_status = VectorStore.runtime_embedding_provider_status(settings)
+    retrieval_status = VectorStore.retrieval_runtime_status(settings)
+    chroma_available = _module_available("chromadb")
+    persistent_collection_enabled = _rag_persistent_collection_enabled(
+        settings,
+        embedding_status,
+        chroma_available,
+    )
+    reranker_status = RagReranker().status()
+    return {
+        "use_chroma": bool(settings.use_chroma),
+        "chroma_available": chroma_available,
+        "persistent_collection_enabled": persistent_collection_enabled,
+        "retrieval_mode": "chroma_hybrid" if persistent_collection_enabled else "memory_hybrid",
+        "retrieval_status": retrieval_status,
+        "embedding_status": embedding_status,
+        "reranker_status": reranker_status,
+    }
+
+
+def _rag_persistent_collection_enabled(settings, embedding_status: dict, chroma_available: bool) -> bool:
+    if not settings.use_chroma:
+        return False
+    if not chroma_available:
+        return False
+    if not embedding_status.get("custom_embedding_requested"):
+        return True
+    if embedding_status.get("custom_embedding_enabled"):
+        return True
+    return bool(settings.rag_allow_chroma_default_embedding_fallback)
+
+
+def _module_available(module_name: str) -> bool:
+    try:
+        return find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def market_provider_summary(
+    snapshots: list[object],
+    monthly_revenues: list[object],
+    financial_metrics: list[object],
+    valuations: list[object],
+) -> dict:
+    return {
+        "price_history": _market_source_summary("股價", snapshots),
+        "monthly_revenue": _market_source_summary("月營收", monthly_revenues),
+        "financial_metrics": _market_source_summary("五年財務", financial_metrics),
+        "valuation": _market_source_summary("估值", valuations),
+    }
+
+
+def _market_source_summary(label: str, rows: list[object]) -> dict:
+    sources = _unique_market_sources(rows)
+    return {
+        "label": label,
+        "row_count": len(rows),
+        "sources": sources,
+        "providers": _market_provider_names(sources),
+        "stale_count": _stale_market_data_count(rows),
+        "latest_only_count": _latest_only_market_data_count(rows),
+    }
+
+
+def _unique_market_sources(rows: list[object]) -> list[str]:
+    sources: list[str] = []
+    for row in rows:
+        source = str(getattr(row, "source", "") or "").strip()
+        if source and source not in sources:
+            sources.append(source)
+    return sources
+
+
+def _market_provider_names(sources: list[str]) -> list[str]:
+    providers: list[str] = []
+    for source in sources:
+        provider = _market_provider_name(source)
+        if provider and provider not in providers:
+            providers.append(provider)
+    return providers
+
+
+def _market_provider_name(source: str) -> str:
+    normalized = source.lower()
+    if "fugle" in normalized:
+        return "Fugle"
+    if "finmind" in normalized:
+        return "FinMind"
+    if "twse openapi" in normalized:
+        return "TWSE OpenAPI"
+    if "tpex openapi" in normalized:
+        return "TPEx OpenAPI"
+    if STALE_MARKET_SOURCE_MARKER in normalized:
+        return "Redis cached-stale"
+    return source.split()[0] if source else ""
 
 
 def render_quality_gate_markdown(quality_gate: dict) -> str:
@@ -445,11 +908,30 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
         f"- 來源發布者數：{_format_optional_int(metrics.get('source_unique_publishers'))}",
         f"- 來源時間戳覆蓋率：{_format_optional_percent(metrics.get('source_timestamp_coverage'))}",
         f"- 近 {int(metrics.get('source_lookback_days') or 90)} 天來源比例：{_format_optional_percent(metrics.get('source_recent_coverage'))}",
+        f"- 高可信來源比例：{_format_optional_percent(metrics.get('source_high_credibility_ratio'))}",
+        f"- 投資網誌/社群型來源比例：{_format_optional_percent(metrics.get('source_low_credibility_ratio'))}",
         f"- 拆解任務品質：{_format_plan_quality(metrics)}",
         f"- 模型補充分析：{_format_llm_status(metrics)}",
+        f"- 資料檢索狀態：{_format_rag_status(metrics)}",
+        f"- 市場資料來源：{_format_market_provider_summary(metrics)}",
         f"- 股價資料覆蓋率：{float(metrics.get('market_coverage') or 0):.0%}",
+        "- 股價最新可取得交易日："
+        f"{metrics.get('market_latest_trade_date') or '尚無'}"
+        f"（同日覆蓋率 {_format_optional_percent(metrics.get('market_latest_trade_date_coverage'))}；"
+        f"資料庫最新交易日 {metrics.get('market_database_latest_trade_date') or '尚無'}；"
+        f"落後資料庫最新日 {int(metrics.get('market_older_than_database_latest_count') or 0)} 檔）",
         f"- 月營收資料覆蓋率：{float(metrics.get('monthly_revenue_coverage') or 0):.0%}",
         f"- 估值資料覆蓋率：{float(metrics.get('valuation_coverage') or 0):.0%}",
+        "- 快取救援資料："
+        f"股價 {int(metrics.get('market_stale_count') or 0)} 檔、"
+        f"月營收 {int(metrics.get('monthly_revenue_stale_count') or 0)} 檔、"
+        f"五年財務 {int(metrics.get('financial_metrics_stale_ticker_count') or 0)} 檔、"
+        f"估值 {int(metrics.get('valuation_stale_count') or 0)} 檔",
+        "- 官方最新救援資料："
+        f"股價 {int(metrics.get('market_latest_only_count') or 0)} 檔、"
+        f"月營收 {int(metrics.get('monthly_revenue_latest_only_count') or 0)} 檔、"
+        f"五年財務 {int(metrics.get('financial_metrics_latest_only_ticker_count') or 0)} 檔、"
+        f"估值 {int(metrics.get('valuation_latest_only_count') or 0)} 檔",
         f"- 近況訊號覆蓋率：{_format_optional_percent(metrics.get('leading_signal_coverage'))}",
         f"- 公司公開文件覆蓋率：{_format_optional_percent(metrics.get('company_filing_coverage'))}",
     ]
@@ -512,10 +994,91 @@ def _format_llm_status(metrics: dict) -> str:
     status = metrics.get("llm_analysis_status")
     if status == "enabled":
         model = metrics.get("llm_model") or "unknown"
-        return f"已啟用（模型：{model}）"
+        provider = metrics.get("llm_provider")
+        provider_text = f"，provider：{provider}" if provider else ""
+        recovery_bits = []
+        if metrics.get("llm_retry_used"):
+            recovery_bits.append("曾重試")
+        if metrics.get("llm_model_fallback_used"):
+            recovery_bits.append("已切換備援模型")
+        elif metrics.get("llm_provider_fallback_used"):
+            recovery_bits.append("已切換備援供應商")
+        recovery_text = f"，{ '、'.join(recovery_bits) }" if recovery_bits else ""
+        return f"已啟用（模型：{model}{provider_text}{recovery_text}）"
     if status == "fallback":
-        return "未啟用或呼叫失敗，已改用資料規則判讀"
+        reason = metrics.get("llm_primary_failure_category")
+        reason_text = f"；主要原因：{reason}" if reason else ""
+        return f"未啟用或呼叫失敗，已改用資料規則判讀{reason_text}"
     return "未評估"
+
+
+def _format_rag_status(metrics: dict) -> str:
+    if metrics.get("rag_retrieval_mode") is None and metrics.get("rag_reranker_execution_mode") is None:
+        return "未評估"
+    retrieval_labels = {
+        "chroma_hybrid": "向量庫 + 關鍵字混合檢索",
+        "memory_hybrid": "本輪資料 + 關鍵字檢索",
+    }
+    reranker_labels = {
+        "keyword": "關鍵字排序 fallback",
+        "cross_encoder": "cross-encoder 重排序",
+        "cohere_api": "Cohere API 重排序",
+        "llm_rerank": "LLM 模型重排序",
+        "input_order": "原排序",
+        "input_order_fallback": "重排序 fallback",
+    }
+    retrieval = retrieval_labels.get(
+        str(metrics.get("rag_retrieval_mode") or ""),
+        str(metrics.get("rag_retrieval_mode") or "未評估"),
+    )
+    reranker = reranker_labels.get(
+        str(metrics.get("rag_reranker_execution_mode") or ""),
+        str(metrics.get("rag_reranker_execution_mode") or "未評估"),
+    )
+    embedding_fallback = metrics.get("rag_embedding_fallback_reason")
+    reranker_fallback = metrics.get("rag_reranker_fallback_reason")
+    reranker_gap = metrics.get("rag_reranker_model_gap")
+    fallback_notes = []
+    if embedding_fallback and embedding_fallback != "chroma_default_requested":
+        fallback_notes.append(f"embedding：{embedding_fallback}")
+    if reranker_fallback:
+        fallback_notes.append(f"reranker：{reranker_fallback}")
+    elif reranker_gap:
+        fallback_notes.append(f"reranker：{reranker_gap}")
+    suffix = "；" + "、".join(fallback_notes) if fallback_notes else ""
+    bm25_note = ""
+    if metrics.get("rag_bm25_enabled") is True:
+        corpus_limit = metrics.get("rag_keyword_corpus_limit")
+        if corpus_limit is not None:
+            bm25_note = f"，BM25 keyword corpus {int(corpus_limit):,} 筆"
+        else:
+            bm25_note = "，BM25 關鍵字檢索啟用"
+    elif metrics.get("rag_hybrid_search_enabled") is False:
+        bm25_note = "，BM25 關鍵字檢索未啟用"
+    return f"{retrieval}，{reranker}{bm25_note}{suffix}"
+
+
+def _format_market_provider_summary(metrics: dict) -> str:
+    summary = metrics.get("market_provider_summary") or {}
+    if not summary:
+        return "未評估"
+    parts = []
+    for key in ("price_history", "monthly_revenue", "financial_metrics", "valuation"):
+        item = summary.get(key) or {}
+        label = item.get("label") or key
+        providers = item.get("providers") or []
+        provider_text = "、".join(str(provider) for provider in providers) if providers else "未入庫"
+        stale_count = int(item.get("stale_count") or 0)
+        latest_only_count = int(item.get("latest_only_count") or 0)
+        notes = []
+        if stale_count:
+            notes.append(f"含快取救援 {stale_count} 筆")
+        if latest_only_count:
+            notes.append(f"含官方最新救援 {latest_only_count} 筆")
+        if notes:
+            provider_text = f"{provider_text}（{'；'.join(notes)}）"
+        parts.append(f"{label} {provider_text}")
+    return "；".join(parts)
 
 
 def _investor_friendly_issue(item: object) -> str:
@@ -526,6 +1089,9 @@ def _investor_friendly_issue(item: object) -> str:
         ),
         "LLM 補充分析已完成，且仍受來源與白名單驗證約束": (
             "模型補充分析已完成，仍只採用可追溯來源與白名單公司"
+        ),
+        "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察": (
+            "模型補充分析已完成，但曾經重試或切換備援模型；模型連線穩定性需持續觀察"
         ),
         "AI 動態資料來源": "自動搜尋資料來源",
         "AI 拆解": "主題拆解",
@@ -594,6 +1160,10 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "market_coverage": _parse_percent(fields.get("股價資料覆蓋率")),
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
+            "market_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "股價"),
+            "monthly_revenue_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "月營收"),
+            "financial_metrics_stale_ticker_count": _parse_stale_metric_count(fields.get("快取救援資料"), "五年財務"),
+            "valuation_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "估值"),
             "leading_signal_coverage": _parse_optional_percent(
                 fields.get("近況訊號覆蓋率") or fields.get("領先訊號覆蓋率")
             ),
@@ -640,6 +1210,13 @@ def _parse_optional_int(value: str | None) -> int | None:
     if not value or value == "未評估":
         return None
     return _parse_int(value)
+
+
+def _parse_stale_metric_count(value: str | None, label: str) -> int:
+    if not value:
+        return 0
+    match = re.search(rf"{re.escape(label)}\s*(\d+)\s*檔", value)
+    return int(match.group(1)) if match else 0
 
 
 def _parse_percent(value: str | None) -> float:

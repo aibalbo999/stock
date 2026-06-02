@@ -20,14 +20,21 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 自動升級策略：快速/標準模式若遇到拆題不足、缺多個子題來源或候選證據嚴重偏低，會自動提高補強輪數與查詢批次，並在 audit 記錄停止原因。
 - 公司公開文件：可手動匯入或依股票自動搜尋年報、法說會、公開說明書與重大訊息線索，並寫入 RAG 與個股資料審計；官方/MOPS/交易所/公司 IR 來源會優先於第三方摘要。
 - 公司文件補抓會回傳每檔股票的官方搜尋計畫，包含 MOPS、交易所、櫃買中心與 PDF/IR 查詢，方便追蹤「系統實際往哪裡找原始文件」。
+- 公司文件抓取支援設定化 User-Agent、Proxy、403/429/5xx 重試、重試時 User-Agent/proxy 身份輪換，以及可選的瀏覽器渲染後援，降低公開文件入口被擋或動態頁面空殼被誤判為公司缺資料的機率；PDF 解析可設定 `auto`、`pdfplumber`、`unstructured` 或 `pypdf`，PDF 與 HTML/IR 網頁都會盡量把財報表格轉成可檢索文字。
 - 個股資料審計會區分必要與建議公司文件；目前必要文件為高品質年報，建議文件為高品質法說/投資人簡報。
 - 前端補充資料頁可直接匯入公司公開文件，也可貼 URL 自動抓取 HTML 或 PDF 文字；匯入後會顯示來源分級與品質分數，並同步寫入 RAG 與公司文件審計。URL 匯入會阻擋 localhost、內網 IP 與非 HTTP(S) 位址，降低 SSRF 風險。
 - URL 匯入還會檢查抓回內容的長度、公司識別與文件類型線索，避免把登入頁、空白頁或一般新聞誤存成公司原始文件。
-- RAG/檢索：新聞文本進向量庫，報告生成時會取回相關證據。
+- RAG/檢索：新聞文本進向量庫，報告生成時會取回相關證據；Chroma 可明確指定 multilingual embedding 模型，向量化時會把標題、來源、公司對應與內文一起送入 embedding，BM25 關鍵字檢索也會納入 entity metadata（股票代號、公司名稱、標題、來源與內文），再與向量檢索做 hybrid search；混合排序會套用來源可信度權重，讓官方/交易所/主流財經來源優先於論壇或投資網誌，降低股票代號、公司名稱、CoWoS 等專有名詞漏抓與公司歸屬錯置風險。每次檢索會保留 retrieval trace，拆出 vector score、BM25 raw/normalized score、來源權重、final score 與 reranker status，方便追查某篇來源為何被送進報告。
+- RAG 來源歸屬：新聞入庫時會把資料庫既有的公司 entity mapping 一併保留到 `NewsDocument` 與 Chroma metadata；向量庫取回後仍能知道來源實際對應哪幾檔股票。報告取證會把本輪目標股票傳入向量檢索，先排除 metadata 已明確對應其他股票的來源，再進入 rerank 與報告排序，降低動態候選或同名公司在後續報告生成時被重新誤判。
+- GraphRAG 輔助脈絡：白名單與 AI 升格候選會被轉成輕量產業鏈關係圖譜，提供上下游檢索 context；`GET /supply-chain/graph?tickers=3324&topic=AI伺服器散熱` 會回傳同一份圖譜導出的 `retrieval_plan`，包含公司鄰居、同業基本面與上下游關係確認查詢。報告生成會使用這份 retrieval plan 擴展 RAG 查詢，但圖譜關係只代表產業分工假設，正式投資理由仍必須有新聞、公司文件、月營收或財報證據支撐。`GET /supply-chain/graph/neo4j` 會輸出 Neo4j Cypher 匯入語句與參數，方便把公司、產業段與上下游/同業關係載入圖資料庫。
+- 市場資料快取：五年財報與估值資料會先查 Redis；五年財報預設快取 31 天，估值預設快取 1 天。Redis 暫時不可用時會自動退回 FinMind 抓取，不阻斷分析流程。
 - 白名單與候選驗證：靜態白名單仍是安全底線；AI 自組候選清單需通過來源驗證後才會升格。
+- 候選升格也會尊重 RAG/資料庫保留的 entity metadata：來源若明確對應其他股票，不得用來支持本候選；來源若已由前段流程標定為本候選，可用 metadata 補足公司實體歸屬，再檢查題材上下文。
+- 來源可信分層：候選驗證會把官方/交易所、主流財經新聞、市場資料、產業研究、投資網誌/自媒體與社群來源分層計權；投資網誌、自媒體、社群或論壇來源只能作為背景雜訊參考，不得進入正式證據池、候選信心分、代表來源、風險/機會歸因 `findings_json` 或配置理由。
 - 弱證據分級：單一文章、單一來源或證據信心低於 75 分只會標成 `weak_evidence`，不會直接進正式分析股票。
-- 品質門檻：報告會檢查 AI 拆解任務完整度、候選證據信心、來源篇數、來源家數、來源時間戳覆蓋、回看區間內來源比例、股價/月營收/財務/估值覆蓋。
+- 品質門檻：報告會檢查 AI 拆解任務完整度、候選證據信心、來源篇數、來源家數、來源時間戳覆蓋、回看區間內來源比例、高可信來源比例、低可信來源比例、RAG embedding / reranker 實際運行狀態，以及股價/月營收/財務/估值覆蓋。
 - 報告可信度檢查：報告會先列出可追溯來源、來源多樣性、來源日期新鮮度、公司層級證據、市場/財務覆蓋與風險/機會歸因，並逐檔標示高/中/低可信度與主要限制。
+- LLM 補充分析來源歸屬：送入模型的證據摘要會標示來源日期、發布者、標題與公司對應；模型回傳的 claim 會再比對 source_id、claim 中公司與該來源實際對應公司，避免把 A 公司新聞寫成 B 公司結論。
 - 風險控制：資料不足時報告自動降級為研究草稿，並限制可投入資金上限。
 - 個股分析：包含商業模式、護城河、產業趨勢、財務健康、估值、情境分析、12-24 個月展望。
 - 前端介面：Streamlit 提供分析、報告、資料、設定頁；報告以 HTML 卡片式閱讀為主。
@@ -39,6 +46,8 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 動態白名單證據回寫：AI 驗證出的候選公司會回寫到新聞 entity mapping，讓後續審計、補資料與重跑能查到同一批公司證據。
 - 個股缺口自動補強：若個股審計發現股價、月營收、五年財報、估值、公司文本或 AI 歸因不足，Follow-up 會自動規劃補資料並重跑。
 - 候選追蹤降噪：正式報告品質與個股資料皆通過時，未升格候選公司改列追蹤更新，並只保留最值得補證據的前 5 檔，不再視為本輪必補資料缺口。
+- Workflow orchestration：長流程會把拆題、資料抓取、候選重驗證、市場資料、報告建置與自動補強等階段寫入 analysis run payload，保留步驟狀態、摘要、耗時、錯誤與 `resume_from_step` 恢復提示。`WORKFLOW_ENGINE` 預設為 `local`；若設定為 `prefect` 且依賴可用，pipeline endpoint 會以 Prefect flow 包裝執行；若設定為 `temporal` 且 Temporal SDK / 連線設定完整，pipeline endpoint 會 start configured workflow 並回傳 workflow/run id；若設定為 `airflow` 且 `AIRFLOW_API_URL` / `AIRFLOW_DAG_ID` 完整，pipeline endpoint 會透過 Airflow REST API 建立 DAG run 並回傳外部 run id。
+- 架構分層：候選重驗證、探索式 pipeline 的候選公司文件重驗證決策與補文件缺口摘要、公司公開文件升降級與 API 匯入/列表 use case、同步報告產生與 run lifecycle use case、報告查詢/候選審計/刪除 use case、新聞/市場/排程/維護資料工具 use case、手動新聞 RAG 匯入 use case、GraphRAG 圖譜查詢 use case、topic discovery API use case、run/task 查詢與非同步報告排隊 use case、補強後保留/排除邏輯、探索式資料抓取/source audit/補抓查詢 workflow、市場資料刷新/快取補缺、一般報告建置、標準報告 pipeline 執行、AI 主題探索 pipeline 執行、報告補強 follow-up 上下文載入/判斷/計畫/執行、workflow checkpoint，以及探索式報告產生、品質門檻與 run payload 組裝已抽離到 service 層；API service wiring 也集中在 `app/api/service_factory.py`，舊測試/腳本相容入口集中到 `app/api/legacy_facade.py`，系統狀態、GraphRAG/供應鏈圖譜、公司公開文件、AI/LLM discovery、pipeline/workflow、資料操作與 run/task、報告與 follow-up endpoint 已拆到 router 模組，controller 只保留薄封裝與 endpoint 編排。
 
 ## 核心安全護欄
 
@@ -62,6 +71,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip setuptools
 pip install -e ".[dev]"
 cp .env.example .env
 ```
@@ -75,24 +85,40 @@ macOS 一鍵啟動：
 也可以在 Finder 直接雙擊 `start_system.command`。它會啟動 API 與 Streamlit，避免重複開相同 port，並在視窗中顯示本機與同網路手機可用網址。
 需要停止背景服務時，雙擊 `stop_system.command`。
 
-啟動 Redis / PostgreSQL：
+啟動 Redis / PostgreSQL / Neo4j / Browserless：
 
 ```bash
-docker compose up -d redis postgres
+docker compose up -d redis postgres neo4j browserless
 ```
 
 預設使用本機 SQLite。若要改用 Docker PostgreSQL，將 `.env` 的 `DATABASE_URL` 改成：
 
 ```bash
 DATABASE_URL=postgresql+psycopg://stock_ai:stock_ai_password@localhost:5432/stock_ai
+DATABASE_INIT_MODE=alembic
 ```
+
+資料庫 schema 變更請使用 Alembic：
+
+```bash
+.venv/bin/alembic upgrade head
+.venv/bin/alembic revision --autogenerate -m "describe change"
+```
+
+`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。本機開發預設保留 `create_all` 作為 SQLite 快速啟動保護；正式部署建議設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、hybrid search、reranker、GraphRAG、API 分層、workflow、Alembic、Redis cache 與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
+若 `DATABASE_URL` 指向 PostgreSQL/MySQL 等非 SQLite 資料庫，系統會拒絕用 `create_all` 啟動，避免正式環境跳過 Alembic 欄位遷移；只有受控的一次性 bootstrap 才應暫時設定 `DATABASE_ALLOW_CREATE_ALL_NON_SQLITE=true`。
+初始 migration 以顯式 `op.create_table` / `op.create_index` 固定 schema 快照，測試會執行 `alembic upgrade head` 並用 autogenerate diff 確認 migration 結果與目前 SQLAlchemy metadata 對齊。
 
 設定 LLM：
 
 ```bash
+LLM_PROVIDER=litellm
 PRIMARY_LLM_MODEL=gemini-3.5-flash
-LOCAL_LLM_MODEL=gemma-4-31b
+LOCAL_LLM_MODEL=gemma-4-31b-it
+LLM_FALLBACK_MODELS=gemini-2.5-flash-lite,gemma-4-31b-it
 GOOGLE_API_KEYS=key1,key2,key3,key4,key5
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 CANDIDATE_CONFIDENCE_HIGH_THRESHOLD=75
 CANDIDATE_CONFIDENCE_MEDIUM_THRESHOLD=45
 LLM_MAX_RETRIES_PER_KEY=2
@@ -100,7 +126,168 @@ LLM_BASE_RETRY_DELAY_SECONDS=0.5
 LLM_MAX_RETRY_DELAY_SECONDS=5.0
 ```
 
+`LLM_PROVIDER=litellm` 會使用 LiteLLM 統一呼叫模型並依 `LLM_FALLBACK_MODELS` 逐一降級；預設 fallback 是 `gemini-2.5-flash-lite,gemma-4-31b-it`，兩者都會使用目前設定的 `GOOGLE_API_KEYS` / `GOOGLE_API_KEY`。若要跨供應商降級，可改成例如 `gemini-2.5-flash-lite,gpt-4o-mini,claude-3-5-haiku,gemma-4-31b-it`；Gemini / Gemma 會使用 `GOOGLE_API_KEYS` 輪調，`gpt-*` / `openai/*` 會使用 `OPENAI_API_KEY`，`claude*` / `anthropic/*` 會使用 `ANTHROPIC_API_KEY`，只有 `ollama/`、`lm_studio/`、`local/` 前綴的模型會被視為不需 API key 的本地/閘道模型。LiteLLM 執行時若某個候選模型缺少對應 API key，會記錄 `missing_api_key` 並跳到下一個模型，不會把缺 key 呼叫包裝成一般 provider failure。`LOCAL_LLM_MODEL` 也會自動併入 LiteLLM 候選模型；這個欄位目前保留相容既有設定，模型是否需要 key 仍由模型名稱判斷。`LLM_PROVIDER=google_genai` 會使用官方 `google-genai` SDK 呼叫 Gemini，SDK 不可用或失敗時仍會退回既有 Gemini HTTP key 輪調，最後才使用規則引擎草稿。`GET /llm/status` 會列出 provider、SDK dependency、fallback models、每個 fallback model 的 key readiness 與各供應商 key 是否設定；`GET /services/status` 的 `upgrade_capability_matrix.ai_rag.llm_sdk_and_fallback` 會把 SDK 可用性與 fallback model key readiness 分開列出，只有至少一個 fallback model 有可用 key，或模型明確為 local/ollama/lm_studio 本地閘道時才標為 ready，避免把「有 SDK」誤認成「已有跨模型降級」。`GET /llm/health` 會回傳 `attempt_summary`，包含嘗試次數、用過的 provider/model、HTTP 狀態、主要失敗類型、可重試失敗數、是否曾重試、是否成功前先失敗，以及是否切換 provider/model 備援；報告品質門檻也會揭露模型是否經由重試或備援模型才完成，方便分辨 rate limit、缺 key、SDK dependency 或上游故障。
+
+設定 RAG embedding 與混合檢索：
+
+```bash
+USE_CHROMA=true
+RAG_EMBEDDING_PROVIDER=sentence_transformers
+RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-large
+# RAG_EMBEDDING_OUTPUT_DIMENSIONALITY=768
+RAG_INDEX_SCHEMA_VERSION=identity-v2
+RAG_ALLOW_CHROMA_DEFAULT_EMBEDDING_FALLBACK=false
+RAG_HYBRID_SEARCH_ENABLED=true
+RAG_VECTOR_WEIGHT=0.60
+RAG_KEYWORD_WEIGHT=0.40
+RAG_RERANK_TOP_K=40
+RAG_CHROMA_QUERY_TIMEOUT_SECONDS=12
+RAG_CHROMA_GET_TIMEOUT_SECONDS=8
+RAG_CHROMA_UPSERT_TIMEOUT_SECONDS=30
+RAG_RERANKER_PROVIDER=auto
+RAG_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+RAG_RERANKER_TEXT_LIMIT=4000
+RAG_RERANKER_TIMEOUT_SECONDS=15
+RAG_LLM_RERANKER_ENABLED=true
+RAG_LLM_RERANKER_MAX_DOCUMENTS=12
+COHERE_API_KEY=
+```
+
+若使用 `sentence_transformers` provider，請安裝 RAG 額外依賴：
+
+```bash
+pip install -e ".[dev,rag]"
+```
+
+沒有安裝 embedding provider 或沒有對應 API key 時，系統預設會停用 Chroma 持久化向量庫，改走記憶體 hybrid keyword fallback，避免繁中檢索品質安靜退回 Chroma 預設模型卻被誤認為已啟用 multilingual embedding。只有明確設定 `RAG_ALLOW_CHROMA_DEFAULT_EMBEDDING_FALLBACK=true` 時，才會允許退回 Chroma 預設 embedding。
+`RAG_EMBEDDING_PROVIDER` 可設為 `sentence_transformers`、`openai`、`google_genai`、`google` 或 `chroma_default`；OpenAI 需設定 `OPENAI_API_KEY`，Google 需設定 `GOOGLE_API_KEY` 或 `GOOGLE_API_KEYS`。`google_genai` 會用官方 `google-genai` SDK 的 `embed_content`，可搭配 `gemini-embedding-001`，也可用 `RAG_EMBEDDING_OUTPUT_DIMENSIONALITY` 指定輸出維度；`google` 保留 Chroma 既有 `GoogleGenerativeAiEmbeddingFunction` 相容路徑。`GET /services/status` 會回傳 `vector_store.embedding_status.custom_embedding_enabled` 與 `fallback_reason`，用來確認是否真的啟用自訂 embedding，而不是安靜退回 Chroma 預設模型。
+Chroma collection 名稱會納入實際 embedding provider、model 與 `RAG_INDEX_SCHEMA_VERSION`；從 Chroma 預設 embedding 切到繁中/多語 embedding，或修改向量化文本格式（例如新增公司對應 identity header）時，會自動使用不同 collection，避免新舊向量索引混用。若未來調整 embedding 文本欄位或 chunk metadata 規格，請同步調高 `RAG_INDEX_SCHEMA_VERSION`，`GET /services/status` 的 `vector_store.retrieval_status.collection_name_example` 可確認目前會寫入哪個 collection。
+`RAG_RERANKER_PROVIDER=auto` 會先嘗試本機 cross-encoder reranker（`bge` / `sentence_transformers`，預設模型 `BAAI/bge-reranker-v2-m3`），若不可用再嘗試 Cohere Rerank；兩者都不可用時，會用既有 LLM SDK/key 對前 `RAG_LLM_RERANKER_MAX_DOCUMENTS` 筆候選做 JSON 排序；LLM reranker 也不可用才退回 hybrid 分數的關鍵字排序 fallback。若要固定本機模型，可設為 `sentence_transformers`、`cross_encoder` 或 `bge`；若要固定 Cohere，可設為 `cohere` 或 `cohere_rerank`，搭配 `RAG_RERANKER_MODEL=rerank-v3.5` 與 `COHERE_API_KEY`；若要固定 LLM reranker，可設為 `llm` 或 `llm_rerank`。`keyword` 仍可作為明確的 lexical fallback，但不會被視為模型級 reranker。Chroma query/get/upsert、模型載入與外部 rerank 都有 timeout；逾時、SDK 缺少、API key 缺少、LLM 回傳不可解析 JSON 或推論失敗時會保留可用排序並退回 keyword，不阻斷報告生成。`GET /services/status` 會回傳 `vector_store.retrieval_status`（hybrid/BM25、中文 n-gram tokenizer、entity metadata 是否納入 embedding/BM25、source credibility weights、keyword corpus limit、權重、rerank top-k 與 timeout 秒數）以及 `vector_store.reranker_status.execution_mode`、`configured_provider`、`resolved_provider`、`auto_candidates`、`quality_tier`、`keyword_fallback`、`model_reranker_ready`、`dependency_available`、`api_key_configured`、`model_available` 與 `fallback_reason`。`upgrade_capability_matrix.ai_rag.reranking` 只有在 cross-encoder、Cohere 或 LLM 這類 learned/API/model reranker 可用時才會標為 `ready`；auto 退回 keyword 時會顯示 `degraded`，避免把 lexical fallback 誤認成模型重排序。
+
+設定 GraphRAG / Neo4j：
+
+```bash
+NEO4J_URI=neo4j://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=stock_ai_neo4j_password
+NEO4J_DATABASE=neo4j
+NEO4J_TIMEOUT_SECONDS=15.0
+NEO4J_STATUS_CHECK_CONNECTION=true
+```
+
+本機可用 `docker compose up -d neo4j` 啟動 Neo4j，或用 `start_system.command` / `.venv/bin/python scripts/start_system.py --start-dependencies` 一次啟動 Redis、Postgres、Neo4j 與 Browserless。一鍵啟動會在本次程序中自動套用 docker-compose 的 Neo4j 預設環境變數（不改寫 `.env`），讓 API/Streamlit 能直接使用本機 GraphRAG 匯入設定。`GET /supply-chain/graph` 會輸出 retrieval hints 與 `retrieval_plan`；`retrieval_plan.evidence_policy` 會明確標示圖譜擴展查詢只作檢索，不得直接當成供應商證據。`GET /supply-chain/graph/neo4j` 會輸出可匯入 Neo4j 的 Cypher statements 與參數；若已設定 `NEO4J_URI` 並安裝 `neo4j` driver，可用 `POST /supply-chain/graph/neo4j/import` 將目前 GraphRAG 節點與 taxonomy edges 寫入 Neo4j。也可不啟動 API，直接用 `.venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json` 檢查匯入 payload；拿掉 `--dry-run` 後會依 `.env` 設定連線匯入 Neo4j。`GET /services/status` 會顯示 GraphRAG retrieval query strategy / evidence policy、`supply_chain_graph.neo4j_import.payload_export_ready`、payload 格式/節點/關係/statement 數、`ready`、driver 是否可用、目標 database、是否執行連線探測、連線錯誤、fallback reason 與本機 docker 預設啟動提示；因此「可產生 Neo4j 匯入 payload」和「外部 Neo4j 連線已就緒」會分開呈現。能力矩陣也分成 `ai_rag.neo4j_payload_export` 與 `ai_rag.neo4j_import`：前者只要可產生 parameterized Cypher payload 就會是 `ready`；後者只有外部 Neo4j URI、driver、帳密與連線探測都可用時才會是 `ready`。未設定 URI 時 `neo4j_import` 會標為 `degraded` 並保留 payload 匯出資訊；設定了 URI 但 Neo4j 沒啟動時會顯示 `connection_failed:neo4j`，不會把尚未連上的外部匯入能力標成 ready。這些邊仍只作為檢索脈絡，不得當成直接供應商證據。
+若 Docker registry 下載 Neo4j image 卡住，也可用 Homebrew 路徑：`brew install neo4j`、`neo4j-admin dbms set-initial-password stock_ai_neo4j_password`、`brew services start neo4j`。啟動後可用 `.venv/bin/python scripts/upgrade_audit.py --strict-external --local-neo4j-defaults --wait-local-neo4j 20 --local-browser-render-defaults` 驗證 live Neo4j import 與本機 Playwright 文件渲染後援是否同時就緒。
+指定股票的 RAG 檢索會套用 target ticker / 公司名稱 / alias 過濾：若文件 metadata 已標成其他公司會被排除；若是舊資料沒有 metadata，必須在標題或內文命中目標代號/名稱/alias 才能進入該股票的檢索候選。報告端重新排序也會再次用 entity mapper 排除「被辨識為別家公司」的文件，降低南亞/南亞科、台達電/光寶科這類張冠李戴風險。
+
+設定市場資料快取：
+
+```bash
+MARKET_DATA_CACHE_ENABLED=true
+PRICE_HISTORY_CACHE_TTL_SECONDS=86400
+MONTHLY_REVENUE_CACHE_TTL_SECONDS=604800
+FINANCIAL_METRICS_CACHE_TTL_SECONDS=2678400
+VALUATION_METRICS_CACHE_TTL_SECONDS=86400
+MARKET_PRICE_PROVIDER_ORDER=finmind,fugle
+FINMIND_PUBLIC_FALLBACK_ENABLED=true
+FINMIND_MAX_RETRIES=2
+FINMIND_BASE_RETRY_DELAY_SECONDS=0.5
+FINMIND_MAX_RETRY_DELAY_SECONDS=5.0
+FINMIND_TIMEOUT_SECONDS=20.0
+FINMIND_CONNECT_TIMEOUT_SECONDS=8.0
+FINMIND_CONCURRENCY=5
+FUGLE_MAX_RETRIES=2
+FUGLE_BASE_RETRY_DELAY_SECONDS=0.5
+FUGLE_MAX_RETRY_DELAY_SECONDS=5.0
+FUGLE_TIMEOUT_SECONDS=20.0
+FUGLE_CONNECT_TIMEOUT_SECONDS=8.0
+```
+
+股價歷史、月營收、五年財報與估值快取預設使用 `REDIS_URL`。Redis 無法連線時，系統會略過快取並直接呼叫資料來源；股價歷史會依 `MARKET_PRICE_PROVIDER_ORDER` 嘗試 FinMind 與 Fugle historical candles。`FINMIND_TOKEN` 有設定時會走授權來源；未設定但 `FINMIND_PUBLIC_FALLBACK_ENABLED=true` 時會明確標示為 FinMind public/limited 模式繼續抓資料，避免把「沒有 token」誤判成完全沒有財務資料能力。正式部署若不想依賴 public quota，可設定 `FINMIND_PUBLIC_FALLBACK_ENABLED=false`，此時沒有 token 會直接改走官方最新資料救援或 stale cache。若 FinMind timeout、429/5xx 或傳輸失敗且 `FUGLE_API_KEY` 已設定，會自動改用 Fugle 補股價資料。若 Fugle historical candles 回傳空資料或暫時失敗，系統會再嘗試 Fugle historical stats 補最新交易日快照，但不會把它偽裝成完整歷史 K 線。
+
+若 `MARKET_OFFICIAL_OPENAPI_FALLBACK_ENABLED=true`，FinMind/Fugle 失敗或回傳空資料時，系統會再嘗試 TWSE/TPEx 官方 OpenAPI 補「最新」資料：上市/上櫃最新交易日股價快照、最新月營收、最新一季損益表與資產負債表、最新日 P/E / P/B / 殖利率。這個 fallback 會標示來源如 `TWSE OpenAPI STOCK_DAY_ALL; latest-only` 或 `TPEx OpenAPI mopsfin_t187ap05_O; latest-only`，且只作最新資料救援，不會被包裝成完整五年歷史財務或完整 K 線。FinMind/Fugle 呼叫遇到 429/5xx、timeout 或網路傳輸錯誤時會依各自的 retry 設定與 `Retry-After` / 指數退避重試。若即時資料來源重試後仍失敗或回傳空資料，但 Redis 仍有同股票、同資料集的其他日期區間快取，系統會以 `cached-stale` 標示後暫時救援，避免報告把外部 API 斷線誤判成公司資料不足。報告品質門檻會把 `cached-stale` 列為快取救援資料、把 `latest-only` 列為官方最新救援資料，並降為謹慎判讀；個股估值也不會用 stale 估值直接判定「目前低估」；自動補強會把 stale metrics 轉成刷新任務，若刷新後仍只取得 stale 資料，該任務不會被視為完成。`GET /services/status` 會回傳 `finmind.mode`、`finmind.public_fallback_enabled`、`finmind.data_access_ready`、`fugle`、`market_data_cache.price_provider_order`、`market_data_cache.official_openapi_fallback_enabled`、`market_data_cache.latest_only_source_marker` 與 `market_data_cache.provider_matrix`，方便確認各資料集是授權 FinMind、public/limited FinMind、多來源 fallback，還是官方最新資料救援；`upgrade_capability_matrix.data_business_logic.market_data_provider_fallback` 會把 public/limited FinMind 視為可運作但附上 warning，若正式部署要求授權來源，請同時設定 `FINMIND_TOKEN` 與 `FUGLE_API_KEY`。市場刷新結果也會回傳實際寫入資料的 `sources`，報告品質門檻會列出股價、月營收、五年財務與估值實際入庫來源，避免混合來源時仍顯示成單一 FinMind。
+
+設定公司公開文件抓取：
+
+```bash
+COMPANY_FILING_USER_AGENTS=
+COMPANY_FILING_PROXY_URLS=
+COMPANY_FILING_HTTP_RETRIES=1
+COMPANY_FILING_BASE_RETRY_DELAY_SECONDS=0.5
+COMPANY_FILING_MAX_RETRY_DELAY_SECONDS=5.0
+COMPANY_FILING_PDF_PARSER=auto
+COMPANY_FILING_PDF_EXTRACT_TABLES=true
+COMPANY_FILING_HTML_EXTRACT_TABLES=true
+COMPANY_FILING_CACHE_ENABLED=true
+COMPANY_FILING_CACHE_TTL_SECONDS=604800
+COMPANY_FILING_BROWSER_RENDER_ENABLED=false
+COMPANY_FILING_BROWSER_RENDER_URL=
+COMPANY_FILING_BROWSER_RENDER_TOKEN=
+COMPANY_FILING_BROWSER_RENDER_TIMEOUT_SECONDS=30
+COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=false
+COMPANY_FILING_PLAYWRIGHT_BROWSER=chromium
+COMPANY_FILING_PLAYWRIGHT_WAIT_UNTIL=networkidle
+COMPANY_FILING_PLAYWRIGHT_TIMEOUT_SECONDS=30
+```
+
+`COMPANY_FILING_USER_AGENTS` 與 `COMPANY_FILING_PROXY_URLS` 可用逗號或換行設定多組值；系統會依 URL 穩定選用身份與代理，並在 403/429/5xx 重試時往下一組 User-Agent/proxy 偏移，避免同一個被擋身份反覆撞同一入口。若沒有自訂 `COMPANY_FILING_USER_AGENTS`，系統會使用內建 browser-like User-Agent 池，避免公開文件請求以空白或 Python 預設身份送出；`GET /services/status` 會列出 `effective_user_agent_count`、`user_agent_mode`、`user_agent_retry_rotation_enabled`、`proxy_retry_rotation_enabled` 與 `browser_or_proxy_fallback_configured`，方便分辨目前是只有 UA 偽裝，還是已配置 proxy / Browserless / Playwright 後援。公司文件抓取遇到 403/429/5xx 會依 `COMPANY_FILING_HTTP_RETRIES` 與 `Retry-After` / 指數退避重試。
+公司文件抓取錯誤會保留原始 `error`，並額外附上 `category`、`retryable` 與 `stage`。例如 `rate_limited`、`timeout`、`blocked_or_placeholder`、`pdf_no_text`、`company_mismatch`、`document_type_mismatch`、`website_not_found`。自動補強會把這些欄位彙整到每檔公司的 `error_category_counts`、`retryable_error_count` 與 `next_actions`，用來分辨要重試、改走 Browserless/Proxy、安裝 PDF parser、要求 OCR/人工匯入，或只是公司/文件類型不匹配，避免把爬蟲或 PDF 解析失敗誤寫成公司沒有公開文件。
+`COMPANY_FILING_PDF_PARSER=auto` 會優先嘗試表格解析能力較好的 `pdfplumber` / `unstructured`，若未安裝或解析失敗再回到 `pypdf`；其中 `pdfplumber` 已列入基礎依賴，讓一般安裝就具備 PDF 表格抽取能力。解析後文字會加入 `[PDF 解析資訊]` 標記，記錄實際 parser、auto/configured 模式與是否抽取表格。HTML/IR 網頁若含財務表格，`COMPANY_FILING_HTML_EXTRACT_TABLES=true` 會額外加入 `[HTML 表格抽取]` 區塊，把表格列欄保留下來供 RAG 檢索。若要再啟用 `unstructured[pdf]` 進階 parser，可安裝：
+
+```bash
+pip install -e ".[dev,pdf]"
+```
+
+公司公開文件 URL 匯入會把已解析完成的 HTML/PDF 文字快取到 Redis，預設保留 7 天；cache key 會依 URL、PDF parser、PDF 表格抽取與 HTML 表格抽取設定分開，避免切換解析器後誤用舊文本。若 Redis 暫時不可用，系統會自動退回即時抓取；`GET /services/status` 會顯示 `company_filings.cache_available`、`cache_backend`、`cache_key_namespace` 與 `cache_key_scope`，方便確認資料補抓快取是否真的可用。
+若 `COMPANY_FILING_BROWSER_RENDER_ENABLED=true` 且 `COMPANY_FILING_BROWSER_RENDER_URL` 有設定，系統在直接抓取失敗、內容太短、疑似登入/反爬蟲頁或公司/文件類型驗證失敗時，會改呼叫瀏覽器渲染服務再解析一次。渲染 URL 若含 `{url}` 會用 GET 並將目標網址百分比編碼帶入；否則會以 POST JSON `{"url": "...", "waitUntil": "networkidle0"}` 呼叫，`COMPANY_FILING_BROWSER_RENDER_TOKEN` 會以 Bearer token 傳送。`docker-compose.yml` 內建 Browserless Chromium，`.venv/bin/python scripts/start_system.py --start-dependencies` 會啟動 Browserless 3000 port 並在本次程序中套用 `COMPANY_FILING_BROWSER_RENDER_URL=http://127.0.0.1:3000/content?token=...`；`GET /services/status` 會實際檢查 Browserless URL host/port 是否連得上，只有 endpoint reachable 才把 Browserless 後援列為已配置，避免只填了 URL 就誤判為正式可用。若不想架 Browserless，也可以安裝 `pip install -e ".[dev,browser]"` 後執行 `python -m playwright install chromium`，再設定 `COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true`，讓本機 Playwright 在直接抓取失敗時渲染 IR/公開文件頁；`GET /services/status` 會顯示 `playwright_render_dependency_available`、`playwright_render_browser_available`、`playwright_render_runtime` 與 `playwright_render_configured`，且必須套件與指定瀏覽器 binary 都可用才會把 Playwright 後援列為已配置。若已安裝 browser extra 且瀏覽器 binary 存在，一鍵啟動在未配置 Browserless/Proxy 時也可臨時套用 `COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true`；不改寫 `.env`。
+
+設定工作流引擎：
+
+```bash
+WORKFLOW_ENGINE=local
+WORKFLOW_LOCAL_FALLBACK_ENABLED=true
+PREFECT_API_URL=
+TEMPORAL_ADDRESS=localhost:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=stock-analysis
+TEMPORAL_WORKFLOW_NAME=StockAnalysisPipeline
+TEMPORAL_UI_URL=
+TEMPORAL_TIMEOUT_SECONDS=15.0
+AIRFLOW_API_URL=
+AIRFLOW_DAG_ID=stock_analysis_pipeline
+AIRFLOW_API_TOKEN=
+AIRFLOW_USERNAME=
+AIRFLOW_PASSWORD=
+AIRFLOW_TIMEOUT_SECONDS=15.0
+```
+
+`local` 會使用 analysis run payload 內的 workflow checkpoint。若切換為 `prefect`、`temporal` 或 `airflow`，`GET /services/status` 會顯示 `workflow_orchestration.ready`、缺少的套件或設定；`POST /pipeline/run` 與 `POST /pipeline/run_discovered` 會先經過 workflow runner。Prefect 依賴可用時會以 flow 包裝執行並在回傳中標示 `workflow_orchestration.executed_engine=prefect`；Temporal 設定完整時會以 `TEMPORAL_WORKFLOW_NAME` start workflow，把 `operation`、原始 request 或 resume `run_id` 傳給 worker，並回傳 `workflow_orchestration.external_run_id` / `external_url`；Airflow 設定完整時會呼叫 `POST /api/v1/dags/{AIRFLOW_DAG_ID}/dagRuns`，把同樣的 dispatch payload 放入 DAG run `conf`，並回傳外部 run id 供 UI 追蹤；外部 engine 未就緒時，開發環境預設會明確標示 `local_checkpoint_fallback`，不假裝已外部派發。正式環境可設 `WORKFLOW_LOCAL_FALLBACK_ENABLED=false`，讓 pipeline 在外部工作流不可用時直接回報 503，避免補強/重跑流程看似成功但實際未由指定引擎接管。pipeline 完成後會把 `workflow_orchestration` metadata 合併寫回對應 analysis run payload，因此 `GET /runs`、`GET /runs/{id}` 與 linked task run 會額外回傳 `workflow_orchestration` 與 `workflow_summary`；`workflow_summary` 包含完成比例、失敗/執行中/待處理步驟數、`resume_from_step` 與可讀的 `resume_hint`，讓前端不用解析整包 payload 也能顯示斷點續跑狀態。標準報告 workflow 可透過 `POST /pipeline/runs/{run_id}/resume` 以同一個 run id 從 `workflow_summary.resume_from_step` 續跑；若 `pre_report_refresh` 已完成，續跑會重用 checkpoint 中的已抓資料摘要，從 `report_build` 或 `auto_follow_up` 接續。探索式主題 workflow 會把 topic discovery、source ingestion、candidate revalidation 與 market data refresh 的 stage artifacts 寫回 checkpoint；若 `topic_discovery` 失敗，會使用同一個 run 的原始主題重新拆題並接續後續流程；若 `source_ingestion` 失敗，會沿用已保存的拆題結果與抓取設定繼續抓資料；若 `candidate_revalidation`、`market_data_refresh` 或 `report_build` 失敗，可用已保存的新聞文件、候選名單、來源審計與市場資料接續重建報告；若後續 `auto_follow_up` 失敗，可透過 `POST /pipeline/discovered-runs/{run_id}/resume` 從同一份已產出的報告接續補強流程。缺少必要 stage artifacts 時仍會明確拒絕續跑，避免用不完整資料重建報告。
+
+外部 Airflow/Temporal worker 收到 dispatch payload 後，應呼叫 `POST /pipeline/worker/execute`，把 `operation`、`request` 或 `run_id` 原樣傳入。這個 endpoint 會直接執行本機 pipeline 並標示 `workflow_orchestration.mode=external_worker_local_execution`，不會再經過 workflow runner，避免 worker 回打一般 pipeline endpoint 時重新派發到外部引擎造成遞迴。
+
 啟動 API：
+
+一鍵啟動 API、Streamlit 與本機依賴服務：
+
+```bash
+.venv/bin/python scripts/start_system.py --open-browser --start-dependencies
+```
+
+若第一次啟動時本機尚未有 Neo4j / Browserless image，一鍵啟動會先停在 `需下載` 並提示 `docker compose pull neo4j browserless`，避免安靜卡在 Docker pull。確認網路與 Docker Desktop 正常後，可先手動 pull，或改用 `.venv/bin/python scripts/start_system.py --start-dependencies --pull-missing-dependencies` 允許啟動流程自動下載；自動下載會先逐一 pull 缺少的 service image，再重新檢查 image 是否存在，若 Docker Desktop 網路或 registry 逾時，訊息會指出卡在哪一個 service。若 Browserless 尚未就緒但本機 Playwright 套件與 Chromium binary 已安裝，一鍵啟動會在本次程序把公司文件渲染後援切到 Playwright，不必等待 Browserless image 完成下載。
+
+升級目標稽核：
+
+```bash
+.venv/bin/python scripts/upgrade_audit.py
+.venv/bin/python scripts/upgrade_audit.py --json
+.venv/bin/python scripts/upgrade_audit.py --strict-external
+.venv/bin/python scripts/upgrade_audit.py --strict-external --local-neo4j-defaults --wait-local-neo4j 20
+```
+
+`upgrade_audit.py` 會讀取 `GET /services/status` 同源的能力矩陣，逐項檢查 multilingual embedding、LLM SDK/fallback、hybrid search、reranking、GraphRAG/Neo4j payload、API 分層、workflow、Alembic、Redis cache、市場資料 fallback、公司文件反爬蟲/表格解析、PDF 表格 parser runtime 與來源可信度分層。預設會把 live Neo4j import、PDF 表格 parser runtime、Browserless/Proxy/Playwright 後援視為外部部署選項，因此未設定 `NEO4J_URI` 或未安裝 `pdfplumber` / `unstructured[pdf]` 只列 warning；若正式部署要求這些外部能力，請加 `--strict-external`，此時外部整合未就緒會讓稽核失敗。
+本機 Docker 開發時，可加 `--local-neo4j-defaults` 暫時套用 docker-compose 的 Neo4j URI/帳密到這次稽核程序，並用 `--wait-local-neo4j 20` 等待 `localhost:7687`；若也要驗證 Browserless，可加 `--wait-local-browserless 20 --local-browser-render-defaults` 等待 `localhost:3000` 後臨時套用本機瀏覽器渲染 URL。若不想觸發下載，只想確認本機是否已有必要 image，可加 `--check-local-docker-images`，稽核會回傳 `local_docker_images`，列出 `neo4j:5-community` 與 `ghcr.io/browserless/chromium:latest` 是否已存在。這些設定都不會改寫 `.env`，也不會在 JSON 中輸出密碼值。
+同一份稽核也可透過 API 查詢：`GET /services/upgrade-audit` 回傳預設稽核，`GET /services/upgrade-audit?strict_external=true` 會把外部 Neo4j 匯入連線納入必備項目，適合作為部署前檢查。
+一鍵啟動會使用同一套稽核輸出 preflight 摘要；若要把外部整合也列為必須通過，可執行 `.venv/bin/python scripts/start_system.py --start-dependencies --strict-upgrade-check`。搭配 `--start-dependencies` 時，啟動程式會先等本機 Neo4j 7687 與 Browserless 3000 連線埠短暫就緒再跑稽核，降低 Docker 剛啟動時的誤判。
+若 Neo4j 或 Browserless image 下載較慢，或服務尚未完成啟動，一鍵啟動會在結果中標示 `Neo4j 7687：尚未就緒` / `Browserless 3000：尚未就緒`，並提示用 `docker compose ps`、`docker compose logs neo4j`、`docker compose logs browserless` 或 `docker compose pull neo4j browserless` 查明是下載、啟動還是連線問題。
 
 ```bash
 .venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000
@@ -124,7 +311,12 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 ## 常用 API
 
 - `GET /health`
+- `GET /db/status`
 - `GET /services/status`
+- `GET /services/upgrade-audit`
+- `GET /supply-chain/graph`
+- `GET /supply-chain/graph/neo4j`
+- `POST /supply-chain/graph/neo4j/import`
 - `GET /whitelist`
 - `GET /news`
 - `POST /news/fetch`
@@ -137,6 +329,9 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 - `POST /discovery/ingest`
 - `POST /discovery/candidate-whitelist`
 - `POST /pipeline/run`
+- `POST /pipeline/worker/execute`：外部 Airflow/Temporal worker 用 dispatch payload 執行本機 pipeline，避免二次派發
+- `POST /pipeline/runs/{run_id}/resume`
+- `POST /pipeline/discovered-runs/{run_id}/resume`
 - `POST /pipeline/run_discovered`
 - `POST /reports/generate`
 - `POST /reports/generate_async`
@@ -151,6 +346,17 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 - `GET /schedule`
 - `PUT /schedule`
 - `POST /maintenance/cleanup`
+
+## 升級稽核
+
+部署前建議執行：
+
+```bash
+.venv/bin/python scripts/upgrade_audit.py --json
+```
+
+核心檢查失敗時 CLI 會回傳非 0 exit code；只有外部選配能力（目前為 live Neo4j import，以及公司文件 Proxy / Browserless / Playwright 後援）未設定時，預設回傳 0 但標示 `caution`。CLI、API 與維護頁會同時顯示 `implementation`（核心升級）與 `deployment`（外部整合）狀態，因此可分辨是分析/RAG/資料邏輯尚未就緒，還是 Neo4j、瀏覽器渲染或代理這類正式部署服務尚未啟動。搭配 `--strict-external` 可把外部整合也列為必須通過。
+本機部署檢查可加上 `.venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --wait-local-neo4j 20 --wait-local-browserless 20 --local-browser-render-defaults --json`，在不改 `.env` 的情況下套用 docker-compose Neo4j 預設值；若本機 Browserless 3000 已啟動或在等待時間內就緒，會優先套用 Browserless URL，否則只有在 Playwright 套件與指定瀏覽器 binary 都可用時，才會啟用公司文件本機瀏覽器後援。
 
 ## 自動補強邏輯
 
@@ -214,7 +420,7 @@ LLM_MAX_RETRY_DELAY_SECONDS=5.0
 
 ## 後續擴充
 
-- 加入 Alembic migrations 取代 `create_all`。
-- 將更多財務資料來源接入 Fugle/FinMind 付費或授權 API。
+- 以 `GET /services/status` 的 `upgrade_capability_matrix` 作為部署前檢查清單，優先處理標為 `degraded` 或 `not_configured` 的能力，例如未安裝 embedding/reranker 依賴、Redis 未連線、Neo4j 未設定或本機資料庫尚未 stamp/upgrade 到 Alembic head。
+- 逐步將正式部署預設改為 `DATABASE_INIT_MODE=alembic`，並為既有 SQLite / PostgreSQL 環境提供 migration stamp 腳本。
 - 擴充主題無關的台股公司 universe，讓 AI 能在不同主題下建立候選清單。
 - 加入報告版本比較、回測與投資組合追蹤。

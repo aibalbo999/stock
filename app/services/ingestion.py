@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 import json
 from datetime import date, timedelta
 
@@ -11,7 +12,9 @@ from app.data_sources.company_filings import (
     RECOMMENDED_DOCUMENT_TYPES,
     REQUIRED_CORE_DOCUMENT_TYPES,
     CompanyFilingFetcher,
+    categorize_company_filing_error,
     is_high_quality_company_filing,
+    is_retryable_company_filing_error_category,
 )
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
@@ -28,6 +31,8 @@ from app.services.persistence import (
     NewsRepository,
     ValuationMetricRepository,
 )
+from app.services.report_quality import is_stale_market_data_source
+from app.services.source_quality import is_low_quality_investor_forum_document
 
 
 class IngestionPipeline:
@@ -172,17 +177,49 @@ class IngestionPipeline:
         fetcher = NewsFetcher()
         documents = []
         errors = []
-        query_results = []
+        query_results = [{"query": query, "count": 0, "errors": []} for query in queries]
         seen_urls: set[str] = set()
-        for query in queries:
+        search_timeout = 10
+        fetch_timeout = 8
+        fetch_semaphore = asyncio.Semaphore(12)
+
+        async def search_query(index: int, query: str) -> tuple[int, str, list[dict], str | None]:
             try:
-                search_results = await CompanyFilingFetcher._duckduckgo_search(query, limit_per_query)
+                search_results = await asyncio.wait_for(
+                    CompanyFilingFetcher._duckduckgo_search(query, limit_per_query),
+                    timeout=search_timeout,
+                )
             except Exception as exc:
-                errors.append({"source": query, "error": str(exc) or exc.__class__.__name__})
-                query_results.append({"query": query, "count": 0, "errors": [str(exc) or exc.__class__.__name__]})
+                return index, query, [], str(exc) or exc.__class__.__name__
+            return index, query, search_results, None
+
+        async def fetch_result(index: int, result: dict, preview: object) -> tuple[int, object | None, dict | None]:
+            url = result.get("url") or ""
+            async with fetch_semaphore:
+                try:
+                    document = await asyncio.wait_for(
+                        fetcher.fetch_url(url, publisher=result.get("publisher") or "web search"),
+                        timeout=fetch_timeout,
+                    )
+                except Exception as exc:
+                    error = {"source": url, "error": str(exc) or exc.__class__.__name__}
+                    document = preview
+                else:
+                    error = None
+            if not self._matches_target_terms(document, target_terms):
+                return index, None, error
+            return index, document, error
+
+        search_payloads = await asyncio.gather(
+            *(search_query(index, query) for index, query in enumerate(queries))
+        )
+        fetch_tasks = []
+        for index, query, search_results, search_error in search_payloads:
+            if search_error:
+                error = {"source": query, "error": search_error}
+                errors.append(error)
+                query_results[index]["errors"].append(search_error)
                 continue
-            stored_for_query = 0
-            query_errors = []
             for result in search_results:
                 url = result.get("url") or ""
                 if not url or url in seen_urls:
@@ -196,17 +233,16 @@ class IngestionPipeline:
                 )
                 if not self._matches_target_terms(preview, target_terms):
                     continue
-                try:
-                    document = await fetcher.fetch_url(url, publisher=result.get("publisher") or "web search")
-                except Exception as exc:
-                    query_errors.append({"source": url, "error": str(exc) or exc.__class__.__name__})
-                    document = preview
-                if not self._matches_target_terms(document, target_terms):
-                    continue
-                documents.append(document)
-                stored_for_query += 1
-            query_results.append({"query": query, "count": stored_for_query, "errors": query_errors})
-            errors.extend(query_errors)
+                fetch_tasks.append(fetch_result(index, result, preview))
+
+        for index, document, error in await asyncio.gather(*fetch_tasks):
+            if error:
+                errors.append(error)
+                query_results[index]["errors"].append(error)
+            if document is None:
+                continue
+            documents.append(document)
+            query_results[index]["count"] += 1
 
         documents = self._filter_documents(
             self._dedupe_documents(documents),
@@ -314,6 +350,7 @@ class IngestionPipeline:
             allowed,
             start_date,
             end_date,
+            force_refresh=True,
         )
         all_snapshots = [snapshot for history in histories.values() for snapshot in history]
         latest_snapshots = [
@@ -321,14 +358,17 @@ class IngestionPipeline:
             for history in histories.values()
             if history
         ]
+        sources = self._market_sources(all_snapshots)
         with session_scope() as session:
             MarketRepository(session).upsert_snapshots(all_snapshots)
         return {
             "requested_tickers": allowed,
             "stored": [snapshot.model_dump(mode="json") for snapshot in latest_snapshots],
             "stored_history_count": len(all_snapshots),
+            "stale_source_count": self._stale_market_source_count(all_snapshots),
             "errors": [error.model_dump() for error in errors],
-            "source": "FinMind TaiwanStockPrice",
+            "source": ", ".join(sources) if sources else "market data providers",
+            "sources": sources,
         }
 
     async def refresh_monthly_revenue(
@@ -353,6 +393,7 @@ class IngestionPipeline:
             "requested_tickers": allowed,
             "stored_count": len(revenues),
             "latest": [revenue.model_dump(mode="json") for revenue in latest],
+            "stale_source_count": self._stale_market_source_count(revenues),
             "errors": [error.model_dump() for error in errors],
             "source": "FinMind TaiwanStockMonthRevenue",
         }
@@ -376,6 +417,7 @@ class IngestionPipeline:
         return {
             "requested_tickers": allowed,
             "stored_count": len(metrics),
+            "stale_source_count": self._stale_market_source_count(metrics),
             "errors": [error.model_dump() for error in errors],
             "source": "FinMind financial statements",
         }
@@ -399,9 +441,23 @@ class IngestionPipeline:
         return {
             "requested_tickers": allowed,
             "stored": [valuation.model_dump(mode="json") for valuation in valuations],
+            "stale_source_count": self._stale_market_source_count(valuations),
             "errors": [error.model_dump() for error in errors],
             "source": "FinMind TaiwanStockPER",
         }
+
+    @staticmethod
+    def _stale_market_source_count(rows: list[object]) -> int:
+        return sum(1 for row in rows if is_stale_market_data_source(getattr(row, "source", "")))
+
+    @staticmethod
+    def _market_sources(rows: list[object]) -> list[str]:
+        sources: list[str] = []
+        for row in rows:
+            source = str(getattr(row, "source", "") or "").strip()
+            if source and source not in sources:
+                sources.append(source)
+        return sources
 
     async def ingest_company_filings(
         self,
@@ -435,6 +491,7 @@ class IngestionPipeline:
             attempts = []
             company_documents = list(cached_documents)
             enriched_errors = []
+            latest_errors = []
             if cached_documents:
                 attempts.append(
                     company_filing_attempt_result(
@@ -457,6 +514,7 @@ class IngestionPipeline:
                 mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
                 company_documents.extend(mops_documents)
                 enriched_errors.extend(mops_enriched_errors)
+                latest_errors = mops_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "mops_annual_report",
@@ -475,16 +533,18 @@ class IngestionPipeline:
                     limit_per_query=limit_per_query,
                     document_types=missing_document_types or document_types,
                 )
-                enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
+                targeted_enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
                 company_documents.extend(fetched_documents)
+                enriched_errors.extend(targeted_enriched_errors)
+                latest_errors = targeted_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "targeted_search",
                         fetched_documents,
-                        enriched_errors,
+                        targeted_enriched_errors,
                     )
                 )
-            if should_retry_company_filing_fetch(company_documents, enriched_errors):
+            if should_retry_company_filing_fetch(company_documents, latest_errors):
                 missing_document_types = missing_company_filing_document_types(
                     company_documents,
                     list(target_document_types),
@@ -498,6 +558,7 @@ class IngestionPipeline:
                 retry_enriched_errors = enrich_company_filing_errors(retry_errors, ticker, company_name)
                 company_documents.extend(retry_documents)
                 enriched_errors.extend(retry_enriched_errors)
+                latest_errors = retry_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "retry_after_source_error",
@@ -515,6 +576,7 @@ class IngestionPipeline:
                 broad_enriched_errors = enrich_company_filing_errors(broad_errors, ticker, company_name)
                 company_documents.extend(broad_documents)
                 enriched_errors.extend(broad_enriched_errors)
+                latest_errors = broad_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "broaden_official_search",
@@ -534,6 +596,7 @@ class IngestionPipeline:
                 mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
                 company_documents.extend(mops_documents)
                 enriched_errors.extend(mops_enriched_errors)
+                latest_errors = mops_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "mops_annual_report",
@@ -555,6 +618,7 @@ class IngestionPipeline:
                 official_enriched_errors = enrich_company_filing_errors(official_errors, ticker, company_name)
                 company_documents.extend(official_documents)
                 enriched_errors.extend(official_enriched_errors)
+                latest_errors = official_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "official_company_website",
@@ -576,6 +640,7 @@ class IngestionPipeline:
                 web_enriched_errors = enrich_company_filing_errors(web_errors, ticker, company_name)
                 company_documents.extend(web_documents)
                 enriched_errors.extend(web_enriched_errors)
+                latest_errors = web_enriched_errors
                 attempts.append(
                     company_filing_attempt_result(
                         "official_web_search",
@@ -816,6 +881,8 @@ class IngestionPipeline:
                 continue
             if published_at and end_date and published_at > end_date:
                 continue
+            if quality_filter and is_low_quality_investor_forum_document(document):
+                continue
             if quality_filter and IngestionPipeline._is_low_quality_market_source(document):
                 continue
             filtered.append(document)
@@ -859,34 +926,104 @@ class IngestionPipeline:
 
 
 def classify_company_filing_error(message: str) -> str:
-    lowered = message.lower()
-    if "ocr" in lowered or "extractable text" in lowered or "掃描" in message:
+    category = categorize_company_filing_error(message)
+    if category in {"pdf_no_text", "encrypted_pdf", "pdf_parse_error", "unsupported_pdf_parser"}:
         return "manual_text_required"
-    if any(term in lowered for term in ("429", "rate limit", "too many requests", "503", "500", "timeout")):
-        return "retryable_source_error"
-    if any(term in lowered for term in ("403", "forbidden", "login", "登入", "captcha")):
+    if category in {
+        "blocked_or_forbidden",
+        "blocked_or_placeholder",
+        "browser_render_failed",
+        "browser_render_not_configured",
+    }:
         return "source_access_restricted"
-    if any(term in lowered for term in ("too short", "does not mention", "does not match")):
+    if is_retryable_company_filing_error_category(category):
+        return "retryable_source_error"
+    if category in {
+        "company_mismatch",
+        "document_type_mismatch",
+        "too_short",
+        "too_large",
+        "unsafe_url",
+    }:
         return "content_not_usable"
     return "source_fetch_error"
 
 
+LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP = {
+    "retryable_source_error": "upstream_retryable",
+    "manual_text_required": "pdf_no_text",
+    "source_access_restricted": "blocked_or_forbidden",
+    "content_not_usable": "company_mismatch",
+    "source_fetch_error": "unknown",
+}
+COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES = {
+    "blocked_or_forbidden",
+    "blocked_or_placeholder",
+    "browser_render_failed",
+}
+COMPANY_FILING_BROWSER_SETUP_CATEGORIES = {"browser_render_not_configured"}
+COMPANY_FILING_PDF_SETUP_CATEGORIES = {
+    "missing_pdf_dependency",
+    "unsupported_pdf_parser",
+}
+COMPANY_FILING_TEXT_RECOVERY_CATEGORIES = {
+    "encrypted_pdf",
+    "pdf_no_text",
+    "pdf_parse_error",
+}
+COMPANY_FILING_BROADEN_SEARCH_CATEGORIES = {
+    "company_mismatch",
+    "document_type_mismatch",
+    "http_not_found",
+    "missing_pdf_link",
+    "too_large",
+    "too_short",
+    "website_not_found",
+}
+COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES = {
+    *COMPANY_FILING_BROWSER_SETUP_CATEGORIES,
+    *COMPANY_FILING_PDF_SETUP_CATEGORIES,
+    *COMPANY_FILING_TEXT_RECOVERY_CATEGORIES,
+    "unsafe_url",
+    "unknown",
+}
+
+
 def enrich_company_filing_errors(errors: list[dict], ticker: str, company_name: str) -> list[dict]:
-    return [
-        {
-            **error,
-            "ticker": ticker,
-            "company_name": company_name,
-            "category": classify_company_filing_error(error.get("error", "")),
-        }
-        for error in errors
-    ]
+    enriched = []
+    for error in errors:
+        message = str(error.get("error", ""))
+        category = normalize_company_filing_error_category(error)
+        retryable = error.get("retryable")
+        if retryable is None:
+            retryable = is_retryable_company_filing_error_category(category)
+        enriched.append(
+            {
+                **error,
+                "ticker": ticker,
+                "company_name": company_name,
+                "category": category,
+                "legacy_category": error.get("legacy_category") or classify_company_filing_error(message),
+                "retryable": bool(retryable),
+            }
+        )
+    return enriched
+
+
+def normalize_company_filing_error_category(error: dict) -> str:
+    raw_category = str(error.get("category") or "")
+    if raw_category and raw_category not in LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP:
+        return raw_category
+    detected = categorize_company_filing_error(error.get("error", ""))
+    if detected != "unknown":
+        return detected
+    return LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP.get(raw_category, "unknown")
 
 
 def should_retry_company_filing_fetch(documents: list, errors: list[dict]) -> bool:
     if documents or not errors:
         return False
-    return {error.get("category") for error in errors}.issubset({"retryable_source_error"})
+    return all(company_filing_error_is_retryable(error) for error in errors)
 
 
 def should_broaden_company_filing_search(
@@ -908,11 +1045,14 @@ def missing_company_filing_document_types(
 
 
 def company_filing_attempt_result(strategy: str, documents: list, errors: list[dict]) -> dict:
+    category_counts = company_filing_error_category_counts(errors)
     return {
         "strategy": strategy,
         "stored_count": len(documents),
         "error_count": len(errors),
-        "error_categories": sorted({error.get("category", "source_fetch_error") for error in errors}),
+        "error_categories": sorted(category_counts),
+        "error_category_counts": category_counts,
+        "retryable_error_count": sum(1 for error in errors if company_filing_error_is_retryable(error)),
     }
 
 
@@ -935,7 +1075,9 @@ def company_filing_ticker_result(
         for document_type in RECOMMENDED_DOCUMENT_TYPES
         if document_type not in document_types and document_type not in target_document_types
     ]
-    error_categories = sorted({error.get("category", "source_fetch_error") for error in errors})
+    error_category_counts = company_filing_error_category_counts(errors)
+    error_categories = sorted(error_category_counts)
+    retryable_error_count = sum(1 for error in errors if company_filing_error_is_retryable(error))
     status = company_filing_status(documents, missing_required, error_categories)
     return {
         "ticker": ticker,
@@ -946,9 +1088,17 @@ def company_filing_ticker_result(
         "missing_recommended_types": missing_recommended,
         "error_count": len(errors),
         "error_categories": error_categories,
+        "error_category_counts": error_category_counts,
+        "retryable_error_count": retryable_error_count,
+        "non_retryable_error_count": len(errors) - retryable_error_count,
         "attempts": attempts or [],
         "status": status,
-        "next_step": company_filing_next_step(status, missing_required, missing_recommended),
+        "next_step": company_filing_next_step(
+            status,
+            missing_required,
+            missing_recommended,
+            error_categories,
+        ),
     }
 
 
@@ -959,9 +1109,14 @@ def company_filing_status(
 ) -> str:
     if documents and not missing_required:
         return "sufficient"
-    if error_categories and set(error_categories).issubset({"retryable_source_error"}):
-        return "retry_recommended"
     if not documents and not error_categories:
+        return "broader_search_recommended"
+    category_set = set(error_categories)
+    if category_set & COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES:
+        return "needs_manual_source"
+    if any(is_retryable_company_filing_error_category(category) for category in category_set):
+        return "retry_recommended"
+    if category_set and category_set.issubset(COMPANY_FILING_BROADEN_SEARCH_CATEGORIES):
         return "broader_search_recommended"
     return "needs_manual_source"
 
@@ -970,7 +1125,19 @@ def company_filing_next_step(
     status: str,
     missing_required: list[str],
     missing_recommended: list[str],
+    error_categories: list[str] | None = None,
 ) -> str:
+    category_set = set(error_categories or [])
+    if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
+        return "官方頁面疑似需要動態渲染；請設定 Browserless/Playwright 渲染服務後再自動補抓。"
+    if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
+        return "官方頁面疑似被反爬蟲或登入頁擋住；系統應改用 Browserless/Proxy 後重試官方搜尋。"
+    if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
+        return "PDF 解析相依套件不足；請安裝 PDF 額外相依套件後再重試公司公開文件補抓。"
+    if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
+        return "PDF 無法抽取可用文字；請改用官方 HTML/文字版，或先 OCR 後人工匯入。"
+    if category_set & {"company_mismatch", "document_type_mismatch"}:
+        return "抓到的文件與公司或文件類型不符；系統應擴大官方入口搜尋並避免採用錯誤公司證據。"
     if status == "sufficient" and not missing_recommended:
         return "公司公開文件已足夠進入個股分析。"
     if status == "retry_recommended":
@@ -988,10 +1155,7 @@ def company_filing_next_actions(per_ticker_results: list[dict]) -> list[dict]:
     for row in per_ticker_results:
         if row["status"] == "sufficient":
             continue
-        action_type = {
-            "retry_recommended": "retry_company_filing_search",
-            "broader_search_recommended": "broaden_company_filing_search",
-        }.get(row["status"], "manual_company_filing_import")
+        action_type = company_filing_next_action_type(row)
         actions.append(
             {
                 "ticker": row["ticker"],
@@ -1000,16 +1164,62 @@ def company_filing_next_actions(per_ticker_results: list[dict]) -> list[dict]:
                 "reason": row["next_step"],
                 "missing_required_types": row["missing_required_types"],
                 "missing_recommended_types": row["missing_recommended_types"],
+                "error_categories": row.get("error_categories", []),
+                "error_category_counts": row.get("error_category_counts", {}),
+                "retryable_error_count": row.get("retryable_error_count", 0),
             }
         )
     return actions
 
 
+def company_filing_next_action_type(row: dict) -> str:
+    category_set = set(row.get("error_categories") or [])
+    if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
+        return "configure_company_filing_browser_render"
+    if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
+        return "install_company_filing_pdf_dependencies"
+    if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
+        return "ocr_or_manual_company_filing_text_import"
+    if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
+        return "retry_company_filing_with_browser_or_proxy"
+    if category_set & COMPANY_FILING_BROADEN_SEARCH_CATEGORIES:
+        return "broaden_company_filing_search"
+    return {
+        "retry_recommended": "retry_company_filing_search",
+        "broader_search_recommended": "broaden_company_filing_search",
+    }.get(row.get("status"), "manual_company_filing_import")
+
+
 def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
     status_counts: dict[str, int] = {}
+    category_counter: Counter[str] = Counter()
+    browser_required = []
+    setup_required = []
+    ocr_required = []
+    broaden_search = []
+    manual_import = []
     for row in per_ticker_results:
         status = row.get("status", "unknown")
         status_counts[status] = status_counts.get(status, 0) + 1
+        category_counts = row.get("error_category_counts") or {}
+        if category_counts:
+            category_counter.update({str(category): int(count) for category, count in category_counts.items()})
+        else:
+            category_counter.update(str(category) for category in row.get("error_categories") or [])
+        category_set = set(row.get("error_categories") or [])
+        ticker = row.get("ticker")
+        if not ticker:
+            continue
+        if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
+            browser_required.append(ticker)
+        if category_set & (COMPANY_FILING_BROWSER_SETUP_CATEGORIES | COMPANY_FILING_PDF_SETUP_CATEGORIES):
+            setup_required.append(ticker)
+        if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
+            ocr_required.append(ticker)
+        if row.get("status") == "broader_search_recommended" or category_set & COMPANY_FILING_BROADEN_SEARCH_CATEGORIES:
+            broaden_search.append(ticker)
+        if row.get("status") == "needs_manual_source":
+            manual_import.append(ticker)
     blocked = [
         row["ticker"]
         for row in per_ticker_results
@@ -1031,5 +1241,29 @@ def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
         "status_counts": status_counts,
         "retryable_tickers": retryable,
         "blocked_tickers": blocked,
+        "error_category_counts": dict(sorted(category_counter.items())),
+        "browser_recovery_tickers": sorted(set(browser_required)),
+        "setup_required_tickers": sorted(set(setup_required)),
+        "ocr_required_tickers": sorted(set(ocr_required)),
+        "broaden_search_tickers": sorted(set(broaden_search)),
+        "manual_import_tickers": sorted(set(manual_import)),
         "recommendation": recommendation,
     }
+
+
+def company_filing_error_category_counts(errors: list[dict]) -> dict[str, int]:
+    return dict(
+        sorted(
+            Counter(
+                normalize_company_filing_error_category(error)
+                for error in errors
+            ).items()
+        )
+    )
+
+
+def company_filing_error_is_retryable(error: dict) -> bool:
+    retryable = error.get("retryable")
+    if retryable is not None:
+        return bool(retryable)
+    return is_retryable_company_filing_error_category(normalize_company_filing_error_category(error))

@@ -559,6 +559,33 @@ def test_ai_fallback_plan_includes_upstream_material_layer() -> None:
     assert any("銅箔" in segment or "玻纖" in segment or "CCL" in segment for segment in material_segments)
 
 
+def test_memory_fallback_plan_includes_cyclic_and_material_coverage() -> None:
+    plan = TopicDiscoveryService._fallback_plan("記憶體產業鏈")
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+    tickers = {candidate.ticker for candidate in plan.candidate_companies}
+
+    assert quality.status in {"ready", "caution"}
+    assert len(plan.subtopics) >= 5
+    assert len(plan.candidate_companies) >= 8
+    assert {"2408", "2344", "8299", "2451", "3260", "4967"}.issubset(tickers)
+    assert any("庫存" in subtopic.name or "需求" in subtopic.name for subtopic in plan.subtopics)
+    assert any(
+        "memory" in query.lower() or "記憶體" in query
+        for subtopic in plan.subtopics
+        for query in subtopic.search_queries
+    )
+
+
+def test_generic_fallback_plan_uses_exploration_template_for_unknown_topics() -> None:
+    plan = TopicDiscoveryService._fallback_plan("量子運算")
+    quality = TopicDiscoveryService.evaluate_plan_quality(plan)
+
+    assert len(plan.subtopics) >= 6
+    assert len(plan.candidate_companies) >= 6
+    assert any("候選驗證與收斂" in subtopic.name for subtopic in plan.subtopics)
+    assert quality.status in {"caution", "ready"}
+
+
 def test_enrich_plan_adds_upstream_material_layer_for_hardware_supply_chain() -> None:
     plan = TopicDiscoveryService.enrich_plan(
         TopicDiscoveryPlan(
@@ -1120,7 +1147,7 @@ def test_validate_candidates_lists_newest_evidence_sources_first() -> None:
     assert candidates[0].evidence_sources[0]["published_at"] == "2026-05-24"
 
 
-def test_validate_candidates_excludes_investor_forum_sources() -> None:
+def test_validate_candidates_excludes_forum_and_investment_blog_sources() -> None:
     service = TopicDiscoveryService()
     plan = TopicDiscoveryService.parse_plan(
         """
@@ -1151,13 +1178,62 @@ def test_validate_candidates_excludes_investor_forum_sources() -> None:
             publisher="CMoney投資網誌",
             published_at=date(2026, 5, 8),
         ),
+        NewsFetcher.from_manual_text(
+            title="富喬月營收創高 高階玻纖布需求升溫",
+            text="1815 富喬月營收創高，高階玻纖布需求升溫。",
+            publisher="經濟日報",
+            published_at=date(2026, 5, 9),
+        ),
     ]
 
     candidates = service.validate_candidates(plan, documents)
 
     assert candidates[0].evidence_count == 1
-    assert candidates[0].evidence_sources[0]["title"] == "富喬 4月營收創歷史新高 受高階薄布需求帶動"
+    assert candidates[0].evidence_sources[0]["title"] == "富喬月營收創高 高階玻纖布需求升溫"
     assert all("股市爆料同學會" not in source["title"] for source in candidates[0].evidence_sources)
+    assert all(source["publisher"] != "CMoney投資網誌" for source in candidates[0].evidence_sources)
+
+
+def test_validate_candidates_does_not_promote_when_sources_are_only_investment_blogs() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "1815",
+              "name": "富喬",
+              "segment": "玻纖布",
+              "rationale": "AI 高階材料",
+              "evidence_keywords": ["AI", "玻纖布"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="富喬 4月營收創歷史新高 受高階薄布需求帶動",
+            text="1815 富喬 玻纖布與 AI 高階薄布需求成長。",
+            publisher="CMoney投資網誌",
+            published_at=date(2026, 5, 8),
+        ),
+        NewsFetcher.from_manual_text(
+            title="富喬高階玻纖布需求延續",
+            text="1815 富喬 AI 伺服器用高階玻纖布需求延續。",
+            publisher="旺得富理財網",
+            published_at=date(2026, 5, 9),
+        ),
+    ]
+
+    candidates = service.validate_candidates(plan, documents)
+
+    assert candidates[0].evidence_count == 0
+    assert candidates[0].evidence_source_count == 0
+    assert candidates[0].source_credibility_label == "未分級"
+    assert candidates[0].evidence_confidence_score < HIGH_CONFIDENCE_THRESHOLD
+    assert candidates[0].status == "needs_evidence"
 
 
 def test_validate_candidates_marks_single_source_as_weak_evidence() -> None:
@@ -1343,6 +1419,100 @@ def test_validate_candidates_requires_topic_context_evidence() -> None:
 
     assert candidates[0].status == "needs_evidence"
     assert candidates[0].evidence_count == 0
+
+
+def test_validate_candidates_excludes_sources_with_unrelated_entity_metadata() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "2308",
+              "name": "台達電",
+              "segment": "電源管理",
+              "rationale": "AI 電源",
+              "evidence_keywords": ["電源", "AI 伺服器"]
+            }
+          ]
+        }
+        """
+    )
+    wrong_company = NewsFetcher.from_manual_text(
+        title="光寶科 AI 電源出貨升溫",
+        text="光寶科 AI 伺服器電源需求增加，台達電同業也受市場關注。",
+        publisher="test",
+        published_at=date(2026, 5, 24),
+    ).model_copy(update={"entity_tickers": ["2301"], "entity_names": ["光寶科"]})
+
+    candidates = service.validate_candidates(plan, [wrong_company])
+
+    assert candidates[0].status == "needs_evidence"
+    assert candidates[0].evidence_count == 0
+
+
+def test_validate_candidates_uses_matching_entity_metadata_as_company_evidence() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "3017",
+              "name": "奇鋐",
+              "segment": "散熱模組",
+              "rationale": "液冷散熱",
+              "evidence_keywords": ["液冷", "散熱"]
+            }
+          ]
+        }
+        """
+    )
+    mapped_document = NewsFetcher.from_manual_text(
+        title="AI 伺服器液冷散熱需求升溫",
+        text="AI 伺服器液冷散熱需求增加，供應鏈接單升溫。",
+        publisher="test",
+        published_at=date(2026, 5, 24),
+    ).model_copy(update={"entity_tickers": ["3017"], "entity_names": ["奇鋐"]})
+
+    candidates = service.validate_candidates(plan, [mapped_document])
+
+    assert candidates[0].status == "weak_evidence"
+    assert candidates[0].evidence_count == 1
+    assert candidates[0].evidence_sources[0]["title"] == "AI 伺服器液冷散熱需求升溫"
+
+
+def test_validate_candidates_relaxes_context_for_memory_entity_matches() -> None:
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "2408",
+              "name": "南亞科",
+              "segment": "DRAM 記憶體",
+              "rationale": "DRAM 原廠",
+              "evidence_keywords": ["DRAM", "記憶體"]
+            }
+          ]
+        }
+        """
+    )
+    mapped_document = NewsFetcher.from_manual_text(
+        title="南亞科法人說明會",
+        text="公司說明產能利用率與毛利率展望。",
+        publisher="公開資訊觀測站",
+        published_at=date(2026, 5, 24),
+    ).model_copy(update={"entity_tickers": ["2408"], "entity_names": ["南亞科"]})
+
+    candidates = service.validate_candidates(plan, [mapped_document])
+
+    assert candidates[0].status == "weak_evidence"
+    assert candidates[0].evidence_count == 1
 
 
 def test_validate_candidates_rejects_unrelated_release_notes_with_ticker_like_ids() -> None:

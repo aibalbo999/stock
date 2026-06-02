@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 from types import SimpleNamespace
 
 import httpx
 
-from app.services.llm_client import APIKeyRotator, LLMClient, get_shared_rotator
+from app.services.llm_client import APIKeyRotator, LLMClient, get_shared_rotator, summarize_llm_attempts
 
 
 def fake_settings(**overrides) -> SimpleNamespace:
     defaults = {
         "primary_llm_model": "gemini-test",
+        "llm_provider": "gemini_http",
+        "llm_fallback_models": "",
         "llm_max_retries_per_key": 2,
         "llm_base_retry_delay_seconds": 0.5,
         "llm_max_retry_delay_seconds": 5.0,
         "llm_total_timeout_seconds": 60.0,
+        "openai_api_key": None,
+        "anthropic_api_key": None,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -121,3 +127,409 @@ def test_shared_rotator_reuses_same_pool() -> None:
     assert first is second
     assert first.candidates()[0] == (0, "shared-a")
     assert second.candidates()[0] == (1, "shared-b")
+
+
+def test_litellm_provider_uses_fallback_model(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="gemini/gemini-backup",
+        llm_max_retries_per_key=0,
+    )
+    client.rotator = APIKeyRotator(["gemini-key"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        if model == "gemini/gemini-primary":
+            response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+        return "backup ok"
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+    monkeypatch.setattr(client, "_sleep_before_retry", lambda response, attempt: None)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "backup ok"
+    assert result.provider == "litellm"
+    assert result.model == "gemini/gemini-backup"
+    assert result.attempts == (
+        {
+            "provider": "litellm",
+            "outcome": "http_error",
+            "model": "gemini/gemini-primary",
+            "key_index": 0,
+            "attempt": 1,
+            "status": 429,
+            "retryable": True,
+        },
+        {
+            "provider": "litellm",
+            "outcome": "success",
+            "model": "gemini/gemini-backup",
+            "key_index": 0,
+            "attempt": 1,
+        },
+    )
+    assert calls == [
+        ("prompt", "gemini/gemini-primary", "gemini-key"),
+        ("prompt", "gemini/gemini-backup", "gemini-key"),
+    ]
+
+
+def test_litellm_provider_can_fallback_from_gemini_to_anthropic(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="claude-3-5-haiku",
+        llm_max_retries_per_key=0,
+        anthropic_api_key="anthropic-key",
+    )
+    client.rotator = APIKeyRotator(["gemini-key"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        if model == "gemini/gemini-primary":
+            response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+        return "anthropic backup ok"
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+    monkeypatch.setattr(client, "_sleep_before_retry", lambda response, attempt: None)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "anthropic backup ok"
+    assert result.provider == "litellm"
+    assert result.model == "anthropic/claude-3-5-haiku"
+    assert calls == [
+        ("prompt", "gemini/gemini-primary", "gemini-key"),
+        ("prompt", "anthropic/claude-3-5-haiku", "anthropic-key"),
+    ]
+
+
+def test_litellm_provider_skips_missing_provider_key_and_tries_next_model(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="gpt-4o-mini",
+        llm_max_retries_per_key=0,
+        openai_api_key="openai-key",
+    )
+    client.rotator = APIKeyRotator([])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        return "openai backup ok"
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "openai backup ok"
+    assert result.model == "gpt-4o-mini"
+    assert result.attempts == (
+        {
+            "provider": "litellm",
+            "outcome": "missing_api_key",
+            "model": "gemini/gemini-primary",
+        },
+        {
+            "provider": "litellm",
+            "outcome": "success",
+            "model": "gpt-4o-mini",
+            "attempt": 1,
+        },
+    )
+    assert calls == [("prompt", "gpt-4o-mini", "openai-key")]
+
+
+def test_litellm_provider_uses_gemma_cloud_model_with_gemini_key(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gemini-3.5-flash",
+        local_llm_model="gemma-4-31b-it",
+        llm_fallback_models="",
+        llm_max_retries_per_key=0,
+    )
+    client.rotator = APIKeyRotator(["gemini-key"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        if model == "gemini/gemini-3.5-flash":
+            error = RuntimeError("rate limited")
+            error.status_code = 429
+            raise error
+        return "cloud ok"
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "cloud ok"
+    assert result.model == "gemini/gemma-4-31b-it"
+    assert result.attempts == (
+        {
+            "provider": "litellm",
+            "outcome": "http_error",
+            "model": "gemini/gemini-3.5-flash",
+            "key_index": 0,
+            "attempt": 1,
+            "status": 429,
+            "retryable": True,
+        },
+        {
+            "provider": "litellm",
+            "outcome": "success",
+            "model": "gemini/gemma-4-31b-it",
+            "key_index": 0,
+            "attempt": 1,
+        },
+    )
+    assert calls == [
+        ("prompt", "gemini/gemini-3.5-flash", "gemini-key"),
+        ("prompt", "gemini/gemma-4-31b-it", "gemini-key"),
+    ]
+
+
+def test_litellm_model_chain_limits_key_rotation_and_retries(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="gemini-backup",
+        llm_max_retries_per_key=2,
+    )
+    client.rotator = APIKeyRotator(["key-a", "key-b", "key-c"])
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **_kwargs) -> str:
+        response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+        raise httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+
+    result = client._generate_with_litellm("prompt")
+
+    assert result.fallback is True
+    assert [attempt["model"] for attempt in result.attempts] == [
+        "gemini/gemini-primary",
+        "gemini/gemini-primary",
+        "gemini/gemini-backup",
+        "gemini/gemini-backup",
+    ]
+    assert [attempt.get("attempt") for attempt in result.attempts] == [1, 1, 1, 1]
+    assert [attempt.get("key_index") for attempt in result.attempts] == [0, 1, 1, 2]
+
+
+def test_litellm_unavailable_falls_back_to_existing_gemini_http(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(llm_provider="litellm")
+    client.rotator = APIKeyRotator(["gemini-key"])
+
+    def missing_litellm(name: str):
+        if name == "litellm":
+            raise ImportError("missing")
+        return object()
+
+    monkeypatch.setattr("app.services.llm_client.import_module", missing_litellm)
+    monkeypatch.setattr(client, "_call_gemini", lambda prompt, api_key, **_kwargs: "direct ok")
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "direct ok"
+    assert result.provider == "gemini_http"
+    assert result.attempts == (
+        {"provider": "litellm", "outcome": "dependency_unavailable", "error": "ImportError"},
+        {
+            "provider": "gemini_http",
+            "outcome": "success",
+            "model": "gemini-test",
+            "key_index": 0,
+            "attempt": 1,
+        },
+    )
+
+
+def test_google_genai_provider_rotates_keys_before_http_fallback(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(llm_provider="google_genai", llm_max_retries_per_key=0)
+    client.rotator = APIKeyRotator(["bad-key", "good-key"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, api_key: str, **_kwargs) -> str:
+        calls.append((prompt, api_key))
+        if api_key == "bad-key":
+            response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+        return "sdk ok"
+
+    monkeypatch.setattr(client, "_call_google_genai", fake_call)
+    monkeypatch.setattr(client, "_sleep_before_retry", lambda response, attempt: None)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "sdk ok"
+    assert result.provider == "google_genai"
+    assert result.key_index == 1
+    assert result.attempts == (
+        {
+            "provider": "google_genai",
+            "outcome": "http_error",
+            "model": "gemini-test",
+            "key_index": 0,
+            "attempt": 1,
+            "status": 429,
+            "retryable": True,
+        },
+        {
+            "provider": "google_genai",
+            "outcome": "success",
+            "model": "gemini-test",
+            "key_index": 1,
+            "attempt": 1,
+        },
+    )
+    assert calls == [("prompt", "bad-key"), ("prompt", "good-key")]
+
+
+def test_google_genai_unavailable_falls_back_to_existing_gemini_http(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(llm_provider="google-genai")
+    client.rotator = APIKeyRotator(["gemini-key"])
+
+    def missing_google_genai(name: str):
+        if name == "google.genai":
+            raise ImportError("missing")
+        return object()
+
+    monkeypatch.setattr("app.services.llm_client.import_module", missing_google_genai)
+    monkeypatch.setattr(client, "_call_gemini", lambda prompt, api_key, **_kwargs: "direct ok")
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "direct ok"
+    assert result.provider == "gemini_http"
+
+
+def test_call_google_genai_uses_official_sdk_shape(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(primary_llm_model="gemini-test")
+    captured = {}
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            captured["generate_content"] = kwargs
+            return SimpleNamespace(text="sdk text")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.models = FakeModels()
+
+    fake_module = SimpleNamespace(Client=FakeClient)
+    fake_types = SimpleNamespace(GenerateContentConfig=lambda **kwargs: {"config": kwargs})
+    monkeypatch.setattr(
+        "app.services.llm_client.import_module",
+        lambda name: fake_module if name == "google.genai" else fake_types,
+    )
+
+    text = client._call_google_genai("prompt", "google-key", timeout_seconds=20)
+
+    assert text == "sdk text"
+    assert captured["client"] == {"api_key": "google-key"}
+    assert captured["generate_content"]["model"] == "gemini-test"
+    assert captured["generate_content"]["contents"] == "prompt"
+    assert captured["generate_content"]["config"] == {
+        "config": {"temperature": 0.2, "top_p": 0.8, "max_output_tokens": 8192}
+    }
+
+
+def test_litellm_model_name_normalizes_gemini_only() -> None:
+    assert LLMClient._litellm_model_name("gemini-2.5-flash") == "gemini/gemini-2.5-flash"
+    assert LLMClient._litellm_model_name("gemini/gemini-2.5-flash") == "gemini/gemini-2.5-flash"
+    assert LLMClient._litellm_model_name("claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
+    assert LLMClient._litellm_model_name("anthropic/claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
+    assert LLMClient._litellm_model_name("gpt-4o-mini") == "gpt-4o-mini"
+    assert LLMClient._litellm_model_name("gemma-4-31b-it") == "gemini/gemma-4-31b-it"
+
+
+def test_litellm_key_candidates_support_openai_and_anthropic_keys() -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(openai_api_key="openai-key", anthropic_api_key="anthropic-key")
+    client.rotator = APIKeyRotator(["gemini-key"])
+
+    assert client._litellm_key_candidates("gpt-4o-mini") == [(None, "openai-key")]
+    assert client._litellm_key_candidates("openai/gpt-4o-mini") == [(None, "openai-key")]
+    assert client._litellm_key_candidates("anthropic/claude-3-5-haiku") == [(None, "anthropic-key")]
+    assert client._litellm_key_candidates("gemma-4-31b-it") == [(0, "gemini-key")]
+
+
+def test_summarize_llm_attempts_classifies_provider_fallback_failures() -> None:
+    summary = summarize_llm_attempts(
+        (
+            {
+                "provider": "litellm",
+                "model": "gemini/gemini-primary",
+                "outcome": "http_error",
+                "status": 429,
+                "retryable": True,
+            },
+            {
+                "provider": "litellm",
+                "model": "anthropic/claude-3-5-haiku",
+                "outcome": "provider_error",
+                "error": "APIConnectionError",
+                "retryable": True,
+            },
+            {
+                "provider": "gemini_http",
+                "model": "gemini-test",
+                "outcome": "success",
+            },
+        )
+    )
+
+    assert summary == {
+        "attempt_count": 3,
+        "providers_tried": ["litellm", "gemini_http"],
+        "models_tried": ["gemini/gemini-primary", "anthropic/claude-3-5-haiku", "gemini-test"],
+        "outcome_counts": {"http_error": 1, "provider_error": 1, "success": 1},
+        "failure_category_counts": {"provider_error": 1, "rate_limited": 1},
+        "http_status_counts": {"429": 1},
+        "failed_attempt_count": 2,
+        "successful_attempt_count": 1,
+        "retryable_failure_count": 2,
+        "retry_used": False,
+        "success_after_failure": True,
+        "provider_fallback_used": True,
+        "model_fallback_used": True,
+        "fallback_path_used": True,
+        "primary_failure_category": "rate_limited",
+        "last_failure_category": "provider_error",
+        "primary_provider": "litellm",
+        "primary_model": "gemini/gemini-primary",
+        "final_provider": "gemini_http",
+        "final_model": "gemini-test",
+        "final_outcome": "success",
+        "final_success": True,
+    }

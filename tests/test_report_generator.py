@@ -1,5 +1,8 @@
 from datetime import date, timedelta
+from types import SimpleNamespace
 from typing import Optional
+
+import pytest
 
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import (
@@ -19,7 +22,7 @@ from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.llm_client import LLMResult
-from app.services.report_generator import ReportExecutionError, ReportGenerator
+from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -48,6 +51,27 @@ def make_finding(
 
 def unescaped_pipe_count(line: str) -> int:
     return sum(1 for index, char in enumerate(line) if char == "|" and (index == 0 or line[index - 1] != "\\"))
+
+
+def test_report_execution_summary_includes_retrieval_trace() -> None:
+    generator = SimpleNamespace(
+        last_evidence_documents=[],
+        last_excluded_low_quality_documents=[],
+        last_filtered_tickers=[],
+        last_dropped_tickers=[],
+        last_llm_result=None,
+        vector_store=SimpleNamespace(
+            last_retrieval_trace={
+                "strategy": "hybrid-vector-bm25-rerank",
+                "candidates": [{"id": "doc-1", "final_score": 1.2}],
+            }
+        ),
+    )
+
+    summary = report_execution_summary(generator)
+
+    assert summary["retrieval_trace"]["strategy"] == "hybrid-vector-bm25-rerank"
+    assert summary["retrieval_trace"]["candidates"][0]["final_score"] == 1.2
 
 
 def make_financial_metrics(
@@ -171,6 +195,100 @@ def test_llm_supplement_accepts_market_source() -> None:
     )
 
 
+def test_llm_supplement_rejects_news_claim_when_source_maps_to_another_company() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與伺服",
+                "status": "evidence_supported",
+            },
+            {
+                "ticker": "2301",
+                "name": "光寶科",
+                "segment": "電源供應器",
+                "status": "evidence_supported",
+            },
+        ]
+    )
+    mapper = EntityMapper(whitelist)
+    document = NewsFetcher.from_manual_text(
+        title="光寶科 AI 電源出貨升溫",
+        text="光寶科受惠 AI 伺服器電源供應器需求增加。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+    text = """
+    {
+      "items": [
+        {
+          "claim": "台達電 AI 電源出貨升溫。",
+          "source_type": "news",
+          "source_date": "2026-05-20",
+          "source_publisher": "測試新聞",
+          "source_title": "光寶科 AI 電源出貨升溫",
+          "source_id": "2308"
+        }
+      ]
+    }
+    """
+
+    rendered = LLMSupplementValidator.render_markdown(
+        text,
+        [document],
+        news_ticker_resolver=lambda doc: [match.ticker for match in mapper.match_document(doc)],
+        claim_ticker_resolver=lambda claim: [match.ticker for match in mapper.match_text(claim)],
+    )
+
+    assert rendered == "LLM 補充分析未通過來源檢查；目前無足夠數據判斷。"
+
+
+def test_llm_supplement_accepts_news_claim_when_source_id_matches_company() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與伺服",
+                "status": "evidence_supported",
+            }
+        ]
+    )
+    mapper = EntityMapper(whitelist)
+    document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源出貨升溫",
+        text="台達電受惠 AI 伺服器電源與伺服控制需求增加。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+    text = """
+    {
+      "items": [
+        {
+          "claim": "台達電 AI 電源出貨升溫。",
+          "source_type": "news",
+          "source_date": "2026-05-20",
+          "source_publisher": "測試新聞",
+          "source_title": "台達電 AI 電源出貨升溫",
+          "source_id": "2308"
+        }
+      ]
+    }
+    """
+
+    rendered = LLMSupplementValidator.render_markdown(
+        text,
+        [document],
+        news_ticker_resolver=lambda doc: [match.ticker for match in mapper.match_document(doc)],
+        claim_ticker_resolver=lambda claim: [match.ticker for match in mapper.match_text(claim)],
+    )
+
+    assert rendered == (
+        "- 台達電 AI 電源出貨升溫。 來源：2026-05-20 測試新聞 台達電 AI 電源出貨升溫"
+    )
+
+
 def test_generate_keeps_last_evidence_documents_for_quality_gate() -> None:
     document = NewsFetcher.from_manual_text(
         title="台積電 CoWoS 產能滿載",
@@ -214,6 +332,63 @@ def test_generate_keeps_last_evidence_documents_for_quality_gate() -> None:
     assert generator.last_evidence_documents == [document]
 
 
+def test_generate_blocks_report_integrity_failure_before_response() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源需求成長",
+        text="2308 台達電 AI 電源需求成長。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    class FakeRiskAnalyzer:
+        def analyze_documents(self, documents):
+            assert documents == [document]
+            return []
+
+    class FakeMapper:
+        def filter_allowed_tickers(self, tickers):
+            return tickers
+
+    class FakeLLM:
+        def generate_with_metadata(self, prompt):
+            return object()
+
+    invalid_markdown = """
+    # 機器人 產業鏈 自動分析報告
+
+    ## 資金控管建議
+    ### 首筆配置草案
+    本輪首筆配置合計約 90,000 元；可投入上限 700,000 元。
+    - 2308 台達電：首筆配置約 50,000 元；淨分 35。
+
+    ### 可小額分批研究
+    - 2308 台達電：可列小額分批研究。首筆約 50,000 元。
+    - 1504 東元：可列小額分批研究。首筆約 40,000 元。
+    """
+
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.last_evidence_documents = []
+    generator.risk_analyzer = FakeRiskAnalyzer()
+    generator.mapper = FakeMapper()
+    generator.llm = FakeLLM()
+    generator._latest_market_snapshots = lambda tickers: []
+    generator._latest_monthly_revenues = lambda tickers: []
+    generator._financial_metrics = lambda tickers: []
+    generator._latest_valuations = lambda tickers: []
+    generator._render_markdown = lambda *args, **kwargs: invalid_markdown
+
+    with pytest.raises(ReportExecutionError) as exc:
+        ReportGenerator.generate(
+            generator,
+            ReportRequest(topic="機器人 產業鏈", tickers=["2308", "1504"]),
+            documents=[document],
+        )
+
+    assert "首筆配置草案的合計金額與逐檔配置明細加總不一致" in str(exc.value)
+    assert "可立即研究或可小額分批研究名單中的股票沒有出現在首筆配置草案" in str(exc.value)
+
+
 def test_llm_evidence_digest_is_bounded_to_reduce_timeout_risk() -> None:
     documents = [
         NewsFetcher.from_manual_text(
@@ -232,6 +407,56 @@ def test_llm_evidence_digest_is_bounded_to_reduce_timeout_risk() -> None:
     assert "測試新聞 60" not in digest
     assert "其餘 5 筆來源保留於系統資料庫" in digest
     assert "AI 伺服器需求與供應鏈驗證。" * 20 not in digest
+
+
+def test_llm_evidence_digest_includes_company_mapping_for_attribution() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源出貨升溫",
+        text="台達電受惠 AI 伺服器電源需求增加。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    digest = ReportGenerator._format_llm_evidence(
+        [document],
+        ticker_label_resolver=lambda doc: ["2308 台達電"],
+    )
+
+    assert "source_date=2026-05-20" in digest
+    assert "source_title=台達電 AI 電源出貨升溫" in digest
+    assert "source_id=2308" in digest
+    assert "公司對應=2308 台達電" in digest
+
+
+def test_document_matches_prefer_persisted_entity_metadata_over_text_guessing() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "3017",
+                "name": "奇鋐",
+                "segment": "散熱模組",
+                "status": "evidence_supported",
+            }
+        ]
+    )
+    document = NewsFetcher.from_manual_text(
+        title="液冷散熱需求升溫",
+        text="AI 伺服器液冷散熱需求升溫。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    ).model_copy(update={"entity_tickers": ["3017"], "entity_names": ["奇鋐"]})
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = whitelist
+    generator.mapper = SimpleNamespace(
+        match_document=lambda doc: (_ for _ in ()).throw(AssertionError("metadata should be used"))
+    )
+    generator._document_match_cache = {}
+
+    matches = ReportGenerator._document_matches(generator, document)
+
+    assert [(match.ticker, match.name, match.matched_alias) for match in matches] == [
+        ("3017", "奇鋐", "metadata")
+    ]
 
 
 def test_generate_fails_when_dynamic_candidates_are_not_loaded() -> None:
@@ -403,7 +628,7 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
 
     assert "### 2330 台積電" in company_analysis
     assert "### 個股速覽" in company_analysis
-    assert "| 股票 | 產業位置 | 股價 | 當下股價標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |" in company_analysis
+    assert "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |" in company_analysis
     assert "| 2330 台積電 |" in company_analysis
     assert "#### 華爾街式完整分析框架" in company_analysis
     assert "商業模式與收入來源" in company_analysis
@@ -821,7 +1046,7 @@ def test_company_comparison_matrix_summarizes_decision_valuation_and_confidence(
     )
 
     assert "個股比較矩陣" not in matrix
-    assert "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |" in matrix
+    assert "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |" in matrix
     assert "| 2330 台積電 | 觀察 / 等風險降低 |" in matrix
     assert "等風險下降" in matrix
     assert "估值偏高" in matrix
@@ -1276,6 +1501,85 @@ def test_valuation_position_and_financial_confidence_labels() -> None:
         ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=20, pb_ratio=5),
         MonthlyRevenue(ticker="2330", revenue_date=date(2026, 4, 1), revenue=1, revenue_year=2026, revenue_month=4),
     ) == "高"
+    stale_valuation = ValuationMetric(
+        ticker="2382",
+        trade_date=date(2026, 5, 22),
+        pe_ratio=12,
+        pb_ratio=3,
+        source="FinMind TaiwanStockPER; cached-stale",
+    )
+    assert ReportGenerator._valuation_position_label(stale_valuation, peer) == "估值為快取救援，需刷新"
+    assert ReportGenerator._financial_confidence_label(
+        [
+            FinancialMetric(
+                ticker="2330",
+                report_date=date(2026, 3, 31),
+                statement_type="income_statement",
+                metric="營業收入",
+                value=1,
+                source="FinMind TaiwanStockFinancialStatements; cached-stale",
+            )
+            for _ in range(40)
+        ],
+        ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=20, pb_ratio=5),
+        MonthlyRevenue(ticker="2330", revenue_date=date(2026, 4, 1), revenue=1, revenue_year=2026, revenue_month=4),
+    ) == "中"
+
+
+def test_stale_market_data_downgrades_company_quality_and_valuation_assessment() -> None:
+    snapshot = MarketSnapshot(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        close=100,
+        source="FinMind TaiwanStockPrice; cached-stale",
+    )
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 1),
+        revenue=1,
+        revenue_year=2026,
+        revenue_month=4,
+        source="FinMind TaiwanStockMonthRevenue; cached-stale",
+    )
+    metrics = [
+        FinancialMetric(
+            ticker="2330",
+            report_date=date(2026, 3, 31),
+            statement_type="income_statement",
+            metric="營業收入",
+            value=100,
+            source="FinMind TaiwanStockFinancialStatements; cached-stale",
+        )
+    ]
+    valuation = ValuationMetric(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        pe_ratio=12,
+        pb_ratio=3,
+        source="FinMind TaiwanStockPER; cached-stale",
+    )
+
+    quality = ReportGenerator._data_quality_grade(
+        [],
+        [],
+        snapshot,
+        revenue,
+        metrics,
+        valuation,
+        include_fundamentals=True,
+        company_filing_missing=[],
+    )
+    assessment = ReportGenerator._financial_valuation_assessment(
+        metrics,
+        valuation,
+        {"pe_avg": 20.0, "pb_avg": 5.0, "count": 3},
+    )
+
+    assert quality["grade"] == "partial"
+    assert "股價為快取救援" in quality["missing"]
+    assert "財報為快取救援" in quality["missing"]
+    assert "估值資料為快取救援，刷新前不判定低估/高估" in assessment["cautions"]
+    assert "目前估值低於同業" not in assessment["upside_summary"]
 
 
 def test_current_price_label_summarizes_immediate_entry_condition() -> None:
@@ -1327,7 +1631,7 @@ def test_time_scope_note_distinguishes_current_history_and_scenario_scores() -> 
     assert "近 21 天來源" in note
     assert "目前估值" in note
     assert "不是未來估值預測" in note
-    assert "當下股價標籤" in note
+    assert "追價風險標籤" in note
     assert "不是預期報酬率、目標價或保證幅度" in note
     assert "不是未來走勢預測" in note
 
@@ -1342,7 +1646,7 @@ def test_decision_criteria_note_explains_financial_red_flags_and_actionable_rule
     assert "可小額分批研究" in note
     assert "財務/估值檢查" in note
     assert "財務紅旗存在" in note
-    assert "當下股價標籤" in note
+    assert "追價風險標籤" in note
 
 
 def test_executive_snapshot_summarizes_decisions_in_table() -> None:
@@ -1389,7 +1693,7 @@ def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     )
 
     assert "**重點提醒：本次有 1 檔可小額研究" in snapshot_text
-    assert "| 股票 | 判斷 | 目前股價 | 當下股價標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |" in snapshot_text
+    assert "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |" in snapshot_text
     assert "| 2330 台積電 | 可小額分批研究 | 2026-05-22 收盤 2255 | 可小額分批 | 完整 |" in snapshot_text
     assert "| 可小額研究 | 1 檔 |" in snapshot_text
 
@@ -1898,6 +2202,46 @@ def test_appendix_lists_more_source_references_with_urls() -> None:
     assert "source-00" not in appendix
 
 
+def test_appendix_filters_sources_to_current_tickers_when_possible() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "1303",
+                "name": "南亞",
+                "segment": "工程塑膠 / 電子材料",
+                "status": "evidence_supported",
+                "evidence_keywords": ["工程塑膠", "電子材料"],
+            }
+        ]
+    )
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = whitelist
+    generator.mapper = EntityMapper(whitelist)
+    generator._document_match_cache = {}
+    right_company = NewsFetcher.from_manual_text(
+        title="1303 南亞電子材料需求回升",
+        text="南亞工程塑膠與電子材料訂單改善。",
+        publisher="測試新聞A",
+        published_at=date(2026, 5, 24),
+    )
+    confusing_company = NewsFetcher.from_manual_text(
+        title="南亞科記憶體供給吃緊",
+        text="南亞科 DRAM 產能吃緊，記憶體報價上揚。",
+        publisher="測試新聞B",
+        published_at=date(2026, 5, 25),
+    )
+
+    appendix = generator._render_appendix(
+        LLMResult(text="", fallback=True),
+        [confusing_company, right_company],
+        [],
+        tickers=["1303"],
+    )
+
+    assert "1303 南亞電子材料需求回升" in appendix
+    assert "南亞科記憶體供給吃緊" not in appendix
+
+
 def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
@@ -2002,6 +2346,47 @@ def test_evidence_ranking_uses_dynamic_evidence_keywords_without_entity_match() 
 
     assert documents == [keyword_only]
     assert generator._related_documents("6669", documents) == []
+
+
+def test_evidence_ranking_excludes_sources_with_unrelated_entity_metadata() -> None:
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源", "資料中心"],
+            },
+            {
+                "ticker": "2301",
+                "name": "光寶科",
+                "segment": "電源管理",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源", "資料中心"],
+            },
+        ]
+    )
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = whitelist
+    generator.mapper = EntityMapper(whitelist)
+    request = ReportRequest(topic="AI 電源", tickers=["2308"])
+    wrong_company = NewsFetcher.from_manual_text(
+        title="光寶科 AI 電源出貨升溫",
+        text="光寶科 AI 伺服器電源需求增加，台達電同業也受市場關注。",
+        publisher="測試新聞A",
+        published_at=date(2026, 5, 25),
+    ).model_copy(update={"entity_tickers": ["2301"], "entity_names": ["光寶科"]})
+    right_company = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源出貨升溫",
+        text="台達電 AI 伺服器電源與資料中心需求增加。",
+        publisher="測試新聞B",
+        published_at=date(2026, 5, 24),
+    ).model_copy(update={"entity_tickers": ["2308"], "entity_names": ["台達電"]})
+
+    documents = generator._rank_evidence_documents(request, [wrong_company, right_company])
+
+    assert documents == [right_company]
 
 
 def test_candidate_audit_report_keeps_excluded_company_reasons() -> None:
@@ -2920,27 +3305,261 @@ def test_allocation_plan_caps_each_first_tranche_and_total_budget() -> None:
     assert "3324 雙鴻：首筆配置約 20,000 元" in rows[2]
 
 
-def test_formal_sources_exclude_investor_forum_posts() -> None:
+def test_allocation_plan_keeps_all_research_candidates_in_total() -> None:
+    rows = ReportGenerator._render_allocation_plan(
+        [
+            {"label": "2308 台達電", "upside_pct": 46, "downside_pct": 11},
+            {"label": "4583 大銀微系統", "upside_pct": 24, "downside_pct": 8},
+            {"label": "2359 所羅門", "upside_pct": 27, "downside_pct": 7},
+            {"label": "1504 東元", "upside_pct": 30, "downside_pct": 0},
+        ],
+        deployable=700_000,
+        first_tranche=50_000,
+    )
+
+    assert rows[0].startswith("本輪首筆配置合計約 180,000 元；")
+    assert len([row for row in rows if row.startswith("- ")]) == 4
+    assert "2308 台達電：首筆配置約 50,000 元" in rows[1]
+    assert "4583 大銀微系統：首筆配置約 40,000 元" in rows[2]
+    assert "2359 所羅門：首筆配置約 40,000 元" in rows[3]
+    assert "1504 東元：首筆配置約 50,000 元" in rows[4]
+
+
+def test_formal_sources_exclude_investor_forum_posts_and_blogs() -> None:
     forum = NewsFetcher.from_manual_text(
         title="1815 富喬- 追買低檔群創也不要去追高高檔的富喬住套房-股市爆料同學會 - CMoney",
         text="富喬 AI 玻纖布 需求 成長，但這是散戶閒聊。",
         publisher="CMoney",
         published_at=date(2026, 5, 12),
     )
-    formal = NewsFetcher.from_manual_text(
+    blog = NewsFetcher.from_manual_text(
         title="富喬 4月營收創歷史新高 受高階薄布需求帶動",
         text="1815 富喬 4月營收創歷史新高，受 AI 高階薄布需求帶動。",
         publisher="CMoney投資網誌",
         published_at=date(2026, 5, 8),
     )
+    formal = NewsFetcher.from_manual_text(
+        title="富喬月營收創高 高階玻纖布需求升溫",
+        text="1815 富喬月營收創高，高階玻纖布需求升溫。",
+        publisher="經濟日報",
+        published_at=date(2026, 5, 9),
+    )
 
-    sources = ReportGenerator._representative_sources([forum, formal], limit=3)
-    evidence = ReportGenerator._format_llm_evidence([forum, formal])
+    sources = ReportGenerator._representative_sources([forum, blog, formal], limit=3)
+    evidence = ReportGenerator._format_llm_evidence([forum, blog, formal])
 
     assert "股市爆料同學會" not in sources
     assert "股市爆料同學會" not in evidence
-    assert "富喬 4月營收創歷史新高" in sources
-    assert "富喬 4月營收創歷史新高" in evidence
+    assert "CMoney投資網誌" not in sources
+    assert "CMoney投資網誌" not in evidence
+    assert "富喬月營收創高" in sources
+    assert "富喬月營收創高" in evidence
+
+
+def test_source_coverage_defensively_excludes_forum_documents() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SimpleNamespace(
+        companies=lambda: [SimpleNamespace(ticker="1504", name="東元")]
+    )
+    generator.mapper = EntityMapper(generator.whitelist)
+    generator._document_match_cache = {}
+    generator._related_documents = lambda _ticker, documents: documents
+    request = ReportRequest(topic="機器人 產業鏈", tickers=["1504"])
+    forum = NewsFetcher.from_manual_text(
+        title="1504 東元 - 一堆看新聞做股票-股市爆料同學會",
+        text="東元 機器人 散戶閒聊。",
+        publisher="CMoney",
+        published_at=date(2026, 5, 26),
+    )
+    formal = NewsFetcher.from_manual_text(
+        title="東元受邀參加法人說明會",
+        text="1504 東元 機電整合與智慧能源業務說明。",
+        publisher="富聯網",
+        published_at=date(2026, 5, 25),
+    )
+
+    coverage = generator._render_source_coverage(request, ["1504"], [forum, formal])
+
+    assert "1504 東元" in coverage
+    assert "股市爆料同學會" not in coverage
+    assert "2026-05-25 富聯網" in coverage
+
+
+def test_retrieve_evidence_filters_low_quality_forum_fallback(monkeypatch) -> None:
+    forum = NewsFetcher.from_manual_text(
+        title="1815 富喬-追買低檔群創也不要去追高高檔的富喬住套房",
+        text="散戶閒聊：追買低檔群創也不要追高高檔的富喬住套房。",
+        publisher="CMoney",
+        published_at=date(2026, 5, 12),
+    )
+
+    class FakeVectorStore:
+        def search(self, topic: str):
+            return [forum]
+
+    def unavailable_session_scope():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.services.report_generator.session_scope", unavailable_session_scope)
+    generator = ReportGenerator(vector_store=FakeVectorStore())
+
+    documents = generator._retrieve_evidence(ReportRequest(topic="富喬 玻纖布", tickers=["1815"]))
+
+    assert documents == []
+
+
+def test_retrieve_evidence_expands_vector_queries_with_graph_neighbors(monkeypatch) -> None:
+    formal_document = NewsFetcher.from_manual_text(
+        title="雙鴻切入 AI 伺服器液冷供應鏈 伺服器 ODM 拉貨升溫",
+        text="3324 雙鴻 AI 伺服器散熱與液冷需求提升，2382 廣達與 3231 緯創等伺服器 ODM 拉貨升溫。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 20),
+    )
+    queries: list[str] = []
+
+    class FakeVectorStore:
+        def search(self, topic: str):
+            queries.append(topic)
+            if "3324" in topic and ("2382" in topic or "廣達" in topic):
+                return [formal_document]
+            return []
+
+    def unavailable_session_scope():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.services.report_generator.session_scope", unavailable_session_scope)
+    generator = ReportGenerator(vector_store=FakeVectorStore())
+
+    documents = generator._retrieve_evidence(ReportRequest(topic="AI 伺服器散熱", tickers=["3324"]))
+
+    assert documents == [formal_document]
+    assert queries[0] == "AI 伺服器散熱"
+    assert any("3324" in query and ("2382" in query or "廣達" in query) for query in queries[1:])
+    assert any("下游需求端" in query for query in queries[1:])
+
+
+def test_retrieve_evidence_passes_target_tickers_to_vector_search(monkeypatch) -> None:
+    formal_document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源需求成長",
+        text="2308 台達電 AI 電源需求成長。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 20),
+    )
+    calls = []
+
+    class FakeVectorStore:
+        def search(self, topic: str, target_tickers=None):
+            calls.append({"topic": topic, "target_tickers": target_tickers})
+            return [formal_document] if target_tickers == ["2308"] else []
+
+    def unavailable_session_scope():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.services.report_generator.session_scope", unavailable_session_scope)
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源"],
+            }
+        ]
+    )
+    generator = ReportGenerator(vector_store=FakeVectorStore(), whitelist=whitelist)
+
+    documents = generator._retrieve_evidence(ReportRequest(topic="AI 電源", tickers=["2308"]))
+
+    assert documents == [formal_document]
+    assert calls
+    assert all(call["target_tickers"] == ["2308"] for call in calls)
+
+
+def test_retrieve_evidence_passes_target_aliases_to_vector_search(monkeypatch) -> None:
+    formal_document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源需求成長",
+        text="台達電 AI 電源需求成長。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 20),
+    )
+    calls = []
+
+    class FakeVectorStore:
+        def search(self, topic: str, target_tickers=None, target_aliases=None):
+            calls.append(
+                {
+                    "topic": topic,
+                    "target_tickers": target_tickers,
+                    "target_aliases": target_aliases,
+                }
+            )
+            return [formal_document] if target_aliases and "台達電" in target_aliases.get("2308", []) else []
+
+    def unavailable_session_scope():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.services.report_generator.session_scope", unavailable_session_scope)
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源"],
+            }
+        ]
+    )
+    generator = ReportGenerator(vector_store=FakeVectorStore(), whitelist=whitelist)
+
+    documents = generator._retrieve_evidence(ReportRequest(topic="AI 電源", tickers=["2308"]))
+
+    assert documents == [formal_document]
+    assert calls
+    assert all(call["target_aliases"]["2308"] == ["2308", "台達電"] for call in calls)
+
+
+def test_rank_evidence_excludes_unmapped_wrong_company_when_requested_ticker_is_set() -> None:
+    requested_document = NewsFetcher.from_manual_text(
+        title="台達電 AI 電源需求成長",
+        text="2308 台達電 AI 伺服器電源需求成長。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 20),
+    )
+    wrong_company_document = NewsFetcher.from_manual_text(
+        title="光寶科 AI 電源出貨升溫",
+        text="光寶科 AI 伺服器電源需求增加。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 21),
+    )
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "2308",
+                "name": "台達電",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源"],
+            },
+            {
+                "ticker": "2301",
+                "name": "光寶科",
+                "segment": "電源與散熱",
+                "status": "evidence_supported",
+                "evidence_keywords": ["電源"],
+            },
+        ]
+    )
+    generator = ReportGenerator(whitelist=whitelist)
+
+    ranked = generator._rank_evidence_documents(
+        ReportRequest(topic="AI 電源", tickers=["2308"]),
+        [wrong_company_document, requested_document],
+    )
+
+    assert requested_document in ranked
+    assert wrong_company_document not in ranked
 
 
 def test_risk_warning_reason_distinguishes_threshold_from_relative_risk() -> None:

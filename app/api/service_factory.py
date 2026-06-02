@@ -74,10 +74,16 @@ class ApiServiceFactory:
     def sync_report_generation_api(self):
         d = self.dependencies
         settings_provider = d.get("get_settings")
+        settings = settings_provider() if callable(settings_provider) else None
         sync_pre_refresh_enabled = (
-            bool(getattr(settings_provider(), "sync_report_pre_refresh_enabled", False))
-            if callable(settings_provider)
+            bool(getattr(settings, "sync_report_pre_refresh_enabled", False))
+            if settings is not None
             else False
+        )
+        quality_recovery_enabled = (
+            bool(getattr(settings, "report_quality_auto_recovery_enabled", True))
+            if settings is not None
+            else True
         )
         return d["SyncReportGenerationApiService"](
             session_scope_factory=d["session_scope"],
@@ -86,6 +92,12 @@ class ApiServiceFactory:
             report_build_service_factory=self.report_build,
             count_sufficient_company_filings_func=d["count_sufficient_company_filings"],
             ingestion_pipeline_cls=d["IngestionPipeline"] if sync_pre_refresh_enabled else None,
+            quality_recovery_pipeline_cls=d["IngestionPipeline"] if quality_recovery_enabled else None,
+            market_quality_recovery_required_func=(
+                d["should_recover_market_data_quality"]
+                if quality_recovery_enabled
+                else (lambda quality_gate: False)
+            ),
         )
 
     def workflow_checkpoint_recorder(self):
@@ -268,6 +280,13 @@ class ApiServiceFactory:
 
     def standard_report_pipeline(self):
         d = self.dependencies
+        settings_provider = d.get("get_settings")
+        settings = settings_provider() if callable(settings_provider) else None
+        quality_recovery_enabled = (
+            bool(getattr(settings, "report_quality_auto_recovery_enabled", True))
+            if settings is not None
+            else True
+        )
         return d["StandardReportPipelineService"](
             session_scope_factory=d["session_scope"],
             analysis_run_repository_cls=d["AnalysisRunRepository"],
@@ -282,6 +301,11 @@ class ApiServiceFactory:
             safe_update_run_success_func=d["safe_update_run_success"],
             safe_mark_run_failed_func=d["safe_mark_run_failed"],
             workflow_steps=d["STANDARD_PIPELINE_STEPS"],
+            market_quality_recovery_required_func=(
+                d["should_recover_market_data_quality"]
+                if quality_recovery_enabled
+                else (lambda quality_gate: False)
+            ),
         )
 
     def discovered_topic_pipeline(self):

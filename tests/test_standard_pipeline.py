@@ -148,6 +148,78 @@ def test_standard_pipeline_service_marks_run_failed_on_report_error() -> None:
     assert ("fail", "report_build", "bad report") in workflow.events
 
 
+def test_standard_pipeline_recovers_market_quality_before_storing_report() -> None:
+    workflow = FakeWorkflowRecorder()
+    captured = {}
+
+    class RecoveringIngestionPipeline(FakeIngestionPipeline):
+        async def refresh_market(self, tickers, start_date, end_date, filter_allowed=True):
+            captured["refresh_market"] = {
+                "tickers": tickers,
+                "days": (end_date - start_date).days,
+                "filter_allowed": filter_allowed,
+            }
+            return {"stored": [{"ticker": "2330", "trade_date": "2026-06-02"}], "errors": []}
+
+    class RecoveringReportBuildService:
+        calls = 0
+
+        def build(self, request, *, source_count=None):
+            RecoveringReportBuildService.calls += 1
+            if RecoveringReportBuildService.calls == 1:
+                quality_gate = {
+                    "status": "caution",
+                    "warnings": ["股價日期不一致，最新可取得交易日未覆蓋多數股票"],
+                    "metrics": {
+                        "market_latest_trade_date_coverage": 0.5,
+                        "market_older_than_database_latest_count": 1,
+                    },
+                }
+                title = "first"
+            else:
+                quality_gate = {"status": "ready", "warnings": [], "metrics": {}}
+                title = "rebuilt"
+            return {
+                "response": ReportResponse(title=title, markdown=f"# {title}"),
+                "quality_gate": quality_gate,
+                "report_execution": {"build_calls": RecoveringReportBuildService.calls},
+                "evidence_count": 3,
+            }
+
+    def safe_update(run_id, payload, report_id):
+        captured["safe_update"] = payload
+        return True
+
+    service = _service(
+        ingestion_pipeline_cls=RecoveringIngestionPipeline,
+        report_build_service_factory=lambda: RecoveringReportBuildService(),
+        workflow_recorder_factory=lambda: workflow,
+        safe_update_run_success_func=safe_update,
+    )
+
+    result = run_async(service.run(ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=7)))
+
+    assert RecoveringReportBuildService.calls == 2
+    assert FakeReportRepository.stored["title"] == "rebuilt"
+    assert captured["refresh_market"]["tickers"] == ["2330"]
+    assert captured["refresh_market"]["days"] == 240
+    assert captured["refresh_market"]["filter_allowed"] is False
+    assert result["quality_gate"]["status"] == "ready"
+    assert result["quality_recovery"]["status"] == "completed"
+    assert captured["safe_update"]["quality_recovery"]["quality_gate_before"]["status"] == "caution"
+    assert captured["safe_update"]["quality_recovery"]["quality_gate_after"]["status"] == "ready"
+    assert (
+        "complete",
+        "report_build",
+        {
+            "report_id": 88,
+            "quality_gate_status": "ready",
+            "evidence_count": 3,
+            "quality_recovery": "completed",
+        },
+    ) in workflow.events
+
+
 def test_standard_pipeline_service_resumes_failed_report_build_from_checkpoint() -> None:
     workflow = FakeWorkflowRecorder()
     captured = {}

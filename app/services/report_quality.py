@@ -28,6 +28,32 @@ STALE_MARKET_SOURCE_MARKER = "cached-stale"
 LATEST_ONLY_MARKET_SOURCE_MARKER = "latest-only"
 
 
+def should_recover_market_data_quality(quality_gate: dict | None) -> bool:
+    if not isinstance(quality_gate, dict):
+        return False
+    metrics = quality_gate.get("metrics") or {}
+    issue_text = "；".join(
+        [
+            *[str(item) for item in quality_gate.get("blockers") or []],
+            *[str(item) for item in quality_gate.get("warnings") or []],
+            *[str(item) for item in quality_gate.get("remediation_actions") or []],
+        ]
+    )
+    market_coverage = metrics.get("market_coverage")
+    market_latest_trade_date_coverage = metrics.get("market_latest_trade_date_coverage")
+    return bool(
+        (market_coverage is not None and float(market_coverage or 0) < 1)
+        or int(metrics.get("market_stale_count") or 0)
+        or int(metrics.get("market_latest_only_count") or 0)
+        or int(metrics.get("market_older_than_database_latest_count") or 0)
+        or (
+            market_latest_trade_date_coverage is not None
+            and float(market_latest_trade_date_coverage or 0) < 0.8
+        )
+        or any(term in issue_text for term in ["股價資料覆蓋率", "股價日期不一致", "資料庫最新交易日股價"])
+    )
+
+
 def build_report_quality_gate(
     source_audit: dict,
     promoted_tickers: list[str],

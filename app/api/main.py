@@ -126,6 +126,7 @@ from app.services.report_quality import (
     build_quality_gate_for_request,
     build_report_quality_gate,
     parse_quality_gate_from_markdown,
+    should_recover_market_data_quality,
     summarize_document_source_quality,
     summarize_llm_status,
 )
@@ -268,6 +269,7 @@ _SERVICE_FACTORY_DEPENDENCIES = (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,
     build_report_quality_gate,
+    should_recover_market_data_quality,
     parse_quality_gate_from_markdown,
     summarize_document_source_quality,
     summarize_llm_status,

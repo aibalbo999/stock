@@ -73,6 +73,11 @@ class QualityRecoveryOrchestrator:
             float(metrics.get("market_coverage") or 0) < 1
             or int(metrics.get("market_stale_count") or 0)
             or int(metrics.get("market_latest_only_count") or 0)
+            or int(metrics.get("market_older_than_database_latest_count") or 0)
+            or (
+                metrics.get("market_latest_trade_date_coverage") is not None
+                and float(metrics.get("market_latest_trade_date_coverage") or 0) < 0.8
+            )
         ):
             triggers.append("market_data_gap")
             actions.append(

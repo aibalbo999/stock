@@ -231,17 +231,30 @@ def should_require_candidate_audit_follow_up(
     return True
 
 
+def _candidate_payload_value(candidate: dict, key: str):
+    if isinstance(candidate, dict):
+        return candidate.get(key)
+    return getattr(candidate, key, None)
+
+
+def _candidate_confidence_score(candidate: dict) -> int:
+    score = _candidate_payload_value(candidate, "evidence_confidence_score")
+    if score is None:
+        score = _candidate_payload_value(candidate, "confidence")
+    return int(score or 0)
+
+
 def summarize_candidate_support_payload(candidates: list[dict]) -> dict:
     total = len(candidates)
-    supported = sum(1 for candidate in candidates if candidate.get("status") == "evidence_supported")
-    weak = sum(1 for candidate in candidates if candidate.get("status") == "weak_evidence")
-    unsupported = sum(1 for candidate in candidates if candidate.get("status") == "needs_evidence")
-    unavailable = sum(1 for candidate in candidates if candidate.get("status") == "evidence_unavailable")
-    limited = sum(1 for candidate in candidates if candidate.get("status") == "evidence_limited")
+    supported = sum(1 for candidate in candidates if _candidate_payload_value(candidate, "status") == "evidence_supported")
+    weak = sum(1 for candidate in candidates if _candidate_payload_value(candidate, "status") == "weak_evidence")
+    unsupported = sum(1 for candidate in candidates if _candidate_payload_value(candidate, "status") == "needs_evidence")
+    unavailable = sum(1 for candidate in candidates if _candidate_payload_value(candidate, "status") == "evidence_unavailable")
+    limited = sum(1 for candidate in candidates if _candidate_payload_value(candidate, "status") == "evidence_limited")
     supported_scores = [
-        int(candidate.get("evidence_confidence_score") or 0)
+        _candidate_confidence_score(candidate)
         for candidate in candidates
-        if candidate.get("status") == "evidence_supported"
+        if _candidate_payload_value(candidate, "status") == "evidence_supported"
     ]
     supported_ratio = supported / total if total else 0
     return {

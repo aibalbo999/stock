@@ -10,6 +10,7 @@ from app.services.report_followup import (
     parse_run_payload,
     request_from_report_record,
     should_require_candidate_audit_follow_up,
+    summarize_candidate_support_payload,
 )
 
 
@@ -41,6 +42,19 @@ def test_candidate_follow_up_does_not_require_rerun_for_source_only_gap() -> Non
     }
 
     assert should_require_candidate_audit_follow_up(quality_gate, {}, []) is False
+
+
+def test_candidate_support_accepts_legacy_confidence_score() -> None:
+    summary = summarize_candidate_support_payload(
+        [
+            {"status": "evidence_supported", "confidence": 100},
+            {"status": "evidence_supported", "confidence": 88},
+        ]
+    )
+
+    assert summary["formal_confidence_avg"] == 94
+    assert summary["formal_confidence_min"] == 88
+    assert summary["formal_low_confidence_count"] == 0
 
 
 def test_filter_follow_up_actions_keeps_rerun_analysis_with_required_actions() -> None:

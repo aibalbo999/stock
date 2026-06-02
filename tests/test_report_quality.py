@@ -123,6 +123,28 @@ def test_quality_gate_warns_when_report_prices_lag_database_latest_date() -> Non
     assert "同日覆蓋率 50%" in markdown
 
 
+def test_quality_gate_adds_self_healing_plan_for_recoverable_gaps() -> None:
+    gate = build_report_quality_gate(
+        {"candidate_support": {"supported_ratio": 1.0}, "dynamic_queries": {"stored_count": 4}},
+        ["2330"],
+        market_count=0,
+        monthly_revenue_count=0,
+        financial_metrics_count=0,
+        valuation_count=0,
+        monthly_revenue_stale_count=1,
+    )
+
+    plan = gate["self_healing"]
+    action_types = [action["action_type"] for action in plan["actions"]]
+
+    assert plan["status"] == "planned"
+    assert "ingest_news" in action_types
+    assert "refresh_market" in action_types
+    assert "refresh_monthly_revenue" in action_types
+    assert action_types[-1] == "rerun_analysis"
+    assert "自癒補強計畫" in render_quality_gate_markdown(gate)
+
+
 def test_market_trade_date_summary_counts_tickers_older_than_database_latest_date() -> None:
     summary = market_trade_date_summary(
         [

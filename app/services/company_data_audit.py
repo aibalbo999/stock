@@ -342,8 +342,20 @@ def _fresh_count_check(
     if rows < min_rows or latest_date_value is None:
         return False
     latest_date = date.fromisoformat(latest_date_value)
-    age_days = (today - latest_date).days
+    age_days = _business_day_age(latest_date, today)
     return 0 <= age_days <= max_age_days
+
+
+def _business_day_age(start: date, end: date) -> int:
+    if end < start:
+        return -1
+    days = 0
+    cursor = start
+    while cursor < end:
+        cursor = date.fromordinal(cursor.toordinal() + 1)
+        if cursor.weekday() < 5:
+            days += 1
+    return days
 
 
 def _financial_check(financial: dict, today: date) -> bool:

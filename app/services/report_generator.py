@@ -36,7 +36,10 @@ from app.services.persistence import (
     ValuationMetricRepository,
 )
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
+from app.services.report_models import AllocationItem, AllocationPlan, ReportContext, ReportSection
+from app.services.report_renderer import ReportMarkdownRenderer
 from app.services.report_quality import is_stale_market_data_source
+from app.services.scoring_engine import PotentialScoringEngine
 from app.services.risk_analyzer import RiskAnalyzer
 from app.services.source_quality import (
     filter_formal_evidence_documents,
@@ -176,7 +179,7 @@ class ReportGenerator:
             evidence=self._format_llm_evidence(evidence_docs, self._document_company_labels),
             market_data=self._format_market_data(market_snapshots, monthly_revenues),
         )
-        llm_result = self.llm.generate_with_metadata(prompt)
+        llm_result = self._generate_llm_supplement(prompt)
         self.last_llm_result = llm_result
         markdown = self._render_markdown(
             request,
@@ -191,7 +194,7 @@ class ReportGenerator:
             leading_signals,
         )
         markdown = remove_low_quality_investor_forum_lines(markdown)
-        self._assert_report_integrity(markdown)
+        self._assert_report_integrity(markdown, self.whitelist)
         return ReportResponse(
             title=f"{request.topic} 自動分析報告",
             generated_at=now_taipei(),
@@ -200,11 +203,21 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def _assert_report_integrity(markdown: str) -> None:
+    def _assert_report_integrity(markdown: str, whitelist: SupplyChainWhitelist | None = None) -> None:
         try:
-            assert_report_integrity(markdown)
+            assert_report_integrity(markdown, whitelist)
         except ReportIntegrityError as exc:
             raise ReportExecutionError(str(exc)) from exc
+
+    def _generate_llm_supplement(self, prompt: str) -> LLMResult:
+        structured_generate = getattr(self.llm, "generate_structured_with_metadata", None)
+        if callable(structured_generate):
+            return structured_generate(
+                prompt,
+                tool_schema=LLMSupplementValidator.tool_schema(),
+                tool_name="submit_report_supplement",
+            )
+        return self.llm.generate_with_metadata(prompt)
 
     def _retrieve_evidence(self, request: ReportRequest) -> list[NewsDocument]:
         target_tickers = self.mapper.filter_allowed_tickers(request.tickers)
@@ -547,228 +560,231 @@ class ReportGenerator:
             valuation_metrics,
             leading_signals,
         )
-        lines = [
-            f"# {request.topic} 自動分析報告",
-            "",
-            f"生成時間（台灣）：{now_taipei().isoformat(timespec='seconds')}",
-            "",
-            "## 一頁摘要",
-            self._render_executive_snapshot(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+        sections = [
+            ReportSection(
+                title="一頁摘要",
+                body=self._render_executive_snapshot(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 可信度檢查",
-            self._render_credibility_check(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="可信度檢查",
+                body=self._render_credibility_check(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 時間口徑說明",
-            self._render_time_scope_note(
-                request,
-                market_snapshots,
-                monthly_revenues,
-                valuation_metrics,
+            ReportSection(
+                title="時間口徑說明",
+                body=self._render_time_scope_note(
+                    request,
+                    market_snapshots,
+                    monthly_revenues,
+                    valuation_metrics,
+                ),
             ),
-            "",
-            "## 判斷準則說明",
-            self._render_decision_criteria_note(request),
-            "",
-            "## 下一步行動",
-            self._render_action_checklist(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(title="判斷準則說明", body=self._render_decision_criteria_note(request)),
+            ReportSection(
+                title="下一步行動",
+                body=self._render_action_checklist(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 監控清單",
-            self._render_monitoring_checklist(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="監控清單",
+                body=self._render_monitoring_checklist(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 自動補強任務",
-            self._render_follow_up_actions(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="自動補強任務",
+                body=self._render_follow_up_actions(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 先看結論",
-            self._summary(findings),
-            "",
-            "## 候選公司審計",
-            self._render_candidate_audit(ordered_tickers),
-            "",
-            "## 資料完整度",
-            self._render_data_quality(
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
-                request=request,
+            ReportSection(title="先看結論", body=self._summary(findings)),
+            ReportSection(title="候選公司審計", body=self._render_candidate_audit(ordered_tickers)),
+            ReportSection(
+                title="資料完整度",
+                body=self._render_data_quality(
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                    request=request,
+                ),
             ),
-            "",
-            "## 來源覆蓋",
-            self._render_source_coverage(request, ordered_tickers, documents),
-            "",
-            "## 近況訊號檢查",
-            self._render_leading_signal_check(ordered_tickers, leading_signals),
-            "",
-            "## 早期潛力雷達",
-            self._render_early_potential_radar(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                leading_signals,
-                financial_metrics,
-                valuation_metrics,
+            ReportSection(title="來源覆蓋", body=self._render_source_coverage(request, ordered_tickers, documents)),
+            ReportSection(title="近況訊號檢查", body=self._render_leading_signal_check(ordered_tickers, leading_signals)),
+            ReportSection(
+                title="早期潛力雷達",
+                body=self._render_early_potential_radar(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    leading_signals,
+                    financial_metrics,
+                    valuation_metrics,
+                ),
             ),
-            "",
-            "## 資金控管建議",
-            self._render_beginner_portfolio_plan(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="資金控管建議",
+                body=self._render_beginner_portfolio_plan(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 投資建議",
-            self._render_investment_recommendations(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="投資建議",
+                body=self._render_investment_recommendations(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 個股比較矩陣",
-            self._render_company_comparison_matrix(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="個股比較矩陣",
+                body=self._render_company_comparison_matrix(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 投資理由地圖",
-            self._render_investment_thesis_map(
-                request,
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="投資理由地圖",
+                body=self._render_investment_thesis_map(
+                    request,
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 二次綜合篩選",
-            self._render_final_potential_screen(
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
-                request=request,
+            ReportSection(
+                title="二次綜合篩選",
+                body=self._render_final_potential_screen(
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                    request=request,
+                ),
             ),
-            "",
-            "## 評分明細",
-            self._render_score_breakdown(
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
+            ReportSection(
+                title="評分明細",
+                body=self._render_score_breakdown(
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    leading_signals,
+                ),
             ),
-            "",
-            "## 基本面月營收檢查",
-            self._render_revenue_check(ordered_tickers, monthly_revenues),
-            "",
-            "## 個別公司分析",
-            self._render_company_analysis(
-                ordered_tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                request=request,
-                leading_signals=leading_signals,
+            ReportSection(title="基本面月營收檢查", body=self._render_revenue_check(ordered_tickers, monthly_revenues)),
+            ReportSection(
+                title="個別公司分析",
+                body=self._render_company_analysis(
+                    ordered_tickers,
+                    documents,
+                    findings,
+                    market_snapshots,
+                    monthly_revenues,
+                    financial_metrics,
+                    valuation_metrics,
+                    request=request,
+                    leading_signals=leading_signals,
+                ),
             ),
-            "",
-            "## 主要風險與瓶頸",
-            self._render_risk_overview(findings, ordered_tickers),
-            "",
-            "## 分析範圍",
-            self._render_scope(ordered_tickers, market_snapshots, monthly_revenues),
-            "",
-            "## 附錄：AI 補充與資料來源",
-            self._render_appendix(llm_result, documents, market_snapshots, tickers=ordered_tickers),
+            ReportSection(title="主要風險與瓶頸", body=self._render_risk_overview(findings, ordered_tickers)),
+            ReportSection(title="分析範圍", body=self._render_scope(ordered_tickers, market_snapshots, monthly_revenues)),
+            ReportSection(
+                title="附錄：AI 補充與資料來源",
+                body=self._render_appendix(llm_result, documents, market_snapshots, tickers=ordered_tickers),
+            ),
         ]
-        return "\n".join(lines)
+        context = ReportContext(
+            title=f"{request.topic} 自動分析報告",
+            topic=request.topic,
+            generated_at=now_taipei(),
+            sections=sections,
+        )
+        return ReportMarkdownRenderer().render(context)
 
     def _render_credibility_check(
         self,
@@ -4159,20 +4175,34 @@ class ReportGenerator:
         if not candidates:
             return ["目前無可配置標的。"]
         amounts = ReportGenerator._allocation_amounts(candidates, deployable, first_tranche)
+        plan = AllocationPlan(
+            items=[
+                AllocationItem(
+                    label=candidate["label"],
+                    amount=amount,
+                    upside_pct=int(candidate["upside_pct"]),
+                    downside_pct=int(candidate["downside_pct"]),
+                    source=str(candidate.get("source") or ""),
+                )
+                for candidate, amount in zip(candidates, amounts)
+            ],
+            declared_total=sum(amounts),
+            deployable=deployable,
+            first_tranche=first_tranche,
+        )
 
         rows = []
-        allocated_total = sum(amounts)
         rows.insert(
             0,
-            f"本輪首筆配置合計約 {allocated_total:,} 元；可投入上限 {deployable:,} 元。"
+            f"本輪首筆配置合計約 {plan.declared_total:,} 元；可投入上限 {plan.deployable:,} 元。"
             "配置採淨分（升值分 - 降值分）排序與權重，再套用單檔首筆上限與萬元取整。"
         )
-        for candidate, amount in zip(candidates, amounts):
-            cap_note = "；本檔已達首筆上限，並非完整等比例配置" if amount >= first_tranche else ""
+        for item in plan.items:
+            cap_note = "；本檔已達首筆上限，並非完整等比例配置" if item.amount >= plan.first_tranche else ""
             rows.append(
-                f"- {candidate['label']}：首筆配置約 {amount:,} 元；"
-                f"淨分 {candidate['upside_pct'] - candidate['downside_pct']}，"
-                f"升值分 {candidate['upside_pct']} / 降值分 {candidate['downside_pct']}{cap_note}。"
+                f"- {item.label}：首筆配置約 {item.amount:,} 元；"
+                f"淨分 {item.net_score}，"
+                f"升值分 {item.upside_pct} / 降值分 {item.downside_pct}{cap_note}。"
             )
         return rows
 
@@ -4626,15 +4656,19 @@ class ReportGenerator:
             1 for finding in related_findings if finding.risk_type == RiskType.opportunity_or_growth
         )
 
+        scoring = PotentialScoringEngine()
         upside_pct = 0
         downside_pct = 0
         upside_factors: list[tuple[str, int]] = []
         downside_factors: list[tuple[str, int]] = []
         confidence_notes: list[str] = []
         evidence_score = 0
-        if len(related_documents) >= 2 and (positive_hits >= 1 or opportunity_findings):
-            evidence_score = min(15, positive_hits * 2 + opportunity_findings * 3 + max(0, len(related_documents) - 2))
-            upside_pct = 10 + evidence_score
+        evidence_score, upside_pct = scoring.news_upside_score(
+            document_count=len(related_documents),
+            positive_hits=positive_hits,
+            opportunity_findings=opportunity_findings,
+        )
+        if evidence_score:
             upside_factors.append(
                 (
                     f"公司相關文本 {len(related_documents)} 筆、正向關鍵證據 {positive_hits} 項、機會歸因 {opportunity_findings} 筆",
@@ -4642,9 +4676,12 @@ class ReportGenerator:
                 )
             )
         news_risk_score = 0
-        if negative_hits >= 1 or structural_findings or volatility_findings:
-            news_risk_score = min(15, negative_hits * 2 + structural_findings * 2 + volatility_findings)
-            downside_pct = 5 + news_risk_score
+        news_risk_score, downside_pct = scoring.news_downside_score(
+            negative_hits=negative_hits,
+            structural_findings=structural_findings,
+            volatility_findings=volatility_findings,
+        )
+        if news_risk_score:
             downside_factors.append(
                 (
                     f"負向字詞 {negative_hits} 項、結構性瓶頸 {structural_findings} 筆、短期波動 {volatility_findings} 筆",
@@ -4655,13 +4692,13 @@ class ReportGenerator:
         revenue_upside_bonus = 0
         revenue_downside_penalty = 0
         if monthly_revenue and monthly_revenue.yoy_pct is not None:
-            if monthly_revenue.yoy_pct >= 10:
-                revenue_upside_bonus = min(5, max(2, int(monthly_revenue.yoy_pct // 10)))
-                upside_pct = max(11, upside_pct) + revenue_upside_bonus
+            revenue_upside_bonus = scoring.revenue_upside_bonus(monthly_revenue.yoy_pct)
+            revenue_downside_penalty = scoring.revenue_downside_penalty(monthly_revenue.yoy_pct)
+            if revenue_upside_bonus:
+                upside_pct = scoring.activate_upside(upside_pct, revenue_upside_bonus)
                 upside_factors.append((f"月營收年增率 {monthly_revenue.yoy_pct:.2f}%", revenue_upside_bonus))
-            elif monthly_revenue.yoy_pct < 0:
-                revenue_downside_penalty = min(6, max(2, int(abs(monthly_revenue.yoy_pct) // 5)))
-                downside_pct = max(6, downside_pct) + revenue_downside_penalty
+            elif revenue_downside_penalty:
+                downside_pct = scoring.activate_downside(downside_pct, revenue_downside_penalty)
                 downside_factors.append((f"月營收年增率 {monthly_revenue.yoy_pct:.2f}%", revenue_downside_penalty))
         elif monthly_revenue:
             confidence_notes.append("月營收缺去年同期比較")
@@ -4670,7 +4707,7 @@ class ReportGenerator:
 
         if leading_signal:
             if leading_signal.upside_bonus and leading_signal.direction != "偏空":
-                upside_pct = max(11, upside_pct) + leading_signal.upside_bonus
+                upside_pct = scoring.activate_upside(upside_pct, leading_signal.upside_bonus)
                 upside_factors.append(
                     (
                         f"{ReportGenerator._leading_signal_factor_label(leading_signal, True)}：{leading_signal.summary}",
@@ -4678,7 +4715,7 @@ class ReportGenerator:
                     )
                 )
             if leading_signal.downside_penalty and leading_signal.direction != "偏多":
-                downside_pct = max(6, downside_pct) + leading_signal.downside_penalty
+                downside_pct = scoring.activate_downside(downside_pct, leading_signal.downside_penalty)
                 downside_factors.append(
                     (
                         f"{ReportGenerator._leading_signal_factor_label(leading_signal, False)}：{leading_signal.summary}",
@@ -4695,7 +4732,7 @@ class ReportGenerator:
             peer_valuation_summary,
         )
         if financial_assessment["upside_score"]:
-            upside_pct = max(11, upside_pct) + financial_assessment["upside_score"]
+            upside_pct = scoring.activate_upside(upside_pct, financial_assessment["upside_score"])
             upside_factors.append(
                 (
                     f"長期/已揭露財務與目前估值加分：{financial_assessment['upside_summary']}",
@@ -4703,7 +4740,7 @@ class ReportGenerator:
                 )
             )
         if financial_assessment["risk_score"]:
-            downside_pct = max(6, downside_pct) + financial_assessment["risk_score"]
+            downside_pct = scoring.activate_downside(downside_pct, financial_assessment["risk_score"])
             downside_factors.append(
                 (
                     f"長期/已揭露財務與目前估值風險：{financial_assessment['risk_summary']}",
@@ -4715,11 +4752,12 @@ class ReportGenerator:
         upside_cap_note = ""
         if (
             financial_assessment["red_flag"]
-            and int(financial_assessment.get("risk_score") or 0) >= 7
-            and upside_pct > 20
+            and int(financial_assessment.get("risk_score") or 0)
+            >= scoring.config.thresholds.financial_red_flag_min_risk_score
+            and upside_pct > scoring.config.thresholds.financial_red_flag_upside_cap
         ):
             original_upside = upside_pct
-            upside_pct = 20
+            upside_pct = scoring.config.thresholds.financial_red_flag_upside_cap
             upside_cap_note = (
                 f"基本面紅旗（{financial_assessment['risk_summary']}）"
                 f"已將升值分從 {original_upside} 分壓低至 {upside_pct} 分"
@@ -4805,43 +4843,40 @@ class ReportGenerator:
             else len({document.source.publisher or document.source.url or document.title for document in related_documents})
         )
         trading_money = snapshot.trading_money if snapshot else None
-        if trading_money is not None and trading_money >= 1_000_000_000:
-            attention_label = "截至目前成交熱度高"
-            attention_bonus = -4
-        elif document_count <= 3 and publisher_count <= 2:
-            attention_label = "報導較少"
-            attention_bonus = 10
-        elif document_count <= 8 and publisher_count <= 5:
-            attention_label = "報導偏少"
-            attention_bonus = 6
-        elif document_count <= 15:
-            attention_label = "截至目前已有報導"
-            attention_bonus = 2
-        else:
-            attention_label = "截至目前大量報導"
-            attention_bonus = -4
+        scoring = PotentialScoringEngine()
+        attention_label, attention_bonus = scoring.early_attention(
+            document_count=document_count,
+            publisher_count=publisher_count,
+            trading_money=trading_money,
+        )
 
         signal_bonus = 0
         reasons = [f"公司文本 {document_count} 筆 / {publisher_count} 來源"]
-        if monthly_revenue and monthly_revenue.yoy_pct is not None and monthly_revenue.yoy_pct >= 20:
-            signal_bonus += 6
+        revenue_signal_bonus = scoring.early_revenue_bonus(
+            monthly_revenue.yoy_pct if monthly_revenue else None
+        )
+        if revenue_signal_bonus:
+            signal_bonus += revenue_signal_bonus
             reasons.append(f"月營收年增 {monthly_revenue.yoy_pct:.1f}%")
-        if monthly_revenue and monthly_revenue.yoy_pct is not None and monthly_revenue.yoy_pct >= 10:
-            signal_bonus += 3
-        if leading_signal and leading_signal.upside_bonus >= 5:
-            signal_bonus += 6
+        leading_signal_bonus = scoring.early_leading_signal_bonus(
+            leading_signal.upside_bonus if leading_signal else 0
+        )
+        if leading_signal and leading_signal_bonus:
+            signal_bonus += leading_signal_bonus
             reasons.append(f"近況訊號 {leading_signal.direction}：{leading_signal.summary}")
-        elif leading_signal and leading_signal.upside_bonus > 0:
-            signal_bonus += 3
-            reasons.append(f"近況訊號 {leading_signal.direction}")
-        if downside_pct > 12:
-            signal_bonus -= 8
+        downside_penalty = scoring.early_downside_penalty(downside_pct)
+        if downside_penalty:
+            signal_bonus -= downside_penalty
+        if downside_penalty and downside_pct > scoring.config.early_potential.high_downside_threshold:
             reasons.append("目前情境降值分偏高，需等待風險下降")
-        elif downside_pct > 5:
-            signal_bonus -= 3
+        elif downside_penalty:
             reasons.append("仍有風險訊號")
 
-        score = max(0, min(30, attention_bonus + signal_bonus + max(0, upside_pct - 10) // 3))
+        score = scoring.early_score(
+            attention_bonus=attention_bonus,
+            signal_bonus=signal_bonus,
+            upside_pct=upside_pct,
+        )
         if attention_label == "截至目前成交熱度高":
             reason = "截至目前成交金額偏高，較不像尚未被市場注意的冷門線索。"
         elif attention_label == "截至目前大量報導":

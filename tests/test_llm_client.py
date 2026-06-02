@@ -339,6 +339,51 @@ def test_litellm_model_chain_limits_key_rotation_and_retries(monkeypatch) -> Non
     assert [attempt.get("key_index") for attempt in result.attempts] == [0, 1, 1, 2]
 
 
+def test_generate_structured_with_metadata_passes_tool_schema_to_litellm(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gpt-test",
+        llm_max_retries_per_key=0,
+        openai_api_key="openai-key",
+    )
+    client.rotator = APIKeyRotator([])
+    captured = {}
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, model: str, api_key: str | None = None, **kwargs) -> str:
+        captured["call"] = {
+            "prompt": prompt,
+            "model": model,
+            "api_key": api_key,
+            "tools": kwargs.get("tools"),
+            "tool_choice": kwargs.get("tool_choice"),
+        }
+        return '{"items":[]}'
+
+    monkeypatch.setattr(client, "_call_litellm", fake_call)
+
+    result = client.generate_structured_with_metadata(
+        "prompt",
+        tool_name="submit_report_supplement",
+        tool_schema={
+            "type": "function",
+            "function": {
+                "name": "submit_report_supplement",
+                "parameters": {"type": "object"},
+            },
+        },
+    )
+
+    assert result.text == '{"items":[]}'
+    assert captured["call"]["tools"][0]["function"]["name"] == "submit_report_supplement"
+    assert captured["call"]["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "submit_report_supplement"},
+    }
+
+
 def test_litellm_unavailable_falls_back_to_existing_gemini_http(monkeypatch) -> None:
     client = object.__new__(LLMClient)
     client.settings = fake_settings(llm_provider="litellm")

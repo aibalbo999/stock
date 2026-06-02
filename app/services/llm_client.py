@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from importlib import import_module
 from threading import Lock
 from time import monotonic, sleep
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -232,6 +232,23 @@ class LLMClient:
             )
 
         return self._generate_with_gemini_http(prompt, prior_attempts=tuple(prior_attempts))
+
+    def generate_structured_with_metadata(
+        self,
+        prompt: str,
+        *,
+        tool_schema: dict[str, Any],
+        tool_name: str,
+    ) -> LLMResult:
+        if self.provider == "litellm":
+            litellm_result = self._generate_with_litellm(
+                prompt,
+                tools=[tool_schema],
+                tool_choice={"type": "function", "function": {"name": tool_name}},
+            )
+            if not litellm_result.fallback:
+                return litellm_result
+        return self.generate_with_metadata(prompt)
 
     def _generate_with_gemini_http(
         self,
@@ -464,7 +481,13 @@ class LLMClient:
             attempts=tuple(attempts),
         )
 
-    def _generate_with_litellm(self, prompt: str) -> LLMResult:
+    def _generate_with_litellm(
+        self,
+        prompt: str,
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | str | None = None,
+    ) -> LLMResult:
         try:
             import_module("litellm")
         except Exception as exc:
@@ -538,6 +561,8 @@ class LLMClient:
                             model,
                             api_key=api_key,
                             timeout_seconds=max(1.0, deadline - monotonic()),
+                            tools=tools,
+                            tool_choice=tool_choice,
                         )
                         if text:
                             attempts.append(
@@ -730,6 +755,8 @@ class LLMClient:
         model: str,
         api_key: str | None = None,
         timeout_seconds: float | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | str | None = None,
     ) -> str:
         litellm = import_module("litellm")
         try:
@@ -746,13 +773,45 @@ class LLMClient:
         }
         if api_key:
             kwargs["api_key"] = api_key
+        if tools:
+            kwargs["tools"] = tools
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
         response = litellm.completion(**kwargs)
         if isinstance(response, dict):
             choice = (response.get("choices") or [{}])[0]
             message = choice.get("message") or {}
+            tool_arguments = self._tool_call_arguments(message)
+            if tool_arguments:
+                return tool_arguments
             return str(message.get("content") or "").strip()
         choice = response.choices[0]
+        tool_arguments = self._tool_call_arguments(choice.message)
+        if tool_arguments:
+            return tool_arguments
         return str(choice.message.content or "").strip()
+
+    @staticmethod
+    def _tool_call_arguments(message: object) -> str:
+        tool_calls = (
+            message.get("tool_calls")
+            if isinstance(message, dict)
+            else getattr(message, "tool_calls", None)
+        ) or []
+        if not tool_calls:
+            return ""
+        first_call = tool_calls[0]
+        function = (
+            first_call.get("function")
+            if isinstance(first_call, dict)
+            else getattr(first_call, "function", None)
+        )
+        arguments = (
+            function.get("arguments")
+            if isinstance(function, dict)
+            else getattr(function, "arguments", None)
+        )
+        return str(arguments or "").strip()
 
     def _call_google_genai(
         self,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from app.core.config import get_settings
 from app.models.schemas import Company, SupplyChainSegment
@@ -45,12 +46,14 @@ class SupplyChainWhitelist:
                     "name": candidate["name"],
                     "aliases": [candidate["ticker"], candidate["name"]],
                     "evidence_keywords": candidate.get("evidence_keywords", []),
+                    "metadata": candidate.get("metadata") or {},
                 }
             )
 
         raw = {
             "segments": list(segments_by_name.values()),
             "risk_keywords": base.risk_keywords,
+            "company_metadata": base.raw.get("company_metadata") or {},
             "candidate_audit": candidates,
         }
         return cls(raw=raw)
@@ -63,6 +66,29 @@ class SupplyChainWhitelist:
 
     def candidate_audit(self) -> list[dict]:
         return list(self.raw.get("candidate_audit") or [])
+
+    def company_metadata(self, ticker: str) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        raw_metadata = self.raw.get("company_metadata") or {}
+        if isinstance(raw_metadata, dict):
+            ticker_metadata = raw_metadata.get(str(ticker)) or {}
+            if isinstance(ticker_metadata, dict):
+                merged.update(ticker_metadata)
+        company = next((company for company in self.companies() if company.ticker == str(ticker)), None)
+        if company and isinstance(company.metadata, dict):
+            merged.update(company.metadata)
+        return merged
+
+    def company_metadata_map(self) -> dict[str, dict[str, Any]]:
+        tickers = set(self.allowed_tickers())
+        raw_metadata = self.raw.get("company_metadata") or {}
+        if isinstance(raw_metadata, dict):
+            tickers.update(str(ticker) for ticker in raw_metadata)
+        return {
+            ticker: metadata
+            for ticker in sorted(tickers)
+            if (metadata := self.company_metadata(ticker))
+        }
 
     def segment_for_ticker(self, ticker: str) -> SupplyChainSegment | None:
         for segment in self.segments:

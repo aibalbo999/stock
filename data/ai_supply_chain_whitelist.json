@@ -4,6 +4,43 @@
     "mapping_rule": "Only companies in this whitelist may be mapped into the AI supply chain report.",
     "unknown_rule": "If no whitelisted company is supported by retrieved evidence, answer: 目前無足夠數據判斷."
   },
+  "company_metadata": {
+    "2301": {
+      "owner_phrases": [
+        "光寶為全球次世代 AI 關鍵基礎設施中的領先廠商"
+      ]
+    },
+    "1597": {
+      "owner_phrases": [
+        "感謝各位股東長期以來對直得科技"
+      ]
+    },
+    "3037": {
+      "forbidden_attention_labels": [
+        "報導偏少",
+        "attention-low"
+      ]
+    },
+    "1303": {
+      "confusing_entities": [
+        {
+          "ticker": "2408",
+          "names": [
+            "南亞科",
+            "南亞科技"
+          ],
+          "aliases": [
+            "2408"
+          ]
+        }
+      ]
+    },
+    "4540": {
+      "valuation_policy": {
+        "disallow_low_valuation_when_loss_terms": true
+      }
+    }
+  },
   "segments": [
     {
       "id": "compute_chip",

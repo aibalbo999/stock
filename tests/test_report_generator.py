@@ -168,6 +168,33 @@ def test_llm_supplement_accepts_timestamped_source() -> None:
     )
 
 
+def test_llm_supplement_accepts_fuzzy_news_source_title() -> None:
+    document = NewsFetcher.from_manual_text(
+        title="CoWoS 產能滿載影響 AI 伺服器交期",
+        text="台積電 CoWoS 產能滿載。",
+        publisher="測試新聞股份有限公司",
+        published_at=date(2026, 5, 20),
+    )
+    text = """
+    {
+      "items": [
+        {
+          "claim": "瓶頸仍集中在 CoWoS。",
+          "source_type": "news",
+          "source_date": "2026-05-20",
+          "source_publisher": "測試新聞",
+          "source_title": "CoWoS產能滿載影響交期",
+          "source_id": ""
+        }
+      ]
+    }
+    """
+
+    assert LLMSupplementValidator.render_markdown(text, [document]) == (
+        "- 瓶頸仍集中在 CoWoS。 來源：2026-05-20 測試新聞 CoWoS產能滿載影響交期"
+    )
+
+
 def test_llm_supplement_accepts_market_source() -> None:
     snapshot = MarketSnapshot(
         ticker="2330",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from app.services.source_quality import is_low_quality_investor_forum_text
 
@@ -26,7 +27,6 @@ SECTION_BOUNDARY_RE = re.compile(r"^\s*##\s+|^\s*###\s+\d{4}\s+", re.MULTILINE)
 GENERIC_SECTION_BOUNDARY_RE = re.compile(r"^\s*##+\s+", re.MULTILINE)
 ZERO_DEBT_RE = re.compile(r"(負債權益比[^。\n|]{0,60}0\.0+\s*倍|0\.0+\s*倍[^。\n|]{0,60}負債權益比)")
 FUTURE_FULL_YEAR_RE = re.compile(r"(2022\s*至\s*2026|2022\s*-\s*2026|2026\s*全年完整)")
-UNIPCB_ATTENTION_LOW_RE = re.compile(r"(3037[^。\n|]{0,120}(報導偏少|attention-low)|(報導偏少|attention-low)[^。\n|]{0,120}3037)", re.IGNORECASE)
 POSITIVE_BOTTLENECK_RE = re.compile(
     r"瓶頸/限制證據：[^。\n|]{0,180}(領先廠商|助力|低能耗|高效能|實機展示|受惠)"
 )
@@ -36,7 +36,6 @@ NON_FORMAL_SOURCE_RE = re.compile(
     r"(CMoney投資網誌|股市爆料同學會|爆料同學會|PTT|Dcard|Mobile01|cmoney\.tw/forum|旺得富|鉅亨號)",
     re.IGNORECASE,
 )
-NANYA_TECH_RE = re.compile(r"(南亞科|南亞科技|2408)")
 ALLOCATION_TOTAL_RE = re.compile(r"本輪首筆配置合計約\s*([\d,]+)\s*元")
 ALLOCATION_ITEM_RE = re.compile(r"^\s*-\s+(.+?)：首筆配置約\s*([\d,]+)\s*元", re.MULTILINE)
 SUMMARY_RESEARCH_COUNT_RE = re.compile(r"^\s*\|\s*可小額研究\s*\|\s*(\d+)\s*檔\s*\|", re.MULTILINE)
@@ -46,14 +45,8 @@ IMMEDIATE_RESEARCH_ITEM_RE = re.compile(
     re.MULTILINE,
 )
 
-OWNER_PHRASES = {
-    "光寶為全球次世代 AI 關鍵基礎設施中的領先廠商": "2301",
-    "感謝各位股東長期以來對直得科技": "1597",
-}
-
-
-def audit_report_integrity(markdown: str) -> dict:
-    issues = _find_integrity_issues(markdown or "")
+def audit_report_integrity(markdown: str, whitelist: Any | None = None) -> dict:
+    issues = _find_integrity_issues(markdown or "", _company_metadata_map(whitelist))
     blockers = [issue for issue in issues if issue.severity == "blocker"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
     return {
@@ -64,22 +57,23 @@ def audit_report_integrity(markdown: str) -> dict:
     }
 
 
-def assert_report_integrity(markdown: str) -> None:
-    issues = _find_integrity_issues(markdown or "")
+def assert_report_integrity(markdown: str, whitelist: Any | None = None) -> None:
+    issues = _find_integrity_issues(markdown or "", _company_metadata_map(whitelist))
     blockers = [issue for issue in issues if issue.severity == "blocker"]
     if blockers:
         raise ReportIntegrityError(blockers)
 
 
-def _find_integrity_issues(markdown: str) -> list[ReportIntegrityIssue]:
+def _find_integrity_issues(markdown: str, company_metadata: dict[str, dict[str, Any]]) -> list[ReportIntegrityIssue]:
     issues: list[ReportIntegrityIssue] = []
     issues.extend(_regex_issues(markdown))
     issues.extend(_low_quality_source_issues(markdown))
     issues.extend(_non_formal_source_issues(markdown))
     issues.extend(_allocation_consistency_issues(markdown))
-    issues.extend(_owner_phrase_issues(markdown))
-    issues.extend(_confusing_entity_section_issues(markdown))
-    issues.extend(_loss_misvaluation_issues(markdown))
+    issues.extend(_owner_phrase_issues(markdown, company_metadata))
+    issues.extend(_attention_label_issues(markdown, company_metadata))
+    issues.extend(_confusing_entity_section_issues(markdown, company_metadata))
+    issues.extend(_loss_misvaluation_issues(markdown, company_metadata))
     return issues
 
 
@@ -94,11 +88,6 @@ def _regex_issues(markdown: str) -> list[ReportIntegrityIssue]:
             "future_full_year_financials",
             FUTURE_FULL_YEAR_RE,
             "報告疑似把尚未完整結束的年度寫成完整年度財務結論。",
-        ),
-        (
-            "unipcb_attention_low",
-            UNIPCB_ATTENTION_LOW_RE,
-            "3037 欣興不可被標成報導偏少；需檢查熱度與早期潛力分類。",
         ),
         (
             "positive_capability_as_bottleneck",
@@ -210,14 +199,20 @@ def _allocation_consistency_issues(markdown: str) -> list[ReportIntegrityIssue]:
     return issues
 
 
-def _owner_phrase_issues(markdown: str) -> list[ReportIntegrityIssue]:
+def _owner_phrase_issues(
+    markdown: str,
+    company_metadata: dict[str, dict[str, Any]],
+) -> list[ReportIntegrityIssue]:
+    phrase_owners = _owner_phrase_map(company_metadata)
+    if not phrase_owners:
+        return []
     issues = []
     current_ticker = ""
     for line in markdown.splitlines():
         heading = COMPANY_HEADING_RE.match(line)
         if heading:
             current_ticker = heading.group(1)
-        for phrase, owner_ticker in OWNER_PHRASES.items():
+        for phrase, owner_ticker in phrase_owners.items():
             if phrase not in line:
                 continue
             if current_ticker == owner_ticker or owner_ticker in line:
@@ -233,36 +228,136 @@ def _owner_phrase_issues(markdown: str) -> list[ReportIntegrityIssue]:
     return issues
 
 
-def _confusing_entity_section_issues(markdown: str) -> list[ReportIntegrityIssue]:
+def _attention_label_issues(
+    markdown: str,
+    company_metadata: dict[str, dict[str, Any]],
+) -> list[ReportIntegrityIssue]:
     issues = []
-    for ticker, name, body in _company_sections(markdown):
-        if ticker == "1303" and NANYA_TECH_RE.search(body):
+    for line in markdown.splitlines():
+        for ticker, metadata in company_metadata.items():
+            labels = [str(label) for label in metadata.get("forbidden_attention_labels") or [] if str(label)]
+            if not labels:
+                continue
+            if ticker not in line:
+                continue
+            matched_label = next((label for label in labels if label.lower() in line.lower()), "")
+            if not matched_label:
+                continue
             issues.append(
                 ReportIntegrityIssue(
-                    code="confusing_entity_in_company_section",
+                    code="forbidden_attention_label",
                     severity="blocker",
-                    message=f"{ticker} {name} 段落疑似混入南亞科/2408 的來源或敘述。",
-                    evidence=_compact(NANYA_TECH_RE.search(body).group(0)),
+                    message=f"{ticker} 不可被標成 {matched_label}；需檢查熱度與早期潛力分類。",
+                    evidence=_compact(line),
                 )
             )
     return issues
 
 
-def _loss_misvaluation_issues(markdown: str) -> list[ReportIntegrityIssue]:
+def _confusing_entity_section_issues(
+    markdown: str,
+    company_metadata: dict[str, dict[str, Any]],
+) -> list[ReportIntegrityIssue]:
     issues = []
-    for ticker, _name, body in _company_sections(markdown):
-        if ticker != "4540":
+    for ticker, name, body in _company_sections(markdown):
+        metadata = company_metadata.get(ticker) or {}
+        for entity in metadata.get("confusing_entities") or []:
+            terms = _confusing_entity_terms(entity)
+            match = _first_term_in_text(terms, body)
+            if not match:
+                continue
+            label = _confusing_entity_label(entity)
+            issues.append(
+                ReportIntegrityIssue(
+                    code="confusing_entity_in_company_section",
+                    severity="blocker",
+                    message=f"{ticker} {name} 段落疑似混入 {label} 的來源或敘述。",
+                    evidence=_compact(match),
+                )
+            )
+    return issues
+
+
+def _loss_misvaluation_issues(
+    markdown: str,
+    company_metadata: dict[str, dict[str, Any]],
+) -> list[ReportIntegrityIssue]:
+    issues = []
+    for ticker, name, body in _company_sections(markdown):
+        metadata = company_metadata.get(ticker) or {}
+        valuation_policy = metadata.get("valuation_policy") or {}
+        if not isinstance(valuation_policy, dict):
+            continue
+        if not valuation_policy.get("disallow_low_valuation_when_loss_terms"):
             continue
         if LOSS_TERMS_RE.search(body) and LOW_VALUATION_RE.search(body):
             issues.append(
                 ReportIntegrityIssue(
                     code="loss_making_company_marked_low_valuation",
                     severity="blocker",
-                    message="4540 盟立若獲利為負，不可直接標為目前估值略低或低於同業。",
+                    message=f"{ticker} {name} 若獲利為負，不可直接標為目前估值略低或低於同業。",
                     evidence=_compact(LOW_VALUATION_RE.search(body).group(0)),
                 )
             )
     return issues
+
+
+def _company_metadata_map(whitelist: Any | None) -> dict[str, dict[str, Any]]:
+    if whitelist is None:
+        try:
+            from app.services.whitelist import SupplyChainWhitelist
+
+            whitelist = SupplyChainWhitelist()
+        except Exception:
+            return {}
+    metadata_map = getattr(whitelist, "company_metadata_map", None)
+    if callable(metadata_map):
+        try:
+            return metadata_map()
+        except Exception:
+            return {}
+    raw = getattr(whitelist, "raw", None)
+    if isinstance(raw, dict) and isinstance(raw.get("company_metadata"), dict):
+        return {
+            str(ticker): metadata
+            for ticker, metadata in raw["company_metadata"].items()
+            if isinstance(metadata, dict)
+        }
+    return {}
+
+
+def _owner_phrase_map(company_metadata: dict[str, dict[str, Any]]) -> dict[str, str]:
+    phrase_owners: dict[str, str] = {}
+    for ticker, metadata in company_metadata.items():
+        for phrase in metadata.get("owner_phrases") or []:
+            phrase_text = str(phrase or "").strip()
+            if phrase_text:
+                phrase_owners[phrase_text] = ticker
+    return phrase_owners
+
+
+def _confusing_entity_terms(entity: Any) -> list[str]:
+    if not isinstance(entity, dict):
+        return [str(entity)] if str(entity or "").strip() else []
+    terms = [
+        str(entity.get("ticker") or ""),
+        *[str(name) for name in entity.get("names") or []],
+        *[str(alias) for alias in entity.get("aliases") or []],
+    ]
+    return [term for term in dict.fromkeys(term.strip() for term in terms) if term]
+
+
+def _confusing_entity_label(entity: Any) -> str:
+    terms = _confusing_entity_terms(entity)
+    return "/".join(terms[:3]) if terms else "易混淆公司"
+
+
+def _first_term_in_text(terms: list[str], text: str) -> str:
+    lowered = text.lower()
+    for term in terms:
+        if term.lower() in lowered:
+            return term
+    return ""
 
 
 def _company_sections(markdown: str) -> list[tuple[str, str, str]]:

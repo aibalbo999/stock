@@ -20,6 +20,7 @@ from app.services.persistence import (
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
+from app.services.report_orchestrator import build_quality_recovery_plan
 from app.services.source_quality import summarize_source_credibility
 
 
@@ -302,7 +303,7 @@ def build_report_quality_gate(
         deployable_base = max(0, int(investor_capital * (1 - cash_reserve_pct)))
         deployable_amount = int(deployable_base * max_deployable_multiplier)
     remediation_actions = quality_remediation_actions(blockers, warnings)
-    return {
+    quality_gate = {
         "status": status,
         "blockers": blockers,
         "warnings": warnings,
@@ -425,6 +426,13 @@ def build_report_quality_gate(
             else "資料品質達到本系統產出投資建議的基本門檻。"
         ),
     }
+    quality_gate["self_healing"] = build_quality_recovery_plan(
+        blockers=blockers,
+        warnings=warnings,
+        metrics=quality_gate["metrics"],
+        promoted_tickers=promoted_tickers,
+    )
+    return quality_gate
 
 
 def quality_remediation_actions(blockers: list[str], warnings: list[str]) -> list[str]:
@@ -725,12 +733,18 @@ def build_quality_gate_for_request(
             financial_metrics
         )
         valuation_latest_only_count = _latest_only_market_data_count(valuations)
+        market_repository = MarketRepository(session)
+        latest_trade_date = (
+            market_repository.latest_trade_date()
+            if callable(getattr(market_repository, "latest_trade_date", None))
+            else None
+        )
         market_date_summary = market_trade_date_summary(
             snapshots,
             tickers,
-            MarketRepository(session).latest_trade_date(),
+            latest_trade_date,
         )
-        price_histories = MarketRepository(session).history_by_tickers(tickers, limit=90)
+        price_histories = market_repository.history_by_tickers(tickers, limit=90)
         revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
     valuation_map = {valuation.ticker: valuation for valuation in valuations}
     peer_summary = _peer_valuation_summary(valuations)
@@ -952,6 +966,18 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
     remediation_actions = quality_gate.get("remediation_actions") or []
     if remediation_actions:
         lines.append("- 建議補強：" + "；".join(_investor_friendly_issue(action) for action in remediation_actions))
+    self_healing = quality_gate.get("self_healing") or {}
+    self_healing_actions = self_healing.get("actions") or []
+    if self_healing_actions:
+        action_labels = "、".join(
+            str(action.get("action_type") or action.get("tool") or "補強任務")
+            for action in self_healing_actions[:8]
+            if isinstance(action, dict)
+        )
+        lines.append(
+            f"- 自癒補強計畫：{self_healing.get('status', 'planned')}；"
+            f"{len(self_healing_actions)} 個任務（{action_labels}）"
+        )
     if not blockers and not warnings:
         lines.append("- 阻擋/警示：無")
     return "\n".join(lines)

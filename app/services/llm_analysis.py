@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from difflib import SequenceMatcher
+from string import punctuation
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -19,7 +22,7 @@ class LLMSupplementItem(BaseModel):
 
 
 class LLMSupplement(BaseModel):
-    items: list[LLMSupplementItem] = Field(default_factory=list, max_length=3)
+    items: list[LLMSupplementItem] = Field(default_factory=list, max_length=8)
 
 
 class LLMSupplementValidator:
@@ -76,6 +79,17 @@ class LLMSupplementValidator:
             raise ValueError("invalid llm supplement json") from exc
 
     @staticmethod
+    def tool_schema() -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": "submit_report_supplement",
+                "description": "Submit source-grounded supplemental investment analysis items.",
+                "parameters": LLMSupplement.model_json_schema(),
+            },
+        }
+
+    @staticmethod
     def _extract_json(raw_text: str) -> str:
         fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
         if fenced:
@@ -122,10 +136,20 @@ class LLMSupplementValidator:
                 continue
             if document.source.published_at.isoformat() != item.source_date:
                 continue
-            if document.source.title != item.source_title:
+            if not LLMSupplementValidator._fuzzy_source_text_matches(
+                item.source_title,
+                document.source.title,
+                threshold=0.72,
+                allow_empty=False,
+            ):
                 continue
             publisher = document.source.publisher or ""
-            if publisher != item.source_publisher:
+            if not LLMSupplementValidator._fuzzy_source_text_matches(
+                item.source_publisher,
+                publisher,
+                threshold=0.75,
+                allow_empty=not bool(publisher),
+            ):
                 continue
             document_tickers = LLMSupplementValidator._safe_resolve_document_tickers(
                 document,
@@ -162,6 +186,28 @@ class LLMSupplementValidator:
     @staticmethod
     def _ticker_ids(value: str) -> set[str]:
         return set(re.findall(r"\b\d{4,6}\b", value or ""))
+
+    @staticmethod
+    def _fuzzy_source_text_matches(
+        generated: str,
+        expected: str,
+        *,
+        threshold: float,
+        allow_empty: bool,
+    ) -> bool:
+        generated_norm = LLMSupplementValidator._normalize_source_text(generated)
+        expected_norm = LLMSupplementValidator._normalize_source_text(expected)
+        if not generated_norm or not expected_norm:
+            return allow_empty and generated_norm == expected_norm
+        if generated_norm in expected_norm or expected_norm in generated_norm:
+            return True
+        return SequenceMatcher(None, generated_norm, expected_norm).ratio() >= threshold
+
+    @staticmethod
+    def _normalize_source_text(value: str) -> str:
+        text = str(value or "").lower()
+        remove_chars = set(punctuation + "，。；：！？、（）《》「」『』【】〔〕〈〉—－…")
+        return "".join(char for char in text if char not in remove_chars and not char.isspace())
 
     @staticmethod
     def _safe_resolve_document_tickers(

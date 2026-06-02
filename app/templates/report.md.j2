@@ -1,0 +1,9 @@
+# {{ report.title }}
+
+生成時間（台灣）：{{ report.generated_at.isoformat(timespec='seconds') }}
+
+{% for section in report.sections %}
+## {{ section.title }}
+{{ section.body }}
+
+{% endfor %}

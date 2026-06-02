@@ -73,13 +73,19 @@ class ApiServiceFactory:
 
     def sync_report_generation_api(self):
         d = self.dependencies
+        settings_provider = d.get("get_settings")
+        sync_pre_refresh_enabled = (
+            bool(getattr(settings_provider(), "sync_report_pre_refresh_enabled", False))
+            if callable(settings_provider)
+            else False
+        )
         return d["SyncReportGenerationApiService"](
             session_scope_factory=d["session_scope"],
             analysis_run_repository_cls=d["AnalysisRunRepository"],
             report_repository_cls=d["ReportRepository"],
             report_build_service_factory=self.report_build,
             count_sufficient_company_filings_func=d["count_sufficient_company_filings"],
-            ingestion_pipeline_cls=d["IngestionPipeline"],
+            ingestion_pipeline_cls=d["IngestionPipeline"] if sync_pre_refresh_enabled else None,
         )
 
     def workflow_checkpoint_recorder(self):

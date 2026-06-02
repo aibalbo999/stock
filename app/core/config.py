@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     neo4j_timeout_seconds: float = 15.0
     neo4j_status_check_connection: bool = True
     report_dir: Path = Path("reports")
+    scoring_config_path: Path = Path("data/scoring_config.toml")
     api_base_url: str = "http://127.0.0.1:8000"
     schedule_config_path: Path = Path("data/schedule_config.json")
     news_sources_path: Path = Path("data/news_sources.json")
@@ -101,6 +102,7 @@ class Settings(BaseSettings):
     llm_total_timeout_seconds: float = 60.0
     auto_follow_up_enabled: bool = True
     auto_follow_up_news_limit: int = 30
+    sync_report_pre_refresh_enabled: bool = False
     workflow_engine: str = "local"
     workflow_local_fallback_enabled: bool = True
     prefect_api_url: str = ""

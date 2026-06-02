@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -39,6 +39,7 @@ class Company(BaseModel):
     name: str
     aliases: list[str] = Field(default_factory=list)
     evidence_keywords: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SupplyChainSegment(BaseModel):

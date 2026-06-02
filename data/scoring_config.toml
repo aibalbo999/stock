@@ -1,0 +1,57 @@
+[evidence]
+min_documents_for_upside = 2
+positive_keyword_points = 2
+opportunity_finding_points = 3
+document_count_offset = 2
+max_evidence_score = 15
+upside_base = 10
+negative_keyword_points = 2
+structural_finding_points = 2
+volatility_finding_points = 1
+max_news_risk_score = 15
+downside_base = 5
+
+[thresholds]
+upside_activation_floor = 11
+downside_activation_floor = 6
+research_upside_gate = 10
+risk_downside_gate = 5
+financial_red_flag_min_risk_score = 7
+financial_red_flag_upside_cap = 20
+
+[revenue]
+yoy_upside_threshold = 10
+yoy_upside_divisor = 10
+yoy_upside_min = 2
+yoy_upside_max = 5
+yoy_downside_threshold = 0
+yoy_downside_divisor = 5
+yoy_downside_min = 2
+yoy_downside_max = 6
+
+[early_potential]
+hot_trading_money = 1000000000
+scarce_document_limit = 3
+scarce_publisher_limit = 2
+limited_document_limit = 8
+limited_publisher_limit = 5
+reported_document_limit = 15
+hot_attention_bonus = -4
+scarce_attention_bonus = 10
+limited_attention_bonus = 6
+reported_attention_bonus = 2
+crowded_attention_bonus = -4
+strong_revenue_yoy_threshold = 20
+positive_revenue_yoy_threshold = 10
+strong_revenue_bonus = 6
+positive_revenue_bonus = 3
+strong_leading_signal_threshold = 5
+strong_leading_signal_bonus = 6
+positive_leading_signal_bonus = 3
+high_downside_threshold = 12
+moderate_downside_threshold = 5
+high_downside_penalty = 8
+moderate_downside_penalty = 3
+upside_score_reference = 10
+upside_score_divisor = 3
+max_score = 30

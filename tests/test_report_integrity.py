@@ -1,5 +1,6 @@
 import pytest
 
+from app.services.report_models import AllocationItem, AllocationPlan
 from app.services.report_integrity import ReportIntegrityError, audit_report_integrity, assert_report_integrity
 
 
@@ -162,3 +163,17 @@ def test_report_integrity_blocks_allocation_total_and_missing_research_candidate
     assert "allocation_total_mismatch" in codes
     assert "allocation_count_mismatch" in codes
     assert "allocation_missing_research_candidate" in codes
+
+
+def test_allocation_plan_validates_declared_total_before_markdown() -> None:
+    with pytest.raises(ValueError):
+        AllocationPlan(
+            declared_total=90_000,
+            deployable=100_000,
+            first_tranche=50_000,
+            items=[
+                AllocationItem(label="2330 台積電", amount=50_000),
+                AllocationItem(label="2382 廣達", amount=40_000),
+                AllocationItem(label="3324 雙鴻", amount=20_000),
+            ],
+        )

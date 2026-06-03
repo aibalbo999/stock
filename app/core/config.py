@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./stock_ai.db"
-    database_init_mode: str = "create_all"
+    database_url: str = "postgresql+psycopg://stock_ai:stock_ai_password@postgres:5432/stock_ai"
+    database_init_mode: str = "alembic"
     database_allow_create_all_non_sqlite: bool = False
     redis_url: str = "redis://localhost:6379/0"
     market_data_cache_enabled: bool = True
@@ -25,11 +25,17 @@ class Settings(BaseSettings):
     finmind_timeout_seconds: float = 20.0
     finmind_connect_timeout_seconds: float = 8.0
     finmind_concurrency: int = 5
+    finmind_circuit_breaker_enabled: bool = True
+    finmind_circuit_breaker_failure_threshold: int = 5
+    finmind_circuit_breaker_recovery_seconds: float = 60.0
     fugle_max_retries: int = 2
     fugle_base_retry_delay_seconds: float = 0.5
     fugle_max_retry_delay_seconds: float = 5.0
     fugle_timeout_seconds: float = 20.0
     fugle_connect_timeout_seconds: float = 8.0
+    fugle_circuit_breaker_enabled: bool = True
+    fugle_circuit_breaker_failure_threshold: int = 5
+    fugle_circuit_breaker_recovery_seconds: float = 60.0
     market_official_openapi_fallback_enabled: bool = True
     market_official_openapi_timeout_seconds: float = 15.0
     company_filing_user_agents: str = ""
@@ -46,12 +52,16 @@ class Settings(BaseSettings):
     company_filing_browser_render_url: str = ""
     company_filing_browser_render_token: str = ""
     company_filing_browser_render_timeout_seconds: float = 30.0
+    company_filing_browser_render_concurrency: int = 4
     company_filing_playwright_render_enabled: bool = False
     company_filing_playwright_browser: str = "chromium"
     company_filing_playwright_wait_until: str = "networkidle"
     company_filing_playwright_timeout_seconds: float = 30.0
     vector_db_path: Path = Path(".chroma")
     use_chroma: bool = False
+    chroma_api_url: str = ""
+    chroma_tenant: str = "default_tenant"
+    chroma_database: str = "default_database"
     rag_embedding_provider: str = "sentence_transformers"
     rag_embedding_model: str = "intfloat/multilingual-e5-large"
     rag_embedding_output_dimensionality: Optional[int] = None

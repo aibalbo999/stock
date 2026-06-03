@@ -1,3 +1,36 @@
+x-stock-ai-app: &stock-ai-app
+  build:
+    context: .
+  environment: &stock-ai-env
+    DATABASE_URL: postgresql+psycopg://stock_ai:stock_ai_password@postgres:5432/stock_ai
+    DATABASE_INIT_MODE: alembic
+    REDIS_URL: redis://redis:6379/0
+    USE_CHROMA: "true"
+    CHROMA_API_URL: http://chroma:8000
+    VECTOR_DB_PATH: /app/.chroma
+    COMPANY_FILING_BROWSER_RENDER_ENABLED: "true"
+    COMPANY_FILING_BROWSER_RENDER_URL: http://browserless:3000/content?token=stock_ai_browserless_token
+    COMPANY_FILING_BROWSER_RENDER_TOKEN: stock_ai_browserless_token
+    COMPANY_FILING_BROWSER_RENDER_CONCURRENCY: "4"
+    NEO4J_URI: neo4j://neo4j:7687
+    NEO4J_USER: neo4j
+    NEO4J_PASSWORD: stock_ai_neo4j_password
+    NEO4J_DATABASE: neo4j
+  volumes:
+    - ./data:/app/data
+    - ./reports:/app/reports
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    neo4j:
+      condition: service_healthy
+    browserless:
+      condition: service_started
+    chroma:
+      condition: service_started
+
 services:
   redis:
     image: redis:7-alpine
@@ -59,8 +92,39 @@ services:
     ports:
       - "3000:3000"
 
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: stock-ai-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/data
+
+  celery-worker:
+    <<: *stock-ai-app
+    container_name: stock-ai-celery-worker
+    command: ["celery", "-A", "app.tasks.celery_app.celery_app", "worker", "--loglevel=INFO", "--pool=solo"]
+
+  celery-beat:
+    <<: *stock-ai-app
+    container_name: stock-ai-celery-beat
+    command:
+      [
+        "celery",
+        "-A",
+        "app.tasks.celery_app.celery_app",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/var/lib/celery/celerybeat-schedule",
+      ]
+    volumes:
+      - ./data:/app/data
+      - celerybeat_data:/var/lib/celery
+
 volumes:
   redis_data:
   postgres_data:
   neo4j_data:
   neo4j_logs:
+  chroma_data:
+  celerybeat_data:

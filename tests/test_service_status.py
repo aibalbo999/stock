@@ -134,6 +134,15 @@ def test_service_status_shape() -> None:
     assert status["finmind"]["timeout_seconds"] == Settings().finmind_timeout_seconds
     assert status["finmind"]["connect_timeout_seconds"] == Settings().finmind_connect_timeout_seconds
     assert status["finmind"]["concurrency"] == Settings().finmind_concurrency
+    assert status["finmind"]["circuit_breaker_enabled"] == Settings().finmind_circuit_breaker_enabled
+    assert (
+        status["finmind"]["circuit_breaker_failure_threshold"]
+        == Settings().finmind_circuit_breaker_failure_threshold
+    )
+    assert (
+        status["finmind"]["circuit_breaker_recovery_seconds"]
+        == Settings().finmind_circuit_breaker_recovery_seconds
+    )
     assert status["fugle"]["configured"] is False
     assert status["fugle"]["price_history_provider"] is True
     assert status["fugle"]["price_fallback_endpoints"] == ["historical/candles", "historical/stats"]
@@ -144,11 +153,22 @@ def test_service_status_shape() -> None:
     assert status["fugle"]["max_retry_delay_seconds"] == Settings().fugle_max_retry_delay_seconds
     assert status["fugle"]["timeout_seconds"] == Settings().fugle_timeout_seconds
     assert status["fugle"]["connect_timeout_seconds"] == Settings().fugle_connect_timeout_seconds
+    assert status["fugle"]["circuit_breaker_enabled"] == Settings().fugle_circuit_breaker_enabled
+    assert (
+        status["fugle"]["circuit_breaker_failure_threshold"]
+        == Settings().fugle_circuit_breaker_failure_threshold
+    )
+    assert (
+        status["fugle"]["circuit_breaker_recovery_seconds"]
+        == Settings().fugle_circuit_breaker_recovery_seconds
+    )
     assert status["database"]["init_mode"] == Settings().database_init_mode
     assert status["database"]["create_all_non_sqlite_allowed"] is False
     assert "migration" in status["database"]
     assert "up_to_date" in status["database"]["migration"]
     assert "chroma_available" in status["vector_store"]
+    assert status["vector_store"]["storage_mode"] in {"persistent", "http"}
+    assert status["vector_store"]["chroma_api_url_configured"] == bool(Settings().chroma_api_url)
     assert status["vector_store"]["embedding_provider"] == Settings().rag_embedding_provider
     assert status["vector_store"]["embedding_model"] == Settings().rag_embedding_model
     assert status["vector_store"]["allow_chroma_default_embedding_fallback"] is False
@@ -344,8 +364,8 @@ def test_settings_default_api_base_url() -> None:
     assert Settings().api_base_url == "http://127.0.0.1:8000"
 
 
-def test_database_init_mode_default_keeps_local_create_all() -> None:
-    assert Settings().database_init_mode == "create_all"
+def test_database_init_mode_default_uses_deployment_migrations() -> None:
+    assert Settings().database_init_mode == "alembic"
     assert Settings().database_allow_create_all_non_sqlite is False
 
 
@@ -386,6 +406,9 @@ def test_rag_settings_defaults(monkeypatch) -> None:
         "RAG_RERANKER_TIMEOUT_SECONDS",
         "RAG_LLM_RERANKER_ENABLED",
         "RAG_LLM_RERANKER_MAX_DOCUMENTS",
+        "CHROMA_API_URL",
+        "CHROMA_TENANT",
+        "CHROMA_DATABASE",
         "COHERE_API_KEY",
         "NEO4J_URI",
         "NEO4J_USER",
@@ -415,6 +438,9 @@ def test_rag_settings_defaults(monkeypatch) -> None:
     assert settings.rag_reranker_timeout_seconds == 15.0
     assert settings.rag_llm_reranker_enabled is True
     assert settings.rag_llm_reranker_max_documents == 12
+    assert settings.chroma_api_url == ""
+    assert settings.chroma_tenant == "default_tenant"
+    assert settings.chroma_database == "default_database"
     assert settings.cohere_api_key is None
     assert settings.neo4j_uri == ""
     assert settings.neo4j_user == ""
@@ -573,11 +599,17 @@ def test_market_data_cache_settings_defaults() -> None:
     assert settings.finmind_timeout_seconds == 20.0
     assert settings.finmind_connect_timeout_seconds == 8.0
     assert settings.finmind_concurrency == 5
+    assert settings.finmind_circuit_breaker_enabled is True
+    assert settings.finmind_circuit_breaker_failure_threshold == 5
+    assert settings.finmind_circuit_breaker_recovery_seconds == 60.0
     assert settings.fugle_max_retries == 2
     assert settings.fugle_base_retry_delay_seconds == 0.5
     assert settings.fugle_max_retry_delay_seconds == 5.0
     assert settings.fugle_timeout_seconds == 20.0
     assert settings.fugle_connect_timeout_seconds == 8.0
+    assert settings.fugle_circuit_breaker_enabled is True
+    assert settings.fugle_circuit_breaker_failure_threshold == 5
+    assert settings.fugle_circuit_breaker_recovery_seconds == 60.0
     assert settings.market_official_openapi_fallback_enabled is True
     assert settings.market_official_openapi_timeout_seconds == 15.0
 
@@ -599,6 +631,7 @@ def test_company_filing_fetch_settings_defaults() -> None:
     assert settings.company_filing_browser_render_url == ""
     assert settings.company_filing_browser_render_token == ""
     assert settings.company_filing_browser_render_timeout_seconds == 30.0
+    assert settings.company_filing_browser_render_concurrency == 4
     assert settings.company_filing_playwright_render_enabled is False
     assert settings.company_filing_playwright_browser == "chromium"
     assert settings.company_filing_playwright_wait_until == "networkidle"

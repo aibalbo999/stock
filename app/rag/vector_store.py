@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import date
 from importlib.util import find_spec
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from app.core.config import get_settings
 from app.models.schemas import NewsDocument
@@ -52,7 +53,7 @@ class VectorStore:
                 self.settings,
                 embedding_function_available=embedding_function is not None,
             )
-            client = chromadb.PersistentClient(path=str(self.settings.vector_db_path))
+            client = self._chroma_client(chromadb)
             self.collection = client.get_or_create_collection(
                 self.collection_name,
                 embedding_function=embedding_function,
@@ -670,11 +671,33 @@ class VectorStore:
         )
 
     @staticmethod
+    def _chroma_client(chromadb_module: Any, settings: Any | None = None) -> Any:
+        settings = settings or get_settings()
+        api_url = str(getattr(settings, "chroma_api_url", "") or "").strip()
+        if not api_url:
+            return chromadb_module.PersistentClient(path=str(settings.vector_db_path))
+        parsed = urlparse(api_url if "://" in api_url else f"http://{api_url}")
+        host = parsed.hostname or parsed.netloc or parsed.path
+        if not host:
+            raise ValueError("CHROMA_API_URL must include a host")
+        port = parsed.port or (443 if parsed.scheme == "https" else 8000)
+        return chromadb_module.HttpClient(
+            host=host,
+            port=port,
+            ssl=parsed.scheme == "https",
+            tenant=str(getattr(settings, "chroma_tenant", "default_tenant") or "default_tenant"),
+            database=str(getattr(settings, "chroma_database", "default_database") or "default_database"),
+        )
+
+    @staticmethod
     def retrieval_runtime_status(settings: Any | None = None) -> dict:
         settings = settings or get_settings()
         hybrid_enabled = bool(getattr(settings, "rag_hybrid_search_enabled", True))
+        chroma_api_url = str(getattr(settings, "chroma_api_url", "") or "").strip()
         return {
             "strategy": "hybrid-vector-bm25" if hybrid_enabled else "vector-only",
+            "storage_mode": "http" if chroma_api_url else "persistent",
+            "chroma_api_url_configured": bool(chroma_api_url),
             "hybrid_search_enabled": hybrid_enabled,
             "bm25_enabled": hybrid_enabled,
             "tokenizer": "latin_terms+traditional_chinese_2_4_ngrams",

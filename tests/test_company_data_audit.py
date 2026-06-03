@@ -1,6 +1,7 @@
 import json
-from datetime import date
+from datetime import date, datetime
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -16,6 +17,11 @@ from app.db.models import (
     ValuationMetricSnapshot,
 )
 from app.services.company_data_audit import audit_report_company_data, parse_report_company_counts
+
+
+@pytest.fixture(autouse=True)
+def freeze_audit_today(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.company_data_audit.now_taipei", lambda: datetime(2026, 6, 3))
 
 
 def test_parse_report_company_counts() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: F401
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -10,6 +12,7 @@ from fastapi import FastAPI
 
 from app.api.ai_routes import create_ai_router
 from app.api.company_filing_routes import create_company_filing_router
+from app.api.dependencies import build_service_factory_dependencies
 from app.api.legacy_facade import LegacyApiFacade
 from app.api.operations_routes import create_operations_router
 from app.api.pipeline_routes import create_pipeline_router
@@ -202,101 +205,6 @@ def apply_company_filing_gate_to_candidate_payload(candidates: list[dict]) -> li
     )
 
 
-_api_services = ApiServiceFactory(globals(), logger=LOGGER)
-_legacy_api = LegacyApiFacade(
-    api_services=_api_services,
-    candidate_revalidation_module=candidate_revalidation,
-    logger=LOGGER,
-)
-
-_SERVICE_FACTORY_DEPENDENCIES = (
-    asyncio,
-    get_settings,
-    today_taipei,
-    session_scope,
-    CompanyFilingFetcher,
-    filing_quality_score,
-    filing_source_tier,
-    MarketDataClient,
-    NewsFetcher,
-    NewsSourceStore,
-    VectorStore,
-    candidate_audit_summary,
-    render_candidate_audit_markdown,
-    audit_company_data,
-    audit_report_company_data,
-    CompanyDataAuditApiService,
-    CompanyFilingApiService,
-    DataOperationsApiService,
-    CandidateRevalidationService,
-    DiscoveryApiService,
-    DiscoveredMarketDataService,
-    DiscoveredTopicPipelineService,
-    DiscoveredReportBuilderService,
-    DiscoveryWorkflowService,
-    EntityMapper,
-    FollowUpActionPlanner,
-    TRACKING_FRESHNESS_THRESHOLDS,
-    execute_follow_up_actions,
-    render_follow_up_actions_markdown,
-    split_fresh_tracking_actions,
-    summarize_follow_up_execution,
-    IngestionPipeline,
-    AnalysisRunRepository,
-    CompanyFilingRepository,
-    FinancialMetricRepository,
-    MarketRepository,
-    MonthlyRevenueRepository,
-    ReportRepository,
-    ValuationMetricRepository,
-    ReportBuildService,
-    append_candidate_audit_if_missing,
-    candidate_audit_from_run_payload,
-    follow_up_action_summary,
-    follow_up_plan_next_actions,
-    latest_follow_up_run_for_report,
-    parse_run_payload,
-    serialize_run,
-    should_require_candidate_audit_follow_up,
-    summarize_candidate_support_payload,
-    ReportFollowUpContextService,
-    AutoFollowUpStartService,
-    ReportFollowUpPlanService,
-    ReportFollowUpRunService,
-    SyncReportGenerationApiService,
-    ReportGenerator,
-    report_execution_summary,
-    attach_quality_gate_to_report,
-    build_quality_gate_for_request,
-    build_report_quality_gate,
-    should_recover_market_data_quality,
-    parse_quality_gate_from_markdown,
-    summarize_document_source_quality,
-    summarize_llm_status,
-    ReportQueryService,
-    RunTaskApiService,
-    RunStateService,
-    LLMApiService,
-    LLMClient,
-    PipelineApiService,
-    ScheduleConfigStore,
-    filter_formal_evidence_documents,
-    remove_low_quality_investor_forum_lines,
-    SourceRelevanceAnalyzer,
-    StandardReportPipelineService,
-    SupplyChainGraphApiService,
-    Neo4jGraphImportService,
-    SupplyChainWhitelist,
-    DISCOVERED_PIPELINE_STEPS,
-    STANDARD_PIPELINE_STEPS,
-    WorkflowCheckpointRecorder,
-    WorkflowOrchestrationError,
-    WorkflowOrchestrationRunner,
-    celery_app,
-    generate_report_task,
-)
-
-
 def safe_mark_run_failed(run_id: int, error: str) -> None:
     return _legacy_api.safe_mark_run_failed(run_id, error)
 
@@ -363,37 +271,6 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(
-    title="台股 AI 產業鏈 RAG 分析系統",
-    version="0.1.0",
-    lifespan=lifespan,
-)
-app.include_router(
-    create_system_router(
-        db_status_func=db_status,
-        service_status_func=service_status,
-        upgrade_audit_func=audit_upgrade_capabilities,
-    )
-)
-app.include_router(create_supply_chain_router(_api_services))
-app.include_router(create_company_filing_router(_api_services))
-app.include_router(
-    create_pipeline_router(
-        _api_services,
-        report_execution_error_cls=ReportExecutionError,
-        workflow_orchestration_error_cls=WorkflowOrchestrationError,
-    )
-)
-app.include_router(
-    create_operations_router(
-        _api_services,
-        async_report_validation_error_cls=AsyncReportValidationError,
-        run_task_not_found_cls=RunTaskNotFound,
-    )
-)
-app.include_router(create_ai_router(_api_services))
-
-
 async def ingest_dynamic_news_urls(
     urls: list[str],
     limit_per_query: int,
@@ -443,9 +320,43 @@ async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequ
     return await _legacy_api.run_report_follow_up(report_id, payload)
 
 
+_api_services = ApiServiceFactory(build_service_factory_dependencies(globals()), logger=LOGGER)
+_legacy_api = LegacyApiFacade(
+    api_services=_api_services,
+    candidate_revalidation_module=candidate_revalidation,
+    logger=LOGGER,
+)
+
+app = FastAPI(
+    title="台股 AI 產業鏈 RAG 分析系統",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+app.state.api_services = _api_services
+app.include_router(
+    create_system_router(
+        db_status_func=db_status,
+        service_status_func=service_status,
+        upgrade_audit_func=audit_upgrade_capabilities,
+    )
+)
+app.include_router(create_supply_chain_router())
+app.include_router(create_company_filing_router())
+app.include_router(
+    create_pipeline_router(
+        report_execution_error_cls=ReportExecutionError,
+        workflow_orchestration_error_cls=WorkflowOrchestrationError,
+    )
+)
+app.include_router(
+    create_operations_router(
+        async_report_validation_error_cls=AsyncReportValidationError,
+        run_task_not_found_cls=RunTaskNotFound,
+    )
+)
+app.include_router(create_ai_router())
 app.include_router(
     create_report_router(
-        _api_services,
         report_execution_error_cls=ReportExecutionError,
         workflow_orchestration_error_cls=WorkflowOrchestrationError,
         report_query_not_found_cls=ReportQueryNotFound,

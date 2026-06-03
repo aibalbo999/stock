@@ -1,13 +1,27 @@
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.db import session as db_session
+from app.db.models import Base
 from app.db.session import session_scope
 from app.services.persistence import AnalysisRunRepository
 
 
-def test_session_scope_keeps_committed_attributes_readable() -> None:
+def test_session_scope_keeps_committed_attributes_readable(monkeypatch, tmp_path) -> None:
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'session.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    monkeypatch.setattr(
+        db_session,
+        "SessionLocal",
+        sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False),
+    )
+
     with session_scope() as session:
         run = AnalysisRunRepository(session).start("test", {"topic": "AI 產業鏈"})
 

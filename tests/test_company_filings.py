@@ -973,6 +973,56 @@ def test_company_filing_browser_render_posts_to_configured_endpoint(monkeypatch)
     assert captured["options"]["timeout"] == 12.0
 
 
+def test_company_filing_browser_render_respects_configured_concurrency(monkeypatch) -> None:
+    counters = {"active": 0, "max_active": 0}
+
+    class FakeAsyncClient:
+        def __init__(self, **_options) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            counters["active"] += 1
+            counters["max_active"] = max(counters["max_active"], counters["active"])
+            await asyncio.sleep(0)
+            counters["active"] -= 1
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html><head><title>台積電 2026 年報</title></head>"
+                    "<body>台積電 2026 annual report 揭露 AI/HPC 需求與風險因素。"
+                    "台積電 年報 公司治理 財務 風險。</body></html>"
+                ),
+            )
+
+    async def run_fetches() -> None:
+        fetcher = CompanyFilingFetcher()
+        await asyncio.gather(
+            fetcher._fetch_browser_rendered_url_as_document("https://investor.tsmc.com/a"),
+            fetcher._fetch_browser_rendered_url_as_document("https://investor.tsmc.com/b"),
+        )
+
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_CONCURRENCY", "1")
+    get_settings.cache_clear()
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    try:
+        asyncio.run(run_fetches())
+    finally:
+        get_settings.cache_clear()
+
+    assert counters["max_active"] == 1
+
+
 def test_company_filing_playwright_render_uses_async_api(monkeypatch) -> None:
     captured = {}
 

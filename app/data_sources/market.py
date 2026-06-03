@@ -4,6 +4,7 @@ import asyncio
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime
+import time
 
 import httpx
 
@@ -31,6 +32,61 @@ class MarketFetchError:
 
 class MarketDataProviderUnavailable(RuntimeError):
     """Raised when a configured market data provider cannot be used."""
+
+
+class ProviderCircuitBreaker:
+    def __init__(
+        self,
+        provider: str,
+        *,
+        enabled: bool,
+        failure_threshold: int,
+        recovery_seconds: float,
+        monotonic_clock=time.monotonic,
+    ) -> None:
+        self.provider = provider
+        self.enabled = bool(enabled)
+        self.failure_threshold = max(1, int(failure_threshold))
+        self.recovery_seconds = max(0.0, float(recovery_seconds))
+        self.monotonic_clock = monotonic_clock
+        self.failure_count = 0
+        self.opened_at: float | None = None
+
+    def configure(
+        self,
+        *,
+        enabled: bool,
+        failure_threshold: int,
+        recovery_seconds: float,
+    ) -> None:
+        self.enabled = bool(enabled)
+        self.failure_threshold = max(1, int(failure_threshold))
+        self.recovery_seconds = max(0.0, float(recovery_seconds))
+        if not self.enabled:
+            self.failure_count = 0
+            self.opened_at = None
+
+    def before_call(self) -> None:
+        if not self.enabled or self.opened_at is None:
+            return
+        elapsed = self.monotonic_clock() - self.opened_at
+        if elapsed >= self.recovery_seconds:
+            self.opened_at = None
+            return
+        raise MarketDataProviderUnavailable(
+            f"{self.provider} circuit breaker is open; retry after {self.recovery_seconds - elapsed:.1f}s"
+        )
+
+    def record_success(self) -> None:
+        self.failure_count = 0
+        self.opened_at = None
+
+    def record_failure(self) -> None:
+        if not self.enabled:
+            return
+        self.failure_count += 1
+        if self.failure_count >= self.failure_threshold:
+            self.opened_at = self.monotonic_clock()
 
 
 class MarketDataClient:
@@ -105,6 +161,20 @@ class MarketDataClient:
         )
         self.concurrency = max(1, int(getattr(self.settings, "finmind_concurrency", 5)))
         self.cache = RedisMarketDataCache()
+        self._circuit_breakers = {
+            "finmind": ProviderCircuitBreaker(
+                "FinMind",
+                enabled=self._provider_circuit_setting("finmind", "enabled", True),
+                failure_threshold=self._provider_circuit_setting("finmind", "failure_threshold", 5),
+                recovery_seconds=self._provider_circuit_setting("finmind", "recovery_seconds", 60.0),
+            ),
+            "fugle": ProviderCircuitBreaker(
+                "Fugle",
+                enabled=self._provider_circuit_setting("fugle", "enabled", True),
+                failure_threshold=self._provider_circuit_setting("fugle", "failure_threshold", 5),
+                recovery_seconds=self._provider_circuit_setting("fugle", "recovery_seconds", 60.0),
+            ),
+        }
 
     async def get_price_history(
         self,
@@ -485,6 +555,7 @@ class MarketDataClient:
             raise MarketDataProviderUnavailable(
                 "FinMind token is not configured and public fallback is disabled"
             )
+        self._before_provider_request("finmind")
         params = {
             "dataset": dataset,
             "data_id": ticker,
@@ -505,15 +576,19 @@ class MarketDataClient:
                         headers=headers,
                     )
                     response.raise_for_status()
+                self._record_provider_success("finmind")
                 return response.json().get("data", [])
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 if not self._should_retry_status(exc.response.status_code, attempt):
+                    if exc.response.status_code in FINMIND_RETRYABLE_HTTP_STATUSES:
+                        self._record_provider_failure("finmind")
                     raise
                 await self._sleep_before_retry(exc.response, attempt)
             except (httpx.TransportError, TimeoutError) as exc:
                 last_error = exc
                 if attempt >= self.finmind_max_retries:
+                    self._record_provider_failure("finmind")
                     raise
                 await self._sleep_before_retry(None, attempt)
         if last_error:
@@ -642,22 +717,27 @@ class MarketDataClient:
 
     async def _fetch_fugle_json(self, url: str, *, params: dict) -> dict:
         headers = {"X-API-KEY": self.fugle_api_key}
+        self._before_provider_request("fugle")
         last_error: Exception | None = None
         for attempt in range(self.fugle_max_retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=self.fugle_timeout) as client:
                     response = await client.get(url, params=params, headers=headers)
                     response.raise_for_status()
+                self._record_provider_success("fugle")
                 payload = response.json()
                 return payload if isinstance(payload, dict) else {}
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 if not self._should_retry_fugle_status(exc.response.status_code, attempt):
+                    if exc.response.status_code in FUGLE_RETRYABLE_HTTP_STATUSES:
+                        self._record_provider_failure("fugle")
                     raise
                 await self._sleep_before_fugle_retry(exc.response, attempt)
             except (httpx.TransportError, TimeoutError) as exc:
                 last_error = exc
                 if attempt >= self.fugle_max_retries:
+                    self._record_provider_failure("fugle")
                     raise
                 await self._sleep_before_fugle_retry(None, attempt)
         if last_error:
@@ -828,6 +908,28 @@ class MarketDataClient:
             if str(code or "").strip() == ticker:
                 return row
         return None
+
+    def _provider_circuit_setting(self, provider: str, suffix: str, default):
+        attr = f"{provider}_circuit_breaker_{suffix}"
+        return getattr(self.settings, attr, default)
+
+    def _provider_circuit_breaker(self, provider: str) -> ProviderCircuitBreaker:
+        breaker = self._circuit_breakers[provider]
+        breaker.configure(
+            enabled=self._provider_circuit_setting(provider, "enabled", True),
+            failure_threshold=self._provider_circuit_setting(provider, "failure_threshold", 5),
+            recovery_seconds=self._provider_circuit_setting(provider, "recovery_seconds", 60.0),
+        )
+        return breaker
+
+    def _before_provider_request(self, provider: str) -> None:
+        self._provider_circuit_breaker(provider).before_call()
+
+    def _record_provider_success(self, provider: str) -> None:
+        self._provider_circuit_breaker(provider).record_success()
+
+    def _record_provider_failure(self, provider: str) -> None:
+        self._provider_circuit_breaker(provider).record_failure()
 
     def _should_retry_status(self, status_code: int, attempt: int) -> bool:
         return status_code in FINMIND_RETRYABLE_HTTP_STATUSES and attempt < self.finmind_max_retries

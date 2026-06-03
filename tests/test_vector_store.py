@@ -77,6 +77,8 @@ def test_vector_store_retrieval_status_exposes_hybrid_bm25_settings() -> None:
 
     assert status == {
         "strategy": "hybrid-vector-bm25",
+        "storage_mode": "persistent",
+        "chroma_api_url_configured": False,
         "hybrid_search_enabled": True,
         "bm25_enabled": True,
         "tokenizer": "latin_terms+traditional_chinese_2_4_ngrams",
@@ -108,6 +110,52 @@ def test_vector_store_retrieval_status_exposes_hybrid_bm25_settings() -> None:
         "rerank_top_k": 24,
         "reranker_timeout_seconds": 0.0,
     }
+
+
+def test_vector_store_uses_chroma_http_client_when_api_url_is_configured(monkeypatch) -> None:
+    captured = {}
+
+    class FakeCollection:
+        pass
+
+    class FakeHttpClient:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+
+        def get_or_create_collection(self, name, **kwargs):
+            captured["collection_name"] = name
+            captured["collection"] = kwargs
+            return FakeCollection()
+
+    chromadb_module = ModuleType("chromadb")
+    chromadb_module.HttpClient = FakeHttpClient
+    chromadb_module.PersistentClient = lambda **_kwargs: (_ for _ in ()).throw(
+        AssertionError("PersistentClient should not be used when CHROMA_API_URL is configured")
+    )
+    utils_module = ModuleType("chromadb.utils")
+    utils_module.embedding_functions = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "chromadb", chromadb_module)
+    monkeypatch.setitem(sys.modules, "chromadb.utils", utils_module)
+    monkeypatch.setenv("USE_CHROMA", "true")
+    monkeypatch.setenv("CHROMA_API_URL", "https://chroma.example:8443")
+    monkeypatch.setenv("CHROMA_TENANT", "stock")
+    monkeypatch.setenv("CHROMA_DATABASE", "rag")
+    monkeypatch.setenv("RAG_EMBEDDING_PROVIDER", "default")
+    get_settings.cache_clear()
+    try:
+        store = VectorStore()
+    finally:
+        get_settings.cache_clear()
+
+    assert isinstance(store.collection, FakeCollection)
+    assert captured["client"] == {
+        "host": "chroma.example",
+        "port": 8443,
+        "ssl": True,
+        "tenant": "stock",
+        "database": "rag",
+    }
+    assert captured["collection_name"].startswith("ai_supply_chain_news_chroma_default")
 
 
 def test_tokenizer_avoids_confusing_short_company_prefix_ngram() -> None:

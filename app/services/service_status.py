@@ -110,6 +110,15 @@ def service_status() -> dict:
             "timeout_seconds": max(1.0, float(settings.finmind_timeout_seconds)),
             "connect_timeout_seconds": max(1.0, float(settings.finmind_connect_timeout_seconds)),
             "concurrency": max(1, int(settings.finmind_concurrency)),
+            "circuit_breaker_enabled": bool(settings.finmind_circuit_breaker_enabled),
+            "circuit_breaker_failure_threshold": max(
+                1,
+                int(settings.finmind_circuit_breaker_failure_threshold),
+            ),
+            "circuit_breaker_recovery_seconds": max(
+                0.0,
+                float(settings.finmind_circuit_breaker_recovery_seconds),
+            ),
         },
         "fugle": {
             "configured": bool(settings.fugle_api_key),
@@ -122,6 +131,15 @@ def service_status() -> dict:
             "max_retry_delay_seconds": max(0.0, float(settings.fugle_max_retry_delay_seconds)),
             "timeout_seconds": max(1.0, float(settings.fugle_timeout_seconds)),
             "connect_timeout_seconds": max(1.0, float(settings.fugle_connect_timeout_seconds)),
+            "circuit_breaker_enabled": bool(settings.fugle_circuit_breaker_enabled),
+            "circuit_breaker_failure_threshold": max(
+                1,
+                int(settings.fugle_circuit_breaker_failure_threshold),
+            ),
+            "circuit_breaker_recovery_seconds": max(
+                0.0,
+                float(settings.fugle_circuit_breaker_recovery_seconds),
+            ),
         },
         "market_data_cache": {
             "enabled": settings.market_data_cache_enabled,
@@ -181,6 +199,10 @@ def service_status() -> dict:
             ),
             "browser_render_runtime": company_filing_browser_render_runtime,
             "browser_render_configured": company_filing_browser_render_configured,
+            "browser_render_concurrency": max(
+                1,
+                int(settings.company_filing_browser_render_concurrency),
+            ),
             "playwright_render_enabled": settings.company_filing_playwright_render_enabled,
             "playwright_render_dependency_available": company_filing_playwright_dependency_available,
             "playwright_render_browser_available": company_filing_playwright_browser_available,
@@ -200,6 +222,11 @@ def service_status() -> dict:
             "use_chroma": settings.use_chroma,
             "chroma_available": chroma_available,
             "path": str(settings.vector_db_path),
+            "storage_mode": "http" if settings.chroma_api_url else "persistent",
+            "chroma_api_url_configured": bool(settings.chroma_api_url),
+            "chroma_api_url": _redact_url(settings.chroma_api_url),
+            "chroma_tenant": settings.chroma_tenant,
+            "chroma_database": settings.chroma_database,
             "embedding_provider": settings.rag_embedding_provider,
             "embedding_model": settings.rag_embedding_model,
             "allow_chroma_default_embedding_fallback": settings.rag_allow_chroma_default_embedding_fallback,

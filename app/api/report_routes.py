@@ -3,14 +3,15 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.dependencies import api_services_provider
 from app.api.schemas import FollowUpRunRequest
 from app.models.schemas import ReportRequest, ReportResponse
 
 
 def create_report_router(
-    api_services: Any,
+    api_services: Any | None = None,
     *,
     report_execution_error_cls: type[Exception],
     workflow_orchestration_error_cls: type[Exception],
@@ -21,11 +22,15 @@ def create_report_router(
     run_follow_up_func: Callable[[int, Optional[FollowUpRunRequest]], Awaitable[dict]],
 ) -> APIRouter:
     router = APIRouter()
+    services_dependency = api_services_provider(api_services)
 
     @router.post("/reports/generate", response_model=ReportResponse)
-    def generate_report(request: ReportRequest) -> ReportResponse:
+    def generate_report(
+        request: ReportRequest,
+        services: Any = Depends(services_dependency),
+    ) -> ReportResponse:
         try:
-            return api_services.sync_report_generation_api().generate(request)
+            return services.sync_report_generation_api().generate(request)
         except report_execution_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except workflow_orchestration_error_cls as exc:
@@ -34,27 +39,33 @@ def create_report_router(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.get("/reports")
-    def list_reports(limit: int = 20) -> list[dict]:
-        return api_services.report_query().list_reports(limit)
+    def list_reports(limit: int = 20, services: Any = Depends(services_dependency)) -> list[dict]:
+        return services.report_query().list_reports(limit)
 
     @router.get("/reports/{report_id}")
-    def get_report(report_id: int) -> dict:
+    def get_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:
         try:
-            return api_services.report_query().get_report(report_id)
+            return services.report_query().get_report(report_id)
         except report_query_not_found_cls as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.get("/reports/{report_id}/candidate-audit")
-    def get_report_candidate_audit(report_id: int) -> dict:
+    def get_report_candidate_audit(
+        report_id: int,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
         try:
-            return api_services.report_query().candidate_audit(report_id)
+            return services.report_query().candidate_audit(report_id)
         except report_query_not_found_cls as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.get("/reports/{report_id}/company-data-audit")
-    def get_report_company_data_audit(report_id: int) -> dict:
+    def get_report_company_data_audit(
+        report_id: int,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
         try:
-            return api_services.company_data_audit_api().report_company_data_audit(report_id)
+            return services.company_data_audit_api().report_company_data_audit(report_id)
         except company_data_audit_not_found_cls as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -71,9 +82,9 @@ def create_report_router(
         return await run_follow_up_func(report_id, payload)
 
     @router.delete("/reports/{report_id}")
-    def delete_report(report_id: int) -> dict:
+    def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:
         try:
-            return api_services.report_query().delete_report(report_id)
+            return services.report_query().delete_report(report_id)
         except report_query_not_found_cls as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

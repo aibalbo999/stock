@@ -457,6 +457,64 @@ def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> No
     assert rows[0]["stock_id"] == "2330"
 
 
+def test_finmind_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> None:
+    client = MarketDataClient()
+    client.settings = SimpleNamespace(
+        finmind_token=None,
+        finmind_max_retries=0,
+        finmind_base_retry_delay_seconds=0,
+        finmind_max_retry_delay_seconds=0,
+        finmind_circuit_breaker_enabled=True,
+        finmind_circuit_breaker_failure_threshold=1,
+        finmind_circuit_breaker_recovery_seconds=60,
+    )
+    calls = []
+
+    async def fail_get(self, url, params=None, headers=None):
+        calls.append(url)
+        raise httpx.TransportError("finmind down")
+
+    monkeypatch.setattr("httpx.AsyncClient.get", fail_get)
+
+    with pytest.raises(httpx.TransportError):
+        asyncio.run(
+            client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31))
+        )
+    with pytest.raises(MarketDataProviderUnavailable, match="FinMind circuit breaker is open"):
+        asyncio.run(
+            client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31))
+        )
+
+    assert calls == ["https://api.finmindtrade.com/api/v4/data"]
+
+
+def test_fugle_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> None:
+    client = MarketDataClient()
+    client.settings = SimpleNamespace(
+        fugle_api_key="fugle-key",
+        fugle_max_retries=0,
+        fugle_base_retry_delay_seconds=0,
+        fugle_max_retry_delay_seconds=0,
+        fugle_circuit_breaker_enabled=True,
+        fugle_circuit_breaker_failure_threshold=1,
+        fugle_circuit_breaker_recovery_seconds=60,
+    )
+    calls = []
+
+    async def fail_get(self, url, params=None, headers=None):
+        calls.append(url)
+        raise httpx.TransportError("fugle down")
+
+    monkeypatch.setattr("httpx.AsyncClient.get", fail_get)
+
+    with pytest.raises(httpx.TransportError):
+        asyncio.run(client._fetch_fugle_json("https://api.fugle.tw/test", params={}))
+    with pytest.raises(MarketDataProviderUnavailable, match="Fugle circuit breaker is open"):
+        asyncio.run(client._fetch_fugle_json("https://api.fugle.tw/test", params={}))
+
+    assert calls == ["https://api.fugle.tw/test"]
+
+
 def test_fugle_retry_delay_uses_retry_after_header() -> None:
     client = MarketDataClient()
     client.settings = SimpleNamespace(

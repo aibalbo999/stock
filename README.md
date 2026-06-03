@@ -85,16 +85,21 @@ macOS 一鍵啟動：
 也可以在 Finder 直接雙擊 `start_system.command`。它會啟動 API 與 Streamlit，避免重複開相同 port，並在視窗中顯示本機與同網路手機可用網址。
 需要停止背景服務時，雙擊 `stop_system.command`。
 
-啟動 Redis / PostgreSQL / Neo4j / Browserless：
+啟動 Redis / PostgreSQL / Neo4j / Browserless / Chroma：
 
 ```bash
-docker compose up -d redis postgres neo4j browserless
+docker compose up -d redis postgres neo4j browserless chroma
 ```
 
-預設使用本機 SQLite。若要改用 Docker PostgreSQL，將 `.env` 的 `DATABASE_URL` 改成：
+專案預設設定已對齊 Docker PostgreSQL 與 Alembic migration。若在主機端連 Docker PostgreSQL，將 `.env` 的 host 改成 `localhost`；若在 compose 服務內執行，使用 `postgres`：
 
 ```bash
+# Host-only local process:
 DATABASE_URL=postgresql+psycopg://stock_ai:stock_ai_password@localhost:5432/stock_ai
+DATABASE_INIT_MODE=alembic
+
+# Docker Compose service:
+DATABASE_URL=postgresql+psycopg://stock_ai:stock_ai_password@postgres:5432/stock_ai
 DATABASE_INIT_MODE=alembic
 ```
 
@@ -105,7 +110,7 @@ DATABASE_INIT_MODE=alembic
 .venv/bin/alembic revision --autogenerate -m "describe change"
 ```
 
-`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。本機開發預設保留 `create_all` 作為 SQLite 快速啟動保護；正式部署建議設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、hybrid search、reranker、GraphRAG、API 分層、workflow、Alembic、Redis cache 與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
+`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。正式部署預設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。若要保留 SQLite 快速開發，可在 `.env` 明確設定 `DATABASE_URL=sqlite:///./stock_ai.db` 與 `DATABASE_INIT_MODE=create_all`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、hybrid search、reranker、GraphRAG、API 分層、workflow、Alembic、Redis cache 與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
 若 `DATABASE_URL` 指向 PostgreSQL/MySQL 等非 SQLite 資料庫，系統會拒絕用 `create_all` 啟動，避免正式環境跳過 Alembic 欄位遷移；只有受控的一次性 bootstrap 才應暫時設定 `DATABASE_ALLOW_CREATE_ALL_NON_SQLITE=true`。
 初始 migration 以顯式 `op.create_table` / `op.create_index` 固定 schema 快照，測試會執行 `alembic upgrade head` 並用 autogenerate diff 確認 migration 結果與目前 SQLAlchemy metadata 對齊。
 
@@ -161,6 +166,7 @@ pip install -e ".[dev,rag]"
 
 沒有安裝 embedding provider 或沒有對應 API key 時，系統預設會停用 Chroma 持久化向量庫，改走記憶體 hybrid keyword fallback，避免繁中檢索品質安靜退回 Chroma 預設模型卻被誤認為已啟用 multilingual embedding。只有明確設定 `RAG_ALLOW_CHROMA_DEFAULT_EMBEDDING_FALLBACK=true` 時，才會允許退回 Chroma 預設 embedding。
 `RAG_EMBEDDING_PROVIDER` 可設為 `sentence_transformers`、`openai`、`google_genai`、`google` 或 `chroma_default`；OpenAI 需設定 `OPENAI_API_KEY`，Google 需設定 `GOOGLE_API_KEY` 或 `GOOGLE_API_KEYS`。`google_genai` 會用官方 `google-genai` SDK 的 `embed_content`，可搭配 `gemini-embedding-001`，也可用 `RAG_EMBEDDING_OUTPUT_DIMENSIONALITY` 指定輸出維度；`google` 保留 Chroma 既有 `GoogleGenerativeAiEmbeddingFunction` 相容路徑。`GET /services/status` 會回傳 `vector_store.embedding_status.custom_embedding_enabled` 與 `fallback_reason`，用來確認是否真的啟用自訂 embedding，而不是安靜退回 Chroma 預設模型。
+若設定 `CHROMA_API_URL=http://localhost:8000` 或 compose 內的 `http://chroma:8000`，`VectorStore` 會改用 Chroma HTTP server；未設定時才使用本地 `VECTOR_DB_PATH` persistent client。`GET /services/status` 會顯示 `vector_store.storage_mode` 與 `chroma_api_url_configured`。
 Chroma collection 名稱會納入實際 embedding provider、model 與 `RAG_INDEX_SCHEMA_VERSION`；從 Chroma 預設 embedding 切到繁中/多語 embedding，或修改向量化文本格式（例如新增公司對應 identity header）時，會自動使用不同 collection，避免新舊向量索引混用。若未來調整 embedding 文本欄位或 chunk metadata 規格，請同步調高 `RAG_INDEX_SCHEMA_VERSION`，`GET /services/status` 的 `vector_store.retrieval_status.collection_name_example` 可確認目前會寫入哪個 collection。
 `RAG_RERANKER_PROVIDER=auto` 會先嘗試本機 cross-encoder reranker（`bge` / `sentence_transformers`，預設模型 `BAAI/bge-reranker-v2-m3`），若不可用再嘗試 Cohere Rerank；兩者都不可用時，會用既有 LLM SDK/key 對前 `RAG_LLM_RERANKER_MAX_DOCUMENTS` 筆候選做 JSON 排序；LLM reranker 也不可用才退回 hybrid 分數的關鍵字排序 fallback。若要固定本機模型，可設為 `sentence_transformers`、`cross_encoder` 或 `bge`；若要固定 Cohere，可設為 `cohere` 或 `cohere_rerank`，搭配 `RAG_RERANKER_MODEL=rerank-v3.5` 與 `COHERE_API_KEY`；若要固定 LLM reranker，可設為 `llm` 或 `llm_rerank`。`keyword` 仍可作為明確的 lexical fallback，但不會被視為模型級 reranker。Chroma query/get/upsert、模型載入與外部 rerank 都有 timeout；逾時、SDK 缺少、API key 缺少、LLM 回傳不可解析 JSON 或推論失敗時會保留可用排序並退回 keyword，不阻斷報告生成。`GET /services/status` 會回傳 `vector_store.retrieval_status`（hybrid/BM25、中文 n-gram tokenizer、entity metadata 是否納入 embedding/BM25、source credibility weights、keyword corpus limit、權重、rerank top-k 與 timeout 秒數）以及 `vector_store.reranker_status.execution_mode`、`configured_provider`、`resolved_provider`、`auto_candidates`、`quality_tier`、`keyword_fallback`、`model_reranker_ready`、`dependency_available`、`api_key_configured`、`model_available` 與 `fallback_reason`。`upgrade_capability_matrix.ai_rag.reranking` 只有在 cross-encoder、Cohere 或 LLM 這類 learned/API/model reranker 可用時才會標為 `ready`；auto 退回 keyword 時會顯示 `degraded`，避免把 lexical fallback 誤認成模型重排序。
 
@@ -306,6 +312,12 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 
 ```bash
 .venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker -B --loglevel=INFO --pool=solo
+```
+
+Docker Compose 也提供獨立 worker 與 beat：
+
+```bash
+docker compose up -d celery-worker celery-beat
 ```
 
 ## 常用 API

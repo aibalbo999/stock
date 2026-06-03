@@ -108,6 +108,7 @@ MAX_HTML_TABLES_PER_DOCUMENT = 80
 MAX_PDF_TABLE_ROWS = 120
 MAX_PDF_TABLE_COLUMNS = 14
 MAX_PDF_TABLE_CELL_CHARS = 160
+_BROWSER_RENDER_SEMAPHORES: dict[tuple[int, int], asyncio.Semaphore] = {}
 
 
 def _split_config_values(value: str) -> list[str]:
@@ -221,6 +222,21 @@ def company_filing_browser_render_status(
     status["endpoint_reachable"] = True
     status["runtime_available"] = True
     return status
+
+
+def company_filing_browser_render_concurrency() -> int:
+    return max(1, int(get_settings().company_filing_browser_render_concurrency))
+
+
+def company_filing_browser_render_limiter() -> asyncio.Semaphore:
+    limit = company_filing_browser_render_concurrency()
+    loop = asyncio.get_running_loop()
+    key = (id(loop), limit)
+    semaphore = _BROWSER_RENDER_SEMAPHORES.get(key)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(limit)
+        _BROWSER_RENDER_SEMAPHORES[key] = semaphore
+    return semaphore
 
 
 def company_filing_playwright_render_enabled() -> bool:
@@ -831,14 +847,15 @@ class CompanyFilingFetcher:
             rendered_url = endpoint.format(url=quote(url, safe=""))
             method = "GET"
             request_kwargs = {"headers": headers}
-        response = await company_filing_fetch_response_with_retries(
-            method,
-            rendered_url,
-            timeout=timeout,
-            follow_redirects=True,
-            identity_url=url,
-            **request_kwargs,
-        )
+        async with company_filing_browser_render_limiter():
+            response = await company_filing_fetch_response_with_retries(
+                method,
+                rendered_url,
+                timeout=timeout,
+                follow_redirects=True,
+                identity_url=url,
+                **request_kwargs,
+            )
         content_length = int(response.headers.get("content-length") or 0)
         if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
             raise ValueError("company filing browser-rendered content is too large to import")

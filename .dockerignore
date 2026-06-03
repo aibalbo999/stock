@@ -1,0 +1,14 @@
+.chroma
+.env
+.git
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+backups
+celerybeat-schedule.db
+logs
+reports
+stock_ai.db
+taiwan_ai_supply_chain_rag.egg-info

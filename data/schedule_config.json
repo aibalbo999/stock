@@ -1,12 +1,14 @@
 {
   "enabled": true,
-  "hour": 8,
-  "minute": 45,
+  "task": "latest_report_update",
+  "hour": 16,
+  "minute": 30,
   "topic": "AI 產業鏈",
-  "tickers": [
-    "2330",
-    "2382"
-  ],
-  "lookback_days": 21,
-  "timezone": "Asia/Taipei"
+  "tickers": [],
+  "lookback_days": 120,
+  "timezone": "Asia/Taipei",
+  "force_refresh": true,
+  "rerun_report": true,
+  "refresh_company_filings": true,
+  "news_limit": 30
 }

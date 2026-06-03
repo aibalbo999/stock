@@ -48,7 +48,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
-    assert "schedule_ready = (not schedule_enabled) or (bool(schedule_topic.strip()) and bool(schedule_tickers))" in source
+    assert "or schedule_task == \"latest_report_update\"" in source
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source
     assert "report_action_cols = st.columns([0.16, 0.16, 0.68], gap=\"small\")" in source

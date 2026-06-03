@@ -9,6 +9,7 @@ from scripts.start_system import (
     apply_local_dependency_env_defaults,
     dependency_wait_status_lines,
     docker_compose_command,
+    ensure_background_process,
     fallback_local_browser_render_to_playwright,
     print_upgrade_capability_preflight,
     pull_missing_dependency_images,
@@ -127,6 +128,31 @@ def test_start_dependencies_help_mentions_browserless() -> None:
     help_text = " ".join(completed.stdout.split())
     assert "Redis, Postgres, Neo4j, and Browserless" in help_text
     assert "--pull-missing-dependencies" in help_text
+
+
+def test_ensure_background_process_skips_running_pid(monkeypatch, tmp_path) -> None:
+    (tmp_path / "celery.pid").write_text("123", encoding="utf-8")
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.is_process_running", lambda pid: pid == 123)
+
+    started = ensure_background_process("celery", ["python", "-m", "celery"], tmp_path / "celery.log")
+
+    assert started is False
+
+
+def test_ensure_background_process_starts_and_writes_pid(monkeypatch, tmp_path) -> None:
+    class FakeProcess:
+        pid = 456
+
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.ROOT", tmp_path)
+    monkeypatch.setattr("scripts.start_system.is_process_running", lambda _pid: False)
+    monkeypatch.setattr("scripts.start_system.subprocess.Popen", lambda *args, **kwargs: FakeProcess())
+
+    started = ensure_background_process("celery", ["python", "-m", "celery"], tmp_path / "celery.log")
+
+    assert started is True
+    assert (tmp_path / "celery.pid").read_text(encoding="utf-8") == "456"
 
 
 def test_apply_local_dependency_env_defaults_supplies_neo4j_for_one_click_start(monkeypatch) -> None:

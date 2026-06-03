@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -10,21 +11,29 @@ from app.services.entity_mapping import EntityMapper
 
 class ScheduleConfig(BaseModel):
     enabled: bool = True
-    hour: int = Field(default=7, ge=0, le=23)
+    task: Literal["latest_report_update", "configured_report"] = "latest_report_update"
+    hour: int = Field(default=16, ge=0, le=23)
     minute: int = Field(default=30, ge=0, le=59)
     topic: str = "AI 產業鏈"
     tickers: list[str] = Field(default_factory=list)
-    lookback_days: int = Field(default=14, ge=1, le=180)
+    lookback_days: int = Field(default=120, ge=1, le=365)
     timezone: str = "Asia/Taipei"
+    force_refresh: bool = True
+    rerun_report: bool = True
+    refresh_company_filings: bool = True
+    news_limit: int = Field(default=30, ge=0, le=100)
 
     @field_validator("tickers")
     @classmethod
-    def tickers_must_be_whitelisted(cls, value: list[str]) -> list[str]:
-        return EntityMapper().filter_allowed_tickers(value)
+    def normalize_tickers(cls, value: list[str]) -> list[str]:
+        tickers = [str(ticker).strip() for ticker in value if str(ticker).strip()]
+        return list(dict.fromkeys(tickers))
 
     @model_validator(mode="after")
-    def enabled_schedule_requires_tickers(self) -> "ScheduleConfig":
-        if self.enabled and not self.tickers:
+    def validate_schedule_target(self) -> "ScheduleConfig":
+        if self.task == "configured_report":
+            self.tickers = EntityMapper().filter_allowed_tickers(self.tickers)
+        if self.enabled and self.task == "configured_report" and not self.tickers:
             raise ValueError("enabled schedule requires at least one whitelisted ticker")
         return self
 
@@ -49,7 +58,12 @@ class ScheduleConfigStore:
     def celery_payload(self) -> dict:
         config = self.load()
         return {
+            "task": config.task,
             "topic": config.topic,
             "tickers": config.tickers,
             "lookback_days": config.lookback_days,
+            "force_refresh": config.force_refresh,
+            "rerun_report": config.rerun_report,
+            "refresh_company_filings": config.refresh_company_filings,
+            "news_limit": config.news_limit,
         }

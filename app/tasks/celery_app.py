@@ -17,8 +17,13 @@ schedule_config = ScheduleConfigStore().load()
 celery_app.conf.timezone = schedule_config.timezone
 celery_app.conf.beat_schedule = {}
 if schedule_config.enabled:
-    celery_app.conf.beat_schedule["daily-ai-supply-chain-report"] = {
-        "task": "app.tasks.tasks.generate_report_task",
+    scheduled_task = (
+        "app.tasks.tasks.generate_report_task"
+        if schedule_config.task == "configured_report"
+        else "app.tasks.tasks.after_close_report_update_task"
+    )
+    celery_app.conf.beat_schedule["daily-stock-report-update"] = {
+        "task": scheduled_task,
         "schedule": crontab(hour=schedule_config.hour, minute=schedule_config.minute),
         "args": (ScheduleConfigStore().celery_payload(),),
     }

@@ -1,5 +1,6 @@
 import json
 from contextlib import contextmanager
+from datetime import date, datetime
 from types import SimpleNamespace
 
 from app.models.schemas import ReportResponse
@@ -22,6 +23,162 @@ def test_build_run_payload_omits_empty_optional_fields() -> None:
     payload = {"topic": "AI 產業鏈"}
 
     assert build_run_payload(payload) == {"request": payload}
+
+
+def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monkeypatch, tmp_path) -> None:
+    calls = []
+
+    class FakeRun:
+        id = 303
+        payload_json = json.dumps(
+            {
+                "request": {"topic": "機器人 產業鏈", "tickers": ["2308"], "lookback_days": 60},
+                "candidate_whitelist": [{"ticker": "2359", "status": "evidence_supported"}],
+            },
+            ensure_ascii=False,
+        )
+        status = "running"
+        report_id = None
+        output_path = None
+        error = None
+
+    class FakeSourceRun:
+        payload_json = FakeRun.payload_json
+
+    class FakeReportRecord:
+        id = 27
+        topic = "機器人 產業鏈"
+        tickers_json = json.dumps(["2308"], ensure_ascii=False)
+        markdown = "# report"
+        generated_at = datetime(2026, 6, 2, 15, 30)
+        created_at = datetime(2026, 6, 2, 15, 30)
+
+    class FakeAnalysisRunRepository:
+        run = FakeRun()
+
+        def __init__(self, session):
+            self.session = session
+
+        def start(self, source, payload):
+            assert source == "celery_after_close"
+            self.run.payload_json = json.dumps(payload, ensure_ascii=False)
+            return self.run
+
+        def get_by_report_id(self, report_id):
+            assert report_id == 27
+            return FakeSourceRun()
+
+        def update_payload(self, run_id, payload):
+            assert run_id == self.run.id
+            self.run.payload_json = json.dumps(payload, ensure_ascii=False)
+            return self.run
+
+        def mark_success(self, run_id, report_id, output_path=None):
+            assert run_id == self.run.id
+            self.run.status = "success"
+            self.run.report_id = report_id
+            self.run.output_path = output_path
+            return self.run
+
+        def mark_failed(self, run_id, error):
+            self.run.status = "failed"
+            self.run.error = error
+            return self.run
+
+    class FakeReportRepository:
+        created_id = 404
+
+        def __init__(self, session):
+            self.session = session
+
+        def latest(self, limit=20):
+            return [FakeReportRecord()]
+
+        def get(self, report_id):
+            assert report_id == 27
+            return FakeReportRecord()
+
+        def create(self, request, response):
+            calls.append(("create_report", request.tickers, response.title))
+            return SimpleNamespace(id=self.created_id)
+
+    class FakeContextService:
+        def load(self, report_id):
+            assert report_id == 27
+            return {
+                "request": tasks.ReportRequest(topic="機器人 產業鏈", tickers=["2308"], lookback_days=60),
+                "candidate_whitelist": [{"ticker": "2359", "status": "evidence_supported"}],
+                "markdown": "# report",
+                "quality_gate": {"status": "ready"},
+                "run_payload": json.loads(FakeRun.payload_json),
+            }
+
+    class FakeIngestionPipeline:
+        async def refresh_market(self, tickers, start_date, end_date, filter_allowed=True):
+            calls.append(("market", tickers, filter_allowed, (end_date - start_date).days))
+            return {"stored_history_count": 120, "errors": []}
+
+        async def refresh_monthly_revenue(self, tickers, start_date, end_date, filter_allowed=True):
+            calls.append(("monthly", tickers, filter_allowed))
+            return {"stored_count": 12, "errors": []}
+
+        async def refresh_financial_metrics(self, tickers, start_date, end_date, filter_allowed=True):
+            calls.append(("financial", tickers, filter_allowed))
+            return {"stored_count": 20, "errors": []}
+
+        async def refresh_valuations(self, tickers, start_date, end_date, filter_allowed=True):
+            calls.append(("valuation", tickers, filter_allowed))
+            return {"stored": [{"ticker": tickers[0]}], "errors": []}
+
+        async def ingest_company_filings(self, tickers, limit_per_query=3, filter_allowed=True):
+            calls.append(("filings", tickers, filter_allowed))
+            return {"stored_count": 2, "errors": []}
+
+    class FakeReportBuildService:
+        def build(self, request, **kwargs):
+            calls.append(("build", request.tickers, bool(kwargs.get("whitelist"))))
+            return {
+                "response": ReportResponse(title="updated", markdown="# updated"),
+                "quality_gate": {"status": "ready"},
+                "report_execution": {"filtered_tickers": request.tickers},
+                "evidence_count": 3,
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(tasks, "init_db", lambda: None)
+    monkeypatch.setattr(tasks, "session_scope", fake_session_scope)
+    monkeypatch.setattr(tasks, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(tasks, "ReportRepository", FakeReportRepository)
+    monkeypatch.setattr(tasks, "ReportFollowUpContextService", FakeContextService)
+    monkeypatch.setattr(tasks, "IngestionPipeline", FakeIngestionPipeline)
+    monkeypatch.setattr(tasks, "ReportBuildService", FakeReportBuildService)
+    monkeypatch.setattr(tasks, "CandidateRevalidationService", lambda: SimpleNamespace(sufficient_company_filing_tickers=lambda tickers: set(tickers)))
+    monkeypatch.setattr(tasks, "SupplyChainWhitelist", SimpleNamespace(from_candidate_whitelist=lambda candidates: object()))
+    monkeypatch.setattr(tasks, "audit_company_data", lambda *args, **kwargs: {"status": "sufficient"})
+    monkeypatch.setattr(tasks, "MarketRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
+    monkeypatch.setattr(tasks, "MonthlyRevenueRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
+    monkeypatch.setattr(tasks, "ValuationMetricRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
+    monkeypatch.setattr(tasks, "FinancialMetricRepository", lambda session: SimpleNamespace(by_tickers=lambda tickers: []))
+    monkeypatch.setattr(tasks, "today_taipei", lambda: date(2026, 6, 3))
+    monkeypatch.setattr(tasks, "get_settings", lambda: SimpleNamespace(report_dir=tmp_path))
+
+    result = tasks.after_close_report_update_task.run(
+        {"task": "latest_report_update", "lookback_days": 120, "rerun_report": True}
+    )
+
+    assert result["source_report_id"] == 27
+    assert result["report_id"] == 404
+    assert result["tickers"] == ["2308", "2359"]
+    assert ("market", ["2308", "2359"], False, 120) in calls
+    assert ("monthly", ["2308", "2359"], False) in calls
+    assert ("financial", ["2308", "2359"], False) in calls
+    assert ("valuation", ["2308", "2359"], False) in calls
+    assert ("filings", ["2308", "2359"], False) in calls
+    assert ("build", ["2308", "2359"], True) in calls
+    assert FakeAnalysisRunRepository.run.status == "success"
 
 
 def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path) -> None:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.data_sources.company_filings import company_filing_playwright_browser_status
 from app.services.local_dependency_diagnostics import local_docker_image_status
+from app.services.schedule_config import ScheduleConfigStore
 from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 from app.services.upgrade_audit import audit_upgrade_capabilities
 
@@ -138,6 +139,25 @@ def main() -> int:
         ],
         log_path=LOG_DIR / "streamlit.log",
     )
+    schedule_config = ScheduleConfigStore().load()
+    celery_started = False
+    celery_enabled = bool(schedule_config.enabled)
+    if celery_enabled:
+        celery_started = ensure_background_process(
+            name="celery",
+            command=[
+                str(python),
+                "-m",
+                "celery",
+                "-A",
+                "app.tasks.celery_app.celery_app",
+                "worker",
+                "-B",
+                "--loglevel=INFO",
+                "--pool=solo",
+            ],
+            log_path=LOG_DIR / "celery.log",
+        )
 
     api_ok = wait_for_http(f"http://{API_HOST}:{API_PORT}/health", timeout_seconds=30)
     streamlit_ok = wait_for_port("127.0.0.1", STREAMLIT_PORT, timeout_seconds=30)
@@ -157,6 +177,15 @@ def main() -> int:
             print(line)
     print(f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}")
     print(f"- Streamlit: {'已啟動' if streamlit_started else '已在執行'}，連線檢查：{'正常' if streamlit_ok else '尚未回應'}")
+    if celery_enabled:
+        print(
+            "- 自動排程："
+            f"{'已啟動' if celery_started else '已在執行'}，"
+            f"每日 {schedule_config.timezone} {schedule_config.hour:02d}:{schedule_config.minute:02d} "
+            f"{schedule_config.task}"
+        )
+    else:
+        print("- 自動排程：未啟用")
     print("")
     print("可用網址")
     print(f"- 本機：{local_url}")
@@ -166,6 +195,8 @@ def main() -> int:
     print("Log 檔")
     print(f"- API: {LOG_DIR / 'api.log'}")
     print(f"- Streamlit: {LOG_DIR / 'streamlit.log'}")
+    if celery_enabled:
+        print(f"- Celery: {LOG_DIR / 'celery.log'}")
 
     if args.open_browser and streamlit_ok:
         webbrowser.open(local_url)
@@ -700,6 +731,41 @@ def ensure_process(name: str, port: int, command: list[str], log_path: Path) -> 
             start_new_session=True,
         )
     (RUN_DIR / f"{name}.pid").write_text(str(process.pid), encoding="utf-8")
+    return True
+
+
+def ensure_background_process(name: str, command: list[str], log_path: Path) -> bool:
+    pid_path = RUN_DIR / f"{name}.pid"
+    if pid_path.exists():
+        try:
+            pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except ValueError:
+            pid = 0
+        if pid and is_process_running(pid):
+            return False
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    with log_path.open("ab") as log_file:
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    pid_path.write_text(str(process.pid), encoding="utf-8")
+    return True
+
+
+def is_process_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
     return True
 
 

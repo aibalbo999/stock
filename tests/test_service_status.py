@@ -103,10 +103,23 @@ def test_service_status_shape() -> None:
     ]
     assert status["company_filings"]["cache_ttl_seconds"] == Settings().company_filing_cache_ttl_seconds
     assert status["company_filings"]["browser_render_enabled"] is False
+    assert status["company_filings"]["browser_render_provider"] == "browserless"
+    assert "flaresolverr" in status["company_filings"]["browser_render_supported_providers"]
     assert status["company_filings"]["browser_render_configured"] is False
     assert status["company_filings"]["browser_render_endpoint_reachable"] is False
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
     assert status["company_filings"]["browser_render_timeout_seconds"] == 30.0
+    assert status["company_filings"]["structured_api_configured"] is False
+    assert status["company_filings"]["structured_api_provider"] is None
+    assert status["company_filings"]["structured_api_url_configured"] is False
+    assert status["company_filings"]["structured_api_token_configured"] is False
+    assert status["company_filings"]["visual_rag_enabled"] is Settings().company_filing_visual_rag_enabled
+    assert status["company_filings"]["visual_rag_mode"] == Settings().company_filing_visual_rag_mode
+    assert isinstance(status["company_filings"]["visual_rag_runtime_available"], bool)
+    assert status["company_filings"]["visual_rag_model"] == Settings().company_filing_visual_rag_model
+    assert status["company_filings"]["visual_rag_max_pages"] == Settings().company_filing_visual_rag_max_pages
+    assert status["company_filings"]["visual_rag_dpi"] == 144
+    assert "fallback_reason" in status["company_filings"]["visual_rag_runtime"]
     assert status["company_filings"]["playwright_render_enabled"] is False
     assert status["company_filings"]["playwright_render_configured"] is False
     assert isinstance(status["company_filings"]["playwright_render_dependency_available"], bool)
@@ -234,6 +247,11 @@ def test_service_status_shape() -> None:
     assert status["supply_chain_graph"]["neo4j_import"]["payload_format"] == "neo4j_cypher_v1"
     assert status["supply_chain_graph"]["neo4j_import"]["payload_node_count"] >= 1
     assert status["supply_chain_graph"]["neo4j_import"]["payload_statement_count"] >= 1
+    assert status["supply_chain_graph"]["path_reasoning_enabled"] is True
+    assert status["supply_chain_graph"]["shortest_path_context_enabled"] is True
+    assert status["supply_chain_graph"]["path_reasoning_strategy"] == "taxonomy_graph_shortest_path_reasoning"
+    assert status["supply_chain_graph"]["path_reasoning_endpoint"] == "GET /supply-chain/graph/reasoning"
+    assert "shortestPath" in status["supply_chain_graph"]["neo4j_shortest_path_template"]
     assert status["workflow_orchestration"]["engine"] == Settings().workflow_engine
     assert status["workflow_orchestration"]["checkpoint_store"] == "analysis_run.payload_json"
     assert status["workflow_orchestration"]["local_fallback_enabled"] is True
@@ -243,6 +261,18 @@ def test_service_status_shape() -> None:
     assert status["gemini"]["base_retry_delay_seconds"] == 0.5
     assert status["gemini"]["max_retry_delay_seconds"] == 5.0
     assert status["gemini"]["provider_keys_configured"]["anthropic"] is False
+    assert status["llm_observability"]["enabled"] is True
+    assert status["llm_observability"]["local_trace_enabled"] is True
+    assert "latency_ms" in status["llm_observability"]["captured_fields"]
+    assert "total_token_estimate" in status["llm_observability"]["captured_fields"]
+    assert status["security_scanning"]["external_engine_integration"] is True
+    assert status["security_scanning"]["detect_secrets_dependency_declared"] is True
+    assert status["security_scanning"]["local_regex_fallback_enabled"] is True
+    assert status["security_scanning"]["default_engine"] in {
+        "detect-secrets",
+        "gitleaks",
+        "local_regex",
+    }
     assert status["candidate_confidence"]["high_threshold"] == HIGH_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["medium_threshold"] == MEDIUM_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["source_credibility_weights"]["official"] == 1.0
@@ -281,12 +311,48 @@ def test_service_status_shape() -> None:
         is status["vector_store"]["reranker_status"]["keyword_fallback"]
     )
     assert matrix["ai_rag"]["reranking"]["evidence"]["auto_candidates"]
+    assert matrix["ai_rag"]["llm_observability"]["status"] == "ready"
+    assert matrix["ai_rag"]["llm_observability"]["evidence"]["local_trace_enabled"] is True
+    assert "latency_ms" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
+    assert "total_token_estimate" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
+    expected_visual_rag_status = (
+        "ready"
+        if status["company_filings"]["visual_rag_runtime_available"]
+        else "not_configured"
+    )
+    assert matrix["ai_rag"]["visual_rag"]["status"] == expected_visual_rag_status
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["enabled"]
+        is status["company_filings"]["visual_rag_enabled"]
+    )
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["runtime_available"]
+        is status["company_filings"]["visual_rag_runtime_available"]
+    )
+    assert "fallback_reason" in matrix["ai_rag"]["visual_rag"]["evidence"]["runtime"]
     assert matrix["ai_rag"]["graphrag_context"]["status"] == "ready"
     assert matrix["ai_rag"]["graphrag_context"]["evidence"]["retrieval_query_plan_enabled"] is True
     assert (
         matrix["ai_rag"]["graphrag_context"]["evidence"]["retrieval_query_strategy"]
         == "taxonomy_graph_query_expansion"
     )
+    assert matrix["ai_rag"]["graphrag_path_reasoning"]["status"] == "ready"
+    assert (
+        matrix["ai_rag"]["graphrag_path_reasoning"]["evidence"]["path_reasoning_strategy"]
+        == "taxonomy_graph_shortest_path_reasoning"
+    )
+    assert (
+        matrix["ai_rag"]["graphrag_path_reasoning"]["evidence"]["path_reasoning_endpoint"]
+        == "GET /supply-chain/graph/reasoning"
+    )
+    assert "shortestPath" in matrix["ai_rag"]["graphrag_path_reasoning"]["evidence"]["neo4j_shortest_path_template"]
+    assert matrix["ai_rag"]["graphrag_agentic_cypher"]["status"] == "ready"
+    cypher_evidence = matrix["ai_rag"]["graphrag_agentic_cypher"]["evidence"]
+    assert cypher_evidence["agentic_cypher_planner_enabled"] is True
+    assert cypher_evidence["agentic_cypher_strategy"] == "guarded_llm_cypher_planner"
+    assert cypher_evidence["agentic_cypher_endpoint"] == "GET /supply-chain/graph/cypher-plan"
+    assert cypher_evidence["agentic_cypher_plan_example"]["validation"]["valid"] is True
+    assert cypher_evidence["agentic_cypher_plan_example"]["validation"]["read_only"] is True
     assert matrix["ai_rag"]["neo4j_payload_export"]["status"] == "ready"
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_export_ready"] is True
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_format"] == "neo4j_cypher_v1"
@@ -296,12 +362,28 @@ def test_service_status_shape() -> None:
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["payload_export_ready"] is True
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["fallback_reason"] == "missing_settings:neo4j_uri"
     assert matrix["architecture"]["thin_api_controller"]["status"] == "ready"
-    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 600
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 220
     assert "report_routes.py" in matrix["architecture"]["thin_api_controller"]["evidence"]["route_modules"]
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["app_factory_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_app_factory"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_exports_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_exports"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_direct_domain_import_count"] == 0
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_service_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_imports_legacy_facade"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_alias_only"] is True
     assert matrix["architecture"]["workflow_orchestration"]["status"] == "ready"
     assert matrix["architecture"]["database_migrations"]["status"] in {"ready", "degraded"}
     assert matrix["architecture"]["database_migrations"]["evidence"]["head_revision"]
+    assert matrix["architecture"]["secret_scanning"]["status"] == "ready"
+    assert (
+        matrix["architecture"]["secret_scanning"]["evidence"]["local_regex_fallback_role"]
+        == "fallback_only"
+    )
+    assert "detect-secrets" in matrix["architecture"]["secret_scanning"]["evidence"][
+        "supported_external_engines"
+    ]
     assert matrix["data_business_logic"]["market_data_cache"]["evidence"]["enabled"] is True
     assert (
         matrix["data_business_logic"]["market_data_cache"]["evidence"]["latest_only_source_marker"]
@@ -331,6 +413,8 @@ def test_service_status_shape() -> None:
     assert filing_hardening["proxy_retry_rotation_enabled"] is False
     assert filing_hardening["identity_retry_rotation_enabled"] is True
     assert filing_hardening["browser_or_proxy_fallback_configured"] is False
+    assert filing_hardening["browser_render_provider"] == "browserless"
+    assert filing_hardening["structured_api_configured"] is False
     assert "browser_render_runtime" in filing_hardening
     assert filing_hardening["playwright_render_enabled"] is False
     assert filing_hardening["playwright_render_configured"] is False
@@ -354,9 +438,14 @@ def test_service_status_shape() -> None:
     assert filing_fallback["evidence"]["browser_or_proxy_fallback_configured"] is False
     assert filing_fallback["evidence"]["proxy_count"] == 0
     assert filing_fallback["evidence"]["browser_render_configured"] is False
+    assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
     assert "browser_render_runtime" in filing_fallback["evidence"]
     assert filing_fallback["evidence"]["playwright_render_configured"] is False
     assert "playwright_render_runtime" in filing_fallback["evidence"]
+    structured_api = matrix["data_business_logic"]["company_filing_structured_api_fallback"]
+    assert structured_api["status"] == "not_configured"
+    assert structured_api["evidence"]["configured"] is False
+    assert structured_api["evidence"]["runtime"]["fallback_reason"] == "missing_structured_api_provider_or_url"
     assert matrix["data_business_logic"]["source_quality_weighting"]["status"] == "ready"
 
 
@@ -377,14 +466,18 @@ def test_candidate_confidence_threshold_settings_defaults() -> None:
 
 
 def test_llm_retry_settings_defaults() -> None:
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.llm_max_retries_per_key == DEFAULT_MAX_RETRIES_PER_KEY
     assert settings.llm_base_retry_delay_seconds == 0.5
     assert settings.llm_max_retry_delay_seconds == 5.0
     assert settings.primary_llm_model == "gemini-3.5-flash"
-    assert settings.local_llm_model == "gemma-4-31b-it"
-    assert settings.llm_fallback_models == "gemini-2.5-flash-lite,gemma-4-31b-it"
+    assert settings.local_llm_model == "gemini-2.5-flash-lite"
+    assert (
+        settings.llm_fallback_models
+        == "gemini-2.5-flash,gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+    )
+    assert settings.llm_model_quota_cooldown_seconds == 3600
 
 
 def test_rag_settings_defaults(monkeypatch) -> None:
@@ -420,8 +513,8 @@ def test_rag_settings_defaults(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
     settings = Settings(_env_file=None)
 
-    assert settings.rag_embedding_provider == "sentence_transformers"
-    assert settings.rag_embedding_model == "intfloat/multilingual-e5-large"
+    assert settings.rag_embedding_provider == "google_genai"
+    assert settings.rag_embedding_model == "gemini-embedding-2"
     assert settings.rag_embedding_output_dimensionality is None
     assert settings.rag_index_schema_version == "identity-v2"
     assert settings.rag_allow_chroma_default_embedding_fallback is False
@@ -437,7 +530,7 @@ def test_rag_settings_defaults(monkeypatch) -> None:
     assert settings.rag_reranker_text_limit == 4000
     assert settings.rag_reranker_timeout_seconds == 15.0
     assert settings.rag_llm_reranker_enabled is True
-    assert settings.rag_llm_reranker_max_documents == 12
+    assert settings.rag_llm_reranker_max_documents == 8
     assert settings.chroma_api_url == ""
     assert settings.chroma_tenant == "default_tenant"
     assert settings.chroma_database == "default_database"
@@ -628,6 +721,7 @@ def test_company_filing_fetch_settings_defaults() -> None:
     assert settings.company_filing_cache_enabled is True
     assert settings.company_filing_cache_ttl_seconds == 7 * 24 * 60 * 60
     assert settings.company_filing_browser_render_enabled is False
+    assert settings.company_filing_browser_render_provider == "browserless"
     assert settings.company_filing_browser_render_url == ""
     assert settings.company_filing_browser_render_token == ""
     assert settings.company_filing_browser_render_timeout_seconds == 30.0
@@ -636,6 +730,10 @@ def test_company_filing_fetch_settings_defaults() -> None:
     assert settings.company_filing_playwright_browser == "chromium"
     assert settings.company_filing_playwright_wait_until == "networkidle"
     assert settings.company_filing_playwright_timeout_seconds == 30.0
+    assert settings.company_filing_structured_api_provider == ""
+    assert settings.company_filing_structured_api_url == ""
+    assert settings.company_filing_structured_api_token == ""
+    assert settings.company_filing_structured_api_timeout_seconds == 20.0
 
 
 def test_company_filing_playwright_fallback_requires_available_dependency(monkeypatch) -> None:

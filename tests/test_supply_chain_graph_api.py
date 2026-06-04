@@ -109,3 +109,87 @@ def test_supply_chain_graph_api_delegates_neo4j_import_with_requested_tickers() 
     assert result == {"status": "imported"}
     assert isinstance(captured["graph"], FakeGraph)
     assert captured["tickers"] == ["2330", "3324"]
+
+
+def test_supply_chain_graph_api_delegates_reasoning_payload() -> None:
+    captured = {}
+
+    class FakeGraph:
+        def reasoning_plan(self, tickers, *, target_ticker="", topic="", max_depth=3, max_paths=8):
+            captured["tickers"] = tickers
+            captured["target_ticker"] = target_ticker
+            captured["topic"] = topic
+            captured["max_depth"] = max_depth
+            captured["max_paths"] = max_paths
+            return {"strategy": "taxonomy_graph_shortest_path_reasoning"}
+
+    class FakeWhitelist:
+        def graph(self):
+            return FakeGraph()
+
+    service = SupplyChainGraphApiService(whitelist_cls=FakeWhitelist)
+
+    result = service.graph_reasoning_payload(
+        "2330, 3324",
+        target_ticker="2382",
+        topic="AI 伺服器",
+        max_depth=4,
+        max_paths=6,
+    )
+
+    assert result == {"strategy": "taxonomy_graph_shortest_path_reasoning"}
+    assert captured == {
+        "tickers": ["2330", "3324"],
+        "target_ticker": "2382",
+        "topic": "AI 伺服器",
+        "max_depth": 4,
+        "max_paths": 6,
+    }
+
+
+def test_supply_chain_graph_api_delegates_cypher_plan() -> None:
+    captured = {}
+
+    class FakeGraph:
+        pass
+
+    class FakeWhitelist:
+        def graph(self):
+            return FakeGraph()
+
+    class FakePlanner:
+        def plan(self, graph, *, tickers=None, target_ticker="", topic="", question="", max_depth=3, use_llm=False):
+            captured["graph"] = graph
+            captured["tickers"] = tickers
+            captured["target_ticker"] = target_ticker
+            captured["topic"] = topic
+            captured["question"] = question
+            captured["max_depth"] = max_depth
+            captured["use_llm"] = use_llm
+            return {"strategy": "guarded_llm_cypher_planner"}
+
+    service = SupplyChainGraphApiService(
+        whitelist_cls=FakeWhitelist,
+        cypher_planner_factory=lambda: FakePlanner(),
+    )
+
+    result = service.graph_cypher_plan(
+        "2330, 3324",
+        target_ticker="2382",
+        topic="AI 伺服器",
+        question="上下游衝擊",
+        max_depth=4,
+        use_llm=True,
+    )
+
+    assert result == {"strategy": "guarded_llm_cypher_planner"}
+    assert isinstance(captured["graph"], FakeGraph)
+    assert captured == {
+        "graph": captured["graph"],
+        "tickers": ["2330", "3324"],
+        "target_ticker": "2382",
+        "topic": "AI 伺服器",
+        "question": "上下游衝擊",
+        "max_depth": 4,
+        "use_llm": True,
+    }

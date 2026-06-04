@@ -59,7 +59,12 @@ def test_report_execution_summary_includes_retrieval_trace() -> None:
         last_excluded_low_quality_documents=[],
         last_filtered_tickers=[],
         last_dropped_tickers=[],
-        last_llm_result=None,
+        last_llm_result=LLMResult(
+            text="ok",
+            provider="litellm",
+            model="gemini/gemini-test",
+            observability={"latency_ms": 12.5, "total_token_estimate": 42},
+        ),
         vector_store=SimpleNamespace(
             last_retrieval_trace={
                 "strategy": "hybrid-vector-bm25-rerank",
@@ -72,6 +77,8 @@ def test_report_execution_summary_includes_retrieval_trace() -> None:
 
     assert summary["retrieval_trace"]["strategy"] == "hybrid-vector-bm25-rerank"
     assert summary["retrieval_trace"]["candidates"][0]["final_score"] == 1.2
+    assert summary["llm"]["observability"]["latency_ms"] == 12.5
+    assert summary["llm"]["observability"]["total_token_estimate"] == 42
 
 
 def make_financial_metrics(

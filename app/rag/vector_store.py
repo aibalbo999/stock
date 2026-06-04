@@ -6,6 +6,7 @@ from hashlib import sha1
 from collections import Counter
 from datetime import date
 from importlib.util import find_spec
+from time import monotonic
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -112,8 +113,17 @@ class VectorStore:
         target_tickers: list[str] | None = None,
         target_aliases: dict[str, list[str]] | None = None,
     ) -> list[NewsDocument]:
+        started_at = monotonic()
         if self.collection is None or getattr(self, "_chroma_query_disabled_for_session", False):
-            return self._hybrid_rank(query, [], self._fallback_docs, n_results, target_tickers, target_aliases)
+            return self._hybrid_rank(
+                query,
+                [],
+                self._fallback_docs,
+                n_results,
+                target_tickers,
+                target_aliases,
+                started_at=started_at,
+            )
 
         semantic_limit = max(n_results, int(self.settings.rag_rerank_top_k))
         try:
@@ -132,6 +142,7 @@ class VectorStore:
                 n_results,
                 target_tickers,
                 target_aliases,
+                started_at=started_at,
             )
         except Exception as exc:
             if not self._is_embedding_quota_error(exc):
@@ -144,6 +155,7 @@ class VectorStore:
                 n_results,
                 target_tickers,
                 target_aliases,
+                started_at=started_at,
             )
         vector_hits = self._documents_from_query_result(result)
         if not self.settings.rag_hybrid_search_enabled:
@@ -156,6 +168,7 @@ class VectorStore:
             self.last_retrieval_trace = {
                 "query": query,
                 "strategy": "vector-only",
+                "duration_ms": self._elapsed_ms(started_at),
                 "target_tickers": list(target_tickers or []),
                 "vector_hit_count": len(vector_hits),
                 "candidate_count": len(documents),
@@ -179,7 +192,15 @@ class VectorStore:
             return results
 
         keyword_corpus = self._keyword_corpus()
-        return self._hybrid_rank(query, vector_hits, keyword_corpus, n_results, target_tickers, target_aliases)
+        return self._hybrid_rank(
+            query,
+            vector_hits,
+            keyword_corpus,
+            n_results,
+            target_tickers,
+            target_aliases,
+            started_at=started_at,
+        )
 
     def _keyword_corpus(self) -> list[NewsDocument]:
         if self.collection is None or getattr(self, "_chroma_get_disabled_for_session", False):
@@ -328,7 +349,10 @@ class VectorStore:
         n_results: int,
         target_tickers: list[str] | None = None,
         target_aliases: dict[str, list[str]] | None = None,
+        *,
+        started_at: float | None = None,
     ) -> list[NewsDocument]:
+        started_at = started_at if started_at is not None else monotonic()
         vector_weight = max(0.0, float(self.settings.rag_vector_weight))
         keyword_weight = max(0.0, float(self.settings.rag_keyword_weight))
         original_vector_hit_count = len(vector_hits)
@@ -397,6 +421,7 @@ class VectorStore:
         self.last_retrieval_trace = {
             "query": query,
             "strategy": "hybrid-vector-bm25-rerank",
+            "duration_ms": self._elapsed_ms(started_at),
             "target_tickers": list(target_tickers or []),
             "vector_weight": vector_weight,
             "keyword_weight": keyword_weight,
@@ -424,6 +449,10 @@ class VectorStore:
             "reranker_status": getattr(self.reranker, "last_status", {}),
         }
         return results
+
+    @staticmethod
+    def _elapsed_ms(started_at: float) -> float:
+        return round(max(0.0, monotonic() - started_at) * 1000, 3)
 
     @classmethod
     def _trace_row(
@@ -707,6 +736,7 @@ class VectorStore:
             "source_quality_weights": SOURCE_CREDIBILITY_WEIGHTS,
             "retrieval_trace_enabled": True,
             "retrieval_trace_fields": [
+                "duration_ms",
                 "vector_score",
                 "keyword_raw_score",
                 "keyword_score",

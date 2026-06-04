@@ -10,6 +10,7 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert "postgres" in compose["services"]
     assert "neo4j" in compose["services"]
     assert "browserless" in compose["services"]
+    assert "flaresolverr" in compose["services"]
     assert "chroma" in compose["services"]
     assert "celery-worker" in compose["services"]
     assert "celery-beat" in compose["services"]
@@ -20,6 +21,9 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert compose["services"]["browserless"]["ports"] == ["3000:3000"]
     assert compose["services"]["browserless"]["environment"]["TOKEN"] == "stock_ai_browserless_token"
     assert compose["services"]["browserless"]["environment"]["CONCURRENT"] == "4"
+    assert compose["services"]["flaresolverr"]["profiles"] == ["unlocker"]
+    assert compose["services"]["flaresolverr"]["ports"] == ["8191:8191"]
+    assert compose["services"]["flaresolverr"]["image"] == "ghcr.io/flaresolverr/flaresolverr:latest"
     assert compose["services"]["chroma"]["image"] == "chromadb/chroma:latest"
     assert compose["services"]["chroma"]["ports"] == ["8000:8000"]
     worker = compose["services"]["celery-worker"]

@@ -605,6 +605,29 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             }
         )
 
+    visual_rag = ai_rag.get("visual_rag") or {}
+    visual_rag_evidence = visual_rag.get("evidence") or {}
+    if visual_rag and visual_rag.get("status") != "ready":
+        runtime = visual_rag_evidence.get("runtime") or {}
+        fallback = str(runtime.get("fallback_reason") or "visual_rag_not_configured")
+        actions = []
+        if not visual_rag_evidence.get("enabled"):
+            actions.append("設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true")
+        if visual_rag_evidence.get("renderer_dependency_available") is False:
+            actions.append(_pip_install_action(python_display, ".[visual]"))
+        if not (runtime.get("vision_model_key_configured") or visual_rag_evidence.get("runtime_available")):
+            actions.append(
+                "設定 COMPANY_FILING_VISUAL_RAG_MODEL 與 GOOGLE_API_KEYS / OPENAI_API_KEY / ANTHROPIC_API_KEY"
+            )
+        items.append(
+            {
+                "capability": "visual_rag",
+                "status": str(visual_rag.get("status") or "unknown"),
+                "reason": fallback,
+                "action": "；".join(actions) if actions else "確認 Visual RAG renderer 與 vision LLM 設定",
+            }
+        )
+
     neo4j = ai_rag.get("neo4j_import") or {}
     neo4j_evidence = neo4j.get("evidence") or {}
     if neo4j.get("status") != "ready":
@@ -661,7 +684,7 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
     if filing_fallback.get("status") not in {None, "ready"}:
         actions = [
             "設定 COMPANY_FILING_PROXY_URLS 讓重試時可切換代理",
-            "或設定 COMPANY_FILING_BROWSER_RENDER_ENABLED=true 與 COMPANY_FILING_BROWSER_RENDER_URL",
+            "或設定 COMPANY_FILING_BROWSER_RENDER_ENABLED=true、COMPANY_FILING_BROWSER_RENDER_PROVIDER 與 COMPANY_FILING_BROWSER_RENDER_URL",
         ]
         if filing_fallback_evidence.get("playwright_render_dependency_available"):
             actions.append("或啟用 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true 做本機瀏覽器渲染")
@@ -671,8 +694,27 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             {
                 "capability": "company_filing_browser_or_proxy_fallback",
                 "status": str(filing_fallback.get("status") or "unknown"),
-                "reason": "公司文件 Proxy / Browserless / Playwright 後援尚未設定",
+                "reason": "公司文件 Proxy / Browser render / Playwright 後援尚未設定",
                 "action": "；".join(actions),
+            }
+        )
+
+    structured_api = data_business_logic.get("company_filing_structured_api_fallback") or {}
+    structured_evidence = structured_api.get("evidence") or {}
+    if structured_api.get("status") not in {None, "ready"}:
+        items.append(
+            {
+                "capability": "company_filing_structured_api_fallback",
+                "status": str(structured_api.get("status") or "unknown"),
+                "reason": str(
+                    (structured_evidence.get("runtime") or {}).get("fallback_reason")
+                    or "structured_company_filing_api_not_configured"
+                ),
+                "action": (
+                    "若法說會簡報或重大訊息常被擋，設定 "
+                    "COMPANY_FILING_STRUCTURED_API_PROVIDER、COMPANY_FILING_STRUCTURED_API_URL "
+                    "與 COMPANY_FILING_STRUCTURED_API_TOKEN 串接 TEJ 或專業資料 API"
+                ),
             }
         )
 

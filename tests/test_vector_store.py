@@ -88,6 +88,7 @@ def test_vector_store_retrieval_status_exposes_hybrid_bm25_settings() -> None:
         "source_quality_weights": SOURCE_CREDIBILITY_WEIGHTS,
         "retrieval_trace_enabled": True,
         "retrieval_trace_fields": [
+            "duration_ms",
             "vector_score",
             "keyword_raw_score",
             "keyword_score",
@@ -304,6 +305,7 @@ def test_hybrid_search_records_retrieval_trace_with_score_breakdown(monkeypatch)
         assert results == [formal]
         assert trace["strategy"] == "hybrid-vector-bm25-rerank"
         assert trace["query"] == "2330 台積電 CoWoS"
+        assert trace["duration_ms"] >= 0
         assert trace["candidate_count"] >= 1
         assert trace["returned_count"] == 1
         assert trace["result_ids"] == [formal.id]

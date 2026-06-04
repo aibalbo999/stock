@@ -14,9 +14,12 @@ from app.data_sources.company_filings import (
     PDF_IMPORT_NO_TEXT_MESSAGE,
     categorize_company_filing_error,
     company_filing_browser_render_configured,
+    company_filing_browser_render_provider,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
     company_filing_playwright_render_enabled,
+    company_filing_structured_api_configured,
+    company_filing_structured_api_status,
     company_filing_client_options,
     company_filing_fetch_response_with_retries,
     company_filing_identity_for_url,
@@ -35,6 +38,7 @@ from app.data_sources.company_filings import (
     normalize_tpex_company_profile,
     parse_mops_annual_report_rows,
     parse_mops_roc_datetime,
+    structured_api_document_rows,
     validate_fetched_company_filing_document,
     validate_public_document_url,
 )
@@ -149,8 +153,33 @@ def test_company_filing_browser_render_is_explicitly_configured(monkeypatch) -> 
     get_settings.cache_clear()
     try:
         assert company_filing_browser_render_configured() is True
+        assert company_filing_browser_render_provider() == "browserless"
     finally:
         get_settings.cache_clear()
+
+
+def test_company_filing_structured_api_status_requires_provider_and_url(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", "tej-token")
+    get_settings.cache_clear()
+    try:
+        assert company_filing_structured_api_configured() is True
+        status = company_filing_structured_api_status()
+    finally:
+        get_settings.cache_clear()
+
+    assert status["configured"] is True
+    assert status["provider"] == "tej"
+    assert status["url_configured"] is True
+    assert status["token_configured"] is True
+    assert status["fallback_reason"] is None
+
+
+def test_structured_api_document_rows_accepts_common_payload_shapes() -> None:
+    assert structured_api_document_rows({"documents": [{"title": "A"}, "bad"]}) == [{"title": "A"}]
+    assert structured_api_document_rows({"data": [{"title": "B"}]}) == [{"title": "B"}]
+    assert structured_api_document_rows([{"title": "C"}]) == [{"title": "C"}]
 
 
 def test_company_filing_browser_render_status_checks_endpoint_reachability(monkeypatch) -> None:
@@ -626,6 +655,69 @@ def test_company_filing_web_search_fetches_candidate_documents(monkeypatch) -> N
     assert documents[0].source.url == "https://investor.tsmc.com/annual-report.pdf"
 
 
+def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> None:
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **options) -> None:
+            captured["options"] = options
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                json={
+                    "documents": [
+                        {
+                            "title": "台積電 2026 法說會簡報",
+                            "text": "2330 台積電 法說會 investor presentation 揭露 AI/HPC 需求與資本支出。" * 4,
+                            "url": "https://api.tej.example/documents/2330-presentation",
+                            "publisher": "TEJ",
+                            "published_at": "2026-05-01",
+                            "document_type": "investor_presentation",
+                        }
+                    ]
+                },
+            )
+
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", "tej-token")
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(CompanyFilingFetcher, "google_news_urls", classmethod(lambda cls, *args, **kwargs: []))
+    get_settings.cache_clear()
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_discovery_documents(
+                "2330",
+                "台積電",
+                document_types=["investor_presentation"],
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert errors == []
+    assert documents[0].document_type == "investor_presentation"
+    assert documents[0].source.publisher == "TEJ"
+    assert documents[0].source.published_at == date(2026, 5, 1)
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://api.tej.example/filings"
+    assert captured["kwargs"]["params"]["ticker"] == "2330"
+    assert captured["kwargs"]["params"]["document_types"] == "investor_presentation"
+    assert captured["kwargs"]["headers"]["Authorization"] == "Bearer tej-token"
+
+
 def test_company_filing_web_search_errors_include_category(monkeypatch) -> None:
     async def fake_search(query_text: str, limit: int = 5):
         return [
@@ -973,6 +1065,120 @@ def test_company_filing_browser_render_posts_to_configured_endpoint(monkeypatch)
     assert captured["options"]["timeout"] == 12.0
 
 
+def test_company_filing_browser_render_posts_flaresolverr_payload(monkeypatch) -> None:
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **options) -> None:
+            captured["options"] = options
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                headers={"content-type": "application/json"},
+                json={
+                    "status": "ok",
+                    "solution": {
+                        "url": "https://investor.tsmc.com/rendered",
+                        "response": (
+                            "<html><head><title>台積電 2026 年報</title></head>"
+                            "<body>台積電 annual report AI/HPC 風險與財務資訊。</body></html>"
+                        ),
+                    },
+                },
+            )
+
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "http://flaresolverr:8191/v1")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TIMEOUT_SECONDS", "12")
+    get_settings.cache_clear()
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher()._fetch_browser_rendered_url_as_document(
+                "https://investor.tsmc.com/annual-report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert document.source.url == "https://investor.tsmc.com/rendered"
+    assert "AI/HPC" in document.text
+    assert captured["method"] == "POST"
+    assert captured["url"] == "http://flaresolverr:8191/v1"
+    assert captured["kwargs"]["json"]["cmd"] == "request.get"
+    assert captured["kwargs"]["json"]["url"] == "https://investor.tsmc.com/annual-report"
+    assert captured["kwargs"]["json"]["maxTimeout"] == 12000
+
+
+def test_company_filing_browser_render_uses_scrapingbee_params(monkeypatch) -> None:
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **options) -> None:
+            captured["options"] = options
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        async def request(self, method, url, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html><head><title>台積電 2026 年報</title></head>"
+                    "<body>台積電 annual report AI/HPC 風險與財務資訊。</body></html>"
+                ),
+            )
+
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "scrapingbee")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://app.scrapingbee.com/api/v1")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TOKEN", "bee-token")
+    get_settings.cache_clear()
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    try:
+        document = asyncio.run(
+            CompanyFilingFetcher()._fetch_browser_rendered_url_as_document(
+                "https://investor.tsmc.com/annual-report",
+                publisher="台積電 IR",
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert "AI/HPC" in document.text
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://app.scrapingbee.com/api/v1"
+    assert captured["kwargs"]["params"] == {
+        "url": "https://investor.tsmc.com/annual-report",
+        "render_js": "true",
+        "api_key": "bee-token",
+    }
+    assert "Authorization" not in captured["kwargs"]["headers"]
+
+
 def test_company_filing_browser_render_respects_configured_concurrency(monkeypatch) -> None:
     counters = {"active": 0, "max_active": 0}
 
@@ -1252,6 +1458,37 @@ def test_company_filing_pdf_without_text_has_actionable_error(monkeypatch) -> No
         assert "文字版文件" in str(exc)
     else:
         raise AssertionError("PDF without extractable text should provide OCR guidance")
+
+
+def test_company_filing_pdf_without_text_can_use_visual_rag_fallback(monkeypatch) -> None:
+    captured = {}
+
+    def fake_extract_pypdf(_content: bytes) -> str:
+        raise ValueError(PDF_IMPORT_NO_TEXT_MESSAGE)
+
+    def fake_visual_extract(content: bytes, *, reason: str):
+        captured["content"] = content
+        captured["reason"] = reason
+        return "[Visual RAG 解析資訊] mode=fallback\n營收 | 毛利率\n100 | 42%"
+
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "pypdf")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODE", "fallback")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.data_sources.company_filings._extract_pdf_text_with_pypdf",
+        fake_extract_pypdf,
+    )
+    monkeypatch.setattr("app.services.visual_rag.extract_visual_pdf_text", fake_visual_extract)
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+
+    assert captured["content"] == b"%PDF fake"
+    assert captured["reason"] == PDF_IMPORT_NO_TEXT_MESSAGE
+    assert "Visual RAG" in text
+    assert "營收 | 毛利率" in text
 
 
 def test_company_filing_url_validation_blocks_local_targets() -> None:

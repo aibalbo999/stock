@@ -9,6 +9,15 @@ from app.services.entity_mapping import EntityMapper
 from app.services.persistence import AnalysisRunRepository
 from app.services.report_followup import serialize_run
 
+DATA_OPERATION_TASKS = {
+    "market_refresh",
+    "fundamentals_refresh",
+    "valuation_refresh",
+    "company_filings_fetch",
+    "company_filing_from_url",
+    "feed_fetch",
+}
+
 
 class RunTaskApiError(ValueError):
     pass
@@ -30,6 +39,9 @@ class RunTaskApiService:
         analysis_run_repository_cls: type[AnalysisRunRepository] = AnalysisRunRepository,
         entity_mapper_cls: type[EntityMapper] = EntityMapper,
         report_task: Any = None,
+        discovered_report_task: Any = None,
+        data_operation_task: Any = None,
+        report_follow_up_task: Any = None,
         celery_app: Any = None,
         serialize_run_func: Callable[[Any], dict] = serialize_run,
     ) -> None:
@@ -37,6 +49,9 @@ class RunTaskApiService:
         self.analysis_run_repository_cls = analysis_run_repository_cls
         self.entity_mapper_cls = entity_mapper_cls
         self.report_task = report_task
+        self.discovered_report_task = discovered_report_task
+        self.data_operation_task = data_operation_task
+        self.report_follow_up_task = report_follow_up_task
         self.celery_app = celery_app
         self.serialize_run_func = serialize_run_func
 
@@ -75,6 +90,44 @@ class RunTaskApiService:
         task = self.report_task.delay(request.model_dump(mode="json"))
         return {"task_id": task.id, "status": "queued"}
 
+    def generate_discovered_report_async(self, payload: Any) -> dict:
+        if self.discovered_report_task is None:
+            raise RuntimeError("async discovered report task is not configured")
+        task = self.discovered_report_task.delay(self._payload_model_dump(payload))
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "operation": "run_discovered",
+        }
+
+    def queue_data_operation(self, operation: str, payload: dict[str, Any] | None = None) -> dict:
+        if operation not in DATA_OPERATION_TASKS:
+            raise AsyncReportValidationError(f"unsupported data operation task: {operation or 'missing'}")
+        if self.data_operation_task is None:
+            raise RuntimeError("data operation task is not configured")
+        task = self.data_operation_task.delay({"operation": operation, "payload": payload or {}})
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "operation": operation,
+        }
+
+    def queue_report_follow_up(self, report_id: int, payload: dict[str, Any] | None = None) -> dict:
+        if self.report_follow_up_task is None:
+            raise RuntimeError("report follow-up task is not configured")
+        task = self.report_follow_up_task.delay(
+            {
+                "report_id": report_id,
+                "payload": payload or {},
+            }
+        )
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "operation": "report_follow_up",
+            "report_id": report_id,
+        }
+
     def get_task_status(self, task_id: str) -> dict:
         if self.celery_app is None:
             raise RuntimeError("celery app is not configured")
@@ -102,3 +155,13 @@ class RunTaskApiService:
         if run is None:
             raise RunTaskNotFound("run not found for task")
         return self.serialize_run_func(run)
+
+    @staticmethod
+    def _payload_model_dump(payload: Any) -> dict:
+        dump = getattr(payload, "model_dump", None)
+        if callable(dump):
+            try:
+                return dump(mode="json")
+            except TypeError:
+                return dump()
+        return dict(payload or {})

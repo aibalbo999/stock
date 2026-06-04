@@ -264,6 +264,9 @@ class ApiServiceFactory:
             analysis_run_repository_cls=d["AnalysisRunRepository"],
             entity_mapper_cls=d["EntityMapper"],
             report_task=d["generate_report_task"],
+            discovered_report_task=d["discovered_report_task"],
+            data_operation_task=d["data_operation_task"],
+            report_follow_up_task=d["report_follow_up_task"],
             celery_app=d["celery_app"],
             serialize_run_func=d["serialize_run"],
         )

@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.services.llm_client import LLMClient, summarize_llm_attempts
+from app.services.llm_observability import llm_observability_status
 
 
 class LLMApiService:
@@ -60,8 +61,13 @@ class LLMApiService:
             "fallback_model_readiness": fallback_readiness,
             "fallback_model_ready_count": sum(1 for item in fallback_readiness if item["key_configured"] is True),
             "provider_keys_configured": provider_keys,
+            "observability": llm_observability_status(settings),
             "retry_policy": {
                 "max_retries_per_key": max(0, int(settings.llm_max_retries_per_key)),
+                "model_quota_cooldown_seconds": max(
+                    0.0,
+                    float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)),
+                ),
                 "base_retry_delay_seconds": max(0.0, float(settings.llm_base_retry_delay_seconds)),
                 "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
             },
@@ -78,6 +84,7 @@ class LLMApiService:
             "message": result.text[:200],
             "attempts": list(result.attempts[-10:]),
             "attempt_summary": summarize_llm_attempts(result.attempts),
+            "observability": result.observability,
         }
 
     @staticmethod

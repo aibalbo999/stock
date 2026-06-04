@@ -9,9 +9,25 @@ import re
 from app.services.candidate_confidence import format_confidence_score
 from app.services.source_quality import is_low_quality_investor_forum_source
 
+DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
+DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
+UI_SOURCE_FILES = [
+    DASHBOARD_SOURCE,
+    DASHBOARD_CORE_SOURCE,
+    Path("app/ui/analysis_workspace.py"),
+    Path("app/ui/report_center.py"),
+    Path("app/ui/data_enrichment.py"),
+    Path("app/ui/system_settings.py"),
+]
+STYLE_SOURCE = Path("app/ui/styles/stock_dashboard.css")
+
+
+def read_ui_source() -> str:
+    return "\n".join(path.read_text() for path in UI_SOURCE_FILES)
+
 
 def load_report_helpers() -> dict:
-    source = Path("streamlit_app.py").read_text()
+    source = DASHBOARD_CORE_SOURCE.read_text()
     start = source.index("def markdown_section(")
     end = source.index("def render_reader_report(")
     namespace = {
@@ -27,22 +43,34 @@ def load_report_helpers() -> dict:
 
 def test_streamlit_app_defers_annotation_evaluation_for_python39() -> None:
     source = Path("streamlit_app.py").read_text()
+    dashboard_source = DASHBOARD_SOURCE.read_text()
 
     assert source.startswith("from __future__ import annotations")
+    assert "st.navigation" in source
+    assert dashboard_source.startswith("from __future__ import annotations")
 
 
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
-    source = Path("streamlit_app.py").read_text()
+    source = read_ui_source()
+    styles = STYLE_SOURCE.read_text()
+    combined = source + "\n" + styles
 
-    assert "workspace-topbar" in source
-    assert "workflow-strip" in source
-    assert "workspace-ledger" in source
+    assert "workspace-topbar" in combined
+    assert "workflow-strip" in combined
+    assert "workspace-ledger" in combined
     assert "credibility_html" in source
-    assert "credibility-grid" in source
+    assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
-    assert "upgrade-audit-grid" in source
-    assert '[data-baseweb="tab"] p' in source
-    assert 'tabs = st.tabs(["1 建立分析", "2 報告中心", "3 資料與補充", "4 設定與維護"])' in source
+    assert "upgrade-audit-grid" in combined
+    assert '[data-baseweb="tab"] p' in combined
+    assert 'def render_analysis_workspace() -> None:' in source
+    assert 'def render_report_center() -> None:' in source
+    assert 'def render_data_enrichment() -> None:' in source
+    assert 'def render_system_settings() -> None:' in source
+    assert Path("pages/01_分析工作區.py").exists()
+    assert Path("pages/02_報告中心.py").exists()
+    assert Path("pages/03_資料補強.py").exists()
+    assert Path("pages/04_系統設定.py").exists()
     assert 'data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])' in source
     assert 'settings_tabs = st.tabs(["股票範圍", "自動排程", "維護"])' in source
     assert '"匯入新聞/研究摘要"' in source
@@ -56,35 +84,39 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert ".report-grid {{ display:block" in source
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份歷史報告後" in source
-    assert 'flex-wrap: wrap' in source
-    assert 'button[data-testid^="stBaseButton"]' in source
-    assert '[data-testid="stSliderThumbValue"]' in source
-    assert '[data-baseweb="tag"]' in source
-    assert 'min-height: 40px !important' in source
-    assert 'svg[role="button"]' in source
-    assert '[data-testid="stWidgetLabel"]' in source
-    assert '[data-testid="stDateInputField"]' in source
-    assert '[data-testid="stNumberInputField"]' in source
-    assert '[data-baseweb="input"]' in source
-    assert 'border-color: #64748b' in source
-    assert '[data-testid="stJson"] *' in source
-    assert '[data-testid="stCode"] pre' in source
-    assert "white-space: pre-wrap" in source
-    assert 'button[data-testid^="stBaseButton"][disabled]' in source
-    assert "input:focus" in source
+    assert 'flex-wrap: wrap' in combined
+    assert 'button[data-testid^="stBaseButton"]' in styles
+    assert '[data-testid="stSliderThumbValue"]' in styles
+    assert '[data-baseweb="tag"]' in styles
+    assert 'min-height: 40px !important' in styles
+    assert 'svg[role="button"]' in styles
+    assert '[data-testid="stWidgetLabel"]' in styles
+    assert '[data-testid="stDateInputField"]' in styles
+    assert '[data-testid="stNumberInputField"]' in styles
+    assert '[data-baseweb="input"]' in styles
+    assert 'border-color: #64748b' in styles
+    assert '[data-testid="stJson"] *' in styles
+    assert '[data-testid="stCode"] pre' in styles
+    assert "white-space: pre-wrap" in styles
+    assert 'button[data-testid^="stBaseButton"][disabled]' in styles
+    assert "input:focus" in styles
     assert 'key="confirm_maintenance_cleanup"' in source
     assert '"正式部署檢查"' in source
     assert "audit_upgrade_capabilities" in source
     assert "避免手機或滑鼠誤觸" in source
     assert "disabled=not cleanup_confirmed" in source
     assert "正式分析不等於買進" in source
-    assert "letter-spacing: -" not in source
-    assert "stock-hero" not in source
-    assert "https://fonts.googleapis.com" not in source
+    assert "letter-spacing: -" not in combined
+    assert "stock-hero" not in combined
+    assert "https://fonts.googleapis.com" not in combined
+    assert "asyncio.run" not in source
+    assert "/pipeline/run_discovered_async" in source
+    assert "/tasks/data-operation" in source
+    assert "/follow-up/run_async" in source
 
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:
-    source = Path("streamlit_app.py").read_text()
+    source = read_ui_source()
 
     assert 'def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report")' in source
     assert 'key_suffix = f"{scope}_{report_id}"' in source
@@ -743,19 +775,19 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
         "overall_status": "caution",
         "strict_external": False,
         "summary": {
-            "total_checks": 17,
-            "ready": 14,
-            "warnings": 3,
+            "total_checks": 23,
+            "ready": 18,
+            "warnings": 5,
             "failures": 0,
             "implementation_status": "ready",
             "deployment_status": "caution",
         },
-        "implementation": {"status": "ready", "ready": 14, "total_checks": 14, "warnings": 0, "failures": 0},
-        "deployment": {"status": "caution", "ready": 0, "total_checks": 3, "warnings": 3, "failures": 0},
+        "implementation": {"status": "ready", "ready": 18, "total_checks": 18, "warnings": 0, "failures": 0},
+        "deployment": {"status": "caution", "ready": 0, "total_checks": 5, "warnings": 5, "failures": 0},
         "areas": {
-            "ai_rag": {"ready": 5, "warnings": 1, "failures": 0, "checks": 6},
-            "architecture": {"ready": 3, "warnings": 0, "failures": 0, "checks": 3},
-            "data_business_logic": {"ready": 5, "warnings": 1, "failures": 0, "checks": 6},
+            "ai_rag": {"ready": 9, "warnings": 2, "failures": 0, "checks": 11},
+            "architecture": {"ready": 4, "warnings": 0, "failures": 0, "checks": 4},
+            "data_business_logic": {"ready": 5, "warnings": 3, "failures": 0, "checks": 8},
         },
         "checks": [
             {
@@ -766,6 +798,15 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
                 "status": "degraded",
                 "detail": "missing_settings:neo4j_uri",
                 "remediation": "設定 NEO4J_URI。",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "visual_rag",
+                "label": "Visual RAG / VLM 財報解析",
+                "severity": "warn",
+                "status": "not_configured",
+                "detail": "visual_rag_disabled",
+                "remediation": "安裝 .[visual] 並設定 vision LLM。",
             },
             {
                 "area": "data_business_logic",
@@ -779,11 +820,20 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
             {
                 "area": "data_business_logic",
                 "capability": "company_filing_browser_or_proxy_fallback",
-                "label": "公司文件 Proxy / Browserless / Playwright 後援",
+                "label": "公司文件 Proxy / Browser render / Playwright 後援",
                 "severity": "warn",
                 "status": "not_configured",
                 "detail": "browser_or_proxy_fallback_configured=false",
                 "remediation": "設定 COMPANY_FILING_PROXY_URLS。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "severity": "warn",
+                "status": "not_configured",
+                "detail": "configured=false",
+                "remediation": "設定 TEJ 或專業資料 API。",
             }
         ],
     }
@@ -797,8 +847,8 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
     assert "注意" in html
     assert "通過" in html
     assert "一般檢查" in html
-    assert "14/17" in html
-    assert "核心 14/14 通過，外部 0/3 通過" in html
+    assert "18/23" in html
+    assert "核心 18/18 通過，外部 0/5 通過" in html
     assert "AI / RAG" in html
     assert rows[0] == {
         "面向": "AI / RAG",
@@ -808,10 +858,13 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
         "說明": "missing_settings:neo4j_uri",
         "處理方向": "設定 NEO4J_URI。",
     }
-    assert rows[1]["能力"] == "PDF 表格 parser runtime"
-    assert rows[1]["處理方向"] == "安裝 .[pdf]。"
-    assert rows[2]["能力"] == "公司文件 Proxy / Browserless / Playwright 後援"
-    assert rows[2]["處理方向"] == "設定 COMPANY_FILING_PROXY_URLS。"
+    assert rows[1]["能力"] == "Visual RAG / VLM 財報解析"
+    assert rows[1]["處理方向"] == "安裝 .[visual] 並設定 vision LLM。"
+    assert rows[2]["能力"] == "PDF 表格 parser runtime"
+    assert rows[2]["處理方向"] == "安裝 .[pdf]。"
+    assert rows[3]["能力"] == "公司文件 Proxy / Browser render / Playwright 後援"
+    assert rows[3]["處理方向"] == "設定 COMPANY_FILING_PROXY_URLS。"
+    assert rows[4]["能力"] == "公司文件結構化 API 備援"
 
 
 def test_report_html_renders_follow_up_tasks() -> None:

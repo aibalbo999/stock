@@ -63,6 +63,7 @@ MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
+BROWSER_RENDER_PROVIDERS = {"browserless", "generic", "flaresolverr", "scrapingbee", "brightdata"}
 PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
 RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES = {
     "blocked_or_forbidden",
@@ -162,7 +163,14 @@ def company_filing_browser_render_configured() -> bool:
     return bool(
         settings.company_filing_browser_render_enabled
         and settings.company_filing_browser_render_url.strip()
+        and company_filing_browser_render_provider() in BROWSER_RENDER_PROVIDERS
     )
+
+
+def company_filing_browser_render_provider() -> str:
+    provider = str(getattr(get_settings(), "company_filing_browser_render_provider", "browserless") or "")
+    provider = provider.strip().lower().replace("-", "_")
+    return provider or "browserless"
 
 
 def company_filing_browser_render_status(
@@ -191,6 +199,8 @@ def company_filing_browser_render_status(
     )
     status = {
         "enabled": bool(render_enabled),
+        "provider": company_filing_browser_render_provider(),
+        "supported_providers": sorted(BROWSER_RENDER_PROVIDERS),
         "url_configured": bool(render_endpoint),
         "endpoint": render_endpoint,
         "connection_checked": False,
@@ -200,6 +210,9 @@ def company_filing_browser_render_status(
     }
     if not render_enabled:
         status["fallback_reason"] = "browser_render_disabled"
+        return status
+    if status["provider"] not in BROWSER_RENDER_PROVIDERS:
+        status["fallback_reason"] = "unsupported_browser_render_provider"
         return status
     if not render_endpoint:
         status["fallback_reason"] = "missing_browser_render_url"
@@ -237,6 +250,83 @@ def company_filing_browser_render_limiter() -> asyncio.Semaphore:
         semaphore = asyncio.Semaphore(limit)
         _BROWSER_RENDER_SEMAPHORES[key] = semaphore
     return semaphore
+
+
+def company_filing_browser_render_request(
+    *,
+    provider: str,
+    endpoint: str,
+    target_url: str,
+    headers: dict[str, str],
+    token: str,
+    timeout_seconds: float,
+) -> tuple[str, str, dict]:
+    provider = (provider or "browserless").strip().lower().replace("-", "_")
+    rendered_url = endpoint
+    if "{url}" in endpoint:
+        return endpoint.format(url=quote(target_url, safe="")), "GET", {"headers": headers}
+    if provider == "flaresolverr":
+        return (
+            rendered_url,
+            "POST",
+            {
+                "headers": {**headers, "Content-Type": "application/json"},
+                "json": {
+                    "cmd": "request.get",
+                    "url": target_url,
+                    "maxTimeout": int(max(1.0, timeout_seconds) * 1000),
+                },
+            },
+        )
+    if provider == "scrapingbee":
+        params = {"url": target_url, "render_js": "true"}
+        if token:
+            params["api_key"] = token
+        return rendered_url, "GET", {"headers": headers, "params": params}
+    if provider == "brightdata":
+        request_headers = dict(headers)
+        if token:
+            request_headers["Authorization"] = f"Bearer {token}"
+        return (
+            rendered_url,
+            "POST",
+            {
+                "headers": request_headers,
+                "json": {"url": target_url, "format": "raw"},
+            },
+        )
+
+    request_headers = dict(headers)
+    if token:
+        request_headers["Authorization"] = f"Bearer {token}"
+    return (
+        rendered_url,
+        "POST",
+        {
+            "headers": request_headers,
+            "json": {"url": target_url, "waitUntil": "networkidle0"},
+        },
+    )
+
+
+def company_filing_browser_render_response_text(
+    response: httpx.Response,
+    *,
+    provider: str,
+    target_url: str,
+) -> tuple[str, str]:
+    provider = (provider or "browserless").strip().lower().replace("-", "_")
+    if provider == "flaresolverr":
+        payload = response.json()
+        solution = payload.get("solution") if isinstance(payload, dict) else {}
+        if not isinstance(solution, dict):
+            solution = {}
+        html = str(solution.get("response") or "")
+        final_url = str(solution.get("url") or target_url)
+        if not html:
+            raise ValueError("FlareSolverr response did not include solution.response")
+        return html, final_url
+    return response.text, target_url
 
 
 def company_filing_playwright_render_enabled() -> bool:
@@ -300,6 +390,36 @@ def company_filing_playwright_browser_status(browser_name: str | None = None) ->
 
 def company_filing_render_fallback_configured() -> bool:
     return company_filing_browser_render_configured() or company_filing_playwright_render_enabled()
+
+
+def company_filing_structured_api_configured() -> bool:
+    settings = get_settings()
+    return bool(
+        str(settings.company_filing_structured_api_provider or "").strip()
+        and str(settings.company_filing_structured_api_url or "").strip()
+    )
+
+
+def company_filing_structured_api_status() -> dict:
+    settings = get_settings()
+    provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
+    endpoint = str(settings.company_filing_structured_api_url or "").strip()
+    configured = bool(provider and endpoint)
+    parsed = urlparse(endpoint)
+    return {
+        "configured": configured,
+        "provider": provider or None,
+        "supported_provider_examples": ["tej", "scrapingbee_dataset", "brightdata_dataset", "custom"],
+        "url_configured": bool(endpoint),
+        "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
+        "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
+        "contract": "GET JSON with documents/data rows: title, text, url, publisher, published_at, document_type",
+        "fallback_reason": None
+        if configured and parsed.scheme in {"http", "https"} and parsed.hostname
+        else "missing_structured_api_provider_or_url"
+        if not configured
+        else "invalid_structured_api_url",
+    }
 
 
 def company_filing_client_options(
@@ -829,24 +949,23 @@ class CompanyFilingFetcher:
         if not endpoint:
             raise ValueError("company filing browser render URL is not configured")
         validate_public_document_url(url)
+        provider = company_filing_browser_render_provider()
+        if provider not in BROWSER_RENDER_PROVIDERS:
+            raise ValueError(f"unsupported company filing browser render provider: {provider}")
         headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "User-Agent": company_filing_user_agent_for_url(url),
         }
         token = settings.company_filing_browser_render_token.strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
         timeout = max(1.0, float(settings.company_filing_browser_render_timeout_seconds))
-        rendered_url = endpoint
-        method = "POST"
-        request_kwargs: dict = {
-            "headers": headers,
-            "json": {"url": url, "waitUntil": "networkidle0"},
-        }
-        if "{url}" in endpoint:
-            rendered_url = endpoint.format(url=quote(url, safe=""))
-            method = "GET"
-            request_kwargs = {"headers": headers}
+        rendered_url, method, request_kwargs = company_filing_browser_render_request(
+            provider=provider,
+            endpoint=endpoint,
+            target_url=url,
+            headers=headers,
+            token=token,
+            timeout_seconds=timeout,
+        )
         async with company_filing_browser_render_limiter():
             response = await company_filing_fetch_response_with_retries(
                 method,
@@ -862,8 +981,13 @@ class CompanyFilingFetcher:
         content_type = response.headers.get("content-type", "").lower()
         if "application/pdf" in content_type:
             return self._pdf_response_to_document(url, response.content, publisher)
-        soup = BeautifulSoup(response.text, "html.parser")
-        title = NewsFetcher._title(soup) or url
+        html, final_url = company_filing_browser_render_response_text(
+            response,
+            provider=provider,
+            target_url=url,
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        title = NewsFetcher._title(soup) or final_url
         text = extract_company_filing_html_text(soup)
         return NewsDocument(
             id=sha1(f"browser-rendered:{url}".encode("utf-8")).hexdigest(),
@@ -871,7 +995,7 @@ class CompanyFilingFetcher:
             text=text,
             source=Source(
                 title=title,
-                url=url,
+                url=final_url,
                 publisher=publisher,
                 published_at=NewsFetcher._published_date(soup),
                 fetched_at=datetime.utcnow(),
@@ -963,6 +1087,14 @@ class CompanyFilingFetcher:
     ) -> tuple[list[CompanyFilingDocument], list[dict]]:
         documents: list[CompanyFilingDocument] = []
         errors = []
+        structured_documents, structured_errors = await self.fetch_structured_api_documents(
+            ticker,
+            company_name,
+            limit=limit_per_query,
+            document_types=document_types,
+        )
+        documents.extend(structured_documents)
+        errors.extend(structured_errors)
         for url in self.google_news_urls(ticker, company_name, document_types=document_types):
             try:
                 feed_documents = await self.news_fetcher.fetch_feed(
@@ -978,6 +1110,91 @@ class CompanyFilingFetcher:
                     continue
                 documents.append(self.from_news_document(document, ticker, company_name))
         return documents, errors
+
+    async def fetch_structured_api_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit: int = 3,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> tuple[list[CompanyFilingDocument], list[dict]]:
+        if not company_filing_structured_api_configured():
+            return [], []
+        settings = get_settings()
+        endpoint = str(settings.company_filing_structured_api_url or "").strip()
+        provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
+        headers = {"Accept": "application/json"}
+        token = str(settings.company_filing_structured_api_token or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        params = {
+            "ticker": ticker,
+            "company_name": company_name,
+            "limit": max(1, int(limit)),
+        }
+        if document_types:
+            params["document_types"] = ",".join(document_types)
+        try:
+            response = await company_filing_fetch_response_with_retries(
+                "GET",
+                endpoint,
+                timeout=max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
+                follow_redirects=True,
+                headers=headers,
+                params=params,
+            )
+            rows = structured_api_document_rows(response.json())
+            documents = [
+                document
+                for row in rows
+                if (
+                    document := self._structured_api_row_to_document(
+                        row,
+                        ticker=ticker,
+                        company_name=company_name,
+                        provider=provider,
+                        document_types=document_types,
+                    )
+                )
+            ]
+            return documents[: max(1, int(limit))], []
+        except Exception as exc:
+            return [], [company_filing_error(endpoint, exc, stage="structured_api")]
+
+    def _structured_api_row_to_document(
+        self,
+        row: dict,
+        *,
+        ticker: str,
+        company_name: str,
+        provider: str,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> CompanyFilingDocument | None:
+        title = str(row.get("title") or row.get("name") or "").strip()
+        text = str(row.get("text") or row.get("content") or row.get("summary") or "").strip()
+        url = str(row.get("url") or row.get("source_url") or "").strip() or None
+        document_type = str(row.get("document_type") or infer_document_type(f"{title}\n{text}\n{url or ''}"))
+        if document_types and document_type not in set(document_types):
+            return None
+        if not title or not text:
+            return None
+        publisher = str(row.get("publisher") or provider or "structured company filing API")
+        source = Source(
+            title=title,
+            url=url,
+            publisher=publisher,
+            published_at=parse_structured_api_date(row.get("published_at") or row.get("date")),
+            fetched_at=datetime.utcnow(),
+        )
+        news_document = NewsDocument(
+            id=sha1(f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")).hexdigest(),
+            title=title,
+            text=text,
+            source=source,
+        )
+        if not is_document_text_relevant(news_document, ticker, company_name, document_types):
+            return None
+        return self.from_news_document(news_document, ticker, company_name, document_type=document_type)
 
     async def fetch_web_search_documents(
         self,
@@ -1486,6 +1703,28 @@ def is_document_text_relevant(
     return is_relevant_company_filing_result(document, ticker, company_name)
 
 
+def structured_api_document_rows(payload: object) -> list[dict]:
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = payload.get("documents") or payload.get("data") or payload.get("results") or []
+    else:
+        rows = []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def parse_structured_api_date(value: object) -> date | None:
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
 def pdf_title_from_url(url: str) -> str:
     name = urlparse(url).path.rsplit("/", 1)[-1]
     return name or url
@@ -1493,26 +1732,35 @@ def pdf_title_from_url(url: str) -> str:
 
 def extract_pdf_text(content: bytes) -> str:
     parser = get_settings().company_filing_pdf_parser.strip().lower() or "auto"
-    if parser == "auto":
-        return _extract_pdf_text_auto(content)
     try:
+        if parser == "auto":
+            text = _extract_pdf_text_auto(content)
+            return _maybe_augment_pdf_text_with_visual_rag(content, text)
         if parser == "pdfplumber":
-            return _with_pdf_parser_provenance(
+            text = _with_pdf_parser_provenance(
                 _extract_pdf_text_with_pdfplumber(content),
                 parser="pdfplumber",
             )
+            return _maybe_augment_pdf_text_with_visual_rag(content, text)
         if parser == "unstructured":
-            return _with_pdf_parser_provenance(
+            text = _with_pdf_parser_provenance(
                 _extract_pdf_text_with_unstructured(content),
                 parser="unstructured",
             )
+            return _maybe_augment_pdf_text_with_visual_rag(content, text)
         if parser == "pypdf":
-            return _with_pdf_parser_provenance(
+            text = _with_pdf_parser_provenance(
                 _extract_pdf_text_with_pypdf(content),
                 parser="pypdf",
             )
+            return _maybe_augment_pdf_text_with_visual_rag(content, text)
     except ImportError as exc:
         raise ValueError(str(exc)) from exc
+    except ValueError as exc:
+        visual_text = _extract_pdf_text_with_visual_rag_fallback(content, exc)
+        if visual_text:
+            return visual_text
+        raise
     raise ValueError(f"unsupported company filing PDF parser: {parser}")
 
 
@@ -1537,6 +1785,37 @@ def _extract_pdf_text_auto(content: bytes) -> str:
     if last_error:
         raise last_error
     raise ValueError(PDF_IMPORT_MISSING_PYPDF_MESSAGE)
+
+
+def _extract_pdf_text_with_visual_rag_fallback(content: bytes, error: ValueError) -> str:
+    if not _should_try_visual_rag_pdf_fallback(error):
+        return ""
+    from app.services.visual_rag import extract_visual_pdf_text
+
+    try:
+        return extract_visual_pdf_text(content, reason=str(error))
+    except Exception:
+        return ""
+
+
+def _maybe_augment_pdf_text_with_visual_rag(content: bytes, text: str) -> str:
+    from app.services.visual_rag import maybe_augment_pdf_text_with_visual_rag
+
+    return maybe_augment_pdf_text_with_visual_rag(content, text)
+
+
+def _should_try_visual_rag_pdf_fallback(error: ValueError) -> bool:
+    from app.services.visual_rag import visual_rag_fallback_enabled
+
+    if not visual_rag_fallback_enabled():
+        return False
+    message = str(error)
+    return (
+        PDF_IMPORT_NO_TEXT_MESSAGE in message
+        or PDF_IMPORT_PARSE_ERROR_MESSAGE in message
+        or "沒有可抽取文字" in message
+        or "掃描" in message
+    )
 
 
 def _with_pdf_parser_provenance(text: str, parser: str, auto: bool = False) -> str:

@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
-from app.api.schemas import FollowUpRunRequest
+from app.api.schemas import FollowUpRunRequest, ReportFollowUpTaskRequest
 from app.models.schemas import ReportRequest, ReportResponse
 
 
@@ -80,6 +80,17 @@ def create_report_router(
     @router.post("/reports/{report_id}/follow-up/run")
     async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequest] = None) -> dict:
         return await run_follow_up_func(report_id, payload)
+
+    @router.post("/reports/{report_id}/follow-up/run_async")
+    def run_report_follow_up_async(
+        report_id: int,
+        payload: Optional[ReportFollowUpTaskRequest] = None,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.run_task_api().queue_report_follow_up(
+            report_id,
+            (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
+        )
 
     @router.delete("/reports/{report_id}")
     def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:

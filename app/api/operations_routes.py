@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
 from app.api.schemas import (
+    DataOperationTaskRequest,
     FeedFetchRequest,
     MaintenanceCleanupRequest,
     ManualNewsIngest,
     MarketRefreshRequest,
+    TopicDiscoveryRequest,
 )
 from app.models.schemas import ReportRequest
 from app.services.schedule_config import ScheduleConfig
@@ -136,6 +138,29 @@ def create_operations_router(
     ) -> dict:
         try:
             return services.run_task_api().generate_report_async(request)
+        except async_report_validation_error_cls as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/pipeline/run_discovered_async")
+    def generate_discovered_report_async(
+        payload: TopicDiscoveryRequest,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        try:
+            return services.run_task_api().generate_discovered_report_async(payload)
+        except async_report_validation_error_cls as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/tasks/data-operation")
+    def queue_data_operation(
+        payload: DataOperationTaskRequest,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        try:
+            return services.run_task_api().queue_data_operation(
+                payload.operation,
+                payload.payload,
+            )
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -30,6 +30,42 @@ def create_supply_chain_router(api_services: Any | None = None) -> APIRouter:
     ) -> dict:
         return services.supply_chain_graph_api().graph_neo4j_payload(tickers)
 
+    @router.get("/supply-chain/graph/reasoning")
+    def supply_chain_graph_reasoning(
+        tickers: str = "",
+        target_ticker: str = "",
+        topic: str = "",
+        max_depth: int = 3,
+        max_paths: int = 8,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.supply_chain_graph_api().graph_reasoning_payload(
+            tickers,
+            target_ticker=target_ticker,
+            topic=topic,
+            max_depth=max_depth,
+            max_paths=max_paths,
+        )
+
+    @router.get("/supply-chain/graph/cypher-plan")
+    def supply_chain_graph_cypher_plan(
+        tickers: str = "",
+        target_ticker: str = "",
+        topic: str = "",
+        question: str = "",
+        max_depth: int = 3,
+        use_llm: bool = False,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.supply_chain_graph_api().graph_cypher_plan(
+            tickers,
+            target_ticker=target_ticker,
+            topic=topic,
+            question=question,
+            max_depth=max_depth,
+            use_llm=use_llm,
+        )
+
     @router.post("/supply-chain/graph/neo4j/import")
     def import_supply_chain_graph_neo4j(
         tickers: str = "",

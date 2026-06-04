@@ -1131,7 +1131,7 @@ def company_filing_next_step(
     if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
         return "官方頁面疑似需要動態渲染；請設定 Browserless/Playwright 渲染服務後再自動補抓。"
     if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
-        return "官方頁面疑似被反爬蟲或登入頁擋住；系統應改用 Browserless/Proxy 後重試官方搜尋。"
+        return "官方頁面疑似被反爬蟲或登入頁擋住；系統應改用 Proxy 或 Browser render/unlocker 後重試官方搜尋。"
     if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
         return "PDF 解析相依套件不足；請安裝 PDF 額外相依套件後再重試公司公開文件補抓。"
     if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:

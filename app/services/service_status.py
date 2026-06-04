@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 from pathlib import Path
+import shutil
 from urllib.parse import urlparse
 
 import redis
@@ -12,6 +13,7 @@ from app.data_sources.company_filings import (
     DEFAULT_COMPANY_FILING_USER_AGENTS,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
+    company_filing_structured_api_status,
 )
 from app.data_sources.market import FUGLE_RETRYABLE_HTTP_STATUSES, FINMIND_RETRYABLE_HTTP_STATUSES, MarketDataClient
 from app.db.migration_status import db_migration_status
@@ -21,8 +23,11 @@ from app.rag.reranker import RagReranker
 from app.services.candidate_confidence import confidence_thresholds
 from app.services.company_filing_cache import RedisCompanyFilingCache
 from app.services.llm_client import RETRYABLE_HTTP_STATUSES
+from app.services.llm_observability import llm_observability_status
 from app.services.source_quality import SOURCE_CREDIBILITY_LABELS, SOURCE_CREDIBILITY_WEIGHTS
+from app.services.supply_chain_graph_cypher import GraphCypherPlannerService
 from app.services.supply_chain_graph_neo4j import Neo4jGraphImportService
+from app.services.visual_rag import visual_rag_status
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_orchestration import workflow_orchestration_status
 
@@ -64,10 +69,13 @@ def service_status() -> dict:
         settings.company_filing_playwright_render_enabled
         and company_filing_playwright_browser_available
     )
+    company_filing_structured_api_runtime = company_filing_structured_api_status()
     llm_fallback_models = _llm_effective_fallback_models(settings)
     llm_local_gateway_configured = any(
         _llm_model_provider(model) == "local" for model in llm_fallback_models
     )
+    llm_observability = llm_observability_status(settings)
+    visual_rag_runtime = visual_rag_status(settings)
     status = {
         "database": {
             "init_mode": settings.database_init_mode,
@@ -92,6 +100,7 @@ def service_status() -> dict:
             "base_retry_delay_seconds": max(0.0, float(settings.llm_base_retry_delay_seconds)),
             "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
         },
+        "llm_observability": llm_observability,
         "finmind": {
             "configured": bool(settings.finmind_token),
             "public_fallback_enabled": settings.finmind_public_fallback_enabled,
@@ -193,6 +202,10 @@ def service_status() -> dict:
             "cache_key_scope": ["url", "parser", "extract_tables", "html_extract_tables"],
             "cache_ttl_seconds": settings.company_filing_cache_ttl_seconds,
             "browser_render_enabled": settings.company_filing_browser_render_enabled,
+            "browser_render_provider": company_filing_browser_render_runtime.get("provider"),
+            "browser_render_supported_providers": company_filing_browser_render_runtime.get(
+                "supported_providers"
+            ),
             "browser_render_url_configured": company_filing_browser_render_runtime.get("url_configured"),
             "browser_render_endpoint_reachable": company_filing_browser_render_runtime.get(
                 "endpoint_reachable"
@@ -217,6 +230,25 @@ def service_status() -> dict:
                 or _split_config_values(settings.company_filing_proxy_urls)
             ),
             "browser_render_timeout_seconds": settings.company_filing_browser_render_timeout_seconds,
+            "structured_api_configured": company_filing_structured_api_runtime.get("configured"),
+            "structured_api_provider": company_filing_structured_api_runtime.get("provider"),
+            "structured_api_url_configured": company_filing_structured_api_runtime.get(
+                "url_configured"
+            ),
+            "structured_api_token_configured": company_filing_structured_api_runtime.get(
+                "token_configured"
+            ),
+            "structured_api_runtime": company_filing_structured_api_runtime,
+            "visual_rag_enabled": visual_rag_runtime.get("enabled"),
+            "visual_rag_mode": visual_rag_runtime.get("mode"),
+            "visual_rag_runtime_available": visual_rag_runtime.get("runtime_available"),
+            "visual_rag_renderer_dependency_available": visual_rag_runtime.get(
+                "renderer_dependency_available"
+            ),
+            "visual_rag_model": visual_rag_runtime.get("model"),
+            "visual_rag_max_pages": visual_rag_runtime.get("max_pages"),
+            "visual_rag_dpi": visual_rag_runtime.get("dpi"),
+            "visual_rag_runtime": visual_rag_runtime,
         },
         "vector_store": {
             "use_chroma": settings.use_chroma,
@@ -254,6 +286,7 @@ def service_status() -> dict:
             "backend_url": _redact_url(settings.redis_url),
         },
         "workflow_orchestration": workflow_orchestration_status(settings),
+        "security_scanning": _security_scan_status(),
         "candidate_confidence": {
             "high_threshold": high_threshold,
             "medium_threshold": medium_threshold,
@@ -272,6 +305,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
     retrieval_status = vector_store.get("retrieval_status") or {}
     reranker_status = vector_store.get("reranker_status") or {}
     llm_status = status.get("gemini") or {}
+    llm_observability = status.get("llm_observability") or {}
     graph_status = status.get("supply_chain_graph") or {}
     workflow_status = status.get("workflow_orchestration") or {}
     database_status = status.get("database") or {}
@@ -279,6 +313,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
     market_cache_status = status.get("market_data_cache") or {}
     company_filing_status = status.get("company_filings") or {}
     api_status = _api_controller_status()
+    security_scan_status = status.get("security_scanning") or {}
     market_provider_readiness = _market_data_provider_readiness(
         market_cache_status,
         status.get("finmind") or {},
@@ -377,6 +412,59 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "keyword mode remains an operational fallback but is not counted as model reranking."
                 ),
             ),
+            "llm_observability": _capability(
+                "ready"
+                if llm_observability.get("enabled")
+                and llm_observability.get("local_trace_enabled")
+                and "latency_ms" in (llm_observability.get("captured_fields") or [])
+                and "total_token_estimate" in (llm_observability.get("captured_fields") or [])
+                else "degraded",
+                evidence={
+                    "enabled": llm_observability.get("enabled"),
+                    "provider": llm_observability.get("provider"),
+                    "local_trace_enabled": llm_observability.get("local_trace_enabled"),
+                    "external_trace_configured": llm_observability.get(
+                        "external_trace_configured"
+                    ),
+                    "langsmith_configured": llm_observability.get("langsmith_configured"),
+                    "phoenix_endpoint_configured": llm_observability.get(
+                        "phoenix_endpoint_configured"
+                    ),
+                    "captured_fields": llm_observability.get("captured_fields"),
+                    "cost_tracking_enabled": llm_observability.get("cost_tracking_enabled"),
+                    "cost_rate_card_configured": llm_observability.get(
+                        "cost_rate_card_configured"
+                    ),
+                },
+                detail=(
+                    "Local traces capture LLM latency, token estimates, configurable cost estimates, "
+                    "retrieval latency, and reranker status; LangSmith/Phoenix are optional external sinks."
+                ),
+            ),
+            "visual_rag": _capability(
+                "ready"
+                if company_filing_status.get("visual_rag_enabled")
+                and company_filing_status.get("visual_rag_runtime_available")
+                else "not_configured",
+                evidence={
+                    "enabled": company_filing_status.get("visual_rag_enabled"),
+                    "mode": company_filing_status.get("visual_rag_mode"),
+                    "runtime_available": company_filing_status.get(
+                        "visual_rag_runtime_available"
+                    ),
+                    "renderer_dependency_available": company_filing_status.get(
+                        "visual_rag_renderer_dependency_available"
+                    ),
+                    "model": company_filing_status.get("visual_rag_model"),
+                    "max_pages": company_filing_status.get("visual_rag_max_pages"),
+                    "dpi": company_filing_status.get("visual_rag_dpi"),
+                    "runtime": company_filing_status.get("visual_rag_runtime"),
+                },
+                detail=(
+                    "Optional Visual RAG fallback/augmentation converts PDF pages to images and "
+                    "uses a vision-capable LLM to preserve complex financial tables."
+                ),
+            ),
             "graphrag_context": _capability(
                 "ready"
                 if graph_status.get("enabled") and graph_status.get("query_expansion_enabled")
@@ -392,6 +480,51 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "neo4j_export_enabled": graph_status.get("neo4j_export_enabled"),
                 },
                 detail=graph_status.get("purpose"),
+            ),
+            "graphrag_path_reasoning": _capability(
+                "ready"
+                if graph_status.get("path_reasoning_enabled")
+                and graph_status.get("shortest_path_context_enabled")
+                else "degraded",
+                evidence={
+                    "path_reasoning_enabled": graph_status.get("path_reasoning_enabled"),
+                    "shortest_path_context_enabled": graph_status.get(
+                        "shortest_path_context_enabled"
+                    ),
+                    "path_reasoning_strategy": graph_status.get("path_reasoning_strategy"),
+                    "path_reasoning_evidence_policy": graph_status.get(
+                        "path_reasoning_evidence_policy"
+                    ),
+                    "path_reasoning_example": graph_status.get("path_reasoning_example"),
+                    "path_reasoning_endpoint": graph_status.get("path_reasoning_endpoint"),
+                    "neo4j_shortest_path_template": graph_status.get(
+                        "neo4j_shortest_path_template"
+                    ),
+                },
+                detail="GraphRAG can compute shortest-path impact context for LLM reasoning while preserving evidence guardrails.",
+            ),
+            "graphrag_agentic_cypher": _capability(
+                "ready"
+                if graph_status.get("agentic_cypher_planner_enabled")
+                and (graph_status.get("agentic_cypher_plan_example") or {})
+                .get("validation", {})
+                .get("valid")
+                else "degraded",
+                evidence={
+                    "agentic_cypher_planner_enabled": graph_status.get(
+                        "agentic_cypher_planner_enabled"
+                    ),
+                    "agentic_cypher_strategy": graph_status.get("agentic_cypher_strategy"),
+                    "agentic_cypher_endpoint": graph_status.get("agentic_cypher_endpoint"),
+                    "agentic_cypher_guardrails": graph_status.get("agentic_cypher_guardrails"),
+                    "agentic_cypher_plan_example": graph_status.get(
+                        "agentic_cypher_plan_example"
+                    ),
+                },
+                detail=(
+                    "LLM-generated Cypher is supported through a guarded planner that validates "
+                    "read-only operations, labels, relationship types, parameters, and path depth."
+                ),
             ),
             "neo4j_payload_export": _capability(
                 "ready"
@@ -432,11 +565,21 @@ def _upgrade_capability_matrix(status: dict) -> dict:
         "architecture": {
             "thin_api_controller": _capability(
                 "ready"
-                if (api_status.get("main_py_lines") or 10_000) <= 600
+                if (api_status.get("main_py_lines") or 10_000) <= 220
                 and api_status["route_module_count"] >= 7
+                and api_status.get("app_factory_present")
+                and api_status.get("main_uses_app_factory")
+                and api_status.get("compatibility_exports_present")
+                and api_status.get("main_uses_compatibility_exports")
+                and api_status.get("compatibility_service_present")
+                and api_status.get("main_direct_domain_import_count") == 0
+                and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
                 evidence=api_status,
-                detail="FastAPI endpoints are split into router modules and use-case services.",
+                detail=(
+                    "FastAPI main is a thin app entry; routers, app assembly, legacy helper exports, "
+                    "and use-case services live in separate modules."
+                ),
             ),
             "workflow_orchestration": _capability(
                 "ready" if workflow_status.get("ready") else "degraded",
@@ -462,6 +605,18 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "version_table_present": migration_status.get("version_table_present"),
                 },
                 detail="Alembic is present; current DB may still need upgrade/stamp when up_to_date=false.",
+            ),
+            "secret_scanning": _capability(
+                "ready"
+                if security_scan_status.get("external_engine_integration")
+                and security_scan_status.get("detect_secrets_dependency_declared")
+                and security_scan_status.get("local_regex_fallback_enabled")
+                else "degraded",
+                evidence=security_scan_status,
+                detail=(
+                    "Secret scanning prefers external tools such as detect-secrets/gitleaks "
+                    "and keeps local regex only as a fallback."
+                ),
             ),
         },
         "data_business_logic": {
@@ -518,6 +673,10 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "browser_or_proxy_fallback_configured": company_filing_status.get(
                         "browser_or_proxy_fallback_configured"
                     ),
+                    "structured_api_configured": company_filing_status.get(
+                        "structured_api_configured"
+                    ),
+                    "structured_api_provider": company_filing_status.get("structured_api_provider"),
                     "http_retries": company_filing_status.get("http_retries"),
                     "retryable_http_statuses": company_filing_status.get("retryable_http_statuses"),
                     "pdf_parser": company_filing_status.get("pdf_parser"),
@@ -526,6 +685,10 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "pdf_parser_dependencies": company_filing_status.get("pdf_parser_dependencies"),
                     "html_extract_tables": company_filing_status.get("html_extract_tables"),
                     "browser_render_configured": company_filing_status.get("browser_render_configured"),
+                    "browser_render_provider": company_filing_status.get("browser_render_provider"),
+                    "browser_render_supported_providers": company_filing_status.get(
+                        "browser_render_supported_providers"
+                    ),
                     "browser_render_url_configured": company_filing_status.get(
                         "browser_render_url_configured"
                     ),
@@ -581,6 +744,10 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "proxy_count": company_filing_status.get("proxy_count"),
                     "browser_render_enabled": company_filing_status.get("browser_render_enabled"),
                     "browser_render_configured": company_filing_status.get("browser_render_configured"),
+                    "browser_render_provider": company_filing_status.get("browser_render_provider"),
+                    "browser_render_supported_providers": company_filing_status.get(
+                        "browser_render_supported_providers"
+                    ),
                     "browser_render_url_configured": company_filing_status.get(
                         "browser_render_url_configured"
                     ),
@@ -615,6 +782,22 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 detail=(
                     "Optional deployment hardening for blocked, placeholder, or dynamic filing pages. "
                     "Core fetch remains usable through browser-like User-Agent rotation and retries."
+                ),
+            ),
+            "company_filing_structured_api_fallback": _capability(
+                "ready"
+                if company_filing_status.get("structured_api_configured")
+                else "not_configured",
+                evidence={
+                    "configured": company_filing_status.get("structured_api_configured"),
+                    "provider": company_filing_status.get("structured_api_provider"),
+                    "url_configured": company_filing_status.get("structured_api_url_configured"),
+                    "token_configured": company_filing_status.get("structured_api_token_configured"),
+                    "runtime": company_filing_status.get("structured_api_runtime"),
+                },
+                detail=(
+                    "Optional paid/professional company filing source for investor presentations, "
+                    "material information, and hard-to-scrape MOPS disclosures."
                 ),
             ),
             "company_filing_cache": _capability(
@@ -656,19 +839,88 @@ def _capability(state: str, *, evidence: dict, detail: str | None = None) -> dic
 
 
 def _api_controller_status() -> dict:
-    api_dir = Path(__file__).resolve().parents[1] / "api"
+    app_dir = Path(__file__).resolve().parents[1]
+    api_dir = app_dir / "api"
     main_path = api_dir / "main.py"
+    main_source = ""
     try:
-        main_py_lines = len(main_path.read_text(encoding="utf-8").splitlines())
+        main_source = main_path.read_text(encoding="utf-8")
+        main_py_lines = len(main_source.splitlines())
     except OSError:
         main_py_lines = None
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
+    legacy_facade_path = api_dir / "legacy_facade.py"
+    compatibility_exports_path = api_dir / "compatibility_exports.py"
+    try:
+        legacy_facade_source = legacy_facade_path.read_text(encoding="utf-8")
+    except OSError:
+        legacy_facade_source = ""
+    direct_domain_imports = [
+        line.strip()
+        for line in main_source.splitlines()
+        if (
+            line.startswith("from app.data_sources.")
+            or line.startswith("from app.db.")
+            or line.startswith("from app.models.")
+            or line.startswith("from app.rag.")
+            or line.startswith("from app.tasks.")
+            or (
+                line.startswith("from app.services.")
+                and "app.services.api_compatibility" not in line
+            )
+        )
+    ]
     return {
         "main_py_lines": main_py_lines,
         "route_module_count": len(route_modules),
         "route_modules": route_modules,
+        "app_factory_present": (api_dir / "app_factory.py").exists(),
+        "main_uses_app_factory": "from app.api.app_factory import create_app" in main_source,
         "service_factory_present": (api_dir / "service_factory.py").exists(),
-        "legacy_facade_present": (api_dir / "legacy_facade.py").exists(),
+        "compatibility_exports_present": compatibility_exports_path.exists(),
+        "main_uses_compatibility_exports": "compatibility_export_namespace" in main_source,
+        "main_direct_domain_import_count": len(direct_domain_imports),
+        "main_direct_domain_imports": direct_domain_imports,
+        "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),
+        "main_imports_legacy_facade": "app.api.legacy_facade" in main_source
+        or "LegacyApiFacade" in main_source,
+        "legacy_facade_present": legacy_facade_path.exists(),
+        "legacy_facade_alias_only": "ApiCompatibilityService" in legacy_facade_source
+        and "class LegacyApiFacade(ApiCompatibilityService)" in legacy_facade_source,
+    }
+
+
+def _security_scan_status() -> dict:
+    root = Path(__file__).resolve().parents[2]
+    script_path = root / "scripts" / "security_scan.py"
+    pyproject_path = root / "pyproject.toml"
+    try:
+        pyproject_text = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        pyproject_text = ""
+    detect_secrets_cli = shutil.which("detect-secrets") is not None
+    gitleaks_cli = shutil.which("gitleaks") is not None
+    default_engine = (
+        "detect-secrets"
+        if detect_secrets_cli
+        else "gitleaks"
+        if gitleaks_cli
+        else "local_regex"
+    )
+    return {
+        "script": str(script_path.relative_to(root)),
+        "pyproject_command_configured": "scripts/security_scan.py" in pyproject_text,
+        "external_engine_integration": True,
+        "supported_external_engines": ["detect-secrets", "gitleaks"],
+        "detect_secrets_dependency_declared": "detect-secrets" in pyproject_text,
+        "detect_secrets_cli_available": detect_secrets_cli,
+        "detect_secrets_module_available": _module_available("detect_secrets"),
+        "gitleaks_cli_available": gitleaks_cli,
+        "default_engine": default_engine,
+        "local_regex_fallback_enabled": script_path.exists(),
+        "local_regex_fallback_role": "fallback_only",
+        "scan_scope_default": "git_tracked_files",
+        "all_files_flag": "--all",
     }
 
 
@@ -678,6 +930,22 @@ def _supply_chain_graph_status() -> dict:
         neo4j_payload = graph.neo4j_import_payload()
         sample_ticker = graph.nodes[0].ticker if graph.nodes else ""
         retrieval_plan = graph.retrieval_plan([sample_ticker], topic="AI 產業鏈") if sample_ticker else {}
+        reasoning_plan = graph.reasoning_plan([sample_ticker], topic="AI 產業鏈") if sample_ticker else {}
+        cypher_plan = (
+            GraphCypherPlannerService().plan(
+                graph,
+                tickers=[sample_ticker],
+                topic="AI 產業鏈",
+                question="分析上游供應衝擊",
+            )
+            if sample_ticker
+            else {}
+        )
+        reasoning_examples = next(
+            iter((reasoning_plan.get("paths_by_ticker") or {}).values()),
+            [],
+        )
+        cypher_templates = reasoning_plan.get("cypher_templates") or {}
         neo4j_import = {
             **Neo4jGraphImportService().status(),
             "payload_export_ready": bool(
@@ -709,6 +977,20 @@ def _supply_chain_graph_status() -> dict:
                 iter((retrieval_plan.get("queries_by_ticker") or {}).values()),
                 [],
             )[:2],
+            "path_reasoning_enabled": bool(reasoning_plan.get("paths_by_ticker")),
+            "shortest_path_context_enabled": bool(reasoning_plan.get("context")),
+            "path_reasoning_strategy": reasoning_plan.get("strategy"),
+            "path_reasoning_evidence_policy": reasoning_plan.get("evidence_policy"),
+            "path_reasoning_example": reasoning_examples[:2],
+            "path_reasoning_endpoint": "GET /supply-chain/graph/reasoning",
+            "neo4j_shortest_path_template": cypher_templates.get(
+                "shortest_path_between_companies"
+            ),
+            "agentic_cypher_planner_enabled": bool(cypher_plan.get("plan")),
+            "agentic_cypher_strategy": cypher_plan.get("strategy"),
+            "agentic_cypher_endpoint": "GET /supply-chain/graph/cypher-plan",
+            "agentic_cypher_guardrails": cypher_plan.get("allowed_schema"),
+            "agentic_cypher_plan_example": cypher_plan.get("plan"),
             "prompt_context_enabled": True,
             "neo4j_export_enabled": True,
             "neo4j_import": neo4j_import,

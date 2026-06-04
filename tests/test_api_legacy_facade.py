@@ -7,7 +7,12 @@ from fastapi import HTTPException
 
 from app.api.legacy_facade import LegacyApiFacade
 from app.api.schemas import FollowUpRunRequest
+from app.services.api_compatibility import ApiCompatibilityService
 from app.services.report_generator import ReportExecutionError
+
+
+def test_legacy_api_facade_is_deprecated_service_alias() -> None:
+    assert issubclass(LegacyApiFacade, ApiCompatibilityService)
 
 
 def test_legacy_api_facade_delegates_candidate_filing_gate() -> None:
@@ -53,3 +58,32 @@ def test_legacy_api_facade_maps_follow_up_report_errors_to_http() -> None:
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "bad rerun"
+
+
+def test_api_compatibility_service_builds_default_follow_up_payload() -> None:
+    captured = {}
+
+    class FollowUpRunService:
+        async def run(self, report_id, payload):
+            captured["report_id"] = report_id
+            captured["payload"] = payload
+            return {"status": "queued"}
+
+    class Services:
+        def report_follow_up_run(self):
+            return FollowUpRunService()
+
+    class Request:
+        pass
+
+    facade = ApiCompatibilityService(
+        api_services=Services(),
+        candidate_revalidation_module=object(),
+        follow_up_run_request_cls=Request,
+    )
+
+    result = asyncio.run(facade.run_report_follow_up(7))
+
+    assert result == {"status": "queued"}
+    assert captured["report_id"] == 7
+    assert isinstance(captured["payload"], Request)

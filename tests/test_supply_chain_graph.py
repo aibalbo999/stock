@@ -60,6 +60,29 @@ def test_supply_chain_graph_retrieval_plan_builds_evidence_bound_queries() -> No
     assert relation_query["relation_scope"] in {"downstream", "peer", "upstream"}
 
 
+def test_supply_chain_graph_reasoning_plan_builds_shortest_path_context() -> None:
+    graph = SupplyChainWhitelist().graph()
+
+    plan = graph.reasoning_plan(
+        ["3324"],
+        target_ticker="2382",
+        topic="AI 伺服器散熱",
+        max_depth=3,
+    )
+    paths = plan["paths_by_ticker"]["3324"]
+
+    assert plan["strategy"] == "taxonomy_graph_shortest_path_reasoning"
+    assert "Shortest paths are graph-derived structural hypotheses" in plan["evidence_policy"]
+    assert "GraphRAG 路徑推理" in plan["context"]
+    assert paths
+    assert paths[0]["path_tickers"] == ["3324", "2382"]
+    assert paths[0]["hop_count"] == 1
+    assert paths[0]["impact_direction"] == "downstream_demand_path"
+    assert paths[0]["edges"][0]["direction_from_previous"] == "downstream"
+    assert paths[0]["evidence_policy"] == "graph_path_requires_source_confirmation"
+    assert "shortestPath" in plan["cypher_templates"]["shortest_path_between_companies"]
+
+
 def test_dynamic_whitelist_graph_connects_robot_components_to_robot_systems() -> None:
     whitelist = SupplyChainWhitelist.from_candidate_whitelist(
         [
@@ -155,6 +178,34 @@ def test_supply_chain_graph_neo4j_endpoint_can_focus_on_requested_ticker() -> No
         for edge in [*body["parameters"]["structural_edges"], *body["parameters"]["peer_edges"]]
     )
     assert body["query_examples"]["downstream_demand"].startswith("MATCH")
+    assert "shortestPath" in body["query_examples"]["shortest_path_between_companies"]
+
+
+def test_supply_chain_graph_reasoning_endpoint_returns_shortest_paths() -> None:
+    response = TestClient(main.app).get(
+        "/supply-chain/graph/reasoning?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_ticker"] == "2382"
+    assert body["paths_by_ticker"]["3324"][0]["path_tickers"] == ["3324", "2382"]
+    assert body["paths_by_ticker"]["3324"][0]["impact_direction_label"] == "往下游追蹤需求/出貨傳導"
+    assert "GraphRAG 路徑推理" in body["context"]
+
+
+def test_supply_chain_graph_cypher_plan_endpoint_returns_guarded_plan() -> None:
+    response = TestClient(main.app).get(
+        "/supply-chain/graph/cypher-plan"
+        "?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱&question=上下游衝擊"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["strategy"] == "guarded_llm_cypher_planner"
+    assert body["plan"]["validation"]["valid"] is True
+    assert body["plan"]["validation"]["read_only"] is True
+    assert "MATCH" in body["plan"]["cypher"]
 
 
 def test_supply_chain_graph_neo4j_import_endpoint_is_safe_without_config() -> None:

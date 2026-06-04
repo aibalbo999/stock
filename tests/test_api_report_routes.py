@@ -120,10 +120,35 @@ def test_report_router_delegates_follow_up_callbacks() -> None:
     assert captured["payload"]["purpose"] == "required"
 
 
+def test_report_router_queues_follow_up_task() -> None:
+    captured = {}
+
+    class FakeRunTaskApi:
+        def queue_report_follow_up(self, report_id: int, payload: dict) -> dict:
+            captured["report_id"] = report_id
+            captured["payload"] = payload
+            return {"task_id": "follow-task", "status": "queued"}
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    response = client.post(
+        "/reports/7/follow-up/run_async",
+        json={"rerun_report": True, "purpose": "required", "news_limit": 20},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"task_id": "follow-task", "status": "queued"}
+    assert captured["report_id"] == 7
+    assert captured["payload"]["rerun_report"] is True
+    assert captured["payload"]["purpose"] == "required"
+    assert captured["payload"]["news_limit"] == 20
+
+
 def _client(
     generation_api=None,
     report_query=None,
     company_data_audit_api=None,
+    run_task_api=None,
     get_follow_up_plan_func=None,
     auto_start_follow_up_func=None,
     run_follow_up_func=None,
@@ -135,6 +160,7 @@ def _client(
                 generation_api=generation_api,
                 report_query=report_query,
                 company_data_audit_api=company_data_audit_api,
+                run_task_api=run_task_api,
             ),
             report_execution_error_cls=FakeReportExecutionError,
             workflow_orchestration_error_cls=FakeWorkflowOrchestrationError,
@@ -156,7 +182,7 @@ async def _noop_run(report_id: int, payload) -> dict:
     return {"status": "skipped", "source_report_id": report_id}
 
 
-def _services(generation_api=None, report_query=None, company_data_audit_api=None):
+def _services(generation_api=None, report_query=None, company_data_audit_api=None, run_task_api=None):
     class FakeServices:
         def sync_report_generation_api(self):
             return generation_api
@@ -166,5 +192,8 @@ def _services(generation_api=None, report_query=None, company_data_audit_api=Non
 
         def company_data_audit_api(self):
             return company_data_audit_api
+
+        def run_task_api(self):
+            return run_task_api
 
     return FakeServices()

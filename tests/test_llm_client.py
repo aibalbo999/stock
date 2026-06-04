@@ -3,8 +3,19 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
+from app.services import llm_client as llm_module
 from app.services.llm_client import APIKeyRotator, LLMClient, get_shared_rotator, summarize_llm_attempts
+
+
+@pytest.fixture(autouse=True)
+def clear_model_quota_cooldowns():
+    with llm_module._model_quota_cooldowns_lock:
+        llm_module._model_quota_cooldowns.clear()
+    yield
+    with llm_module._model_quota_cooldowns_lock:
+        llm_module._model_quota_cooldowns.clear()
 
 
 def fake_settings(**overrides) -> SimpleNamespace:
@@ -16,6 +27,13 @@ def fake_settings(**overrides) -> SimpleNamespace:
         "llm_base_retry_delay_seconds": 0.5,
         "llm_max_retry_delay_seconds": 5.0,
         "llm_total_timeout_seconds": 60.0,
+        "llm_model_quota_cooldown_seconds": 3600.0,
+        "llm_observability_enabled": True,
+        "llm_observability_provider": "local",
+        "llm_input_cost_per_1k_tokens_usd": 0.01,
+        "llm_output_cost_per_1k_tokens_usd": 0.02,
+        "langsmith_api_key": None,
+        "phoenix_endpoint": "",
         "openai_api_key": None,
         "anthropic_api_key": None,
     }
@@ -56,6 +74,11 @@ def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:
         ("prompt", "bad-key"),
         ("prompt", "good-key"),
     ]
+    assert result.observability["operation"] == "chat_completion"
+    assert result.observability["latency_ms"] >= 0
+    assert result.observability["input_token_estimate"] >= 1
+    assert result.observability["output_token_estimate"] >= 1
+    assert result.observability["estimated_cost_usd"] is not None
 
 
 def test_llm_client_retries_503_before_rotating(monkeypatch) -> None:
@@ -331,12 +354,10 @@ def test_litellm_model_chain_limits_key_rotation_and_retries(monkeypatch) -> Non
     assert result.fallback is True
     assert [attempt["model"] for attempt in result.attempts] == [
         "gemini/gemini-primary",
-        "gemini/gemini-primary",
-        "gemini/gemini-backup",
         "gemini/gemini-backup",
     ]
-    assert [attempt.get("attempt") for attempt in result.attempts] == [1, 1, 1, 1]
-    assert [attempt.get("key_index") for attempt in result.attempts] == [0, 1, 1, 2]
+    assert [attempt.get("attempt") for attempt in result.attempts] == [1, 1]
+    assert [attempt.get("key_index") for attempt in result.attempts] == [0, 1]
 
 
 def test_generate_structured_with_metadata_passes_tool_schema_to_litellm(monkeypatch) -> None:
@@ -457,6 +478,116 @@ def test_google_genai_provider_rotates_keys_before_http_fallback(monkeypatch) ->
     assert calls == [("prompt", "bad-key"), ("prompt", "good-key")]
 
 
+def test_gemini_model_candidates_filter_non_text_models_and_normalize_names() -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        primary_llm_model="models/gemini-3.5-flash",
+        llm_fallback_models=(
+            "gemini-embedding-2,imagen-4.0-generate-001,"
+            "gemini-3.1-flash-live-preview,gemini-2.5-flash,"
+            "gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+        ),
+        local_llm_model="gemma-4-31b-it",
+    )
+
+    assert client._gemini_model_candidates() == [
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemma-4-31b-it",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
+    ]
+    assert client._gemini_vision_model_candidates() == [
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
+    ]
+
+
+def test_google_genai_model_chain_limits_key_rotation_and_uses_fallback(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="google_genai",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="gemini-backup",
+        llm_max_retries_per_key=2,
+    )
+    client.rotator = APIKeyRotator(["key-a", "key-b", "key-c"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, api_key: str, *, model: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        if model == "gemini-primary":
+            response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+        return "backup ok"
+
+    monkeypatch.setattr(client, "_call_google_genai", fake_call)
+
+    result = client.generate_with_metadata("prompt")
+
+    assert result.text == "backup ok"
+    assert result.model == "gemini-backup"
+    assert calls == [
+        ("prompt", "gemini-primary", "key-a"),
+        ("prompt", "gemini-backup", "key-b"),
+    ]
+    assert [attempt.get("attempt") for attempt in result.attempts] == [1, 1]
+    assert [attempt.get("key_index") for attempt in result.attempts] == [0, 1]
+
+
+def test_google_genai_model_quota_cooldown_skips_recently_limited_model(monkeypatch) -> None:
+    with llm_module._model_quota_cooldowns_lock:
+        llm_module._model_quota_cooldowns.clear()
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="google_genai",
+        primary_llm_model="gemini-3.5-flash",
+        llm_fallback_models="gemini-2.5-flash,gemma-4-31b-it,gemini-3.1-flash-lite",
+        llm_model_quota_cooldown_seconds=3600.0,
+    )
+    client.rotator = APIKeyRotator(["key-a", "key-b"])
+    calls = []
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, api_key: str, *, model: str | None = None, **_kwargs) -> str:
+        calls.append((prompt, model, api_key))
+        if model == "gemini-3.5-flash":
+            response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
+            raise httpx.HTTPStatusError("quota exhausted", request=response.request, response=response)
+        return "2.5 ok"
+
+    monkeypatch.setattr(client, "_call_google_genai", fake_call)
+
+    first = client.generate_with_metadata("prompt")
+    assert first.text == "2.5 ok"
+    assert first.model == "gemini-2.5-flash"
+    assert calls == [
+        ("prompt", "gemini-3.5-flash", "key-a"),
+        ("prompt", "gemini-2.5-flash", "key-b"),
+    ]
+
+    calls.clear()
+    second = client.generate_with_metadata("prompt")
+
+    assert second.text == "2.5 ok"
+    assert second.model == "gemini-2.5-flash"
+    assert calls == [
+        ("prompt", "gemini-2.5-flash", "key-a"),
+    ]
+    assert any(
+        attempt.get("model") == "gemini-3.5-flash"
+        and attempt.get("outcome") == "quota_cooldown"
+        for attempt in second.attempts
+    )
+    with llm_module._model_quota_cooldowns_lock:
+        llm_module._model_quota_cooldowns.clear()
+
+
 def test_google_genai_unavailable_falls_back_to_existing_gemini_http(monkeypatch) -> None:
     client = object.__new__(LLMClient)
     client.settings = fake_settings(llm_provider="google-genai")
@@ -527,6 +658,102 @@ def test_litellm_key_candidates_support_openai_and_anthropic_keys() -> None:
     assert client._litellm_key_candidates("openai/gpt-4o-mini") == [(None, "openai-key")]
     assert client._litellm_key_candidates("anthropic/claude-3-5-haiku") == [(None, "anthropic-key")]
     assert client._litellm_key_candidates("gemma-4-31b-it") == [(0, "gemini-key")]
+
+
+def test_llm_client_vision_uses_litellm_image_payload(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="litellm",
+        primary_llm_model="gpt-4o-mini",
+        openai_api_key="openai-key",
+    )
+    client.rotator = APIKeyRotator([])
+    captured = {}
+
+    monkeypatch.setattr("app.services.llm_client.import_module", lambda name: object())
+
+    def fake_call(prompt: str, *, images, model: str, api_key: str | None = None, **_kwargs) -> str:
+        captured["prompt"] = prompt
+        captured["images"] = images
+        captured["model"] = model
+        captured["api_key"] = api_key
+        return "vision ok"
+
+    monkeypatch.setattr(client, "_call_litellm_vision", fake_call)
+
+    result = client.generate_vision_with_metadata(
+        "read table",
+        images=[{"mime_type": "image/png", "data": b"page-bytes"}],
+    )
+
+    assert result.text == "vision ok"
+    assert result.provider == "litellm"
+    assert result.model == "gpt-4o-mini"
+    assert result.observability["operation"] == "vision_completion"
+    assert captured == {
+        "prompt": "read table",
+        "images": [{"mime_type": "image/png", "base64": "cGFnZS1ieXRlcw=="}],
+        "model": "gpt-4o-mini",
+        "api_key": "openai-key",
+    }
+
+
+def test_llm_client_vision_can_use_gemini_http(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(llm_provider="gemini_http", primary_llm_model="gemini-vision")
+    client.rotator = APIKeyRotator(["gemini-key"])
+    captured = {}
+
+    def fake_call(prompt: str, *, images, api_key: str, model: str, **_kwargs) -> str:
+        captured["prompt"] = prompt
+        captured["images"] = images
+        captured["api_key"] = api_key
+        captured["model"] = model
+        return "gemini vision ok"
+
+    monkeypatch.setattr(client, "_call_gemini_vision", fake_call)
+
+    result = client.generate_vision_with_metadata(
+        "read table",
+        images=[{"mime_type": "image/png", "base64": "already-encoded"}],
+        model="gemini-vision-override",
+    )
+
+    assert result.text == "gemini vision ok"
+    assert result.provider == "gemini_http"
+    assert result.model == "gemini-vision-override"
+    assert captured == {
+        "prompt": "read table",
+        "images": [{"mime_type": "image/png", "base64": "already-encoded"}],
+        "api_key": "gemini-key",
+        "model": "gemini-vision-override",
+    }
+
+
+def test_llm_client_vision_skips_gemma_text_fallback(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="gemini_http",
+        primary_llm_model="gemma-4-31b-it",
+        llm_fallback_models="gemini-2.5-flash",
+    )
+    client.rotator = APIKeyRotator(["gemini-key"])
+    calls = []
+
+    def fake_call(prompt: str, *, images, api_key: str, model: str, **_kwargs) -> str:
+        calls.append(model)
+        return "vision ok"
+
+    monkeypatch.setattr(client, "_call_gemini_vision", fake_call)
+
+    result = client.generate_vision_with_metadata(
+        "read table",
+        images=[{"mime_type": "image/png", "base64": "already-encoded"}],
+    )
+
+    assert result.text == "vision ok"
+    assert result.model == "gemini-2.5-flash"
+    assert calls == ["gemini-2.5-flash"]
 
 
 def test_summarize_llm_attempts_classifies_provider_fallback_failures() -> None:

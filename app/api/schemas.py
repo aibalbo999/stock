@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -54,6 +54,26 @@ class MaintenanceCleanupRequest(BaseModel):
     stale_running_before: Optional[datetime] = None
     runs_before: Optional[datetime] = None
     reports_before: Optional[datetime] = None
+
+
+class DataOperationTaskRequest(BaseModel):
+    operation: Literal[
+        "market_refresh",
+        "fundamentals_refresh",
+        "valuation_refresh",
+        "company_filings_fetch",
+        "company_filing_from_url",
+        "feed_fetch",
+    ]
+    payload: dict[str, Any] = {}
+
+
+class ReportFollowUpTaskRequest(BaseModel):
+    rerun_report: bool = True
+    news_limit: int = 30
+    purpose: Literal["all", "required", "tracking"] = "all"
+    record_noop: bool = False
+    force_refresh: bool = False
 
 
 class FollowUpRunRequest(BaseModel):

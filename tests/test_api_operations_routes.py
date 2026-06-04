@@ -75,6 +75,41 @@ def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
     assert captured["cleanup"]["failed_runs"] is True
 
 
+def test_operations_router_queues_discovered_and_data_tasks() -> None:
+    captured = {}
+
+    class FakeRunTaskApi:
+        def generate_discovered_report_async(self, payload) -> dict:
+            captured["discovered"] = payload.model_dump(mode="json")
+            return {"task_id": "discover-task", "status": "queued"}
+
+        def queue_data_operation(self, operation: str, payload: dict) -> dict:
+            captured["data"] = {"operation": operation, "payload": payload}
+            return {"task_id": "data-task", "status": "queued", "operation": operation}
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    discovered_response = client.post(
+        "/pipeline/run_discovered_async",
+        json={"topic": "AI 產業鏈", "lookback_days": 14},
+    )
+    data_response = client.post(
+        "/tasks/data-operation",
+        json={"operation": "market_refresh", "payload": {"tickers": ["2330"]}},
+    )
+
+    assert discovered_response.status_code == 200
+    assert discovered_response.json() == {"task_id": "discover-task", "status": "queued"}
+    assert captured["discovered"]["topic"] == "AI 產業鏈"
+    assert data_response.status_code == 200
+    assert data_response.json() == {
+        "task_id": "data-task",
+        "status": "queued",
+        "operation": "market_refresh",
+    }
+    assert captured["data"] == {"operation": "market_refresh", "payload": {"tickers": ["2330"]}}
+
+
 def test_operations_router_maps_run_and_async_task_errors() -> None:
     class FakeRunTaskApi:
         def get_run(self, run_id: int) -> dict:

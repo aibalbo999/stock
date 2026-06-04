@@ -26,7 +26,11 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
             "llm_sdk_and_fallback": {"status": "ready", "evidence": {}},
             "hybrid_search": {"status": "ready", "evidence": {}},
             "reranking": {"status": "ready", "evidence": {}},
+            "llm_observability": {"status": "ready", "evidence": {}},
+            "visual_rag": {"status": "ready", "evidence": {}},
             "graphrag_context": {"status": "ready", "evidence": {}},
+            "graphrag_path_reasoning": {"status": "ready", "evidence": {}},
+            "graphrag_agentic_cypher": {"status": "ready", "evidence": {}},
             "neo4j_payload_export": {"status": "ready", "evidence": {}},
             "neo4j_import": {"status": "ready", "evidence": {}},
         },
@@ -34,12 +38,15 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {"up_to_date": True}},
+            "secret_scanning": {"status": "ready", "evidence": {}},
         },
         "data_business_logic": {
             "market_data_cache": {"status": "ready", "evidence": {}},
             "market_data_provider_fallback": {"status": "ready", "evidence": {}},
             "company_filing_fetch_hardening": {"status": "ready", "evidence": {}},
+            "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
+            "company_filing_structured_api_fallback": {"status": "ready", "evidence": {}},
             "company_filing_cache": {"status": "ready", "evidence": {}},
             "source_quality_weighting": {"status": "ready", "evidence": {}},
         },
@@ -67,6 +74,17 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
             "neo4j_import": {
                 "status": "not_configured",
                 "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
+            "visual_rag": {
+                "status": "not_configured",
+                "evidence": {
+                    "enabled": False,
+                    "renderer_dependency_available": False,
+                    "runtime": {
+                        "fallback_reason": "visual_rag_disabled",
+                        "vision_model_key_configured": False,
+                    },
+                },
             },
         },
         "architecture": {
@@ -96,6 +114,10 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
                 "status": "not_configured",
                 "evidence": {"playwright_render_dependency_available": False},
             },
+            "company_filing_structured_api_fallback": {
+                "status": "not_configured",
+                "evidence": {"runtime": {"fallback_reason": "missing_structured_api_provider_or_url"}},
+            },
         },
     }
 
@@ -110,8 +132,11 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
     assert any('.venv/bin/python -m pip install -e ".[rag]"' in action for action in actions)
     assert any('.venv/bin/python -m pip install -e "."' in action for action in actions)
     assert any("NEO4J_URI" in action for action in actions)
+    assert any("COMPANY_FILING_VISUAL_RAG_ENABLED" in action for action in actions)
+    assert any('.venv/bin/python -m pip install -e ".[visual]"' in action for action in actions)
     assert any("FINMIND_TOKEN" in action and "FUGLE_API_KEY" in action for action in actions)
     assert any("COMPANY_FILING_PROXY_URLS" in action for action in actions)
+    assert any("COMPANY_FILING_STRUCTURED_API_PROVIDER" in action and "TEJ" in action for action in actions)
     assert any('.venv/bin/python -m pip install -e ".[browser]"' in action for action in actions)
     assert ".venv/bin/python -m alembic stamp head" in actions
 

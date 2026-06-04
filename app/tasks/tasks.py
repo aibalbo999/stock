@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
 from app.core.time import today_taipei
 from app.core.config import get_settings
 from app.db.session import init_db, session_scope
@@ -62,6 +63,81 @@ def _json_tickers(value: str | None) -> list[str]:
     except (TypeError, json.JSONDecodeError):
         return []
     return _normalize_tickers(payload if isinstance(payload, list) else [])
+
+
+def _api_services_for_tasks():
+    from app.api.main import _api_services
+
+    return _api_services
+
+
+def _payload_date(payload: dict, key: str) -> date | None:
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
+async def _run_discovered_report_payload(payload: dict) -> dict:
+    services = _api_services_for_tasks()
+    request = TopicDiscoveryRequest.model_validate(payload)
+    return await services.pipeline_api().run_discovered(request)
+
+
+async def _run_data_operation_payload(operation: str, payload: dict) -> dict:
+    services = _api_services_for_tasks()
+    data_api = services.data_operations_api()
+    tickers = _normalize_tickers(payload.get("tickers") or [])
+    start_date = _payload_date(payload, "start_date")
+    end_date = _payload_date(payload, "end_date")
+    if operation == "market_refresh":
+        return await data_api.refresh_market(
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    if operation == "fundamentals_refresh":
+        return await data_api.refresh_fundamentals(
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    if operation == "valuation_refresh":
+        resolved_end_date = end_date or today_taipei()
+        resolved_start_date = start_date or resolved_end_date - timedelta(days=30)
+        return await data_api.ingestion_pipeline_cls().refresh_valuations(
+            tickers,
+            resolved_start_date,
+            resolved_end_date,
+        )
+    if operation == "company_filings_fetch":
+        return await services.company_filing_api().fetch_company_filings(tickers)
+    if operation == "company_filing_from_url":
+        return await services.company_filing_api().ingest_from_url(
+            url=str(payload.get("url") or ""),
+            ticker=str(payload.get("ticker") or ""),
+            company_name=str(payload.get("company_name") or ""),
+            document_type=str(payload.get("document_type") or "company_disclosure"),
+            publisher=payload.get("publisher"),
+            published_at=_payload_date(payload, "published_at"),
+        )
+    if operation == "feed_fetch":
+        return await data_api.fetch_news(
+            url=payload.get("url"),
+            publisher=payload.get("publisher"),
+            limit=int(payload.get("limit") or 10),
+            enabled_sources_only=bool(payload.get("enabled_sources_only", True)),
+            topic=payload.get("topic"),
+        )
+    raise ValueError(f"unsupported data operation task: {operation or 'missing'}")
+
+
+async def _run_report_follow_up_payload(payload: dict) -> dict:
+    services = _api_services_for_tasks()
+    request = FollowUpRunRequest.model_validate(payload.get("payload") or {})
+    return await services.report_follow_up_run().run(int(payload["report_id"]), request)
 
 
 def _latest_report_update_target(schedule_payload: dict) -> dict:
@@ -231,6 +307,41 @@ def _write_report_file(request: ReportRequest, response) -> Path:
     path = Path(settings.report_dir) / filename.replace("/", "_")
     path.write_text(response.markdown, encoding="utf-8")
     return path
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
+def discovered_report_task(self, payload: dict) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    result = asyncio.run(_run_discovered_report_payload(payload))
+    return {
+        **result,
+        "task_id": task_id,
+    }
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.data_operation_task")
+def data_operation_task(self, payload: dict) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    operation = str(payload.get("operation") or "")
+    result = asyncio.run(_run_data_operation_payload(operation, payload.get("payload") or {}))
+    return {
+        "task_id": task_id,
+        "operation": operation,
+        "result": result,
+    }
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.report_follow_up_task")
+def report_follow_up_task(self, payload: dict) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    result = asyncio.run(_run_report_follow_up_payload(payload))
+    return {
+        **result,
+        "task_id": task_id,
+    }
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.generate_report_task")

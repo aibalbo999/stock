@@ -91,6 +91,56 @@ def test_run_task_service_queues_async_report_after_whitelist_check() -> None:
     assert captured["payload"]["tickers"] == ["2330"]
 
 
+def test_run_task_service_queues_discovered_report_data_operation_and_follow_up() -> None:
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def delay(self, payload):
+            captured[self.name] = payload
+            return SimpleNamespace(id=f"{self.name}-task")
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        discovered_report_task=FakeTask("discovered"),
+        data_operation_task=FakeTask("data"),
+        report_follow_up_task=FakeTask("followup"),
+    )
+
+    discovered = service.generate_discovered_report_async({"topic": "AI 產業鏈", "lookback_days": 14})
+    data = service.queue_data_operation("market_refresh", {"tickers": ["2330"]})
+    follow_up = service.queue_report_follow_up(7, {"purpose": "required", "rerun_report": True})
+
+    assert discovered == {
+        "task_id": "discovered-task",
+        "status": "queued",
+        "operation": "run_discovered",
+    }
+    assert captured["discovered"]["topic"] == "AI 產業鏈"
+    assert data == {
+        "task_id": "data-task",
+        "status": "queued",
+        "operation": "market_refresh",
+    }
+    assert captured["data"] == {"operation": "market_refresh", "payload": {"tickers": ["2330"]}}
+    assert follow_up == {
+        "task_id": "followup-task",
+        "status": "queued",
+        "operation": "report_follow_up",
+        "report_id": 7,
+    }
+    assert captured["followup"] == {
+        "report_id": 7,
+        "payload": {"purpose": "required", "rerun_report": True},
+    }
+
+
 def test_run_task_service_rejects_missing_or_dropped_async_tickers() -> None:
     class FakeMapper:
         def __init__(self, allowed):

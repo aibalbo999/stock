@@ -117,6 +117,7 @@ def report_execution_summary(generator: object) -> dict:
             "model": getattr(llm_result, "model", None),
             "provider": getattr(llm_result, "provider", None),
             "key_index": getattr(llm_result, "key_index", None),
+            "observability": getattr(llm_result, "observability", {}) or {},
             "attempt_summary": summarize_llm_attempts(getattr(llm_result, "attempts", ())),
             "attempts": list(getattr(llm_result, "attempts", ())[-10:]),
         }

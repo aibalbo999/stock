@@ -92,6 +92,16 @@ services:
     ports:
       - "3000:3000"
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: stock-ai-flaresolverr
+    profiles: ["unlocker"]
+    environment:
+      LOG_LEVEL: info
+      TZ: Asia/Taipei
+    ports:
+      - "8191:8191"
+
   chroma:
     image: chromadb/chroma:latest
     container_name: stock-ai-chroma

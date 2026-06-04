@@ -49,10 +49,42 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "ai_rag",
+        "llm_observability",
+        "LLM/RAG observability",
+        ("upgrade_capability_matrix", "ai_rag", "llm_observability"),
+        remediation="啟用 LLM_OBSERVABILITY_ENABLED，確認 LLM token/latency/cost trace 與 retrieval trace 可用。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "visual_rag",
+        "Visual RAG / VLM 財報解析",
+        ("upgrade_capability_matrix", "ai_rag", "visual_rag"),
+        optional=True,
+        remediation=(
+            "若要解析掃描型或複雜表格 PDF，安裝 pip install -e \".[visual]\"，"
+            "設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true，並配置 vision-capable LLM key/model。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
         "graphrag_context",
         "GraphRAG 檢索脈絡",
         ("upgrade_capability_matrix", "ai_rag", "graphrag_context"),
         remediation="確認供應鏈 graph、retrieval_plan 與 evidence policy 生成成功。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "graphrag_path_reasoning",
+        "GraphRAG shortest-path 推理脈絡",
+        ("upgrade_capability_matrix", "ai_rag", "graphrag_path_reasoning"),
+        remediation="確認 /supply-chain/graph/reasoning 可輸出 shortest-path context、Cypher template 與 evidence policy。",
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
+        "graphrag_agentic_cypher",
+        "GraphRAG guarded LLM Cypher planner",
+        ("upgrade_capability_matrix", "ai_rag", "graphrag_agentic_cypher"),
+        remediation="確認 /supply-chain/graph/cypher-plan 可輸出 read-only、白名單 schema 驗證後的 Cypher plan。",
     ),
     UpgradeAuditRequirement(
         "ai_rag",
@@ -74,7 +106,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         "thin_api_controller",
         "API controller/service 分層",
         ("upgrade_capability_matrix", "architecture", "thin_api_controller"),
-        remediation="將 main.py 中殘留業務邏輯抽到 router/service/facade。",
+        remediation="main.py 應維持 thin app entry；router 組裝、舊 helper 匯出與業務相容層需留在獨立 app_factory / compatibility / service 模組。",
     ),
     UpgradeAuditRequirement(
         "architecture",
@@ -89,6 +121,13 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         "Alembic database migrations",
         ("upgrade_capability_matrix", "architecture", "database_migrations"),
         remediation="執行 alembic upgrade head 或 stamp head，並確認 DB schema 與 head revision 對齊。",
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
+        "secret_scanning",
+        "外部密鑰掃描工具整合",
+        ("upgrade_capability_matrix", "architecture", "secret_scanning"),
+        remediation="安裝 detect-secrets 或 gitleaks，並確認 scripts/security_scan.py --engine auto 可優先使用外部掃描器。",
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
@@ -109,7 +148,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         "company_filing_fetch_hardening",
         "公司文件反爬蟲與 PDF/HTML 表格解析",
         ("upgrade_capability_matrix", "data_business_logic", "company_filing_fetch_hardening"),
-        remediation="確認 User-Agent、重試、PDF/HTML table extraction、Browserless/Playwright 後援設定。",
+        remediation="確認 User-Agent、重試、PDF/HTML table extraction、Browserless/FlareSolverr/ScrapingBee/BrightData/Playwright 後援設定。",
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
@@ -126,7 +165,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     UpgradeAuditRequirement(
         "data_business_logic",
         "company_filing_browser_or_proxy_fallback",
-        "公司文件 Proxy / Browserless / Playwright 後援",
+        "公司文件 Proxy / Browser render / Playwright 後援",
         (
             "upgrade_capability_matrix",
             "data_business_logic",
@@ -135,7 +174,22 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         optional=True,
         remediation=(
             "正式部署若常遇到 MOPS/IR 入口被擋、空殼頁或動態頁，設定 COMPANY_FILING_PROXY_URLS、"
-            "COMPANY_FILING_BROWSER_RENDER_URL 或 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true。"
+            "COMPANY_FILING_BROWSER_RENDER_PROVIDER/URL 或 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
+        "company_filing_structured_api_fallback",
+        "公司文件結構化 API 備援",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_structured_api_fallback",
+        ),
+        optional=True,
+        remediation=(
+            "若法說會簡報或重大訊息常被 MOPS/IR 擋住，設定 "
+            "COMPANY_FILING_STRUCTURED_API_PROVIDER/URL/TOKEN 串接 TEJ 或專業資料 API。"
         ),
     ),
     UpgradeAuditRequirement(
@@ -157,8 +211,10 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
 EXTERNAL_INTEGRATION_CAPABILITIES = frozenset(
     {
         ("ai_rag", "neo4j_import"),
+        ("ai_rag", "visual_rag"),
         ("data_business_logic", "company_filing_pdf_table_parser_runtime"),
         ("data_business_logic", "company_filing_browser_or_proxy_fallback"),
+        ("data_business_logic", "company_filing_structured_api_fallback"),
     }
 )
 

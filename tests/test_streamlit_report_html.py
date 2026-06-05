@@ -123,6 +123,8 @@ def test_follow_up_controls_use_scoped_widget_keys() -> None:
     assert 'key=f"followup_purpose_{key_suffix}"' in source
     assert 'scope="analysis_result"' in source
     assert 'scope="history_report"' in source
+    assert "manual_tracking_selected" in source
+    assert '"force_refresh": bool(force_refresh or manual_tracking_selected)' in source
     assert 'key=f"followup_purpose_{report_id}"' not in source
 
 

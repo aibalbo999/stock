@@ -105,6 +105,68 @@ def test_follow_up_run_service_records_noop_when_requested() -> None:
     assert captured["success"] == (42, 7)
 
 
+def test_follow_up_run_service_force_refresh_creates_manual_tracking_actions() -> None:
+    captured = {}
+
+    class FakeRun:
+        id = 43
+
+    class FakeRunRepository:
+        def __init__(self, session):
+            pass
+
+        def start(self, source, payload):
+            captured["start_payload"] = payload
+            return FakeRun()
+
+        def update_payload(self, run_id, payload):
+            captured["updated_payload"] = payload
+
+        def mark_success(self, run_id, report_id, output_path=None):
+            captured["success"] = (run_id, report_id)
+
+    async def execute(actions, request, news_limit):
+        captured["executed_actions"] = [action.to_dict() for action in actions]
+        captured["news_limit"] = news_limit
+        return {
+            "results": {"ingest_news:2330": {"count": 2, "items": []}},
+            "execution_summary": {
+                "stored_count": 2,
+                "error_count": 0,
+                "rerun_blocked": False,
+            },
+        }
+
+    result = run_async(
+        _service(
+            analysis_run_repository_cls=FakeRunRepository,
+            execute_follow_up_actions_func=execute,
+        ).run(
+            7,
+            _payload(
+                force_refresh=True,
+                purpose="tracking",
+                rerun_report=False,
+                news_limit=100,
+            ),
+        )
+    )
+
+    assert result["status"] == "executed"
+    assert result["summary"]["selected"] == {
+        "required_count": 0,
+        "tracking_count": 2,
+        "total_count": 2,
+    }
+    assert [action["action_type"] for action in captured["executed_actions"]] == [
+        "ingest_news",
+        "rerun_analysis",
+    ]
+    assert captured["news_limit"] == 100
+    assert captured["updated_payload"]["force_refresh"] is True
+    assert captured["success"] == (43, 7)
+
+
 def run_async(coro):
     import asyncio
 

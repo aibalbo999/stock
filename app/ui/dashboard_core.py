@@ -66,7 +66,7 @@ def api_post(path: str, payload: dict) -> dict:
     return response.json()
 
 
-def api_get(path: str) -> dict:
+def api_get(path: str):
     response = requests.get(f"{API_BASE_URL}{path}", timeout=10)
     response.raise_for_status()
     return response.json()
@@ -90,21 +90,61 @@ def task_payload_dates(start_date, end_date) -> dict:
 
 
 def hydrate_active_report_result(result: dict) -> dict:
-    active_report_id = result.get("active_report_id")
     source_report_id = result.get("report_id")
-    if not active_report_id or active_report_id == source_report_id:
-        return result
+    active_report_id = result.get("active_report_id") or source_report_id
+    if active_report_id:
+        payload = report_payload_or_none(active_report_id)
+        if payload and report_topics_match(result, payload):
+            return hydrate_report_result_from_payload(result, payload, source_report_id)
+
+    latest_payload = latest_report_payload_for_topic(result)
+    if latest_payload:
+        return hydrate_report_result_from_payload(result, latest_payload, source_report_id)
+    return result
+
+
+def report_payload_or_none(report_id) -> dict | None:
     try:
-        payload = api_get(f"/reports/{int(active_report_id)}")
+        payload = api_get(f"/reports/{int(report_id)}")
+    except (TypeError, ValueError, requests.RequestException):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def latest_report_payload_for_topic(result: dict) -> dict | None:
+    current_topic = result_topic(result)
+    if not current_topic:
+        return None
+    try:
+        reports = api_get("/reports?limit=50")
     except requests.RequestException:
-        return result
-    current_topic = str(result.get("topic") or (result.get("request") or {}).get("topic") or "").strip()
+        return None
+    if not isinstance(reports, list):
+        return None
+    for report in reports:
+        if not isinstance(report, dict):
+            continue
+        if str(report.get("topic") or "").strip() != current_topic:
+            continue
+        return report_payload_or_none(report.get("id"))
+    return None
+
+
+def result_topic(result: dict) -> str:
+    return str(result.get("topic") or (result.get("request") or {}).get("topic") or "").strip()
+
+
+def report_topics_match(result: dict, payload: dict) -> bool:
+    current_topic = result_topic(result)
     active_topic = str(payload.get("topic") or (payload.get("request") or {}).get("topic") or "").strip()
-    if current_topic and active_topic and current_topic != active_topic:
-        return result
+    return not (current_topic and active_topic and current_topic != active_topic)
+
+
+def hydrate_report_result_from_payload(result: dict, payload: dict, source_report_id) -> dict:
+    report_id = payload.get("id") or payload.get("report_id") or source_report_id
     hydrated = {
         **result,
-        "report_id": active_report_id,
+        "report_id": report_id,
         "source_report_id": source_report_id,
         "topic": payload.get("topic") or result.get("topic"),
         "tickers": payload.get("tickers") or result.get("promoted_tickers") or [],
@@ -2066,9 +2106,15 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
             for action in action_pool
             if action.get("purpose") == selected_purpose
         ]
-    has_executable_actions = bool(executable_actions or rows)
+    manual_tracking_available = not planned_actions and not rows and plan_error is None
+    manual_tracking_selected = manual_tracking_available and selected_purpose in {"all", "tracking"}
+    has_executable_actions = bool(executable_actions or rows or manual_tracking_selected)
     if planned_actions and not executable_actions:
         st.caption("目前選擇的範圍沒有可執行任務。")
+    elif manual_tracking_selected:
+        st.caption("本次將執行：手動追蹤補抓資料；完成後可重新產生報告。")
+    elif manual_tracking_available:
+        st.caption("目前沒有資料缺口任務；可切換到追蹤更新後手動補抓資料。")
     elif executable_actions:
         selected_required = sum(1 for action in executable_actions if action.get("purpose") == "required")
         selected_tracking = sum(1 for action in executable_actions if action.get("purpose") == "tracking")
@@ -2103,7 +2149,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                     "rerun_report": bool(rerun_report),
                     "news_limit": int(news_limit),
                     "purpose": selected_purpose,
-                    "force_refresh": bool(force_refresh),
+                    "force_refresh": bool(force_refresh or manual_tracking_selected),
                 },
             )
             st.session_state["last_follow_up_task_id"] = task_response["task_id"]

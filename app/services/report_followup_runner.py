@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.services.followup_actions import manual_tracking_follow_up_actions
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import (
     can_rerun_candidate_revalidation_from_existing_evidence,
@@ -66,6 +67,8 @@ class ReportFollowUpRunService:
             candidate_audit_required=candidate_audit_required,
             apply_freshness=False,
         )
+        if not candidate_actions and payload.force_refresh:
+            candidate_actions = manual_tracking_follow_up_actions(request)
         fresh_actions, skipped_details = self.split_fresh_tracking_actions_func(candidate_actions, request)
         skipped_action_payloads = [
             {key: value for key, value in detail.items() if key != "freshness"}

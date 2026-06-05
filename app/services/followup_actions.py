@@ -71,6 +71,28 @@ class FollowUpAction:
         }
 
 
+def manual_tracking_follow_up_actions(request: ReportRequest) -> list[FollowUpAction]:
+    tickers = tuple(request.tickers)
+    return [
+        FollowUpAction(
+            "ingest_news",
+            "使用者手動要求補抓資料，刷新主題與公司層級證據。",
+            tickers,
+            "medium",
+            "once",
+            "tracking",
+        ),
+        FollowUpAction(
+            "rerun_analysis",
+            "手動補抓資料後重跑分析，確認投資結論是否需要調整。",
+            tickers,
+            "high",
+            "once",
+            "tracking",
+        ),
+    ]
+
+
 class FollowUpActionPlanner:
     def plan(
         self,

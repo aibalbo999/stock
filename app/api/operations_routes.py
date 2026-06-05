@@ -22,6 +22,7 @@ def create_operations_router(
     *,
     async_report_validation_error_cls: type[Exception],
     run_task_not_found_cls: type[Exception],
+    task_queue_unavailable_error_cls: type[Exception],
 ) -> APIRouter:
     router = APIRouter()
     services_dependency = api_services_provider(api_services)
@@ -140,6 +141,8 @@ def create_operations_router(
             return services.run_task_api().generate_report_async(request)
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.post("/pipeline/run_discovered_async")
     def generate_discovered_report_async(
@@ -150,6 +153,8 @@ def create_operations_router(
             return services.run_task_api().generate_discovered_report_async(payload)
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.post("/tasks/data-operation")
     def queue_data_operation(
@@ -163,10 +168,15 @@ def create_operations_router(
             )
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.get("/tasks/{task_id}")
     def get_task_status(task_id: str, services: Any = Depends(services_dependency)) -> dict:
-        return services.run_task_api().get_task_status(task_id)
+        try:
+            return services.run_task_api().get_task_status(task_id)
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.get("/tasks/{task_id}/run")
     def get_run_by_task_id(task_id: str, services: Any = Depends(services_dependency)) -> dict:

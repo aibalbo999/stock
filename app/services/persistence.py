@@ -273,6 +273,7 @@ class ReportRepository:
         )
         self.session.add(report)
         self.session.flush()
+        self.prune_older_for_topic(report.topic, report.id)
         return report
 
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
@@ -292,6 +293,23 @@ class ReportRepository:
 
     def delete_before(self, before: datetime) -> int:
         result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.generated_at < before))
+        self.session.flush()
+        return result.rowcount or 0
+
+    def prune_older_for_topic(self, topic: str, keep_report_id: int) -> int:
+        statement = select(GeneratedReport.id).where(
+            GeneratedReport.topic == topic,
+            GeneratedReport.id != keep_report_id,
+        )
+        old_report_ids = list(self.session.scalars(statement))
+        if not old_report_ids:
+            return 0
+        self.session.execute(
+            update(AnalysisRun)
+            .where(AnalysisRun.report_id.in_(old_report_ids))
+            .values(report_id=None)
+        )
+        result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids)))
         self.session.flush()
         return result.rowcount or 0
 

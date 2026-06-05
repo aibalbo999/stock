@@ -31,6 +31,10 @@ class AsyncReportValidationError(RunTaskApiError):
     pass
 
 
+class TaskQueueUnavailableError(RunTaskApiError):
+    pass
+
+
 class RunTaskApiService:
     def __init__(
         self,
@@ -85,15 +89,19 @@ class RunTaskApiService:
             )
         if not filtered_tickers:
             raise AsyncReportValidationError("async report generation requires at least one whitelisted ticker")
-        if self.report_task is None:
-            raise RuntimeError("async report task is not configured")
-        task = self.report_task.delay(request.model_dump(mode="json"))
+        task = self._delay_task(
+            self.report_task,
+            request.model_dump(mode="json"),
+            "async report generation",
+        )
         return {"task_id": task.id, "status": "queued"}
 
     def generate_discovered_report_async(self, payload: Any) -> dict:
-        if self.discovered_report_task is None:
-            raise RuntimeError("async discovered report task is not configured")
-        task = self.discovered_report_task.delay(self._payload_model_dump(payload))
+        task = self._delay_task(
+            self.discovered_report_task,
+            self._payload_model_dump(payload),
+            "discovered report generation",
+        )
         return {
             "task_id": task.id,
             "status": "queued",
@@ -103,9 +111,11 @@ class RunTaskApiService:
     def queue_data_operation(self, operation: str, payload: dict[str, Any] | None = None) -> dict:
         if operation not in DATA_OPERATION_TASKS:
             raise AsyncReportValidationError(f"unsupported data operation task: {operation or 'missing'}")
-        if self.data_operation_task is None:
-            raise RuntimeError("data operation task is not configured")
-        task = self.data_operation_task.delay({"operation": operation, "payload": payload or {}})
+        task = self._delay_task(
+            self.data_operation_task,
+            {"operation": operation, "payload": payload or {}},
+            f"data operation {operation}",
+        )
         return {
             "task_id": task.id,
             "status": "queued",
@@ -113,13 +123,13 @@ class RunTaskApiService:
         }
 
     def queue_report_follow_up(self, report_id: int, payload: dict[str, Any] | None = None) -> dict:
-        if self.report_follow_up_task is None:
-            raise RuntimeError("report follow-up task is not configured")
-        task = self.report_follow_up_task.delay(
+        task = self._delay_task(
+            self.report_follow_up_task,
             {
                 "report_id": report_id,
                 "payload": payload or {},
-            }
+            },
+            "report follow-up",
         )
         return {
             "task_id": task.id,
@@ -130,8 +140,11 @@ class RunTaskApiService:
 
     def get_task_status(self, task_id: str) -> dict:
         if self.celery_app is None:
-            raise RuntimeError("celery app is not configured")
-        result = self.celery_app.AsyncResult(task_id)
+            raise TaskQueueUnavailableError("task queue is not configured")
+        try:
+            result = self.celery_app.AsyncResult(task_id)
+        except Exception as exc:
+            raise TaskQueueUnavailableError(f"task queue unavailable while checking task status: {exc}") from exc
         response = {
             "task_id": task_id,
             "status": result.status,
@@ -165,3 +178,14 @@ class RunTaskApiService:
             except TypeError:
                 return dump()
         return dict(payload or {})
+
+    @staticmethod
+    def _delay_task(task: Any, payload: dict[str, Any], operation: str) -> Any:
+        if task is None:
+            raise TaskQueueUnavailableError(f"{operation} task is not configured")
+        try:
+            return task.delay(payload)
+        except Exception as exc:
+            raise TaskQueueUnavailableError(
+                f"task queue unavailable while submitting {operation}: {exc}"
+            ) from exc

@@ -21,6 +21,10 @@ class FakeCompanyDataAuditNotFound(Exception):
     pass
 
 
+class FakeTaskQueueUnavailableError(Exception):
+    pass
+
+
 def test_report_router_delegates_report_generation_and_queries() -> None:
     captured = {}
 
@@ -144,6 +148,19 @@ def test_report_router_queues_follow_up_task() -> None:
     assert captured["payload"]["news_limit"] == 20
 
 
+def test_report_router_maps_follow_up_queue_errors_to_503() -> None:
+    class FakeRunTaskApi:
+        def queue_report_follow_up(self, report_id: int, payload: dict) -> dict:
+            raise FakeTaskQueueUnavailableError("task queue unavailable")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    response = client.post("/reports/7/follow-up/run_async")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "task queue unavailable"
+
+
 def _client(
     generation_api=None,
     report_query=None,
@@ -166,6 +183,7 @@ def _client(
             workflow_orchestration_error_cls=FakeWorkflowOrchestrationError,
             report_query_not_found_cls=FakeReportQueryNotFound,
             company_data_audit_not_found_cls=FakeCompanyDataAuditNotFound,
+            task_queue_unavailable_error_cls=FakeTaskQueueUnavailableError,
             get_follow_up_plan_func=get_follow_up_plan_func or (lambda report_id: {}),
             auto_start_follow_up_func=auto_start_follow_up_func or _noop_auto_start,
             run_follow_up_func=run_follow_up_func or _noop_run,

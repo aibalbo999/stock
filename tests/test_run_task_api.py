@@ -7,7 +7,12 @@ from types import SimpleNamespace
 import pytest
 
 from app.models.schemas import ReportRequest
-from app.services.run_task_api import AsyncReportValidationError, RunTaskApiService, RunTaskNotFound
+from app.services.run_task_api import (
+    AsyncReportValidationError,
+    RunTaskApiService,
+    RunTaskNotFound,
+    TaskQueueUnavailableError,
+)
 
 
 class FakeTaskResult:
@@ -139,6 +144,24 @@ def test_run_task_service_queues_discovered_report_data_operation_and_follow_up(
         "report_id": 7,
         "payload": {"purpose": "required", "rerun_report": True},
     }
+
+
+def test_run_task_service_maps_task_submit_failures_to_queue_unavailable() -> None:
+    class BrokenTask:
+        def delay(self, payload):
+            raise ConnectionError("redis down")
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        data_operation_task=BrokenTask(),
+    )
+
+    with pytest.raises(TaskQueueUnavailableError, match="data operation market_refresh"):
+        service.queue_data_operation("market_refresh", {"tickers": ["2330"]})
 
 
 def test_run_task_service_rejects_missing_or_dropped_async_tickers() -> None:

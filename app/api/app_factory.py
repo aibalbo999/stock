@@ -16,7 +16,7 @@ from app.db.status import db_status
 from app.services.company_data_audit_api import CompanyDataAuditApiNotFound
 from app.services.report_generator import ReportExecutionError
 from app.services.report_query import ReportQueryNotFound
-from app.services.run_task_api import AsyncReportValidationError, RunTaskNotFound
+from app.services.run_task_api import AsyncReportValidationError, RunTaskNotFound, TaskQueueUnavailableError
 from app.services.service_status import service_status
 from app.services.upgrade_audit import audit_upgrade_capabilities
 from app.services.workflow_orchestration import WorkflowOrchestrationError
@@ -55,6 +55,7 @@ def create_app(
         create_operations_router(
             async_report_validation_error_cls=AsyncReportValidationError,
             run_task_not_found_cls=RunTaskNotFound,
+            task_queue_unavailable_error_cls=TaskQueueUnavailableError,
         )
     )
     app.include_router(create_ai_router())
@@ -64,6 +65,7 @@ def create_app(
             workflow_orchestration_error_cls=WorkflowOrchestrationError,
             report_query_not_found_cls=ReportQueryNotFound,
             company_data_audit_not_found_cls=CompanyDataAuditApiNotFound,
+            task_queue_unavailable_error_cls=TaskQueueUnavailableError,
             get_follow_up_plan_func=get_follow_up_plan_func,
             auto_start_follow_up_func=auto_start_follow_up_func,
             run_follow_up_func=run_follow_up_func,

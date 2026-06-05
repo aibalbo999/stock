@@ -12,6 +12,10 @@ class FakeRunTaskNotFound(Exception):
     pass
 
 
+class FakeTaskQueueUnavailableError(Exception):
+    pass
+
+
 def test_operations_router_delegates_manual_news_and_market_refresh() -> None:
     captured = {}
 
@@ -135,6 +139,28 @@ def test_operations_router_maps_run_and_async_task_errors() -> None:
     assert task_run_response.json()["detail"] == "run not found for task"
 
 
+def test_operations_router_maps_task_queue_errors_to_503() -> None:
+    class FakeRunTaskApi:
+        def queue_data_operation(self, operation: str, payload: dict) -> dict:
+            raise FakeTaskQueueUnavailableError("task queue unavailable")
+
+        def get_task_status(self, task_id: str) -> dict:
+            raise FakeTaskQueueUnavailableError("task queue unavailable")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    queue_response = client.post(
+        "/tasks/data-operation",
+        json={"operation": "market_refresh", "payload": {"tickers": ["2330"]}},
+    )
+    status_response = client.get("/tasks/task-123")
+
+    assert queue_response.status_code == 503
+    assert queue_response.json()["detail"] == "task queue unavailable"
+    assert status_response.status_code == 503
+    assert status_response.json()["detail"] == "task queue unavailable"
+
+
 def _client(data_api=None, run_task_api=None) -> TestClient:
     app = FastAPI()
     app.include_router(
@@ -142,6 +168,7 @@ def _client(data_api=None, run_task_api=None) -> TestClient:
             _services(data_api=data_api, run_task_api=run_task_api),
             async_report_validation_error_cls=FakeAsyncReportValidationError,
             run_task_not_found_cls=FakeRunTaskNotFound,
+            task_queue_unavailable_error_cls=FakeTaskQueueUnavailableError,
         )
     )
     return TestClient(app)

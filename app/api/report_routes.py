@@ -17,6 +17,7 @@ def create_report_router(
     workflow_orchestration_error_cls: type[Exception],
     report_query_not_found_cls: type[Exception],
     company_data_audit_not_found_cls: type[Exception],
+    task_queue_unavailable_error_cls: type[Exception],
     get_follow_up_plan_func: Callable[[int], dict],
     auto_start_follow_up_func: Callable[[int], Awaitable[dict]],
     run_follow_up_func: Callable[[int, Optional[FollowUpRunRequest]], Awaitable[dict]],
@@ -87,10 +88,13 @@ def create_report_router(
         payload: Optional[ReportFollowUpTaskRequest] = None,
         services: Any = Depends(services_dependency),
     ) -> dict:
-        return services.run_task_api().queue_report_follow_up(
-            report_id,
-            (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
-        )
+        try:
+            return services.run_task_api().queue_report_follow_up(
+                report_id,
+                (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
+            )
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.delete("/reports/{report_id}")
     def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:

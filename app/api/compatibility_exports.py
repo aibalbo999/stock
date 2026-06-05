@@ -119,7 +119,12 @@ from app.services.report_quality import (
 )
 from app.services.report_query import ReportQueryNotFound, ReportQueryService
 from app.services.run_state import RunStateService
-from app.services.run_task_api import AsyncReportValidationError, RunTaskApiService, RunTaskNotFound
+from app.services.run_task_api import (
+    AsyncReportValidationError,
+    RunTaskApiService,
+    RunTaskNotFound,
+    TaskQueueUnavailableError,
+)
 from app.services.schedule_config import ScheduleConfigStore
 from app.services.source_quality import filter_formal_evidence_documents, remove_low_quality_investor_forum_lines
 from app.services.source_relevance import SourceRelevanceAnalyzer
@@ -252,6 +257,7 @@ COMPATIBILITY_EXPORT_NAMES = tuple(
             "RunTaskApiService",
             "AsyncReportValidationError",
             "RunTaskNotFound",
+            "TaskQueueUnavailableError",
             "RunStateService",
             "LLMApiService",
             "LLMClient",

@@ -8,7 +8,7 @@ from app.data_sources.news import NewsFetcher
 from app.db.models import Base, NewsArticle
 from app.models.schemas import ReportRequest, ReportResponse, RiskFinding, RiskType, Source
 from app.services.entity_mapping import EntityMapper
-from app.services.persistence import NewsRepository, ReportRepository
+from app.services.persistence import AnalysisRunRepository, NewsRepository, ReportRepository
 from app.services.llm_client import LLMResult
 from app.services.report_generator import ReportGenerator
 
@@ -130,6 +130,38 @@ def test_report_repository_sanitizes_non_formal_sources_before_persisting() -> N
         assert stored is not None
         assert "CMoney投資網誌" not in stored.markdown
         assert "經濟日報《富喬月營收創高》" in stored.markdown
+    finally:
+        session.close()
+
+
+def test_report_repository_keeps_only_latest_report_per_topic() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repository = ReportRepository(session)
+        old_report = repository.create(
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            ReportResponse(title="old", markdown="# old"),
+        )
+        other_topic_report = repository.create(
+            ReportRequest(topic="機器人 產業鏈", tickers=["2359"]),
+            ReportResponse(title="robot", markdown="# robot"),
+        )
+        run = AnalysisRunRepository(session).start("test", {})
+        AnalysisRunRepository(session).mark_success(run.id, old_report.id)
+
+        latest_report = repository.create(
+            ReportRequest(topic="AI 產業鏈", tickers=["3324"]),
+            ReportResponse(title="new", markdown="# new"),
+        )
+        session.commit()
+
+        assert repository.get(old_report.id) is None
+        assert repository.get(latest_report.id) is not None
+        assert repository.get(other_topic_report.id) is not None
+        assert AnalysisRunRepository(session).get(run.id).report_id is None
     finally:
         session.close()
 

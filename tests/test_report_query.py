@@ -161,6 +161,121 @@ def test_report_query_service_sanitizes_and_replaces_candidate_audit_section() -
     assert payload["candidate_audit"]["summary"]["weak_count"] == 1
 
 
+def test_report_query_service_refreshes_quality_gate_section_on_read() -> None:
+    captured = {}
+    old_quality_gate = {
+        "status": "caution",
+        "warnings": ["股價日期不一致，最新可取得交易日未覆蓋多數股票"],
+        "metrics": {
+            "dynamic_source_count": 42,
+            "candidate_supported_ratio": 1.0,
+            "exploration_candidate_supported_ratio": 1.0,
+            "company_filing_coverage": 0.5,
+            "discovery_plan_status": "ready",
+            "discovery_plan_score": 100,
+        },
+    }
+    refreshed_quality_gate = {
+        "status": "ready",
+        "blockers": [],
+        "warnings": [],
+        "observations": ["股價日期略有差異，系統已使用各股票最新可取得收盤資料"],
+        "remediation_actions": [],
+        "recommendation": "資料品質可用，可進行研究判讀。",
+        "action_policy": {"label": "可研究", "max_deployable_amount": 1000000},
+        "metrics": {
+            "promoted_count": 2,
+            "candidate_supported_ratio": 1.0,
+            "exploration_candidate_supported_ratio": 1.0,
+            "dynamic_source_count": 42,
+            "source_lookback_days": 120,
+            "market_coverage": 1.0,
+            "market_latest_trade_date": "2026-06-05",
+            "market_latest_trade_date_coverage": 0.5,
+            "market_database_latest_trade_date": "2026-06-05",
+            "market_older_than_database_latest_count": 1,
+            "market_trade_date_lag_days": 1,
+            "market_trade_date_warning_suppressed": True,
+            "monthly_revenue_coverage": 1.0,
+            "valuation_coverage": 1.0,
+        },
+        "self_healing": {"status": "not_needed", "triggers": [], "actions": []},
+    }
+
+    class FakeReport:
+        id = 21
+        title = "AI 產業鏈低關注潛力股 自動分析報告"
+        topic = "AI 產業鏈低關注潛力股"
+        tickers_json = '["3324","3131"]'
+        markdown = (
+            "# AI 產業鏈低關注潛力股 自動分析報告\n\n"
+            "## 報告品質門檻\n"
+            "- 狀態：需謹慎判讀\n"
+            "- 警示項：股價日期不一致，最新可取得交易日未覆蓋多數股票\n\n"
+            "## 一頁摘要\n保留原報告內容"
+        )
+        generated_at = datetime(2026, 6, 6, 1, 0, 0)
+
+    class FakeRun:
+        payload_json = json.dumps(
+            {
+                "request": {
+                    "topic": "AI 產業鏈低關注潛力股",
+                    "tickers": ["3324", "3131"],
+                    "lookback_days": 120,
+                    "evidence_limit": 100,
+                }
+            },
+            ensure_ascii=False,
+        )
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int):
+            assert report_id == 21
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int):
+            assert report_id == 21
+            return FakeRun()
+
+    def fake_build_quality_gate(request, **kwargs):
+        captured["request"] = request
+        captured["kwargs"] = kwargs
+        return refreshed_quality_gate
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        parse_quality_gate_func=lambda _markdown: old_quality_gate,
+        build_quality_gate_for_request_func=fake_build_quality_gate,
+        latest_follow_up_run_for_report_func=lambda *args: None,
+    )
+
+    payload = service.get_report(21)
+
+    assert payload["quality_gate"]["status"] == "ready"
+    assert payload["quality_gate"]["warnings"] == []
+    assert "股價日期不一致" not in payload["markdown"]
+    assert "狀態：資料品質可用" in payload["markdown"]
+    assert "股價日期略有差異" in payload["markdown"]
+    assert "## 一頁摘要\n保留原報告內容" in payload["markdown"]
+    assert captured["request"].lookback_days == 120
+    assert captured["kwargs"]["source_count"] == 42
+    assert captured["kwargs"]["company_filing_sufficient_count"] == 1
+
+
 def test_report_query_service_ignores_follow_up_rerun_when_report_id_points_to_other_topic() -> None:
     class SourceReport:
         id = 18

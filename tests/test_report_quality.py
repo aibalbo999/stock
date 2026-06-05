@@ -113,8 +113,9 @@ def test_quality_gate_warns_when_report_prices_lag_database_latest_date() -> Non
         valuation_count=2,
         market_latest_trade_date=date(2026, 6, 1),
         market_latest_trade_date_coverage=0.5,
-        market_database_latest_trade_date=date(2026, 6, 1),
+        market_database_latest_trade_date=date(2026, 6, 5),
         market_older_than_database_latest_count=1,
+        market_max_trade_date_lag_days=4,
     )
 
     markdown = render_quality_gate_markdown(gate)
@@ -123,6 +124,36 @@ def test_quality_gate_warns_when_report_prices_lag_database_latest_date() -> Non
     assert "最新可取得交易日：2026-06-01" in markdown
     assert "同日覆蓋率 50%" in markdown
     assert should_recover_market_data_quality(gate) is True
+
+
+def test_quality_gate_treats_one_day_market_date_lag_as_observation() -> None:
+    gate = build_report_quality_gate(
+        {"candidate_support": {"supported_ratio": 1.0}, "dynamic_queries": {"stored_count": 20}},
+        ["2330", "2382"],
+        market_count=2,
+        monthly_revenue_count=2,
+        financial_metrics_count=16,
+        valuation_count=2,
+        market_latest_trade_date=date(2026, 6, 5),
+        market_latest_trade_date_coverage=0.5,
+        market_database_latest_trade_date=date(2026, 6, 5),
+        market_older_than_database_latest_count=1,
+        market_max_trade_date_lag_days=1,
+    )
+
+    issue_text = "；".join(gate["warnings"])
+    observation_text = "；".join(gate["observations"])
+    plan = gate["self_healing"]
+
+    assert gate["status"] == "ready"
+    assert "股價日期不一致" not in issue_text
+    assert "資料庫最新交易日股價" not in issue_text
+    assert "股價日期略有差異" in observation_text
+    assert gate["metrics"]["market_trade_date_lag_days"] == 1
+    assert gate["metrics"]["market_trade_date_warning_suppressed"] is True
+    assert should_recover_market_data_quality(gate) is False
+    assert "market_data_gap" not in plan["triggers"]
+    assert not any(action["action_type"] == "refresh_market" for action in plan["actions"])
 
 
 def test_quality_gate_adds_self_healing_plan_for_recoverable_gaps() -> None:
@@ -157,8 +188,9 @@ def test_quality_gate_self_healing_plans_market_recovery_for_trade_date_mismatch
         valuation_count=2,
         market_latest_trade_date=date(2026, 6, 2),
         market_latest_trade_date_coverage=0.5,
-        market_database_latest_trade_date=date(2026, 6, 2),
+        market_database_latest_trade_date=date(2026, 6, 5),
         market_older_than_database_latest_count=1,
+        market_max_trade_date_lag_days=3,
     )
 
     plan = gate["self_healing"]
@@ -181,3 +213,4 @@ def test_market_trade_date_summary_counts_tickers_older_than_database_latest_dat
     assert summary["latest_trade_date"] == date(2026, 6, 1)
     assert summary["latest_trade_date_coverage"] == 0.5
     assert summary["older_than_database_latest_count"] == 1
+    assert summary["max_trade_date_lag_days"] == 3

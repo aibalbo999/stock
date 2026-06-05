@@ -38,6 +38,7 @@ class QualityRecoveryOrchestrator:
         triggers: list[str] = []
         tickers = [str(ticker) for ticker in promoted_tickers if str(ticker)]
         promoted_count = int(metrics.get("promoted_count") or len(tickers))
+        market_trade_date_warning_suppressed = bool(metrics.get("market_trade_date_warning_suppressed"))
 
         source_count = int(metrics.get("dynamic_source_count") or 0)
         if source_count < 12 or any(term in issue_text for term in ["來源入庫篇數過少", "資料來源偏少", "發布者過於單一"]):
@@ -73,9 +74,13 @@ class QualityRecoveryOrchestrator:
             float(metrics.get("market_coverage") or 0) < 1
             or int(metrics.get("market_stale_count") or 0)
             or int(metrics.get("market_latest_only_count") or 0)
-            or int(metrics.get("market_older_than_database_latest_count") or 0)
             or (
-                metrics.get("market_latest_trade_date_coverage") is not None
+                not market_trade_date_warning_suppressed
+                and int(metrics.get("market_older_than_database_latest_count") or 0)
+            )
+            or (
+                not market_trade_date_warning_suppressed
+                and metrics.get("market_latest_trade_date_coverage") is not None
                 and float(metrics.get("market_latest_trade_date_coverage") or 0) < 0.8
             )
         ):

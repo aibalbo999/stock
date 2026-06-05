@@ -41,13 +41,18 @@ def should_recover_market_data_quality(quality_gate: dict | None) -> bool:
     )
     market_coverage = metrics.get("market_coverage")
     market_latest_trade_date_coverage = metrics.get("market_latest_trade_date_coverage")
+    market_trade_date_warning_suppressed = bool(metrics.get("market_trade_date_warning_suppressed"))
     return bool(
         (market_coverage is not None and float(market_coverage or 0) < 1)
         or int(metrics.get("market_stale_count") or 0)
         or int(metrics.get("market_latest_only_count") or 0)
-        or int(metrics.get("market_older_than_database_latest_count") or 0)
         or (
-            market_latest_trade_date_coverage is not None
+            not market_trade_date_warning_suppressed
+            and int(metrics.get("market_older_than_database_latest_count") or 0)
+        )
+        or (
+            not market_trade_date_warning_suppressed
+            and market_latest_trade_date_coverage is not None
             and float(market_latest_trade_date_coverage or 0) < 0.8
         )
         or any(term in issue_text for term in ["股價資料覆蓋率", "股價日期不一致", "資料庫最新交易日股價"])
@@ -82,6 +87,7 @@ def build_report_quality_gate(
     market_latest_trade_date_coverage: float | None = None,
     market_database_latest_trade_date: date | str | None = None,
     market_older_than_database_latest_count: int = 0,
+    market_max_trade_date_lag_days: int | None = None,
 ) -> dict:
     candidate_support = source_audit.get("candidate_support") or {}
     dynamic_sources = source_audit.get("dynamic_queries") or {}
@@ -224,12 +230,33 @@ def build_report_quality_gate(
         blockers.append("股價資料覆蓋率低於 50%")
     elif promoted_count and market_coverage < 1:
         warnings.append("部分股票缺少最新股價資料")
+    market_trade_date_lag_days = (
+        market_max_trade_date_lag_days
+        if market_max_trade_date_lag_days is not None
+        else _date_lag_days(
+            market_latest_trade_date,
+            market_database_latest_trade_date,
+        )
+    )
+    market_trade_date_warning_suppressed = bool(
+        promoted_count
+        and market_coverage >= 1
+        and not market_stale_count
+        and not market_latest_only_count
+        and market_trade_date_lag_days is not None
+        and market_trade_date_lag_days <= 1
+    )
     if promoted_count and market_latest_trade_date_coverage is not None and market_latest_trade_date_coverage < 0.8:
-        warnings.append("股價日期不一致，最新可取得交易日未覆蓋多數股票")
+        if market_trade_date_warning_suppressed:
+            observations.append("股價日期略有差異，系統已使用各股票最新可取得收盤資料")
+        else:
+            warnings.append("股價日期不一致，最新可取得交易日未覆蓋多數股票")
     if promoted_count and market_older_than_database_latest_count:
         older_ratio = market_older_than_database_latest_count / promoted_count
         message = "部分股票未取得資料庫最新交易日股價，報告僅能使用最新可取得收盤價"
-        if older_ratio >= 0.5:
+        if market_trade_date_warning_suppressed:
+            observations.append(message)
+        elif older_ratio >= 0.5:
             warnings.append(message)
         else:
             observations.append(message)
@@ -372,6 +399,8 @@ def build_report_quality_gate(
             "market_latest_trade_date_coverage": market_latest_trade_date_coverage,
             "market_database_latest_trade_date": _date_to_text(market_database_latest_trade_date),
             "market_older_than_database_latest_count": int(market_older_than_database_latest_count or 0),
+            "market_trade_date_lag_days": market_trade_date_lag_days,
+            "market_trade_date_warning_suppressed": market_trade_date_warning_suppressed,
             "leading_signal_coverage": leading_signal_coverage,
             "company_filing_coverage": company_filing_coverage,
             "llm_analysis_status": "fallback" if llm_fallback else "enabled" if llm_status else None,
@@ -629,10 +658,31 @@ def _source_date(value: date | datetime | None) -> date | None:
     return value
 
 
-def _date_to_text(value: date | str | None) -> str | None:
+def _date_value(value: date | datetime | str | None) -> date | None:
     if value is None:
         return None
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _date_lag_days(value: date | datetime | str | None, reference: date | datetime | str | None) -> int | None:
+    value_date = _date_value(value)
+    reference_date = _date_value(reference)
+    if value_date is None or reference_date is None:
+        return None
+    return max(0, (reference_date - value_date).days)
+
+
+def _date_to_text(value: date | datetime | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (date, datetime)):
         return value.isoformat()
     return str(value)
 
@@ -679,32 +729,41 @@ def market_trade_date_summary(
     database_latest_trade_date: date | None = None,
 ) -> dict:
     ticker_dates = {
-        str(getattr(snapshot, "ticker", "")): getattr(snapshot, "trade_date", None)
+        str(getattr(snapshot, "ticker", "")): _date_value(getattr(snapshot, "trade_date", None))
         for snapshot in snapshots
         if getattr(snapshot, "ticker", None) and getattr(snapshot, "trade_date", None)
     }
-    dates = list(ticker_dates.values())
+    dates = [value for value in ticker_dates.values() if value is not None]
     if not dates:
         return {
             "latest_trade_date": None,
             "latest_trade_date_coverage": None,
             "database_latest_trade_date": database_latest_trade_date,
             "older_than_database_latest_count": 0,
+            "max_trade_date_lag_days": None,
         }
     latest_trade_date = max(dates)
     latest_count = sum(1 for value in dates if value == latest_trade_date)
     promoted_count = len(promoted_tickers)
     database_latest_trade_date = database_latest_trade_date or latest_trade_date
+    database_latest_trade_date = _date_value(database_latest_trade_date) or latest_trade_date
     older_than_database_latest_count = sum(
         1
         for ticker in promoted_tickers
         if ticker_dates.get(ticker) is not None and ticker_dates[ticker] < database_latest_trade_date
     )
+    lag_days = (
+        _date_lag_days(ticker_dates.get(ticker), database_latest_trade_date)
+        for ticker in promoted_tickers
+        if ticker_dates.get(ticker) is not None
+    )
+    max_trade_date_lag_days = max(lag_days, default=0)
     return {
         "latest_trade_date": latest_trade_date,
         "latest_trade_date_coverage": latest_count / promoted_count if promoted_count else None,
         "database_latest_trade_date": database_latest_trade_date,
         "older_than_database_latest_count": older_than_database_latest_count,
+        "max_trade_date_lag_days": max_trade_date_lag_days,
     }
 
 
@@ -809,6 +868,7 @@ def build_quality_gate_for_request(
         market_latest_trade_date_coverage=market_date_summary["latest_trade_date_coverage"],
         market_database_latest_trade_date=market_date_summary["database_latest_trade_date"],
         market_older_than_database_latest_count=market_date_summary["older_than_database_latest_count"],
+        market_max_trade_date_lag_days=market_date_summary["max_trade_date_lag_days"],
     )
 
 

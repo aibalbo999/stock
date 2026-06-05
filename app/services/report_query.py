@@ -19,8 +19,66 @@ from app.services.report_followup import (
     report_tickers,
     sync_candidate_audit_section,
 )
-from app.services.report_quality import parse_quality_gate_from_markdown
+from app.models.schemas import ReportRequest, ReportResponse
+from app.services.report_quality import (
+    attach_quality_gate_to_report,
+    build_quality_gate_for_request,
+    parse_quality_gate_from_markdown,
+)
 from app.services.source_quality import remove_low_quality_investor_forum_lines
+
+
+def _quality_gate_refresh_kwargs(metrics: dict, promoted_count: int) -> dict:
+    kwargs: dict[str, Any] = {}
+    source_count = _metric_int(metrics.get("dynamic_source_count"))
+    if source_count is not None:
+        kwargs["source_count"] = source_count
+
+    company_filing_coverage = _metric_float(metrics.get("company_filing_coverage"))
+    if company_filing_coverage is not None:
+        kwargs["company_filing_sufficient_count"] = round(company_filing_coverage * promoted_count)
+
+    candidate_supported_ratio = _metric_float(metrics.get("candidate_supported_ratio"), 1.0 if promoted_count else 0.0)
+    exploration_supported_ratio = _metric_float(
+        metrics.get("exploration_candidate_supported_ratio"),
+        candidate_supported_ratio,
+    )
+    kwargs["candidate_support"] = {
+        "total": promoted_count,
+        "supported": round(candidate_supported_ratio * promoted_count),
+        "unsupported": max(0, promoted_count - round(candidate_supported_ratio * promoted_count)),
+        "supported_ratio": candidate_supported_ratio,
+        "formal_supported_ratio": candidate_supported_ratio,
+        "exploration_supported_ratio": exploration_supported_ratio,
+        "formal_confidence_avg": metrics.get("formal_confidence_avg"),
+        "formal_confidence_min": metrics.get("formal_confidence_min"),
+    }
+
+    plan_quality = {
+        "status": metrics.get("discovery_plan_status"),
+        "score": metrics.get("discovery_plan_score"),
+    }
+    if plan_quality["status"] or plan_quality["score"] is not None:
+        kwargs["plan_quality"] = plan_quality
+    return kwargs
+
+
+def _metric_int(value: Any, default: int | None = None) -> int | None:
+    if value is None:
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _metric_float(value: Any, default: float | None = None) -> float | None:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class ReportQueryNotFound(ValueError):
@@ -42,6 +100,8 @@ class ReportQueryService:
         sync_candidate_audit_func: Callable[[str, list[dict], list[str]], str] = sync_candidate_audit_section,
         sanitize_candidates_func: Callable[[list[dict]], list[dict]] = sanitize_candidate_low_quality_sources,
         parse_quality_gate_func: Callable[[str], dict] = parse_quality_gate_from_markdown,
+        build_quality_gate_for_request_func: Callable[..., dict] = build_quality_gate_for_request,
+        attach_quality_gate_to_report_func: Callable[[ReportResponse, dict], ReportResponse] = attach_quality_gate_to_report,
         candidate_audit_summary_func: Callable[[list[dict], list[str]], dict] = candidate_audit_summary,
         render_candidate_audit_markdown_func: Callable[[list[dict], list[str]], str] = render_candidate_audit_markdown,
         report_tickers_func: Callable[[Any], list[str]] = report_tickers,
@@ -57,6 +117,8 @@ class ReportQueryService:
         self.sync_candidate_audit_func = sync_candidate_audit_func
         self.sanitize_candidates_func = sanitize_candidates_func
         self.parse_quality_gate_func = parse_quality_gate_func
+        self.build_quality_gate_for_request_func = build_quality_gate_for_request_func
+        self.attach_quality_gate_to_report_func = attach_quality_gate_to_report_func
         self.candidate_audit_summary_func = candidate_audit_summary_func
         self.render_candidate_audit_markdown_func = render_candidate_audit_markdown_func
         self.report_tickers_func = report_tickers_func
@@ -92,6 +154,10 @@ class ReportQueryService:
         promoted_tickers = self.report_tickers_func(report)
         markdown = self.remove_low_quality_lines_func(report.markdown)
         request = request_from_report_record(report.topic, promoted_tickers, run.payload_json if run is not None else None)
+        parsed_quality_gate = self.parse_quality_gate_func(markdown)
+        quality_gate = self._refresh_quality_gate(request, parsed_quality_gate)
+        if quality_gate:
+            markdown = self._attach_quality_gate(markdown, report, quality_gate)
         return {
             "id": report.id,
             "title": report.title,
@@ -99,7 +165,7 @@ class ReportQueryService:
             "tickers": promoted_tickers,
             "generated_at": report.generated_at.isoformat(),
             "markdown": self.sync_candidate_audit_func(markdown, candidates, promoted_tickers),
-            "quality_gate": self.parse_quality_gate_func(markdown),
+            "quality_gate": quality_gate,
             "request": request.model_dump(mode="json"),
             "workflow": run_payload.get("workflow") if isinstance(run_payload.get("workflow"), dict) else None,
             "auto_follow_up": auto_follow_up,
@@ -128,6 +194,32 @@ class ReportQueryService:
             "candidate_whitelist": candidates,
             "markdown": self.render_candidate_audit_markdown_func(candidates, promoted_tickers),
         }
+
+    def _refresh_quality_gate(
+        self,
+        request: ReportRequest,
+        parsed_quality_gate: dict | None,
+    ) -> dict | None:
+        if not isinstance(parsed_quality_gate, dict):
+            return parsed_quality_gate
+        metrics = parsed_quality_gate.get("metrics")
+        if not isinstance(metrics, dict) or not metrics:
+            return parsed_quality_gate
+        try:
+            return self.build_quality_gate_for_request_func(
+                request,
+                **_quality_gate_refresh_kwargs(metrics, len(request.tickers)),
+            )
+        except Exception:
+            return parsed_quality_gate
+
+    def _attach_quality_gate(self, markdown: str, report: Any, quality_gate: dict) -> str:
+        response_payload: dict[str, Any] = {"title": getattr(report, "title", ""), "markdown": markdown}
+        generated_at = getattr(report, "generated_at", None)
+        if generated_at is not None:
+            response_payload["generated_at"] = generated_at
+        response = ReportResponse(**response_payload)
+        return self.attach_quality_gate_to_report_func(response, quality_gate).markdown
 
     def delete_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:

@@ -65,6 +65,7 @@ def architecture_capabilities(
             if task_queue_status.get("ready")
             and task_queue_status.get("submission_contract_ready")
             and task_queue_status.get("task_async_bridge_guard_present")
+            and task_queue_status.get("compose_runtime_env_passthrough_ready")
             and api_status.get("structured_task_submission_errors")
             and api_status.get("task_failure_diagnostics_shared_service")
             and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
@@ -91,6 +92,10 @@ def architecture_capabilities(
                     "task_async_bridge_guard_present"
                 ),
                 "task_async_bridge": task_queue_status.get("task_async_bridge"),
+                "compose_runtime_env_passthrough_ready": task_queue_status.get(
+                    "compose_runtime_env_passthrough_ready"
+                ),
+                "compose_runtime_env": task_queue_status.get("compose_runtime_env"),
                 "submission_endpoints": task_queue_status.get("submission_endpoints"),
                 "status_endpoints": task_queue_status.get("status_endpoints"),
                 "structured_task_submission_errors": api_status.get("structured_task_submission_errors"),

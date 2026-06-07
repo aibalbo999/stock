@@ -49,6 +49,31 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
         == "${COMPANY_FILING_BROWSER_RENDER_TOKEN:-stock_ai_browserless_token}"
     )
     assert worker["environment"]["COMPANY_FILING_BROWSER_RENDER_CONCURRENCY"] == "4"
+    expected_runtime_env = {
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY:-}",
+        "GOOGLE_API_KEYS": "${GOOGLE_API_KEYS:-}",
+        "LLM_PROVIDER": "${LLM_PROVIDER:-google_genai}",
+        "PRIMARY_LLM_MODEL": "${PRIMARY_LLM_MODEL:-gemini-3.5-flash}",
+        "LLM_FALLBACK_MODELS": (
+            "${LLM_FALLBACK_MODELS:-gemini-2.5-flash,gemini-3.1-flash-lite,"
+            "gemini-2.5-flash-lite,gemma-4-31b-it}"
+        ),
+        "RAG_EMBEDDING_MODEL": "${RAG_EMBEDDING_MODEL:-gemini-embedding-2}",
+        "RAG_RERANKER_PROVIDER": "${RAG_RERANKER_PROVIDER:-auto}",
+        "COHERE_API_KEY": "${COHERE_API_KEY:-}",
+        "FINMIND_TOKEN": "${FINMIND_TOKEN:-}",
+        "FUGLE_API_KEY": "${FUGLE_API_KEY:-}",
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER": "${COMPANY_FILING_STRUCTURED_API_PROVIDER:-}",
+        "COMPANY_FILING_STRUCTURED_API_URL": "${COMPANY_FILING_STRUCTURED_API_URL:-}",
+        "COMPANY_FILING_STRUCTURED_API_TOKEN": "${COMPANY_FILING_STRUCTURED_API_TOKEN:-}",
+        "COMPANY_FILING_VISUAL_RAG_MODEL": "${COMPANY_FILING_VISUAL_RAG_MODEL:-gemini-3.5-flash}",
+        "LLM_OBSERVABILITY_PROVIDER": "${LLM_OBSERVABILITY_PROVIDER:-local}",
+        "LANGSMITH_API_KEY": "${LANGSMITH_API_KEY:-}",
+        "PHOENIX_ENDPOINT": "${PHOENIX_ENDPOINT:-}",
+    }
+    for key, expected_value in expected_runtime_env.items():
+        assert worker["environment"][key] == expected_value
+        assert beat["environment"][key] == expected_value
     assert worker["command"][:4] == [
         "celery",
         "-A",

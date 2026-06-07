@@ -28,6 +28,51 @@ TASK_ASYNC_BRIDGE_OPERATIONS = (
     "celery.after_close.refresh_data",
 )
 
+COMPOSE_RUNTIME_ENV_GROUPS = {
+    "llm": (
+        "LLM_PROVIDER",
+        "PRIMARY_LLM_MODEL",
+        "LOCAL_LLM_MODEL",
+        "LLM_FALLBACK_MODELS",
+        "GOOGLE_API_KEY",
+        "GOOGLE_API_KEYS",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "COHERE_API_KEY",
+        "LLM_MODEL_DAILY_REQUEST_BUDGETS",
+        "LLM_MODEL_QUOTA_COOLDOWN_SECONDS",
+    ),
+    "rag": (
+        "RAG_EMBEDDING_PROVIDER",
+        "RAG_EMBEDDING_MODEL",
+        "RAG_INDEX_SCHEMA_VERSION",
+        "RAG_RERANKER_PROVIDER",
+        "RAG_RERANKER_MODEL",
+        "RAG_LLM_RERANKER_ENABLED",
+    ),
+    "company_filings": (
+        "COMPANY_FILING_USER_AGENTS",
+        "COMPANY_FILING_PROXY_URLS",
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+        "COMPANY_FILING_STRUCTURED_API_TOKEN",
+        "COMPANY_FILING_VISUAL_RAG_ENABLED",
+        "COMPANY_FILING_VISUAL_RAG_MODEL",
+    ),
+    "market_data": (
+        "MARKET_PRICE_PROVIDER_ORDER",
+        "FINMIND_TOKEN",
+        "FUGLE_API_KEY",
+    ),
+    "observability": (
+        "LLM_OBSERVABILITY_ENABLED",
+        "LLM_OBSERVABILITY_PROVIDER",
+        "LLM_OBSERVABILITY_EXTERNAL_DISPATCH_ENABLED",
+        "LANGSMITH_API_KEY",
+        "PHOENIX_ENDPOINT",
+    ),
+}
+
 
 def task_queue_status(
     settings: Any,
@@ -39,6 +84,7 @@ def task_queue_status(
     broker_url = str(getattr(settings, "redis_url", "") or "")
     export_status = _task_export_status()
     async_bridge_status = _task_async_bridge_status()
+    compose_runtime_env_status = _compose_runtime_env_status()
     broker_ok = bool(redis_status.get("ok"))
     broker_configured = bool(broker_url.strip())
     worker_ping_timeout_seconds = max(
@@ -81,6 +127,8 @@ def task_queue_status(
         "task_export_error": export_status["task_export_error"],
         "task_async_bridge_guard_present": async_bridge_status["ready"],
         "task_async_bridge": async_bridge_status,
+        "compose_runtime_env_passthrough_ready": compose_runtime_env_status["ready"],
+        "compose_runtime_env": compose_runtime_env_status,
         "worker_ping_checked": worker_ping_status["worker_ping_checked"],
         "worker_ping_timeout_seconds": worker_ping_timeout_seconds,
         "worker_online": worker_ping_status["worker_online"],
@@ -103,6 +151,46 @@ def task_queue_status(
             ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
             ".venv/bin/python scripts/start_system.py --start-dependencies",
         ],
+    }
+
+
+def _compose_runtime_env_status() -> dict:
+    compose_path = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+    try:
+        compose_source = compose_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {
+            "ready": False,
+            "path": "docker-compose.yml",
+            "required_groups": COMPOSE_RUNTIME_ENV_GROUPS,
+            "present_groups": {},
+            "missing_by_group": {},
+            "fallback_reason": f"compose_source_unreadable:{exc.__class__.__name__}",
+        }
+    present_groups = {
+        group: {key: f"{key}:" in compose_source for key in keys}
+        for group, keys in COMPOSE_RUNTIME_ENV_GROUPS.items()
+    }
+    missing_by_group = {
+        group: [key for key, present in rows.items() if not present]
+        for group, rows in present_groups.items()
+    }
+    missing_by_group = {group: rows for group, rows in missing_by_group.items() if rows}
+    celery_services_use_anchor = (
+        "celery-worker:" in compose_source
+        and "celery-beat:" in compose_source
+        and "<<: *stock-ai-app" in compose_source
+        and "environment: &stock-ai-env" in compose_source
+    )
+    ready = bool(celery_services_use_anchor and not missing_by_group)
+    return {
+        "ready": ready,
+        "path": "docker-compose.yml",
+        "celery_services_use_anchor": celery_services_use_anchor,
+        "required_groups": COMPOSE_RUNTIME_ENV_GROUPS,
+        "present_groups": present_groups,
+        "missing_by_group": missing_by_group,
+        "fallback_reason": None if ready else "compose_runtime_env_passthrough_incomplete",
     }
 
 

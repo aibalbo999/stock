@@ -178,6 +178,13 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
         ("failed", "unsupported data operation task", "data_operation", False, "payload_validation"),
         ("failed", "ReadTimeout while fetching documents", "company_filings_fetch", True, "timeout"),
         ("failed", "MOPS returned HTTP 403 captcha", "company_filings_fetch", True, "data_source"),
+        (
+            "failed",
+            "Visual RAG 後援失敗：Visual RAG vision LLM API key 或本地 gateway 尚未配置。",
+            "company_filings_fetch",
+            True,
+            "visual_rag",
+        ),
         ("cancelled", "", "report_generation", False, "cancelled"),
     ]
 
@@ -192,6 +199,20 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
         assert diagnostic["category"] == expected_category
         assert diagnostic["summary"]
         assert diagnostic["next_steps"]
+
+
+def test_run_task_api_visual_rag_diagnostic_points_to_runtime_status() -> None:
+    diagnostic = RunTaskApiService._task_failure_diagnostic(
+        status="failed",
+        error="PDF 公司文件沒有可抽取文字；Visual RAG 後援失敗：RESOURCE_EXHAUSTED quota exceeded",
+        operation="company_filings_fetch",
+        retryable=True,
+    )
+
+    assert diagnostic["category"] == "visual_rag"
+    assert diagnostic["summary"] == "Visual RAG PDF 解析後援異常"
+    assert any("visual_rag_runtime" in step for step in diagnostic["next_steps"])
+    assert any("免費額度" in step for step in diagnostic["next_steps"])
 
 
 def test_run_task_api_alerts_on_queue_errors_and_repeated_failure_categories() -> None:

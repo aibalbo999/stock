@@ -473,6 +473,25 @@ def test_company_filing_error_classifies_validation_and_pdf_failures() -> None:
     assert categorize_company_filing_error(PDF_IMPORT_NO_TEXT_MESSAGE) == "pdf_no_text"
     assert categorize_company_filing_error("MOPS did not return a PDF download link") == "missing_pdf_link"
     assert categorize_company_filing_error("company website not found") == "website_not_found"
+    assert (
+        categorize_company_filing_error(
+            f"{PDF_IMPORT_NO_TEXT_MESSAGE}；Visual RAG 後援失敗："
+            "Visual RAG vision LLM API key 或本地 gateway 尚未配置。"
+        )
+        == "visual_rag_not_configured"
+    )
+    assert (
+        categorize_company_filing_error("Visual RAG 後援失敗：RESOURCE_EXHAUSTED quota exceeded")
+        == "visual_rag_quota"
+    )
+    assert (
+        categorize_company_filing_error("Visual RAG PDF 轉圖需要安裝 PyMuPDF")
+        == "visual_rag_missing_dependency"
+    )
+    assert (
+        categorize_company_filing_error("Visual RAG LLM extraction failed: empty response")
+        == "visual_rag_failed"
+    )
 
 
 def test_search_result_url_normalizes_duckduckgo_redirect() -> None:

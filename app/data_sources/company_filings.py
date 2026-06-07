@@ -623,6 +623,9 @@ def categorize_company_filing_error(error: Exception | str) -> str:
 
     message = str(error or "")
     lowered = message.lower()
+    visual_rag_category = _company_filing_visual_rag_error_category(message, lowered)
+    if visual_rag_category:
+        return visual_rag_category
     status_match = re.search(r"\b(403|404|429|500|502|503|504)\b", lowered)
     if status_match and ("http" in lowered or "error" in lowered or "client" in lowered or "server" in lowered):
         return _company_filing_http_status_category(int(status_match.group(1)))
@@ -665,6 +668,27 @@ def categorize_company_filing_error(error: Exception | str) -> str:
     if "company filing url cannot target" in lowered or "company filing url must" in lowered:
         return "unsafe_url"
     return "unknown"
+
+
+def _company_filing_visual_rag_error_category(message: str, lowered: str) -> str | None:
+    if "visual rag" not in lowered and "Visual RAG" not in message:
+        return None
+    if "pymupdf" in lowered or "fitz" in lowered or "missing_dependency:pymupdf" in lowered:
+        return "visual_rag_missing_dependency"
+    if "resource_exhausted" in lowered or "quota" in lowered or "daily limit" in lowered or "429" in lowered:
+        return "visual_rag_quota"
+    if (
+        "api key" in lowered
+        or "gateway" in lowered
+        or "missing_vision_llm_key_or_gateway" in lowered
+        or "尚未配置" in message
+        or "尚未啟用" in message
+        or "不支援" in message
+        or "unsupported_visual_rag" in lowered
+        or "需要支援圖片輸入" in message
+    ):
+        return "visual_rag_not_configured"
+    return "visual_rag_failed"
 
 
 def _company_filing_http_status_category(status_code: int) -> str:

@@ -849,6 +849,49 @@ def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None
     ]
 
 
+def test_company_filing_gap_summary_surfaces_visual_rag_actions() -> None:
+    rows = [
+        {
+            "ticker": "2382",
+            "company_name": "廣達",
+            "status": "needs_manual_source",
+            "next_step": "visual rag setup",
+            "missing_required_types": ["annual_report"],
+            "missing_recommended_types": [],
+            "error_categories": ["visual_rag_not_configured"],
+            "error_category_counts": {"visual_rag_not_configured": 1},
+            "retryable_error_count": 0,
+        },
+        {
+            "ticker": "3324",
+            "company_name": "雙鴻",
+            "status": "needs_manual_source",
+            "next_step": "visual rag quota",
+            "missing_required_types": ["annual_report"],
+            "missing_recommended_types": ["investor_presentation"],
+            "error_categories": ["visual_rag_quota"],
+            "error_category_counts": {"visual_rag_quota": 1},
+            "retryable_error_count": 0,
+        },
+    ]
+
+    summary = company_filing_gap_summary(rows)
+    actions = company_filing_next_actions(rows)
+
+    assert summary["setup_required_tickers"] == ["2382"]
+    assert summary["ocr_required_tickers"] == []
+    assert summary["visual_rag_setup_tickers"] == ["2382"]
+    assert summary["visual_rag_review_tickers"] == ["3324"]
+    assert summary["error_category_counts"] == {
+        "visual_rag_not_configured": 1,
+        "visual_rag_quota": 1,
+    }
+    assert [action["action"] for action in actions] == [
+        "configure_company_filing_visual_rag",
+        "review_visual_rag_or_manual_import",
+    ]
+
+
 def test_company_filing_status_can_request_broader_search() -> None:
     assert company_filing_status([], ["annual_report"], []) == "broader_search_recommended"
 

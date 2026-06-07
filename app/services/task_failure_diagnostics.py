@@ -15,6 +15,24 @@ DATA_OPERATION_TASKS = {
 
 
 TASK_FAILURE_CATEGORIES = {
+    "visual_rag": {
+        "severity": "warning",
+        "summary": "Visual RAG PDF 解析後援異常",
+        "keywords": (
+            "visual rag",
+            "vision llm",
+            "pymupdf",
+            "fitz",
+            "company_filing_visual_rag",
+            "missing_vision_llm_key_or_gateway",
+            "unsupported_visual_rag",
+            "pdf 轉圖",
+        ),
+        "next_steps": [
+            "查看 /services/status 的 company_filings.visual_rag_runtime 與 fallback_reason。",
+            "確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL、vision LLM key/gateway 與免費額度；額度用完時等待重置或切換已配置 fallback 模型。",
+        ],
+    },
     "quota": {
         "severity": "warning",
         "summary": "模型/API 額度或速率限制",

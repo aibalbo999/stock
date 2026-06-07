@@ -970,7 +970,16 @@ class IngestionPipeline:
 
 def classify_company_filing_error(message: str) -> str:
     category = categorize_company_filing_error(message)
-    if category in {"pdf_no_text", "encrypted_pdf", "pdf_parse_error", "unsupported_pdf_parser"}:
+    if category in {
+        "pdf_no_text",
+        "encrypted_pdf",
+        "pdf_parse_error",
+        "unsupported_pdf_parser",
+        "visual_rag_failed",
+        "visual_rag_missing_dependency",
+        "visual_rag_not_configured",
+        "visual_rag_quota",
+    }:
         return "manual_text_required"
     if category in {
         "blocked_or_forbidden",
@@ -1009,6 +1018,14 @@ COMPANY_FILING_PDF_SETUP_CATEGORIES = {
     "missing_pdf_dependency",
     "unsupported_pdf_parser",
 }
+COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES = {
+    "visual_rag_missing_dependency",
+    "visual_rag_not_configured",
+}
+COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES = {
+    "visual_rag_failed",
+    "visual_rag_quota",
+}
 COMPANY_FILING_TEXT_RECOVERY_CATEGORIES = {
     "encrypted_pdf",
     "pdf_no_text",
@@ -1026,6 +1043,8 @@ COMPANY_FILING_BROADEN_SEARCH_CATEGORIES = {
 COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES = {
     *COMPANY_FILING_BROWSER_SETUP_CATEGORIES,
     *COMPANY_FILING_PDF_SETUP_CATEGORIES,
+    *COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES,
+    *COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES,
     *COMPANY_FILING_TEXT_RECOVERY_CATEGORIES,
     "unsafe_url",
     "unknown",
@@ -1175,6 +1194,10 @@ def company_filing_next_step(
         return "官方頁面疑似需要動態渲染；請設定 Browserless/Playwright 渲染服務後再自動補抓。"
     if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
         return "官方頁面疑似被反爬蟲或登入頁擋住；系統應改用 Proxy 或 Browser render/unlocker 後重試官方搜尋。"
+    if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
+        return "掃描型或複雜 PDF 需要 Visual RAG 後援；請確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL 與 vision LLM key/gateway 已配置。"
+    if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
+        return "Visual RAG 後援已觸發但未產生可用文字；請檢查 VLM 額度/模型回應，或改用官方 HTML/文字版與人工匯入。"
     if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
         return "PDF 解析相依套件不足；請安裝 PDF 額外相依套件後再重試公司公開文件補抓。"
     if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
@@ -1219,8 +1242,12 @@ def company_filing_next_action_type(row: dict) -> str:
     category_set = set(row.get("error_categories") or [])
     if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
         return "configure_company_filing_browser_render"
+    if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
+        return "configure_company_filing_visual_rag"
     if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
         return "install_company_filing_pdf_dependencies"
+    if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
+        return "review_visual_rag_or_manual_import"
     if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
         return "ocr_or_manual_company_filing_text_import"
     if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
@@ -1239,6 +1266,8 @@ def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
     browser_required = []
     setup_required = []
     ocr_required = []
+    visual_rag_setup = []
+    visual_rag_review = []
     broaden_search = []
     manual_import = []
     for row in per_ticker_results:
@@ -1257,8 +1286,13 @@ def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
             browser_required.append(ticker)
         if category_set & (COMPANY_FILING_BROWSER_SETUP_CATEGORIES | COMPANY_FILING_PDF_SETUP_CATEGORIES):
             setup_required.append(ticker)
+        if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
+            setup_required.append(ticker)
+            visual_rag_setup.append(ticker)
         if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
             ocr_required.append(ticker)
+        if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
+            visual_rag_review.append(ticker)
         if row.get("status") == "broader_search_recommended" or category_set & COMPANY_FILING_BROADEN_SEARCH_CATEGORIES:
             broaden_search.append(ticker)
         if row.get("status") == "needs_manual_source":
@@ -1288,6 +1322,8 @@ def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
         "browser_recovery_tickers": sorted(set(browser_required)),
         "setup_required_tickers": sorted(set(setup_required)),
         "ocr_required_tickers": sorted(set(ocr_required)),
+        "visual_rag_setup_tickers": sorted(set(visual_rag_setup)),
+        "visual_rag_review_tickers": sorted(set(visual_rag_review)),
         "broaden_search_tickers": sorted(set(broaden_search)),
         "manual_import_tickers": sorted(set(manual_import)),
         "recommendation": recommendation,

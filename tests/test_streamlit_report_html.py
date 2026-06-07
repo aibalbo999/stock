@@ -1515,6 +1515,38 @@ def test_follow_up_blocker_action_rows_prefer_rerun_next_actions() -> None:
     assert rows[0]["原因"] == "請補官方文件：annual_report"
 
 
+def test_follow_up_blocker_action_rows_label_visual_rag_actions() -> None:
+    helpers = load_report_helpers()
+
+    rows = helpers["follow_up_blocker_action_rows"](
+        {
+            "results": {
+                "ingest_company_filings:2382": {
+                    "next_actions": [
+                        {
+                            "ticker": "2382",
+                            "company_name": "廣達",
+                            "action": "configure_company_filing_visual_rag",
+                            "reason": "請確認 PyMuPDF、VLM key 與模型。",
+                        },
+                        {
+                            "ticker": "3324",
+                            "company_name": "雙鴻",
+                            "action": "review_visual_rag_or_manual_import",
+                            "reason": "Visual RAG 額度用完。",
+                        },
+                    ]
+                }
+            }
+        }
+    )
+
+    assert [row["下一步"] for row in rows] == [
+        "設定 Visual RAG",
+        "檢查 Visual RAG/人工匯入",
+    ]
+
+
 def test_follow_up_blocker_action_rows_show_completion_gap() -> None:
     helpers = load_report_helpers()
 

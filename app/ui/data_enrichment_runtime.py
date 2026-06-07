@@ -60,7 +60,12 @@ def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
         {
             "能力": "Visual RAG",
             "狀態": _ready_label(bool(company_filings.get("visual_rag_runtime_available"))),
-            "目前": str(company_filings.get("visual_rag_model") or "-"),
+            "目前": str(
+                company_filings.get("visual_rag_runtime_model")
+                or visual_rag_runtime.get("runtime_model")
+                or company_filings.get("visual_rag_model")
+                or "-"
+            ),
             "細節": _runtime_detail(visual_rag_runtime),
             "下一步": (
                 "檢查 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL 與 vision LLM key/gateway。"
@@ -138,6 +143,15 @@ def company_filing_visual_rag_model_chain_rows(service_snapshot: dict) -> list[d
         for row in model_chain.get("rejected_candidates") or []
         if isinstance(row, dict)
     }
+    runtime_model = str(
+        company_filings.get("visual_rag_runtime_model")
+        or (
+            company_filings.get("visual_rag_runtime")
+            if isinstance(company_filings.get("visual_rag_runtime"), dict)
+            else {}
+        ).get("runtime_model")
+        or ""
+    )
     quota_mode = (
         "hard_routing"
         if model_chain.get("quota_hard_routing_enabled")
@@ -148,6 +162,7 @@ def company_filing_visual_rag_model_chain_rows(service_snapshot: dict) -> list[d
             "順位": row.get("rank"),
             "模型": row.get("model") or "-",
             "Vision": "yes" if row.get("vision_supported") else "excluded",
+            "Runtime": "selected" if str(row.get("model") or "") == runtime_model else "-",
             "Key": _key_status(row),
             "每日請求額度": _budget_value(row.get("request_budget")),
             "Token 額度": _budget_value(row.get("token_budget")),

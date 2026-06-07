@@ -157,6 +157,10 @@ def company_filing_status(
             "renderer_dependency_available"
         ),
         "visual_rag_model": visual_rag_runtime.get("model"),
+        "visual_rag_runtime_model": visual_rag_runtime.get("runtime_model"),
+        "visual_rag_runtime_model_selection_reason": visual_rag_runtime.get(
+            "runtime_model_selection_reason"
+        ),
         "visual_rag_model_supported": visual_rag_runtime.get("model_supported"),
         "visual_rag_fallback_reason": visual_rag_runtime.get("fallback_reason"),
         "visual_rag_max_pages": visual_rag_runtime.get("max_pages"),

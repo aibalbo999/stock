@@ -157,7 +157,18 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
     assert status["company_filings"]["visual_rag_quota_governed"] is True
     assert isinstance(status["company_filings"]["visual_rag_runtime_available"], bool)
     assert status["company_filings"]["visual_rag_model"] == Settings().company_filing_visual_rag_model
+    assert status["company_filings"]["visual_rag_runtime_model"] == status[
+        "company_filings"
+    ]["visual_rag_runtime"].get("runtime_model")
+    assert status["company_filings"]["visual_rag_runtime_model_selection_reason"] == status[
+        "company_filings"
+    ]["visual_rag_runtime"].get("runtime_model_selection_reason")
     assert isinstance(status["company_filings"]["visual_rag_model_supported"], bool)
+    assert "runtime_model" in status["company_filings"]["visual_rag_runtime"]
+    assert "runtime_model_selection_reason" in status["company_filings"]["visual_rag_runtime"]
+    assert "provider_compatible_vision_candidates" in status["company_filings"][
+        "visual_rag_model_chain"
+    ]
     assert status["company_filings"]["visual_rag_max_pages"] == Settings().company_filing_visual_rag_max_pages
     assert status["company_filings"]["visual_rag_dpi"] == 144
     assert status["company_filings"]["visual_rag_fallback_reason"] == status["company_filings"][
@@ -215,6 +226,7 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
         "company_filings"
     ]["visual_rag_fallback_reason"]
     assert "fallback_reason" in matrix["ai_rag"]["visual_rag"]["evidence"]["runtime"]
+    assert "runtime_model" in matrix["ai_rag"]["visual_rag"]["evidence"]["runtime"]
 
 
 def test_visual_rag_capability_rejects_non_vision_report_model(monkeypatch) -> None:

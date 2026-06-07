@@ -112,9 +112,16 @@ def test_visual_rag_status_exposes_quota_aware_vision_model_chain(monkeypatch) -
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
     ]
+    assert chain["provider_compatible_vision_candidate_models"] == [
+        "models/gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    ]
     assert chain["vision_candidates"][0]["model_key"] == "gemini-3.5-flash"
     assert chain["vision_candidates"][0]["request_budget"] == 250
     assert chain["vision_candidates"][0]["key_configured"] is True
+    assert status["runtime_model"] == "models/gemini-3.5-flash"
+    assert status["runtime_model_selection_reason"] == "preferred_visual_rag_model"
     rejected = {item["model"]: item["rejection_reason"] for item in chain["rejected_candidates"]}
     assert rejected == {
         "imagen-4-ultra-generate": "non_vision_media_embedding_or_live_model",
@@ -123,6 +130,39 @@ def test_visual_rag_status_exposes_quota_aware_vision_model_chain(monkeypatch) -
         "gemini-3-flash-live": "non_vision_media_embedding_or_live_model",
     }
     assert chain["excluded_non_vision_models"] == list(rejected)
+
+
+def test_visual_rag_status_selects_litellm_vision_fallback_when_preferred_key_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("app.services.visual_rag._module_available", lambda name: True)
+    provider_auth = "configured"
+    settings = Settings(
+        _env_file=None,
+        llm_provider="litellm",
+        company_filing_visual_rag_enabled=True,
+        company_filing_visual_rag_model="models/gemini-3.5-flash",
+        llm_fallback_models="openai/gpt-4o-mini,gemma-4-31b-it",
+        local_llm_model="",
+        openai_api_key=provider_auth,
+        google_api_key=None,
+    )
+
+    status = visual_rag_status(settings)
+
+    assert status["model"] == "models/gemini-3.5-flash"
+    assert status["model_supported"] is True
+    assert status["vision_model_key_configured"] is False
+    assert status["runtime_available"] is True
+    assert status["runtime_model"] == "openai/gpt-4o-mini"
+    assert status["runtime_model_key_configured"] is True
+    assert status["runtime_model_provider_compatible"] is True
+    assert status["runtime_model_selection_reason"] == "fallback_visual_rag_model"
+    assert status["fallback_reason"] is None
+    assert status["model_chain"]["provider_compatible_vision_candidate_models"] == [
+        "models/gemini-3.5-flash",
+        "openai/gpt-4o-mini",
+    ]
 
 
 def test_render_pdf_page_images_uses_pymupdf(monkeypatch) -> None:
@@ -210,6 +250,49 @@ def test_extract_visual_pdf_text_adds_provenance(monkeypatch) -> None:
     assert "mode=fallback" in text
     assert "model=gemini-vision-test" in text
     assert "latency_ms=12.34" in text
+    assert "營收 | 毛利率" in text
+
+
+def test_extract_visual_pdf_text_uses_selected_runtime_fallback_model(monkeypatch) -> None:
+    provider_auth = "configured"
+    settings = Settings(
+        _env_file=None,
+        llm_provider="litellm",
+        company_filing_visual_rag_enabled=True,
+        company_filing_visual_rag_model="gemini-3.5-flash",
+        llm_fallback_models="openai/gpt-4o-mini",
+        local_llm_model="",
+        openai_api_key=provider_auth,
+        google_api_key=None,
+    )
+
+    class FakeVisionClient:
+        def generate_vision_with_metadata(self, prompt, *, images, model=None):
+            assert "台灣上市櫃公司財報" in prompt
+            assert model == "openai/gpt-4o-mini"
+            return LLMResult(
+                text="營收 | 毛利率\n100 | 42%",
+                model=model,
+                provider="litellm",
+                attempts=({"provider": "litellm", "outcome": "success"},),
+                observability={"latency_ms": 10.0, "total_token_estimate": 40},
+            )
+
+    monkeypatch.setattr("app.services.visual_rag._module_available", lambda name: True)
+    monkeypatch.setattr(
+        "app.services.visual_rag.render_pdf_page_images",
+        lambda *_args, **_kwargs: [VisualPageImage(1, "image/png", b"page")],
+    )
+
+    text = extract_visual_pdf_text(
+        b"%PDF fake",
+        reason="preferred key missing",
+        llm_client=FakeVisionClient(),
+        settings=settings,
+    )
+
+    assert "model=openai/gpt-4o-mini" in text
+    assert "preferred_model=gemini-3.5-flash" in text
     assert "營收 | 毛利率" in text
 
 

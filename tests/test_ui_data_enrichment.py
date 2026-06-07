@@ -81,10 +81,36 @@ def test_company_filing_runtime_rows_hide_when_service_status_missing() -> None:
     assert company_filing_runtime_rows({}) == []
 
 
+def test_company_filing_runtime_rows_show_visual_rag_runtime_model() -> None:
+    rows = company_filing_runtime_rows(
+        {
+            "company_filings": {
+                "pdf_parser": "auto",
+                "pdf_extract_tables": True,
+                "pdf_parser_available": True,
+                "pdf_table_parser_available": True,
+                "pdf_parser_dependencies": {},
+                "visual_rag_runtime_available": True,
+                "visual_rag_model": "gemini-3.5-flash",
+                "visual_rag_runtime_model": "openai/gpt-4o-mini",
+                "visual_rag_runtime": {
+                    "runtime_model": "openai/gpt-4o-mini",
+                    "fallback_reason": None,
+                },
+            }
+        }
+    )
+
+    visual_row = next(row for row in rows if row["能力"] == "Visual RAG")
+    assert visual_row["狀態"] == "ready"
+    assert visual_row["目前"] == "openai/gpt-4o-mini"
+
+
 def test_company_filing_visual_rag_model_chain_rows_surface_quota_and_rejections() -> None:
     rows = company_filing_visual_rag_model_chain_rows(
         {
             "company_filings": {
+                "visual_rag_runtime_model": "gemini-3.5-flash",
                 "visual_rag_model_chain": {
                     "quota_hard_routing_enabled": True,
                     "candidate_rows": [
@@ -143,6 +169,7 @@ def test_company_filing_visual_rag_model_chain_rows_surface_quota_and_rejections
             "順位": 1,
             "模型": "gemini-3.5-flash",
             "Vision": "yes",
+            "Runtime": "selected",
             "Key": "ready",
             "每日請求額度": 250,
             "Token 額度": "-",
@@ -154,6 +181,7 @@ def test_company_filing_visual_rag_model_chain_rows_surface_quota_and_rejections
             "順位": 2,
             "模型": "imagen-4-ultra-generate",
             "Vision": "excluded",
+            "Runtime": "-",
             "Key": "-",
             "每日請求額度": "-",
             "Token 額度": "-",
@@ -165,6 +193,7 @@ def test_company_filing_visual_rag_model_chain_rows_surface_quota_and_rejections
             "順位": 3,
             "模型": "gemma-4-31b-it",
             "Vision": "excluded",
+            "Runtime": "-",
             "Key": "-",
             "每日請求額度": 14400,
             "Token 額度": "-",

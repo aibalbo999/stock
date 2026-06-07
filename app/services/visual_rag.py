@@ -114,13 +114,16 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
     provider = str(settings.llm_provider or "gemini_http").strip().lower().replace("-", "_")
     vision_key_configured = _vision_model_key_configured(model, settings)
     model_chain = visual_rag_model_chain(settings)
+    runtime_candidate = _visual_rag_runtime_candidate(
+        model_chain=model_chain,
+    )
     runtime_available = bool(
         enabled
         and mode_supported
         and augment_policy_supported
         and model_supported
         and renderer_dependency_available
-        and vision_key_configured
+        and runtime_candidate.get("key_configured")
     )
     fallback_reason = None
     if not enabled:
@@ -133,7 +136,7 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
         fallback_reason = "unsupported_visual_rag_model"
     elif not renderer_dependency_available:
         fallback_reason = "missing_dependency:pymupdf"
-    elif not vision_key_configured:
+    elif not runtime_candidate.get("key_configured"):
         fallback_reason = "missing_vision_llm_key_or_gateway"
 
     return {
@@ -151,6 +154,10 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
         "model": model,
         "model_supported": model_supported,
         "vision_model_key_configured": vision_key_configured,
+        "runtime_model": runtime_candidate.get("model"),
+        "runtime_model_key_configured": runtime_candidate.get("key_configured"),
+        "runtime_model_selection_reason": runtime_candidate.get("selection_reason"),
+        "runtime_model_provider_compatible": runtime_candidate.get("provider_compatible"),
         "max_pages": max(1, int(settings.company_filing_visual_rag_max_pages)),
         "dpi": max(72, int(settings.company_filing_visual_rag_dpi)),
         "timeout_seconds": max(1.0, float(settings.company_filing_visual_rag_timeout_seconds)),
@@ -173,6 +180,9 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
                 "preferred_visual_model_then_llm_fallbacks_filtered_to_vision_capable"
             ),
             "vision_candidate_count": len(model_chain.get("vision_candidates") or []),
+            "runtime_candidate_count": len(
+                model_chain.get("provider_compatible_vision_candidates") or []
+            ),
             "rejected_non_vision_models": model_chain.get("excluded_non_vision_models"),
         },
         "model_chain": model_chain,
@@ -257,6 +267,24 @@ def visual_rag_model_chain(settings: Settings | None = None) -> dict[str, Any]:
             }
             rejected_candidates.append(rejected_row)
 
+    provider = str(settings.llm_provider or "gemini_http").strip().lower().replace("-", "_")
+    provider_compatible_vision_candidates = [
+        {
+            **candidate,
+            "provider_compatible": True,
+            "selection_reason": (
+                "preferred_visual_rag_model"
+                if int(candidate.get("rank") or 0) == 1
+                else "fallback_visual_rag_model"
+            ),
+        }
+        for candidate in vision_candidates
+        if _visual_rag_provider_can_call_model(
+            str(candidate.get("model") or ""),
+            provider=provider,
+        )
+    ]
+
     return {
         "strategy": "smartest_first_then_budget_degrade_for_vision_capable_models",
         "selection_rule": (
@@ -276,6 +304,10 @@ def visual_rag_model_chain(settings: Settings | None = None) -> dict[str, Any]:
         "candidate_rows": rows,
         "vision_candidates": vision_candidates,
         "vision_candidate_models": [item["model"] for item in vision_candidates],
+        "provider_compatible_vision_candidates": provider_compatible_vision_candidates,
+        "provider_compatible_vision_candidate_models": [
+            item["model"] for item in provider_compatible_vision_candidates
+        ],
         "rejected_candidates": rejected_candidates,
         "excluded_non_vision_models": [
             item["model"] for item in rejected_candidates
@@ -320,7 +352,7 @@ def extract_visual_pdf_text(
         raise ValueError(VISUAL_RAG_UNSUPPORTED_MODEL_MESSAGE)
     if not status["renderer_dependency_available"]:
         raise ValueError(VISUAL_RAG_MISSING_RENDERER_MESSAGE)
-    if not status["vision_model_key_configured"]:
+    if not status["runtime_model_key_configured"]:
         raise ValueError(VISUAL_RAG_MISSING_KEY_MESSAGE)
 
     images = render_pdf_page_images(
@@ -336,7 +368,7 @@ def extract_visual_pdf_text(
     result = client.generate_vision_with_metadata(
         prompt,
         images=[image.as_llm_payload() for image in images],
-        model=str(status["model"]),
+        model=str(status.get("runtime_model") or status["model"]),
     )
     if result.fallback or not result.text.strip():
         raise ValueError(f"Visual RAG LLM extraction failed: {result.text}")
@@ -512,11 +544,14 @@ def with_visual_rag_provenance(
     observability: dict[str, object] | None = None,
 ) -> str:
     observability = observability or {}
+    runtime_model = status.get("runtime_model") or status.get("model")
     marker = (
         f"{VISUAL_RAG_PROVENANCE_PREFIX} mode={status.get('mode')}; "
         f"renderer={status.get('renderer')}; pages={page_count}; "
-        f"model={status.get('model')}; reason={reason or 'not_specified'}"
+        f"model={runtime_model}; reason={reason or 'not_specified'}"
     )
+    if runtime_model != status.get("model"):
+        marker += f"; preferred_model={status.get('model')}"
     latency = observability.get("latency_ms")
     token_estimate = observability.get("total_token_estimate")
     if latency is not None:
@@ -527,7 +562,7 @@ def with_visual_rag_provenance(
 
 
 def _vision_model_key_configured(model: str, settings: Settings) -> bool:
-    normalized = str(model or "").strip().lower()
+    normalized = _canonical_visual_rag_model_name(model)
     if not normalized:
         return False
     if normalized.startswith(("gemini", "gemma", "google/")):
@@ -545,10 +580,38 @@ def _vision_model_key_configured(model: str, settings: Settings) -> bool:
     )
 
 
+def _visual_rag_runtime_candidate(
+    *,
+    model_chain: dict[str, Any],
+) -> dict[str, Any]:
+    compatible_candidates = [
+        candidate
+        for candidate in model_chain.get("provider_compatible_vision_candidates") or []
+        if isinstance(candidate, dict)
+    ]
+    for candidate in compatible_candidates:
+        if candidate.get("key_configured"):
+            return candidate
+    return {
+        "model": None,
+        "key_configured": False,
+        "provider_compatible": False,
+        "selection_reason": "no_provider_compatible_vision_model_with_key",
+    }
+
+
+def _visual_rag_provider_can_call_model(model: str, *, provider: str) -> bool:
+    normalized_provider = str(provider or "").strip().lower().replace("-", "_")
+    normalized_model = _canonical_visual_rag_model_name(model)
+    if normalized_provider == "litellm":
+        return True
+    if normalized_provider in {"gemini_http", "google_genai"}:
+        return normalized_model.startswith("gemini")
+    return normalized_model.startswith(("ollama/", "lm_studio/", "local/"))
+
+
 def _is_visual_rag_model_candidate(model: str) -> bool:
-    normalized = str(model or "").strip().lower()
-    if normalized.startswith(("models/", "gemini/", "google/")):
-        normalized = normalized.split("/", 1)[1]
+    normalized = _canonical_visual_rag_model_name(model)
     if normalized.startswith("gemma"):
         return False
     if not normalized.startswith(("gemini", "gpt-", "openai/", "claude", "anthropic/")):
@@ -557,6 +620,13 @@ def _is_visual_rag_model_candidate(model: str) -> bool:
         blocked in normalized
         for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
     )
+
+
+def _canonical_visual_rag_model_name(model: str) -> str:
+    normalized = str(model or "").strip().lower()
+    if normalized.startswith(("models/", "gemini/", "google/")):
+        return normalized.split("/", 1)[1]
+    return normalized
 
 
 def _split_model_list(value: str) -> list[str]:

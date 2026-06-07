@@ -136,6 +136,7 @@ class ReportServiceFactoryMixin:
             append_candidate_audit_func=d["append_candidate_audit_if_missing"],
             candidate_audit_summary_func=d["candidate_audit_summary"],
             render_candidate_audit_markdown_func=d["render_candidate_audit_markdown"],
+            settings_provider=d["get_settings"],
         )
 
     def company_data_audit_api(self):

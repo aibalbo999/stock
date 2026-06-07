@@ -440,6 +440,13 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
             deleted_ids.append(report_id)
             return report_id == 1
 
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def output_paths_for_report(self, report_id: int) -> list[str]:
+            return []
+
     @contextmanager
     def fake_session_scope():
         yield "session"
@@ -447,6 +454,7 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
     service = ReportQueryService(
         session_scope_factory=fake_session_scope,
         report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
     )
 
     assert service.list_reports(3) == [
@@ -458,7 +466,7 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
             "retention_policy": "latest_per_topic",
         }
     ]
-    assert service.delete_report(1) == {"deleted": True, "id": 1}
+    assert service.delete_report(1) == {"deleted": True, "id": 1, "deleted_report_files": 0}
 
     try:
         service.delete_report(2)
@@ -467,6 +475,54 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
     else:
         raise AssertionError("missing report deletion should raise")
     assert deleted_ids == [1, 2]
+
+
+def test_report_query_service_delete_report_removes_safe_markdown_file(tmp_path) -> None:
+    report_path = tmp_path / "20260607_080000_AI.md"
+    report_path.write_text("# report", encoding="utf-8")
+    duplicate_path = str(report_path)
+    non_markdown_path = tmp_path / "notes.txt"
+    non_markdown_path.write_text("keep", encoding="utf-8")
+    outside_path = tmp_path.parent / f"{tmp_path.name}_outside.md"
+    outside_path.write_text("# outside", encoding="utf-8")
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def delete(self, report_id: int) -> bool:
+            assert report_id == 7
+            return True
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def output_paths_for_report(self, report_id: int) -> list[str]:
+            assert report_id == 7
+            return [
+                str(report_path),
+                duplicate_path,
+                str(non_markdown_path),
+                str(outside_path),
+            ]
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        settings_provider=lambda: SimpleNamespace(report_dir=tmp_path),
+    )
+
+    assert service.delete_report(7) == {"deleted": True, "id": 7, "deleted_report_files": 1}
+    assert not report_path.exists()
+    assert non_markdown_path.exists()
+    assert outside_path.exists()
+    outside_path.unlink()
 
 
 def test_report_query_service_summarizes_latest_report_quality_gates() -> None:

@@ -324,6 +324,11 @@ class ReportRepository:
         report = self.session.get(GeneratedReport, report_id)
         if report is None:
             return False
+        self.session.execute(
+            update(AnalysisRun)
+            .where(AnalysisRun.report_id == report_id)
+            .values(report_id=None, output_path=None)
+        )
         self.session.delete(report)
         self.session.flush()
         return True
@@ -796,6 +801,14 @@ class AnalysisRunRepository:
             .limit(1)
         )
         return self.session.scalars(statement).first()
+
+    def output_paths_for_report(self, report_id: int) -> list[str]:
+        statement = (
+            select(AnalysisRun.output_path)
+            .where(AnalysisRun.report_id == report_id, AnalysisRun.output_path.is_not(None))
+            .order_by(AnalysisRun.started_at.desc())
+        )
+        return [str(path) for path in self.session.scalars(statement) if path]
 
     def get_by_celery_task_id(self, task_id: str) -> AnalysisRun | None:
         statement = select(AnalysisRun).order_by(AnalysisRun.started_at.desc())

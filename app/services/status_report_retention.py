@@ -52,6 +52,15 @@ def report_retention_status() -> dict:
         and "prune_older_report_files_by_topic" in data_operations_source,
         "maintenance_returns_policy": '"report_retention_policy": "latest_per_topic"'
         in data_operations_source,
+        "manual_delete_clears_run_links": ".values(report_id=None, output_path=None)"
+        in persistence_source,
+        "manual_delete_prunes_markdown": "delete_report_markdown_files("
+        in report_query_source
+        and '"deleted_report_files"' in report_query_source,
+        "manual_delete_markdown_guardrail": "def _safe_report_markdown_path("
+        in report_query_source
+        and 'suffix.lower() != ".md"' in report_query_source
+        and "report_dir not in resolved.parents" in report_query_source,
         "settings_ui_cleanup_action": '"latest_reports_only": True' in maintenance_ui_source
         and '"orphan_report_refs": True' in maintenance_ui_source,
         "covered_paths": [

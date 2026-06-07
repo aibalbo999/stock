@@ -200,6 +200,33 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
         session.close()
 
 
+def test_report_repository_delete_clears_analysis_run_link_and_output_path() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        report_repository = ReportRepository(session)
+        run_repository = AnalysisRunRepository(session)
+        report = report_repository.create(
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            ReportResponse(title="AI report", markdown="# report"),
+        )
+        run = run_repository.start("test", {})
+        run_repository.mark_success(run.id, report.id, "reports/20260607_080000_AI.md")
+        session.commit()
+
+        assert run_repository.output_paths_for_report(report.id) == ["reports/20260607_080000_AI.md"]
+        assert report_repository.delete(report.id) is True
+        session.commit()
+
+        restored_run = run_repository.get(run.id)
+        assert restored_run.report_id is None
+        assert restored_run.output_path is None
+    finally:
+        session.close()
+
+
 def test_report_repository_lists_latest_report_per_topic_for_legacy_duplicates() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

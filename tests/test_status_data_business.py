@@ -56,6 +56,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_markdown_by_topic"] is True
     assert report_retention["evidence"]["run_links_cleared_for_pruned_reports"] is True
+    assert report_retention["evidence"]["manual_delete_clears_run_links"] is True
+    assert report_retention["evidence"]["manual_delete_prunes_markdown"] is True
+    assert report_retention["evidence"]["manual_delete_markdown_guardrail"] is True
     assert report_retention["evidence"]["markdown_retention_smoke_passed"] is True
     markdown_smoke = report_retention["evidence"]["markdown_retention_smoke"]
     assert markdown_smoke["passed"] is True

@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.candidate_audit import (
     candidate_audit_summary,
     render_candidate_audit_markdown,
@@ -118,6 +120,7 @@ class ReportQueryService:
         candidate_audit_summary_func: Callable[[list[dict], list[str]], dict] = candidate_audit_summary,
         render_candidate_audit_markdown_func: Callable[[list[dict], list[str]], str] = render_candidate_audit_markdown,
         report_tickers_func: Callable[[Any], list[str]] = report_tickers,
+        settings_provider: Callable[[], Any] = get_settings,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.report_repository_cls = report_repository_cls
@@ -135,6 +138,7 @@ class ReportQueryService:
         self.candidate_audit_summary_func = candidate_audit_summary_func
         self.render_candidate_audit_markdown_func = render_candidate_audit_markdown_func
         self.report_tickers_func = report_tickers_func
+        self.settings_provider = settings_provider
 
     def list_reports(self, limit: int = 20) -> list[dict]:
         with self.session_scope_factory() as session:
@@ -491,11 +495,70 @@ class ReportQueryService:
         return alerts[:10]
 
     def delete_report(self, report_id: int) -> dict:
+        output_paths: list[str] = []
         with self.session_scope_factory() as session:
+            run_repository = self.analysis_run_repository_cls(session)
+            output_paths_for_report = getattr(run_repository, "output_paths_for_report", None)
+            if callable(output_paths_for_report):
+                output_paths = output_paths_for_report(report_id)
+            else:
+                run = run_repository.get_by_report_id(report_id)
+                output_path = getattr(run, "output_path", None) if run is not None else None
+                output_paths = [str(output_path)] if output_path else []
             deleted = self.report_repository_cls(session).delete(report_id)
         if not deleted:
             raise ReportQueryNotFound("report not found")
-        return {"deleted": True, "id": report_id}
+        return {
+            "deleted": True,
+            "id": report_id,
+            "deleted_report_files": delete_report_markdown_files(
+                output_paths,
+                report_dir=Path(getattr(self.settings_provider(), "report_dir", Path("reports"))),
+            ),
+        }
+
+
+def delete_report_markdown_files(output_paths: list[str], *, report_dir: Path) -> int:
+    deleted = 0
+    seen: set[Path] = set()
+    root = _resolved_report_dir(report_dir)
+    for output_path in output_paths:
+        candidate = _safe_report_markdown_path(output_path, root)
+        if candidate is None or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            candidate.unlink()
+            deleted += 1
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+    return deleted
+
+
+def _safe_report_markdown_path(output_path: str, report_dir: Path) -> Path | None:
+    if not str(output_path or "").strip():
+        return None
+    candidate = Path(output_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    if resolved.suffix.lower() != ".md" or not resolved.is_file():
+        return None
+    if resolved != report_dir and report_dir not in resolved.parents:
+        return None
+    return resolved
+
+
+def _resolved_report_dir(report_dir: Path) -> Path:
+    root = report_dir.expanduser()
+    if not root.is_absolute():
+        root = Path.cwd() / root
+    return root.resolve()
 
 
 def _count_values(rows: list[dict], key: str) -> dict[str, int]:

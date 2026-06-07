@@ -55,6 +55,9 @@ def data_business_capabilities(
             and report_retention_status.get("maintenance_prunes_db_by_topic")
             and report_retention_status.get("maintenance_prunes_markdown_by_topic")
             and report_retention_status.get("run_links_cleared_for_pruned_reports")
+            and report_retention_status.get("manual_delete_clears_run_links")
+            and report_retention_status.get("manual_delete_prunes_markdown")
+            and report_retention_status.get("manual_delete_markdown_guardrail")
             and report_retention_status.get("markdown_retention_smoke_passed")
             else "degraded",
             evidence=report_retention_status,

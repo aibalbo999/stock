@@ -31,10 +31,14 @@ def fake_settings(**overrides) -> SimpleNamespace:
         "llm_quota_hard_routing_enabled": False,
         "llm_observability_enabled": True,
         "llm_observability_provider": "local",
+        "llm_observability_external_dispatch_enabled": True,
+        "llm_observability_project_name": "stock-analysis",
         "llm_input_cost_per_1k_tokens_usd": 0.01,
         "llm_output_cost_per_1k_tokens_usd": 0.02,
         "langsmith_api_key": None,
+        "langsmith_endpoint": "",
         "phoenix_endpoint": "",
+        "phoenix_api_key": None,
         "openai_api_key": None,
         "anthropic_api_key": None,
     }
@@ -80,6 +84,7 @@ def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:
     assert result.observability["input_token_estimate"] >= 1
     assert result.observability["output_token_estimate"] >= 1
     assert result.observability["estimated_cost_usd"] is not None
+    assert result.observability["external_trace_dispatch"]["reason"] == "local_sink"
 
 
 def test_llm_client_retries_503_before_rotating(monkeypatch) -> None:

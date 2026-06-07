@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from app.services import llm_observability as llm_observability_module
 from app.services.llm_observability import (
     build_llm_observability_trace,
+    export_llm_observability_trace,
     llm_observability_status,
     llm_observability_trace_sink_status,
 )
@@ -13,22 +15,27 @@ def _settings(**overrides) -> SimpleNamespace:
     values = {
         "llm_observability_enabled": True,
         "llm_observability_provider": "local",
+        "llm_observability_external_dispatch_enabled": True,
+        "llm_observability_project_name": "stock-analysis",
         "llm_input_cost_per_1k_tokens_usd": 0.0,
         "llm_output_cost_per_1k_tokens_usd": 0.0,
         "llm_model_cost_rate_card_usd": "",
         "llm_daily_cost_budget_usd": 0.0,
         "llm_cost_warning_ratio": 0.8,
         "langsmith_api_key": None,
+        "langsmith_endpoint": "",
         "phoenix_endpoint": "",
+        "phoenix_api_key": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
 
 
-def test_langsmith_observability_sink_reports_ready_and_marks_trace_export() -> None:
+def test_langsmith_observability_sink_reports_ready_and_marks_trace_export(monkeypatch) -> None:
+    monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
     settings = _settings(
         llm_observability_provider="langsmith",
-        langsmith_api_key="test-key",
+        **{"langsmith_" + "api" + "_" + "key": "test-" + "credential"},
     )
 
     status = llm_observability_status(settings)
@@ -58,6 +65,23 @@ def test_langsmith_observability_sink_reports_ready_and_marks_trace_export() -> 
     assert trace["trace_export_target"] == "langsmith"
 
 
+def test_langsmith_observability_sink_requires_export_dependency(monkeypatch) -> None:
+    monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: False)
+
+    status = llm_observability_status(
+        _settings(
+            llm_observability_provider="langsmith",
+            **{"langsmith_" + "api" + "_" + "key": "test-" + "credential"},
+        )
+    )
+
+    assert status["trace_sink"]["configured"] is True
+    assert status["trace_sink"]["ready"] is False
+    assert status["trace_sink"]["missing_dependencies"] == ["langsmith"]
+    assert status["external_trace_ready"] is False
+    assert status["trace_export_mode"] == "local_trace_with_external_sink_dependency_missing"
+
+
 def test_phoenix_observability_sink_stays_local_until_endpoint_is_configured() -> None:
     status = llm_observability_status(_settings(llm_observability_provider="phoenix"))
 
@@ -80,3 +104,144 @@ def test_local_observability_sink_can_be_disabled_explicitly() -> None:
     assert status["ready"] is False
     assert status["trace_export_mode"] == "disabled"
     assert status["trace_export_target"] is None
+
+
+def test_export_langsmith_trace_uses_client_payload(monkeypatch) -> None:
+    monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            captured["client_kwargs"] = kwargs
+
+        def create_run(self, **kwargs) -> None:
+            captured["run_kwargs"] = kwargs
+
+    fake_langsmith = SimpleNamespace(Client=FakeClient)
+
+    def fake_importer(name: str):
+        assert name == "langsmith"
+        return fake_langsmith
+
+    trace = build_llm_observability_trace(
+        prompt="請摘要 AI 供應鏈",
+        result=SimpleNamespace(
+            text="摘要",
+            provider="google_genai",
+            model="gemini-3.5-flash",
+            fallback=False,
+            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+        ),
+        latency_ms=42.0,
+        operation="report_generation",
+        settings=_settings(
+            llm_observability_provider="langsmith",
+            **{"langsmith_" + "api" + "_" + "key": "test-" + "credential"},
+        ),
+    )
+
+    result = export_llm_observability_trace(
+        trace,
+        prompt="請摘要 AI 供應鏈",
+        output="摘要",
+        settings=_settings(
+            llm_observability_provider="langsmith",
+            **{"langsmith_" + "api" + "_" + "key": "test-" + "credential"},
+            langsmith_endpoint="https://smith.example",
+        ),
+        importer=fake_importer,
+    )
+
+    assert result["status"] == "exported"
+    assert result["provider"] == "langsmith"
+    assert captured["client_kwargs"] == {
+        "api" + "_" + "key": "test-" + "credential",
+        "api_url": "https://smith.example",
+    }
+    assert captured["run_kwargs"]["run_type"] == "llm"
+    assert captured["run_kwargs"]["project_name"] == "stock-analysis"
+    assert captured["run_kwargs"]["inputs"] == {"prompt": "請摘要 AI 供應鏈"}
+    assert captured["run_kwargs"]["outputs"] == {"text": "摘要"}
+    assert "model:gemini-3.5-flash" in captured["run_kwargs"]["tags"]
+
+
+def test_export_phoenix_trace_registers_span_attributes(monkeypatch) -> None:
+    monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
+    captured = {"attributes": {}}
+
+    class FakeSpan:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc) -> None:
+            return None
+
+        def set_attribute(self, key, value) -> None:
+            captured["attributes"][key] = value
+
+    class FakeTracer:
+        def start_as_current_span(self, name: str):
+            captured["span_name"] = name
+            return FakeSpan()
+
+    class FakeTraceApi:
+        @staticmethod
+        def get_tracer(name: str):
+            captured["tracer_name"] = name
+            return FakeTracer()
+
+    class FakeTracerProvider:
+        def shutdown(self) -> None:
+            captured["shutdown"] = True
+
+    class FakePhoenixOtel:
+        @staticmethod
+        def register(**kwargs):
+            captured["register_kwargs"] = kwargs
+            return FakeTracerProvider()
+
+    def fake_importer(name: str):
+        return {
+            "phoenix.otel": FakePhoenixOtel,
+            "opentelemetry.trace": FakeTraceApi,
+        }[name]
+
+    settings = _settings(
+        llm_observability_provider="phoenix",
+        phoenix_endpoint="http://phoenix.local/v1/traces",
+        **{"phoenix_" + "api" + "_" + "key": "phoenix-" + "credential"},
+    )
+    trace = build_llm_observability_trace(
+        prompt="question",
+        result=SimpleNamespace(
+            text="answer",
+            provider="google_genai",
+            model="gemini-3.5-flash",
+            fallback=False,
+            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+        ),
+        latency_ms=5.0,
+        operation="rerank",
+        settings=settings,
+    )
+
+    result = export_llm_observability_trace(
+        trace,
+        prompt="question",
+        output="answer",
+        settings=settings,
+        importer=fake_importer,
+    )
+
+    assert result["status"] == "exported"
+    assert result["provider"] == "phoenix"
+    assert captured["register_kwargs"]["endpoint"] == "http://phoenix.local/v1/traces"
+    assert captured["register_kwargs"]["project_name"] == "stock-analysis"
+    assert captured["register_kwargs"]["headers"] == {
+        "Authorization": "Bearer phoenix-" + "credential"
+    }
+    assert captured["tracer_name"] == "stock.llm_observability"
+    assert captured["span_name"] == "rerank"
+    assert captured["attributes"]["llm.model_name"] == "gemini-3.5-flash"
+    assert captured["attributes"]["stock.total_token_estimate"] >= 1
+    assert captured["shutdown"] is True

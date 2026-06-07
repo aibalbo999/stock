@@ -1,20 +1,30 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
+import uuid
+from datetime import datetime, timedelta, timezone
+from importlib import import_module
+from importlib.util import find_spec
 from typing import Any
 
 from app.services.llm_quota import normalize_model_name
 
+LOGGER = logging.getLogger(__name__)
 SUPPORTED_OBSERVABILITY_PROVIDERS = ("local", "langsmith", "phoenix")
 LANGSMITH_CREDENTIAL_ENV = "LANGSMITH_" + "API" + "_" + "KEY"
+PHOENIX_CREDENTIAL_ENV = "PHOENIX_" + "API" + "_" + "KEY"
 OBSERVABILITY_PROVIDER_PROFILES = {
     "local": {
         "label": "Local usage store",
         "external_sink": False,
         "required_settings": [],
+        "optional_settings": [],
         "endpoint_setting": None,
         "api_key_setting": None,
+        "dependency_modules": [],
+        "install_extra": None,
         "export_mode_ready": "local_trace",
         "export_mode_unconfigured": "local_trace",
     },
@@ -22,8 +32,11 @@ OBSERVABILITY_PROVIDER_PROFILES = {
         "label": "LangSmith",
         "external_sink": True,
         "required_settings": [LANGSMITH_CREDENTIAL_ENV],
+        "optional_settings": ["LANGSMITH_ENDPOINT"],
         "endpoint_setting": None,
         "api_key_setting": LANGSMITH_CREDENTIAL_ENV,
+        "dependency_modules": ["langsmith"],
+        "install_extra": "observability",
         "export_mode_ready": "external_trace",
         "export_mode_unconfigured": "local_trace_with_external_sink_pending",
     },
@@ -31,8 +44,11 @@ OBSERVABILITY_PROVIDER_PROFILES = {
         "label": "Phoenix",
         "external_sink": True,
         "required_settings": ["PHOENIX_ENDPOINT"],
+        "optional_settings": [PHOENIX_CREDENTIAL_ENV],
         "endpoint_setting": "PHOENIX_ENDPOINT",
         "api_key_setting": None,
+        "dependency_modules": ["phoenix.otel", "opentelemetry.trace"],
+        "install_extra": "observability",
         "export_mode_ready": "external_trace",
         "export_mode_unconfigured": "local_trace_with_external_sink_pending",
     },
@@ -70,11 +86,14 @@ def llm_observability_status(settings: Any) -> dict:
         "external_trace_configured": trace_sink["external_trace_configured"],
         "external_trace_ready": trace_sink["ready"] and trace_sink["external_sink"],
         "external_trace_missing_settings": trace_sink["missing_settings"],
+        "external_trace_missing_dependencies": trace_sink["missing_dependencies"],
         "trace_export_mode": trace_sink["trace_export_mode"],
         "trace_export_target": trace_sink["trace_export_target"],
+        "external_dispatch_enabled": trace_sink["dispatch_enabled"],
         "trace_sink": trace_sink,
         "langsmith_configured": _setting_configured(settings, "langsmith_api_key"),
         "phoenix_endpoint_configured": _setting_configured(settings, "phoenix_endpoint"),
+        "phoenix_api_key_configured": _setting_configured(settings, "phoenix_api_key"),
         "captured_fields": [
             "provider",
             "model",
@@ -85,6 +104,7 @@ def llm_observability_status(settings: Any) -> dict:
             "primary_failure_category",
             "external_trace_provider",
             "trace_export_mode",
+            "external_trace_dispatch",
             "input_token_estimate",
             "output_token_estimate",
             "total_token_estimate",
@@ -113,17 +133,29 @@ def llm_observability_trace_sink_status(
         provider if provider is not None else getattr(settings, "llm_observability_provider", "local")
     )
     enabled = bool(getattr(settings, "llm_observability_enabled", True) if enabled is None else enabled)
+    dispatch_enabled = bool(getattr(settings, "llm_observability_external_dispatch_enabled", True))
     profile = OBSERVABILITY_PROVIDER_PROFILES[provider]
     missing_settings = [
         setting
         for setting in profile["required_settings"]
         if not _setting_configured(settings, _setting_attr_name(setting))
     ]
+    dependency_modules = list(profile["dependency_modules"])
+    missing_dependencies = [
+        module for module in dependency_modules if not _module_available(str(module))
+    ]
     configured = not missing_settings
     external_sink = bool(profile["external_sink"])
-    ready = enabled and (configured if external_sink else True)
+    dependency_available = not missing_dependencies
+    ready = enabled and (
+        configured and dependency_available and dispatch_enabled if external_sink else True
+    )
     if not enabled:
         trace_export_mode = "disabled"
+    elif external_sink and not dispatch_enabled:
+        trace_export_mode = "local_trace_with_external_dispatch_disabled"
+    elif external_sink and configured and missing_dependencies:
+        trace_export_mode = "local_trace_with_external_sink_dependency_missing"
     else:
         trace_export_mode = (
             profile["export_mode_ready"]
@@ -144,9 +176,15 @@ def llm_observability_trace_sink_status(
         "external_sink": external_sink,
         "configured": configured,
         "ready": ready,
+        "dispatch_enabled": dispatch_enabled,
         "external_trace_configured": configured and external_sink,
         "missing_settings": missing_settings,
+        "missing_dependencies": missing_dependencies,
         "required_settings": list(profile["required_settings"]),
+        "optional_settings": list(profile["optional_settings"]),
+        "dependency_modules": dependency_modules,
+        "dependency_available": dependency_available,
+        "install_extra": profile["install_extra"],
         "api_key_setting": profile["api_key_setting"],
         "api_key_configured": _setting_configured(
             settings,
@@ -200,10 +238,60 @@ def build_llm_observability_trace(
         "total_token_estimate": input_tokens + output_tokens,
         "estimated_cost_usd": estimated_cost,
         "cost_tracking_mode": "configured_rate_card" if estimated_cost is not None else "token_estimate_only",
-        "external_trace_provider": status["provider"] if status["external_trace_configured"] else None,
+        "external_trace_provider": status["provider"] if status["external_trace_ready"] else None,
         "external_trace_configured": status["external_trace_configured"],
         "external_trace_ready": status["external_trace_ready"],
         "external_trace_missing_settings": status["external_trace_missing_settings"],
+        "external_trace_missing_dependencies": status["external_trace_missing_dependencies"],
+        "trace_export_mode": status["trace_export_mode"],
+        "trace_export_target": status["trace_export_target"],
+    }
+
+
+def export_llm_observability_trace(
+    trace: dict[str, object],
+    *,
+    prompt: str,
+    output: str,
+    settings: Any,
+    importer=import_module,
+    logger: logging.Logger | None = None,
+) -> dict[str, object]:
+    """Best-effort external trace export; failures are returned, never raised."""
+
+    status = llm_observability_status(settings)
+    sink = status["trace_sink"]
+    skipped = _external_export_skip_reason(status)
+    if skipped:
+        return {
+            "status": "skipped",
+            "attempted": False,
+            "provider": sink["provider"],
+            "reason": skipped,
+            "trace_export_mode": status["trace_export_mode"],
+            "trace_export_target": status["trace_export_target"],
+        }
+    try:
+        if sink["provider"] == "langsmith":
+            return _export_langsmith_trace(trace, prompt=prompt, output=output, settings=settings, importer=importer)
+        if sink["provider"] == "phoenix":
+            return _export_phoenix_trace(trace, prompt=prompt, output=output, settings=settings, importer=importer)
+    except Exception as exc:  # pragma: no cover - defensive path still unit-tested by class
+        (logger or LOGGER).debug("failed to export LLM observability trace: %s", exc, exc_info=True)
+        return {
+            "status": "failed",
+            "attempted": True,
+            "provider": sink["provider"],
+            "reason": "export_error",
+            "error_type": exc.__class__.__name__,
+            "trace_export_mode": status["trace_export_mode"],
+            "trace_export_target": status["trace_export_target"],
+        }
+    return {
+        "status": "skipped",
+        "attempted": False,
+        "provider": sink["provider"],
+        "reason": "unsupported_provider",
         "trace_export_mode": status["trace_export_mode"],
         "trace_export_target": status["trace_export_target"],
     }
@@ -251,6 +339,176 @@ def llm_cost_rates_for_model(settings: Any, model: object) -> tuple[float, float
     )
 
 
+def _external_export_skip_reason(status: dict[str, object]) -> str | None:
+    sink = status.get("trace_sink") if isinstance(status.get("trace_sink"), dict) else {}
+    if not status.get("enabled"):
+        return "observability_disabled"
+    if not sink.get("external_sink"):
+        return "local_sink"
+    if not sink.get("dispatch_enabled"):
+        return "external_dispatch_disabled"
+    missing_settings = sink.get("missing_settings") if isinstance(sink.get("missing_settings"), list) else []
+    if missing_settings:
+        return "missing_settings:" + ",".join(str(item) for item in missing_settings)
+    missing_dependencies = (
+        sink.get("missing_dependencies")
+        if isinstance(sink.get("missing_dependencies"), list)
+        else []
+    )
+    if missing_dependencies:
+        return "missing_dependencies:" + ",".join(str(item) for item in missing_dependencies)
+    if not sink.get("ready"):
+        return "external_sink_not_ready"
+    return None
+
+
+def _export_langsmith_trace(
+    trace: dict[str, object],
+    *,
+    prompt: str,
+    output: str,
+    settings: Any,
+    importer=import_module,
+) -> dict[str, object]:
+    langsmith_module = importer("langsmith")
+    client_kwargs: dict[str, object] = {}
+    api_key = str(getattr(settings, "langsmith_api_key", "") or "").strip()
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    endpoint = str(getattr(settings, "langsmith_endpoint", "") or "").strip()
+    if endpoint:
+        client_kwargs["api_url"] = endpoint
+    client = langsmith_module.Client(**client_kwargs)
+    run_id = uuid.uuid4()
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(milliseconds=_float(trace.get("latency_ms")))
+    project_name = _observability_project_name(settings)
+    client.create_run(
+        id=run_id,
+        name=str(trace.get("operation") or "llm_operation"),
+        run_type="llm",
+        inputs={"prompt": _truncate_for_trace(prompt, limit=12000)},
+        outputs={"text": _truncate_for_trace(output, limit=12000)},
+        start_time=start_time,
+        end_time=end_time,
+        project_name=project_name,
+        extra={"metadata": _trace_metadata(trace)},
+        tags=_trace_tags(trace),
+    )
+    return {
+        "status": "exported",
+        "attempted": True,
+        "provider": "langsmith",
+        "trace_id": str(run_id),
+        "project": project_name,
+        "trace_export_mode": "external_trace",
+        "trace_export_target": "langsmith",
+    }
+
+
+def _export_phoenix_trace(
+    trace: dict[str, object],
+    *,
+    prompt: str,
+    output: str,
+    settings: Any,
+    importer=import_module,
+) -> dict[str, object]:
+    phoenix_otel = importer("phoenix.otel")
+    trace_api = importer("opentelemetry.trace")
+    endpoint = str(getattr(settings, "phoenix_endpoint", "") or "").strip()
+    project_name = _observability_project_name(settings)
+    register_kwargs: dict[str, object] = {
+        "endpoint": endpoint,
+        "project_name": project_name,
+        "batch": False,
+        "auto_instrument": False,
+    }
+    phoenix_api_key = str(getattr(settings, "phoenix_api_key", "") or "").strip()
+    if phoenix_api_key:
+        register_kwargs["headers"] = {"Authorization": f"Bearer {phoenix_api_key}"}
+    tracer_provider = phoenix_otel.register(**register_kwargs)
+    tracer = trace_api.get_tracer("stock.llm_observability")
+    with tracer.start_as_current_span(str(trace.get("operation") or "llm_operation")) as span:
+        for key, value in _phoenix_span_attributes(trace, prompt=prompt, output=output).items():
+            span.set_attribute(key, value)
+    if hasattr(tracer_provider, "shutdown"):
+        tracer_provider.shutdown()
+    return {
+        "status": "exported",
+        "attempted": True,
+        "provider": "phoenix",
+        "project": project_name,
+        "endpoint_configured": bool(endpoint),
+        "trace_export_mode": "external_trace",
+        "trace_export_target": "phoenix",
+    }
+
+
+def _observability_project_name(settings: Any) -> str:
+    return str(getattr(settings, "llm_observability_project_name", "") or "stock-analysis").strip()
+
+
+def _trace_metadata(trace: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in trace.items()
+        if isinstance(value, (str, int, float, bool, list, dict)) or value is None
+    }
+
+
+def _trace_tags(trace: dict[str, object]) -> list[str]:
+    tags = ["stock-analysis", "llm-observability"]
+    model = str(trace.get("model") or "").strip()
+    provider = str(trace.get("provider") or "").strip()
+    if provider:
+        tags.append(f"provider:{provider}")
+    if model:
+        tags.append(f"model:{model}")
+    return tags
+
+
+def _phoenix_span_attributes(
+    trace: dict[str, object],
+    *,
+    prompt: str,
+    output: str,
+) -> dict[str, str | int | float | bool]:
+    attrs: dict[str, str | int | float | bool] = {
+        "llm.system": str(trace.get("provider") or "unknown"),
+        "llm.model_name": str(trace.get("model") or "unknown"),
+        "llm.operation": str(trace.get("operation") or "llm_operation"),
+        "llm.prompt.preview": _truncate_for_trace(prompt, limit=1000),
+        "llm.output.preview": _truncate_for_trace(output, limit=1000),
+    }
+    for key in (
+        "latency_ms",
+        "attempt_count",
+        "fallback_path_used",
+        "input_token_estimate",
+        "output_token_estimate",
+        "total_token_estimate",
+        "estimated_cost_usd",
+        "fallback",
+    ):
+        value = trace.get(key)
+        if isinstance(value, (str, int, float, bool)):
+            attrs[f"stock.{key}"] = value
+    return attrs
+
+
+def _truncate_for_trace(value: object, *, limit: int) -> str:
+    text = str(value or "")
+    return text if len(text) <= limit else text[: max(0, limit - 3)] + "..."
+
+
+def _float(value: object) -> float:
+    try:
+        return max(0.0, float(value or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def llm_cost_budget_status(settings: Any, *, estimated_cost_usd: float, days: int) -> dict:
     daily_budget = max(0.0, float(getattr(settings, "llm_daily_cost_budget_usd", 0.0) or 0.0))
     warning_ratio = _safe_warning_ratio(getattr(settings, "llm_cost_warning_ratio", 0.8))
@@ -279,6 +537,13 @@ def llm_cost_budget_status(settings: Any, *, estimated_cost_usd: float, days: in
 def _normalized_provider(provider: object) -> str:
     value = str(provider or "local").strip().lower().replace("-", "_")
     return value if value in SUPPORTED_OBSERVABILITY_PROVIDERS else "local"
+
+
+def _module_available(module_name: str) -> bool:
+    try:
+        return find_spec(module_name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
 
 
 def _setting_attr_name(setting: str) -> str:

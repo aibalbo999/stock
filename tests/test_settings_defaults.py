@@ -98,3 +98,13 @@ def test_workflow_orchestration_settings_defaults() -> None:
     assert settings.airflow_username == ""
     assert settings.airflow_password is None
     assert settings.airflow_timeout_seconds == 15.0
+
+
+def test_llm_observability_external_export_settings_defaults() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.llm_observability_external_dispatch_enabled is True
+    assert settings.llm_observability_project_name == "stock-analysis"
+    assert settings.llm_observability_export_timeout_seconds == 2.0
+    assert settings.langsmith_endpoint == ""
+    assert settings.phoenix_api_key is None

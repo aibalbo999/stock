@@ -12,7 +12,10 @@ import httpx
 
 from app.core.config import get_settings
 from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
-from app.services.llm_observability import build_llm_observability_trace
+from app.services.llm_observability import (
+    build_llm_observability_trace,
+    export_llm_observability_trace,
+)
 
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
@@ -1277,6 +1280,19 @@ class LLMClient:
         started_at: float,
         operation: str,
     ) -> LLMResult:
+        observability = build_llm_observability_trace(
+            prompt=prompt,
+            result=result,
+            latency_ms=(monotonic() - started_at) * 1000,
+            operation=operation,
+            settings=self.settings,
+        )
+        observability["external_trace_dispatch"] = export_llm_observability_trace(
+            observability,
+            prompt=prompt,
+            output=result.text,
+            settings=self.settings,
+        )
         return LLMResult(
             text=result.text,
             key_index=result.key_index,
@@ -1284,13 +1300,7 @@ class LLMClient:
             provider=result.provider,
             fallback=result.fallback,
             attempts=result.attempts,
-            observability=build_llm_observability_trace(
-                prompt=prompt,
-                result=result,
-                latency_ms=(monotonic() - started_at) * 1000,
-                operation=operation,
-                settings=self.settings,
-            ),
+            observability=observability,
         )
 
     def _litellm_model_candidates(self, preferred_model: str | None = None) -> list[str]:

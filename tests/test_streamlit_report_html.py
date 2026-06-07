@@ -176,6 +176,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
+    report_center_source = Path("app/ui/report_center.py").read_text()
+    assert "from app.ui.task_status_panel import render_task_status_panel" in report_center_source
+    assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
+    assert "refresh_key=f\"history_run_task_status_{selected_run_id}\"" in report_center_source
+    assert 'st.button("查詢背景任務狀態")' not in report_center_source
+    assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
     assert "def task_status_diagnostic_rows(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def hydrate_active_report_result(" in REPORT_STATE_SOURCE.read_text()

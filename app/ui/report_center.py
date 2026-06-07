@@ -17,6 +17,7 @@ from app.ui.report_panels import (
 from app.ui.report_follow_up_controls import render_follow_up_controls, render_follow_up_flash
 from app.ui.report_html import report_html
 from app.ui.report_state import parse_json_object
+from app.ui.task_status_panel import render_task_status_panel
 
 
 def render_report_center() -> None:
@@ -188,11 +189,12 @@ def render_report_center() -> None:
                     st.json(json.loads(selected_run_payload))
                 except json.JSONDecodeError:
                     st.code(selected_run_payload)
-            if selected_task_id and st.button("查詢背景任務狀態"):
-                try:
-                    st.json(api_get(f"/tasks/{selected_task_id}"))
-                except requests.RequestException as exc:
-                    st.error(f"查詢失敗：{request_error_message(exc)}")
+            if selected_task_id:
+                with st.expander("背景任務狀態", expanded=False):
+                    render_task_status_panel(
+                        task_id=str(selected_task_id),
+                        refresh_key=f"history_run_task_status_{selected_run_id}",
+                    )
             if selected_run_error:
                 st.error(selected_run_error)
             if st.button("刪除此分析紀錄"):

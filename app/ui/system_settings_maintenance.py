@@ -11,6 +11,7 @@ from app.ui.dashboard_core import render_section_header
 from app.ui.maintenance_status import (
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
+    high_risk_filing_unlocker_rows,
     maintenance_service_metrics,
     task_failure_drilldown_rows,
     task_queue_health_alert,
@@ -84,6 +85,7 @@ def render_maintenance_tab() -> None:
 
     external_warning_rows = external_deployment_warning_rows(upgrade_audit)
     external_smoke_commands = external_deployment_smoke_commands(upgrade_audit)
+    high_risk_unlocker_rows = high_risk_filing_unlocker_rows(upgrade_audit)
     with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
         deploy = upgrade_audit.get("deployment") if isinstance(upgrade_audit.get("deployment"), dict) else {}
         deploy_cols = st.columns(4)
@@ -93,6 +95,9 @@ def render_maintenance_tab() -> None:
         deploy_cols[3].metric("Failures", int(deploy.get("failures") or 0))
         if external_warning_rows:
             st.dataframe(external_warning_rows, width="stretch", hide_index=True)
+            if high_risk_unlocker_rows:
+                st.caption("高風險文件 unlocker")
+                st.dataframe(high_risk_unlocker_rows, width="stretch", hide_index=True)
             if external_smoke_commands:
                 st.caption("單項診斷指令")
                 st.code("\n".join(external_smoke_commands), language="bash")

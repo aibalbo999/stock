@@ -156,6 +156,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_smoke_command(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def external_deployment_warning_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def external_deployment_smoke_commands(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def high_risk_filing_unlocker_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -237,6 +238,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_smoke_command(service_snapshot)" in source
     assert "external_deployment_warning_rows(upgrade_audit)" in source
     assert "external_deployment_smoke_commands(upgrade_audit)" in source
+    assert "high_risk_filing_unlocker_rows(upgrade_audit)" in source
+    assert "高風險文件 unlocker" in source
     assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source
@@ -1233,6 +1236,64 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
         ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
+
+
+def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
+    helpers = load_report_helpers()
+    provider_env = "COMPANY_FILING_BROWSER_RENDER_PROVIDER" + "=flaresolverr"
+    render_url_env = "COMPANY_FILING_BROWSER_RENDER_URL" + "=http://127.0.0.1:8191/v1"
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "needs unlocker",
+                "evidence": {
+                    "configured_provider": "browserless",
+                    "provider_tier": "browser_render",
+                    "provider_capability": {
+                        "provider": "browserless",
+                        "tier": "browser_render",
+                        "captcha_unlocker": False,
+                    },
+                    "browser_only_render_ready": True,
+                    "unlocker_provider_ready": False,
+                    "captcha_challenge_ready": False,
+                    "fallback_reason": "browser_or_playwright_render_lacks_captcha_unlocker",
+                    "domains": ["mops.twse.com.tw", "doc.twse.com.tw"],
+                    "recommended_env": [provider_env, render_url_env],
+                    "smoke_cli": (
+                        ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--url https://mops.twse.com.tw/ --json"
+                    ),
+                },
+                "remediation": "設定 FlareSolverr 或 managed unlocker。",
+            }
+        ]
+    }
+
+    rows = helpers["high_risk_filing_unlocker_rows"](audit)
+
+    assert [row["項目"] for row in rows] == [
+        "Provider",
+        "高風險防護",
+        "高風險網域",
+        "建議 env",
+        "MOPS smoke",
+    ]
+    assert rows[0]["狀態"] == "待配置"
+    assert rows[0]["目前"] == "browserless"
+    assert "captcha_unlocker=否" in rows[0]["細節"]
+    assert "browser render fallback" in rows[1]["目前"]
+    assert rows[1]["細節"] == "browser_or_playwright_render_lacks_captcha_unlocker"
+    assert "mops.twse.com.tw" in rows[2]["目前"]
+    assert provider_env in rows[3]["目前"]
+    assert "https://mops.twse.com.tw/" in rows[4]["目前"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

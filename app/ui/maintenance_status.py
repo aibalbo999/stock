@@ -145,6 +145,67 @@ def external_deployment_smoke_commands(upgrade_audit: dict) -> list[str]:
     return commands
 
 
+def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
+    item = _external_deployment_item_by_capability(
+        upgrade_audit,
+        "company_filing_high_risk_unlocker",
+    )
+    if not item:
+        return []
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    provider_capability = (
+        evidence.get("provider_capability")
+        if isinstance(evidence.get("provider_capability"), dict)
+        else {}
+    )
+    provider = str(evidence.get("configured_provider") or provider_capability.get("provider") or "-")
+    provider_tier = str(evidence.get("provider_tier") or provider_capability.get("tier") or "-")
+    recommended_env = _string_list(evidence.get("recommended_env"))
+    domains = _string_list(evidence.get("domains"))
+    smoke_cli = str(evidence.get("smoke_cli") or "").strip()
+    next_action = item.get("remediation") or _high_risk_unlocker_next_action(evidence)
+    return [
+        {
+            "項目": "Provider",
+            "狀態": _ready_label(evidence.get("unlocker_provider_ready")),
+            "目前": provider,
+            "細節": (
+                f"tier={provider_tier}；captcha_unlocker="
+                f"{_yes_no(provider_capability.get('captcha_unlocker'))}"
+            ),
+            "下一步": next_action,
+        },
+        {
+            "項目": "高風險防護",
+            "狀態": _ready_label(evidence.get("captcha_challenge_ready")),
+            "目前": _high_risk_unlocker_strategy(evidence),
+            "細節": str(evidence.get("fallback_reason") or "-"),
+            "下一步": _high_risk_unlocker_next_action(evidence),
+        },
+        {
+            "項目": "高風險網域",
+            "狀態": "範圍",
+            "目前": "、".join(domains) if domains else "-",
+            "細節": "MOPS / doc.twse / TWSE / TPEx",
+            "下一步": "-",
+        },
+        {
+            "項目": "建議 env",
+            "狀態": "待設定" if recommended_env and not evidence.get("unlocker_provider_ready") else "參考",
+            "目前": "\n".join(recommended_env) if recommended_env else "-",
+            "細節": "不改寫 .env；可作為本機或部署環境設定。",
+            "下一步": "設定後重跑 high-risk filing unlocker smoke。",
+        },
+        {
+            "項目": "MOPS smoke",
+            "狀態": "可執行" if smoke_cli else "未提供",
+            "目前": smoke_cli or "-",
+            "細節": "驗證高風險公開文件入口的 render/unlocker contract。",
+            "下一步": smoke_cli or "-",
+        },
+    ]
+
+
 def task_failure_drilldown_rows(task_summary: dict) -> list[dict]:
     failures = _task_summary_failures(task_summary)
     return [
@@ -248,6 +309,26 @@ def _external_deployment_warning_items(upgrade_audit: dict) -> list[dict]:
     return items
 
 
+def _external_deployment_item_by_capability(upgrade_audit: dict, capability: str) -> dict:
+    if not isinstance(upgrade_audit, dict):
+        return {}
+    for source_key in ("failures", "warnings", "optional_warnings", "all_warnings", "checks"):
+        source_items = upgrade_audit.get(source_key)
+        if not isinstance(source_items, list):
+            continue
+        for raw_item in source_items:
+            if not isinstance(raw_item, dict):
+                continue
+            if raw_item.get("capability") != capability:
+                continue
+            if not raw_item.get("external_integration"):
+                continue
+            item = dict(raw_item)
+            item["_warning_source"] = source_key
+            return item
+    return {}
+
+
 def _external_area_label(item: dict) -> str:
     area_labels = {
         "ai_rag": "AI / RAG",
@@ -338,6 +419,41 @@ def _append_external_command(value: object, commands: list[str]) -> None:
         return
     if isinstance(value, dict):
         _collect_external_smoke_commands(value, commands)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _ready_label(value: object) -> str:
+    return "Ready" if value else "待配置"
+
+
+def _yes_no(value: object) -> str:
+    return "是" if value else "否"
+
+
+def _high_risk_unlocker_strategy(evidence: dict) -> str:
+    parts = []
+    if evidence.get("unlocker_provider_ready"):
+        parts.append("unlocker provider ready")
+    if evidence.get("ip_rotation_ready"):
+        parts.append("proxy/IP rotation ready")
+    if evidence.get("browser_only_render_ready"):
+        parts.append("browser render fallback")
+    return "；".join(parts) if parts else "尚未配置"
+
+
+def _high_risk_unlocker_next_action(evidence: dict) -> str:
+    if evidence.get("unlocker_provider_ready"):
+        return "維持 unlocker provider，定期重跑 MOPS smoke。"
+    if evidence.get("ip_rotation_ready"):
+        return "已具備 IP rotation；仍建議補 FlareSolverr、ScrapingBee 或 BrightData。"
+    if evidence.get("browser_only_render_ready"):
+        return "目前只有 Browserless/Playwright；高風險 CAPTCHA 入口需補 unlocker provider。"
+    return "設定 FlareSolverr、ScrapingBee 或 BrightData，或至少配置 rotating proxy。"
 
 
 def _ok_label(value: object) -> str:

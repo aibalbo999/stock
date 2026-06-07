@@ -7,8 +7,6 @@ from app.data_sources.market import FUGLE_RETRYABLE_HTTP_STATUSES, FINMIND_RETRY
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 from app.services.service_status import (
-    _company_filing_pdf_parser_status,
-    _company_filing_user_agent_status,
     _llm_fallback_readiness,
     _llm_model_provider,
     _llm_quota_routing_status,
@@ -16,6 +14,10 @@ from app.services.service_status import (
     _neo4j_import_capability_status,
     _redact_url,
     service_status,
+)
+from app.services.status_company_filings import (
+    _company_filing_pdf_parser_status,
+    _company_filing_user_agent_status,
 )
 from app.services.status_frontend import frontend_status
 
@@ -29,6 +31,7 @@ def test_service_status_shape() -> None:
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
+    status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
     assert "database" in status
     assert "redis" in status
@@ -80,6 +83,10 @@ def test_service_status_shape() -> None:
     assert status["market_data_cache"]["official_openapi_fallback_enabled"] is True
     assert status["market_data_cache"]["official_openapi_timeout_seconds"] == 15.0
     assert status["company_filings"]["http_retries"] == Settings().company_filing_http_retries
+    assert status["company_filings"]["collector_path"] == "app/services/status_company_filings.py"
+    assert "from app.services.status_company_filings import (" in service_status_source
+    assert "def _company_filing_pdf_parser_status(" not in service_status_source
+    assert "def company_filing_status(" in status_company_filings_source
     assert status["company_filings"]["retryable_http_statuses"] == sorted(COMPANY_FILING_RETRYABLE_HTTP_STATUSES)
     assert (
         status["company_filings"]["base_retry_delay_seconds"]
@@ -817,13 +824,15 @@ def test_company_filing_user_agent_status_uses_default_browser_like_agents() -> 
     assert status["anti_crawl_identity_enabled"] is True
 
 
-def test_company_filing_pdf_parser_status_requires_table_capable_dependency(monkeypatch) -> None:
+def test_company_filing_pdf_parser_status_requires_table_capable_dependency() -> None:
     def fake_module_available(name: str) -> bool:
         return name == "pypdf"
 
-    monkeypatch.setattr("app.services.service_status._module_available", fake_module_available)
-
-    status = _company_filing_pdf_parser_status("auto", extract_tables=True)
+    status = _company_filing_pdf_parser_status(
+        "auto",
+        extract_tables=True,
+        module_available=fake_module_available,
+    )
 
     assert status["configured_parser_available"] is True
     assert status["resolved_parser_candidates"] == ["pypdf"]
@@ -832,13 +841,15 @@ def test_company_filing_pdf_parser_status_requires_table_capable_dependency(monk
     assert status["fallback_reason"] == "missing_table_pdf_parser_dependency:pdfplumber_or_unstructured"
 
 
-def test_company_filing_pdf_parser_status_accepts_pdfplumber_for_tables(monkeypatch) -> None:
+def test_company_filing_pdf_parser_status_accepts_pdfplumber_for_tables() -> None:
     def fake_module_available(name: str) -> bool:
         return name == "pdfplumber"
 
-    monkeypatch.setattr("app.services.service_status._module_available", fake_module_available)
-
-    status = _company_filing_pdf_parser_status("auto", extract_tables=True)
+    status = _company_filing_pdf_parser_status(
+        "auto",
+        extract_tables=True,
+        module_available=fake_module_available,
+    )
 
     assert status["configured_parser_available"] is True
     assert status["resolved_parser_candidates"] == ["pdfplumber"]

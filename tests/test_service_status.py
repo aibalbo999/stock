@@ -314,6 +314,8 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
     assert status["frontend"]["external_css_loaded"] is True
+    assert status["frontend"]["external_report_css_loaded"] is True
+    assert status["frontend"]["external_report_css_path"] == "app/ui/styles/report_html.css"
     assert status["frontend"]["uses_task_enqueue_helper"] is True
     assert status["frontend"]["uses_task_status_panel"] is True
     assert status["frontend"]["asyncio_run_count"] == 0
@@ -447,6 +449,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["status"] == "ready"
     assert frontend_arch["evidence"]["streamlit_entry_uses_navigation"] is True
     assert frontend_arch["evidence"]["expected_pages_present"] is True
+    assert frontend_arch["evidence"]["external_report_css_loaded"] is True
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0
     assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False
     assert frontend_arch["evidence"]["sync_report_generate_used"] is False

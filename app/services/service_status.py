@@ -1048,6 +1048,7 @@ def _frontend_status() -> dict:
     pages_dir = root / "pages"
     ui_dir = root / "app" / "ui"
     style_path = ui_dir / "styles" / "stock_dashboard.css"
+    report_style_path = ui_dir / "styles" / "report_html.css"
     streamlit_source = _read_text(streamlit_path)
     ui_paths = [
         ui_dir / "dashboard_core.py",
@@ -1095,6 +1096,11 @@ def _frontend_status() -> dict:
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source
         and "unsafe_allow_html=True" in ui_source,
+        "external_report_css_path": str(report_style_path.relative_to(root)),
+        "external_report_css_loaded": report_style_path.exists()
+        and "REPORT_HTML_STYLE_PATH.read_text" in ui_source
+        and "<style>{report_css}</style>" in ui_source
+        and "<style>\n  :root" not in ui_source,
         "asyncio_run_count": ui_source.count("asyncio.run") + streamlit_source.count("asyncio.run"),
         "long_blocking_post_timeout_present": "timeout=900" in ui_source,
         "api_write_timeout_seconds": _frontend_constant_value(ui_source, "API_WRITE_TIMEOUT_SECONDS"),

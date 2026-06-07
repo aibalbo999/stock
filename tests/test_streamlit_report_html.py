@@ -21,6 +21,7 @@ UI_SOURCE_FILES = [
     Path("app/ui/system_settings_maintenance.py"),
 ]
 STYLE_SOURCE = Path("app/ui/styles/stock_dashboard.css")
+REPORT_STYLE_SOURCE = Path("app/ui/styles/report_html.css")
 
 
 def read_ui_source() -> str:
@@ -29,11 +30,13 @@ def read_ui_source() -> str:
 
 def load_report_helpers() -> dict:
     source = DASHBOARD_CORE_SOURCE.read_text()
-    start = source.index("def markdown_section(")
+    start = source.index("REPORT_HTML_STYLE_PATH")
     end = source.index("def render_reader_report(")
     namespace = {
         "escape": escape,
         "Optional": Optional,
+        "Path": Path,
+        "__file__": str(DASHBOARD_CORE_SOURCE),
         "re": re,
         "format_confidence_score": format_confidence_score,
         "is_low_quality_investor_forum_source": is_low_quality_investor_forum_source,
@@ -54,7 +57,8 @@ def test_streamlit_app_defers_annotation_evaluation_for_modern_python() -> None:
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = read_ui_source()
     styles = STYLE_SOURCE.read_text()
-    combined = source + "\n" + styles
+    report_styles = REPORT_STYLE_SOURCE.read_text()
+    combined = source + "\n" + styles + "\n" + report_styles
 
     assert "workspace-topbar" in combined
     assert "workflow-strip" in combined
@@ -82,8 +86,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source
     assert "report_action_cols = st.columns([0.16, 0.16, 0.68], gap=\"small\")" in source
-    assert ".report {{ max-width:1360px" in source
-    assert ".report-grid {{ display:block" in source
+    assert ".report { max-width:1360px" in report_styles
+    assert ".report-grid { display:block" in report_styles
+    assert "<style>\n  :root" not in source
+    assert "<style>{report_css}</style>" in source
+    assert "REPORT_HTML_STYLE_PATH" in source
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

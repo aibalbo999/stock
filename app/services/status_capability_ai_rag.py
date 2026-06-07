@@ -168,6 +168,13 @@ def ai_rag_capabilities(
                 "enabled": company_filing_status.get("visual_rag_enabled"),
                 "mode": company_filing_status.get("visual_rag_mode"),
                 "mode_supported": company_filing_status.get("visual_rag_mode_supported"),
+                "augment_policy": company_filing_status.get(
+                    "visual_rag_augment_policy"
+                ),
+                "augment_policy_supported": company_filing_status.get(
+                    "visual_rag_augment_policy_supported"
+                ),
+                "routing_policy": company_filing_status.get("visual_rag_routing_policy"),
                 "runtime_available": company_filing_status.get("visual_rag_runtime_available"),
                 "renderer_dependency_available": company_filing_status.get(
                     "visual_rag_renderer_dependency_available"

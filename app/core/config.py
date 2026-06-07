@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     company_filing_structured_api_timeout_seconds: float = 20.0
     company_filing_visual_rag_enabled: bool = True
     company_filing_visual_rag_mode: str = "fallback"
+    company_filing_visual_rag_augment_policy: str = "risk_only"
     company_filing_visual_rag_model: str = "gemini-3.5-flash"
     company_filing_visual_rag_max_pages: int = 2
     company_filing_visual_rag_dpi: int = 144

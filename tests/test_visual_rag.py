@@ -8,8 +8,10 @@ from app.services.visual_rag import (
     VISUAL_RAG_PROVENANCE_PREFIX,
     VISUAL_RAG_UNSUPPORTED_MODEL_MESSAGE,
     VisualPageImage,
+    assess_pdf_text_visual_rag_risk,
     build_visual_rag_prompt,
     extract_visual_pdf_text,
+    maybe_augment_pdf_text_with_visual_rag,
     render_pdf_page_images,
     visual_rag_status,
 )
@@ -23,9 +25,13 @@ def test_visual_rag_status_reports_disabled_when_config_disabled() -> None:
     assert status["runtime_available"] is False
     assert status["fallback_reason"] == "visual_rag_disabled"
     assert status["renderer"] == "pymupdf"
+    assert status["augment_policy"] == "risk_only"
+    assert status["routing_policy"]["table_risk_min_score"] == 3
 
 
-def test_visual_rag_status_requires_supported_mode_and_vision_text_model(monkeypatch) -> None:
+def test_visual_rag_status_requires_supported_mode_policy_and_vision_text_model(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr("app.services.visual_rag._module_available", lambda name: True)
     unsupported_mode = visual_rag_status(
         Settings(
@@ -42,6 +48,22 @@ def test_visual_rag_status_requires_supported_mode_and_vision_text_model(monkeyp
     assert unsupported_mode["model_supported"] is True
     assert unsupported_mode["runtime_available"] is False
     assert unsupported_mode["fallback_reason"] == "unsupported_visual_rag_mode"
+
+    unsupported_policy = visual_rag_status(
+        Settings(
+            _env_file=None,
+            company_filing_visual_rag_enabled=True,
+            company_filing_visual_rag_mode="augment",
+            company_filing_visual_rag_augment_policy="eager",
+            company_filing_visual_rag_model="gemini-3.5-flash",
+            google_api_key="key",
+        )
+    )
+
+    assert unsupported_policy["augment_policy"] == "eager"
+    assert unsupported_policy["augment_policy_supported"] is False
+    assert unsupported_policy["runtime_available"] is False
+    assert unsupported_policy["fallback_reason"] == "unsupported_visual_rag_augment_policy"
 
     unsupported_model = visual_rag_status(
         Settings(
@@ -175,3 +197,98 @@ def test_build_visual_rag_prompt_preserves_tables_and_no_fabrication() -> None:
     assert "不要補寫圖片中沒有的數字" in prompt
     assert "頁面數：2" in prompt
     assert "觸發原因：掃描型 PDF" in prompt
+
+
+def test_pdf_text_risk_assessment_flags_complex_financial_tables() -> None:
+    text = "\n".join(
+        [
+            "[PDF 解析資訊] parser=pdfplumber; mode=auto; extract_tables=true",
+            "[PDF 表格抽取 p.1 #1]",
+            "年度 | 營收 | 毛利率 | EPS | 資本支出",
+            "2024 | 營收 1,000 | 毛利率 41.2% | EPS 5.1 | 資本支出 300",
+            "2025 | 營收 1,250 | 毛利率 42.1% | EPS 5.8 | 資本支出 360",
+            "2026 | 營收 1,480 | 毛利率 43.0% | EPS 6.4 | 資本支出 390",
+        ]
+    )
+
+    assessment = assess_pdf_text_visual_rag_risk(text)
+
+    assert assessment.should_augment is True
+    assert assessment.reason == "complex_table_layout_detected"
+    assert "wide_table_rows" in assessment.signals
+    assert assessment.wide_table_row_count >= 3
+
+
+def test_pdf_text_risk_assessment_keeps_plain_text_low_risk() -> None:
+    assessment = assess_pdf_text_visual_rag_risk("台積電 2026 年報\nAI/HPC 需求與風險因素")
+
+    assert assessment.should_augment is False
+    assert assessment.level == "low"
+    assert assessment.score < 3
+
+
+def test_visual_rag_augment_policy_skips_low_risk_text_to_save_quota(monkeypatch) -> None:
+    settings = Settings(
+        _env_file=None,
+        company_filing_visual_rag_enabled=True,
+        company_filing_visual_rag_mode="augment",
+        company_filing_visual_rag_augment_policy="risk_only",
+        company_filing_visual_rag_model="gemini-vision-test",
+        google_api_key="key",
+    )
+
+    monkeypatch.setattr(
+        "app.services.visual_rag.extract_visual_pdf_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("low-risk text should not call Visual RAG")
+        ),
+    )
+
+    text = "台積電 2026 年報\nAI/HPC 需求與風險因素"
+
+    assert maybe_augment_pdf_text_with_visual_rag(
+        b"%PDF fake",
+        text,
+        settings=settings,
+    ) == text
+
+
+def test_visual_rag_augment_policy_runs_for_complex_table_layout(monkeypatch) -> None:
+    settings = Settings(
+        _env_file=None,
+        company_filing_visual_rag_enabled=True,
+        company_filing_visual_rag_mode="augment",
+        company_filing_visual_rag_augment_policy="risk_only",
+        company_filing_visual_rag_model="gemini-vision-test",
+        google_api_key="key",
+    )
+    captured = {}
+
+    def fake_visual_extract(content: bytes, *, reason: str, settings: Settings):
+        captured["content"] = content
+        captured["reason"] = reason
+        captured["settings"] = settings
+        return "[Visual RAG 解析資訊] mode=augment\n營收 | 毛利率\n1,250 | 42.1%"
+
+    monkeypatch.setattr("app.services.visual_rag.extract_visual_pdf_text", fake_visual_extract)
+    text = "\n".join(
+        [
+            "[PDF 表格抽取 p.1 #1]",
+            "年度 | 營收 | 毛利率 | EPS | 資本支出",
+            "2024 | 營收 1,000 | 毛利率 41.2% | EPS 5.1 | 資本支出 300",
+            "2025 | 營收 1,250 | 毛利率 42.1% | EPS 5.8 | 資本支出 360",
+            "2026 | 營收 1,480 | 毛利率 43.0% | EPS 6.4 | 資本支出 390",
+        ]
+    )
+
+    result = maybe_augment_pdf_text_with_visual_rag(
+        b"%PDF fake",
+        text,
+        settings=settings,
+    )
+
+    assert captured["content"] == b"%PDF fake"
+    assert captured["settings"] is settings
+    assert "complex_table_layout_detected" in captured["reason"]
+    assert "wide_table_rows" in captured["reason"]
+    assert "營收 | 毛利率" in result

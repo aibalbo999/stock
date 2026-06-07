@@ -78,6 +78,7 @@ def test_company_filing_fetch_settings_defaults() -> None:
     assert settings.company_filing_structured_api_url == ""
     assert settings.company_filing_structured_api_token == ""
     assert settings.company_filing_structured_api_timeout_seconds == 20.0
+    assert settings.company_filing_visual_rag_augment_policy == "risk_only"
 
 
 def test_workflow_orchestration_settings_defaults() -> None:

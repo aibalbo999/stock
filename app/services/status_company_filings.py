@@ -121,6 +121,11 @@ def company_filing_status(
         "visual_rag_enabled": visual_rag_runtime.get("enabled"),
         "visual_rag_mode": visual_rag_runtime.get("mode"),
         "visual_rag_mode_supported": visual_rag_runtime.get("mode_supported"),
+        "visual_rag_augment_policy": visual_rag_runtime.get("augment_policy"),
+        "visual_rag_augment_policy_supported": visual_rag_runtime.get(
+            "augment_policy_supported"
+        ),
+        "visual_rag_routing_policy": visual_rag_runtime.get("routing_policy"),
         "visual_rag_runtime_available": visual_rag_runtime.get("runtime_available"),
         "visual_rag_renderer_dependency_available": visual_rag_runtime.get(
             "renderer_dependency_available"

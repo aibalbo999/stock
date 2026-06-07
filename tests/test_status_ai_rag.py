@@ -135,6 +135,15 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
     assert status["company_filings"]["visual_rag_enabled"] is Settings().company_filing_visual_rag_enabled
     assert status["company_filings"]["visual_rag_mode"] == Settings().company_filing_visual_rag_mode
     assert isinstance(status["company_filings"]["visual_rag_mode_supported"], bool)
+    assert (
+        status["company_filings"]["visual_rag_augment_policy"]
+        == Settings().company_filing_visual_rag_augment_policy
+    )
+    assert isinstance(status["company_filings"]["visual_rag_augment_policy_supported"], bool)
+    assert (
+        status["company_filings"]["visual_rag_routing_policy"]["table_risk_min_score"]
+        == 3
+    )
     assert isinstance(status["company_filings"]["visual_rag_runtime_available"], bool)
     assert status["company_filings"]["visual_rag_model"] == Settings().company_filing_visual_rag_model
     assert isinstance(status["company_filings"]["visual_rag_model_supported"], bool)
@@ -158,6 +167,19 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
     assert (
         matrix["ai_rag"]["visual_rag"]["evidence"]["mode_supported"]
         is status["company_filings"]["visual_rag_mode_supported"]
+    )
+    assert matrix["ai_rag"]["visual_rag"]["evidence"]["augment_policy"] == status[
+        "company_filings"
+    ]["visual_rag_augment_policy"]
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["augment_policy_supported"]
+        is status["company_filings"]["visual_rag_augment_policy_supported"]
+    )
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["routing_policy"][
+            "table_risk_min_score"
+        ]
+        == 3
     )
     assert (
         matrix["ai_rag"]["visual_rag"]["evidence"]["model_supported"]

@@ -5,13 +5,12 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.time import now_taipei
 from app.data_sources.company_filings import CompanyFilingFetcher
 from app.api import main
-from app.api.schemas import TopicDiscoveryRequest
+from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
 from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportRequest, ReportResponse, Source
 from app.services.candidate_revalidation import (
     CandidateRevalidationService,
@@ -46,7 +45,9 @@ from app.services.report_followup import (
     serialize_run,
     should_require_candidate_audit_follow_up,
 )
-from app.services.report_followup_context import ReportFollowUpContextService
+from app.services.report_followup_context import ReportFollowUpContextNotFound, ReportFollowUpContextService
+from app.services.report_followup_plan import AutoFollowUpStartService
+from app.services.report_query import ReportQueryService
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,
@@ -1942,7 +1943,7 @@ def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None
     assert parsed["remediation_actions"] == gate["remediation_actions"]
 
 
-def test_load_report_follow_up_context_restores_original_request(monkeypatch) -> None:
+def test_load_report_follow_up_context_restores_original_request() -> None:
     class FakeReport:
         topic = "舊主題"
         tickers_json = '["2330"]'
@@ -1975,10 +1976,18 @@ def test_load_report_follow_up_context_restores_original_request(monkeypatch) ->
             assert report_id == 7
             return FakeRun()
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    @contextmanager
+    def fake_session_scope():
+        yield object()
 
-    context = main.load_report_follow_up_context(7)
+    service = ReportFollowUpContextService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        audit_company_data_func=lambda *args, **kwargs: {},
+    )
+
+    context = service.load(7)
 
     assert context["request"].topic == "AI 產業鏈"
     assert context["request"].tickers == ["2330", "2382"]
@@ -1989,7 +1998,7 @@ def test_load_report_follow_up_context_restores_original_request(monkeypatch) ->
     assert len(context["candidate_whitelist"]) == 2
 
 
-def test_report_candidate_audit_endpoint_restores_history_payload(monkeypatch) -> None:
+def test_report_candidate_audit_service_restores_history_payload() -> None:
     class FakeReport:
         id = 7
         title = "AI 產業鏈 自動分析報告"
@@ -2023,22 +2032,26 @@ def test_report_candidate_audit_endpoint_restores_history_payload(monkeypatch) -
             assert report_id == 7
             return FakeRun()
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    @contextmanager
+    def fake_session_scope():
+        yield object()
 
-    response = TestClient(main.app).get("/reports/7/candidate-audit")
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        latest_follow_up_run_for_report_func=lambda *args: None,
+    )
 
-    assert response.status_code == 200
-    body = response.json()
+    body = service.candidate_audit(7)
     assert body["summary"]["total"] == 2
     assert body["summary"]["weak_count"] == 1
     assert "3324 雙鴻" in body["markdown"]
 
-    report_response = TestClient(main.app).get("/reports/7")
-    assert "## 候選公司審計" in report_response.json()["markdown"]
+    assert "## 候選公司審計" in service.get_report(7)["markdown"]
 
 
-def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
+def test_get_report_includes_latest_auto_follow_up_run() -> None:
     class FakeReport:
         id = 7
         title = "AI 產業鏈 自動分析報告"
@@ -2104,22 +2117,27 @@ def test_get_report_includes_latest_auto_follow_up_run(monkeypatch) -> None:
         def latest(self, limit: int = 100) -> list[FollowUpRun]:
             return [FollowUpRun()]
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    @contextmanager
+    def fake_session_scope():
+        yield object()
 
-    response = TestClient(main.app).get("/reports/7")
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+    )
 
-    assert response.status_code == 200
-    auto_follow_up = response.json()["auto_follow_up"]
+    body = service.get_report(7)
+    auto_follow_up = body["auto_follow_up"]
     assert auto_follow_up["id"] == 31
     assert auto_follow_up["status"] == "success"
     assert auto_follow_up["summary"]["selected"]["required_count"] == 2
     assert auto_follow_up["rerun_report"]["report_id"] == 8
-    assert response.json()["workflow"]["name"] == "standard_report_pipeline"
-    assert "股市爆料同學會" not in response.json()["markdown"]
+    assert body["workflow"]["name"] == "standard_report_pipeline"
+    assert "股市爆料同學會" not in body["markdown"]
 
 
-def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run(monkeypatch) -> None:
+def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run() -> None:
     class FakeReport:
         id = 7
         title = "AI 產業鏈 自動分析報告"
@@ -2178,13 +2196,17 @@ def test_get_report_ignores_stale_or_mismatched_auto_follow_up_run(monkeypatch) 
         def latest(self, limit: int = 100) -> list:
             return [MismatchedFollowUpRun(), StaleFollowUpRun()]
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    @contextmanager
+    def fake_session_scope():
+        yield object()
 
-    response = TestClient(main.app).get("/reports/7")
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+    )
 
-    assert response.status_code == 200
-    assert response.json()["auto_follow_up"] is None
+    assert service.get_report(7)["auto_follow_up"] is None
 
 
 def test_latest_follow_up_prefers_latest_finished_matching_run() -> None:
@@ -2436,7 +2458,7 @@ def test_collect_revalidation_documents_dedupes_and_includes_latest_documents() 
     assert [document.title for document in documents] == ["雙鴻 液冷散熱", "建準 散熱風扇"]
 
 
-def test_load_report_follow_up_context_raises_404(monkeypatch) -> None:
+def test_load_report_follow_up_context_raises_404() -> None:
     class FakeReportRepository:
         def __init__(self, session: object) -> None:
             self.session = session
@@ -2445,15 +2467,21 @@ def test_load_report_follow_up_context_raises_404(monkeypatch) -> None:
             assert report_id == 404
             return None
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
+    @contextmanager
+    def fake_session_scope():
+        yield object()
 
+    service = ReportFollowUpContextService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        audit_company_data_func=lambda *args, **kwargs: {},
+    )
     try:
-        main.load_report_follow_up_context(404)
-    except HTTPException as exc:
-        assert exc.status_code == 404
-        assert exc.detail == "report not found"
+        service.load(404)
+    except ReportFollowUpContextNotFound as exc:
+        assert str(exc) == "report not found"
     else:
-        raise AssertionError("expected HTTPException")
+        raise AssertionError("expected ReportFollowUpContextNotFound")
 
 
 def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> None:
@@ -2575,7 +2603,7 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
     assert FakeAnalysisRunRepository.success_report_id == 8
 
 
-def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
+def test_auto_start_required_follow_up_runs_required_scope() -> None:
     captured = {}
 
     def fake_plan(report_id: int) -> dict:
@@ -2598,15 +2626,16 @@ def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
             "results": {"ingest_company_filings:2330": {"stored_count": 5}},
         }
 
-    monkeypatch.setattr(
-        main,
-        "get_settings",
-        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+    service = AutoFollowUpStartService(
+        settings_provider=lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+        plan_provider=fake_plan,
+        follow_up_run_request_cls=FollowUpRunRequest,
+        run_follow_up_func=fake_run,
+        background_runner_func=lambda report_id, payload: None,
+        create_task_func=lambda coro: None,
     )
-    monkeypatch.setattr(main, "get_report_follow_up_plan", fake_plan)
-    monkeypatch.setattr(main, "run_report_follow_up", fake_run)
 
-    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+    result = asyncio.run(service.start(7, run_in_background=False))
 
     assert result["status"] == "started"
     assert result["run_id"] == 31
@@ -2618,7 +2647,7 @@ def test_auto_start_required_follow_up_runs_required_scope(monkeypatch) -> None:
     assert captured["payload"].news_limit == 40
 
 
-def test_auto_start_required_follow_up_queues_background_task_by_default(monkeypatch) -> None:
+def test_auto_start_required_follow_up_queues_background_task_by_default() -> None:
     captured = {}
 
     def fake_create_task(coro):
@@ -2626,24 +2655,24 @@ def test_auto_start_required_follow_up_queues_background_task_by_default(monkeyp
         coro.close()
         return SimpleNamespace()
 
-    monkeypatch.setattr(
-        main,
-        "get_settings",
-        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
-    )
-    monkeypatch.setattr(
-        main,
-        "get_report_follow_up_plan",
-        lambda report_id: {
+    async def fake_background_runner(report_id, payload):
+        captured["background"] = {"report_id": report_id, "payload": payload}
+
+    service = AutoFollowUpStartService(
+        settings_provider=lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+        plan_provider=lambda report_id: {
             "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
             "summary": {"required_count": 2, "total_count": 3},
             "actions": [{"action_type": "ingest_news"}],
             "next_actions": [{"action": "ingest_news"}],
         },
+        follow_up_run_request_cls=FollowUpRunRequest,
+        run_follow_up_func=lambda report_id, payload: None,
+        background_runner_func=fake_background_runner,
+        create_task_func=fake_create_task,
     )
-    monkeypatch.setattr(main.asyncio, "create_task", fake_create_task)
 
-    result = asyncio.run(main.maybe_auto_start_required_follow_up(7))
+    result = asyncio.run(service.start(7))
 
     assert result["status"] == "queued"
     assert captured["queued"] is True
@@ -2653,55 +2682,25 @@ def test_auto_start_required_follow_up_queues_background_task_by_default(monkeyp
     assert result["next_actions"][0]["action"] == "ingest_news"
 
 
-def test_auto_start_follow_up_endpoint_returns_queue_status(monkeypatch) -> None:
-    async def fake_auto_start(report_id: int) -> dict:
-        assert report_id == 7
-        return {"status": "queued", "source_report_id": 7}
-
-    monkeypatch.setattr(main, "maybe_auto_start_required_follow_up", fake_auto_start)
-
-    response = TestClient(main.app).post("/reports/7/follow-up/auto-start")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "queued", "source_report_id": 7}
-
-
-def test_auto_start_required_follow_up_skips_when_no_required_gap(monkeypatch) -> None:
-    monkeypatch.setattr(
-        main,
-        "get_settings",
-        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
-    )
-    monkeypatch.setattr(
-        main,
-        "get_report_follow_up_plan",
-        lambda report_id: {"summary": {"required_count": 0}, "next_actions": []},
+def test_auto_start_required_follow_up_skips_when_no_required_gap() -> None:
+    service = AutoFollowUpStartService(
+        settings_provider=lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+        plan_provider=lambda report_id: {"summary": {"required_count": 0}, "next_actions": []},
+        follow_up_run_request_cls=FollowUpRunRequest,
+        run_follow_up_func=lambda report_id, payload: None,
+        background_runner_func=lambda report_id, payload: None,
+        create_task_func=lambda coro: None,
     )
 
-    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+    result = asyncio.run(service.start(7, run_in_background=False))
 
     assert result["status"] == "not_needed"
     assert result["reason"] == "no_required_data_gap"
 
 
-def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_ready(monkeypatch) -> None:
+def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_ready() -> None:
     captured = {}
 
-    monkeypatch.setattr(
-        main,
-        "get_settings",
-        lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
-    )
-    monkeypatch.setattr(
-        main,
-        "get_report_follow_up_plan",
-        lambda report_id: {
-            "request": {"topic": "機器人 產業鏈", "tickers": ["2308"]},
-            "quality_gate_status": "ready",
-            "summary": {"required_count": 4, "total_count": 4},
-            "next_actions": [{"action": "ingest_news"}],
-        },
-    )
     async def fake_run(report_id: int, payload) -> dict:
         captured["payload"] = payload
         return {
@@ -2713,9 +2712,21 @@ def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_r
             "results": {},
         }
 
-    monkeypatch.setattr(main, "run_report_follow_up", fake_run)
+    service = AutoFollowUpStartService(
+        settings_provider=lambda: SimpleNamespace(auto_follow_up_enabled=True, auto_follow_up_news_limit=40),
+        plan_provider=lambda report_id: {
+            "request": {"topic": "機器人 產業鏈", "tickers": ["2308"]},
+            "quality_gate_status": "ready",
+            "summary": {"required_count": 4, "total_count": 4},
+            "next_actions": [{"action": "ingest_news"}],
+        },
+        follow_up_run_request_cls=FollowUpRunRequest,
+        run_follow_up_func=fake_run,
+        background_runner_func=lambda report_id, payload: None,
+        create_task_func=lambda coro: None,
+    )
 
-    result = asyncio.run(main.maybe_auto_start_required_follow_up(7, run_in_background=False))
+    result = asyncio.run(service.start(7, run_in_background=False))
 
     assert result["status"] == "started"
     assert result["run_id"] == 31

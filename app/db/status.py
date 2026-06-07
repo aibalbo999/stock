@@ -9,6 +9,7 @@ from app.db.models import (
     CompanyFiling,
     FinancialMetricSnapshot,
     GeneratedReport,
+    LLMUsageRecord,
     MonthlyRevenueSnapshot,
     NewsArticle,
     RiskClassificationCache,
@@ -29,6 +30,7 @@ TABLE_MODELS = {
     "valuation_metric_snapshots": ValuationMetricSnapshot,
     "risk_classification_cache": RiskClassificationCache,
     "analysis_runs": AnalysisRun,
+    "llm_usage_records": LLMUsageRecord,
 }
 
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.time import today_taipei
 from app.models.schemas import ReportRequest
+from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
 from app.services.report_quality import should_recover_market_data_quality
@@ -116,7 +117,12 @@ class StandardReportPipelineService:
                 )
                 response = report_result["response"]
                 quality_gate = report_result["quality_gate"]
-                report_id = self._store_report(request, response)
+                report_id = self._store_report(
+                    request,
+                    response,
+                    run_id=run_id,
+                    report_execution=report_result.get("report_execution"),
+                )
                 report_build_summary = {
                     "report_id": report_id,
                     "quality_gate_status": quality_gate.get("status"),
@@ -200,10 +206,24 @@ class StandardReportPipelineService:
             )
             return run.id
 
-    def _store_report(self, request: ReportRequest, response: Any) -> int:
+    def _store_report(
+        self,
+        request: ReportRequest,
+        response: Any,
+        *,
+        run_id: int | None = None,
+        report_execution: dict | None = None,
+    ) -> int:
         with self.session_scope_factory() as session:
             report = self.report_repository_cls(session).create(request, response)
-            return report.id
+            report_id = report.id
+        record_llm_usage_from_report_execution(
+            report_execution,
+            report_id=report_id,
+            run_id=run_id,
+            session_scope_factory=self.session_scope_factory,
+        )
+        return report_id
 
     async def _recover_market_quality_if_needed(
         self,

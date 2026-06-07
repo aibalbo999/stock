@@ -78,6 +78,88 @@ def test_data_operations_service_lists_news_and_market_snapshots() -> None:
     }
 
 
+def test_data_operations_service_returns_market_cache_summary() -> None:
+    captured = {}
+    snapshot = SimpleNamespace(model_dump=lambda mode="json": {"ticker": "2330", "close": 1000})
+    valuation = SimpleNamespace(model_dump=lambda mode="json": {"ticker": "2330", "pe_ratio": 20.5})
+    filing = SimpleNamespace(
+        id="filing-1",
+        ticker="2330",
+        company_name="台積電",
+        document_type="annual_report",
+        title="年報",
+        source=SimpleNamespace(
+            publisher="MOPS",
+            published_at=date(2026, 5, 1),
+            url="https://example.com/filing",
+        ),
+    )
+
+    class FakeMarketRepository:
+        def __init__(self, session: object) -> None:
+            captured["market_session"] = session
+
+        def latest_by_tickers(self, tickers):
+            captured["market_tickers"] = tickers
+            return [snapshot]
+
+    class FakeValuationRepository:
+        def __init__(self, session: object) -> None:
+            captured["valuation_session"] = session
+
+        def latest_by_tickers(self, tickers):
+            captured["valuation_tickers"] = tickers
+            return [valuation]
+
+    class FakeCompanyFilingRepository:
+        def __init__(self, session: object) -> None:
+            captured["filing_session"] = session
+
+        def latest_by_tickers(self, tickers, limit_per_ticker=2):
+            captured["filing_args"] = (tickers, limit_per_ticker)
+            return [filing]
+
+    class FakeFinancialMetricRepository:
+        def __init__(self, session: object) -> None:
+            captured["financial_session"] = session
+
+        def by_tickers(self, tickers):
+            captured["financial_tickers"] = tickers
+            return [object(), object()]
+
+    class FakeWhitelist:
+        def allowed_tickers(self):
+            return {"2330", "2382"}
+
+    class FakeEntityMapper:
+        whitelist = FakeWhitelist()
+
+        def filter_allowed_tickers(self, tickers):
+            return [ticker for ticker in tickers if ticker == "2330"]
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = DataOperationsApiService(
+        session_scope_factory=fake_session_scope,
+        market_repository_cls=FakeMarketRepository,
+        valuation_metric_repository_cls=FakeValuationRepository,
+        company_filing_repository_cls=FakeCompanyFilingRepository,
+        financial_metric_repository_cls=FakeFinancialMetricRepository,
+        entity_mapper_cls=FakeEntityMapper,
+    )
+
+    summary = service.market_cache_summary("2330,9999", limit_per_ticker=3)
+
+    assert summary["tickers"] == ["2330"]
+    assert summary["market_snapshots"] == [{"ticker": "2330", "close": 1000}]
+    assert summary["valuations"] == [{"ticker": "2330", "pe_ratio": 20.5}]
+    assert summary["company_filings"][0]["publisher"] == "MOPS"
+    assert summary["financial_metric_count"] == 2
+    assert captured["filing_args"] == (["2330"], 3)
+
+
 def test_data_operations_service_ingests_manual_news_to_rag_and_repository() -> None:
     captured = {}
 

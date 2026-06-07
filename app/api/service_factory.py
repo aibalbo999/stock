@@ -211,6 +211,9 @@ class ApiServiceFactory:
             session_scope_factory=d["session_scope"],
             news_repository_cls=d["NewsRepository"],
             market_repository_cls=d["MarketRepository"],
+            valuation_metric_repository_cls=d["ValuationMetricRepository"],
+            company_filing_repository_cls=d["CompanyFilingRepository"],
+            financial_metric_repository_cls=d["FinancialMetricRepository"],
             analysis_run_repository_cls=d["AnalysisRunRepository"],
             report_repository_cls=d["ReportRepository"],
             ingestion_pipeline_cls=d["IngestionPipeline"],
@@ -248,7 +251,11 @@ class ApiServiceFactory:
 
     def llm_api(self):
         d = self.dependencies
-        return d["LLMApiService"](llm_client_cls=d["LLMClient"])
+        return d["LLMApiService"](
+            llm_client_cls=d["LLMClient"],
+            session_scope_factory=d["session_scope"],
+            llm_usage_repository_cls=d["LLMUsageRepository"],
+        )
 
     def company_data_audit_api(self):
         d = self.dependencies

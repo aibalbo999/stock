@@ -307,6 +307,7 @@ class DiscoveredTopicPipelineService:
                 company_filing_ingestion=company_filing_ingestion,
                 candidate_payload=candidate_payload,
                 market_data=market_data,
+                run_id=run_id,
             )
             response = report_result["response"]
             request = report_result.get("request") or payload
@@ -851,6 +852,7 @@ class DiscoveredTopicPipelineService:
             company_filing_ingestion=checkpoint.get("company_filing_ingestion") or {},
             candidate_payload=candidate_payload,
             market_data=market_data,
+            run_id=run_id,
         )
         response = report_result["response"]
         request = report_result.get("request") or payload

@@ -10,7 +10,15 @@ from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import AnalysisRunRepository, MarketRepository, NewsRepository, ReportRepository
+from app.services.persistence import (
+    AnalysisRunRepository,
+    CompanyFilingRepository,
+    FinancialMetricRepository,
+    MarketRepository,
+    NewsRepository,
+    ReportRepository,
+    ValuationMetricRepository,
+)
 from app.services.schedule_config import ScheduleConfigStore
 
 
@@ -21,6 +29,9 @@ class DataOperationsApiService:
         session_scope_factory: Callable[[], AbstractContextManager],
         news_repository_cls: type[NewsRepository] = NewsRepository,
         market_repository_cls: type[MarketRepository] = MarketRepository,
+        valuation_metric_repository_cls: type[ValuationMetricRepository] = ValuationMetricRepository,
+        company_filing_repository_cls: type[CompanyFilingRepository] = CompanyFilingRepository,
+        financial_metric_repository_cls: type[FinancialMetricRepository] = FinancialMetricRepository,
         analysis_run_repository_cls: type[AnalysisRunRepository] = AnalysisRunRepository,
         report_repository_cls: type[ReportRepository] = ReportRepository,
         ingestion_pipeline_cls: type[IngestionPipeline] = IngestionPipeline,
@@ -34,6 +45,9 @@ class DataOperationsApiService:
         self.session_scope_factory = session_scope_factory
         self.news_repository_cls = news_repository_cls
         self.market_repository_cls = market_repository_cls
+        self.valuation_metric_repository_cls = valuation_metric_repository_cls
+        self.company_filing_repository_cls = company_filing_repository_cls
+        self.financial_metric_repository_cls = financial_metric_repository_cls
         self.analysis_run_repository_cls = analysis_run_repository_cls
         self.report_repository_cls = report_repository_cls
         self.ingestion_pipeline_cls = ingestion_pipeline_cls
@@ -145,6 +159,26 @@ class DataOperationsApiService:
             snapshots = self.market_repository_cls(session).latest_by_tickers(allowed)
         return [snapshot.model_dump(mode="json") for snapshot in snapshots]
 
+    def market_cache_summary(self, tickers: str = "", limit_per_ticker: int = 2) -> dict:
+        mapper = self.entity_mapper_cls()
+        requested = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
+        allowed = mapper.filter_allowed_tickers(requested or sorted(mapper.whitelist.allowed_tickers()))
+        with self.session_scope_factory() as session:
+            snapshots = self.market_repository_cls(session).latest_by_tickers(allowed)
+            valuations = self.valuation_metric_repository_cls(session).latest_by_tickers(allowed)
+            filings = self.company_filing_repository_cls(session).latest_by_tickers(
+                allowed,
+                limit_per_ticker=max(1, min(int(limit_per_ticker), 10)),
+            )
+            financial_count = len(self.financial_metric_repository_cls(session).by_tickers(allowed))
+        return {
+            "tickers": allowed,
+            "market_snapshots": [snapshot.model_dump(mode="json") for snapshot in snapshots],
+            "valuations": [valuation.model_dump(mode="json") for valuation in valuations],
+            "company_filings": [self._company_filing_item(filing) for filing in filings],
+            "financial_metric_count": financial_count,
+        }
+
     def get_schedule(self) -> dict:
         return self.schedule_config_store_cls().load().model_dump(mode="json")
 
@@ -196,4 +230,21 @@ class DataOperationsApiService:
             if document.source.published_at
             else None,
             "url": document.source.url,
+        }
+
+    @staticmethod
+    def _company_filing_item(document: Any) -> dict:
+        return {
+            "id": getattr(document, "id", None),
+            "ticker": getattr(document, "ticker", None),
+            "company_name": getattr(document, "company_name", None),
+            "document_type": getattr(document, "document_type", None),
+            "title": getattr(document, "title", None),
+            "publisher": getattr(getattr(document, "source", None), "publisher", None),
+            "published_at": (
+                document.source.published_at.isoformat()
+                if getattr(getattr(document, "source", None), "published_at", None)
+                else None
+            ),
+            "url": getattr(getattr(document, "source", None), "url", None),
         }

@@ -7,15 +7,19 @@ from app.ui.dashboard_core import *
 def render_report_center() -> None:
     render_section_header("報告中心", "查看每個主題的最新版 HTML 報告；舊版內容只保留在執行紀錄中追蹤。")
     render_follow_up_flash()
-    with session_scope() as session:
-        reports = ReportRepository(session).latest_by_topic(20)
-        report_options = [
-            {
-                "id": report.id,
-                "label": f"{report.generated_at:%Y-%m-%d %H:%M}｜{report.title}",
-            }
-            for report in reports
-        ]
+    try:
+        reports = api_get("/reports?limit=20")
+    except requests.RequestException as exc:
+        reports = []
+        st.error(f"讀取報告清單失敗：{request_error_message(exc)}")
+    report_options = [
+        {
+            "id": report.get("id"),
+            "label": f"{str(report.get('generated_at') or '')[:16].replace('T', ' ')}｜{report.get('title') or '未命名報告'}",
+        }
+        for report in reports
+        if isinstance(report, dict) and report.get("id") is not None
+    ]
 
     if report_options:
         report_ids = [report["id"] for report in report_options]
@@ -55,21 +59,7 @@ def render_report_center() -> None:
                 "candidate_audit": report_payload.get("candidate_audit") or {},
             }
         except requests.RequestException:
-            with session_scope() as session:
-                report = ReportRepository(session).get(int(selected_id))
-                report_markdown = remove_low_quality_investor_forum_lines(report.markdown) if report else None
-                report_title = report.title if report else "report"
-                if report:
-                    try:
-                        fallback_tickers = json.loads(report.tickers_json or "[]")
-                    except json.JSONDecodeError:
-                        fallback_tickers = []
-                    history_result = {
-                        "report_id": selected_id,
-                        "topic": report.topic,
-                        "tickers": fallback_tickers if isinstance(fallback_tickers, list) else [],
-                        "quality_gate": parse_quality_gate_from_markdown(report_markdown or ""),
-                    }
+            st.error("讀取報告內容失敗，請確認 API 服務狀態。")
         if report_markdown:
             history_result = history_result or {
                 "report_id": selected_id,
@@ -96,9 +86,12 @@ def render_report_center() -> None:
         with report_action_cols[2]:
             with st.expander("報告管理"):
                 if st.button("刪除此報告"):
-                    with session_scope() as session:
-                        ReportRepository(session).delete(int(selected_id))
-                    st.success(f"已刪除報告 #{selected_id}｜{report_title}")
+                    try:
+                        api_delete(f"/reports/{int(selected_id)}")
+                        st.success(f"已刪除報告 #{selected_id}｜{report_title}")
+                        st.rerun()
+                    except requests.RequestException as exc:
+                        st.error(f"刪除失敗：{request_error_message(exc)}")
 
         history_tabs = st.tabs(["重點報告", "資料查核", "完整文字"])
         with history_tabs[0]:
@@ -129,24 +122,28 @@ def render_report_center() -> None:
 
     with st.expander("疑難排解：執行紀錄"):
         render_section_header("執行紀錄", "一般閱讀報告不需要查看；舊版報告與背景任務只在這裡查錯或追蹤。")
-        with session_scope() as session:
-            run_rows = []
-            for run in AnalysisRunRepository(session).latest(20):
-                payload = parse_json_object(run.payload_json)
-                run_rows.append(
-                    {
-                        "id": run.id,
-                        "source": run.source,
-                        "status": run.status,
-                        "report_id": run.report_id,
-                        "celery_task_id": payload.get("celery_task_id"),
-                        "started_at": run.started_at.isoformat(timespec="seconds"),
-                        "finished_at": run.finished_at.isoformat(timespec="seconds")
-                        if run.finished_at
-                        else None,
-                        "error": run.error,
-                    }
-                )
+        try:
+            runs = api_get("/runs?limit=20")
+        except requests.RequestException as exc:
+            runs = []
+            st.error(f"讀取執行紀錄失敗：{request_error_message(exc)}")
+        run_rows = []
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            payload = parse_json_object(run.get("payload") or "{}")
+            run_rows.append(
+                {
+                    "id": run.get("id"),
+                    "source": run.get("source"),
+                    "status": run.get("status"),
+                    "report_id": run.get("report_id"),
+                    "celery_task_id": payload.get("celery_task_id"),
+                    "started_at": run.get("started_at"),
+                    "finished_at": run.get("finished_at"),
+                    "error": run.get("error"),
+                }
+            )
         if run_rows:
             st.dataframe(
                 run_rows,
@@ -158,10 +155,17 @@ def render_report_center() -> None:
                 options=[row["id"] for row in run_rows],
                 format_func=lambda run_id: f"紀錄 #{run_id}",
             )
-            with session_scope() as session:
-                selected_run = AnalysisRunRepository(session).get(int(selected_run_id))
-                selected_run_payload = selected_run.payload_json if selected_run else "{}"
-                selected_run_error = selected_run.error if selected_run else None
+            try:
+                selected_run = api_get(f"/runs/{int(selected_run_id)}")
+            except requests.RequestException as exc:
+                selected_run = {}
+                st.error(f"讀取紀錄失敗：{request_error_message(exc)}")
+            if isinstance(selected_run, dict):
+                selected_run_payload = selected_run.get("payload") or "{}"
+                selected_run_error = selected_run.get("error")
+            else:
+                selected_run_payload = "{}"
+                selected_run_error = None
             selected_payload = parse_json_object(selected_run_payload)
             selected_task_id = selected_payload.get("celery_task_id")
             with st.expander("原始紀錄內容"):
@@ -173,12 +177,15 @@ def render_report_center() -> None:
                 try:
                     st.json(api_get(f"/tasks/{selected_task_id}"))
                 except requests.RequestException as exc:
-                    st.error(f"查詢失敗：{exc}")
+                    st.error(f"查詢失敗：{request_error_message(exc)}")
             if selected_run_error:
                 st.error(selected_run_error)
             if st.button("刪除此分析紀錄"):
-                with session_scope() as session:
-                    AnalysisRunRepository(session).delete(int(selected_run_id))
-                st.success(f"已刪除分析紀錄 #{selected_run_id}")
+                try:
+                    api_delete(f"/runs/{int(selected_run_id)}")
+                    st.success(f"已刪除分析紀錄 #{selected_run_id}")
+                    st.rerun()
+                except requests.RequestException as exc:
+                    st.error(f"刪除失敗：{request_error_message(exc)}")
         else:
             st.info("尚無任務執行紀錄。")

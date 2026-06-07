@@ -11,7 +11,11 @@ def render_data_enrichment() -> None:
 
     with data_tabs[0]:
         render_section_header("市場資料", "刷新股價、五年財報與估值資料；這些資料會影響品質門檻與投資行動限制。")
-        status_snapshot = db_status()
+        try:
+            status_snapshot = api_get("/db/status")
+        except requests.RequestException as exc:
+            status_snapshot = {"tables": {}}
+            st.error(f"讀取資料庫狀態失敗：{request_error_message(exc)}")
         table_counts = status_snapshot.get("tables", {})
         count_cols = st.columns(5)
         count_cols[0].metric("股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0)
@@ -109,11 +113,20 @@ def render_data_enrichment() -> None:
                     task_id=data_task_id,
                     refresh_key="refresh_data_task_status",
                 )
-        with session_scope() as session:
-            cached_snapshots = MarketRepository(session).latest_by_tickers(allowed_tickers)
-            cached_valuations = ValuationMetricRepository(session).latest_by_tickers(allowed_tickers)
-            cached_filings = CompanyFilingRepository(session).latest_by_tickers(allowed_tickers, limit_per_ticker=2)
-            cached_financial_count = len(FinancialMetricRepository(session).by_tickers(allowed_tickers))
+        try:
+            cache_summary = api_get("/market/cache-summary?tickers=" + ",".join(allowed_tickers))
+        except requests.RequestException as exc:
+            cache_summary = {
+                "market_snapshots": [],
+                "valuations": [],
+                "company_filings": [],
+                "financial_metric_count": 0,
+            }
+            st.error(f"讀取市場快取失敗：{request_error_message(exc)}")
+        cached_snapshots = cache_summary.get("market_snapshots") or []
+        cached_valuations = cache_summary.get("valuations") or []
+        cached_filings = cache_summary.get("company_filings") or []
+        cached_financial_count = cache_summary.get("financial_metric_count") or 0
 
         cache_tabs = st.tabs(["股價快取", "估值快取", "公司文件"])
         with cache_tabs[0]:
@@ -121,15 +134,16 @@ def render_data_enrichment() -> None:
                 st.dataframe(
                     [
                         {
-                            "股票": snapshot.ticker,
-                            "交易日": snapshot.trade_date.isoformat(),
-                            "收盤價": snapshot.close,
-                            "漲跌": snapshot.spread,
-                            "成交量": snapshot.trading_volume,
-                            "來源": snapshot.source,
-                            "更新時間 UTC": snapshot.fetched_at.isoformat(timespec="seconds"),
+                            "股票": snapshot.get("ticker"),
+                            "交易日": snapshot.get("trade_date"),
+                            "收盤價": snapshot.get("close"),
+                            "漲跌": snapshot.get("spread"),
+                            "成交量": snapshot.get("trading_volume"),
+                            "來源": snapshot.get("source"),
+                            "更新時間 UTC": snapshot.get("fetched_at"),
                         }
                         for snapshot in cached_snapshots
+                        if isinstance(snapshot, dict)
                     ],
                     width="stretch",
                     hide_index=True,
@@ -142,15 +156,16 @@ def render_data_enrichment() -> None:
                 st.dataframe(
                     [
                         {
-                            "股票": valuation.ticker,
-                            "交易日": valuation.trade_date.isoformat(),
-                            "本益比": valuation.pe_ratio,
-                            "股價淨值比": valuation.pb_ratio,
-                            "殖利率": valuation.dividend_yield,
-                            "來源": valuation.source,
-                            "更新時間 UTC": valuation.fetched_at.isoformat(timespec="seconds"),
+                            "股票": valuation.get("ticker"),
+                            "交易日": valuation.get("trade_date"),
+                            "本益比": valuation.get("pe_ratio"),
+                            "股價淨值比": valuation.get("pb_ratio"),
+                            "殖利率": valuation.get("dividend_yield"),
+                            "來源": valuation.get("source"),
+                            "更新時間 UTC": valuation.get("fetched_at"),
                         }
                         for valuation in cached_valuations
+                        if isinstance(valuation, dict)
                     ],
                     width="stretch",
                     hide_index=True,
@@ -162,15 +177,14 @@ def render_data_enrichment() -> None:
                 st.dataframe(
                     [
                         {
-                            "股票": filing.ticker,
-                            "類型": filing.document_type,
-                            "標題": filing.title,
-                            "來源": filing.source.publisher,
-                            "日期": filing.source.published_at.isoformat()
-                            if filing.source.published_at
-                            else None,
+                            "股票": filing.get("ticker"),
+                            "類型": filing.get("document_type"),
+                            "標題": filing.get("title"),
+                            "來源": filing.get("publisher"),
+                            "日期": filing.get("published_at"),
                         }
                         for filing in cached_filings
+                        if isinstance(filing, dict)
                     ],
                     width="stretch",
                     hide_index=True,
@@ -191,21 +205,20 @@ def render_data_enrichment() -> None:
             if not manual_news_ready:
                 st.caption("請先填入標題與內文。")
             if st.button("匯入新聞/研究摘要", type="primary", disabled=not manual_news_ready):
-                document = NewsFetcher.from_manual_text(
-                    title=title.strip(),
-                    text=text.strip(),
-                    publisher=(publisher or "manual").strip(),
-                    published_at=published_at,
-                    url=url.strip() or None,
-                )
-                VectorStore().upsert_documents([document])
-                matches = EntityMapper().match_document(document)
-                with session_scope() as session:
-                    NewsRepository(session).upsert_document(
-                        document,
-                        [match.model_dump(mode="json") for match in matches],
+                try:
+                    result = api_post(
+                        "/ingest/manual",
+                        {
+                            "title": title.strip(),
+                            "text": text.strip(),
+                            "publisher": (publisher or "manual").strip(),
+                            "published_at": published_at.isoformat(),
+                            "url": url.strip() or None,
+                        },
                     )
-                st.success(f"已匯入：{document.id}")
+                    st.success(f"已匯入：{result.get('document_id')}")
+                except requests.RequestException as exc:
+                    st.error(f"匯入失敗：{request_error_message(exc)}")
 
         with input_tabs[1]:
             if not allowed_tickers:
@@ -251,24 +264,27 @@ def render_data_enrichment() -> None:
                     disabled=not filing_url_ready,
                 )
                 if import_text_filing:
-                    document = CompanyFilingFetcher.from_manual_text(
-                        ticker=filing_ticker,
-                        company_name=filing_company,
-                        document_type=filing_type,
-                        title=filing_title.strip(),
-                        text=filing_text.strip(),
-                        publisher=(filing_publisher or "公司 IR / MOPS").strip(),
-                        published_at=filing_date,
-                        url=filing_url.strip() or None,
-                    )
-                    news_document = CompanyFilingRepository.to_news_document(document)
-                    VectorStore().upsert_documents([news_document])
-                    with session_scope() as session:
-                        CompanyFilingRepository(session).upsert_document(document)
-                    tier = filing_source_tier(document)
-                    score = filing_quality_score(document, filing_ticker, filing_company)
-                    st.success(f"已匯入公司文件：{document.id}")
-                    st.caption(f"來源分級：{tier}；品質分數：{score}")
+                    try:
+                        result = api_post(
+                            "/company-filings/manual",
+                            {
+                                "ticker": filing_ticker,
+                                "company_name": filing_company,
+                                "document_type": filing_type,
+                                "title": filing_title.strip(),
+                                "text": filing_text.strip(),
+                                "publisher": (filing_publisher or "公司 IR / MOPS").strip(),
+                                "published_at": filing_date.isoformat(),
+                                "url": filing_url.strip() or None,
+                            },
+                        )
+                        st.success(f"已匯入公司文件：{result.get('document_id')}")
+                        st.caption(
+                            f"來源分級：{result.get('source_tier')}；"
+                            f"品質分數：{result.get('quality_score')}"
+                        )
+                    except requests.RequestException as exc:
+                        st.error(f"匯入公司文件失敗：{request_error_message(exc)}")
                 if import_url_filing:
                     try:
                         task_response = queue_data_operation(
@@ -299,11 +315,14 @@ def render_data_enrichment() -> None:
 
     with data_tabs[2]:
         render_section_header("RSS 匯入", "從既有資料源或指定 URL 抓取最新文本。")
-        source_store = NewsSourceStore()
-        configured_sources = source_store.load()
+        try:
+            configured_sources = api_get("/news/sources")
+        except requests.RequestException as exc:
+            configured_sources = []
+            st.error(f"讀取 RSS 來源失敗：{request_error_message(exc)}")
         if configured_sources:
             st.dataframe(
-                [source.model_dump(mode="json") for source in configured_sources],
+                configured_sources,
                 width="stretch",
                 hide_index=True,
             )

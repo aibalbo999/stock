@@ -15,6 +15,7 @@ from app.services.candidate_revalidation import CandidateRevalidationService
 from app.services.company_data_audit import audit_company_data
 from app.services.followup_actions import FollowUpActionPlanner, execute_follow_up_actions_sync
 from app.services.ingestion import IngestionPipeline
+from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.persistence import (
     AnalysisRunRepository,
     FinancialMetricRepository,
@@ -253,6 +254,11 @@ def _rerun_after_close_report(target: dict) -> dict:
     with session_scope() as session:
         report = ReportRepository(session).create(request, response)
         report_id = report.id
+    record_llm_usage_from_report_execution(
+        report_result.get("report_execution"),
+        operation="after_close_report_rerun",
+        report_id=report_id,
+    )
     path = _write_report_file(request, response)
     return {
         "status": "generated",
@@ -325,12 +331,43 @@ def data_operation_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
     operation = str(payload.get("operation") or "")
-    result = asyncio.run(_run_data_operation_payload(operation, payload.get("payload") or {}))
-    return {
-        "task_id": task_id,
-        "operation": operation,
-        "result": result,
-    }
+    operation_payload = payload.get("payload") or {}
+    with session_scope() as session:
+        run = AnalysisRunRepository(session).start(
+            "celery_data_operation",
+            {
+                "task": "data_operation",
+                "operation": operation,
+                "payload": operation_payload,
+                "celery_task_id": task_id,
+            },
+        )
+        run_id = run.id
+    try:
+        result = asyncio.run(_run_data_operation_payload(operation, operation_payload))
+        with session_scope() as session:
+            repository = AnalysisRunRepository(session)
+            repository.update_payload(
+                run_id,
+                {
+                    "task": "data_operation",
+                    "operation": operation,
+                    "payload": operation_payload,
+                    "celery_task_id": task_id,
+                    "result": result,
+                },
+            )
+            repository.mark_success(run_id, report_id=None)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "operation": operation,
+            "result": result,
+        }
+    except Exception as exc:
+        with session_scope() as session:
+            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
+        raise
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.report_follow_up_task")
@@ -434,6 +471,12 @@ def generate_report_task(self, payload: dict) -> dict:
         with session_scope() as session:
             report = ReportRepository(session).create(request, response)
             report_id = report.id
+        record_llm_usage_from_report_execution(
+            report_result.get("report_execution"),
+            operation="celery_report_generation",
+            report_id=report_id,
+            run_id=run_id,
+        )
         workflow.complete_step(run_id, current_step, {"report_id": report_id})
         path = _write_report_file(request, response)
         with session_scope() as session:

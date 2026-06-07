@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 from app.services.llm_api import LLMApiService
@@ -152,3 +153,29 @@ def test_llm_api_service_healthcheck_truncates_message_and_sets_ok() -> None:
         },
         "observability": {},
     }
+
+
+def test_llm_api_service_lists_usage_records_from_repository() -> None:
+    class FakeUsageRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def latest(self, limit: int):
+            assert self.session == "session"
+            assert limit == 3
+            return [SimpleNamespace(id=1)]
+
+        @staticmethod
+        def to_dict(record):
+            return {"id": record.id, "model": "gemini-3.5-flash"}
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = LLMApiService(
+        session_scope_factory=fake_session_scope,
+        llm_usage_repository_cls=FakeUsageRepository,
+    )
+
+    assert service.usage_records(3) == [{"id": 1, "model": "gemini-3.5-flash"}]

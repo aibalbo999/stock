@@ -14,33 +14,12 @@ import streamlit.components.v1 as components
 
 from app.core.config import get_settings
 from app.core.time import today_taipei
-from app.data_sources.company_filings import (
-    CompanyFilingFetcher,
-    filing_quality_score,
-    filing_source_tier,
-)
-from app.data_sources.news import NewsFetcher, NewsSourceStore
-from app.db.status import db_status
-from app.db.session import init_db, session_scope
-from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
-from app.services.persistence import (
-    AnalysisRunRepository,
-    CompanyFilingRepository,
-    FinancialMetricRepository,
-    MarketRepository,
-    NewsRepository,
-    ReportRepository,
-    ValuationMetricRepository,
-)
 from app.services.report_quality import (
     parse_quality_gate_from_markdown,
 )
-from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
-from app.services.service_status import service_status
 from app.services.candidate_confidence import format_confidence_score
 from app.services.source_quality import is_low_quality_investor_forum_source, remove_low_quality_investor_forum_lines
-from app.services.upgrade_audit import audit_upgrade_capabilities
 from app.services.whitelist import SupplyChainWhitelist
 
 STYLE_PATH = Path(__file__).with_name("styles") / "stock_dashboard.css"
@@ -53,7 +32,6 @@ def load_dashboard_css() -> None:
 
 def configure_page(page_title: str = "台股 AI 產業鏈分析") -> None:
     st.set_page_config(page_title=page_title, layout="wide")
-    init_db()
     load_dashboard_css()
 
 
@@ -62,6 +40,18 @@ API_BASE_URL = get_settings().api_base_url.rstrip("/")
 
 def api_post(path: str, payload: dict) -> dict:
     response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=900)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_put(path: str, payload: dict) -> dict:
+    response = requests.put(f"{API_BASE_URL}{path}", json=payload, timeout=60)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_delete(path: str) -> dict:
+    response = requests.delete(f"{API_BASE_URL}{path}", timeout=60)
     response.raise_for_status()
     return response.json()
 
@@ -2278,6 +2268,18 @@ def render_task_status(task_status: dict) -> None:
     cols[2].metric("Success", str(task_status.get("successful", False)))
     run = task_status.get("run")
     cols[3].metric("Run", f"#{run['id']}" if isinstance(run, dict) and run.get("id") else "-")
+    progress = task_status.get("progress") if isinstance(task_status.get("progress"), dict) else {}
+    progress_pct = progress.get("progress_pct")
+    if isinstance(progress_pct, (int, float)):
+        st.progress(max(0.0, min(float(progress_pct), 1.0)))
+    if progress:
+        st.caption(
+            "進度："
+            f"{progress.get('status') or task_status.get('status', 'UNKNOWN')}｜"
+            f"{progress.get('current_step') or progress.get('next_incomplete_step') or '等待中'}"
+        )
+        if progress.get("resume_hint"):
+            st.caption(str(progress["resume_hint"]))
     if task_status.get("result"):
         st.json(task_status["result"])
     if task_status.get("error"):
@@ -2313,12 +2315,29 @@ def render_task_status_panel(
         try:
             st.session_state[status_state_key] = api_get(f"/tasks/{task_id}")
         except requests.RequestException as exc:
-            st.error(f"查詢失敗：{exc}")
+            st.error(f"查詢失敗：{request_error_message(exc)}")
             return None
     task_status = st.session_state.get(status_state_key)
     if not isinstance(task_status, dict):
         return None
     render_task_status(task_status)
+    action_cols = st.columns(2)
+    with action_cols[0]:
+        if st.button("取消任務", key=f"{refresh_key}_cancel"):
+            try:
+                st.session_state[status_state_key] = api_post(f"/tasks/{task_id}/cancel", {})
+                st.success("已送出取消要求。")
+            except requests.RequestException as exc:
+                st.error(f"取消失敗：{request_error_message(exc)}")
+    with action_cols[1]:
+        if st.button("重試任務", key=f"{refresh_key}_retry"):
+            try:
+                retry_response = api_post(f"/tasks/{task_id}/retry", {})
+                st.session_state["last_data_task_id"] = retry_response.get("task_id") or task_id
+                st.session_state[status_state_key] = retry_response
+                st.success(f"已送出重試任務：{retry_response.get('task_id')}")
+            except requests.RequestException as exc:
+                st.error(f"重試失敗：{request_error_message(exc)}")
     result = (task_status or {}).get("result")
     if (
         apply_result_key

@@ -62,6 +62,10 @@ def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
             captured["schedule"] = config.model_dump(mode="json")
             return {"enabled": True}
 
+        def market_cache_summary(self, tickers: str, limit_per_ticker: int) -> dict:
+            captured["cache_summary"] = (tickers, limit_per_ticker)
+            return {"market_snapshots": [{"ticker": "2330"}]}
+
         def maintenance_cleanup(self, **kwargs) -> dict:
             captured["cleanup"] = kwargs
             return {"failed_runs_deleted": 1}
@@ -69,6 +73,9 @@ def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
     client = _client(data_api=FakeDataApi())
 
     assert client.get("/news/sources").json() == [{"name": "twse"}]
+    assert client.get("/market/cache-summary?tickers=2330&limit_per_ticker=3").json() == {
+        "market_snapshots": [{"ticker": "2330"}]
+    }
     assert client.get("/schedule").json() == {"enabled": False}
     assert client.put("/schedule", json={"enabled": True, "tickers": ["2330"]}).json() == {"enabled": True}
     cleanup_response = client.post("/maintenance/cleanup", json={"failed_runs": True})
@@ -76,6 +83,7 @@ def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
     assert cleanup_response.status_code == 200
     assert cleanup_response.json() == {"failed_runs_deleted": 1}
     assert captured["schedule"]["enabled"] is True
+    assert captured["cache_summary"] == ("2330", 3)
     assert captured["cleanup"]["failed_runs"] is True
 
 
@@ -137,6 +145,30 @@ def test_operations_router_maps_run_and_async_task_errors() -> None:
     assert "requires at least one" in async_response.json()["detail"]
     assert task_run_response.status_code == 404
     assert task_run_response.json()["detail"] == "run not found for task"
+
+
+def test_operations_router_delegates_task_cancel_and_retry() -> None:
+    captured = {}
+
+    class FakeRunTaskApi:
+        def cancel_task(self, task_id: str) -> dict:
+            captured["cancel"] = task_id
+            return {"task_id": task_id, "cancel_requested": True}
+
+        def retry_task(self, task_id: str) -> dict:
+            captured["retry"] = task_id
+            return {"task_id": "retry-task", "retried_from_task_id": task_id}
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    cancel_response = client.post("/tasks/task-123/cancel")
+    retry_response = client.post("/tasks/task-123/retry")
+
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["cancel_requested"] is True
+    assert retry_response.status_code == 200
+    assert retry_response.json()["task_id"] == "retry-task"
+    assert captured == {"cancel": "task-123", "retry": "task-123"}
 
 
 def test_operations_router_maps_task_queue_errors_to_503() -> None:

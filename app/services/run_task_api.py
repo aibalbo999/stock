@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any
@@ -158,8 +159,12 @@ class RunTaskApiService:
                 response["error"] = str(result.result)
         with self.session_scope_factory() as session:
             run = self.analysis_run_repository_cls(session).get_by_celery_task_id(task_id)
+        celery_progress = self._celery_progress(getattr(result, "info", None))
         if run is not None:
             response["run"] = self.serialize_run_func(run)
+            response["progress"] = self._progress_payload(response["run"], celery_progress)
+        elif celery_progress:
+            response["progress"] = celery_progress
         return response
 
     def get_run_by_task_id(self, task_id: str) -> dict:
@@ -168,6 +173,55 @@ class RunTaskApiService:
         if run is None:
             raise RunTaskNotFound("run not found for task")
         return self.serialize_run_func(run)
+
+    def cancel_task(self, task_id: str) -> dict:
+        if self.celery_app is None:
+            raise TaskQueueUnavailableError("task queue is not configured")
+        try:
+            self.celery_app.control.revoke(task_id, terminate=False)
+        except Exception as exc:
+            raise TaskQueueUnavailableError(f"task queue unavailable while cancelling task: {exc}") from exc
+        run_payload = None
+        with self.session_scope_factory() as session:
+            repository = self.analysis_run_repository_cls(session)
+            run = repository.get_by_celery_task_id(task_id)
+            if run is not None:
+                run_payload = self._parse_payload(getattr(run, "payload_json", None))
+                run_payload["cancel_requested"] = True
+                run_payload["cancel_requested_at"] = "queued_by_api"
+                repository.update_payload(run.id, run_payload)
+                run = repository.get(run.id)
+        return {
+            "task_id": task_id,
+            "cancel_requested": True,
+            "run": self.serialize_run_func(run) if run is not None else None,
+        }
+
+    def retry_task(self, task_id: str) -> dict:
+        with self.session_scope_factory() as session:
+            run = self.analysis_run_repository_cls(session).get_by_celery_task_id(task_id)
+        if run is None:
+            raise RunTaskNotFound("run not found for task")
+        payload = self._parse_payload(getattr(run, "payload_json", None))
+        source = str(getattr(run, "source", "") or "")
+        if payload.get("task") == "data_operation" or source == "celery_data_operation":
+            operation = str(payload.get("operation") or "")
+            operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+            retried = self.queue_data_operation(operation, operation_payload)
+            return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
+        if payload.get("source_report_id") is not None:
+            follow_up_payload = {
+                key: payload.get(key)
+                for key in ("purpose", "force_refresh")
+                if key in payload
+            }
+            retried = self.queue_report_follow_up(int(payload["source_report_id"]), follow_up_payload)
+            return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
+        request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
+        if isinstance(request_payload, dict) and request_payload.get("topic"):
+            retried = self.generate_report_async(ReportRequest.model_validate(request_payload))
+            return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
+        raise AsyncReportValidationError("task payload is not retryable")
 
     @staticmethod
     def _payload_model_dump(payload: Any) -> dict:
@@ -189,3 +243,47 @@ class RunTaskApiService:
             raise TaskQueueUnavailableError(
                 f"task queue unavailable while submitting {operation}: {exc}"
             ) from exc
+
+    @staticmethod
+    def _parse_payload(payload_json: str | None) -> dict:
+        if not payload_json:
+            return {}
+        try:
+            payload = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _celery_progress(celery_info: Any) -> dict | None:
+        if isinstance(celery_info, dict) and isinstance(celery_info.get("progress"), dict):
+            return celery_info["progress"]
+        return None
+
+    @staticmethod
+    def _progress_payload(serialized_run: dict | None, celery_progress: dict | None = None) -> dict:
+        if celery_progress:
+            return celery_progress
+        if not serialized_run:
+            return {
+                "status": "unknown",
+                "progress_pct": None,
+                "current_step": None,
+                "resume_hint": None,
+            }
+        workflow_summary = serialized_run.get("workflow_summary")
+        if isinstance(workflow_summary, dict):
+            return {
+                "status": workflow_summary.get("status"),
+                "progress_pct": workflow_summary.get("progress_pct"),
+                "current_step": workflow_summary.get("current_step"),
+                "next_incomplete_step": workflow_summary.get("next_incomplete_step"),
+                "resume_hint": workflow_summary.get("resume_hint"),
+            }
+        status = str(serialized_run.get("status") or "unknown")
+        return {
+            "status": status,
+            "progress_pct": 1.0 if status == "success" else 0.0 if status == "running" else None,
+            "current_step": None,
+            "resume_hint": None,
+        }

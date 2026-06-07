@@ -3472,6 +3472,37 @@ def test_retrieve_evidence_expands_vector_queries_with_graph_neighbors(monkeypat
     assert any("下游需求端" in query for query in queries[1:])
 
 
+def test_generate_includes_graphrag_reasoning_context_in_llm_prompt(monkeypatch) -> None:
+    document = NewsFetcher.from_manual_text(
+        title="雙鴻 AI 液冷散熱需求提升",
+        text="3324 雙鴻 AI 伺服器液冷散熱需求提升，2382 廣達伺服器拉貨升溫。",
+        publisher="測試財經新聞",
+        published_at=date(2026, 5, 20),
+    )
+    captured = {}
+
+    def unavailable_session_scope():
+        raise RuntimeError("database unavailable")
+
+    def fake_generate(prompt: str, **_kwargs):
+        captured["prompt"] = prompt
+        return LLMResult(text='{"items":[]}', model="gemini-3.5-flash", provider="google_genai")
+
+    monkeypatch.setattr("app.services.report_generator.session_scope", unavailable_session_scope)
+    generator = ReportGenerator()
+    generator.llm.generate_structured_with_metadata = fake_generate
+
+    generator.generate(
+        ReportRequest(topic="AI 伺服器散熱", tickers=["3324"]),
+        documents=[document],
+    )
+
+    assert "GraphRAG 路徑推理" in captured["prompt"]
+    assert "3324" in captured["prompt"]
+    assert "2382" in captured["prompt"]
+    assert generator.last_graph_reasoning_plan["status"] == "ready"
+
+
 def test_retrieve_evidence_passes_target_tickers_to_vector_search(monkeypatch) -> None:
     formal_document = NewsFetcher.from_manual_text(
         title="台達電 AI 電源需求成長",

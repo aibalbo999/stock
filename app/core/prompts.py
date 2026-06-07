@@ -7,10 +7,13 @@ SYSTEM_PROMPT = """你是台股 AI 產業鏈分析師。你必須嚴格遵守：
 6. 不得輸出未由檢索文本或結構化資料支撐的數字。
 """
 
-REPORT_PROMPT_TEMPLATE = """請根據以下白名單、檢索證據與市場資料生成報告。
+REPORT_PROMPT_TEMPLATE = """請根據以下白名單、GraphRAG 路徑推理、檢索證據與市場資料生成報告。
 
 白名單：
 {whitelist}
+
+GraphRAG 路徑推理：
+{graph_context}
 
 檢索證據：
 {evidence}
@@ -24,6 +27,7 @@ REPORT_PROMPT_TEMPLATE = """請根據以下白名單、檢索證據與市場資�
 - items 最多 8 筆，請覆蓋主要風險、成長假設、資料缺口與市場資料觀察。
 - 若引用新聞，source_type 必須是 "news"，source_date 必須等於「檢索證據」的日期；source_publisher/source_title 可做極短摘要但必須能清楚映射回原始來源；source_id 必須填入該來源「公司對應」中的股票代號。若該 claim 不指向單一公司，source_id 可留空。
 - 若引用市場資料，source_type 必須是 "market"，source_date 必須等於 trade_date，source_publisher 必須等於 source，source_id 必須等於 ticker，source_title 可留空。
+- GraphRAG 只可用來判斷上下游/同業傳導方向，不可單獨當成新聞或財務證據；若 claim 只來自 GraphRAG 而沒有檢索證據或市場資料支撐，請不要輸出。
 - claim 不得包含未由檢索證據或市場資料支撐的公司、數字、財務預測或因果關係；claim 中出現的公司必須與 source_id 和檢索證據的公司對應一致，不得把 A 公司來源寫成 B 公司結論。
 - 若無法替每一點附上來源，請輸出 {{"items":[]}}。
 """

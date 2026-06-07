@@ -43,6 +43,7 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "AnalysisRunRepository",
     "CompanyFilingRepository",
     "FinancialMetricRepository",
+    "LLMUsageRepository",
     "MarketRepository",
     "MonthlyRevenueRepository",
     "NewsRepository",

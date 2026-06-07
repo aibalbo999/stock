@@ -11,6 +11,7 @@ from app.services.ingestion import IngestionPipeline
 from app.services.persistence import AnalysisRunRepository, ReportRepository
 from app.services.report_generator import ReportExecutionError
 from app.services.report_quality import should_recover_market_data_quality
+from app.services.llm_usage import record_llm_usage_from_report_execution
 
 
 class SyncReportGenerationApiService:
@@ -76,6 +77,12 @@ class SyncReportGenerationApiService:
                     run_payload,
                 )
                 run_repository.mark_success(run_id, report.id)
+            record_llm_usage_from_report_execution(
+                report_result.get("report_execution"),
+                report_id=report.id,
+                run_id=run_id,
+                session_scope_factory=self.session_scope_factory,
+            )
             return response
         except ReportExecutionError as exc:
             self._mark_failed(run_id, str(exc))

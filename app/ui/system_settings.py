@@ -42,13 +42,28 @@ def render_system_settings() -> None:
 
     with settings_tabs[1]:
         render_section_header("自動排程", "設定收盤後資料刷新與報告更新。")
-        schedule_store = ScheduleConfigStore()
-        schedule_config = schedule_store.load()
-        schedule_enabled = st.toggle("啟用每日排程", value=schedule_config.enabled)
+        try:
+            schedule_config = api_get("/schedule")
+        except requests.RequestException as exc:
+            schedule_config = {
+                "enabled": False,
+                "task": "latest_report_update",
+                "hour": 15,
+                "minute": 30,
+                "topic": "",
+                "tickers": [],
+                "lookback_days": 120,
+                "force_refresh": False,
+                "refresh_company_filings": True,
+                "rerun_report": True,
+                "timezone": "Asia/Taipei",
+            }
+            st.error(f"讀取排程設定失敗：{request_error_message(exc)}")
+        schedule_enabled = st.toggle("啟用每日排程", value=bool(schedule_config.get("enabled")))
         schedule_task = st.selectbox(
             "排程任務",
             options=["latest_report_update", "configured_report"],
-            index=0 if schedule_config.task == "latest_report_update" else 1,
+            index=0 if schedule_config.get("task") == "latest_report_update" else 1,
             format_func=lambda value: {
                 "latest_report_update": "收盤後更新最新報告",
                 "configured_report": "固定主題每日產報",
@@ -56,16 +71,16 @@ def render_system_settings() -> None:
         )
         col_hour, col_minute = st.columns(2)
         with col_hour:
-            schedule_hour = st.number_input("小時", min_value=0, max_value=23, value=schedule_config.hour)
+            schedule_hour = st.number_input("小時", min_value=0, max_value=23, value=int(schedule_config.get("hour") or 0))
         with col_minute:
-            schedule_minute = st.number_input("分鐘", min_value=0, max_value=59, value=schedule_config.minute)
+            schedule_minute = st.number_input("分鐘", min_value=0, max_value=59, value=int(schedule_config.get("minute") or 0))
         schedule_topic = st.text_input(
             "排程主題",
-            value=schedule_config.topic,
+            value=str(schedule_config.get("topic") or ""),
             disabled=schedule_task == "latest_report_update",
         )
         schedule_default_tickers = [
-            ticker for ticker in schedule_config.tickers if ticker in settings_tickers
+            ticker for ticker in schedule_config.get("tickers", []) if ticker in settings_tickers
         ]
         schedule_tickers = st.multiselect(
             "排程個股",
@@ -77,11 +92,11 @@ def render_system_settings() -> None:
             "排程回看天數",
             min_value=1,
             max_value=365,
-            value=schedule_config.lookback_days,
+            value=int(schedule_config.get("lookback_days") or 120),
         )
-        schedule_force_refresh = st.toggle("強制刷新市場資料", value=schedule_config.force_refresh)
-        schedule_refresh_filings = st.toggle("補齊公司公開文件", value=schedule_config.refresh_company_filings)
-        schedule_rerun_report = st.toggle("刷新後重新產生報告", value=schedule_config.rerun_report)
+        schedule_force_refresh = st.toggle("強制刷新市場資料", value=bool(schedule_config.get("force_refresh")))
+        schedule_refresh_filings = st.toggle("補齊公司公開文件", value=bool(schedule_config.get("refresh_company_filings", True)))
+        schedule_rerun_report = st.toggle("刷新後重新產生報告", value=bool(schedule_config.get("rerun_report", True)))
         schedule_ready = (
             (not schedule_enabled)
             or schedule_task == "latest_report_update"
@@ -91,25 +106,32 @@ def render_system_settings() -> None:
             st.caption("固定主題每日產報需填入主題並至少選擇一檔白名單股票。")
         if st.button("儲存排程設定", type="primary", disabled=not schedule_ready):
             try:
-                saved = schedule_store.save(
-                    ScheduleConfig(
-                        enabled=schedule_enabled,
-                        task=schedule_task,
-                        hour=int(schedule_hour),
-                        minute=int(schedule_minute),
-                        topic=schedule_topic.strip(),
-                        tickers=schedule_tickers,
-                        lookback_days=int(schedule_lookback),
-                        timezone="Asia/Taipei",
-                        force_refresh=schedule_force_refresh,
-                        rerun_report=schedule_rerun_report,
-                        refresh_company_filings=schedule_refresh_filings,
-                    )
+                saved = api_put(
+                    "/schedule",
+                    {
+                        "enabled": schedule_enabled,
+                        "task": schedule_task,
+                        "hour": int(schedule_hour),
+                        "minute": int(schedule_minute),
+                        "topic": schedule_topic.strip(),
+                        "tickers": schedule_tickers,
+                        "lookback_days": int(schedule_lookback),
+                        "timezone": "Asia/Taipei",
+                        "force_refresh": schedule_force_refresh,
+                        "rerun_report": schedule_rerun_report,
+                        "refresh_company_filings": schedule_refresh_filings,
+                    },
                 )
             except ValueError as exc:
                 st.error(f"儲存失敗：{exc}")
+            except requests.RequestException as exc:
+                st.error(f"儲存失敗：{request_error_message(exc)}")
             else:
-                st.success(f"已儲存：每日 {saved.timezone} {saved.hour:02d}:{saved.minute:02d} {saved.task}")
+                st.success(
+                    f"已儲存：每日 {saved.get('timezone')} "
+                    f"{int(saved.get('hour') or 0):02d}:{int(saved.get('minute') or 0):02d} "
+                    f"{saved.get('task')}"
+                )
         with st.expander("進階：背景服務啟動指令"):
             st.info("使用一鍵啟動時會自動帶起背景排程服務；單獨啟動時可用以下指令。")
             st.code(
@@ -121,17 +143,27 @@ def render_system_settings() -> None:
 
     with settings_tabs[2]:
         render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
-        status = db_status()
-        service_snapshot = service_status()
+        try:
+            status = api_get("/db/status")
+        except requests.RequestException as exc:
+            status = {"settings": {}, "integrity": {}, "tables": {}}
+            st.error(f"讀取 DB 狀態失敗：{request_error_message(exc)}")
+        try:
+            service_snapshot = api_get("/services/status")
+        except requests.RequestException as exc:
+            service_snapshot = {}
+            st.error(f"讀取服務狀態失敗：{request_error_message(exc)}")
         strict_upgrade_audit = st.toggle(
             "正式部署檢查",
             value=False,
             help="啟用後會把外部 Neo4j live import 也視為必備項目。",
         )
-        upgrade_audit = audit_upgrade_capabilities(
-            service_snapshot,
-            strict_external=bool(strict_upgrade_audit),
-        )
+        try:
+            strict_query = "true" if strict_upgrade_audit else "false"
+            upgrade_audit = api_get(f"/services/upgrade-audit?strict_external={strict_query}")
+        except requests.RequestException as exc:
+            upgrade_audit = {"overall_status": "unknown", "warnings": [], "failures": []}
+            st.error(f"讀取升級稽核失敗：{request_error_message(exc)}")
         st.markdown(upgrade_audit_html(upgrade_audit), unsafe_allow_html=True)
         with st.expander("升級稽核明細"):
             st.dataframe(upgrade_audit_rows(upgrade_audit), width="stretch", hide_index=True)
@@ -161,32 +193,54 @@ def render_system_settings() -> None:
             if not cleanup_confirmed:
                 st.caption("勾選確認後才會啟用下方維護按鈕，避免手機或滑鼠誤觸。")
             if st.button("清除失敗紀錄", disabled=not cleanup_confirmed):
-                with session_scope() as session:
-                    deleted = AnalysisRunRepository(session).delete_failed()
-                st.success(f"已清除 {deleted} 筆失敗紀錄。")
+                try:
+                    result = api_post("/maintenance/cleanup", {"failed_runs": True})
+                    st.success(f"已清除 {result.get('failed_runs_deleted', 0)} 筆失敗紀錄。")
+                except requests.RequestException as exc:
+                    st.error(f"清理失敗：{request_error_message(exc)}")
             stale_minutes = st.number_input("執行逾時分鐘", min_value=5, max_value=1440, value=60)
             if st.button("標記逾時任務", disabled=not cleanup_confirmed):
                 stale_before = datetime.utcnow() - timedelta(minutes=int(stale_minutes))
-                with session_scope() as session:
-                    marked = AnalysisRunRepository(session).mark_stale_running_failed(
-                        stale_before,
-                        "marked failed from Streamlit maintenance",
+                try:
+                    result = api_post(
+                        "/maintenance/cleanup",
+                        {"stale_running_before": stale_before.isoformat()},
                     )
-                st.success(f"已標記 {marked} 筆逾時任務。")
+                    st.success(f"已標記 {result.get('stale_running_marked_failed', 0)} 筆逾時任務。")
+                except requests.RequestException as exc:
+                    st.error(f"標記失敗：{request_error_message(exc)}")
             if st.button("修復失效報告連結", disabled=not cleanup_confirmed):
-                with session_scope() as session:
-                    cleared = AnalysisRunRepository(session).clear_orphan_report_refs()
-                st.success(f"已修復 {cleared} 筆報告連結。")
+                try:
+                    result = api_post("/maintenance/cleanup", {"orphan_report_refs": True})
+                    st.success(f"已修復 {result.get('orphan_report_refs_cleared', 0)} 筆報告連結。")
+                except requests.RequestException as exc:
+                    st.error(f"修復失敗：{request_error_message(exc)}")
             cleanup_days = st.number_input("保留天數", min_value=1, max_value=3650, value=90)
             cleanup_before = datetime.combine(today_taipei() - timedelta(days=int(cleanup_days)), time.min)
             col_runs, col_reports = st.columns(2)
             with col_runs:
                 if st.button("清除舊分析紀錄", disabled=not cleanup_confirmed):
-                    with session_scope() as session:
-                        deleted = AnalysisRunRepository(session).delete_before(cleanup_before)
-                    st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的分析紀錄。")
+                    try:
+                        result = api_post(
+                            "/maintenance/cleanup",
+                            {"runs_before": cleanup_before.isoformat()},
+                        )
+                        st.success(
+                            f"已清除 {result.get('old_runs_deleted', 0)} 筆 "
+                            f"{cleanup_before.date().isoformat()} 前的分析紀錄。"
+                        )
+                    except requests.RequestException as exc:
+                        st.error(f"清理失敗：{request_error_message(exc)}")
             with col_reports:
                 if st.button("清除舊報告", disabled=not cleanup_confirmed):
-                    with session_scope() as session:
-                        deleted = ReportRepository(session).delete_before(cleanup_before)
-                    st.success(f"已清除 {deleted} 筆 {cleanup_before.date().isoformat()} 前的報告。")
+                    try:
+                        result = api_post(
+                            "/maintenance/cleanup",
+                            {"reports_before": cleanup_before.isoformat()},
+                        )
+                        st.success(
+                            f"已清除 {result.get('old_reports_deleted', 0)} 筆 "
+                            f"{cleanup_before.date().isoformat()} 前的報告。"
+                        )
+                    except requests.RequestException as exc:
+                        st.error(f"清理失敗：{request_error_message(exc)}")

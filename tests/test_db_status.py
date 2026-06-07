@@ -15,6 +15,7 @@ def test_db_status_contains_core_tables() -> None:
     assert "news_articles" in status["tables"]
     assert "company_filings" in status["tables"]
     assert "generated_reports" in status["tables"]
+    assert "llm_usage_records" in status["tables"]
     assert "migration" in status
     assert "up_to_date" in status["migration"]
     assert "gemini_key_count" in status["settings"]

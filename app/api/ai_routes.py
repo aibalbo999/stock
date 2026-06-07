@@ -20,6 +20,10 @@ def create_ai_router(api_services: Any | None = None) -> APIRouter:
     def llm_test(services: Any = Depends(services_dependency)) -> dict:
         return services.llm_api().healthcheck()
 
+    @router.get("/llm/usage")
+    def llm_usage(limit: int = 50, services: Any = Depends(services_dependency)) -> list[dict]:
+        return services.llm_api().usage_records(limit)
+
     @router.post("/discovery/topic-plan")
     def discovery_topic_plan(
         payload: TopicDiscoveryRequest,

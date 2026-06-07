@@ -91,6 +91,14 @@ def create_operations_router(
     ) -> list[dict]:
         return services.data_operations_api().market_snapshots(tickers)
 
+    @router.get("/market/cache-summary")
+    def market_cache_summary(
+        tickers: str = "",
+        limit_per_ticker: int = 2,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.data_operations_api().market_cache_summary(tickers, limit_per_ticker)
+
     @router.get("/schedule")
     def get_schedule(services: Any = Depends(services_dependency)) -> dict:
         return services.data_operations_api().get_schedule()
@@ -189,6 +197,30 @@ def create_operations_router(
             raise HTTPException(
                 status_code=503,
                 detail=task_queue_unavailable_detail(exc, operation="task_status"),
+            ) from exc
+
+    @router.post("/tasks/{task_id}/cancel")
+    def cancel_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
+        try:
+            return services.run_task_api().cancel_task(task_id)
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="task_cancel"),
+            ) from exc
+
+    @router.post("/tasks/{task_id}/retry")
+    def retry_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
+        try:
+            return services.run_task_api().retry_task(task_id)
+        except run_task_not_found_cls as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except async_report_validation_error_cls as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except task_queue_unavailable_error_cls as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="task_retry"),
             ) from exc
 
     @router.get("/tasks/{task_id}/run")

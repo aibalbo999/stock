@@ -110,6 +110,7 @@ def report_execution_summary(generator: object) -> dict:
     llm_result = getattr(generator, "last_llm_result", None)
     vector_store = getattr(generator, "vector_store", None)
     retrieval_trace = getattr(vector_store, "last_retrieval_trace", None) if vector_store is not None else None
+    graph_reasoning_plan = getattr(generator, "last_graph_reasoning_plan", None)
     llm_status = None
     if llm_result is not None:
         llm_status = {
@@ -127,6 +128,7 @@ def report_execution_summary(generator: object) -> dict:
         "evidence_count": len(evidence_documents),
         "excluded_low_quality_source_count": len(excluded_low_quality),
         "retrieval_trace": retrieval_trace,
+        "graph_reasoning": graph_reasoning_plan,
         "llm": llm_status,
     }
 
@@ -145,6 +147,7 @@ class ReportGenerator:
         self.last_evidence_documents: list[NewsDocument] = []
         self.last_excluded_low_quality_documents: list[NewsDocument] = []
         self.last_llm_result: LLMResult | None = None
+        self.last_graph_reasoning_plan: dict | None = None
         self.last_filtered_tickers: list[str] = []
         self.last_dropped_tickers: list[str] = []
         self._document_match_cache: dict[tuple[str, str, str, int], list] = {}
@@ -175,8 +178,10 @@ class ReportGenerator:
         valuation_metrics = self._latest_valuations(tickers)
         leading_signals = self._leading_signals(tickers, valuation_metrics)
 
+        graph_reasoning_context = self._graph_reasoning_context(request, tickers)
         prompt = SYSTEM_PROMPT + "\n\n" + REPORT_PROMPT_TEMPLATE.format(
             whitelist=self.whitelist.as_prompt_context(),
+            graph_context=graph_reasoning_context,
             evidence=self._format_llm_evidence(evidence_docs, self._document_company_labels),
             market_data=self._format_market_data(market_snapshots, monthly_revenues),
         )
@@ -354,6 +359,36 @@ class ReportGenerator:
             )
             self._append_search_query(queries, " ".join(segment_terms), limit)
         return queries
+
+    def _graph_reasoning_context(self, request: ReportRequest, tickers: list[str]) -> str:
+        self.last_graph_reasoning_plan = None
+        if not tickers:
+            return "沒有可用股票範圍，GraphRAG 未產生路徑推理。"
+        try:
+            graph = self.whitelist.graph()
+            plan = graph.reasoning_plan(
+                tickers,
+                topic=request.topic,
+                max_depth=3,
+                max_paths=8,
+            )
+        except Exception as exc:
+            self.last_graph_reasoning_plan = {
+                "status": "unavailable",
+                "reason": str(exc),
+            }
+            return "GraphRAG 路徑推理目前不可用。"
+        self.last_graph_reasoning_plan = {
+            "status": "ready",
+            "strategy": plan.get("strategy"),
+            "requested_tickers": plan.get("requested_tickers") or tickers,
+            "max_depth": plan.get("max_depth"),
+            "max_paths": plan.get("max_paths"),
+            "evidence_policy": plan.get("evidence_policy"),
+            "cypher_templates": plan.get("cypher_templates"),
+        }
+        context = str(plan.get("context") or "").strip()
+        return context or "GraphRAG 沒有找到可用 shortest-path context。"
 
     @staticmethod
     def _graph_neighbor_search_terms(graph, ticker: str, node_by_ticker: dict, max_neighbors: int = 4) -> list[str]:

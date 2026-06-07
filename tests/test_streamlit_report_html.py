@@ -84,7 +84,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert ".report-grid {{ display:block" in source
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
-    assert "latest_by_topic(20)" in source
+    assert 'api_get("/reports?limit=20")' in source
+    assert "latest_by_topic(20)" not in source
     assert "選擇最新版報告" in source
     assert 'flex-wrap: wrap' in combined
     assert 'button[data-testid^="stBaseButton"]' in styles
@@ -104,7 +105,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "input:focus" in styles
     assert 'key="confirm_maintenance_cleanup"' in source
     assert '"正式部署檢查"' in source
-    assert "audit_upgrade_capabilities" in source
+    assert "/services/upgrade-audit" in source
+    assert "audit_upgrade_capabilities" not in source
     assert "避免手機或滑鼠誤觸" in source
     assert "disabled=not cleanup_confirmed" in source
     assert "正式分析不等於買進" in source

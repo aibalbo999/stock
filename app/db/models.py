@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Date, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -152,3 +152,29 @@ class AnalysisRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LLMUsageRecord(Base):
+    __tablename__ = "llm_usage_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operation: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    report_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    provider: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(160), nullable=True, index=True)
+    fallback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    input_token_estimate: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    output_token_estimate: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_token_estimate: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    estimated_cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cost_tracking_mode: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    attempt_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    retryable_failure_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    fallback_path_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    primary_failure_category: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    models_tried_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    attempts_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    observability_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

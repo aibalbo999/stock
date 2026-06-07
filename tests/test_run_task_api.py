@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from datetime import datetime
 from types import SimpleNamespace
@@ -58,6 +59,23 @@ def _run_with_workflow(run_id: int = 20) -> SimpleNamespace:
         report_id=None,
         output_path=None,
         error="report build failed",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+
+def _data_run(run_id: int = 21) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=run_id,
+        source="celery_data_operation",
+        status="failed",
+        payload_json=(
+            '{"task":"data_operation","operation":"market_refresh",'
+            '"payload":{"tickers":["2330"]},"celery_task_id":"task-data"}'
+        ),
+        report_id=None,
+        output_path=None,
+        error="upstream timeout",
         started_at=datetime(2026, 5, 24, 4, 52, 33),
         finished_at=datetime(2026, 5, 24, 4, 52, 50),
     )
@@ -226,6 +244,8 @@ def test_run_task_service_gets_task_status_with_linked_run() -> None:
     assert status["run"]["id"] == 19
     assert status["run"]["workflow"] is None
     assert status["run"]["workflow_summary"] is None
+    assert status["progress"]["status"] == "success"
+    assert status["progress"]["progress_pct"] == 1.0
 
 
 def test_run_task_service_lists_gets_and_deletes_runs() -> None:
@@ -299,3 +319,82 @@ def test_run_task_service_serializes_workflow_resume_summary() -> None:
     assert payload["workflow_summary"]["resume_from_step"] == "report_build"
     assert payload["workflow_summary"]["resumable"] is True
     assert payload["workflow_summary"]["resume_hint"] == "可從 report_build 重新啟動或人工接續。"
+
+
+def test_run_task_service_cancels_task_and_marks_run_payload() -> None:
+    captured = {}
+    data_run = _data_run()
+
+    class FakeControl:
+        def revoke(self, task_id: str, terminate: bool = False) -> None:
+            captured["revoke"] = (task_id, terminate)
+
+    class FakeCeleryApp:
+        control = FakeControl()
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            return data_run if task_id == "task-data" else None
+
+        def update_payload(self, run_id: int, payload: dict):
+            captured["update_payload"] = (run_id, payload)
+            data_run.payload_json = json.dumps(payload)
+            return data_run
+
+        def get(self, run_id: int):
+            return data_run if run_id == data_run.id else None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    response = service.cancel_task("task-data")
+
+    assert response["cancel_requested"] is True
+    assert response["run"]["id"] == data_run.id
+    assert captured["revoke"] == ("task-data", False)
+    assert captured["update_payload"][1]["cancel_requested"] is True
+
+
+def test_run_task_service_retries_data_operation_from_run_payload() -> None:
+    captured = {}
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            return _data_run() if task_id == "task-data" else None
+
+    class FakeTask:
+        def delay(self, payload):
+            captured["payload"] = payload
+            return SimpleNamespace(id="task-retry")
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        data_operation_task=FakeTask(),
+    )
+
+    response = service.retry_task("task-data")
+
+    assert response["task_id"] == "task-retry"
+    assert response["retried_from_task_id"] == "task-data"
+    assert captured["payload"] == {
+        "operation": "market_refresh",
+        "payload": {"tickers": ["2330"]},
+    }

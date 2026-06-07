@@ -12,6 +12,7 @@ from app.services.discovery_workflow import (
     discovery_valuation_history_days,
 )
 from app.services.persistence import ReportRepository
+from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.report_generator import ReportGenerator, report_execution_summary
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -117,6 +118,7 @@ class DiscoveredReportBuilderService:
         company_filing_ingestion: dict,
         candidate_payload: list[dict],
         market_data: dict,
+        run_id: int | None = None,
     ) -> dict:
         snapshots = market_data["snapshots"]
         price_history_snapshots = market_data["price_history_snapshots"]
@@ -180,6 +182,13 @@ class DiscoveredReportBuilderService:
             report = self.report_repository_cls(session).create(request, response)
             report_id = report.id
         report_execution = self.report_execution_summary_func(generator)
+        record_llm_usage_from_report_execution(
+            report_execution,
+            operation="discovered_report_generation",
+            report_id=report_id,
+            run_id=run_id,
+            session_scope_factory=self.session_scope_factory,
+        )
         run_payload = {
             "request": request.model_dump(mode="json"),
             "discovery": discovery,

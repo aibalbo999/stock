@@ -7,6 +7,8 @@ from typing import Any
 from app.core.config import get_settings
 from app.services.llm_client import LLMClient, summarize_llm_attempts
 from app.services.llm_observability import llm_observability_status
+from app.services.llm_usage import list_llm_usage_records
+from app.services.persistence import LLMUsageRepository
 
 
 class LLMApiService:
@@ -15,9 +17,13 @@ class LLMApiService:
         *,
         settings_provider: Callable[[], Any] = get_settings,
         llm_client_cls: type[LLMClient] = LLMClient,
+        session_scope_factory: Callable | None = None,
+        llm_usage_repository_cls: type[LLMUsageRepository] = LLMUsageRepository,
     ) -> None:
         self.settings_provider = settings_provider
         self.llm_client_cls = llm_client_cls
+        self.session_scope_factory = session_scope_factory
+        self.llm_usage_repository_cls = llm_usage_repository_cls
 
     def status(self) -> dict:
         settings = self.settings_provider()
@@ -86,6 +92,15 @@ class LLMApiService:
             "attempt_summary": summarize_llm_attempts(result.attempts),
             "observability": result.observability,
         }
+
+    def usage_records(self, limit: int = 50) -> list[dict]:
+        if self.session_scope_factory is None:
+            return []
+        return list_llm_usage_records(
+            limit=limit,
+            session_scope_factory=self.session_scope_factory,
+            llm_usage_repository_cls=self.llm_usage_repository_cls,
+        )
 
     @staticmethod
     def _model_provider(model: str) -> str:

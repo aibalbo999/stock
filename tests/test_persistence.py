@@ -8,7 +8,12 @@ from app.data_sources.news import NewsFetcher
 from app.db.models import Base, GeneratedReport, NewsArticle
 from app.models.schemas import ReportRequest, ReportResponse, RiskFinding, RiskType, Source
 from app.services.entity_mapping import EntityMapper
-from app.services.persistence import AnalysisRunRepository, NewsRepository, ReportRepository
+from app.services.persistence import (
+    AnalysisRunRepository,
+    LLMUsageRepository,
+    NewsRepository,
+    ReportRepository,
+)
 from app.services.llm_client import LLMResult
 from app.services.report_generator import ReportGenerator
 
@@ -282,5 +287,53 @@ def test_report_repository_sanitizes_non_formal_findings_before_persisting() -> 
         assert len(persisted_findings) == 1
         assert persisted_findings[0]["source"]["publisher"] == "經濟日報"
         assert "股市爆料同學會" not in stored.findings_json
+    finally:
+        session.close()
+
+
+def test_llm_usage_repository_records_report_execution_summary() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        record = LLMUsageRepository(session).create_from_report_execution(
+            operation="report_generation",
+            report_id=12,
+            run_id=34,
+            report_execution={
+                "llm": {
+                    "fallback": False,
+                    "model": "gemini-3.5-flash",
+                    "provider": "google_genai",
+                    "observability": {
+                        "latency_ms": 123.4,
+                        "input_token_estimate": 1000,
+                        "output_token_estimate": 250,
+                        "total_token_estimate": 1250,
+                        "estimated_cost_usd": 0.0,
+                        "cost_tracking_mode": "rate_card",
+                    },
+                    "attempt_summary": {
+                        "attempt_count": 2,
+                        "models_tried": ["gemini-3.5-flash", "gemini-2.5-flash"],
+                        "retryable_failure_count": 1,
+                        "fallback_path_used": True,
+                        "primary_failure_category": "quota_exhausted",
+                    },
+                    "attempts": [{"model": "gemini-3.5-flash"}, {"model": "gemini-2.5-flash"}],
+                }
+            },
+        )
+        session.commit()
+
+        payload = LLMUsageRepository.to_dict(record)
+        assert payload["report_id"] == 12
+        assert payload["run_id"] == 34
+        assert payload["model"] == "gemini-3.5-flash"
+        assert payload["total_token_estimate"] == 1250
+        assert payload["fallback_path_used"] is True
+        assert payload["models_tried"] == ["gemini-3.5-flash", "gemini-2.5-flash"]
+        assert payload["observability"]["latency_ms"] == 123.4
     finally:
         session.close()

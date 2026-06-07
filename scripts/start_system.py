@@ -53,6 +53,11 @@ def main() -> int:
         help="Skip the AI/RAG upgrade capability preflight report.",
     )
     parser.add_argument(
+        "--skip-migrations",
+        action="store_true",
+        help="Skip startup Alembic migrations. Use only when an external deploy step already migrated the DB.",
+    )
+    parser.add_argument(
         "--strict-upgrade-check",
         action="store_true",
         help="Treat optional external integrations, such as live Neo4j import, as required in the preflight report.",
@@ -97,6 +102,13 @@ def main() -> int:
         )
         if switch_status:
             dependency_wait_status["browser_render_fallback"] = switch_status
+
+    migration_status = run_startup_migrations(ROOT, python, skip=bool(args.skip_migrations))
+    if migration_status.get("status") == "失敗":
+        print("")
+        print("資料庫 migration：失敗")
+        print(f"- {migration_status['message']}")
+        return 1
 
     if not args.skip_upgrade_check:
         print_upgrade_capability_preflight(
@@ -175,6 +187,7 @@ def main() -> int:
         )
         for line in dependency_wait_status_lines(dependency_wait_status):
             print(line)
+    print(f"- 資料庫 migration：{migration_status['status']}，{migration_status['message']}")
     print(f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}")
     print(f"- Streamlit: {'已啟動' if streamlit_started else '已在執行'}，連線檢查：{'正常' if streamlit_ok else '尚未回應'}")
     if celery_enabled:
@@ -262,6 +275,47 @@ def print_upgrade_capability_preflight(
     for item in warning_advice:
         print(f"- {item['capability']}：{item['status']}，{item['reason']}")
         print(f"  建議：{item['action']}")
+
+
+def run_startup_migrations(root: Path, python: Path, *, skip: bool = False) -> dict[str, str]:
+    if skip:
+        return {"status": "略過", "message": "使用 --skip-migrations，假設外部流程已完成。"}
+    mode = startup_database_init_mode()
+    normalized_mode = mode.strip().lower().replace("-", "_")
+    if normalized_mode in {"none", "off", "disabled"}:
+        return {"status": "略過", "message": f"DATABASE_INIT_MODE={mode}。"}
+    if normalized_mode in {"create_all", "createall", "metadata"}:
+        return {"status": "略過", "message": f"DATABASE_INIT_MODE={mode}，使用本機 create_all 模式。"}
+    if normalized_mode not in {"alembic", "migration", "migrations"}:
+        return {"status": "失敗", "message": f"不支援 DATABASE_INIT_MODE={mode}；請使用 alembic、create_all 或 none。"}
+    try:
+        completed = subprocess.run(
+            [str(python), "-m", "alembic", "upgrade", "head"],
+            cwd=root,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "失敗", "message": "alembic upgrade head 逾時；請確認資料庫連線。"}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"status": "失敗", "message": f"alembic upgrade head 無法執行：{exc}"}
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or "Alembic migration failed").strip()
+        return {"status": "失敗", "message": message.splitlines()[-1] if message else "Alembic migration failed"}
+    return {"status": "完成", "message": "已執行 alembic upgrade head。"}
+
+
+def startup_database_init_mode() -> str:
+    env_mode = os.environ.get("DATABASE_INIT_MODE")
+    if env_mode:
+        return env_mode
+    try:
+        settings = importlib.import_module("app.core.config").get_settings()
+        return str(getattr(settings, "database_init_mode", "alembic") or "alembic")
+    except Exception:
+        return "alembic"
 
 
 def start_dependency_services(root: Path, *, allow_pull_missing_images: bool = False) -> dict[str, str]:

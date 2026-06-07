@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.services.followup_actions import manual_tracking_follow_up_actions
+from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import (
     can_rerun_candidate_revalidation_from_existing_evidence,
@@ -318,6 +319,13 @@ class ReportFollowUpRunService:
         with self.session_scope_factory() as session:
             new_report = self.report_repository_cls(session).create(rerun_request, response)
             new_report_id = new_report.id
+        record_llm_usage_from_report_execution(
+            report_result.get("report_execution"),
+            operation="report_follow_up_rerun",
+            report_id=new_report_id,
+            run_id=run_id,
+            session_scope_factory=self.session_scope_factory,
+        )
         return {
             "report_id": new_report_id,
             "request": rerun_request.model_dump(mode="json"),

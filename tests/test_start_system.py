@@ -13,7 +13,9 @@ from scripts.start_system import (
     fallback_local_browser_render_to_playwright,
     print_upgrade_capability_preflight,
     pull_missing_dependency_images,
+    run_startup_migrations,
     start_dependency_services,
+    startup_database_init_mode,
     upgrade_dependency_advice,
     wait_for_local_dependency_ports,
 )
@@ -153,6 +155,55 @@ def test_start_dependencies_help_mentions_browserless() -> None:
     help_text = " ".join(completed.stdout.split())
     assert "Redis, Postgres, Neo4j, and Browserless" in help_text
     assert "--pull-missing-dependencies" in help_text
+
+
+def test_run_startup_migrations_runs_alembic_upgrade(monkeypatch, tmp_path) -> None:
+    captured = {}
+    monkeypatch.setenv("DATABASE_INIT_MODE", "alembic")
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["cwd"] = kwargs["cwd"]
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    result = run_startup_migrations(tmp_path, Path("/venv/bin/python"))
+
+    assert result == {"status": "完成", "message": "已執行 alembic upgrade head。"}
+    assert captured["command"] == ["/venv/bin/python", "-m", "alembic", "upgrade", "head"]
+    assert captured["cwd"] == tmp_path
+
+
+def test_run_startup_migrations_respects_skip_and_non_alembic_modes(monkeypatch, tmp_path) -> None:
+    assert run_startup_migrations(tmp_path, Path("/venv/bin/python"), skip=True)["status"] == "略過"
+
+    monkeypatch.setenv("DATABASE_INIT_MODE", "none")
+    assert run_startup_migrations(tmp_path, Path("/venv/bin/python"))["status"] == "略過"
+
+    monkeypatch.setenv("DATABASE_INIT_MODE", "create_all")
+    result = run_startup_migrations(tmp_path, Path("/venv/bin/python"))
+    assert result["status"] == "略過"
+    assert "create_all" in result["message"]
+
+
+def test_run_startup_migrations_reports_alembic_failure(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DATABASE_INIT_MODE", "alembic")
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="db unavailable\nlast line")
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    result = run_startup_migrations(tmp_path, Path("/venv/bin/python"))
+
+    assert result == {"status": "失敗", "message": "last line"}
+
+
+def test_startup_database_init_mode_prefers_env(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_INIT_MODE", "none")
+
+    assert startup_database_init_mode() == "none"
 
 
 def test_ensure_background_process_skips_running_pid(monkeypatch, tmp_path) -> None:

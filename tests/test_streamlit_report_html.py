@@ -235,6 +235,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "報告生成觀測" in source
     assert "trace_captured_count" in source
     assert "keyword_fallback_count" in source
+    assert 'report_observability_summary.get("bottlenecks")' in source
+    assert "優先優化清單" in source
     assert "Queue / Worker readiness" in source
     assert "task_queue_health_rows(service_snapshot)" in source
     assert "task_queue_health_alert(service_snapshot)" in source

@@ -244,6 +244,9 @@ def frontend_status() -> dict:
         and "報告生成觀測" in ui_source
         and "trace_captured_count" in ui_source
         and "keyword_fallback_count" in ui_source,
+        "ui_report_observability_bottlenecks_enabled": 'report_observability_summary.get("bottlenecks")'
+        in ui_source
+        and "優先優化清單" in ui_source,
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
         and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,
         "ui_report_state_extracted": (ui_dir / "report_state.py").exists()

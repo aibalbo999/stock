@@ -234,6 +234,12 @@ def render_maintenance_tab() -> None:
                 st.error(message)
             else:
                 st.info(message)
+        report_bottleneck_rows = [
+            row for row in report_observability_summary.get("bottlenecks") or [] if isinstance(row, dict)
+        ]
+        if report_bottleneck_rows:
+            st.caption("優先優化清單")
+            st.dataframe(report_bottleneck_rows, width="stretch", hide_index=True)
         if report_observability_summary.get("reports"):
             st.dataframe(report_observability_summary["reports"], width="stretch", hide_index=True)
         else:

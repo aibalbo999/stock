@@ -618,10 +618,17 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["totals"]["retryable_failure_count"] == 1
     assert summary["totals"]["keyword_fallback_count"] == 1
     assert summary["totals"]["graph_reasoning_ready_count"] == 1
+    assert summary["totals"]["bottleneck_count"] == 1
+    assert summary["totals"]["highest_bottleneck_score"] > 0
     assert summary["reports"][0]["run_id"] == 88
     assert summary["reports"][0]["model"] == "gemini-3.5-flash"
     assert summary["reports"][0]["retrieval_latency_ms"] == 18.5
     assert summary["reports"][0]["reranker_fallback_reason"] == "keyword_provider_selected"
+    assert summary["bottlenecks"][0]["id"] == 8
+    assert summary["bottlenecks"][0]["severity"] == "warning"
+    assert summary["bottlenecks"][0]["dominant_factor"] == "llm_fallback"
+    assert "llm_fallback" in summary["bottlenecks"][0]["reasons"]
+    assert "quota/routing" in summary["bottlenecks"][0]["next_action"]
     assert {alert["code"] for alert in summary["alerts"]} == {
         "report_llm_fallback_used",
         "report_llm_retryable_failures",
@@ -699,3 +706,5 @@ def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
     assert summary["reports"][0]["run_source"] == "celery_after_close"
     assert summary["reports"][0]["retrieval_latency_ms"] == 9.5
     assert summary["reports"][0]["total_token_estimate"] == 2048
+    assert summary["bottlenecks"][0]["dominant_factor"] == "token_volume"
+    assert "壓縮 prompt" in summary["bottlenecks"][0]["next_action"]

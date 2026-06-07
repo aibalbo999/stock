@@ -231,12 +231,18 @@ class ReportQueryService:
                 )
         rows = [self._observability_summary_row(snapshot) for snapshot in snapshots]
         totals = _observability_totals(rows)
+        bottlenecks = _observability_bottleneck_rows(rows)
+        totals["bottleneck_count"] = len(bottlenecks)
+        totals["highest_bottleneck_score"] = (
+            bottlenecks[0]["score"] if bottlenecks else 0.0
+        )
         status = _observability_status(rows, totals)
         return {
             "status": status,
             "policy": "latest_per_topic",
             "totals": totals,
             "alerts": self._observability_alerts(rows, totals),
+            "bottlenecks": bottlenecks,
             "reports": rows,
         }
 
@@ -543,6 +549,116 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         if retrieval_latency_values
         else None,
     }
+
+
+def _observability_bottleneck_rows(rows: list[dict], limit: int = 10) -> list[dict[str, Any]]:
+    bottlenecks = [
+        row
+        for row in (
+            _observability_bottleneck_row(report_row) for report_row in rows
+        )
+        if row is not None
+    ]
+    return sorted(
+        bottlenecks,
+        key=lambda item: (-float(item["score"]), str(item.get("generated_at") or ""), int(item.get("id") or 0)),
+    )[: max(1, min(int(limit or 10), 25))]
+
+
+def _observability_bottleneck_row(row: dict) -> dict[str, Any] | None:
+    components = _observability_bottleneck_components(row)
+    if not components:
+        return None
+    dominant_factor = max(components, key=components.get)
+    reasons = _observability_bottleneck_reasons(row)
+    return {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "topic": row.get("topic"),
+        "generated_at": row.get("generated_at"),
+        "score": round(sum(components.values()), 2),
+        "dominant_factor": dominant_factor,
+        "severity": _observability_bottleneck_severity(row, dominant_factor),
+        "next_action": _observability_bottleneck_next_action(row, dominant_factor),
+        "reasons": "；".join(reasons),
+        "model": row.get("model"),
+        "llm_latency_ms": row.get("llm_latency_ms"),
+        "retrieval_latency_ms": row.get("retrieval_latency_ms"),
+        "total_token_estimate": row.get("total_token_estimate"),
+        "estimated_cost_usd": row.get("estimated_cost_usd"),
+    }
+
+
+def _observability_bottleneck_components(row: dict) -> dict[str, float]:
+    components: dict[str, float] = {}
+    if not row.get("trace_captured"):
+        components["trace_missing"] = 80.0
+    if row.get("fallback_path_used"):
+        components["llm_fallback"] = 40.0
+    retryable_failures = _metric_int(row.get("retryable_failure_count"), default=0) or 0
+    if retryable_failures:
+        components["retryable_failures"] = min(30.0, float(retryable_failures) * 10.0)
+    if row.get("keyword_fallback"):
+        components["keyword_reranker_fallback"] = 12.0
+    llm_latency_ms = _metric_float(row.get("llm_latency_ms"))
+    if llm_latency_ms is not None and llm_latency_ms > 0:
+        components["llm_latency"] = min(35.0, llm_latency_ms / 1000.0)
+    retrieval_latency_ms = _metric_float(row.get("retrieval_latency_ms"))
+    if retrieval_latency_ms is not None and retrieval_latency_ms > 0:
+        components["retrieval_latency"] = min(20.0, retrieval_latency_ms / 100.0)
+    total_tokens = _metric_int(row.get("total_token_estimate"), default=0) or 0
+    if total_tokens:
+        components["token_volume"] = min(25.0, total_tokens / 2000.0)
+    estimated_cost = _metric_float(row.get("estimated_cost_usd"), default=0.0) or 0.0
+    if estimated_cost:
+        components["estimated_cost"] = min(30.0, estimated_cost * 1000.0)
+    return components
+
+
+def _observability_bottleneck_reasons(row: dict) -> list[str]:
+    reasons: list[str] = []
+    if not row.get("trace_captured"):
+        reasons.append("trace_missing")
+    if row.get("fallback_path_used"):
+        reasons.append("llm_fallback")
+    retryable_failures = _metric_int(row.get("retryable_failure_count"), default=0) or 0
+    if retryable_failures:
+        reasons.append(f"retryable_failures={retryable_failures}")
+    if row.get("keyword_fallback"):
+        reasons.append("keyword_reranker_fallback")
+    if row.get("llm_latency_ms") is not None:
+        reasons.append(f"llm_latency_ms={row['llm_latency_ms']}")
+    if row.get("retrieval_latency_ms") is not None:
+        reasons.append(f"retrieval_latency_ms={row['retrieval_latency_ms']}")
+    if row.get("total_token_estimate"):
+        reasons.append(f"tokens={row['total_token_estimate']}")
+    if row.get("estimated_cost_usd"):
+        reasons.append(f"cost_usd={row['estimated_cost_usd']}")
+    return reasons
+
+
+def _observability_bottleneck_severity(row: dict, dominant_factor: str) -> str:
+    if dominant_factor == "trace_missing":
+        return "warning"
+    if row.get("fallback_path_used") or _metric_int(row.get("retryable_failure_count"), default=0):
+        return "warning"
+    return "info"
+
+
+def _observability_bottleneck_next_action(row: dict, dominant_factor: str) -> str:
+    if dominant_factor == "trace_missing":
+        return "重新產生或檢查 run payload 是否寫入 report_execution trace。"
+    if dominant_factor in {"llm_fallback", "retryable_failures"}:
+        return "檢查 quota/routing、429 cooldown 與模型順序，避免每份報告先撞耗盡模型。"
+    if dominant_factor == "keyword_reranker_fallback":
+        return "啟用 cross-encoder、Cohere 或 LLM reranker，降低關鍵字 fallback 排序風險。"
+    if dominant_factor == "retrieval_latency":
+        return "檢查 vector store 查詢、hybrid candidate 數量與 rerank top-k。"
+    if dominant_factor == "token_volume":
+        return "壓縮 prompt、RAG context 或報告章節輸入，降低免費額度消耗。"
+    if dominant_factor == "estimated_cost":
+        return "確認 rate card、模型路由與是否可用 Flash-Lite/Gemma 承接低風險任務。"
+    return "檢查 LLM latency、prompt 長度與模型 fallback 設定。"
 
 
 def _observability_status(rows: list[dict], totals: dict[str, Any]) -> str:

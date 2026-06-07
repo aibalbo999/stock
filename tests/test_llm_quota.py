@@ -62,5 +62,14 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert primary["requests_used"] == 2
     assert primary["requests_remaining"] == 0
     assert primary["status"] == "exhausted"
+    assert primary["status_reason"] == "request_budget_exhausted"
+    assert primary["routing_tier"] == "primary"
+    assert primary["routing_reason"].startswith("Skipped until the next quota window")
+    assert summary["recommended_reason"] == (
+        "Earlier model(s) exhausted in the current window: gemini-3.5-flash."
+    )
+    assert summary["routing_policy"]["strategy"] == "smartest_first_then_budget_degrade"
+    assert summary["routing_policy"]["exhausted_before_recommendation"] == ["gemini-3.5-flash"]
+    assert summary["routing_policy"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert summary["totals"]["request_count"] == 2
     assert summary["window"]["timezone"] == "America/Los_Angeles"

@@ -16,6 +16,7 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     )
 
     assert "python-version" in str(job)
+    assert '"3.11"' in workflow_path.read_text(encoding="utf-8")
     assert "redis" in job["services"]
     assert "ruff check ." in step_text
     assert "scripts/security_scan.py --engine detect-secrets" in step_text
@@ -26,3 +27,8 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "scripts/frontend_smoke.py" in step_text
     assert "--skip-browser" in step_text
     assert "/llm/usage/summary?days=7" in step_text
+
+
+def test_project_runtime_targets_python311() -> None:
+    assert 'requires-python = ">=3.11"' in Path("pyproject.toml").read_text(encoding="utf-8")
+    assert Path(".python-version").read_text(encoding="utf-8").strip() == "3.11"

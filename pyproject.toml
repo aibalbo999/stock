@@ -2,7 +2,7 @@
 name = "taiwan-ai-supply-chain-rag"
 version = "0.1.0"
 description = "AI industry-chain Taiwan equities analysis and automated report generation MVP."
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12.3",
   "alembic>=1.13.3",

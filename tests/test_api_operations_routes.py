@@ -78,13 +78,17 @@ def test_operations_router_delegates_schedule_sources_and_cleanup() -> None:
     }
     assert client.get("/schedule").json() == {"enabled": False}
     assert client.put("/schedule", json={"enabled": True, "tickers": ["2330"]}).json() == {"enabled": True}
-    cleanup_response = client.post("/maintenance/cleanup", json={"failed_runs": True})
+    cleanup_response = client.post(
+        "/maintenance/cleanup",
+        json={"failed_runs": True, "latest_reports_only": True},
+    )
 
     assert cleanup_response.status_code == 200
     assert cleanup_response.json() == {"failed_runs_deleted": 1}
     assert captured["schedule"]["enabled"] is True
     assert captured["cache_summary"] == ("2330", 3)
     assert captured["cleanup"]["failed_runs"] is True
+    assert captured["cleanup"]["latest_reports_only"] is True
 
 
 def test_operations_router_queues_discovered_and_data_tasks() -> None:

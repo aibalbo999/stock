@@ -194,6 +194,7 @@ class DataOperationsApiService:
         stale_running_before: datetime | None = None,
         runs_before: datetime | None = None,
         reports_before: datetime | None = None,
+        latest_reports_only: bool = False,
     ) -> dict:
         result = {
             "failed_runs_deleted": 0,
@@ -201,6 +202,8 @@ class DataOperationsApiService:
             "stale_running_marked_failed": 0,
             "old_runs_deleted": 0,
             "old_reports_deleted": 0,
+            "old_report_versions_deleted": 0,
+            "report_retention_policy": "latest_per_topic",
         }
         with self.session_scope_factory() as session:
             runs = self.analysis_run_repository_cls(session)
@@ -218,6 +221,8 @@ class DataOperationsApiService:
                 result["old_runs_deleted"] = runs.delete_before(runs_before)
             if reports_before:
                 result["old_reports_deleted"] = reports.delete_before(reports_before)
+            if latest_reports_only:
+                result["old_report_versions_deleted"] = reports.prune_older_by_topic()
         return result
 
     @staticmethod

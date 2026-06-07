@@ -136,6 +136,7 @@ def create_operations_router(
         return services.data_operations_api().maintenance_cleanup(
             failed_runs=payload.failed_runs,
             orphan_report_refs=payload.orphan_report_refs,
+            latest_reports_only=payload.latest_reports_only,
             stale_running_before=payload.stale_running_before,
             runs_before=payload.runs_before,
             reports_before=payload.reports_before,

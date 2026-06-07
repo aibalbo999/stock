@@ -243,6 +243,53 @@ def test_report_repository_lists_latest_report_per_topic_for_legacy_duplicates()
         session.close()
 
 
+def test_report_repository_prunes_legacy_duplicate_topic_reports_and_run_links() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        old_ai = GeneratedReport(
+            title="old ai",
+            topic="AI",
+            tickers_json="[]",
+            findings_json="[]",
+            markdown="# old",
+            generated_at=datetime(2026, 5, 1, 9, 0, 0),
+        )
+        new_ai = GeneratedReport(
+            title="new ai",
+            topic="AI",
+            tickers_json="[]",
+            findings_json="[]",
+            markdown="# new",
+            generated_at=datetime(2026, 5, 2, 9, 0, 0),
+        )
+        robot = GeneratedReport(
+            title="robot",
+            topic="Robot",
+            tickers_json="[]",
+            findings_json="[]",
+            markdown="# robot",
+            generated_at=datetime(2026, 5, 3, 9, 0, 0),
+        )
+        session.add_all([old_ai, new_ai, robot])
+        session.flush()
+        run = AnalysisRunRepository(session).start("legacy", {})
+        AnalysisRunRepository(session).mark_success(run.id, report_id=old_ai.id)
+        session.commit()
+
+        assert ReportRepository(session).prune_older_by_topic() == 1
+        session.commit()
+
+        assert session.get(GeneratedReport, old_ai.id) is None
+        assert session.get(GeneratedReport, new_ai.id) is not None
+        assert session.get(GeneratedReport, robot.id) is not None
+        assert AnalysisRunRepository(session).get(run.id).report_id is None
+    finally:
+        session.close()
+
+
 def test_report_repository_sanitizes_non_formal_findings_before_persisting() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

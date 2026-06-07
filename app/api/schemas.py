@@ -51,6 +51,7 @@ class FeedFetchRequest(BaseModel):
 class MaintenanceCleanupRequest(BaseModel):
     failed_runs: bool = False
     orphan_report_refs: bool = False
+    latest_reports_only: bool = False
     stale_running_before: Optional[datetime] = None
     runs_before: Optional[datetime] = None
     reports_before: Optional[datetime] = None

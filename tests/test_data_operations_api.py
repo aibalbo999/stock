@@ -306,6 +306,10 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
             cleanup_calls.append(("delete_reports_before", before))
             return 5
 
+        def prune_older_by_topic(self):
+            cleanup_calls.append(("prune_older_by_topic",))
+            return 6
+
     @contextmanager
     def fake_session_scope():
         yield "session"
@@ -328,6 +332,7 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
     assert service.maintenance_cleanup(
         failed_runs=True,
         orphan_report_refs=True,
+        latest_reports_only=True,
         stale_running_before=stale_before,
         runs_before=runs_before,
         reports_before=reports_before,
@@ -337,6 +342,8 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
         "stale_running_marked_failed": 3,
         "old_runs_deleted": 4,
         "old_reports_deleted": 5,
+        "old_report_versions_deleted": 6,
+        "report_retention_policy": "latest_per_topic",
     }
     assert cleanup_calls == [
         ("runs_session", "session"),
@@ -346,4 +353,5 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
         ("mark_stale_running_failed", stale_before, "marked failed by maintenance cleanup"),
         ("delete_runs_before", runs_before),
         ("delete_reports_before", reports_before),
+        ("prune_older_by_topic",),
     ]

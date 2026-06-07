@@ -69,12 +69,16 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 ## 快速開始
 
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools
 pip install -e ".[dev]"
 cp .env.example .env
 ```
+
+本專案支援目標為 Python 3.11+；CI 與 Docker 均使用 Python 3.11。macOS 內建
+`python3` 常仍是 3.9，會觸發 Google/urllib3 的 EOL 與 LibreSSL 警告，建議用
+Homebrew、pyenv 或 uv 安裝 3.11 後重建 `.venv`。
 
 macOS 一鍵啟動：
 
@@ -147,7 +151,7 @@ LLM_DAILY_COST_BUDGET_USD=0
 LLM_COST_WARNING_RATIO=0.8
 ```
 
-免費版 API key 目前採取智慧優先策略：`gemini-3.5-flash` 作為正式報告、GraphRAG 推理、結構化補充分析、LLM reranker 與 Visual RAG PDF 圖片解析的主模型；只有該模型回傳 429/quota、上游錯誤或空回覆時，才依序降級到 `gemini-2.5-flash`、`gemini-3.1-flash-lite`、`gemini-2.5-flash-lite`，最後才使用高額度保底的 `gemma-4-31b-it`。`gemini-embedding-2` 作為 RAG embedding。Google 的 Gemini API rate limits 以 project 計算，不是以 API key 計算，因此 `GOOGLE_API_KEYS` 多把 key 只用於輪替錯誤/分散瞬時失敗，不代表免費 RPD/TPM 會倍增。`gemini-3.5-flash` 保留為第一順位；`gemini-3.5-flash`、`gemini-2.5-flash`、`gemini-3.1-flash-lite` 與 `gemini-2.5-flash-lite` 在本專案以同級免費 request budget 追蹤，`gemma-4-31b-it` 則作為高量文字任務保底。若本機 smoke test 回傳 quota 429，通常代表該 project 今日或當前視窗額度已耗盡。系統會在模型回傳 429 時套用 `LLM_MODEL_QUOTA_COOLDOWN_SECONDS`，短時間跳過該模型，避免每次報告都先撞已耗盡的模型；cooldown 結束後會自動再次把高階模型放回優先嘗試。`GET /llm/quota` 與系統設定頁會顯示 Pacific-day 額度視窗、今日已用 request/token、每模型剩餘估算與目前建議模型；實際限制仍以 Google AI Studio 顯示的 project limit 為準。Imagen / Live 模型偏圖片生成或即時語音互動，不進入目前報告與資料管線核心流程。
+免費版 API key 目前採取智慧優先策略：`gemini-3.5-flash` 作為正式報告、GraphRAG 推理、結構化補充分析、LLM reranker 與 Visual RAG PDF 圖片解析的主模型；只有該模型回傳 429/quota、上游錯誤或空回覆時，才依序降級到 `gemini-2.5-flash`、`gemini-3.1-flash-lite`、`gemini-2.5-flash-lite`，最後才使用高額度保底的 `gemma-4-31b-it`。`gemini-embedding-2` 作為 RAG embedding。Google 的 Gemini API rate limits 以 project 計算，不是以 API key 計算，因此 `GOOGLE_API_KEYS` 多把 key 只用於輪替錯誤/分散瞬時失敗，不代表免費 RPD/TPM 會倍增。`gemini-3.5-flash` 保留為第一順位；`gemini-3.5-flash`、`gemini-2.5-flash`、`gemini-3.1-flash-lite` 與 `gemini-2.5-flash-lite` 在本專案以同級免費 request budget 追蹤，`gemma-4-31b-it` 則作為高量文字任務保底。若本機 smoke test 回傳 quota 429，通常代表該 project 今日或當前視窗額度已耗盡。系統會在模型回傳 429 時套用 `LLM_MODEL_QUOTA_COOLDOWN_SECONDS`，短時間跳過該模型，避免每次報告都先撞已耗盡的模型；cooldown 結束後會自動再次把高階模型放回優先嘗試。`GET /llm/quota` 與系統設定頁會顯示 Pacific-day 額度視窗、今日已用 request/token、每模型剩餘估算、推薦原因、每個模型的 routing tier/status reason，以及高額度保底模型；實際限制仍以 Google AI Studio 顯示的 project limit 為準。Imagen / Live 模型偏圖片生成或即時語音互動，不進入目前報告與資料管線核心流程。
 
 `LLM_PROVIDER=google_genai` 會使用官方 `google-genai` SDK 呼叫 Gemini，SDK 不可用或失敗時仍會退回既有 Gemini HTTP key 輪調，最後才使用規則引擎草稿。若需要跨供應商或嚴格模型鏈降級，可改回 `LLM_PROVIDER=litellm`，此時 LiteLLM 會依 `LLM_FALLBACK_MODELS` 逐一降級；Gemini / Gemma 會使用 `GOOGLE_API_KEYS` / `GOOGLE_API_KEY`，`gpt-*` / `openai/*` 會使用 `OPENAI_API_KEY`，`claude*` / `anthropic/*` 會使用 `ANTHROPIC_API_KEY`，只有 `ollama/`、`lm_studio/`、`local/` 前綴的模型會被視為不需 API key 的本地/閘道模型。LiteLLM 執行時若某個候選模型缺少對應 API key，會記錄 `missing_api_key` 並跳到下一個模型，不會把缺 key 呼叫包裝成一般 provider failure。`LOCAL_LLM_MODEL` 也會自動併入 LiteLLM 候選模型；這個欄位目前保留相容既有設定，模型是否需要 key 仍由模型名稱判斷。`GET /llm/status` 會列出 provider、SDK dependency、fallback models、每個 fallback model 的 key readiness 與各供應商 key 是否設定；`GET /services/status` 的 `upgrade_capability_matrix.ai_rag.llm_sdk_and_fallback` 會把 SDK 可用性與 fallback model key readiness 分開列出，只有至少一個 fallback model 有可用 key，或模型明確為 local/ollama/lm_studio 本地閘道時才標為 ready，避免把「有 SDK」誤認成「已有跨模型降級」。`GET /llm/health` 會回傳 `attempt_summary`，包含嘗試次數、用過的 provider/model、HTTP 狀態、主要失敗類型、可重試失敗數、是否曾重試、是否成功前先失敗，以及是否切換 provider/model 備援；報告品質門檻也會揭露模型是否經由重試或備援模型才完成，方便分辨 rate limit、缺 key、SDK dependency 或上游故障。
 
@@ -346,7 +350,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 .venv/bin/python -m streamlit run streamlit_app.py
 ```
 
-`streamlit_app.py` 是薄入口；主要 UI 已拆到 `pages/` 與 `app/ui/`，其中 `dashboard_core.py` 放共用 renderer/helper，`analysis_workspace.py`、`report_center.py`、`data_enrichment.py` 與 `system_settings.py` 分別對應四個頁面，`streamlit_dashboard.py` 只保留相容 facade。自訂樣式集中在 `app/ui/styles/stock_dashboard.css`，分析、資料刷新、公司文件 URL 匯入、RSS 抓取與報告補強會先送到 FastAPI/Celery，再從 Streamlit 以 task id 查詢狀態，避免前端等待長時間爬蟲或報告生成。若未來要支援更多同時使用者或更複雜的報告互動，建議保留目前 FastAPI/Celery API 邊界，把前端替換為 Next.js 或 Nuxt，讓 HTML 報表 renderer、互動篩選與背景任務輪詢由現代前端框架接手。
+`streamlit_app.py` 是薄入口；主要 UI 已拆到 `pages/` 與 `app/ui/`，其中 `dashboard_core.py` 放共用 renderer/helper，`analysis_workspace.py`、`report_center.py`、`data_enrichment.py`、`system_settings.py` 與 `system_settings_maintenance.py` 分別對應主要頁面與維護分頁，`streamlit_dashboard.py` 只保留相容 facade。自訂樣式集中在 `app/ui/styles/stock_dashboard.css`，分析、資料刷新、公司文件 URL 匯入、RSS 抓取與報告補強會先送到 FastAPI/Celery，再從 Streamlit 以 task id 查詢狀態，避免前端等待長時間爬蟲或報告生成。若未來要支援更多同時使用者或更複雜的報告互動，建議保留目前 FastAPI/Celery API 邊界，把前端替換為 Next.js 或 Nuxt，讓 HTML 報表 renderer、互動篩選與背景任務輪詢由現代前端框架接手。
 
 專案已設定 Streamlit 監聽 `0.0.0.0:8501`。同一個區域網路內的手機可用電腦 IP 開啟，例如 `http://192.168.1.117:8501`。
 若手機仍無法連線，請確認啟動指令沒有覆蓋成 `--server.address 127.0.0.1`，並允許 macOS 防火牆讓 Python/Streamlit 接受傳入連線。
@@ -403,7 +407,7 @@ docker compose up -d celery-worker celery-beat
 - `GET /tasks/{task_id}/run`
 - `GET /schedule`
 - `PUT /schedule`
-- `POST /maintenance/cleanup`
+- `POST /maintenance/cleanup`：清失敗 run、逾時 run、失效報告連結、舊 run/報告，或以 `latest_reports_only=true` 套用每主題只保留最新版報告
 
 ## 維護與 Smoke 測試
 
@@ -425,7 +429,9 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 
-系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path、retryable failure、成本預算狀態與 alerts，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。「背景任務觀測」會讀取 `GET /tasks/summary?days=7`，顯示近期 Celery/API run 成功率、平均耗時、失敗任務與疑似卡住任務；「報告品質 Gate 總覽」會讀取 `GET /reports/quality/summary?limit=20`，以 latest-per-topic 報告檢查 blockers、warnings、正式分析信心與資料覆蓋。
+報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，避免報告中心累積同主題歷史版本。若資料庫已有早期累積的重複報告，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。
+
+系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path、retryable failure、成本預算狀態與 alerts，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。「AI 額度與模型路由」會讀取 `GET /llm/quota`，顯示推薦模型、推薦原因、每模型 routing tier/status reason 與高額度保底模型。「背景任務觀測」會讀取 `GET /tasks/summary?days=7`，顯示近期 Celery/API run 成功率、平均耗時、失敗任務與疑似卡住任務；「報告品質 Gate 總覽」會讀取 `GET /reports/quality/summary?limit=20`，以 latest-per-topic 報告檢查 blockers、warnings、正式分析信心與資料覆蓋。
 
 ## 升級稽核
 

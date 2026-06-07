@@ -317,6 +317,33 @@ class ReportRepository:
         self.session.flush()
         return result.rowcount or 0
 
+    def prune_older_by_topic(self) -> int:
+        reports = list(
+            self.session.scalars(
+                select(GeneratedReport).order_by(
+                    GeneratedReport.generated_at.desc(),
+                    GeneratedReport.id.desc(),
+                )
+            )
+        )
+        seen_topics: set[str] = set()
+        old_report_ids: list[int] = []
+        for report in reports:
+            if report.topic in seen_topics:
+                old_report_ids.append(report.id)
+                continue
+            seen_topics.add(report.topic)
+        if not old_report_ids:
+            return 0
+        self.session.execute(
+            update(AnalysisRun)
+            .where(AnalysisRun.report_id.in_(old_report_ids))
+            .values(report_id=None)
+        )
+        result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids)))
+        self.session.flush()
+        return result.rowcount or 0
+
     def prune_older_for_topic(self, topic: str, keep_report_id: int) -> int:
         statement = select(GeneratedReport.id).where(
             GeneratedReport.topic == topic,

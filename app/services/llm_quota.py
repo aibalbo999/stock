@@ -47,6 +47,13 @@ class LLMQuotaGovernanceService:
             request_exhausted = request_budget is not None and request_remaining is not None and request_remaining <= 0
             token_exhausted = token_budget is not None and token_remaining is not None and token_remaining <= 0
             has_budget = request_budget is not None or token_budget is not None
+            status = (
+                "exhausted"
+                if request_exhausted or token_exhausted
+                else "available"
+                if has_budget
+                else "tracking_only"
+            )
             rows.append(
                 {
                     "model": display_model,
@@ -62,15 +69,29 @@ class LLMQuotaGovernanceService:
                     "estimated_cost_usd": round(float(usage.get("estimated_cost_usd") or 0.0), 6),
                     "fallback_count": int(usage.get("fallback_count") or 0),
                     "retryable_failure_count": int(usage.get("retryable_failure_count") or 0),
-                    "status": "exhausted"
-                    if request_exhausted or token_exhausted
-                    else "available"
-                    if has_budget
-                    else "tracking_only",
+                    "status": status,
+                    "status_reason": _status_reason(
+                        status=status,
+                        request_exhausted=request_exhausted,
+                        token_exhausted=token_exhausted,
+                        has_budget=has_budget,
+                    ),
+                    "routing_tier": _routing_tier(model_order, display_model, request_budget),
+                    "routing_reason": _routing_reason(
+                        status=status,
+                        model_order=model_order,
+                        model=display_model,
+                        request_budget=request_budget,
+                    ),
                 }
             )
         rows.sort(key=lambda item: (item["rank"] if item["rank"] is not None else 999, item["model"]))
         recommended = next((item for item in rows if item["configured"] and item["status"] != "exhausted"), None)
+        exhausted_before_recommendation = [
+            item["model"]
+            for item in rows
+            if recommended and item.get("configured") and int(item.get("rank") or 999) < int(recommended.get("rank") or 999)
+        ]
         totals = {
             "request_count": sum(int(item.get("requests_used") or 0) for item in rows),
             "total_token_estimate": sum(int(item.get("tokens_used") or 0) for item in rows),
@@ -84,8 +105,17 @@ class LLMQuotaGovernanceService:
             },
             "model_order": model_order,
             "recommended_model": recommended["model"] if recommended else None,
+            "recommended_reason": _recommended_reason(recommended, exhausted_before_recommendation),
             "models": rows,
             "totals": totals,
+            "routing_policy": {
+                "strategy": "smartest_first_then_budget_degrade",
+                "selection_rule": "Use the first configured model that is not exhausted in the current quota window.",
+                "exhausted_before_recommendation": exhausted_before_recommendation,
+                "high_quota_fallback_models": [
+                    item["model"] for item in rows if item.get("routing_tier") == "high_quota_fallback"
+                ],
+            },
             "budget_source": {
                 "request_budgets_configured": bool(request_budgets),
                 "token_budgets_configured": bool(token_budgets),
@@ -207,3 +237,59 @@ def _rank_for_model(model_order: list[str], model: str) -> int | None:
         if normalize_model_name(candidate) == model_key:
             return index
     return None
+
+
+def _status_reason(
+    *,
+    status: str,
+    request_exhausted: bool,
+    token_exhausted: bool,
+    has_budget: bool,
+) -> str:
+    if status == "exhausted" and request_exhausted:
+        return "request_budget_exhausted"
+    if status == "exhausted" and token_exhausted:
+        return "token_budget_exhausted"
+    if has_budget:
+        return "within_configured_budget"
+    return "no_budget_configured_tracking_only"
+
+
+def _routing_tier(model_order: list[str], model: str, request_budget: int | None) -> str:
+    rank = _rank_for_model(model_order, model)
+    model_key = normalize_model_name(model)
+    if rank == 1:
+        return "primary"
+    if model_key.startswith("gemma") and (request_budget or 0) >= 1000:
+        return "high_quota_fallback"
+    if model_key.startswith(("ollama/", "lm_studio/", "local/")):
+        return "local_fallback"
+    return "fallback"
+
+
+def _routing_reason(
+    *,
+    status: str,
+    model_order: list[str],
+    model: str,
+    request_budget: int | None,
+) -> str:
+    tier = _routing_tier(model_order, model, request_budget)
+    if status == "exhausted":
+        return "Skipped until the next quota window because the configured daily budget is exhausted."
+    if tier == "primary":
+        return "First choice while quota remains."
+    if tier == "high_quota_fallback":
+        return "High-quota fallback for long or lower-priority text tasks after smarter models are exhausted."
+    if tier == "local_fallback":
+        return "Local gateway fallback when provider-backed models cannot be used."
+    return "Fallback candidate used only after earlier ranked models are exhausted or unavailable."
+
+
+def _recommended_reason(recommended: dict | None, exhausted_before_recommendation: list[str]) -> str:
+    if not recommended:
+        return "No configured model has remaining tracked quota in the current window."
+    if not exhausted_before_recommendation:
+        return "Top-ranked configured model still has remaining tracked quota."
+    skipped = ", ".join(exhausted_before_recommendation)
+    return f"Earlier model(s) exhausted in the current window: {skipped}."

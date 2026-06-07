@@ -18,6 +18,7 @@ UI_SOURCE_FILES = [
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
     Path("app/ui/system_settings.py"),
+    Path("app/ui/system_settings_maintenance.py"),
 ]
 STYLE_SOURCE = Path("app/ui/styles/stock_dashboard.css")
 
@@ -41,7 +42,7 @@ def load_report_helpers() -> dict:
     return namespace
 
 
-def test_streamlit_app_defers_annotation_evaluation_for_python39() -> None:
+def test_streamlit_app_defers_annotation_evaluation_for_modern_python() -> None:
     source = Path("streamlit_app.py").read_text()
     dashboard_source = DASHBOARD_SOURCE.read_text()
 
@@ -67,6 +68,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_report_center() -> None:' in source
     assert 'def render_data_enrichment() -> None:' in source
     assert 'def render_system_settings() -> None:' in source
+    assert 'def render_maintenance_tab() -> None:' in source
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()
@@ -109,6 +111,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "audit_upgrade_capabilities" not in source
     assert "避免手機或滑鼠誤觸" in source
     assert "disabled=not cleanup_confirmed" in source
+    assert "套用最新版報告保留策略" in source
+    assert '"latest_reports_only": True' in source
     assert "/llm/usage/summary?days=7" in source
     assert "AI 用量趨勢與成本" in source
     assert "估算成本 USD" in source

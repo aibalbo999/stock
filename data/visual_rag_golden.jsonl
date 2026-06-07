@@ -1,2 +1,6 @@
 {"id":"financial_table_basic","description":"財報主要表格欄位與數字需保留","required_fragments":["營業收入","毛利率","每股盈餘"],"required_table_rows":["2025 Q4 | 1,250 | 42.1% | 3.18"],"forbidden_fragments":["無法辨識","自行估算"]}
 {"id":"presentation_kpi_chart","description":"法說會 KPI 圖表文字需保留且不可杜撰","required_fragments":["AI 伺服器","散熱模組","YoY +18%"],"required_table_rows":["產品線 | 營收占比 | 年增率"],"forbidden_fragments":["圖片中未揭露","推估"]}
+{"id":"cross_page_income_statement","description":"跨頁損益表需保留延續列與單位","required_fragments":["單位：新台幣百萬元","本期淨利","歸屬母公司業主"],"required_table_rows":["2025 | 3,420 | 612 | 17.9% | 8.21"],"forbidden_fragments":["上一頁缺漏","自動補齊"]}
+{"id":"merged_header_balance_sheet","description":"合併表頭資產負債表需保留欄位層級","required_fragments":["流動資產","非流動負債","權益總計"],"required_table_rows":["現金及約當現金 | 2025/12/31 | 18,880 | 2024/12/31 | 12,430"],"forbidden_fragments":["欄位不明","猜測"]}
+{"id":"chart_callout_guidance","description":"圖表旁 guidance 與 callout 需轉成可檢索文字","required_fragments":["2026 年資本支出","高階散熱產能","下半年逐季改善"],"required_table_rows":["指標 | 2025 實績 | 2026 指引"],"forbidden_fragments":["未提供 guidance","自行延伸"]}
+{"id":"footnote_units_and_parentheses","description":"腳註、括號負數與單位不可遺漏","required_fragments":["註：括號表示負數","美元千元","匯率影響"],"required_table_rows":["匯兌損益 | (1,230) | -"],"forbidden_fragments":["正數 1,230","忽略腳註"]}

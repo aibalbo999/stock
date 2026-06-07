@@ -97,3 +97,14 @@ def test_evaluate_visual_rag_cli_uses_fail_under_threshold(tmp_path) -> None:
     assert completed.returncode == 0
     payload = json.loads(completed.stdout)
     assert payload["threshold_passed"] is True
+
+
+def test_default_visual_rag_golden_set_covers_complex_pdf_patterns() -> None:
+    cases = load_visual_rag_golden_cases("data/visual_rag_golden.jsonl")
+    case_ids = {case.case_id for case in cases}
+
+    assert len(cases) >= 6
+    assert "cross_page_income_statement" in case_ids
+    assert "merged_header_balance_sheet" in case_ids
+    assert "chart_callout_guidance" in case_ids
+    assert all(case.required_fragments or case.required_table_rows for case in cases)

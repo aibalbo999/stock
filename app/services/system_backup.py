@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from sqlalchemy.engine import make_url
 
 from app.core.config import get_settings
@@ -14,6 +19,8 @@ from app.db.status import _redact_database_url
 
 DEFAULT_BACKUP_ROOT = Path("backups")
 MANIFEST_NAME = "manifest.json"
+ENCRYPTED_BACKUP_FORMAT = "stock_ai_encrypted_backup_v1"
+ENCRYPTION_KDF_ITERATIONS = 390_000
 
 
 class SystemBackupService:
@@ -31,7 +38,13 @@ class SystemBackupService:
         *,
         destination: str | Path | None = None,
         dry_run: bool = False,
+        archive: bool = False,
+        encrypt_passphrase: str | None = None,
+        archive_only: bool = False,
+        retention_count: int | None = None,
     ) -> dict:
+        if archive_only and not archive:
+            raise ValueError("archive_only requires archive=True")
         settings = self.settings_provider()
         backup_dir = Path(destination) if destination else self._default_backup_dir()
         database_plan = _database_backup_plan(str(getattr(settings, "database_url", "") or ""))
@@ -43,7 +56,15 @@ class SystemBackupService:
             "database": database_plan,
             "reports": report_plan,
         }
-        operations = _backup_operations(backup_dir, database_plan, report_plan)
+        operations = _backup_operations(
+            backup_dir,
+            database_plan,
+            report_plan,
+            archive=archive,
+            encrypt=bool(encrypt_passphrase),
+            archive_only=archive_only,
+            retention_count=retention_count,
+        )
         if dry_run:
             return {
                 "status": "dry_run",
@@ -62,10 +83,33 @@ class SystemBackupService:
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        archive_path = None
+        encrypted_archive_path = None
+        if archive:
+            archive_path = _create_backup_archive(backup_dir)
+            if encrypt_passphrase:
+                encrypted_archive_path = _encrypt_file(archive_path, encrypt_passphrase)
+                archive_path.unlink()
+            if archive_only:
+                shutil.rmtree(backup_dir)
+        retention = _apply_backup_retention(
+            backup_dir.parent,
+            keep=retention_count,
+            preserve_paths=[
+                path
+                for path in [backup_dir, archive_path, encrypted_archive_path]
+                if path is not None
+            ],
+            dry_run=False,
+        )
         return {
             "status": "created",
             "backup_dir": str(backup_dir),
-            "manifest_path": str(manifest_path),
+            "manifest_path": str(manifest_path) if manifest_path.exists() else None,
+            "archive_path": str(archive_path) if archive_path and archive_path.exists() else None,
+            "encrypted_archive_path": str(encrypted_archive_path) if encrypted_archive_path else None,
+            "archive_only": bool(archive_only),
+            "retention": retention,
             "manifest": manifest,
             "operations": operations,
         }
@@ -122,6 +166,66 @@ class SystemBackupService:
         return DEFAULT_BACKUP_ROOT / f"stock_ai_backup_{timestamp}"
 
 
+def decrypt_backup_archive(
+    encrypted_path: str | Path,
+    *,
+    passphrase: str,
+    output_path: str | Path | None = None,
+) -> dict:
+    source_path = Path(encrypted_path)
+    payload = json.loads(source_path.read_text(encoding="utf-8"))
+    if payload.get("format") != ENCRYPTED_BACKUP_FORMAT:
+        raise ValueError("Unsupported encrypted backup format")
+    target_path = Path(output_path) if output_path else source_path.with_suffix("")
+    token = str(payload.get("payload") or "").encode("utf-8")
+    salt = bytes.fromhex(str(payload.get("salt_hex") or ""))
+    key = _derive_fernet_key(passphrase, salt=salt)
+    target_path.write_bytes(Fernet(key).decrypt(token))
+    return {
+        "status": "decrypted",
+        "source": str(source_path),
+        "output_path": str(target_path),
+        "format": payload.get("format"),
+    }
+
+
+def backup_schedule_commands(
+    *,
+    cwd: str | Path = ".",
+    time_of_day: str = "02:30",
+    keep: int = 14,
+    archive: bool = True,
+    encrypt_passphrase_env: str | None = "STOCK_AI_BACKUP_PASSPHRASE",
+) -> dict:
+    safe_time = str(time_of_day or "02:30")
+    hour, minute = _parse_backup_time(safe_time)
+    command_parts = [
+        ".venv/bin/python",
+        "scripts/system_backup.py",
+        "create",
+        "--keep",
+        str(max(1, int(keep or 14))),
+    ]
+    if archive:
+        command_parts.append("--archive")
+    if encrypt_passphrase_env:
+        command_parts.extend(["--encrypt-passphrase-env", str(encrypt_passphrase_env)])
+        command_parts.append("--archive-only")
+    command = " ".join(command_parts)
+    workdir = str(Path(cwd).resolve())
+    return {
+        "command": command,
+        "cron": f"{minute} {hour} * * * cd {workdir} && {command} >> logs/system_backup.log 2>&1",
+        "launchd": {
+            "label": "com.stock-ai.system-backup",
+            "program_arguments": ["/bin/zsh", "-lc", f"cd {workdir} && {command}"],
+            "start_calendar_interval": {"Hour": hour, "Minute": minute},
+            "standard_out_path": str(Path(workdir) / "logs" / "system_backup.log"),
+            "standard_error_path": str(Path(workdir) / "logs" / "system_backup.err.log"),
+        },
+    }
+
+
 def format_backup_result(result: dict) -> str:
     lines = [
         f"System backup: {result['status']}",
@@ -137,6 +241,13 @@ def format_backup_result(result: dict) -> str:
     for operation in result.get("operations") or []:
         marker = "DRY" if result["status"] == "dry_run" else "DO"
         lines.append(f"- [{marker}] {operation['action']}: {operation['description']}")
+    if result.get("archive_path"):
+        lines.append(f"Archive: {result['archive_path']}")
+    if result.get("encrypted_archive_path"):
+        lines.append(f"Encrypted archive: {result['encrypted_archive_path']}")
+    retention = result.get("retention") or {}
+    if retention.get("deleted"):
+        lines.append("Retention deleted: " + ", ".join(retention["deleted"]))
     return "\n".join(lines)
 
 
@@ -209,7 +320,16 @@ def _report_backup_plan(report_dir: Path) -> dict:
     }
 
 
-def _backup_operations(backup_dir: Path, database_plan: dict, report_plan: dict) -> list[dict]:
+def _backup_operations(
+    backup_dir: Path,
+    database_plan: dict,
+    report_plan: dict,
+    *,
+    archive: bool = False,
+    encrypt: bool = False,
+    archive_only: bool = False,
+    retention_count: int | None = None,
+) -> list[dict]:
     operations = [
         {
             "action": "write_manifest",
@@ -254,7 +374,119 @@ def _backup_operations(backup_dir: Path, database_plan: dict, report_plan: dict)
                 "description": f"No report files found in {report_plan['source_dir']}",
             }
         )
+    if archive:
+        operations.append(
+            {
+                "action": "create_archive",
+                "description": f"Create compressed archive {backup_dir.with_suffix('.zip')}",
+            }
+        )
+    if encrypt:
+        operations.append(
+            {
+                "action": "encrypt_archive",
+                "description": "Encrypt archive with Fernet/PBKDF2 using passphrase from environment.",
+            }
+        )
+    if archive_only:
+        operations.append(
+            {
+                "action": "remove_plain_backup_dir",
+                "description": "Remove the unencrypted backup directory after archive creation.",
+            }
+        )
+    if retention_count is not None:
+        operations.append(
+            {
+                "action": "apply_retention",
+                "description": f"Keep the newest {max(1, int(retention_count))} backup sets.",
+            }
+        )
     return operations
+
+
+def _create_backup_archive(backup_dir: Path) -> Path:
+    archive_path = backup_dir.with_suffix(".zip")
+    with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+        for path in sorted(backup_dir.rglob("*")):
+            if path.is_file():
+                archive_file.write(path, path.relative_to(backup_dir))
+    return archive_path
+
+
+def _encrypt_file(path: Path, passphrase: str) -> Path:
+    if not passphrase:
+        raise ValueError("Backup encryption passphrase is empty")
+    salt = os.urandom(16)
+    key = _derive_fernet_key(passphrase, salt=salt)
+    encrypted = Fernet(key).encrypt(path.read_bytes())
+    payload = {
+        "format": ENCRYPTED_BACKUP_FORMAT,
+        "kdf": "PBKDF2HMAC-SHA256",
+        "iterations": ENCRYPTION_KDF_ITERATIONS,
+        "salt_hex": salt.hex(),
+        "payload": encrypted.decode("utf-8"),
+    }
+    encrypted_path = path.with_suffix(path.suffix + ".enc")
+    encrypted_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return encrypted_path
+
+
+def _derive_fernet_key(passphrase: str, *, salt: bytes) -> bytes:
+    import base64
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=ENCRYPTION_KDF_ITERATIONS,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode("utf-8")))
+
+
+def _apply_backup_retention(
+    backup_root: Path,
+    *,
+    keep: int | None,
+    preserve_paths: list[Path],
+    dry_run: bool,
+) -> dict:
+    if keep is None:
+        return {"enabled": False, "deleted": [], "planned_delete": []}
+    safe_keep = max(1, int(keep))
+    preserve = {path.resolve() for path in preserve_paths if path.exists()}
+    candidates = [
+        path
+        for path in backup_root.glob("stock_ai_backup_*")
+        if path.resolve() not in preserve
+    ]
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    to_delete = candidates[max(0, safe_keep - len(preserve)) :]
+    deleted = []
+    for path in to_delete:
+        if dry_run:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        deleted.append(str(path))
+    return {
+        "enabled": True,
+        "keep": safe_keep,
+        "deleted": deleted,
+        "planned_delete": [str(path) for path in to_delete],
+    }
+
+
+def _parse_backup_time(value: str) -> tuple[int, int]:
+    hour_text, minute_text = str(value).split(":", 1)
+    hour = max(0, min(23, int(hour_text)))
+    minute = max(0, min(59, int(minute_text)))
+    return hour, minute
 
 
 def _copy_database_artifact(backup_dir: Path, database_plan: dict) -> str | None:

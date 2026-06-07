@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.services.system_backup import SystemBackupService
+from app.services.system_backup import (
+    SystemBackupService,
+    backup_schedule_commands,
+    decrypt_backup_archive,
+)
 
 
 def _service(tmp_path, *, database_url: str, report_dir):
@@ -85,3 +90,75 @@ def test_system_backup_reports_external_database_dump_requirement(tmp_path) -> N
     assert result["manifest"]["database"]["status"] == "external_dump_required"
     assert "secret" not in result["manifest"]["database"]["url"]
     assert result["operations"][1]["action"] == "database_external_dump_required"
+
+
+def test_system_backup_create_encrypted_archive_only_and_decrypts(tmp_path) -> None:
+    db_path = tmp_path / "stock_ai.db"
+    db_path.write_bytes(b"sqlite")
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    (report_dir / "latest.md").write_text("report", encoding="utf-8")
+    service = _service(tmp_path, database_url=f"sqlite:///{db_path}", report_dir=report_dir)
+
+    result = service.create_backup(
+        destination=tmp_path / "backup",
+        archive=True,
+        encrypt_passphrase="secret passphrase",
+        archive_only=True,
+    )
+
+    assert result["status"] == "created"
+    assert result["archive_only"] is True
+    assert result["manifest_path"] is None
+    assert not (tmp_path / "backup").exists()
+    encrypted_path = tmp_path / "backup.zip.enc"
+    assert result["encrypted_archive_path"] == str(encrypted_path)
+    assert encrypted_path.exists()
+    decrypted = decrypt_backup_archive(
+        encrypted_path,
+        passphrase="secret passphrase",
+        output_path=tmp_path / "decrypted.zip",
+    )
+    assert decrypted["status"] == "decrypted"
+    with zipfile.ZipFile(tmp_path / "decrypted.zip") as archive:
+        assert sorted(archive.namelist()) == [
+            "database.sqlite3",
+            "manifest.json",
+            "reports/latest.md",
+        ]
+        assert archive.read("reports/latest.md") == b"report"
+
+
+def test_system_backup_retention_keeps_newest_backup_sets(tmp_path) -> None:
+    db_path = tmp_path / "stock_ai.db"
+    db_path.write_bytes(b"sqlite")
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    service = _service(tmp_path, database_url=f"sqlite:///{db_path}", report_dir=report_dir)
+    old_one = tmp_path / "stock_ai_backup_20260601_000000"
+    old_two = tmp_path / "stock_ai_backup_20260602_000000.zip.enc"
+    old_one.mkdir()
+    old_two.write_text("old", encoding="utf-8")
+
+    result = service.create_backup(destination=tmp_path / "stock_ai_backup_20260607_080910", retention_count=1)
+
+    assert result["retention"]["enabled"] is True
+    assert not old_one.exists()
+    assert not old_two.exists()
+    assert (tmp_path / "stock_ai_backup_20260607_080910").exists()
+
+
+def test_backup_schedule_commands_include_encrypted_archive_retention(tmp_path) -> None:
+    result = backup_schedule_commands(
+        cwd=tmp_path,
+        time_of_day="03:45",
+        keep=21,
+        encrypt_passphrase_env="BACKUP_SECRET",
+    )
+
+    assert "--archive" in result["command"]
+    assert "--archive-only" in result["command"]
+    assert "--keep 21" in result["command"]
+    assert "--encrypt-passphrase-env BACKUP_SECRET" in result["command"]
+    assert result["cron"].startswith("45 3 * * *")
+    assert result["launchd"]["start_calendar_interval"] == {"Hour": 3, "Minute": 45}

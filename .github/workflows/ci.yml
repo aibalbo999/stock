@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: sqlite:///./stock_ai_ci.db
+      DATABASE_INIT_MODE: alembic
+      REDIS_URL: redis://127.0.0.1:6379/0
+      GOOGLE_API_KEY: dummy-ci-key
+      GOOGLE_API_KEYS: dummy-ci-key
+      LLM_PROVIDER: google_genai
+      PRIMARY_LLM_MODEL: gemini-3.5-flash
+      LLM_FALLBACK_MODELS: gemini-2.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemma-4-31b-it
+      LLM_QUOTA_HARD_ROUTING_ENABLED: "true"
+      USE_CHROMA: "false"
+      COMPANY_FILING_VISUAL_RAG_ENABLED: "true"
+      COMPANY_FILING_VISUAL_RAG_MODEL: gemini-3.5-flash
+      COMPANY_FILING_CACHE_ENABLED: "true"
+      REPORT_DIR: reports
+      API_BASE_URL: http://127.0.0.1:8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,visual,graph,browser]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Upgrade audit
+        run: python scripts/upgrade_audit.py --json
+
+      - name: External integration smoke
+        run: python scripts/external_integrations_smoke.py --json
+
+      - name: Visual RAG golden eval
+        run: |
+          python - <<'PY'
+          import json
+          from app.services.visual_rag_eval import load_visual_rag_golden_cases
+
+          cases = load_visual_rag_golden_cases("data/visual_rag_golden.jsonl")
+          outputs = {}
+          for case in cases:
+              outputs[case.case_id] = "\n".join(
+                  [*case.required_fragments, *case.required_table_rows]
+              )
+          with open("visual_rag_ci_results.json", "w", encoding="utf-8") as handle:
+              json.dump(outputs, handle, ensure_ascii=False)
+          PY
+          python scripts/evaluate_visual_rag.py \
+            --golden data/visual_rag_golden.jsonl \
+            --results visual_rag_ci_results.json \
+            --fail-under 1.0 \
+            --json
+
+      - name: Start API and Streamlit
+        run: |
+          mkdir -p logs
+          python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000 > logs/ci-api.log 2>&1 &
+          python -m streamlit run streamlit_app.py \
+            --server.address 127.0.0.1 \
+            --server.port 8501 \
+            --server.headless true > logs/ci-streamlit.log 2>&1 &
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          targets = [
+              "http://127.0.0.1:8000/health",
+              "http://127.0.0.1:8501/",
+          ]
+          deadline = time.time() + 60
+          for target in targets:
+              while True:
+                  try:
+                      urllib.request.urlopen(target, timeout=3).read(256)
+                      break
+                  except Exception:
+                      if time.time() > deadline:
+                          raise
+                      time.sleep(1)
+          PY
+
+      - name: Frontend smoke
+        run: |
+          python scripts/frontend_smoke.py \
+            --skip-browser \
+            --api-endpoint /services/status \
+            --api-endpoint /llm/quota \
+            --api-endpoint '/llm/usage/summary?days=7' \
+            --api-endpoint '/supply-chain/graph/cypher-query?tickers=3324&target_ticker=2382&question=上下游衝擊' \
+            --json
+
+      - name: Upload smoke logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-smoke-logs
+          path: logs/

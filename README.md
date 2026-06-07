@@ -200,6 +200,7 @@ NEO4J_STATUS_CHECK_CONNECTION=true
 
 本機可用 `docker compose up -d neo4j` 啟動 Neo4j，或用 `start_system.command` / `.venv/bin/python scripts/start_system.py --start-dependencies` 一次啟動 Redis、Postgres、Neo4j 與 Browserless。一鍵啟動會在本次程序中自動套用 docker-compose 的 Neo4j 預設環境變數（不改寫 `.env`），讓 API/Streamlit 能直接使用本機 GraphRAG 匯入設定。`GET /supply-chain/graph` 會輸出 retrieval hints 與 `retrieval_plan`；`retrieval_plan.evidence_policy` 會明確標示圖譜擴展查詢只作檢索，不得直接當成供應商證據。`GET /supply-chain/graph/reasoning` 會輸出 shortest-path reasoning context 與 Cypher template，可用於分析上下游衝擊、同業傳導或指定兩家公司之間的最短路徑。`GET /supply-chain/graph/cypher-plan` 會建立 guarded LLM Cypher plan：`use_llm=true` 時會把題目、來源股票、目標股票與可用公司清單交給 LLM 產生 JSON Cypher，系統只接受 `MATCH/RETURN/ORDER BY/LIMIT`、`Company` label、`STRUCTURAL_UPSTREAM_TO` / `SAME_SEGMENT_PEER` 關係、白名單股票參數與受控深度；任何寫入語法、未知 schema、非 JSON 或不可信參數都會被拒絕並退回 deterministic plan。`GET /supply-chain/graph/cypher-query` 會先產生同一份 guarded plan，再於 Neo4j 已設定時執行 read-only 查詢；未設定 Neo4j 時會回傳 validated plan 與 `not_configured`，不把外部部署選項誤判為核心 GraphRAG 失敗。`GET /supply-chain/graph/neo4j` 會輸出可匯入 Neo4j 的 Cypher statements 與參數；若已設定 `NEO4J_URI` 並安裝 `neo4j` driver，可用 `POST /supply-chain/graph/neo4j/import` 將目前 GraphRAG 節點與 taxonomy edges 寫入 Neo4j。也可不啟動 API，直接用 `.venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json` 檢查匯入 payload；拿掉 `--dry-run` 後會依 `.env` 設定連線匯入 Neo4j。`GET /services/status` 會顯示 GraphRAG retrieval query strategy / evidence policy、shortest-path reasoning strategy / endpoint、agentic Cypher planner strategy / guardrails、live query endpoint、`supply_chain_graph.neo4j_import.payload_export_ready`、payload 格式/節點/關係/statement 數、`ready`、driver 是否可用、目標 database、是否執行連線探測、連線錯誤、fallback reason 與本機 docker 預設啟動提示；因此「可產生 Neo4j 匯入 payload」和「外部 Neo4j 連線已就緒」會分開呈現。能力矩陣也分成 `ai_rag.graphrag_context`、`ai_rag.graphrag_path_reasoning`、`ai_rag.graphrag_agentic_cypher`、`ai_rag.graphrag_live_cypher_query`、`ai_rag.neo4j_payload_export` 與 `ai_rag.neo4j_import`：前三者驗證本機 graph context、shortest-path reasoning 與 guarded LLM Cypher plan 是否可用；`graphrag_live_cypher_query` 只有 Neo4j 連線可用時才會 ready；`neo4j_payload_export` 只要可產生 parameterized Cypher payload 就會是 `ready`；`neo4j_import` 只有外部 Neo4j URI、driver、帳密與連線探測都可用時才會是 `ready`。未設定 URI 時 `neo4j_import` 會標為 `degraded` 並保留 payload 匯出資訊；設定了 URI 但 Neo4j 沒啟動時會顯示 `connection_failed:neo4j`，不會把尚未連上的外部匯入能力標成 ready。這些邊仍只作為檢索與推理脈絡，不得當成直接供應商證據。
 若 Docker registry 下載 Neo4j image 卡住，也可用 Homebrew 路徑：`brew install neo4j`、`neo4j-admin dbms set-initial-password stock_ai_neo4j_password`、`brew services start neo4j`。啟動後可用 `.venv/bin/python scripts/upgrade_audit.py --strict-external --local-neo4j-defaults --wait-local-neo4j 20 --local-browser-render-defaults` 驗證 live Neo4j import 與本機 Playwright 文件渲染後援是否同時就緒。
+外部部署接點可集中用 `.venv/bin/python scripts/external_integrations_smoke.py --json` 檢查；一般模式只回報 `caution`，若正式部署要求 Neo4j live query/import、Browser/Proxy fallback 與結構化文件 API 都就緒，可加 `--strict` 讓任一項未 ready 時回傳非 0 exit code。
 指定股票的 RAG 檢索會套用 target ticker / 公司名稱 / alias 過濾：若文件 metadata 已標成其他公司會被排除；若是舊資料沒有 metadata，必須在標題或內文命中目標代號/名稱/alias 才能進入該股票的檢索候選。報告端重新排序也會再次用 entity mapper 排除「被辨識為別家公司」的文件，降低南亞/南亞科、台達電/光寶科這類張冠李戴風險。
 
 設定市場資料快取：
@@ -404,8 +405,24 @@ docker compose up -d celery-worker celery-beat
 ## 維護與 Smoke 測試
 
 建立本機備份可執行 `.venv/bin/python scripts/system_backup.py create --json`；預覽而不寫入則加 `--dry-run`。SQLite 開發資料庫會被複製到 `backups/`，`reports/` 內的報告檔會一起保存；若 `DATABASE_URL` 指向 PostgreSQL 等外部資料庫，工具會在 manifest 中標示 `external_dump_required` 並提示用部署資料庫工具（例如 `pg_dump`）產生 dump。復原預設只做 dry-run：`.venv/bin/python scripts/system_backup.py restore backups/<backup_dir> --json`，確認操作後才加 `--apply`。
+加密壓縮與保留策略可用：
+
+```bash
+export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
+.venv/bin/python scripts/system_backup.py create \
+  --archive \
+  --encrypt-passphrase-env STOCK_AI_BACKUP_PASSPHRASE \
+  --archive-only \
+  --keep 14
+```
+
+此模式會產生 `backups/stock_ai_backup_*.zip.enc`，使用 Fernet + PBKDF2 加密，並移除明文備份資料夾；需解密時用 `.venv/bin/python scripts/system_backup.py decrypt backups/<file>.zip.enc --encrypt-passphrase-env STOCK_AI_BACKUP_PASSPHRASE`。若要建立每日排程命令，可執行 `.venv/bin/python scripts/system_backup.py schedule-command --time 02:30 --keep 14`，會輸出 cron 與 launchd 範例。
 
 服務啟動後可跑 `.venv/bin/python scripts/frontend_smoke.py --json`，它會檢查 Streamlit 首頁、FastAPI `/services/status`，並在 Playwright 可用時截圖到 `artifacts/frontend_smoke/streamlit.png` 且驗證畫面不是空白 PNG。CI 或沒有瀏覽器 binary 的環境可加 `--skip-browser`，保留 HTTP smoke。
+
+GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`pytest -q`、`scripts/upgrade_audit.py --json`、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
+
+系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path 與 retryable failure，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。
 
 ## 升級稽核
 

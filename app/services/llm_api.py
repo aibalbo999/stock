@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.services.llm_client import LLMClient, summarize_llm_attempts
 from app.services.llm_observability import llm_observability_status
 from app.services.llm_quota import LLMQuotaGovernanceService
-from app.services.llm_usage import list_llm_usage_records
+from app.services.llm_usage import list_llm_usage_records, summarize_llm_usage_records
 from app.services.persistence import LLMUsageRepository
 
 
@@ -101,6 +101,15 @@ class LLMApiService:
             return []
         return list_llm_usage_records(
             limit=limit,
+            session_scope_factory=self.session_scope_factory,
+            llm_usage_repository_cls=self.llm_usage_repository_cls,
+        )
+
+    def usage_summary(self, days: int = 7) -> dict:
+        if self.session_scope_factory is None:
+            return {}
+        return summarize_llm_usage_records(
+            days=days,
             session_scope_factory=self.session_scope_factory,
             llm_usage_repository_cls=self.llm_usage_repository_cls,
         )

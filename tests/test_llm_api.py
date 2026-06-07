@@ -202,3 +202,48 @@ def test_llm_api_service_returns_quota_summary() -> None:
 
     assert service.quota_summary() == {"recommended_model": "gemini-3.5-flash"}
     assert captured["session_scope_factory"] is fake_session_scope
+
+
+def test_llm_api_service_returns_usage_summary() -> None:
+    class FakeUsageRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def since(self, created_at):
+            assert self.session == "session"
+            assert created_at is not None
+            return [SimpleNamespace(id=1)]
+
+        @staticmethod
+        def to_dict(record):
+            return {
+                "id": record.id,
+                "operation": "report_generation",
+                "model": "gemini-3.5-flash",
+                "provider": "google_genai",
+                "fallback": False,
+                "fallback_path_used": True,
+                "latency_ms": 120.0,
+                "total_token_estimate": 99,
+                "estimated_cost_usd": 0.0123,
+                "attempt_count": 2,
+                "retryable_failure_count": 1,
+                "created_at": "2026-06-07T08:00:00",
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = LLMApiService(
+        session_scope_factory=fake_session_scope,
+        llm_usage_repository_cls=FakeUsageRepository,
+    )
+
+    summary = service.usage_summary(7)
+
+    assert summary["totals"]["request_count"] == 1
+    assert summary["totals"]["total_token_estimate"] == 99
+    assert summary["totals"]["fallback_path_count"] == 1
+    assert summary["by_model"][0]["model"] == "gemini-3.5-flash"
+    assert summary["by_operation"][0]["operation"] == "report_generation"

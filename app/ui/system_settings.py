@@ -158,6 +158,11 @@ def render_system_settings() -> None:
         except requests.RequestException as exc:
             llm_quota = {"models": [], "totals": {}, "window": {}, "recommended_model": None}
             st.error(f"讀取 AI 額度狀態失敗：{request_error_message(exc)}")
+        try:
+            llm_usage_summary = api_get("/llm/usage/summary?days=7")
+        except requests.RequestException as exc:
+            llm_usage_summary = {"totals": {}, "by_model": [], "by_operation": [], "daily": []}
+            st.error(f"讀取 AI 用量趨勢失敗：{request_error_message(exc)}")
         strict_upgrade_audit = st.toggle(
             "正式部署檢查",
             value=False,
@@ -205,6 +210,35 @@ def render_system_settings() -> None:
             budget_source = llm_quota.get("budget_source") if isinstance(llm_quota.get("budget_source"), dict) else {}
             if budget_source.get("note"):
                 st.caption(str(budget_source["note"]))
+        with st.expander("AI 用量趨勢與成本", expanded=True):
+            usage_totals = (
+                llm_usage_summary.get("totals")
+                if isinstance(llm_usage_summary.get("totals"), dict)
+                else {}
+            )
+            usage_cols = st.columns(5)
+            usage_cols[0].metric("7 日請求", int(usage_totals.get("request_count") or 0))
+            usage_cols[1].metric("7 日 Token", int(usage_totals.get("total_token_estimate") or 0))
+            usage_cols[2].metric(
+                "估算成本 USD",
+                f"{float(usage_totals.get('estimated_cost_usd') or 0.0):.4f}",
+            )
+            usage_cols[3].metric("Fallback 次數", int(usage_totals.get("fallback_path_count") or 0))
+            usage_cols[4].metric("可重試失敗", int(usage_totals.get("retryable_failure_count") or 0))
+            daily_usage_rows = llm_usage_summary.get("daily") or []
+            model_usage_rows = llm_usage_summary.get("by_model") or []
+            operation_usage_rows = llm_usage_summary.get("by_operation") or []
+            if daily_usage_rows:
+                st.caption("每日 token / request 趨勢")
+                st.dataframe(daily_usage_rows, width="stretch", hide_index=True)
+            if model_usage_rows:
+                st.caption("模型用量")
+                st.dataframe(model_usage_rows, width="stretch", hide_index=True)
+            if operation_usage_rows:
+                st.caption("任務用量")
+                st.dataframe(operation_usage_rows, width="stretch", hide_index=True)
+            if not (daily_usage_rows or model_usage_rows or operation_usage_rows):
+                st.info("尚未有可彙總的 AI 用量紀錄。")
         with st.expander("進階：服務細節"):
             st.json(status["settings"])
             st.json(status["integrity"])

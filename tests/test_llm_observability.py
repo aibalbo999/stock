@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import time
 from types import SimpleNamespace
 
 from app.services import llm_observability as llm_observability_module
 from app.services.llm_observability import (
     build_llm_observability_trace,
+    dispatch_llm_observability_trace,
     export_llm_observability_trace,
     llm_observability_status,
     llm_observability_trace_sink_status,
@@ -17,6 +20,7 @@ def _settings(**overrides) -> SimpleNamespace:
         "llm_observability_provider": "local",
         "llm_observability_external_dispatch_enabled": True,
         "llm_observability_project_name": "stock-analysis",
+        "llm_observability_export_timeout_seconds": 2.0,
         "llm_input_cost_per_1k_tokens_usd": 0.0,
         "llm_output_cost_per_1k_tokens_usd": 0.0,
         "llm_model_cost_rate_card_usd": "",
@@ -60,6 +64,10 @@ def test_langsmith_observability_sink_reports_ready_and_marks_trace_export(monke
     assert status["external_trace_missing_settings"] == []
     assert status["trace_export_mode"] == "external_trace"
     assert status["trace_export_target"] == "langsmith"
+    assert status["best_effort_external_dispatch"] is True
+    assert status["external_trace_export_supported"] is True
+    assert status["external_trace_export_providers"] == ["langsmith", "phoenix"]
+    assert status["export_timeout_seconds"] == 2.0
     assert trace["external_trace_provider"] == "langsmith"
     assert trace["trace_export_mode"] == "external_trace"
     assert trace["trace_export_target"] == "langsmith"
@@ -245,3 +253,49 @@ def test_export_phoenix_trace_registers_span_attributes(monkeypatch) -> None:
     assert captured["attributes"]["llm.model_name"] == "gemini-3.5-flash"
     assert captured["attributes"]["stock.total_token_estimate"] >= 1
     assert captured["shutdown"] is True
+
+
+def test_dispatch_external_trace_times_out_without_raising(monkeypatch) -> None:
+    monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
+    settings = _settings(
+        llm_observability_provider="langsmith",
+        llm_observability_export_timeout_seconds=0.001,
+        **{"langsmith_" + "api" + "_" + "key": "test-" + "credential"},
+    )
+    trace = build_llm_observability_trace(
+        prompt="question",
+        result=SimpleNamespace(
+            text="answer",
+            provider="google_genai",
+            model="gemini-3.5-flash",
+            fallback=False,
+            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+        ),
+        latency_ms=5.0,
+        operation="report_generation",
+        settings=settings,
+    )
+
+    def slow_exporter(*_args, **_kwargs):
+        time.sleep(0.05)
+        return {"status": "exported", "provider": "langsmith"}
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = dispatch_llm_observability_trace(
+            trace,
+            prompt="question",
+            output="answer",
+            settings=settings,
+            exporter=slow_exporter,
+            executor=executor,
+        )
+
+    assert result == {
+        "status": "timeout",
+        "attempted": True,
+        "provider": "langsmith",
+        "reason": "export_timeout",
+        "timeout_seconds": 0.001,
+        "trace_export_mode": "external_trace",
+        "trace_export_target": "langsmith",
+    }

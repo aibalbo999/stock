@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import logging
 import math
 import re
@@ -15,6 +16,7 @@ LOGGER = logging.getLogger(__name__)
 SUPPORTED_OBSERVABILITY_PROVIDERS = ("local", "langsmith", "phoenix")
 LANGSMITH_CREDENTIAL_ENV = "LANGSMITH_" + "API" + "_" + "KEY"
 PHOENIX_CREDENTIAL_ENV = "PHOENIX_" + "API" + "_" + "KEY"
+_EXPORT_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm-observability")
 OBSERVABILITY_PROVIDER_PROFILES = {
     "local": {
         "label": "Local usage store",
@@ -90,6 +92,13 @@ def llm_observability_status(settings: Any) -> dict:
         "trace_export_mode": trace_sink["trace_export_mode"],
         "trace_export_target": trace_sink["trace_export_target"],
         "external_dispatch_enabled": trace_sink["dispatch_enabled"],
+        "best_effort_external_dispatch": True,
+        "external_trace_export_supported": True,
+        "external_trace_export_providers": ["langsmith", "phoenix"],
+        "external_trace_export_function": (
+            "app.services.llm_observability.export_llm_observability_trace"
+        ),
+        "export_timeout_seconds": _export_timeout_seconds(settings),
         "trace_sink": trace_sink,
         "langsmith_configured": _setting_configured(settings, "langsmith_api_key"),
         "phoenix_endpoint_configured": _setting_configured(settings, "phoenix_endpoint"),
@@ -295,6 +304,57 @@ def export_llm_observability_trace(
         "trace_export_mode": status["trace_export_mode"],
         "trace_export_target": status["trace_export_target"],
     }
+
+
+def dispatch_llm_observability_trace(
+    trace: dict[str, object],
+    *,
+    prompt: str,
+    output: str,
+    settings: Any,
+    importer=import_module,
+    logger: logging.Logger | None = None,
+    exporter=export_llm_observability_trace,
+    executor: ThreadPoolExecutor = _EXPORT_EXECUTOR,
+) -> dict[str, object]:
+    """Run external trace export behind a short timeout without risking LLM flow stability."""
+
+    status = llm_observability_status(settings)
+    skipped = _external_export_skip_reason(status)
+    timeout_seconds = _export_timeout_seconds(settings)
+    if skipped or timeout_seconds <= 0:
+        result = exporter(
+            trace,
+            prompt=prompt,
+            output=output,
+            settings=settings,
+            importer=importer,
+            logger=logger,
+        )
+        return {**result, "timeout_seconds": timeout_seconds}
+    future = executor.submit(
+        exporter,
+        trace,
+        prompt=prompt,
+        output=output,
+        settings=settings,
+        importer=importer,
+        logger=logger,
+    )
+    try:
+        result = future.result(timeout=timeout_seconds)
+    except TimeoutError:
+        future.cancel()
+        return {
+            "status": "timeout",
+            "attempted": True,
+            "provider": status["trace_sink"]["provider"],
+            "reason": "export_timeout",
+            "timeout_seconds": timeout_seconds,
+            "trace_export_mode": status["trace_export_mode"],
+            "trace_export_target": status["trace_export_target"],
+        }
+    return {**result, "timeout_seconds": timeout_seconds}
 
 
 def parse_model_cost_rate_card(raw: str | None) -> dict[str, dict[str, float]]:
@@ -562,6 +622,16 @@ def _safe_warning_ratio(value: object) -> float:
     except (TypeError, ValueError):
         parsed = 0.8
     return min(1.0, max(0.01, parsed))
+
+
+def _export_timeout_seconds(settings: Any) -> float:
+    try:
+        return max(
+            0.0,
+            float(getattr(settings, "llm_observability_export_timeout_seconds", 2.0) or 0.0),
+        )
+    except (TypeError, ValueError):
+        return 2.0
 
 
 def _attempt_summary_for_trace(attempts: tuple[dict[str, object], ...]) -> dict:

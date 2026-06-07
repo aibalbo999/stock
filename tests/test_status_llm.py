@@ -42,6 +42,13 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
     assert status["llm_quota_routing"]["excluded_media_live_models"] == []
     assert status["llm_observability"]["enabled"] is True
     assert status["llm_observability"]["local_trace_enabled"] is True
+    assert status["llm_observability"]["best_effort_external_dispatch"] is True
+    assert status["llm_observability"]["external_trace_export_supported"] is True
+    assert status["llm_observability"]["external_trace_export_providers"] == [
+        "langsmith",
+        "phoenix",
+    ]
+    assert status["llm_observability"]["export_timeout_seconds"] == 2.0
     assert "latency_ms" in status["llm_observability"]["captured_fields"]
     assert "total_token_estimate" in status["llm_observability"]["captured_fields"]
 
@@ -66,6 +73,15 @@ def test_ai_rag_llm_capability_matrix_evidence(service_status_snapshot) -> None:
 
     assert matrix["ai_rag"]["llm_observability"]["status"] == "ready"
     assert matrix["ai_rag"]["llm_observability"]["evidence"]["local_trace_enabled"] is True
+    assert (
+        matrix["ai_rag"]["llm_observability"]["evidence"]["best_effort_external_dispatch"]
+        is True
+    )
+    assert (
+        matrix["ai_rag"]["llm_observability"]["evidence"]["external_trace_export_supported"]
+        is True
+    )
+    assert matrix["ai_rag"]["llm_observability"]["evidence"]["export_timeout_seconds"] == 2.0
     assert "latency_ms" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
     assert (
         "total_token_estimate"

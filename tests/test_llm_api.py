@@ -71,6 +71,13 @@ def test_llm_api_service_reports_status_from_settings() -> None:
             "trace_export_mode": "local_trace",
             "trace_export_target": "local",
             "external_dispatch_enabled": True,
+            "best_effort_external_dispatch": True,
+            "external_trace_export_supported": True,
+            "external_trace_export_providers": ["langsmith", "phoenix"],
+            "external_trace_export_function": (
+                "app.services.llm_observability.export_llm_observability_trace"
+            ),
+            "export_timeout_seconds": 2.0,
             "trace_sink": {
                 "provider": "local",
                 "label": "Local usage store",

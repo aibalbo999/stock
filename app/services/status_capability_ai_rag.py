@@ -121,6 +121,8 @@ def ai_rag_capabilities(
             "ready"
             if llm_observability.get("enabled")
             and llm_observability.get("local_trace_enabled")
+            and llm_observability.get("best_effort_external_dispatch")
+            and llm_observability.get("external_trace_export_supported")
             and "latency_ms" in (llm_observability.get("captured_fields") or [])
             and "total_token_estimate" in (llm_observability.get("captured_fields") or [])
             else "degraded",
@@ -139,6 +141,19 @@ def ai_rag_capabilities(
                 "external_dispatch_enabled": llm_observability.get(
                     "external_dispatch_enabled"
                 ),
+                "best_effort_external_dispatch": llm_observability.get(
+                    "best_effort_external_dispatch"
+                ),
+                "external_trace_export_supported": llm_observability.get(
+                    "external_trace_export_supported"
+                ),
+                "external_trace_export_providers": llm_observability.get(
+                    "external_trace_export_providers"
+                ),
+                "external_trace_export_function": llm_observability.get(
+                    "external_trace_export_function"
+                ),
+                "export_timeout_seconds": llm_observability.get("export_timeout_seconds"),
                 "trace_export_mode": llm_observability.get("trace_export_mode"),
                 "trace_export_target": llm_observability.get("trace_export_target"),
                 "trace_sink": llm_observability.get("trace_sink"),
@@ -155,8 +170,8 @@ def ai_rag_capabilities(
             },
             detail=(
                 "Local traces capture LLM latency, token estimates, configurable cost estimates, "
-                "retrieval latency, and reranker status; LangSmith/Phoenix sink profiles declare "
-                "required settings/dependencies and keep local traces active when external sinks are pending."
+                "retrieval latency, and reranker status; LangSmith/Phoenix exports run through a "
+                "best-effort timeout boundary and keep local traces active when external sinks are pending."
             ),
         ),
         "visual_rag": _capability(

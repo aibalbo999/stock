@@ -432,6 +432,16 @@ def test_service_status_shape() -> None:
         status["market_data_cache"]["provider_matrix"]["price_history"]["fallback_configured"]
         is market_fallback_evidence["fugle_price_fallback_configured"]
     )
+    report_retention = matrix["data_business_logic"]["latest_report_retention"]
+    assert report_retention["status"] == "ready"
+    assert status["report_retention"]["policy"] == "latest_per_topic"
+    assert report_retention["evidence"]["write_prunes_db_by_topic"] is True
+    assert report_retention["evidence"]["write_prunes_markdown_by_topic"] is True
+    assert report_retention["evidence"]["list_reports_uses_latest_by_topic"] is True
+    assert report_retention["evidence"]["quality_summary_uses_latest_by_topic"] is True
+    assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True
+    assert report_retention["evidence"]["maintenance_prunes_markdown_by_topic"] is True
+    assert report_retention["evidence"]["run_links_cleared_for_pruned_reports"] is True
     assert matrix["data_business_logic"]["company_filing_fetch_hardening"]["status"] == "ready"
     filing_hardening = matrix["data_business_logic"]["company_filing_fetch_hardening"]["evidence"]
     assert filing_hardening["effective_user_agent_count"] >= 1

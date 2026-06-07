@@ -46,6 +46,7 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
         "data_business_logic": {
             "market_data_cache": {"status": "ready", "evidence": {}},
             "market_data_provider_fallback": {"status": "ready", "evidence": {}},
+            "latest_report_retention": {"status": "ready", "evidence": {}},
             "company_filing_fetch_hardening": {"status": "ready", "evidence": {}},
             "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},

@@ -1,6 +1,8 @@
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from scripts.security_scan import (
     detect_secrets_findings,
     detect_secrets_hook_findings,
@@ -158,6 +160,30 @@ def test_detect_secrets_hook_excludes_baseline_from_scanned_paths(monkeypatch, t
         ".secrets.baseline",
         "sample.py",
     ]
+
+
+def test_detect_secrets_hook_preserves_actionable_non_json_errors(monkeypatch, tmp_path) -> None:
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text('{"results":{}}', encoding="utf-8")
+    path = tmp_path / "sample.py"
+    path.write_text("token = 'example'", encoding="utf-8")
+
+    def fake_engine_command(engine: str):
+        return "/bin/detect-secrets-hook" if engine == "detect-secrets-hook" else None
+
+    def fake_runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="Your baseline file (.secrets.baseline) is unstaged.\n"
+            "`git add .secrets.baseline` to fix this.\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("scripts.security_scan.external_engine_command", fake_engine_command)
+
+    with pytest.raises(RuntimeError, match="baseline file"):
+        run_detect_secrets([path], tmp_path, runner=fake_runner, baseline=baseline)
 
 
 def test_security_scan_finds_engine_in_current_python_bin(monkeypatch, tmp_path) -> None:

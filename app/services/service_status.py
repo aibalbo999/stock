@@ -77,6 +77,7 @@ def service_status() -> dict:
     llm_observability = llm_observability_status(settings)
     visual_rag_runtime = visual_rag_status(settings)
     frontend_status = _frontend_status()
+    report_retention_status = _report_retention_status()
     status = {
         "database": {
             "init_mode": settings.database_init_mode,
@@ -102,6 +103,7 @@ def service_status() -> dict:
             "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
         },
         "frontend": frontend_status,
+        "report_retention": report_retention_status,
         "llm_observability": llm_observability,
         "finmind": {
             "configured": bool(settings.finmind_token),
@@ -316,6 +318,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
     company_filing_status = status.get("company_filings") or {}
     api_status = _api_controller_status()
     frontend_status = status.get("frontend") or {}
+    report_retention_status = status.get("report_retention") or {}
     security_scan_status = status.get("security_scanning") or {}
     market_provider_readiness = _market_data_provider_readiness(
         market_cache_status,
@@ -700,6 +703,22 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     **market_provider_readiness,
                 },
             ),
+            "latest_report_retention": _capability(
+                "ready"
+                if report_retention_status.get("write_prunes_db_by_topic")
+                and report_retention_status.get("write_prunes_markdown_by_topic")
+                and report_retention_status.get("list_reports_uses_latest_by_topic")
+                and report_retention_status.get("quality_summary_uses_latest_by_topic")
+                and report_retention_status.get("maintenance_prunes_db_by_topic")
+                and report_retention_status.get("maintenance_prunes_markdown_by_topic")
+                and report_retention_status.get("run_links_cleared_for_pruned_reports")
+                else "degraded",
+                evidence=report_retention_status,
+                detail=(
+                    "Generated reports use latest-per-topic retention across DB writes, "
+                    "report center queries, quality summary, maintenance cleanup, and markdown files."
+                ),
+            ),
             "company_filing_fetch_hardening": _capability(
                 "ready"
                 if company_filing_status.get("anti_crawl_identity_enabled")
@@ -1067,6 +1086,55 @@ def _frontend_constant_value(source: str, name: str) -> int | None:
             except ValueError:
                 return None
     return None
+
+
+def _report_retention_status() -> dict:
+    root = Path(__file__).resolve().parents[2]
+    persistence_source = _read_text(root / "app" / "services" / "persistence.py")
+    report_files_source = _read_text(root / "app" / "services" / "report_files.py")
+    report_query_source = _read_text(root / "app" / "services" / "report_query.py")
+    data_operations_source = _read_text(root / "app" / "services" / "data_operations_api.py")
+    maintenance_ui_source = _read_text(
+        root / "app" / "ui" / "system_settings_maintenance.py"
+    )
+    write_prunes_db = "self.prune_older_for_topic(report.topic, report.id)" in persistence_source
+    report_file_write_prunes = (
+        "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
+        in report_files_source
+    )
+    return {
+        "policy": "latest_per_topic",
+        "write_prunes_db_by_topic": write_prunes_db,
+        "write_prunes_markdown_by_topic": report_file_write_prunes,
+        "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
+        and "seen_topics" in persistence_source,
+        "repository_bulk_prune_available": "def prune_older_by_topic(" in persistence_source,
+        "repository_topic_prune_available": "def prune_older_for_topic(" in persistence_source,
+        "run_links_cleared_for_pruned_reports": ".values(report_id=None)" in persistence_source,
+        "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
+        "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
+        "list_reports_uses_latest_by_topic": "latest_by_topic(limit)" in report_query_source,
+        "quality_summary_uses_latest_by_topic": "latest_by_topic(safe_limit)"
+        in report_query_source,
+        "report_list_returns_policy": '"retention_policy": "latest_per_topic"'
+        in report_query_source,
+        "maintenance_prunes_db_by_topic": "reports.prune_older_by_topic()"
+        in data_operations_source,
+        "maintenance_prunes_markdown_by_topic": "self._prune_older_report_files()"
+        in data_operations_source
+        and "prune_older_report_files_by_topic" in data_operations_source,
+        "maintenance_returns_policy": '"report_retention_policy": "latest_per_topic"'
+        in data_operations_source,
+        "settings_ui_cleanup_action": '"latest_reports_only": True' in maintenance_ui_source
+        and '"orphan_report_refs": True' in maintenance_ui_source,
+        "covered_paths": [
+            "app/services/persistence.py",
+            "app/services/report_files.py",
+            "app/services/report_query.py",
+            "app/services/data_operations_api.py",
+            "app/ui/system_settings_maintenance.py",
+        ],
+    }
 
 
 def _read_text(path: Path) -> str:

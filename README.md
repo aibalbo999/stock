@@ -122,7 +122,7 @@ DATABASE_INIT_MODE=alembic
 .venv/bin/alembic revision --autogenerate -m "describe change"
 ```
 
-`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。正式部署預設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。若要保留 SQLite 快速開發，可在 `.env` 明確設定 `DATABASE_URL=sqlite:///./stock_ai.db` 與 `DATABASE_INIT_MODE=create_all`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、hybrid search、reranker、GraphRAG、API 分層、Streamlit MPA/背景任務輪詢、workflow、Alembic、Redis cache 與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
+`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。正式部署預設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。若要保留 SQLite 快速開發，可在 `.env` 明確設定 `DATABASE_URL=sqlite:///./stock_ai.db` 與 `DATABASE_INIT_MODE=create_all`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、hybrid search、reranker、GraphRAG、API 分層、Streamlit MPA/背景任務輪詢、workflow、Alembic、Redis cache、最新版報告保留策略與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
 若 `DATABASE_URL` 指向 PostgreSQL/MySQL 等非 SQLite 資料庫，系統會拒絕用 `create_all` 啟動，避免正式環境跳過 Alembic 欄位遷移；只有受控的一次性 bootstrap 才應暫時設定 `DATABASE_ALLOW_CREATE_ALL_NON_SQLITE=true`。
 初始 migration 以顯式 `op.create_table` / `op.create_index` 固定 schema 快照，測試會執行 `alembic upgrade head` 並用 autogenerate diff 確認 migration 結果與目前 SQLAlchemy metadata 對齊。
 
@@ -429,7 +429,7 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 
-報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，對應的舊 markdown 檔也會被清掉，避免報告中心與 `reports/` 累積同主題歷史版本。若資料庫已有早期累積的重複報告或 markdown 檔，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。
+報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，對應的舊 markdown 檔也會被清掉，避免報告中心與 `reports/` 累積同主題歷史版本。若資料庫已有早期累積的重複報告或 markdown 檔，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。`GET /services/status` 的 `upgrade_capability_matrix.data_business_logic.latest_report_retention` 會檢查 DB 寫入 prune、報告中心 latest-by-topic、品質摘要、maintenance cleanup 與 markdown 檔清理路徑是否仍完整，避免後續改版又累積同主題舊報告。
 
 系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path、retryable failure、成本預算狀態與 alerts，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。「AI 額度與模型路由」會讀取 `GET /llm/quota`，顯示推薦模型、推薦原因、每模型 routing tier/status reason 與高額度保底模型。「背景任務觀測」會讀取 `GET /tasks/summary?days=7`，顯示近期 Celery/API run 成功率、平均耗時、失敗任務與疑似卡住任務；「報告品質 Gate 總覽」會讀取 `GET /reports/quality/summary?limit=20`，以 latest-per-topic 報告檢查 blockers、warnings、正式分析信心與資料覆蓋。
 

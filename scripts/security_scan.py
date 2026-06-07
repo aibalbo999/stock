@@ -165,6 +165,9 @@ def run_detect_secrets(
         try:
             payload = json.loads(completed.stdout or "{}")
         except json.JSONDecodeError as exc:
+            detail = (completed.stdout or completed.stderr or "").strip()
+            if detail:
+                raise RuntimeError(detail) from exc
             raise RuntimeError("detect-secrets-hook returned invalid JSON") from exc
         return detect_secrets_hook_findings(payload)
     command = external_engine_command("detect-secrets")

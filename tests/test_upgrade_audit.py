@@ -28,6 +28,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
         "data_business_logic": {
             "market_data_cache": {"status": "ready", "evidence": {}},
             "market_data_provider_fallback": {"status": "ready", "evidence": {}},
+            "latest_report_retention": {"status": "ready", "evidence": {}},
             "company_filing_fetch_hardening": {"status": "ready", "evidence": {}},
             "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
@@ -190,3 +191,21 @@ def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
     assert audit["implementation"]["status"] == "failed"
     assert any(check["capability"] == "streamlit_mpa_background_tasks" for check in audit["failures"])
     assert audit["areas"]["architecture"]["failures"] == 1
+
+
+def test_upgrade_audit_fails_report_retention_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "data_business_logic.latest_report_retention": {
+                    "status": "degraded",
+                    "evidence": {"write_prunes_db_by_topic": False},
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    assert any(check["capability"] == "latest_report_retention" for check in audit["failures"])
+    assert audit["areas"]["data_business_logic"]["failures"] == 1

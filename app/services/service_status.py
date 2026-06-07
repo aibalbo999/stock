@@ -595,6 +595,8 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and api_status.get("main_uses_app_factory")
                 and api_status.get("compatibility_exports_present")
                 and api_status.get("main_uses_compatibility_exports")
+                and api_status.get("compatibility_helpers_present")
+                and api_status.get("main_uses_compatibility_helpers")
                 and api_status.get("compatibility_service_present")
                 and api_status.get("main_direct_domain_import_count") == 0
                 and not api_status.get("main_imports_legacy_facade")
@@ -875,6 +877,7 @@ def _api_controller_status() -> dict:
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
+    compatibility_helpers_path = api_dir / "compatibility_helpers.py"
     try:
         legacy_facade_source = legacy_facade_path.read_text(encoding="utf-8")
     except OSError:
@@ -903,6 +906,8 @@ def _api_controller_status() -> dict:
         "service_factory_present": (api_dir / "service_factory.py").exists(),
         "compatibility_exports_present": compatibility_exports_path.exists(),
         "main_uses_compatibility_exports": "compatibility_export_namespace" in main_source,
+        "compatibility_helpers_present": compatibility_helpers_path.exists(),
+        "main_uses_compatibility_helpers": "compatibility_helper_namespace" in main_source,
         "main_direct_domain_import_count": len(direct_domain_imports),
         "main_direct_domain_imports": direct_domain_imports,
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),

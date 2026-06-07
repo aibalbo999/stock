@@ -4,6 +4,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from app.api.app_factory import create_app
+from app.api.compatibility_helpers import (
+    LEGACY_DELEGATE_EXPORT_NAMES,
+    compatibility_helper_namespace,
+)
 from app.api.compatibility_exports import (
     COMPATIBILITY_EXPORT_NAMES,
     LEGACY_HELPER_EXPORT_NAMES,
@@ -24,138 +28,20 @@ FollowUpRunRequest = _compatibility_exports["FollowUpRunRequest"]
 
 __all__ = [
     *LEGACY_HELPER_EXPORT_NAMES,
+    *LEGACY_DELEGATE_EXPORT_NAMES,
     "app",
     "_api_services",
 ]
 
 
-def sufficient_company_filing_tickers(tickers):
-    return _api_compatibility.sufficient_company_filing_tickers(tickers)
-
-
-def count_sufficient_company_filings(tickers):
-    return _api_compatibility.count_sufficient_company_filings(tickers)
-
-
-def apply_company_filing_gate_to_candidate_payload(candidates):
-    return _api_compatibility.apply_company_filing_gate_to_candidate_payload(
-        candidates,
-        sufficient_tickers_provider=sufficient_company_filing_tickers,
-    )
-
-
-def safe_mark_run_failed(run_id, error):
-    return _api_compatibility.safe_mark_run_failed(run_id, error)
-
-
-def safe_update_run_success(run_id, payload, report_id):
-    return _api_compatibility.safe_update_run_success(run_id, payload, report_id)
-
-
-def load_report_follow_up_context(report_id):
-    return _api_compatibility.load_report_follow_up_context(report_id)
-
-
-def revalidate_candidate_whitelist(run_payload, fallback_candidates, limit=500):
-    return _api_compatibility.revalidate_candidate_whitelist(
-        run_payload,
-        fallback_candidates,
-        limit,
-    )
-
-
-def preserve_previous_supported_candidates(current_candidates, previous_candidates):
-    return _api_compatibility.preserve_previous_supported_candidates(
-        current_candidates,
-        previous_candidates,
-    )
-
-
-def mark_unavailable_candidates_after_revalidation(candidates, document_count):
-    return _api_compatibility.mark_unavailable_candidates_after_revalidation(
-        candidates,
-        document_count,
-    )
-
-
-def candidate_revalidation_queries(plan, topic="", limit=80):
-    return _api_compatibility.candidate_revalidation_queries(plan, topic, limit)
-
-
-def collect_revalidation_documents(repository, queries, limit):
-    return _api_compatibility.collect_revalidation_documents(repository, queries, limit)
-
-
-def dedupe_documents(documents):
-    return _api_compatibility.dedupe_documents(documents)
-
-
-def persist_candidate_entity_matches(plan, candidates, documents):
-    return _api_compatibility.persist_candidate_entity_matches(plan, candidates, documents)
-
-
-def dedupe_strings(values, limit):
-    return _api_compatibility.dedupe_strings(values, limit)
-
-
-async def prepare_follow_up_report_context(context, request, actions):
-    return await _api_compatibility.prepare_follow_up_report_context(context, request, actions)
-
-
-async def refresh_market_data_for_report(request):
-    return await _api_compatibility.refresh_market_data_for_report(request)
-
-
-async def ingest_dynamic_news_urls(urls, limit_per_query, start_date, end_date):
-    return await _api_compatibility.ingest_dynamic_news_urls(
-        urls,
-        limit_per_query,
-        start_date,
-        end_date,
-    )
-
-
-async def run_topic_discovery_ingestion(
-    payload,
-    service,
-    plan,
-    limit_per_query,
-    evidence_limit,
-    max_queries,
-    document_limit,
-):
-    return await _api_compatibility.run_topic_discovery_ingestion(
-        payload,
-        service,
-        plan,
-        limit_per_query,
-        evidence_limit,
-        max_queries,
-        document_limit,
-    )
-
-
-async def discover_topic_with_timeout(service, topic, timeout=75):
-    return await _api_compatibility.discover_topic_with_timeout(service, topic, timeout)
-
-
-def get_report_follow_up_plan(report_id):
-    return _api_compatibility.get_report_follow_up_plan(report_id)
-
-
-async def maybe_auto_start_required_follow_up(report_id, run_in_background=True):
-    return await _api_compatibility.maybe_auto_start_required_follow_up(
-        report_id,
-        run_in_background,
-    )
-
-
-async def run_required_follow_up_background(report_id, payload):
-    await _api_compatibility.run_required_follow_up_background(report_id, payload)
-
-
-async def run_report_follow_up(report_id, payload=None):
-    return await _api_compatibility.run_report_follow_up(report_id, payload)
+_compatibility_helpers = compatibility_helper_namespace(
+    lambda: _api_compatibility,
+    globals_provider=lambda: globals(),
+)
+globals().update(_compatibility_helpers)
+get_report_follow_up_plan = _compatibility_helpers["get_report_follow_up_plan"]
+maybe_auto_start_required_follow_up = _compatibility_helpers["maybe_auto_start_required_follow_up"]
+run_report_follow_up = _compatibility_helpers["run_report_follow_up"]
 
 
 @asynccontextmanager

@@ -362,12 +362,14 @@ def test_service_status_shape() -> None:
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["payload_export_ready"] is True
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["fallback_reason"] == "missing_settings:neo4j_uri"
     assert matrix["architecture"]["thin_api_controller"]["status"] == "ready"
-    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 220
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 120
     assert "report_routes.py" in matrix["architecture"]["thin_api_controller"]["evidence"]["route_modules"]
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["app_factory_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_app_factory"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_exports_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_exports"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_helpers_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_helpers"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_direct_domain_import_count"] == 0
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_service_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_imports_legacy_facade"] is False

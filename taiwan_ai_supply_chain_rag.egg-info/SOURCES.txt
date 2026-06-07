@@ -5,6 +5,7 @@ app/api/ai_routes.py
 app/api/app_factory.py
 app/api/company_filing_routes.py
 app/api/compatibility_exports.py
+app/api/compatibility_helpers.py
 app/api/dependencies.py
 app/api/error_details.py
 app/api/legacy_facade.py

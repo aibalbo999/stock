@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
+from app.api.compatibility_helpers import compatibility_helper_namespace
 from app.api.legacy_facade import LegacyApiFacade
 from app.api.schemas import FollowUpRunRequest
 from app.services.api_compatibility import ApiCompatibilityService
@@ -87,3 +88,32 @@ def test_api_compatibility_service_builds_default_follow_up_payload() -> None:
     assert result == {"status": "queued"}
     assert captured["report_id"] == 7
     assert isinstance(captured["payload"], Request)
+
+
+def test_compatibility_helper_namespace_lazily_delegates_and_uses_global_provider() -> None:
+    captured = {}
+
+    class Compatibility:
+        def sufficient_company_filing_tickers(self, tickers):
+            return {"never-called"}
+
+        def count_sufficient_company_filings(self, tickers):
+            return 2
+
+        def apply_company_filing_gate_to_candidate_payload(self, candidates, sufficient_tickers_provider):
+            captured["sufficient"] = sufficient_tickers_provider(["2330"])
+            return candidates
+
+    globals_map = {
+        "sufficient_company_filing_tickers": lambda tickers: {"2330"},
+    }
+    namespace = compatibility_helper_namespace(
+        lambda: Compatibility(),
+        globals_provider=lambda: globals_map,
+    )
+
+    assert namespace["count_sufficient_company_filings"](["2330"]) == 2
+    assert namespace["apply_company_filing_gate_to_candidate_payload"]([{"ticker": "2330"}]) == [
+        {"ticker": "2330"}
+    ]
+    assert captured["sufficient"] == {"2330"}

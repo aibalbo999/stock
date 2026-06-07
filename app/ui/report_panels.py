@@ -13,11 +13,9 @@ from app.ui.follow_up_status import (
     follow_up_result_message,
 )
 from app.ui.report_html import (
-    confidence_label,
-    metric_int,
-    metric_percent,
     report_html,
 )
+from app.ui.report_formatters import confidence_label, metric_int, metric_percent
 from app.ui.report_markdown import markdown_table_rows
 from app.ui.task_status_panel import render_task_status_panel
 

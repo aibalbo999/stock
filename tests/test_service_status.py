@@ -332,6 +332,8 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_report_markdown_helpers_path"] == "app/ui/report_markdown.py"
     assert status["frontend"]["ui_report_candidate_audit_extracted"] is True
     assert status["frontend"]["ui_report_candidate_audit_path"] == "app/ui/report_candidate_audit.py"
+    assert status["frontend"]["ui_report_formatters_extracted"] is True
+    assert status["frontend"]["ui_report_formatters_path"] == "app/ui/report_formatters.py"
     assert status["frontend"]["ui_wildcard_imports_removed"] is True
     assert status["frontend"]["dashboard_core_lines"] < 1500
     assert status["frontend"]["external_css_loaded"] is True
@@ -478,6 +480,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_report_panels_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_markdown_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_candidate_audit_extracted"] is True
+    assert frontend_arch["evidence"]["ui_report_formatters_extracted"] is True
     assert frontend_arch["evidence"]["ui_wildcard_imports_removed"] is True
     assert frontend_arch["evidence"]["external_report_css_loaded"] is True
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0

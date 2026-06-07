@@ -672,6 +672,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_report_panels_extracted")
                 and frontend_status.get("ui_report_markdown_helpers_extracted")
                 and frontend_status.get("ui_report_candidate_audit_extracted")
+                and frontend_status.get("ui_report_formatters_extracted")
                 and frontend_status.get("ui_wildcard_imports_removed")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
@@ -1069,6 +1070,7 @@ def _frontend_status() -> dict:
         ui_dir / "report_panels.py",
         ui_dir / "report_markdown.py",
         ui_dir / "report_candidate_audit.py",
+        ui_dir / "report_formatters.py",
         ui_dir / "report_html.py",
         ui_dir / "follow_up_status.py",
         ui_dir / "maintenance_status.py",
@@ -1098,6 +1100,7 @@ def _frontend_status() -> dict:
     report_panels_source = _read_text(ui_dir / "report_panels.py")
     report_markdown_source = _read_text(ui_dir / "report_markdown.py")
     report_candidate_audit_source = _read_text(ui_dir / "report_candidate_audit.py")
+    report_formatters_source = _read_text(ui_dir / "report_formatters.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
@@ -1198,6 +1201,15 @@ def _frontend_status() -> dict:
         and "def candidate_source_matches_display_entity(" not in report_html_source
         and "from app.ui.report_candidate_audit import" in ui_source,
         "ui_report_candidate_audit_path": "app/ui/report_candidate_audit.py",
+        "ui_report_formatters_extracted": (ui_dir / "report_formatters.py").exists()
+        and "def metric_count_from_payload(" in report_formatters_source
+        and "def quality_issue_html(" in report_formatters_source
+        and "def auto_follow_up_status_html(" in report_formatters_source
+        and "def metric_count_from_payload(" not in report_html_source
+        and "def quality_issue_html(" not in report_html_source
+        and "def auto_follow_up_status_html(" not in report_html_source
+        and "from app.ui.report_formatters import" in ui_source,
+        "ui_report_formatters_path": "app/ui/report_formatters.py",
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

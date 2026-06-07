@@ -10,6 +10,7 @@ REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
 REPORT_MARKDOWN_SOURCE = Path("app/ui/report_markdown.py")
 REPORT_CANDIDATE_AUDIT_SOURCE = Path("app/ui/report_candidate_audit.py")
+REPORT_FORMATTERS_SOURCE = Path("app/ui/report_formatters.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
@@ -22,6 +23,7 @@ UI_SOURCE_FILES = [
     REPORT_PANELS_SOURCE,
     REPORT_MARKDOWN_SOURCE,
     REPORT_CANDIDATE_AUDIT_SOURCE,
+    REPORT_FORMATTERS_SOURCE,
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
@@ -84,6 +86,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_panels import (" in source
     assert "from app.ui.report_markdown import (" in source
     assert "from app.ui.report_candidate_audit import" in source
+    assert "from app.ui.report_formatters import" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
     assert "F403" not in source
@@ -140,6 +143,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def candidate_audit_html(" in REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
     assert "def candidate_source_matches_display_entity(" not in REPORT_HTML_SOURCE.read_text()
     assert "def candidate_source_matches_display_entity(" in REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
+    assert "def metric_count_from_payload(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def metric_count_from_payload(" in REPORT_FORMATTERS_SOURCE.read_text()
+    assert "def quality_issue_html(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def quality_issue_html(" in REPORT_FORMATTERS_SOURCE.read_text()
+    assert "def auto_follow_up_status_html(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def auto_follow_up_status_html(" in REPORT_FORMATTERS_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

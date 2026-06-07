@@ -16,7 +16,8 @@ from app.ui.report_panels import (
     render_reader_report,
     render_source_audit,
 )
-from app.ui.report_html import metric_count_from_payload, report_html
+from app.ui.report_formatters import metric_count_from_payload
+from app.ui.report_html import report_html
 from app.ui.report_state import hydrate_active_report_result
 from app.ui.task_status_panel import render_task_status_panel
 

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.llm_client import LLMClient
+from app.services.llm_quota import normalize_model_name, parse_model_budget_map
 
 
 VISUAL_RAG_PROVENANCE_PREFIX = "[Visual RAG 解析資訊]"
@@ -112,6 +113,7 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
     model_supported = _is_visual_rag_model_candidate(model)
     provider = str(settings.llm_provider or "gemini_http").strip().lower().replace("-", "_")
     vision_key_configured = _vision_model_key_configured(model, settings)
+    model_chain = visual_rag_model_chain(settings)
     runtime_available = bool(
         enabled
         and mode_supported
@@ -164,7 +166,17 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
             "augment_policy": augment_policy,
             "table_risk_min_score": VISUAL_RAG_TABLE_RISK_MIN_SCORE,
             "table_risk_signals": list(VISUAL_RAG_TABLE_RISK_SIGNALS),
+            "quota_aware_model_fallback": bool(
+                model_chain.get("quota_hard_routing_enabled")
+            ),
+            "vision_model_filtering": (
+                "preferred_visual_model_then_llm_fallbacks_filtered_to_vision_capable"
+            ),
+            "vision_candidate_count": len(model_chain.get("vision_candidates") or []),
+            "rejected_non_vision_models": model_chain.get("excluded_non_vision_models"),
         },
+        "model_chain": model_chain,
+        "quota_governed": model_chain.get("quota_hard_routing_enabled"),
         "captured_outputs": [
             "page_image_count",
             "vision_model",
@@ -190,6 +202,85 @@ def visual_rag_model(settings: Settings | None = None) -> str:
     settings = settings or get_settings()
     configured_model = str(settings.company_filing_visual_rag_model or "").strip()
     return configured_model or str(settings.primary_llm_model)
+
+
+def visual_rag_model_chain(settings: Settings | None = None) -> dict[str, Any]:
+    settings = settings or get_settings()
+    preferred_model = visual_rag_model(settings)
+    fallback_models = _split_model_list(getattr(settings, "llm_fallback_models", ""))
+    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
+    configured_models = list(
+        dict.fromkeys(
+            model
+            for model in [preferred_model, *fallback_models, local_model]
+            if str(model or "").strip()
+        )
+    )
+    request_budgets = parse_model_budget_map(
+        getattr(settings, "llm_model_daily_request_budgets", "")
+    )
+    token_budgets = parse_model_budget_map(
+        getattr(settings, "llm_model_daily_token_budgets", "")
+    )
+    rows: list[dict[str, Any]] = []
+    vision_candidates: list[dict[str, Any]] = []
+    rejected_candidates: list[dict[str, Any]] = []
+    for rank, configured_model in enumerate(configured_models, start=1):
+        model_key = normalize_model_name(configured_model)
+        request_budget = request_budgets.get(model_key)
+        vision_supported = _is_visual_rag_model_candidate(configured_model)
+        row: dict[str, Any] = {
+            "rank": rank,
+            "model": configured_model,
+            "model_key": model_key,
+            "vision_supported": vision_supported,
+            "key_configured": (
+                _vision_model_key_configured(configured_model, settings)
+                if vision_supported
+                else None
+            ),
+            "request_budget": request_budget,
+            "token_budget": token_budgets.get(model_key),
+            "routing_tier": _visual_rag_routing_tier(
+                rank=rank,
+                model_key=model_key,
+                request_budget=request_budget,
+            ),
+        }
+        rows.append(row)
+        if vision_supported:
+            vision_candidates.append(row)
+        else:
+            rejected_row = {
+                **row,
+                "rejection_reason": _visual_rag_model_rejection_reason(configured_model),
+            }
+            rejected_candidates.append(rejected_row)
+
+    return {
+        "strategy": "smartest_first_then_budget_degrade_for_vision_capable_models",
+        "selection_rule": (
+            "Use the configured Visual RAG model first, then LLM fallbacks in order, "
+            "excluding text-only/media/embedding/live models before runtime attempts."
+        ),
+        "quota_hard_routing_enabled": bool(
+            getattr(settings, "llm_quota_hard_routing_enabled", True)
+        ),
+        "quota_cooldown_seconds": max(
+            0.0,
+            float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)),
+        ),
+        "quota_endpoint": "GET /llm/quota",
+        "budget_source": "LLM_MODEL_DAILY_REQUEST_BUDGETS",
+        "configured_models": configured_models,
+        "candidate_rows": rows,
+        "vision_candidates": vision_candidates,
+        "vision_candidate_models": [item["model"] for item in vision_candidates],
+        "rejected_candidates": rejected_candidates,
+        "excluded_non_vision_models": [
+            item["model"] for item in rejected_candidates
+        ],
+    }
 
 
 def visual_rag_enabled(settings: Settings | None = None) -> bool:
@@ -466,6 +557,34 @@ def _is_visual_rag_model_candidate(model: str) -> bool:
         blocked in normalized
         for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
     )
+
+
+def _split_model_list(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").replace("\n", ",").split(",") if item.strip()]
+
+
+def _visual_rag_model_rejection_reason(model: str) -> str:
+    normalized = normalize_model_name(model)
+    if normalized.startswith("gemma"):
+        return "text_only_gemma_fallback"
+    if any(marker in normalized for marker in ("embedding", "imagen", "image", "live", "tts", "audio")):
+        return "non_vision_media_embedding_or_live_model"
+    return "unsupported_vision_provider_or_model_family"
+
+
+def _visual_rag_routing_tier(
+    *,
+    rank: int,
+    model_key: str,
+    request_budget: int | None,
+) -> str:
+    if rank == 1:
+        return "preferred_visual_rag_model"
+    if model_key.startswith("gemma") and (request_budget or 0) >= 1000:
+        return "high_quota_text_fallback_excluded_from_vision"
+    if model_key.startswith(("ollama/", "lm_studio/", "local/")):
+        return "local_fallback"
+    return "fallback"
 
 
 def _line_has_financial_term(line: str) -> bool:

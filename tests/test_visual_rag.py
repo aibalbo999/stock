@@ -13,6 +13,7 @@ from app.services.visual_rag import (
     extract_visual_pdf_text,
     maybe_augment_pdf_text_with_visual_rag,
     render_pdf_page_images,
+    visual_rag_model_chain,
     visual_rag_status,
 )
 
@@ -79,6 +80,49 @@ def test_visual_rag_status_requires_supported_mode_policy_and_vision_text_model(
     assert unsupported_model["vision_model_key_configured"] is True
     assert unsupported_model["runtime_available"] is False
     assert unsupported_model["fallback_reason"] == "unsupported_visual_rag_model"
+
+
+def test_visual_rag_status_exposes_quota_aware_vision_model_chain(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.visual_rag._module_available", lambda name: True)
+    settings = Settings(
+        _env_file=None,
+        company_filing_visual_rag_enabled=True,
+        company_filing_visual_rag_model="models/gemini-3.5-flash",
+        google_api_key="key",
+        llm_fallback_models=(
+            "gemini-2.5-flash,imagen-4-ultra-generate,gemma-4-31b-it,"
+            "gemini-2.5-flash-lite,gemini-embedding-2,gemini-3-flash-live"
+        ),
+        local_llm_model="gemma-4-31b-it",
+        llm_model_daily_request_budgets=(
+            "gemini-3.5-flash=250,gemini-2.5-flash=250,"
+            "gemini-2.5-flash-lite=250,gemma-4-31b-it=14400"
+        ),
+    )
+
+    status = visual_rag_status(settings)
+    chain = status["model_chain"]
+
+    assert status["quota_governed"] is True
+    assert status["routing_policy"]["quota_aware_model_fallback"] is True
+    assert status["routing_policy"]["vision_candidate_count"] == 3
+    assert chain == visual_rag_model_chain(settings)
+    assert chain["vision_candidate_models"] == [
+        "models/gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    ]
+    assert chain["vision_candidates"][0]["model_key"] == "gemini-3.5-flash"
+    assert chain["vision_candidates"][0]["request_budget"] == 250
+    assert chain["vision_candidates"][0]["key_configured"] is True
+    rejected = {item["model"]: item["rejection_reason"] for item in chain["rejected_candidates"]}
+    assert rejected == {
+        "imagen-4-ultra-generate": "non_vision_media_embedding_or_live_model",
+        "gemma-4-31b-it": "text_only_gemma_fallback",
+        "gemini-embedding-2": "non_vision_media_embedding_or_live_model",
+        "gemini-3-flash-live": "non_vision_media_embedding_or_live_model",
+    }
+    assert chain["excluded_non_vision_models"] == list(rejected)
 
 
 def test_render_pdf_page_images_uses_pymupdf(monkeypatch) -> None:

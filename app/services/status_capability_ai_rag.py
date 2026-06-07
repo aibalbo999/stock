@@ -175,6 +175,8 @@ def ai_rag_capabilities(
                     "visual_rag_augment_policy_supported"
                 ),
                 "routing_policy": company_filing_status.get("visual_rag_routing_policy"),
+                "model_chain": company_filing_status.get("visual_rag_model_chain"),
+                "quota_governed": company_filing_status.get("visual_rag_quota_governed"),
                 "runtime_available": company_filing_status.get("visual_rag_runtime_available"),
                 "renderer_dependency_available": company_filing_status.get(
                     "visual_rag_renderer_dependency_available"

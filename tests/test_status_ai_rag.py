@@ -144,6 +144,17 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
         status["company_filings"]["visual_rag_routing_policy"]["table_risk_min_score"]
         == 3
     )
+    assert status["company_filings"]["visual_rag_routing_policy"][
+        "quota_aware_model_fallback"
+    ] is Settings().llm_quota_hard_routing_enabled
+    assert status["company_filings"]["visual_rag_model_chain"][
+        "quota_hard_routing_enabled"
+    ] is Settings().llm_quota_hard_routing_enabled
+    assert (
+        status["company_filings"]["visual_rag_model_chain"]["strategy"]
+        == "smartest_first_then_budget_degrade_for_vision_capable_models"
+    )
+    assert status["company_filings"]["visual_rag_quota_governed"] is True
     assert isinstance(status["company_filings"]["visual_rag_runtime_available"], bool)
     assert status["company_filings"]["visual_rag_model"] == Settings().company_filing_visual_rag_model
     assert isinstance(status["company_filings"]["visual_rag_model_supported"], bool)
@@ -181,6 +192,17 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
         ]
         == 3
     )
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["routing_policy"][
+            "quota_aware_model_fallback"
+        ]
+        is True
+    )
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["model_chain"]
+        == status["company_filings"]["visual_rag_model_chain"]
+    )
+    assert matrix["ai_rag"]["visual_rag"]["evidence"]["quota_governed"] is True
     assert (
         matrix["ai_rag"]["visual_rag"]["evidence"]["model_supported"]
         is status["company_filings"]["visual_rag_model_supported"]

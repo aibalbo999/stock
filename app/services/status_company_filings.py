@@ -150,6 +150,8 @@ def company_filing_status(
             "augment_policy_supported"
         ),
         "visual_rag_routing_policy": visual_rag_runtime.get("routing_policy"),
+        "visual_rag_model_chain": visual_rag_runtime.get("model_chain"),
+        "visual_rag_quota_governed": visual_rag_runtime.get("quota_governed"),
         "visual_rag_runtime_available": visual_rag_runtime.get("runtime_available"),
         "visual_rag_renderer_dependency_available": visual_rag_runtime.get(
             "renderer_dependency_available"

@@ -15,6 +15,11 @@ VISUAL_RAG_MISSING_RENDERER_MESSAGE = (
     "Visual RAG PDF 轉圖需要安裝 PyMuPDF；請安裝 pip install -e \".[visual]\" 後再重試。"
 )
 VISUAL_RAG_DISABLED_MESSAGE = "Visual RAG 尚未啟用；請設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true。"
+VISUAL_RAG_UNSUPPORTED_MODE_MESSAGE = "Visual RAG 模式不支援；請使用 fallback 或 augment。"
+VISUAL_RAG_UNSUPPORTED_MODEL_MESSAGE = (
+    "Visual RAG 需要支援圖片輸入的文字 LLM；請使用 Gemini/GPT/Claude vision-capable model。"
+)
+VISUAL_RAG_MISSING_KEY_MESSAGE = "Visual RAG vision LLM API key 或本地 gateway 尚未配置。"
 VISUAL_RAG_EMPTY_PDF_MESSAGE = "Visual RAG 無法從 PDF 產生頁面圖片。"
 
 
@@ -36,16 +41,26 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
     enabled = bool(settings.company_filing_visual_rag_enabled)
     mode = normalized_visual_rag_mode(settings.company_filing_visual_rag_mode)
+    mode_supported = mode in SUPPORTED_VISUAL_RAG_MODES
     renderer_dependency_available = _module_available("fitz")
     model = visual_rag_model(settings)
+    model_supported = _is_visual_rag_model_candidate(model)
     provider = str(settings.llm_provider or "gemini_http").strip().lower().replace("-", "_")
     vision_key_configured = _vision_model_key_configured(model, settings)
-    runtime_available = bool(enabled and renderer_dependency_available and vision_key_configured)
+    runtime_available = bool(
+        enabled
+        and mode_supported
+        and model_supported
+        and renderer_dependency_available
+        and vision_key_configured
+    )
     fallback_reason = None
     if not enabled:
         fallback_reason = "visual_rag_disabled"
-    elif mode not in SUPPORTED_VISUAL_RAG_MODES:
+    elif not mode_supported:
         fallback_reason = "unsupported_visual_rag_mode"
+    elif not model_supported:
+        fallback_reason = "unsupported_visual_rag_model"
     elif not renderer_dependency_available:
         fallback_reason = "missing_dependency:pymupdf"
     elif not vision_key_configured:
@@ -54,12 +69,14 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
     return {
         "enabled": enabled,
         "mode": mode,
+        "mode_supported": mode_supported,
         "supported_modes": sorted(SUPPORTED_VISUAL_RAG_MODES),
         "renderer": "pymupdf",
         "renderer_dependency": "fitz",
         "renderer_dependency_available": renderer_dependency_available,
         "provider": provider,
         "model": model,
+        "model_supported": model_supported,
         "vision_model_key_configured": vision_key_configured,
         "max_pages": max(1, int(settings.company_filing_visual_rag_max_pages)),
         "dpi": max(72, int(settings.company_filing_visual_rag_dpi)),
@@ -119,8 +136,14 @@ def extract_visual_pdf_text(
     status = visual_rag_status(settings)
     if not status["enabled"]:
         raise ValueError(VISUAL_RAG_DISABLED_MESSAGE)
+    if not status["mode_supported"]:
+        raise ValueError(VISUAL_RAG_UNSUPPORTED_MODE_MESSAGE)
+    if not status["model_supported"]:
+        raise ValueError(VISUAL_RAG_UNSUPPORTED_MODEL_MESSAGE)
     if not status["renderer_dependency_available"]:
         raise ValueError(VISUAL_RAG_MISSING_RENDERER_MESSAGE)
+    if not status["vision_model_key_configured"]:
+        raise ValueError(VISUAL_RAG_MISSING_KEY_MESSAGE)
 
     images = render_pdf_page_images(
         content,
@@ -258,6 +281,20 @@ def _vision_model_key_configured(model: str, settings: Settings) -> bool:
         len(settings.gemini_api_keys) > 0
         or settings.openai_api_key
         or settings.anthropic_api_key
+    )
+
+
+def _is_visual_rag_model_candidate(model: str) -> bool:
+    normalized = str(model or "").strip().lower()
+    if normalized.startswith(("models/", "gemini/", "google/")):
+        normalized = normalized.split("/", 1)[1]
+    if normalized.startswith("gemma"):
+        return False
+    if not normalized.startswith(("gemini", "gpt-", "openai/", "claude", "anthropic/")):
+        return False
+    return not any(
+        blocked in normalized
+        for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
     )
 
 

@@ -120,11 +120,14 @@ def company_filing_status(
         "structured_api_runtime": structured_api_runtime,
         "visual_rag_enabled": visual_rag_runtime.get("enabled"),
         "visual_rag_mode": visual_rag_runtime.get("mode"),
+        "visual_rag_mode_supported": visual_rag_runtime.get("mode_supported"),
         "visual_rag_runtime_available": visual_rag_runtime.get("runtime_available"),
         "visual_rag_renderer_dependency_available": visual_rag_runtime.get(
             "renderer_dependency_available"
         ),
         "visual_rag_model": visual_rag_runtime.get("model"),
+        "visual_rag_model_supported": visual_rag_runtime.get("model_supported"),
+        "visual_rag_fallback_reason": visual_rag_runtime.get("fallback_reason"),
         "visual_rag_max_pages": visual_rag_runtime.get("max_pages"),
         "visual_rag_dpi": visual_rag_runtime.get("dpi"),
         "visual_rag_runtime": visual_rag_runtime,

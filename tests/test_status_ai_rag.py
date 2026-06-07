@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.services.service_status import service_status
 from app.services.status_graphrag import _neo4j_import_capability_status
 
 
@@ -127,10 +128,15 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
 
     assert status["company_filings"]["visual_rag_enabled"] is Settings().company_filing_visual_rag_enabled
     assert status["company_filings"]["visual_rag_mode"] == Settings().company_filing_visual_rag_mode
+    assert isinstance(status["company_filings"]["visual_rag_mode_supported"], bool)
     assert isinstance(status["company_filings"]["visual_rag_runtime_available"], bool)
     assert status["company_filings"]["visual_rag_model"] == Settings().company_filing_visual_rag_model
+    assert isinstance(status["company_filings"]["visual_rag_model_supported"], bool)
     assert status["company_filings"]["visual_rag_max_pages"] == Settings().company_filing_visual_rag_max_pages
     assert status["company_filings"]["visual_rag_dpi"] == 144
+    assert status["company_filings"]["visual_rag_fallback_reason"] == status["company_filings"][
+        "visual_rag_runtime"
+    ].get("fallback_reason")
     assert "fallback_reason" in status["company_filings"]["visual_rag_runtime"]
 
     expected_visual_rag_status = (
@@ -144,10 +150,45 @@ def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot
         is status["company_filings"]["visual_rag_enabled"]
     )
     assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["mode_supported"]
+        is status["company_filings"]["visual_rag_mode_supported"]
+    )
+    assert (
+        matrix["ai_rag"]["visual_rag"]["evidence"]["model_supported"]
+        is status["company_filings"]["visual_rag_model_supported"]
+    )
+    assert (
         matrix["ai_rag"]["visual_rag"]["evidence"]["runtime_available"]
         is status["company_filings"]["visual_rag_runtime_available"]
     )
+    assert matrix["ai_rag"]["visual_rag"]["evidence"]["fallback_reason"] == status[
+        "company_filings"
+    ]["visual_rag_fallback_reason"]
     assert "fallback_reason" in matrix["ai_rag"]["visual_rag"]["evidence"]["runtime"]
+
+
+def test_visual_rag_capability_rejects_non_vision_report_model(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODE", "fallback")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODEL", "imagen-4-ultra-generate")
+    monkeypatch.setenv("GOOGLE_API_KEY", "key")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.services.visual_rag._module_available", lambda name: name == "fitz")
+    try:
+        status = service_status()
+    finally:
+        get_settings.cache_clear()
+
+    visual_rag = status["upgrade_capability_matrix"]["ai_rag"]["visual_rag"]
+
+    assert status["company_filings"]["visual_rag_mode_supported"] is True
+    assert status["company_filings"]["visual_rag_model_supported"] is False
+    assert status["company_filings"]["visual_rag_runtime_available"] is False
+    assert status["company_filings"]["visual_rag_fallback_reason"] == "unsupported_visual_rag_model"
+    assert visual_rag["status"] == "not_configured"
+    assert visual_rag["evidence"]["model"] == "imagen-4-ultra-generate"
+    assert visual_rag["evidence"]["model_supported"] is False
+    assert visual_rag["evidence"]["fallback_reason"] == "unsupported_visual_rag_model"
 
 
 def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:

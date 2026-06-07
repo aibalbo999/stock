@@ -294,7 +294,7 @@ COMPANY_FILING_VISUAL_RAG_TIMEOUT_SECONDS=60
 pip install -e ".[dev,pdf]"
 ```
 
-若 PDF 是掃描圖檔、跨頁表格或排版複雜到文字 parser 容易錯位，可啟用 Visual RAG 後援。`COMPANY_FILING_VISUAL_RAG_ENABLED=true` 會讓 PDF 解析在文字抽取失敗時，把前幾頁轉成圖片交給 vision-capable LLM 萃取可檢索文字；`COMPANY_FILING_VISUAL_RAG_MODE=augment` 則會在文字/表格 parser 成功後額外附加 VLM 表格萃取結果。此能力需要 PyMuPDF renderer 與支援圖片輸入的 LLM model/API key，可安裝：
+若 PDF 是掃描圖檔、跨頁表格或排版複雜到文字 parser 容易錯位，可啟用 Visual RAG 後援。`COMPANY_FILING_VISUAL_RAG_ENABLED=true` 會讓 PDF 解析在文字抽取失敗時，把前幾頁轉成圖片交給 vision-capable LLM 萃取可檢索文字；`COMPANY_FILING_VISUAL_RAG_MODE=augment` 則會在文字/表格 parser 成功後額外附加 VLM 表格萃取結果。此能力需要 PyMuPDF renderer 與支援圖片輸入的 LLM model/API key；Imagen、embedding、Live/audio 與 Gemma text fallback 不會被視為可用的 PDF 圖片理解模型。可安裝：
 
 ```bash
 pip install -e ".[dev,visual]"

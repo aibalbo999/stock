@@ -152,11 +152,14 @@ def ai_rag_capabilities(
             evidence={
                 "enabled": company_filing_status.get("visual_rag_enabled"),
                 "mode": company_filing_status.get("visual_rag_mode"),
+                "mode_supported": company_filing_status.get("visual_rag_mode_supported"),
                 "runtime_available": company_filing_status.get("visual_rag_runtime_available"),
                 "renderer_dependency_available": company_filing_status.get(
                     "visual_rag_renderer_dependency_available"
                 ),
                 "model": company_filing_status.get("visual_rag_model"),
+                "model_supported": company_filing_status.get("visual_rag_model_supported"),
+                "fallback_reason": company_filing_status.get("visual_rag_fallback_reason"),
                 "max_pages": company_filing_status.get("visual_rag_max_pages"),
                 "dpi": company_filing_status.get("visual_rag_dpi"),
                 "runtime": company_filing_status.get("visual_rag_runtime"),

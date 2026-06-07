@@ -7,9 +7,6 @@ from app.data_sources.market import FUGLE_RETRYABLE_HTTP_STATUSES, FINMIND_RETRY
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 from app.services.service_status import (
-    _llm_fallback_readiness,
-    _llm_model_provider,
-    _llm_quota_routing_status,
     _redact_url,
     service_status,
 )
@@ -19,6 +16,11 @@ from app.services.status_company_filings import (
 )
 from app.services.status_frontend import frontend_status
 from app.services.status_graphrag import _neo4j_import_capability_status
+from app.services.status_llm import (
+    _llm_fallback_readiness,
+    _llm_model_provider,
+    _llm_quota_routing_status,
+)
 from app.services.status_market_data import _market_data_provider_readiness
 
 
@@ -29,6 +31,7 @@ def test_redact_url_with_password() -> None:
 def test_service_status_shape() -> None:
     status = service_status()
     service_status_source = Path("app/services/service_status.py").read_text()
+    status_capability_matrix_source = Path("app/services/status_capability_matrix.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
     status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
@@ -394,6 +397,12 @@ def test_service_status_shape() -> None:
     assert status["candidate_confidence"]["source_credibility_weights"]["official"] == 1.0
     assert status["candidate_confidence"]["source_credibility_weights"]["investment_blog"] < 0.75
     matrix = status["upgrade_capability_matrix"]
+    assert "from app.services.status_capability_matrix import (" in service_status_source
+    assert "build_upgrade_capability_matrix(status)" in service_status_source
+    assert "def _upgrade_capability_matrix(" not in service_status_source
+    assert "def _api_controller_status(" not in service_status_source
+    assert "def upgrade_capability_matrix(" in status_capability_matrix_source
+    assert "def _api_controller_status(" in status_capability_matrix_source
     llm_matrix = matrix["ai_rag"]["llm_sdk_and_fallback"]
     llm_evidence = llm_matrix["evidence"]
     assert "sdk_ready" in llm_evidence

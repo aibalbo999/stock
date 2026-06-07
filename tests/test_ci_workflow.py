@@ -23,6 +23,9 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "pytest -q" in step_text
     assert "scripts/upgrade_audit.py --json" in step_text
     assert "scripts/external_integrations_smoke.py --json" in step_text
+    assert "scripts/structured_company_filing_smoke.py" in step_text
+    assert "--sample-json examples/structured_company_filing_sample.json" in step_text
+    assert "--document-type investor_presentation" in step_text
     assert "scripts/evaluate_visual_rag.py" in step_text
     assert "scripts/frontend_smoke.py" in step_text
     assert "--skip-browser" in step_text

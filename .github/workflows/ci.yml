@@ -65,6 +65,16 @@ jobs:
       - name: External integration smoke
         run: python scripts/external_integrations_smoke.py --json
 
+      - name: Structured filing sample contract smoke
+        run: |
+          python scripts/structured_company_filing_smoke.py \
+            --sample-json examples/structured_company_filing_sample.json \
+            --ticker 2330 \
+            --company-name 台積電 \
+            --document-type investor_presentation \
+            --json \
+            --strict
+
       - name: Visual RAG golden eval
         run: |
           python - <<'PY'

@@ -130,6 +130,13 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["sync_report_async_bridge_guard_present"] is True
     assert evidence["sync_report_blocking_async_calls_gated"] is True
     assert evidence["compatibility_service_present"] is True
+    assert evidence["compatibility_service_domain_mixins_extracted"] is True
+    assert evidence["compatibility_service_domain_mixin_paths"] == [
+        "app/services/api_compatibility_candidate.py",
+        "app/services/api_compatibility_discovery.py",
+        "app/services/api_compatibility_followup.py",
+        "app/services/api_compatibility_run_state.py",
+    ]
     assert evidence["main_imports_legacy_facade"] is False
     assert evidence["legacy_facade_present"] is True
     assert evidence["legacy_facade_alias_only"] is True

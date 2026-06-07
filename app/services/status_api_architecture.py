@@ -36,12 +36,22 @@ def api_controller_status() -> dict:
     compatibility_exports_path = api_dir / "compatibility_exports.py"
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
     task_exports_path = api_dir / "task_exports.py"
+    api_compatibility_path = app_dir / "services" / "api_compatibility.py"
+    compatibility_candidate_path = app_dir / "services" / "api_compatibility_candidate.py"
+    compatibility_discovery_path = app_dir / "services" / "api_compatibility_discovery.py"
+    compatibility_followup_path = app_dir / "services" / "api_compatibility_followup.py"
+    compatibility_run_state_path = app_dir / "services" / "api_compatibility_run_state.py"
     report_service_factory_path = api_dir / "service_factory_report.py"
     data_service_factory_path = api_dir / "service_factory_data.py"
     workflow_service_factory_path = api_dir / "service_factory_workflow.py"
     ai_graph_service_factory_path = api_dir / "service_factory_ai.py"
     compatibility_exports_source = _read_source(compatibility_exports_path)
     legacy_facade_source = _read_source(legacy_facade_path)
+    api_compatibility_source = _read_source(api_compatibility_path)
+    compatibility_candidate_source = _read_source(compatibility_candidate_path)
+    compatibility_discovery_source = _read_source(compatibility_discovery_path)
+    compatibility_followup_source = _read_source(compatibility_followup_path)
+    compatibility_run_state_source = _read_source(compatibility_run_state_path)
     report_service_factory_source = _read_source(report_service_factory_path)
     data_service_factory_source = _read_source(data_service_factory_path)
     workflow_service_factory_source = _read_source(workflow_service_factory_path)
@@ -205,6 +215,31 @@ def api_controller_status() -> dict:
             or sync_report_async_refresh_gates_present
         ),
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),
+        "compatibility_service_domain_mixins_extracted": (
+            compatibility_candidate_path.exists()
+            and compatibility_discovery_path.exists()
+            and compatibility_followup_path.exists()
+            and compatibility_run_state_path.exists()
+            and "class CandidateCompatibilityMixin" in compatibility_candidate_source
+            and "class DiscoveryCompatibilityMixin" in compatibility_discovery_source
+            and "class FollowUpCompatibilityMixin" in compatibility_followup_source
+            and "class RunStateCompatibilityMixin" in compatibility_run_state_source
+            and "CandidateCompatibilityMixin" in api_compatibility_source
+            and "DiscoveryCompatibilityMixin" in api_compatibility_source
+            and "FollowUpCompatibilityMixin" in api_compatibility_source
+            and "RunStateCompatibilityMixin" in api_compatibility_source
+            and "def run_topic_discovery_ingestion(" not in api_compatibility_source
+            and "def run_report_follow_up(" not in api_compatibility_source
+            and "def apply_company_filing_gate_to_candidate_payload("
+            not in api_compatibility_source
+            and "def safe_mark_run_failed(" not in api_compatibility_source
+        ),
+        "compatibility_service_domain_mixin_paths": [
+            "app/services/api_compatibility_candidate.py",
+            "app/services/api_compatibility_discovery.py",
+            "app/services/api_compatibility_followup.py",
+            "app/services/api_compatibility_run_state.py",
+        ],
         "main_imports_legacy_facade": "app.api.legacy_facade" in main_source
         or "LegacyApiFacade" in main_source,
         "legacy_facade_present": legacy_facade_path.exists(),

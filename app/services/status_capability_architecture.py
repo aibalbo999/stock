@@ -40,6 +40,7 @@ def architecture_capabilities(
             and api_status.get("data_service_factory_extracted")
             and api_status.get("workflow_service_factory_extracted")
             and api_status.get("ai_graph_service_factory_extracted")
+            and api_status.get("compatibility_service_domain_mixins_extracted")
             and not api_status.get("main_imports_legacy_facade")
             else "degraded",
             evidence=api_status,

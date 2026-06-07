@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -14,6 +15,28 @@ from app.services.report_generator import ReportExecutionError
 
 def test_legacy_api_facade_is_deprecated_service_alias() -> None:
     assert issubclass(LegacyApiFacade, ApiCompatibilityService)
+
+
+def test_api_compatibility_service_splits_domain_delegates() -> None:
+    compatibility_source = Path("app/services/api_compatibility.py").read_text()
+    candidate_source = Path("app/services/api_compatibility_candidate.py").read_text()
+    discovery_source = Path("app/services/api_compatibility_discovery.py").read_text()
+    followup_source = Path("app/services/api_compatibility_followup.py").read_text()
+    run_state_source = Path("app/services/api_compatibility_run_state.py").read_text()
+
+    assert "class ApiCompatibilityService(" in compatibility_source
+    assert "CandidateCompatibilityMixin" in compatibility_source
+    assert "DiscoveryCompatibilityMixin" in compatibility_source
+    assert "FollowUpCompatibilityMixin" in compatibility_source
+    assert "RunStateCompatibilityMixin" in compatibility_source
+    assert "def apply_company_filing_gate_to_candidate_payload(" not in compatibility_source
+    assert "def run_topic_discovery_ingestion(" not in compatibility_source
+    assert "def run_report_follow_up(" not in compatibility_source
+    assert "def safe_mark_run_failed(" not in compatibility_source
+    assert "def apply_company_filing_gate_to_candidate_payload(" in candidate_source
+    assert "def run_topic_discovery_ingestion(" in discovery_source
+    assert "def run_report_follow_up(" in followup_source
+    assert "def safe_mark_run_failed(" in run_state_source
 
 
 def test_legacy_api_facade_delegates_candidate_filing_gate() -> None:

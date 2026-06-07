@@ -47,6 +47,20 @@ def test_api_task_post_uses_queue_timeout(monkeypatch) -> None:
     assert captured["timeout"] == api_client.API_TASK_QUEUE_TIMEOUT_SECONDS
 
 
+def test_api_task_queue_status_uses_short_preflight_timeout(monkeypatch) -> None:
+    captured = {}
+
+    def fake_get(url, timeout):
+        captured.update({"url": url, "timeout": timeout})
+        return FakeResponse({"task_queue": {"ready": True, "broker_ok": True}})
+
+    monkeypatch.setattr(api_client.requests, "get", fake_get)
+
+    assert api_client.api_task_queue_status() == {"ready": True, "broker_ok": True}
+    assert captured["url"].endswith("/services/status")
+    assert captured["timeout"] == api_client.API_TASK_PREFLIGHT_TIMEOUT_SECONDS
+
+
 def test_request_error_message_formats_structured_task_submission_500() -> None:
     response = FakeResponse(
         {

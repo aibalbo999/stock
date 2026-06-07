@@ -386,6 +386,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_status_helpers_extracted")
                 and frontend_status.get("ui_api_client_extracted")
                 and frontend_status.get("ui_background_task_client_extracted")
+                and frontend_status.get("ui_task_queue_preflight_enabled")
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("task_retry_uses_scoped_state_key")
                 and frontend_status.get("ui_report_state_extracted")
@@ -398,6 +399,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_wildcard_imports_removed")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_background_task_submit_helper")
+                and frontend_status.get("uses_task_queue_preflight")
                 and frontend_status.get("uses_task_status_panel")
                 and frontend_status.get("asyncio_run_count") == 0
                 and not frontend_status.get("long_blocking_post_timeout_present")

@@ -137,6 +137,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def submit_background_task(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def submit_background_task(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def submit_data_operation_task(" in BACKGROUND_TASKS_SOURCE.read_text()
+    assert "def task_queue_preflight_ready(" in BACKGROUND_TASKS_SOURCE.read_text()
+    assert "def api_task_queue_status(" in API_CLIENT_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -215,8 +217,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "asyncio.run" not in source
     assert "timeout=900" not in source
     assert "API_TASK_QUEUE_TIMEOUT_SECONDS = 20" in source
+    assert "API_TASK_PREFLIGHT_TIMEOUT_SECONDS = 3" in source
     assert "def api_task_post(" in source
+    assert "def api_task_queue_status(" in source
     assert "def submit_background_task(" in source
+    assert "def task_queue_preflight_ready(" in source
+    assert "def task_queue_unready_message(" in source
+    assert "仍會嘗試送出" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source

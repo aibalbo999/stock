@@ -128,6 +128,11 @@ def frontend_status() -> dict:
         and "def submit_background_task(" not in dashboard_core_source
         and "from app.ui.background_tasks import" in ui_source,
         "ui_background_task_client_path": "app/ui/background_tasks.py",
+        "ui_task_queue_preflight_enabled": "def task_queue_preflight_ready(" in background_tasks_source
+        and "api_task_queue_status" in background_tasks_source
+        and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in api_client_source
+        and "preflight: bool = True" in background_tasks_source,
+        "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source
@@ -211,6 +216,8 @@ def frontend_status() -> dict:
         "uses_task_enqueue_helper": "def api_task_post(" in ui_source,
         "uses_background_task_submit_helper": "submit_api_task(" in ui_source
         and "submit_data_operation_task(" in ui_source,
+        "uses_task_queue_preflight": "task_queue_preflight_ready(" in background_tasks_source
+        and "api_task_queue_status" in background_tasks_source,
         "uses_task_status_panel": "def render_task_status_panel(" in ui_source
         and '"fragment"' in ui_source
         and "run_every" in ui_source,

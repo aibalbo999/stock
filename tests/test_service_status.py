@@ -401,6 +401,8 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
     assert status["frontend"]["ui_background_task_client_extracted"] is True
     assert status["frontend"]["ui_background_task_client_path"] == "app/ui/background_tasks.py"
+    assert status["frontend"]["ui_task_queue_preflight_enabled"] is True
+    assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
@@ -425,6 +427,7 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["external_report_css_path"] == "app/ui/styles/report_html.css"
     assert status["frontend"]["uses_task_enqueue_helper"] is True
     assert status["frontend"]["uses_background_task_submit_helper"] is True
+    assert status["frontend"]["uses_task_queue_preflight"] is True
     assert status["frontend"]["uses_task_status_panel"] is True
     assert status["frontend"]["asyncio_run_count"] == 0
     assert status["frontend"]["long_blocking_post_timeout_present"] is False
@@ -583,6 +586,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True
+    assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True
@@ -596,6 +600,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["external_report_css_loaded"] is True
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0
     assert frontend_arch["evidence"]["uses_background_task_submit_helper"] is True
+    assert frontend_arch["evidence"]["uses_task_queue_preflight"] is True
     assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False
     assert frontend_arch["evidence"]["sync_report_generate_used"] is False
     assert all(frontend_arch["evidence"]["async_task_endpoint_coverage"].values())

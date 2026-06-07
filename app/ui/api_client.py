@@ -11,6 +11,7 @@ API_BASE_URL = get_settings().api_base_url.rstrip("/")
 API_GET_TIMEOUT_SECONDS = 10
 API_WRITE_TIMEOUT_SECONDS = 60
 API_TASK_QUEUE_TIMEOUT_SECONDS = 20
+API_TASK_PREFLIGHT_TIMEOUT_SECONDS = 3
 
 
 def api_post(path: str, payload: dict, *, timeout: float = API_WRITE_TIMEOUT_SECONDS) -> dict:
@@ -35,8 +36,8 @@ def api_delete(path: str) -> dict:
     return response.json()
 
 
-def api_get(path: str) -> Any:
-    response = requests.get(f"{API_BASE_URL}{path}", timeout=API_GET_TIMEOUT_SECONDS)
+def api_get(path: str, *, timeout: float = API_GET_TIMEOUT_SECONDS) -> Any:
+    response = requests.get(f"{API_BASE_URL}{path}", timeout=timeout)
     response.raise_for_status()
     return response.json()
 
@@ -69,6 +70,12 @@ def queue_data_operation(operation: str, payload: dict) -> dict:
             "payload": payload,
         },
     )
+
+
+def api_task_queue_status() -> dict:
+    snapshot = api_get("/services/status", timeout=API_TASK_PREFLIGHT_TIMEOUT_SECONDS)
+    task_queue = snapshot.get("task_queue") if isinstance(snapshot, dict) else None
+    return task_queue if isinstance(task_queue, dict) else {}
 
 
 def task_payload_dates(start_date: Any, end_date: Any) -> dict:

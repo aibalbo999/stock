@@ -229,6 +229,15 @@ def data_business_capabilities(
                 "request_contract": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("request_contract"),
+                "retry_policy": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("retry_policy"),
+                "response_row_aliases": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("response_row_aliases"),
+                "required_document_fields": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("required_document_fields"),
                 "supported_provider_examples": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("supported_provider_examples"),

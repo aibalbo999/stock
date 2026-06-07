@@ -181,6 +181,18 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["provider_profile"]["auth_mode"] == "bearer"
     assert status["request_contract"]["token_location"] == "authorization_header"
     assert status["request_contract"]["document_type_param"] == "document_type"
+    assert status["request_contract"]["response_rows"] == [
+        "documents",
+        "data",
+        "results",
+        "items",
+        "records",
+        "list",
+    ]
+    assert "ticker_or_company_mention" in status["request_contract"]["required_document_fields"]
+    assert status["response_row_aliases"] == status["request_contract"]["response_rows"]
+    assert status["retry_policy"]["attempts"] == 2
+    assert status["retry_policy"]["retryable_http_statuses"] == [403, 429, 500, 502, 503, 504]
     assert "tej" in status["supported_provider_profiles"]
     assert status["supported_provider_profiles"]["scrapingbee_dataset"]["token_location"] == "query_param"
     assert status["smoke_cli"].endswith(
@@ -299,6 +311,70 @@ def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypat
         "limit": 2,
         "document_type": "investor_presentation",
     }
+
+
+def test_fetch_structured_api_documents_reports_contract_error_when_response_has_no_rows(
+    monkeypatch,
+) -> None:
+    class FakeResponse:
+        def json(self):
+            return {"meta": {"count": 0}}
+
+    async def fake_fetch_response(*_args, **_kwargs):
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
+        fake_fetch_response,
+    )
+    get_settings.cache_clear()
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_structured_api_documents("2330", "台積電")
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert documents == []
+    assert errors[0]["stage"] == "structured_api"
+    assert errors[0]["category"] == "structured_api_no_rows"
+    assert errors[0]["retryable"] is False
+    assert "documents, data, results" in errors[0]["error"]
+
+
+def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_convert(
+    monkeypatch,
+) -> None:
+    class FakeResponse:
+        def json(self):
+            return {"documents": [{"title": "2330 台積電 法說會簡報"}]}
+
+    async def fake_fetch_response(*_args, **_kwargs):
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
+        fake_fetch_response,
+    )
+    get_settings.cache_clear()
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_structured_api_documents(
+                "2330",
+                "台積電",
+                document_types=["investor_presentation"],
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert documents == []
+    assert errors[0]["category"] == "structured_api_no_convertible_rows"
+    assert "ticker_or_company_mention" in errors[0]["error"]
 
 
 def test_structured_api_row_to_document_accepts_provider_alias_fields() -> None:

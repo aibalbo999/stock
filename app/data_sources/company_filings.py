@@ -96,6 +96,13 @@ STRUCTURED_API_PROVIDER_PROFILES = {
         "request_param_keys": ["ticker", "company_name", "limit", "document_types"],
     },
 }
+STRUCTURED_API_RESPONSE_ROW_ALIASES = ("documents", "data", "results", "items", "records", "list")
+STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS = (
+    "title/name/headline/doc_title",
+    "text/content/body/abstract/summary",
+    "ticker_or_company_mention",
+    "document_type_match",
+)
 PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
 RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES = {
     "blocked_or_forbidden",
@@ -462,13 +469,28 @@ def company_filing_structured_api_status() -> dict:
         "url_configured": bool(endpoint),
         "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
         "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
+        "retry_policy": {
+            "attempts": company_filing_request_attempts(),
+            "retryable_http_statuses": sorted(COMPANY_FILING_RETRYABLE_HTTP_STATUSES),
+            "base_retry_delay_seconds": max(
+                0.0,
+                float(settings.company_filing_base_retry_delay_seconds),
+            ),
+            "max_retry_delay_seconds": max(
+                0.0,
+                float(settings.company_filing_max_retry_delay_seconds),
+            ),
+        },
+        "response_row_aliases": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
+        "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
         "request_contract": {
             "method": "GET",
             "auth_mode": profile["auth_mode"],
             "token_location": profile["token_location"],
             "query_param_keys": profile["request_param_keys"],
             "document_type_param": profile["document_type_param"],
-            "response_rows": ["documents", "data", "results", "items", "records", "list"],
+            "response_rows": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
+            "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
         },
         "contract": (
             "GET JSON with documents/data/results/items/records/list rows; supported aliases include "
@@ -776,6 +798,10 @@ def categorize_company_filing_error(error: Exception | str) -> str:
         return "unsupported_pdf_parser"
     if "company filing url cannot target" in lowered or "company filing url must" in lowered:
         return "unsafe_url"
+    if "structured api response did not contain document rows" in lowered:
+        return "structured_api_no_rows"
+    if "structured api rows were not convertible" in lowered:
+        return "structured_api_no_convertible_rows"
     return "unknown"
 
 
@@ -1285,6 +1311,17 @@ class CompanyFilingFetcher:
                 params=request_contract["params"],
             )
             rows = structured_api_document_rows(response.json())
+            if not rows:
+                return [], [
+                    company_filing_error(
+                        endpoint,
+                        (
+                            "structured API response did not contain document rows; "
+                            f"expected one of {', '.join(STRUCTURED_API_RESPONSE_ROW_ALIASES)}"
+                        ),
+                        stage="structured_api",
+                    )
+                ]
             documents = [
                 document
                 for row in rows
@@ -1298,6 +1335,17 @@ class CompanyFilingFetcher:
                     )
                 )
             ]
+            if rows and not documents:
+                return [], [
+                    company_filing_error(
+                        endpoint,
+                        (
+                            "structured API rows were not convertible; required fields are "
+                            f"{', '.join(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS)}"
+                        ),
+                        stage="structured_api",
+                    )
+                ]
             return documents[: max(1, int(limit))], []
         except Exception as exc:
             return [], [company_filing_error(endpoint, exc, stage="structured_api")]

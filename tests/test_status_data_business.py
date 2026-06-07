@@ -119,6 +119,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert structured_api["evidence"]["configured"] is False
     assert structured_api["evidence"]["provider_profile_key"] == "custom"
     assert structured_api["evidence"]["request_contract"]["method"] == "GET"
+    assert structured_api["evidence"]["retry_policy"]["attempts"] >= 1
+    assert "documents" in structured_api["evidence"]["response_row_aliases"]
+    assert "ticker_or_company_mention" in structured_api["evidence"]["required_document_fields"]
     assert "scrapingbee_dataset" in structured_api["evidence"]["supported_provider_examples"]
     assert (
         structured_api["evidence"]["runtime"]["fallback_reason"]

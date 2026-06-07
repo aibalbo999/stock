@@ -28,7 +28,23 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
                         "evidence": {
                             "playwright_render_runtime": {
                                 "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json"
-                            }
+                            },
+                            "high_risk_source_policy": {
+                                "smoke_cli": (
+                                    ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                    "--url https://mops.twse.com.tw/ --json"
+                                )
+                            },
+                        },
+                    },
+                    "company_filing_high_risk_unlocker": {
+                        "status": "not_configured",
+                        "evidence": {
+                            "configured_provider": "browserless",
+                            "smoke_cli": (
+                                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                "--url https://mops.twse.com.tw/ --json"
+                            ),
                         },
                     },
                     "company_filing_structured_api_fallback": {
@@ -42,12 +58,13 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
 
     assert report["status"] == "caution"
     assert report["ready_count"] == 1
-    assert report["check_count"] == 4
-    assert report["actionable_check_count"] == 4
+    assert report["check_count"] == 5
+    assert report["actionable_check_count"] == 5
     assert {check["capability"] for check in report["checks"]} == {
         "neo4j_import",
         "graphrag_live_cypher_query",
         "company_filing_browser_or_proxy_fallback",
+        "company_filing_high_risk_unlocker",
         "company_filing_structured_api_fallback",
     }
     assert "start_system.py --start-dependencies" in report["local_start_command"]
@@ -56,6 +73,9 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "import_supply_chain_graph_neo4j --dry-run" in report["neo4j_payload_dry_run_command"]
     assert "company_filing_render_smoke.py" in report[
         "company_filing_render_smoke_command"
+    ]
+    assert "mops.twse.com.tw" in report[
+        "high_risk_company_filing_render_smoke_command"
     ]
     assert "structured_company_filing_smoke.py" in report[
         "structured_company_filing_smoke_command"
@@ -75,6 +95,13 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert checks["company_filing_browser_or_proxy_fallback"]["smoke_commands"] == [
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     ]
+    assert all(
+        "mops.twse.com.tw" not in command
+        for command in checks["company_filing_browser_or_proxy_fallback"]["smoke_commands"]
+    )
+    assert checks["company_filing_high_risk_unlocker"]["smoke_commands"] == [
+        ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
+    ]
     assert checks["company_filing_structured_api_fallback"]["smoke_commands"] == [
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--sample-json examples/structured_company_filing_sample.json "
@@ -87,5 +114,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
 
     assert "smoke:" in output
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in output
+    assert "High-risk filing unlocker smoke" in output
+    assert "https://mops.twse.com.tw/" in output
     assert "structured_company_filing_smoke.py" in output
     assert "structured_company_filing_sample.json" in output

@@ -36,6 +36,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "company_filing_fetch_hardening": {"status": "ready", "evidence": {}},
             "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
+            "company_filing_high_risk_unlocker": {"status": "ready", "evidence": {}},
             "company_filing_structured_api_fallback": {"status": "ready", "evidence": {}},
             "company_filing_cache": {"status": "ready", "evidence": {}},
             "source_quality_weighting": {"status": "ready", "evidence": {}},
@@ -157,6 +158,49 @@ def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_harde
     assert warning["optional"] is True
     assert warning["external_integration"] is True
     assert "company_filing_render_smoke.py --json" in warning["remediation"]
+
+
+def test_upgrade_audit_treats_high_risk_filing_unlocker_as_deployment_hardening() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "data_business_logic.company_filing_high_risk_unlocker": {
+                    "status": "not_configured",
+                    "evidence": {
+                        "configured_provider": "browserless",
+                        "provider_tier": "browser_render",
+                        "recommended_env": [
+                            f"{key}={value}"
+                            for key, value in (
+                                ("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr"),
+                                ("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:8191/v1"),
+                            )
+                        ],
+                        "smoke_cli": (
+                            ".venv/bin/python scripts/company_filing_render_smoke.py "
+                            "--url https://mops.twse.com.tw/ --json"
+                        ),
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "ready"
+    assert audit["implementation"]["status"] == "ready"
+    assert audit["deployment"]["status"] == "caution"
+    warning = next(
+        item
+        for item in audit["optional_warnings"]
+        if item["capability"] == "company_filing_high_risk_unlocker"
+    )
+    assert warning["optional"] is True
+    assert warning["external_integration"] is True
+    assert warning["deployment_check"] is True
+    assert "FlareSolverr" in warning["remediation"]
+    expected_provider_env = "COMPANY_FILING_BROWSER_RENDER_PROVIDER" + "=flaresolverr"
+    assert expected_provider_env in warning["remediation"]
+    assert "https://mops.twse.com.tw/" in warning["remediation"]
 
 
 def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() -> None:

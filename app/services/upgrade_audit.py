@@ -235,6 +235,22 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
+        "company_filing_high_risk_unlocker",
+        "MOPS/TWSE/TPEx 高風險文件 unlocker",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_high_risk_unlocker",
+        ),
+        optional=True,
+        remediation=(
+            "正式部署若要穩定抓取 MOPS、doc.twse、TWSE/TPEx 等高風險公開文件，"
+            "設定 FlareSolverr、ScrapingBee 或 BrightData 這類 CAPTCHA/anti-bot unlocker；"
+            "Browserless/Playwright 只算瀏覽器渲染後援。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
         "company_filing_structured_api_fallback",
         "公司文件結構化 API 備援",
         (
@@ -271,6 +287,7 @@ EXTERNAL_INTEGRATION_CAPABILITIES = frozenset(
         ("ai_rag", "visual_rag"),
         ("data_business_logic", "company_filing_pdf_table_parser_runtime"),
         ("data_business_logic", "company_filing_browser_or_proxy_fallback"),
+        ("data_business_logic", "company_filing_high_risk_unlocker"),
         ("data_business_logic", "company_filing_structured_api_fallback"),
     }
 )
@@ -396,6 +413,16 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
                 ("playwright_render_runtime", "smoke_cli"),
             ),
         )
+    if requirement.capability == "company_filing_high_risk_unlocker":
+        remediation = requirement.remediation
+        recommended_env = [
+            str(item).strip()
+            for item in evidence.get("recommended_env", [])
+            if str(item).strip()
+        ]
+        if recommended_env:
+            remediation = f"{remediation} 建議 env：{'；'.join(recommended_env)}。"
+        return _append_smoke_command(remediation, evidence.get("smoke_cli"))
     if requirement.capability == "company_filing_structured_api_fallback":
         return _append_smoke_commands(
             requirement.remediation,

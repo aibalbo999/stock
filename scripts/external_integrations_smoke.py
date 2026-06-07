@@ -31,6 +31,10 @@ COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--url https://example.com/ --json"
 )
+HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/company_filing_render_smoke.py "
+    "--url https://mops.twse.com.tw/ --json"
+)
 
 EXTERNAL_CHECKS = (
     (
@@ -50,6 +54,12 @@ EXTERNAL_CHECKS = (
         "company_filing_browser_or_proxy_fallback",
         "Company filing browser/proxy render fallback",
         "Enable Browserless, Playwright, FlareSolverr, ScrapingBee, BrightData, or proxy URLs.",
+    ),
+    (
+        "data_business_logic",
+        "company_filing_high_risk_unlocker",
+        "MOPS/TWSE/TPEx high-risk filing unlocker",
+        "Enable FlareSolverr, ScrapingBee, or BrightData for CAPTCHA/anti-bot filing sources.",
     ),
     (
         "data_business_logic",
@@ -83,6 +93,7 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
         NEO4J_IMPORT_SMOKE_COMMAND,
     ],
     "company_filing_browser_or_proxy_fallback": [COMPANY_FILING_RENDER_SMOKE_COMMAND],
+    "company_filing_high_risk_unlocker": [HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND],
     "company_filing_structured_api_fallback": [
         STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
@@ -120,6 +131,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "neo4j_import_smoke_command": NEO4J_IMPORT_SMOKE_COMMAND,
         "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
+        "high_risk_company_filing_render_smoke_command": HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
@@ -128,6 +140,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
 
 def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> list[str]:
     commands = _commands_from_payload(evidence)
+    commands = _commands_for_capability(capability, commands)
     preferred_order = DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY.get(capability, [])
     if not commands:
         commands = preferred_order
@@ -141,6 +154,23 @@ def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> 
         seen.add(command)
         deduped.append(command)
     return deduped
+
+
+def _commands_for_capability(capability: str, commands: list[str]) -> list[str]:
+    if capability == "company_filing_browser_or_proxy_fallback":
+        return [
+            command
+            for command in commands
+            if "https://mops.twse.com.tw/" not in command
+        ]
+    if capability == "company_filing_high_risk_unlocker":
+        high_risk_commands = [
+            command
+            for command in commands
+            if "https://mops.twse.com.tw/" in command
+        ]
+        return high_risk_commands or commands
+    return commands
 
 
 def _order_commands(commands: list[str], preferred_order: list[str]) -> list[str]:
@@ -214,6 +244,9 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Local start: {report['local_start_command']}")
     lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
+    lines.append(
+        f"High-risk filing unlocker smoke: {report['high_risk_company_filing_render_smoke_command']}"
+    )
     lines.append(f"Structured filing sample: {report['structured_company_filing_sample_command']}")
     lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)

@@ -17,7 +17,10 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert compose["services"]["redis"]["ports"] == ["6379:6379"]
     assert compose["services"]["postgres"]["environment"]["POSTGRES_DB"] == "stock_ai"
     assert compose["services"]["neo4j"]["ports"] == ["7474:7474", "7687:7687"]
-    assert compose["services"]["neo4j"]["environment"]["NEO4J_AUTH"].startswith("neo4j/")
+    assert (
+        compose["services"]["neo4j"]["environment"]["NEO4J_AUTH"]
+        == "${COMPOSE_NEO4J_AUTH:-neo4j/stock_ai_neo4j_password}"
+    )
     assert compose["services"]["browserless"]["ports"] == ["3000:3000"]
     assert compose["services"]["browserless"]["environment"]["TOKEN"] == "stock_ai_browserless_token"
     assert compose["services"]["browserless"]["environment"]["CONCURRENT"] == "4"
@@ -63,6 +66,10 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
         "COHERE_API_KEY": "${COHERE_API_KEY:-}",
         "FINMIND_TOKEN": "${FINMIND_TOKEN:-}",
         "FUGLE_API_KEY": "${FUGLE_API_KEY:-}",
+        "NEO4J_URI": "${COMPOSE_NEO4J_URI:-neo4j://neo4j:7687}",
+        "NEO4J_USER": "${COMPOSE_NEO4J_USER:-neo4j}",
+        "NEO4J_PASSWORD": "${COMPOSE_NEO4J_PASSWORD:-stock_ai_neo4j_password}",
+        "NEO4J_DATABASE": "${COMPOSE_NEO4J_DATABASE:-neo4j}",
         "COMPANY_FILING_STRUCTURED_API_PROVIDER": "${COMPANY_FILING_STRUCTURED_API_PROVIDER:-}",
         "COMPANY_FILING_STRUCTURED_API_URL": "${COMPANY_FILING_STRUCTURED_API_URL:-}",
         "COMPANY_FILING_STRUCTURED_API_TOKEN": "${COMPANY_FILING_STRUCTURED_API_TOKEN:-}",

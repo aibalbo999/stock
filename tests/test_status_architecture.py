@@ -94,6 +94,26 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         is True
     )
     assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"][
+            "COMPOSE_NEO4J_URI"
+        ]
+        is True
+    )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_URI"]
+        is True
+    )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"][
+            "COMPOSE_NEO4J_AUTH"
+        ]
+        is True
+    )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_AUTH"]
+        is True
+    )
+    assert (
         status["task_queue"]["compose_runtime_env"]["present_groups"]["workflow"][
             "WORKFLOW_ENGINE"
         ]

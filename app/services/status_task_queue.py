@@ -64,6 +64,18 @@ COMPOSE_RUNTIME_ENV_GROUPS = {
         "FINMIND_TOKEN",
         "FUGLE_API_KEY",
     ),
+    "neo4j": (
+        "COMPOSE_NEO4J_URI",
+        "NEO4J_URI",
+        "COMPOSE_NEO4J_USER",
+        "NEO4J_USER",
+        "COMPOSE_NEO4J_PASSWORD",
+        "NEO4J_PASSWORD",
+        "COMPOSE_NEO4J_DATABASE",
+        "NEO4J_DATABASE",
+        "COMPOSE_NEO4J_AUTH",
+        "NEO4J_AUTH",
+    ),
     "observability": (
         "LLM_OBSERVABILITY_ENABLED",
         "LLM_OBSERVABILITY_PROVIDER",
@@ -185,7 +197,7 @@ def _compose_runtime_env_status() -> dict:
             "fallback_reason": f"compose_source_unreadable:{exc.__class__.__name__}",
         }
     present_groups = {
-        group: {key: f"{key}:" in compose_source for key in keys}
+        group: {key: _compose_env_key_present(compose_source, key) for key in keys}
         for group, keys in COMPOSE_RUNTIME_ENV_GROUPS.items()
     }
     missing_by_group = {
@@ -209,6 +221,10 @@ def _compose_runtime_env_status() -> dict:
         "missing_by_group": missing_by_group,
         "fallback_reason": None if ready else "compose_runtime_env_passthrough_incomplete",
     }
+
+
+def _compose_env_key_present(compose_source: str, key: str) -> bool:
+    return f"{key}:" in compose_source or f"${{{key}" in compose_source
 
 
 def _task_async_bridge_status() -> dict:

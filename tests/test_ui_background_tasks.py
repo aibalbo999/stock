@@ -192,3 +192,35 @@ def test_submit_background_task_warns_and_continues_when_preflight_status_unavai
     assert fake_st.session_state["last_data_task_id"] == "task-after-warning"
     assert fake_st.warnings == ["無法預先確認背景任務狀態：status endpoint down；仍會嘗試送出。"]
     assert fake_st.successes == ["已送出股價刷新背景任務：task-after-warning"]
+
+
+def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(background_tasks, "st", fake_st)
+    monkeypatch.setattr(
+        background_tasks,
+        "api_task_queue_status",
+        lambda: {
+            "ready": True,
+            "worker_ping_checked": True,
+            "worker_online": False,
+            "worker_ping_error": None,
+            "smoke_commands": [".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"],
+        },
+    )
+
+    result = background_tasks.submit_background_task(
+        lambda: {"task_id": "task-queued-without-worker"},
+        task_state_key="last_data_task_id",
+        success_message="已送出股價刷新背景任務",
+        error_message="股價刷新任務送出失敗",
+        preflight=True,
+    )
+
+    assert result == {"task_id": "task-queued-without-worker"}
+    assert fake_st.session_state["last_data_task_id"] == "task-queued-without-worker"
+    assert fake_st.warnings == [
+        "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待。 "
+        "可用指令：.venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+    ]
+    assert fake_st.successes == ["已送出股價刷新背景任務：task-queued-without-worker"]

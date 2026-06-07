@@ -361,6 +361,13 @@ def upgrade_capability_matrix(status: dict) -> dict:
                     "broker_ok": task_queue_status.get("broker_ok"),
                     "backend_ok": task_queue_status.get("backend_ok"),
                     "celery_app_available": task_queue_status.get("celery_app_available"),
+                    "processing_ready": task_queue_status.get("processing_ready"),
+                    "worker_ping_checked": task_queue_status.get("worker_ping_checked"),
+                    "worker_online": task_queue_status.get("worker_online"),
+                    "worker_count": task_queue_status.get("worker_count"),
+                    "worker_nodes": task_queue_status.get("worker_nodes"),
+                    "worker_ping_error": task_queue_status.get("worker_ping_error"),
+                    "worker_ping_skipped_reason": task_queue_status.get("worker_ping_skipped_reason"),
                     "required_task_exports": task_queue_status.get("required_task_exports"),
                     "exported_tasks_present": task_queue_status.get("exported_tasks_present"),
                     "missing_task_exports": task_queue_status.get("missing_task_exports"),
@@ -372,7 +379,8 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 },
                 detail=(
                     "Background task submission requires live Redis broker/backend, Celery app "
-                    "exports, named task wiring, status endpoints, and structured task submission errors."
+                    "exports, named task wiring, status endpoints, structured task submission errors, "
+                    "and exposes live worker ping diagnostics for stalled queue triage."
                 ),
             ),
             "streamlit_mpa_background_tasks": _capability(
@@ -387,6 +395,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_api_client_extracted")
                 and frontend_status.get("ui_background_task_client_extracted")
                 and frontend_status.get("ui_task_queue_preflight_enabled")
+                and frontend_status.get("ui_task_queue_worker_warning_enabled")
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("task_retry_uses_scoped_state_key")
                 and frontend_status.get("ui_report_state_extracted")

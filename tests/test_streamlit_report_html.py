@@ -138,6 +138,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def submit_background_task(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def submit_data_operation_task(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def task_queue_preflight_ready(" in BACKGROUND_TASKS_SOURCE.read_text()
+    assert "def task_queue_worker_warning(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def api_task_queue_status(" in API_CLIENT_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
@@ -223,7 +224,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def submit_background_task(" in source
     assert "def task_queue_preflight_ready(" in source
     assert "def task_queue_unready_message(" in source
+    assert "def task_queue_worker_warning(" in source
     assert "仍會嘗試送出" in source
+    assert "Celery worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source
@@ -896,6 +899,23 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
     assert metrics["AI Key"] == 5
     assert metrics["市場資料"] == "可用"
     assert metrics["升格門檻"] == "高 75"
+
+
+def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:
+    helpers = load_report_helpers()
+
+    metrics = helpers["maintenance_service_metrics"](
+        {"integrity": {"ok": True}},
+        {
+            "redis": {"ok": True},
+            "task_queue": {"ready": True, "worker_ping_checked": True, "worker_online": False},
+            "gemini": {"key_count": 5},
+            "finmind": {"mode": "public_or_limited"},
+            "candidate_confidence": {"high_threshold": 75},
+        },
+    )
+
+    assert metrics["背景任務"] == "可排隊"
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

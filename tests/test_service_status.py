@@ -363,8 +363,16 @@ def test_service_status_shape() -> None:
     assert status["task_queue"]["broker_ok"] == status["redis"]["ok"]
     assert status["task_queue"]["backend_ok"] == status["redis"]["ok"]
     assert status["task_queue"]["submission_contract_ready"] is True
+    assert status["task_queue"]["processing_ready"] is bool(
+        status["task_queue"]["ready"] and status["task_queue"]["worker_online"]
+    )
     assert status["task_queue"]["task_export_namespace_available"] is True
     assert status["task_queue"]["celery_app_available"] is True
+    assert isinstance(status["task_queue"]["worker_ping_checked"], bool)
+    assert isinstance(status["task_queue"]["worker_online"], bool)
+    assert isinstance(status["task_queue"]["worker_count"], int)
+    assert isinstance(status["task_queue"]["worker_nodes"], list)
+    assert status["task_queue"]["worker_ping_timeout_seconds"] >= 0.1
     assert status["task_queue"]["required_task_exports"] == [
         "celery_app",
         "generate_report_task",
@@ -403,6 +411,7 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_background_task_client_path"] == "app/ui/background_tasks.py"
     assert status["frontend"]["ui_task_queue_preflight_enabled"] is True
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
+    assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
@@ -575,6 +584,9 @@ def test_service_status_shape() -> None:
     assert task_queue_arch["status"] == ("ready" if status["task_queue"]["ready"] else "degraded")
     assert task_queue_arch["evidence"]["submission_contract_ready"] is True
     assert task_queue_arch["evidence"]["broker_ok"] == status["redis"]["ok"]
+    assert task_queue_arch["evidence"]["processing_ready"] == status["task_queue"]["processing_ready"]
+    assert task_queue_arch["evidence"]["worker_online"] == status["task_queue"]["worker_online"]
+    assert "worker_nodes" in task_queue_arch["evidence"]
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
     assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]
     assert matrix["architecture"]["workflow_orchestration"]["status"] == "ready"
@@ -587,6 +599,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_queue_worker_warning_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True

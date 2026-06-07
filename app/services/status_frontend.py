@@ -133,6 +133,8 @@ def frontend_status() -> dict:
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in api_client_source
         and "preflight: bool = True" in background_tasks_source,
         "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
+        "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning(" in background_tasks_source
+        and "Celery worker 未回應" in background_tasks_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

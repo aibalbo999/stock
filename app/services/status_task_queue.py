@@ -25,20 +25,33 @@ def task_queue_status(
     *,
     redis_status: dict,
     redact_url: Callable[[str], str],
+    worker_ping_func: Callable[[Any, float], dict | None] | None = None,
 ) -> dict:
     broker_url = str(getattr(settings, "redis_url", "") or "")
     export_status = _task_export_status()
     broker_ok = bool(redis_status.get("ok"))
     broker_configured = bool(broker_url.strip())
+    worker_ping_timeout_seconds = max(
+        0.1,
+        float(getattr(settings, "task_queue_worker_ping_timeout_seconds", 1.0) or 1.0),
+    )
+    worker_ping_status = _worker_ping_status(
+        export_status.get("_celery_app") if broker_ok else None,
+        timeout_seconds=worker_ping_timeout_seconds,
+        ping_func=worker_ping_func,
+        skipped_reason=None if broker_ok else "broker_unavailable",
+    )
     submission_contract_ready = bool(
         export_status["task_export_namespace_available"]
         and export_status["celery_app_available"]
         and export_status["required_task_exports_present"]
         and export_status["task_names_match_expected"]
     )
+    ready = bool(broker_configured and broker_ok and submission_contract_ready)
     return {
         "collector_path": "app/services/status_task_queue.py",
-        "ready": bool(broker_configured and broker_ok and submission_contract_ready),
+        "ready": ready,
+        "processing_ready": bool(ready and worker_ping_status["worker_online"]),
         "submission_contract_ready": submission_contract_ready,
         "broker_configured": broker_configured,
         "broker_ok": broker_ok,
@@ -56,6 +69,13 @@ def task_queue_status(
         "task_names_match_expected": export_status["task_names_match_expected"],
         "task_export_namespace_available": export_status["task_export_namespace_available"],
         "task_export_error": export_status["task_export_error"],
+        "worker_ping_checked": worker_ping_status["worker_ping_checked"],
+        "worker_ping_timeout_seconds": worker_ping_timeout_seconds,
+        "worker_online": worker_ping_status["worker_online"],
+        "worker_count": worker_ping_status["worker_count"],
+        "worker_nodes": worker_ping_status["worker_nodes"],
+        "worker_ping_error": worker_ping_status["worker_ping_error"],
+        "worker_ping_skipped_reason": worker_ping_status["worker_ping_skipped_reason"],
         "submission_endpoints": [
             "POST /reports/generate_async",
             "POST /pipeline/run_discovered_async",
@@ -105,4 +125,52 @@ def _task_export_status() -> dict:
         "celery_app_main": str(getattr(celery_app, "main", "") or ""),
         "task_names": task_names,
         "task_names_match_expected": task_names_match_expected,
+        "_celery_app": celery_app,
     }
+
+
+def _worker_ping_status(
+    celery_app: Any,
+    *,
+    timeout_seconds: float,
+    ping_func: Callable[[Any, float], dict | None] | None = None,
+    skipped_reason: str | None = None,
+) -> dict:
+    if celery_app is None:
+        return {
+            "worker_ping_checked": False,
+            "worker_online": False,
+            "worker_count": 0,
+            "worker_nodes": [],
+            "worker_ping_error": None,
+            "worker_ping_skipped_reason": skipped_reason or "celery_app_unavailable",
+        }
+    try:
+        responses = (
+            ping_func(celery_app, timeout_seconds)
+            if ping_func is not None
+            else _celery_inspect_ping(celery_app, timeout_seconds)
+        ) or {}
+    except Exception as exc:
+        return {
+            "worker_ping_checked": True,
+            "worker_online": False,
+            "worker_count": 0,
+            "worker_nodes": [],
+            "worker_ping_error": str(exc),
+            "worker_ping_skipped_reason": None,
+        }
+    worker_nodes = sorted(str(node) for node in responses)
+    return {
+        "worker_ping_checked": True,
+        "worker_online": bool(worker_nodes),
+        "worker_count": len(worker_nodes),
+        "worker_nodes": worker_nodes,
+        "worker_ping_error": None,
+        "worker_ping_skipped_reason": None,
+    }
+
+
+def _celery_inspect_ping(celery_app: Any, timeout_seconds: float) -> dict | None:
+    inspector = celery_app.control.inspect(timeout=timeout_seconds)
+    return inspector.ping()

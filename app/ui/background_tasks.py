@@ -101,6 +101,9 @@ def task_queue_preflight_ready(*, error_message: str) -> bool:
         st.warning(f"無法預先確認背景任務狀態：{request_error_message(exc)}；仍會嘗試送出。")
         return True
     if task_queue.get("ready"):
+        worker_warning = task_queue_worker_warning(task_queue)
+        if worker_warning:
+            st.warning(worker_warning)
         return True
     st.error(f"{error_message}：{task_queue_unready_message(task_queue)}")
     return False
@@ -112,6 +115,8 @@ def task_queue_unready_message(task_queue: dict) -> str:
         reasons.append("Redis broker 尚未設定")
     if not task_queue.get("broker_ok"):
         reasons.append("Redis broker/backend 未連線")
+    if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+        reasons.append("Celery worker 未回應")
     if not task_queue.get("celery_app_available"):
         reasons.append("Celery app 匯出不可用")
     missing_exports = task_queue.get("missing_task_exports") or []
@@ -126,6 +131,18 @@ def task_queue_unready_message(task_queue: dict) -> str:
     smoke_commands = task_queue.get("smoke_commands") or []
     hint = f" 可用指令：{smoke_commands[0]}" if smoke_commands else ""
     return "；".join(reasons) + "。" + hint
+
+
+def task_queue_worker_warning(task_queue: dict) -> str:
+    if not task_queue.get("worker_ping_checked") or task_queue.get("worker_online"):
+        return ""
+    if task_queue.get("worker_ping_error"):
+        detail = f"；錯誤：{task_queue['worker_ping_error']}"
+    else:
+        detail = ""
+    smoke_commands = task_queue.get("smoke_commands") or []
+    hint = f" 可用指令：{smoke_commands[0]}" if smoke_commands else ""
+    return f"背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待{detail}。{hint}"
 
 
 def _task_id(task_response: Any) -> str:

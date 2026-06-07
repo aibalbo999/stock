@@ -112,7 +112,7 @@ def render_analysis_workspace() -> None:
                     "cash_reserve_pct": float(cash_reserve_pct) / 100,
                 }
                 try:
-                    task_response = api_post("/pipeline/run_discovered_async", payload)
+                    task_response = api_task_post("/pipeline/run_discovered_async", payload)
                     st.session_state["last_async_task_id"] = task_response["task_id"]
                     st.session_state["last_analysis_task_type"] = "discovered"
                     st.success(f"已送出 AI 探索背景任務：{task_response['task_id']}")
@@ -133,7 +133,7 @@ def render_analysis_workspace() -> None:
                     "cash_reserve_pct": float(cash_reserve_pct) / 100,
                 }
                 try:
-                    task_response = api_post("/reports/generate_async", payload)
+                    task_response = api_task_post("/reports/generate_async", payload)
                     st.session_state["last_async_task_id"] = task_response["task_id"]
                     st.session_state["last_analysis_task_type"] = "manual"
                     st.success(f"已送出分析背景任務：{task_response['task_id']}")

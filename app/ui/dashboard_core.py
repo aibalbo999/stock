@@ -36,28 +36,35 @@ def configure_page(page_title: str = "台股 AI 產業鏈分析") -> None:
 
 
 API_BASE_URL = get_settings().api_base_url.rstrip("/")
+API_GET_TIMEOUT_SECONDS = 10
+API_WRITE_TIMEOUT_SECONDS = 60
+API_TASK_QUEUE_TIMEOUT_SECONDS = 20
 
 
-def api_post(path: str, payload: dict) -> dict:
-    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=900)
+def api_post(path: str, payload: dict, *, timeout: float = API_WRITE_TIMEOUT_SECONDS) -> dict:
+    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=timeout)
     response.raise_for_status()
     return response.json()
 
 
+def api_task_post(path: str, payload: dict) -> dict:
+    return api_post(path, payload, timeout=API_TASK_QUEUE_TIMEOUT_SECONDS)
+
+
 def api_put(path: str, payload: dict) -> dict:
-    response = requests.put(f"{API_BASE_URL}{path}", json=payload, timeout=60)
+    response = requests.put(f"{API_BASE_URL}{path}", json=payload, timeout=API_WRITE_TIMEOUT_SECONDS)
     response.raise_for_status()
     return response.json()
 
 
 def api_delete(path: str) -> dict:
-    response = requests.delete(f"{API_BASE_URL}{path}", timeout=60)
+    response = requests.delete(f"{API_BASE_URL}{path}", timeout=API_WRITE_TIMEOUT_SECONDS)
     response.raise_for_status()
     return response.json()
 
 
 def api_get(path: str):
-    response = requests.get(f"{API_BASE_URL}{path}", timeout=10)
+    response = requests.get(f"{API_BASE_URL}{path}", timeout=API_GET_TIMEOUT_SECONDS)
     response.raise_for_status()
     return response.json()
 
@@ -83,7 +90,7 @@ def request_error_message(exc: requests.RequestException) -> str:
 
 
 def queue_data_operation(operation: str, payload: dict) -> dict:
-    return api_post(
+    return api_task_post(
         "/tasks/data-operation",
         {
             "operation": operation,
@@ -2153,7 +2160,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         disabled=not has_executable_actions,
     ):
         try:
-            task_response = api_post(
+            task_response = api_task_post(
                 f"/reports/{report_id}/follow-up/run_async",
                 {
                     "rerun_report": bool(rerun_report),
@@ -2336,14 +2343,14 @@ def _render_task_status_panel_controls(
     with action_cols[0]:
         if st.button("取消任務", key=f"{refresh_key}_cancel"):
             try:
-                st.session_state[status_state_key] = api_post(f"/tasks/{task_id}/cancel", {})
+                st.session_state[status_state_key] = api_task_post(f"/tasks/{task_id}/cancel", {})
                 st.success("已送出取消要求。")
             except requests.RequestException as exc:
                 st.error(f"取消失敗：{request_error_message(exc)}")
     with action_cols[1]:
         if st.button("重試任務", key=f"{refresh_key}_retry"):
             try:
-                retry_response = api_post(f"/tasks/{task_id}/retry", {})
+                retry_response = api_task_post(f"/tasks/{task_id}/retry", {})
                 st.session_state["last_data_task_id"] = retry_response.get("task_id") or task_id
                 st.session_state[status_state_key] = retry_response
                 st.success(f"已送出重試任務：{retry_response.get('task_id')}")

@@ -126,9 +126,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "stock-hero" not in combined
     assert "https://fonts.googleapis.com" not in combined
     assert "asyncio.run" not in source
+    assert "timeout=900" not in source
+    assert "API_TASK_QUEUE_TIMEOUT_SECONDS = 20" in source
+    assert "def api_task_post(" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source
+    assert 'api_task_post("/pipeline/run_discovered_async"' in source
+    assert 'api_task_post("/reports/generate_async"' in source
+    assert 'api_post("/pipeline/run_discovered_async"' not in source
+    assert 'api_post("/reports/generate_async"' not in source
     assert "def request_error_message(" in source
     assert "股價刷新任務送出失敗：{request_error_message(exc)}" in source
     assert "分析背景任務送出失敗：{request_error_message(exc)}" in source

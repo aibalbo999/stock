@@ -9,9 +9,18 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.time import now_taipei
+from app.data_sources.company_filings import CompanyFilingFetcher
 from app.api import main
 from app.api.schemas import TopicDiscoveryRequest
 from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportRequest, ReportResponse, Source
+from app.services.candidate_revalidation import (
+    CandidateRevalidationService,
+    apply_company_filing_gate_to_candidate_payload,
+    candidate_revalidation_queries,
+    collect_revalidation_documents,
+    mark_unavailable_candidates_after_revalidation,
+    preserve_previous_supported_candidates,
+)
 from app.services.followup_actions import FollowUpAction
 from app.services import report_quality
 from app.services.discovered_pipeline import candidate_filing_revalidation_tickers, should_revalidate_candidate_filings
@@ -29,7 +38,14 @@ from app.services.discovery_workflow import (
     should_supplement_discovery_sources,
     summarize_candidate_support,
 )
-from app.services.report_followup import serialize_run
+from app.services.persistence import CompanyFilingRepository
+from app.services.report_followup import (
+    follow_up_plan_next_actions,
+    latest_follow_up_run_for_report,
+    serialize_run,
+    should_require_candidate_audit_follow_up,
+)
+from app.services.report_followup_context import ReportFollowUpContextService
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,
@@ -777,10 +793,8 @@ def test_report_quality_gate_warns_when_company_filings_are_missing() -> None:
     assert gate["metrics"]["company_filing_coverage"] == 0
 
 
-def test_company_filing_gate_downgrades_supported_candidates_without_official_documents(monkeypatch) -> None:
-    monkeypatch.setattr(main, "sufficient_company_filing_tickers", lambda tickers: {"2330"})
-
-    gated = main.apply_company_filing_gate_to_candidate_payload(
+def test_company_filing_gate_downgrades_supported_candidates_without_official_documents() -> None:
+    gated = apply_company_filing_gate_to_candidate_payload(
         [
             {
                 "ticker": "2330",
@@ -802,7 +816,8 @@ def test_company_filing_gate_downgrades_supported_candidates_without_official_do
                 "validation_reason": "通過正式分析門檻",
                 "promotion_eligible": True,
             },
-        ]
+        ],
+        sufficient_tickers_provider=lambda tickers: {"2330"},
     )
 
     assert gated[0]["status"] == "evidence_supported"
@@ -1263,7 +1278,7 @@ def test_report_company_data_audit_endpoint(monkeypatch) -> None:
 
 def test_manual_company_filing_endpoint_returns_quality(monkeypatch) -> None:
     stored = {}
-    original_repository = main.CompanyFilingRepository
+    original_repository = CompanyFilingRepository
 
     class FakeVectorStore:
         def upsert_documents(self, documents):
@@ -1314,7 +1329,7 @@ def test_manual_company_filing_endpoint_returns_quality(monkeypatch) -> None:
 
 def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
     stored = {}
-    original_repository = main.CompanyFilingRepository
+    original_repository = CompanyFilingRepository
 
     class FakeVectorStore:
         def upsert_documents(self, documents):
@@ -1332,7 +1347,7 @@ def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
             return original_repository.to_news_document(document)
 
     async def fake_fetch_url_document(self, **kwargs):
-        return main.CompanyFilingFetcher.from_manual_text(
+        return CompanyFilingFetcher.from_manual_text(
             ticker=kwargs["ticker"],
             company_name=kwargs["company_name"],
             document_type=kwargs["document_type"],
@@ -1349,7 +1364,7 @@ def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
 
     monkeypatch.setattr(main, "VectorStore", FakeVectorStore)
     monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
-    monkeypatch.setattr(main.CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
     monkeypatch.setattr(main, "session_scope", fake_session_scope)
 
     response = TestClient(main.app).post(
@@ -1392,7 +1407,7 @@ def test_company_filing_from_url_returns_pdf_ocr_guidance(monkeypatch) -> None:
     async def fake_fetch_url_document(self, **kwargs):
         raise ValueError("PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。")
 
-    monkeypatch.setattr(main.CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
+    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
 
     response = TestClient(main.app).post(
         "/company-filings/from-url",
@@ -1411,7 +1426,7 @@ def test_company_filing_from_url_returns_pdf_ocr_guidance(monkeypatch) -> None:
 
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {"status": "ready"},
             {"status": "sufficient"},
         )
@@ -1421,7 +1436,7 @@ def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:
 
 def test_candidate_audit_follow_up_is_required_when_candidates_have_gaps() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {"status": "ready"},
             {"status": "sufficient"},
             [
@@ -1435,7 +1450,7 @@ def test_candidate_audit_follow_up_is_required_when_candidates_have_gaps() -> No
 
 
 def test_preserve_previous_supported_candidates_avoids_sampling_demotions() -> None:
-    preserved = main.preserve_previous_supported_candidates(
+    preserved = preserve_previous_supported_candidates(
         [
             {
                 "ticker": "3037",
@@ -1461,7 +1476,7 @@ def test_preserve_previous_supported_candidates_avoids_sampling_demotions() -> N
     assert by_ticker["3037"]["validation_reason"].count("本次補強重驗證未穩定重建既有正式證據") == 1
     assert by_ticker["2421"]["status"] == "evidence_supported"
 
-    preserved_again = main.preserve_previous_supported_candidates(
+    preserved_again = preserve_previous_supported_candidates(
         [{"ticker": "3037", "name": "欣興", "status": "weak_evidence"}],
         [by_ticker["3037"]],
     )
@@ -1470,7 +1485,7 @@ def test_preserve_previous_supported_candidates_avoids_sampling_demotions() -> N
 
 
 def test_preserve_previous_supported_candidates_does_not_keep_stale_evidence() -> None:
-    preserved = main.preserve_previous_supported_candidates(
+    preserved = preserve_previous_supported_candidates(
         [
             {
                 "ticker": "3059",
@@ -1495,7 +1510,7 @@ def test_preserve_previous_supported_candidates_does_not_keep_stale_evidence() -
 
 
 def test_mark_unavailable_candidates_after_large_revalidation() -> None:
-    candidates = main.mark_unavailable_candidates_after_revalidation(
+    candidates = mark_unavailable_candidates_after_revalidation(
         [
             {
                 "ticker": "6235",
@@ -1545,7 +1560,7 @@ def test_revalidate_candidate_whitelist_prioritizes_company_filings_before_news_
         )
         for index in range(20)
     ]
-    filing_document = main.CompanyFilingFetcher.from_manual_text(
+    filing_document = CompanyFilingFetcher.from_manual_text(
         ticker="6235",
         company_name="華孚",
         document_type="annual_report",
@@ -1555,7 +1570,7 @@ def test_revalidate_candidate_whitelist_prioritizes_company_filings_before_news_
         published_at=date(2026, 4, 30),
         url="https://doc.twse.com.tw/pdf/6235.pdf",
     )
-    original_company_filing_repository = main.CompanyFilingRepository
+    original_company_filing_repository = CompanyFilingRepository
 
     class FakeNewsRepository:
         def __init__(self, session: object) -> None:
@@ -1582,11 +1597,13 @@ def test_revalidate_candidate_whitelist_prioritizes_company_filings_before_news_
     def fake_session_scope():
         yield object()
 
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-    monkeypatch.setattr(main, "NewsRepository", FakeNewsRepository)
-    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
+    service = CandidateRevalidationService(
+        session_scope_factory=fake_session_scope,
+        news_repository_cls=FakeNewsRepository,
+        company_filing_repository_cls=FakeCompanyFilingRepository,
+    )
 
-    result = main.revalidate_candidate_whitelist(
+    result = service.revalidate_candidate_whitelist(
         {"discovery": {"plan": plan}, "request": {"topic": "機器人 產業鏈"}},
         plan["candidate_companies"],
         limit=5,
@@ -1601,7 +1618,7 @@ def test_revalidate_candidate_whitelist_prioritizes_company_filings_before_news_
 
 def test_candidate_audit_follow_up_is_required_when_company_data_has_gaps() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {"status": "ready"},
             {"status": "needs_attention"},
         )
@@ -1611,7 +1628,7 @@ def test_candidate_audit_follow_up_is_required_when_company_data_has_gaps() -> N
 
 def test_candidate_audit_follow_up_is_required_when_candidates_were_unavailable() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {"status": "ready"},
             {"status": "sufficient"},
             [{"ticker": "6235", "status": "evidence_unavailable"}],
@@ -1622,7 +1639,7 @@ def test_candidate_audit_follow_up_is_required_when_candidates_were_unavailable(
 
 def test_candidate_audit_follow_up_is_tracking_for_source_only_gap() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {
                 "status": "insufficient",
                 "blockers": ["主題拆解子題仍有 3 個完全缺少相關來源"],
@@ -1641,7 +1658,7 @@ def test_candidate_audit_follow_up_is_tracking_for_source_only_gap() -> None:
 
 def test_candidate_audit_follow_up_is_required_when_no_formal_stock() -> None:
     assert (
-        main.should_require_candidate_audit_follow_up(
+        should_require_candidate_audit_follow_up(
             {
                 "status": "insufficient",
                 "blockers": ["沒有通過證據驗證的正式分析股票"],
@@ -2354,7 +2371,7 @@ def test_latest_follow_up_prefers_latest_finished_matching_run() -> None:
     )
     repository = SimpleNamespace(latest=lambda limit=100: [newer_started_run, later_finished_run])
 
-    auto_follow_up = main.latest_follow_up_run_for_report(repository, report)
+    auto_follow_up = latest_follow_up_run_for_report(repository, report)
 
     assert auto_follow_up["id"] == 30
     assert auto_follow_up["rerun_report"]["report_id"] == 9
@@ -2391,22 +2408,20 @@ def test_latest_follow_up_rejects_rerun_report_with_different_actual_topic() -> 
     )
     repository = SimpleNamespace(latest=lambda limit=100: [run])
 
-    auto_follow_up = main.latest_follow_up_run_for_report(repository, report, report_repository)
+    auto_follow_up = latest_follow_up_run_for_report(repository, report, report_repository)
 
     assert auto_follow_up is None
 
 
-def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch) -> None:
+def test_prepare_follow_up_report_context_revalidates_and_refreshes() -> None:
     refreshed = {}
 
     async def fake_refresh(request):
         refreshed["tickers"] = request.tickers
         return {"market": {"stored_count": 2}}
 
-    monkeypatch.setattr(
-        main,
-        "revalidate_candidate_whitelist",
-        lambda run_payload, candidates: {
+    service = ReportFollowUpContextService(
+        revalidate_candidate_whitelist_func=lambda run_payload, candidates: {
             "candidate_whitelist": [
                 {
                     "ticker": "2330",
@@ -2433,8 +2448,8 @@ def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch)
             ],
             "changed": True,
         },
+        refresh_market_data_func=fake_refresh,
     )
-    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh)
 
     context = {
         "run_payload": {"discovery": {"plan": {}}},
@@ -2444,7 +2459,7 @@ def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch)
         ],
     }
     prepared = asyncio.run(
-        main.prepare_follow_up_report_context(
+        service.prepare(
             context,
             ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
             [FollowUpAction("ingest_news", "補候選", ("3324",), purpose="required")],
@@ -2458,15 +2473,12 @@ def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch)
 
 
 def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalidation_is_inconclusive(
-    monkeypatch,
 ) -> None:
     async def fake_refresh(request):
         raise AssertionError("unchanged promotions should not force market refresh")
 
-    monkeypatch.setattr(
-        main,
-        "revalidate_candidate_whitelist",
-        lambda run_payload, candidates: {
+    service = ReportFollowUpContextService(
+        revalidate_candidate_whitelist_func=lambda run_payload, candidates: {
             "candidate_whitelist": [
                 {
                     "ticker": "2330",
@@ -2487,8 +2499,8 @@ def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalid
             ],
             "changed": True,
         },
+        refresh_market_data_func=fake_refresh,
     )
-    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh)
 
     context = {
         "run_payload": {"discovery": {"plan": {}}},
@@ -2497,7 +2509,7 @@ def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalid
         ],
     }
     prepared = asyncio.run(
-        main.prepare_follow_up_report_context(
+        service.prepare(
             context,
             ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
             [FollowUpAction("ingest_news", "補候選", ("2330",), purpose="required")],
@@ -2531,7 +2543,7 @@ def test_candidate_revalidation_queries_are_company_specific() -> None:
         }
     )
 
-    queries = main.candidate_revalidation_queries(plan, "AI 產業鏈")
+    queries = candidate_revalidation_queries(plan, "AI 產業鏈")
 
     assert any("3324" in query and "雙鴻" in query and "AI 產業鏈" in query for query in queries)
     assert any("液冷散熱" in query and "水冷訂單" in query for query in queries)
@@ -2565,7 +2577,7 @@ def test_collect_revalidation_documents_dedupes_and_includes_latest_documents() 
 
     repository = FakeRepository()
 
-    documents = main.collect_revalidation_documents(repository, ["3324 雙鴻", "散熱模組"], 10)
+    documents = collect_revalidation_documents(repository, ["3324 雙鴻", "散熱模組"], 10)
 
     assert repository.queries == ["3324 雙鴻", "散熱模組"]
     assert [document.title for document in documents] == ["雙鴻 液冷散熱", "建準 散熱風扇"]
@@ -3283,7 +3295,7 @@ def test_report_follow_up_plan_preview_uses_report_history(monkeypatch) -> None:
 
 
 def test_follow_up_plan_next_actions_describe_planned_work() -> None:
-    rows = main.follow_up_plan_next_actions(
+    rows = follow_up_plan_next_actions(
         [
             FollowUpAction(
                 "ingest_company_filings",

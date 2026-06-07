@@ -42,6 +42,8 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "scripts/structured_company_filing_smoke.py" in step_text
     assert "--sample-json examples/structured_company_filing_sample.json" in step_text
     assert "--document-type investor_presentation" in step_text
+    assert "scripts/evaluate_graphrag_reasoning.py" in step_text
+    assert "data/graphrag_reasoning_golden.jsonl" in step_text
     assert "scripts/evaluate_visual_rag.py" in step_text
     assert "scripts/frontend_smoke.py" in step_text
     assert "--skip-browser" in step_text

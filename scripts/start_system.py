@@ -588,6 +588,23 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
     architecture = matrix.get("architecture") or {}
     data_business_logic = matrix.get("data_business_logic") or {}
 
+    python_runtime = architecture.get("python_runtime") or {}
+    python_runtime_evidence = python_runtime.get("evidence") or {}
+    if python_runtime and python_runtime.get("status") != "ready":
+        minimum_supported = str(python_runtime_evidence.get("minimum_supported") or "3.11")
+        current_version = str(python_runtime_evidence.get("current_version") or "unknown")
+        items.append(
+            {
+                "capability": "python_runtime",
+                "status": str(python_runtime.get("status") or "unknown"),
+                "reason": f"目前 Python {current_version}，專案目標為 {minimum_supported}+",
+                "action": (
+                    f"用 Python {minimum_supported}+ 重建 .venv，例如 python{minimum_supported} -m venv .venv，"
+                    f"再執行 {_pip_install_action(python_display, '.[dev,pdf,visual,browser,graph]')}"
+                ),
+            }
+        )
+
     embedding = ai_rag.get("multilingual_embedding") or {}
     embedding_evidence = embedding.get("evidence") or {}
     if embedding.get("status") != "ready":

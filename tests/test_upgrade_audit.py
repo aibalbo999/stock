@@ -22,6 +22,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
             "streamlit_mpa_background_tasks": {"status": "ready", "evidence": {}},
+            "python_runtime": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {}},
             "secret_scanning": {"status": "ready", "evidence": {}},
         },
@@ -161,6 +162,31 @@ def test_upgrade_audit_treats_pdf_table_parser_runtime_as_deployment_hardening()
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+
+
+def test_upgrade_audit_treats_python_runtime_as_deployment_preflight() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "architecture.python_runtime": {
+                    "status": "degraded",
+                    "evidence": {
+                        "current_version": "3.9.6",
+                        "minimum_supported": "3.11",
+                        "current_runtime_supported": False,
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "caution"
+    assert audit["implementation"]["status"] == "ready"
+    assert audit["deployment"]["status"] == "caution"
+    warning = next(item for item in audit["warnings"] if item["capability"] == "python_runtime")
+    assert warning["optional"] is True
+    assert warning["deployment_check"] is True
+    assert warning["external_integration"] is False
 
 
 def test_upgrade_audit_fails_required_capability_regression() -> None:

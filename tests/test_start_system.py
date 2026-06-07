@@ -40,6 +40,7 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
             "streamlit_mpa_background_tasks": {"status": "ready", "evidence": {}},
+            "python_runtime": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {"up_to_date": True}},
             "secret_scanning": {"status": "ready", "evidence": {}},
         },
@@ -556,6 +557,31 @@ def test_upgrade_dependency_advice_explains_keyword_reranker_gap() -> None:
     assert advice[0]["reason"] == "keyword execution_mode=keyword（keyword_provider_selected）"
     assert "RAG_RERANKER_PROVIDER=bge" in advice[0]["action"]
     assert "COHERE_API_KEY" in advice[0]["action"]
+
+
+def test_upgrade_dependency_advice_points_to_python_runtime_mismatch() -> None:
+    matrix = _ready_upgrade_matrix(
+        {
+            "architecture.python_runtime": {
+                "status": "degraded",
+                "evidence": {
+                    "current_version": "3.9.6",
+                    "minimum_supported": "3.11",
+                    "current_runtime_supported": False,
+                },
+            }
+        }
+    )
+
+    advice = upgrade_dependency_advice(
+        matrix,
+        python=Path("/repo/.venv/bin/python"),
+        root=Path("/repo"),
+    )
+
+    assert advice[0]["capability"] == "python_runtime"
+    assert "Python 3.9.6" in advice[0]["reason"]
+    assert "python3.11 -m venv .venv" in advice[0]["action"]
 
 
 def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(monkeypatch, capsys) -> None:

@@ -1,3 +1,5 @@
+import sys
+
 from app.core.config import Settings, get_settings
 from app.data_sources.company_filings import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
 from app.data_sources.market import FUGLE_RETRYABLE_HTTP_STATUSES, FINMIND_RETRYABLE_HTTP_STATUSES
@@ -32,6 +34,7 @@ def test_service_status_shape() -> None:
     assert "vector_store" in status
     assert "supply_chain_graph" in status
     assert "workflow_orchestration" in status
+    assert "python_runtime" in status
     assert status["market_data_cache"]["enabled"] is True
     assert status["market_data_cache"]["available"] == bool(status["redis"]["ok"])
     assert status["market_data_cache"]["stale_rescue_enabled"] is True
@@ -401,6 +404,13 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False
     assert frontend_arch["evidence"]["sync_report_generate_used"] is False
     assert all(frontend_arch["evidence"]["async_task_endpoint_coverage"].values())
+    python_runtime = matrix["architecture"]["python_runtime"]
+    expected_python_runtime_status = "ready" if sys.version_info[:2] >= (3, 11) else "degraded"
+    assert python_runtime["status"] == expected_python_runtime_status
+    assert status["python_runtime"]["required_specifier"] == ">=3.11"
+    assert status["python_runtime"]["minimum_supported"] == "3.11"
+    assert status["python_runtime"]["python_version_file"] == "3.11"
+    assert status["python_runtime"]["project_targets_aligned"] is True
     assert matrix["architecture"]["database_migrations"]["status"] in {"ready", "degraded"}
     assert matrix["architecture"]["database_migrations"]["evidence"]["head_revision"]
     assert matrix["architecture"]["secret_scanning"]["status"] == "ready"

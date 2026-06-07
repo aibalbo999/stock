@@ -127,6 +127,14 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "architecture",
+        "python_runtime",
+        "Python 3.11+ runtime",
+        ("upgrade_capability_matrix", "architecture", "python_runtime"),
+        optional=True,
+        remediation="目前執行中的 Python 版本低於專案目標；請用 Python 3.11+ 重建 .venv 並重新啟動 API/Streamlit/Celery。",
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
         "database_migrations",
         "Alembic database migrations",
         ("upgrade_capability_matrix", "architecture", "database_migrations"),
@@ -234,6 +242,11 @@ EXTERNAL_INTEGRATION_CAPABILITIES = frozenset(
         ("data_business_logic", "company_filing_structured_api_fallback"),
     }
 )
+DEPLOYMENT_CHECK_CAPABILITIES = EXTERNAL_INTEGRATION_CAPABILITIES | frozenset(
+    {
+        ("architecture", "python_runtime"),
+    }
+)
 
 
 def audit_upgrade_capabilities(
@@ -248,8 +261,8 @@ def audit_upgrade_capabilities(
     ]
     failures = [check for check in checks if check["severity"] == "fail"]
     warnings = [check for check in checks if check["severity"] == "warn"]
-    implementation_checks = [check for check in checks if not check.get("external_integration")]
-    deployment_checks = [check for check in checks if check.get("external_integration")]
+    implementation_checks = [check for check in checks if not check.get("deployment_check")]
+    deployment_checks = [check for check in checks if check.get("deployment_check")]
     implementation = _summarize_checks(implementation_checks)
     deployment = _summarize_checks(deployment_checks)
     areas = defaultdict(lambda: {"ready": 0, "warnings": 0, "failures": 0, "checks": 0})
@@ -295,6 +308,7 @@ def _requirement_result(
     passed = actual_status in requirement.required_statuses
     severity = "pass" if passed else "warn" if is_optional else "fail"
     external_integration = (requirement.area, requirement.capability) in EXTERNAL_INTEGRATION_CAPABILITIES
+    deployment_check = (requirement.area, requirement.capability) in DEPLOYMENT_CHECK_CAPABILITIES
     return {
         "area": requirement.area,
         "capability": requirement.capability,
@@ -303,6 +317,7 @@ def _requirement_result(
         "required_statuses": list(requirement.required_statuses),
         "optional": is_optional,
         "external_integration": external_integration,
+        "deployment_check": deployment_check,
         "severity": severity,
         "detail": capability.get("detail"),
         "evidence": capability.get("evidence") or {},

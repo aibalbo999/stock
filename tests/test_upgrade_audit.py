@@ -8,6 +8,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
         "ai_rag": {
             "multilingual_embedding": {"status": "ready", "evidence": {}},
             "llm_sdk_and_fallback": {"status": "ready", "evidence": {}},
+            "llm_quota_routing": {"status": "ready", "evidence": {}},
             "hybrid_search": {"status": "ready", "evidence": {}},
             "reranking": {"status": "ready", "evidence": {}},
             "llm_observability": {"status": "ready", "evidence": {}},
@@ -221,6 +222,31 @@ def test_upgrade_audit_fails_required_capability_regression() -> None:
     assert audit["implementation"]["status"] == "failed"
     assert audit["deployment"]["status"] == "caution"
     assert any(check["capability"] == "reranking" for check in audit["failures"])
+    assert audit["areas"]["ai_rag"]["failures"] == 1
+
+
+def test_upgrade_audit_fails_llm_quota_routing_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "ai_rag.llm_quota_routing": {
+                    "status": "degraded",
+                    "evidence": {
+                        "failed_checks": [
+                            "smart_model_order",
+                            "flash_models_share_request_budget",
+                        ]
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    failure = next(item for item in audit["failures"] if item["capability"] == "llm_quota_routing")
+    assert failure["optional"] is False
+    assert failure["external_integration"] is False
     assert audit["areas"]["ai_rag"]["failures"] == 1
 
 

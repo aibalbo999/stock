@@ -643,6 +643,26 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             }
         )
 
+    quota_routing = ai_rag.get("llm_quota_routing") or {}
+    quota_evidence = quota_routing.get("evidence") or {}
+    if quota_routing and quota_routing.get("status") != "ready":
+        failed_checks = quota_evidence.get("failed_checks") or ["quota_routing_not_ready"]
+        items.append(
+            {
+                "capability": "llm_quota_routing",
+                "status": str(quota_routing.get("status") or "unknown"),
+                "reason": "、".join(str(check) for check in failed_checks),
+                "action": (
+                    "設定 PRIMARY_LLM_MODEL=gemini-3.5-flash，"
+                    "LLM_FALLBACK_MODELS=gemini-2.5-flash,gemini-3.1-flash-lite,"
+                    "gemini-2.5-flash-lite,gemma-4-31b-it，"
+                    "LLM_QUOTA_HARD_ROUTING_ENABLED=true，"
+                    "LLM_MODEL_QUOTA_COOLDOWN_SECONDS=3600，並用 "
+                    "LLM_MODEL_DAILY_REQUEST_BUDGETS 維護 Flash 同級額度與 Gemma 高額度保底"
+                ),
+            }
+        )
+
     reranking = ai_rag.get("reranking") or {}
     reranking_evidence = reranking.get("evidence") or {}
     if reranking and reranking.get("status") != "ready":

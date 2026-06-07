@@ -26,6 +26,7 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
         "ai_rag": {
             "multilingual_embedding": {"status": "ready", "evidence": {}},
             "llm_sdk_and_fallback": {"status": "ready", "evidence": {}},
+            "llm_quota_routing": {"status": "ready", "evidence": {}},
             "hybrid_search": {"status": "ready", "evidence": {}},
             "reranking": {"status": "ready", "evidence": {}},
             "llm_observability": {"status": "ready", "evidence": {}},
@@ -76,6 +77,10 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
             "llm_sdk_and_fallback": {
                 "status": "degraded",
                 "evidence": {"dependency": "litellm", "dependency_available": False},
+            },
+            "llm_quota_routing": {
+                "status": "degraded",
+                "evidence": {"failed_checks": ["smart_model_order", "flash_models_share_request_budget"]},
             },
             "neo4j_import": {
                 "status": "not_configured",
@@ -140,6 +145,7 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
     assert any("NEO4J_URI" in action for action in actions)
     assert any("COMPANY_FILING_VISUAL_RAG_ENABLED" in action for action in actions)
     assert any('.venv/bin/python -m pip install -e ".[visual]"' in action for action in actions)
+    assert any("LLM_MODEL_DAILY_REQUEST_BUDGETS" in action and "gemma-4-31b-it" in action for action in actions)
     assert any("FINMIND_TOKEN" in action and "FUGLE_API_KEY" in action for action in actions)
     assert any("COMPANY_FILING_PROXY_URLS" in action for action in actions)
     assert any("COMPANY_FILING_STRUCTURED_API_PROVIDER" in action and "TEJ" in action for action in actions)

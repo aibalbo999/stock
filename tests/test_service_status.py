@@ -10,6 +10,7 @@ from app.services.service_status import (
     _company_filing_user_agent_status,
     _llm_fallback_readiness,
     _llm_model_provider,
+    _llm_quota_routing_status,
     _market_data_provider_readiness,
     _neo4j_import_capability_status,
     _redact_url,
@@ -264,6 +265,23 @@ def test_service_status_shape() -> None:
     assert status["gemini"]["base_retry_delay_seconds"] == 0.5
     assert status["gemini"]["max_retry_delay_seconds"] == 5.0
     assert status["gemini"]["provider_keys_configured"]["anthropic"] is False
+    assert status["llm_quota_routing"]["ready"] is True
+    assert status["llm_quota_routing"]["strategy"] == "smartest_first_then_budget_degrade"
+    assert status["llm_quota_routing"]["model_order"][:4] == [
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
+    ]
+    assert status["llm_quota_routing"]["same_tier_flash_request_budgets"] == {
+        "gemini-3.5-flash": 250,
+        "gemini-2.5-flash": 250,
+        "gemini-3.1-flash-lite": 250,
+        "gemini-2.5-flash-lite": 250,
+    }
+    assert status["llm_quota_routing"]["high_quota_fallback_request_budget"] == 14400
+    assert status["llm_quota_routing"]["readiness_checks"]["hard_routing_enabled"] is True
+    assert status["llm_quota_routing"]["excluded_media_live_models"] == []
     assert status["llm_observability"]["enabled"] is True
     assert status["llm_observability"]["local_trace_enabled"] is True
     assert "latency_ms" in status["llm_observability"]["captured_fields"]
@@ -328,6 +346,14 @@ def test_service_status_shape() -> None:
     assert matrix["ai_rag"]["llm_observability"]["evidence"]["local_trace_enabled"] is True
     assert "latency_ms" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
     assert "total_token_estimate" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
+    quota_routing = matrix["ai_rag"]["llm_quota_routing"]
+    assert quota_routing["status"] == "ready"
+    assert quota_routing["evidence"]["readiness_checks"]["flash_models_share_request_budget"] is True
+    assert (
+        quota_routing["evidence"]["readiness_checks"]["high_quota_fallback_after_smart_models"]
+        is True
+    )
+    assert quota_routing["evidence"]["readiness_checks"]["embedding_model_kept_separate"] is True
     expected_visual_rag_status = (
         "ready"
         if status["company_filings"]["visual_rag_runtime_available"]
@@ -536,6 +562,42 @@ def test_llm_retry_settings_defaults() -> None:
     assert settings.llm_daily_cost_budget_usd == 0.0
     assert settings.llm_cost_warning_ratio == 0.8
     assert settings.task_observability_stale_minutes == 60
+
+
+def test_llm_quota_routing_status_requires_smart_first_order_and_equal_budgets() -> None:
+    ready = _llm_quota_routing_status(Settings(_env_file=None))
+
+    assert ready["ready"] is True
+    assert ready["failed_checks"] == []
+    assert ready["readiness_checks"]["smart_model_order"] is True
+    assert ready["readiness_checks"]["flash_models_share_request_budget"] is True
+    assert ready["readiness_checks"]["high_quota_fallback_budget_ready"] is True
+
+    misordered = _llm_quota_routing_status(
+        Settings(
+            _env_file=None,
+            llm_fallback_models=(
+                "gemma-4-31b-it,gemini-2.5-flash,"
+                "gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+            ),
+        )
+    )
+    assert misordered["ready"] is False
+    assert "smart_model_order" in misordered["failed_checks"]
+    assert "high_quota_fallback_after_smart_models" in misordered["failed_checks"]
+
+    unequal_budget = _llm_quota_routing_status(
+        Settings(
+            _env_file=None,
+            llm_model_daily_request_budgets=(
+                "gemini-3.5-flash=250,gemini-2.5-flash=250,"
+                "gemini-3.1-flash-lite=100,gemini-2.5-flash-lite=250,"
+                "gemma-4-31b-it=14400"
+            ),
+        )
+    )
+    assert unequal_budget["ready"] is False
+    assert "flash_models_share_request_budget" in unequal_budget["failed_checks"]
 
 
 def test_rag_settings_defaults(monkeypatch) -> None:

@@ -35,6 +35,16 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "ai_rag",
+        "llm_quota_routing",
+        "免費額度感知模型路由",
+        ("upgrade_capability_matrix", "ai_rag", "llm_quota_routing"),
+        remediation=(
+            "確認 PRIMARY_LLM_MODEL、LLM_FALLBACK_MODELS、LLM_QUOTA_HARD_ROUTING_ENABLED、"
+            "LLM_MODEL_QUOTA_COOLDOWN_SECONDS 與 LLM_MODEL_DAILY_REQUEST_BUDGETS 符合智慧優先與同級額度策略。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "ai_rag",
         "hybrid_search",
         "Hybrid Search / BM25 關鍵字檢索",
         ("upgrade_capability_matrix", "ai_rag", "hybrid_search"),

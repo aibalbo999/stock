@@ -120,6 +120,12 @@ def test_vector_store_and_graphrag_status_shape_and_evidence(service_status_snap
         "GET /supply-chain/graph/reasoning"
     )
     assert "shortestPath" in status["supply_chain_graph"]["neo4j_shortest_path_template"]
+    assert status["supply_chain_graph"]["agentic_cypher_local_dry_run_enabled"] is True
+    assert (
+        status["supply_chain_graph"]["agentic_cypher_local_dry_run_status"]
+        == "executed_dry_run"
+    )
+    assert status["supply_chain_graph"]["agentic_cypher_local_dry_run_mode"] == "in_memory_graph"
 
 
 def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot) -> None:
@@ -242,6 +248,10 @@ def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
     assert cypher_evidence["agentic_cypher_endpoint"] == "GET /supply-chain/graph/cypher-plan"
     assert cypher_evidence["agentic_cypher_plan_example"]["validation"]["valid"] is True
     assert cypher_evidence["agentic_cypher_plan_example"]["validation"]["read_only"] is True
+    assert cypher_evidence["local_dry_run_enabled"] is True
+    assert cypher_evidence["local_dry_run_status"] == "executed_dry_run"
+    assert cypher_evidence["local_dry_run_mode"] == "in_memory_graph"
+    assert cypher_evidence["local_dry_run_row_count"] >= 0
     assert matrix["ai_rag"]["neo4j_payload_export"]["status"] == "ready"
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_export_ready"] is True
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_format"] == "neo4j_cypher_v1"
@@ -255,6 +265,9 @@ def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
     assert live_cypher["evidence"]["endpoint"] == "GET /supply-chain/graph/cypher-query"
     assert live_cypher["evidence"]["neo4j_ready"] is False
     assert live_cypher["evidence"]["planner_enabled"] is True
+    assert live_cypher["evidence"]["local_dry_run_enabled"] is True
+    assert live_cypher["evidence"]["local_dry_run_status"] == "executed_dry_run"
+    assert live_cypher["evidence"]["local_dry_run_row_count"] >= 0
     assert live_cypher["evidence"]["payload_dry_run_cli"].startswith(
         ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j"
     )

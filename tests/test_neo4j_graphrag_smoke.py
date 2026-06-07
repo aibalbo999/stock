@@ -42,6 +42,14 @@ def _query(status: str = "executed", *, row_count: int = 0) -> dict:
             "validation": {"valid": True, "errors": [], "read_only": True},
             "neo4j": {"fallback_reason": None if status == "executed" else "missing_settings:neo4j_uri"},
         },
+        "local_dry_run": {
+            "status": "executed_dry_run",
+            "ready": True,
+            "execution_mode": "in_memory_graph",
+            "row_count": 1,
+            "validation": {"valid": True, "errors": [], "read_only": True},
+            "evidence_policy": "production live reads still require Neo4j",
+        },
     }
 
 
@@ -78,6 +86,8 @@ def test_neo4j_graphrag_smoke_reports_ready() -> None:
     assert report["ready"] is True
     assert report["payload"]["ready"] is True
     assert report["query_result"]["execution"]["status"] == "executed"
+    assert report["query_result"]["local_dry_run"]["status"] == "executed_dry_run"
+    assert report["query_result"]["local_dry_run"]["row_count"] == 1
     assert service.calls[0] == ("payload", "2330")
     assert service.calls[1][0] == "query"
     assert service.calls[1][2]["target_ticker"] == "2382"
@@ -91,6 +101,7 @@ def test_neo4j_graphrag_smoke_treats_missing_neo4j_as_optional_by_default() -> N
 
     assert report["status"] == "not_configured"
     assert report["ready"] is False
+    assert report["query_result"]["local_dry_run"]["ready"] is True
     assert "NEO4J_URI" in report["remediation"]
     assert smoke.smoke_exit_code(report, strict=False) == 0
     assert smoke.smoke_exit_code(report, strict=True) == 1

@@ -48,6 +48,11 @@ DEFAULT_AGENTIC_CYPHER_EVIDENCE_POLICY = (
     "Returned graph paths remain structural hypotheses and must be corroborated by filings, "
     "news, revenue, or financial metrics before becoming investment evidence."
 )
+LOCAL_DRY_RUN_EVIDENCE_POLICY = (
+    "In-memory dry-run executes the validated Cypher plan against the taxonomy graph only. "
+    "It proves planner semantics and local path availability, but production live reads still "
+    "require Neo4j plus source corroboration."
+)
 
 
 @dataclass(frozen=True)
@@ -147,6 +152,44 @@ class GraphCypherPlannerService:
                 question=question,
                 max_depth=safe_depth,
             ),
+        }
+
+    def dry_run(
+        self,
+        graph: SupplyChainGraph,
+        plan: dict,
+        *,
+        max_records: int = 25,
+    ) -> dict:
+        safe_limit = max(1, min(int(max_records or 25), 100))
+        validation = validate_graph_cypher_plan(
+            plan,
+            graph,
+            max_depth=_max_depth_from_plan(plan),
+        )
+        if not validation["valid"]:
+            return {
+                "status": "validation_failed",
+                "ready": False,
+                "dry_run": True,
+                "execution_mode": "in_memory_graph",
+                "validation": validation,
+                "rows": [],
+                "row_count": 0,
+                "evidence_policy": LOCAL_DRY_RUN_EVIDENCE_POLICY,
+            }
+        rows = _dry_run_rows_for_plan(graph, plan, limit=safe_limit)
+        return {
+            "status": "executed_dry_run",
+            "ready": True,
+            "dry_run": True,
+            "execution_mode": "in_memory_graph",
+            "intent": str(plan.get("intent") or ""),
+            "validation": validation,
+            "rows": rows,
+            "row_count": len(rows),
+            "max_records": safe_limit,
+            "evidence_policy": LOCAL_DRY_RUN_EVIDENCE_POLICY,
         }
 
     def _llm_plan(
@@ -352,6 +395,93 @@ def validate_graph_cypher_plan(plan: dict, graph: SupplyChainGraph, *, max_depth
         "parameterized": "$" in cypher,
         "max_depth": max(1, min(4, int(max_depth))),
     }
+
+
+def _dry_run_rows_for_plan(graph: SupplyChainGraph, plan: dict, *, limit: int) -> list[dict[str, Any]]:
+    intent = str(plan.get("intent") or "").strip()
+    parameters = plan.get("parameters") if isinstance(plan.get("parameters"), dict) else {}
+    max_depth = _max_depth_from_plan(plan)
+    if intent == "shortest_path_between_companies":
+        paths = graph.shortest_paths(
+            str(parameters.get("source_ticker") or ""),
+            str(parameters.get("target_ticker") or ""),
+            max_depth=max_depth,
+            max_paths=limit,
+        )
+        return [_path_row(path) for path in paths[:limit]]
+    if intent in {"upstream_supply_path", "downstream_demand_path"}:
+        paths = graph.neighborhood_paths(
+            str(parameters.get("ticker") or ""),
+            max_depth=max_depth,
+            max_paths=limit * 2,
+        )
+        expected_direction = (
+            "upstream_impact_path"
+            if intent == "upstream_supply_path"
+            else "downstream_demand_path"
+        )
+        return [
+            _path_row(path)
+            for path in paths
+            if path.get("impact_direction") == expected_direction
+        ][:limit]
+    if intent == "same_segment_peers":
+        return _same_segment_peer_rows(
+            graph,
+            str(parameters.get("ticker") or ""),
+            limit=limit,
+        )
+    return [
+        _path_row(path)
+        for path in graph.neighborhood_paths(
+            str(parameters.get("ticker") or parameters.get("source_ticker") or ""),
+            max_depth=max_depth,
+            max_paths=limit,
+        )
+    ][:limit]
+
+
+def _path_row(path: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "path",
+        "path_label": path.get("path_label"),
+        "path_tickers": path.get("path_tickers"),
+        "hop_count": path.get("hop_count"),
+        "impact_direction": path.get("impact_direction"),
+        "impact_direction_label": path.get("impact_direction_label"),
+        "path": path,
+    }
+
+
+def _same_segment_peer_rows(
+    graph: SupplyChainGraph,
+    ticker: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    nodes = {node.ticker: node.to_dict() for node in graph.nodes}
+    rows = []
+    for edge in graph.neighbor_edges(ticker):
+        if edge.relation != "same_segment_peer":
+            continue
+        peer_ticker = edge.target_ticker if edge.source_ticker == ticker else edge.source_ticker
+        rows.append(
+            {
+                "type": "peer",
+                "company": nodes.get(ticker),
+                "peer": nodes.get(peer_ticker),
+                "edge": edge.to_dict(),
+            }
+        )
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _max_depth_from_plan(plan: dict) -> int:
+    cypher = str(plan.get("cypher") or "")
+    depths = [int(depth) for depth in re.findall(r"\*\s*(?:\d+)?\.\.(\d+)", cypher)]
+    return max(1, min(min(depths) if depths else 3, 6))
 
 
 def _serializable_llm_payload(payload: dict[str, Any]) -> dict[str, Any]:

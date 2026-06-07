@@ -140,6 +140,11 @@ def summarize_query_result(query_result: dict[str, Any] | None) -> dict[str, Any
     if not query_result:
         return None
     execution = query_result.get("execution") if isinstance(query_result.get("execution"), dict) else {}
+    local_dry_run = (
+        query_result.get("local_dry_run")
+        if isinstance(query_result.get("local_dry_run"), dict)
+        else {}
+    )
     plan = query_result.get("plan") if isinstance(query_result.get("plan"), dict) else {}
     validation = plan.get("validation") if isinstance(plan.get("validation"), dict) else {}
     return {
@@ -159,6 +164,14 @@ def summarize_query_result(query_result: dict[str, Any] | None) -> dict[str, Any
             "validation": execution.get("validation"),
             "neo4j": execution.get("neo4j"),
             "error": execution.get("error"),
+        },
+        "local_dry_run": {
+            "status": local_dry_run.get("status"),
+            "ready": local_dry_run.get("ready"),
+            "execution_mode": local_dry_run.get("execution_mode"),
+            "row_count": local_dry_run.get("row_count"),
+            "validation": local_dry_run.get("validation"),
+            "evidence_policy": local_dry_run.get("evidence_policy"),
         },
     }
 
@@ -210,6 +223,7 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     payload = report.get("payload") or {}
     query = report.get("query_result") or {}
     execution = query.get("execution") if isinstance(query.get("execution"), dict) else {}
+    local_dry_run = query.get("local_dry_run") if isinstance(query.get("local_dry_run"), dict) else {}
     lines = [
         f"Neo4j GraphRAG smoke: {report['status']}",
         f"- ready: {str(bool(report.get('ready'))).lower()}",
@@ -225,6 +239,12 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
             "- live query: "
             f"{execution.get('status')} "
             f"({execution.get('row_count', 0) or 0} rows)"
+        )
+    if local_dry_run:
+        lines.append(
+            "- local dry-run: "
+            f"{local_dry_run.get('status')} "
+            f"({local_dry_run.get('row_count', 0) or 0} rows)"
         )
     if report.get("import_result"):
         lines.append(f"- import: {report['import_result'].get('status')}")

@@ -195,6 +195,19 @@ def test_supply_chain_graph_api_delegates_cypher_plan() -> None:
     }
 
 
+def test_supply_chain_graph_api_cypher_plan_includes_local_dry_run() -> None:
+    result = SupplyChainGraphApiService().graph_cypher_plan(
+        "3324",
+        target_ticker="2382",
+        question="雙鴻對廣達的上下游衝擊",
+    )
+
+    assert result["plan"]["validation"]["valid"] is True
+    assert result["local_dry_run"]["status"] == "executed_dry_run"
+    assert result["local_dry_run"]["execution_mode"] == "in_memory_graph"
+    assert result["local_dry_run"]["row_count"] >= 1
+
+
 def test_supply_chain_graph_api_delegates_live_cypher_query() -> None:
     captured = {}
 
@@ -221,6 +234,10 @@ def test_supply_chain_graph_api_delegates_live_cypher_query() -> None:
                 "plan": {"cypher": "MATCH (c:Company) RETURN c LIMIT $limit"},
             }
 
+        def dry_run(self, graph, plan):
+            captured["dry_run"] = {"graph": graph, "plan": plan}
+            return {"status": "executed_dry_run", "row_count": 1}
+
     class FakeImportService:
         def execute_read_query(self, plan, *, max_records=25):
             captured["execution"] = {"plan": plan, "max_records": max_records}
@@ -244,8 +261,10 @@ def test_supply_chain_graph_api_delegates_live_cypher_query() -> None:
 
     assert result["strategy"] == "guarded_llm_cypher_planner"
     assert result["execution"] == {"status": "executed"}
+    assert result["local_dry_run"] == {"status": "executed_dry_run", "row_count": 1}
     assert captured["planner"]["tickers"] == ["2330", "3324"]
     assert captured["planner"]["max_depth"] == 4
     assert captured["planner"]["use_llm"] is True
     assert captured["execution"]["max_records"] == 7
     assert captured["execution"]["plan"] == {"cypher": "MATCH (c:Company) RETURN c LIMIT $limit"}
+    assert captured["dry_run"]["plan"] == {"cypher": "MATCH (c:Company) RETURN c LIMIT $limit"}

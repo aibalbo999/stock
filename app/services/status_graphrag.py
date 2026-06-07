@@ -22,6 +22,11 @@ def supply_chain_graph_status() -> dict:
             if sample_ticker
             else {}
         )
+        cypher_dry_run = (
+            GraphCypherPlannerService().dry_run(graph, cypher_plan.get("plan") or {})
+            if cypher_plan.get("plan")
+            else {}
+        )
         reasoning_examples = next(
             iter((reasoning_plan.get("paths_by_ticker") or {}).values()),
             [],
@@ -75,6 +80,14 @@ def supply_chain_graph_status() -> dict:
             "agentic_cypher_live_query_external_dependency": "Neo4j",
             "agentic_cypher_guardrails": cypher_plan.get("allowed_schema"),
             "agentic_cypher_plan_example": cypher_plan.get("plan"),
+            "agentic_cypher_local_dry_run_enabled": cypher_dry_run.get("ready"),
+            "agentic_cypher_local_dry_run_status": cypher_dry_run.get("status"),
+            "agentic_cypher_local_dry_run_mode": cypher_dry_run.get("execution_mode"),
+            "agentic_cypher_local_dry_run_row_count": cypher_dry_run.get("row_count"),
+            "agentic_cypher_local_dry_run_evidence_policy": cypher_dry_run.get(
+                "evidence_policy"
+            ),
+            "agentic_cypher_local_dry_run_example": cypher_dry_run,
             "prompt_context_enabled": True,
             "neo4j_export_enabled": True,
             "neo4j_import": neo4j_import,

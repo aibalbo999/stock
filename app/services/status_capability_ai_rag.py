@@ -237,10 +237,26 @@ def ai_rag_capabilities(
                 "agentic_cypher_endpoint": graph_status.get("agentic_cypher_endpoint"),
                 "agentic_cypher_guardrails": graph_status.get("agentic_cypher_guardrails"),
                 "agentic_cypher_plan_example": graph_status.get("agentic_cypher_plan_example"),
+                "local_dry_run_enabled": graph_status.get(
+                    "agentic_cypher_local_dry_run_enabled"
+                ),
+                "local_dry_run_status": graph_status.get(
+                    "agentic_cypher_local_dry_run_status"
+                ),
+                "local_dry_run_mode": graph_status.get(
+                    "agentic_cypher_local_dry_run_mode"
+                ),
+                "local_dry_run_row_count": graph_status.get(
+                    "agentic_cypher_local_dry_run_row_count"
+                ),
+                "local_dry_run_evidence_policy": graph_status.get(
+                    "agentic_cypher_local_dry_run_evidence_policy"
+                ),
             },
             detail=(
                 "LLM-generated Cypher is supported through a guarded planner that validates "
-                "read-only operations, labels, relationship types, parameters, and path depth."
+                "read-only operations, labels, relationship types, parameters, and path depth; "
+                "a local in-memory dry-run validates plan semantics before Neo4j is configured."
             ),
         ),
         "neo4j_payload_export": _capability(
@@ -276,6 +292,15 @@ def ai_rag_capabilities(
                 ),
                 "neo4j_ready": neo4j_import.get("ready"),
                 "planner_enabled": graph_status.get("agentic_cypher_planner_enabled"),
+                "local_dry_run_enabled": graph_status.get(
+                    "agentic_cypher_local_dry_run_enabled"
+                ),
+                "local_dry_run_status": graph_status.get(
+                    "agentic_cypher_local_dry_run_status"
+                ),
+                "local_dry_run_row_count": graph_status.get(
+                    "agentic_cypher_local_dry_run_row_count"
+                ),
                 "plan_validation": (graph_status.get("agentic_cypher_plan_example") or {}).get(
                     "validation"
                 ),

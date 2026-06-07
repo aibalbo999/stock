@@ -32,6 +32,45 @@ def test_guarded_cypher_planner_builds_valid_shortest_path_template() -> None:
     assert "CALL/CREATE/MERGE" in plan["prompt"]
 
 
+def test_guarded_cypher_planner_dry_run_executes_shortest_path_against_local_graph() -> None:
+    graph = SupplyChainWhitelist().graph()
+    planner = GraphCypherPlannerService()
+    plan = planner.plan(
+        graph,
+        tickers=["3324"],
+        target_ticker="2382",
+        question="雙鴻對廣達的上下游衝擊",
+    )
+
+    dry_run = planner.dry_run(graph, plan["plan"], max_records=5)
+
+    assert dry_run["status"] == "executed_dry_run"
+    assert dry_run["ready"] is True
+    assert dry_run["execution_mode"] == "in_memory_graph"
+    assert dry_run["validation"]["valid"] is True
+    assert dry_run["row_count"] == 1
+    assert dry_run["rows"][0]["type"] == "path"
+    assert dry_run["rows"][0]["path_tickers"] == ["3324", "2382"]
+    assert "production live reads still require Neo4j" in dry_run["evidence_policy"]
+
+
+def test_guarded_cypher_planner_dry_run_rejects_invalid_plan() -> None:
+    graph = SupplyChainWhitelist().graph()
+    dry_run = GraphCypherPlannerService().dry_run(
+        graph,
+        {
+            "intent": "bad",
+            "cypher": "MATCH (c:Company) DELETE c RETURN c",
+            "parameters": {},
+        },
+    )
+
+    assert dry_run["status"] == "validation_failed"
+    assert dry_run["ready"] is False
+    assert dry_run["rows"] == []
+    assert any(error.startswith("blocked_keywords") for error in dry_run["validation"]["errors"])
+
+
 def test_guarded_cypher_planner_accepts_valid_llm_plan() -> None:
     graph = SupplyChainWhitelist().graph()
 

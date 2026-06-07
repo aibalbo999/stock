@@ -88,10 +88,13 @@ class SupplyChainGraphApiService:
         question: str = "",
         max_depth: int = 3,
         use_llm: bool = False,
+        include_dry_run: bool = True,
     ) -> dict:
         requested_tickers = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
-        return self.cypher_planner_factory().plan(
-            self.whitelist_cls().graph(),
+        graph = self.whitelist_cls().graph()
+        planner = self.cypher_planner_factory()
+        payload = planner.plan(
+            graph,
             tickers=requested_tickers or None,
             target_ticker=target_ticker,
             topic=topic,
@@ -99,6 +102,9 @@ class SupplyChainGraphApiService:
             max_depth=max_depth,
             use_llm=use_llm,
         )
+        if include_dry_run and payload.get("plan") and hasattr(planner, "dry_run"):
+            payload["local_dry_run"] = planner.dry_run(graph, payload["plan"])
+        return payload
 
     def graph_cypher_query(
         self,
@@ -118,6 +124,7 @@ class SupplyChainGraphApiService:
             question=question,
             max_depth=max_depth,
             use_llm=use_llm,
+            include_dry_run=True,
         )
         execution = self.neo4j_import_service_factory().execute_read_query(
             plan_payload["plan"],

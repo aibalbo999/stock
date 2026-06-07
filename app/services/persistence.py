@@ -269,6 +269,11 @@ class ReportRepository:
                 ensure_ascii=False,
             ),
             markdown=markdown,
+            quality_gate_json=(
+                json.dumps(response.quality_gate, ensure_ascii=False)
+                if response.quality_gate
+                else None
+            ),
             generated_at=response.generated_at,
         )
         self.session.add(report)
@@ -279,6 +284,21 @@ class ReportRepository:
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
         statement = select(GeneratedReport).order_by(GeneratedReport.generated_at.desc()).limit(limit)
         return list(self.session.scalars(statement))
+
+    def latest_by_topic(self, limit: int = 20) -> list[GeneratedReport]:
+        reports = list(
+            self.session.scalars(select(GeneratedReport).order_by(GeneratedReport.generated_at.desc()))
+        )
+        latest: list[GeneratedReport] = []
+        seen_topics: set[str] = set()
+        for report in reports:
+            if report.topic in seen_topics:
+                continue
+            seen_topics.add(report.topic)
+            latest.append(report)
+            if len(latest) >= limit:
+                break
+        return latest
 
     def get(self, report_id: int) -> GeneratedReport | None:
         return self.session.get(GeneratedReport, report_id)

@@ -5,10 +5,10 @@ from app.ui.dashboard_core import *
 
 
 def render_report_center() -> None:
-    render_section_header("報告中心", "查看已產出的 HTML 報告與下載檔案。")
+    render_section_header("報告中心", "查看每個主題的最新版 HTML 報告；舊版內容只保留在執行紀錄中追蹤。")
     render_follow_up_flash()
     with session_scope() as session:
-        reports = ReportRepository(session).latest(20)
+        reports = ReportRepository(session).latest_by_topic(20)
         report_options = [
             {
                 "id": report.id,
@@ -25,7 +25,7 @@ def render_report_center() -> None:
         if st.session_state.get("selected_report_id") not in report_ids:
             st.session_state["selected_report_id"] = report_ids[0]
         selected_id = st.selectbox(
-            "選擇報告",
+            "選擇最新版報告",
             options=report_ids,
             key="selected_report_id",
             format_func=lambda report_id: next(
@@ -34,7 +34,7 @@ def render_report_center() -> None:
         )
     else:
         selected_id = None
-        st.info("尚無歷史報告。")
+        st.info("尚無最新版報告。")
 
     report_markdown = None
     report_title = "report"
@@ -119,16 +119,16 @@ def render_report_center() -> None:
     else:
         st.markdown(
             """
-            <div class="result-shell">
+                <div class="result-shell">
                 <div class="section-title">尚未選擇報告</div>
-                <div class="section-note">上方選擇一份歷史報告後，這裡會顯示 HTML 重點版。</div>
+                <div class="section-note">上方選擇一份最新版報告後，這裡會顯示 HTML 重點版。</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with st.expander("疑難排解：分析紀錄"):
-        render_section_header("分析紀錄", "一般閱讀報告不需要查看；只有查錯或追蹤背景分析時使用。")
+    with st.expander("疑難排解：執行紀錄"):
+        render_section_header("執行紀錄", "一般閱讀報告不需要查看；舊版報告與背景任務只在這裡查錯或追蹤。")
         with session_scope() as session:
             run_rows = []
             for run in AnalysisRunRepository(session).latest(20):

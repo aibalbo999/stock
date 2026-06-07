@@ -1,12 +1,14 @@
 from datetime import date
 
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
+from app.services.llm_client import LLMResult
 from app.services.report_quality import (
     build_report_quality_gate,
     market_provider_summary,
     market_trade_date_summary,
     render_quality_gate_markdown,
     should_recover_market_data_quality,
+    summarize_llm_status,
 )
 
 
@@ -154,6 +156,48 @@ def test_quality_gate_treats_one_day_market_date_lag_as_observation() -> None:
     assert should_recover_market_data_quality(gate) is False
     assert "market_data_gap" not in plan["triggers"]
     assert not any(action["action_type"] == "refresh_market" for action in plan["actions"])
+
+
+def test_quality_gate_records_llm_observability_metrics() -> None:
+    llm_status = summarize_llm_status(
+        LLMResult(
+            text="分析完成",
+            model="gemini-2.5-flash",
+            provider="gemini",
+            attempts=(
+                {"provider": "gemini", "model": "gemini-3.5-flash", "outcome": "sdk_error", "status": 429},
+                {"provider": "gemini", "model": "gemini-2.5-flash", "outcome": "success", "attempt": 1},
+            ),
+            observability={
+                "latency_ms": 123.4,
+                "input_token_estimate": 120,
+                "output_token_estimate": 34,
+                "total_token_estimate": 154,
+                "estimated_cost_usd": 0.001234,
+                "cost_tracking_mode": "configured_rate_card",
+            },
+        )
+    )
+    gate = build_report_quality_gate(
+        {"candidate_support": {"supported_ratio": 1.0}, "dynamic_queries": {"stored_count": 20}},
+        ["2330"],
+        market_count=1,
+        monthly_revenue_count=1,
+        financial_metrics_count=8,
+        valuation_count=1,
+        llm_status=llm_status,
+    )
+
+    metrics = gate["metrics"]
+    markdown = render_quality_gate_markdown(gate)
+
+    assert metrics["llm_model_fallback_used"] is True
+    assert metrics["llm_primary_failure_category"] == "rate_limited"
+    assert metrics["llm_total_token_estimate"] == 154
+    assert metrics["llm_estimated_cost_usd"] == 0.001234
+    assert "已切換備援模型" in markdown
+    assert "token估算：154" in markdown
+    assert "估算成本：$0.001234" in markdown
 
 
 def test_quality_gate_adds_self_healing_plan_for_recoverable_gaps() -> None:

@@ -1,11 +1,11 @@
 import json
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.data_sources.news import NewsFetcher
-from app.db.models import Base, NewsArticle
+from app.db.models import Base, GeneratedReport, NewsArticle
 from app.models.schemas import ReportRequest, ReportResponse, RiskFinding, RiskType, Source
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import AnalysisRunRepository, NewsRepository, ReportRepository
@@ -46,6 +46,8 @@ def test_news_and_report_persistence_roundtrip() -> None:
 
         assert NewsRepository(session).latest_documents(1)[0].id == document.id
         assert ReportRepository(session).get(report.id).title == "AI 產業鏈 自動分析報告"
+        if response.quality_gate:
+            assert json.loads(ReportRepository(session).get(report.id).quality_gate_json) == response.quality_gate
         assert ReportRepository(session).delete(report.id) is True
         assert ReportRepository(session).get(report.id) is None
         assert ReportRepository(session).delete(report.id) is False
@@ -134,6 +136,33 @@ def test_report_repository_sanitizes_non_formal_sources_before_persisting() -> N
         session.close()
 
 
+def test_report_repository_persists_structured_quality_gate_payload() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        request = ReportRequest(topic="AI 產業鏈", tickers=["2330"])
+        response = ReportResponse(
+            title="AI 產業鏈 自動分析報告",
+            markdown="# AI 產業鏈 自動分析報告",
+            quality_gate={
+                "status": "ready",
+                "warnings": [],
+                "metrics": {"promoted_count": 1, "market_coverage": 1.0},
+            },
+        )
+
+        report = ReportRepository(session).create(request, response)
+        session.commit()
+
+        stored = ReportRepository(session).get(report.id)
+        assert stored is not None
+        assert json.loads(stored.quality_gate_json) == response.quality_gate
+    finally:
+        session.close()
+
+
 def test_report_repository_keeps_only_latest_report_per_topic() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
@@ -162,6 +191,49 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
         assert repository.get(latest_report.id) is not None
         assert repository.get(other_topic_report.id) is not None
         assert AnalysisRunRepository(session).get(run.id).report_id is None
+    finally:
+        session.close()
+
+
+def test_report_repository_lists_latest_report_per_topic_for_legacy_duplicates() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        session.add_all(
+            [
+                GeneratedReport(
+                    title="old ai",
+                    topic="AI",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# old",
+                    generated_at=datetime(2026, 5, 1, 9, 0, 0),
+                ),
+                GeneratedReport(
+                    title="new ai",
+                    topic="AI",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# new",
+                    generated_at=datetime(2026, 5, 2, 9, 0, 0),
+                ),
+                GeneratedReport(
+                    title="robot",
+                    topic="Robot",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# robot",
+                    generated_at=datetime(2026, 5, 3, 9, 0, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+        reports = ReportRepository(session).latest_by_topic(20)
+
+        assert [report.title for report in reports] == ["robot", "new ai"]
     finally:
         session.close()
 

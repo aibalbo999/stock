@@ -276,6 +276,68 @@ def test_report_query_service_refreshes_quality_gate_section_on_read() -> None:
     assert captured["kwargs"]["company_filing_sufficient_count"] == 1
 
 
+def test_report_query_service_prefers_structured_quality_gate_payload() -> None:
+    structured_quality_gate = {
+        "status": "ready",
+        "blockers": [],
+        "warnings": [],
+        "observations": ["結構化品質資料已載入"],
+        "remediation_actions": [],
+        "recommendation": "資料品質可用。",
+        "action_policy": {"label": "可研究", "max_deployable_amount": None},
+        "metrics": {},
+    }
+
+    class FakeReport:
+        id = 22
+        title = "AI 產業鏈 自動分析報告"
+        topic = "AI 產業鏈"
+        tickers_json = '["2330"]'
+        quality_gate_json = json.dumps(structured_quality_gate, ensure_ascii=False)
+        markdown = (
+            "# AI 產業鏈 自動分析報告\n\n"
+            "## 報告品質門檻\n"
+            "- 狀態：需謹慎判讀\n"
+            "- 警示項：舊警示\n\n"
+            "## 一頁摘要\n保留"
+        )
+        generated_at = datetime(2026, 6, 6, 1, 0, 0)
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get(self, report_id: int):
+            assert report_id == 22
+            return FakeReport()
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int):
+            assert report_id == 22
+            return None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        parse_quality_gate_func=lambda _markdown: (_ for _ in ()).throw(AssertionError("should not parse markdown")),
+        latest_follow_up_run_for_report_func=lambda *args: None,
+    )
+
+    payload = service.get_report(22)
+
+    assert payload["quality_gate"] == structured_quality_gate
+    assert "舊警示" not in payload["markdown"]
+    assert "結構化品質資料已載入" in payload["markdown"]
+
+
 def test_report_query_service_ignores_follow_up_rerun_when_report_id_points_to_other_topic() -> None:
     class SourceReport:
         id = 18
@@ -393,6 +455,7 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
             "title": "報告 A",
             "topic": "AI",
             "generated_at": "2026-05-01T09:00:00",
+            "retention_policy": "latest_per_topic",
         }
     ]
     assert service.delete_report(1) == {"deleted": True, "id": 1}

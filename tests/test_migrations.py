@@ -11,6 +11,7 @@ def test_alembic_scaffold_exists() -> None:
     assert Path("migrations/env.py").exists()
     assert Path("migrations/script.py.mako").exists()
     assert Path("migrations/versions/0001_initial_schema.py").exists()
+    assert Path("migrations/versions/0002_add_report_quality_gate_json.py").exists()
 
 
 def test_initial_migration_is_explicit_schema_snapshot() -> None:
@@ -22,6 +23,15 @@ def test_initial_migration_is_explicit_schema_snapshot() -> None:
     assert "op.create_table" in migration
     for table_name in Base.metadata.tables:
         assert f'"{table_name}"' in migration
+
+
+def test_report_quality_gate_migration_adds_structured_payload_column() -> None:
+    migration = Path("migrations/versions/0002_add_report_quality_gate_json.py").read_text(encoding="utf-8")
+
+    assert 'revision = "0002_add_report_quality_gate_json"' in migration
+    assert 'down_revision = "0001_initial_schema"' in migration
+    assert '"quality_gate_json"' in migration
+    assert '"generated_reports"' in migration
 
 
 def test_initial_migration_upgrades_to_current_metadata_schema(tmp_path: Path) -> None:
@@ -75,7 +85,7 @@ def test_db_migration_status_reports_unversioned_database(tmp_path: Path) -> Non
     status = db_migration_status(database_url=database_url)
 
     assert status["ok"] is True
-    assert status["head_revision"] == "0001_initial_schema"
+    assert status["head_revision"] == "0002_add_report_quality_gate_json"
     assert status["current_revision"] is None
     assert status["version_table_present"] is False
     assert status["up_to_date"] is False
@@ -91,7 +101,7 @@ def test_db_migration_status_reports_stamped_database(tmp_path: Path) -> None:
     status = db_migration_status(database_url=database_url)
 
     assert status["ok"] is True
-    assert status["head_revision"] == "0001_initial_schema"
-    assert status["current_revision"] == "0001_initial_schema"
+    assert status["head_revision"] == "0002_add_report_quality_gate_json"
+    assert status["current_revision"] == "0002_add_report_quality_gate_json"
     assert status["version_table_present"] is True
     assert status["up_to_date"] is True

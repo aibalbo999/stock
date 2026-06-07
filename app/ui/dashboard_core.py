@@ -72,6 +72,26 @@ def api_get(path: str):
     return response.json()
 
 
+def request_error_message(exc: requests.RequestException) -> str:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return str(exc)
+    try:
+        payload = response.json()
+    except ValueError:
+        return str(exc)
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    if isinstance(detail, dict):
+        message = str(detail.get("message") or detail.get("code") or exc)
+        next_steps = [str(step) for step in detail.get("next_steps") or [] if str(step).strip()]
+        if next_steps:
+            return f"{message} 建議：" + "；".join(next_steps)
+        return message
+    if isinstance(detail, str) and detail:
+        return detail
+    return str(exc)
+
+
 def queue_data_operation(operation: str, payload: dict) -> dict:
     return api_post(
         "/tasks/data-operation",
@@ -2156,7 +2176,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
             st.session_state.pop(f"refresh_followup_task_{key_suffix}_status", None)
             st.success(f"已送出補強背景任務：{task_response['task_id']}")
         except requests.RequestException as exc:
-            st.error(f"自動補強任務送出失敗：{exc}")
+            st.error(f"自動補強任務送出失敗：{request_error_message(exc)}")
 
     last_follow_up_task_id = st.session_state.get("last_follow_up_task_id")
     if last_follow_up_task_id:

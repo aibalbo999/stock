@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
+from app.api.error_details import task_queue_unavailable_detail
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
@@ -142,7 +143,10 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="generate_report"),
+            ) from exc
 
     @router.post("/pipeline/run_discovered_async")
     def generate_discovered_report_async(
@@ -154,7 +158,10 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="run_discovered"),
+            ) from exc
 
     @router.post("/tasks/data-operation")
     def queue_data_operation(
@@ -169,14 +176,20 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation=payload.operation),
+            ) from exc
 
     @router.get("/tasks/{task_id}")
     def get_task_status(task_id: str, services: Any = Depends(services_dependency)) -> dict:
         try:
             return services.run_task_api().get_task_status(task_id)
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="task_status"),
+            ) from exc
 
     @router.get("/tasks/{task_id}/run")
     def get_run_by_task_id(task_id: str, services: Any = Depends(services_dependency)) -> dict:

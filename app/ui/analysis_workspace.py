@@ -117,7 +117,7 @@ def render_analysis_workspace() -> None:
                     st.session_state["last_analysis_task_type"] = "discovered"
                     st.success(f"已送出 AI 探索背景任務：{task_response['task_id']}")
                 except requests.RequestException as exc:
-                    st.error(f"AI 探索背景任務送出失敗：{exc}")
+                    st.error(f"AI 探索背景任務送出失敗：{request_error_message(exc)}")
             elif not tickers:
                 st.warning("手動模式背景執行請至少選擇一檔白名單股票。")
             else:
@@ -138,7 +138,7 @@ def render_analysis_workspace() -> None:
                     st.session_state["last_analysis_task_type"] = "manual"
                     st.success(f"已送出分析背景任務：{task_response['task_id']}")
                 except requests.RequestException as exc:
-                    st.error(f"分析背景任務送出失敗：{exc}")
+                    st.error(f"分析背景任務送出失敗：{request_error_message(exc)}")
 
         with st.expander("疑難排解：查詢背景分析"):
             last_task_id = st.session_state.get("last_async_task_id")

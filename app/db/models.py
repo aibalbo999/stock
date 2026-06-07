@@ -50,6 +50,7 @@ class GeneratedReport(Base):
     tickers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     findings_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    quality_gate_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 

@@ -83,7 +83,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert ".report {{ max-width:1360px" in source
     assert ".report-grid {{ display:block" in source
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
-    assert "上方選擇一份歷史報告後" in source
+    assert "上方選擇一份最新版報告後" in source
+    assert "latest_by_topic(20)" in source
+    assert "選擇最新版報告" in source
     assert 'flex-wrap: wrap' in combined
     assert 'button[data-testid^="stBaseButton"]' in styles
     assert '[data-testid="stSliderThumbValue"]' in styles
@@ -113,6 +115,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source
+    assert "def request_error_message(" in source
+    assert "股價刷新任務送出失敗：{request_error_message(exc)}" in source
+    assert "分析背景任務送出失敗：{request_error_message(exc)}" in source
+    assert "自動補強任務送出失敗：{request_error_message(exc)}" in source
 
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:

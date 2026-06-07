@@ -1859,7 +1859,12 @@ class ReportGenerator:
                 source += f"；{revenue.revenue_date.isoformat()} {revenue.source} {ticker}"
 
             if estimate["upside_pct"] > 10:
-                if quality["grade"] != "supported":
+                if decision == "避開 / 降低曝險":
+                    blocked_upside_rows.append(
+                        f"- {label}：升值分約 {estimate['upside_pct']} 分，但最終判斷為「{decision}」；"
+                        f"主要原因：{self._risk_warning_reason(estimate)}來源：{source}。"
+                    )
+                elif quality["grade"] != "supported":
                     insufficient_rows.append(
                         f"- {label}：目前證據的情境升值分約 {estimate['upside_pct']} 分，但資料品質不足；"
                         f"{'；'.join(quality['missing'])}。"
@@ -1868,11 +1873,6 @@ class ReportGenerator:
                     upside_rows.append(
                         f"- {label}：目前證據的情境升值分約 {estimate['upside_pct']} 分。"
                         f"理由：{estimate['upside_reason']} 來源：{source}。"
-                    )
-                elif decision == "避開 / 降低曝險":
-                    blocked_upside_rows.append(
-                        f"- {label}：升值分約 {estimate['upside_pct']} 分，但最終判斷為「{decision}」；"
-                        f"主要原因：{self._risk_warning_reason(estimate)}來源：{source}。"
                     )
                 else:
                     watch_upside_rows.append(
@@ -2103,13 +2103,17 @@ class ReportGenerator:
             )
         if decision == "觀察 / 等風險降低":
             return (
+                f"目前情境升值分 {estimate.get('upside_pct', 0)} 分，"
                 f"目前情境降值分 {estimate.get('downside_pct', 0)} 分，"
                 f"高於或接近投資人設定門檻 {downside_gate} 分；"
                 "即使有題材或近況動能，也需等風險證據、財務紅旗或近況訊號改善後再研究配置。"
             )
         if decision == "觀察 / 資料待補":
             missing = "、".join(quality.get("missing") or [])
-            return f"目前有初步題材分數，但資料層仍待補足（{missing or '公司層級證據不足'}），暫不視為可配置理由。"
+            return (
+                f"目前情境升值分 {estimate.get('upside_pct', 0)} 分，"
+                f"但資料層仍待補足（{missing or '公司層級證據不足'}），暫不視為可配置理由。"
+            )
         reasons = []
         if estimate.get("upside_pct", 0) > 10:
             reasons.append(f"目前情境升值分 {estimate['upside_pct']} 高於 10 分的研究門檻")

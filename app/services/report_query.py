@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any
@@ -61,6 +62,18 @@ def _quality_gate_refresh_kwargs(metrics: dict, promoted_count: int) -> dict:
     if plan_quality["status"] or plan_quality["score"] is not None:
         kwargs["plan_quality"] = plan_quality
     return kwargs
+
+
+def _quality_gate_from_report(report: Any, markdown: str, parse_quality_gate_func: Callable[[str], dict]) -> dict | None:
+    stored_payload = getattr(report, "quality_gate_json", None)
+    if stored_payload:
+        try:
+            quality_gate = json.loads(stored_payload)
+        except (TypeError, json.JSONDecodeError):
+            quality_gate = None
+        if isinstance(quality_gate, dict):
+            return quality_gate
+    return parse_quality_gate_func(markdown)
 
 
 def _metric_int(value: Any, default: int | None = None) -> int | None:
@@ -125,13 +138,16 @@ class ReportQueryService:
 
     def list_reports(self, limit: int = 20) -> list[dict]:
         with self.session_scope_factory() as session:
-            reports = self.report_repository_cls(session).latest(limit)
+            repository = self.report_repository_cls(session)
+            latest_by_topic = getattr(repository, "latest_by_topic", None)
+            reports = latest_by_topic(limit) if callable(latest_by_topic) else repository.latest(limit)
         return [
             {
                 "id": report.id,
                 "title": report.title,
                 "topic": report.topic,
                 "generated_at": report.generated_at.isoformat(),
+                "retention_policy": "latest_per_topic",
             }
             for report in reports
         ]
@@ -154,7 +170,7 @@ class ReportQueryService:
         promoted_tickers = self.report_tickers_func(report)
         markdown = self.remove_low_quality_lines_func(report.markdown)
         request = request_from_report_record(report.topic, promoted_tickers, run.payload_json if run is not None else None)
-        parsed_quality_gate = self.parse_quality_gate_func(markdown)
+        parsed_quality_gate = _quality_gate_from_report(report, markdown, self.parse_quality_gate_func)
         quality_gate = self._refresh_quality_gate(request, parsed_quality_gate)
         if quality_gate:
             markdown = self._attach_quality_gate(markdown, report, quality_gate)

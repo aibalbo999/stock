@@ -158,7 +158,12 @@ def test_report_router_maps_follow_up_queue_errors_to_503() -> None:
     response = client.post("/reports/7/follow-up/run_async")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "task queue unavailable"
+    detail = response.json()["detail"]
+    assert detail["code"] == "task_queue_unavailable"
+    assert detail["message"] == "task queue unavailable"
+    assert detail["operation"] == "report_follow_up"
+    assert detail["retryable"] is True
+    assert detail["next_steps"]
 
 
 def _client(

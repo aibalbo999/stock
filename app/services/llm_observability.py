@@ -4,7 +4,6 @@ import math
 import re
 from typing import Any
 
-
 SUPPORTED_OBSERVABILITY_PROVIDERS = ("local", "langsmith", "phoenix")
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_+./:-]+|[\u4e00-\u9fff]|[^\s]")
 
@@ -44,10 +43,14 @@ def llm_observability_status(settings: Any) -> dict:
             "model",
             "latency_ms",
             "attempt_count",
+            "models_tried",
+            "fallback_path_used",
+            "primary_failure_category",
             "input_token_estimate",
             "output_token_estimate",
             "total_token_estimate",
             "estimated_cost_usd",
+            "cost_tracking_mode",
             "retrieval_latency_ms",
             "reranker_status",
         ],
@@ -75,6 +78,7 @@ def build_llm_observability_trace(
     if input_rate or output_rate:
         estimated_cost = round((input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate), 8)
     attempts = tuple(getattr(result, "attempts", ()) or ())
+    attempt_summary = _attempt_summary_for_trace(attempts)
     return {
         "enabled": status["enabled"],
         "provider": getattr(result, "provider", None),
@@ -82,6 +86,10 @@ def build_llm_observability_trace(
         "operation": operation,
         "latency_ms": round(max(0.0, float(latency_ms)), 3),
         "attempt_count": len(attempts),
+        "models_tried": attempt_summary.get("models_tried") or [],
+        "providers_tried": attempt_summary.get("providers_tried") or [],
+        "fallback_path_used": attempt_summary.get("fallback_path_used"),
+        "primary_failure_category": attempt_summary.get("primary_failure_category"),
         "fallback": bool(getattr(result, "fallback", False)),
         "input_token_estimate": input_tokens,
         "output_token_estimate": output_tokens,
@@ -96,3 +104,50 @@ def build_llm_observability_trace(
 def _normalized_provider(provider: object) -> str:
     value = str(provider or "local").strip().lower().replace("-", "_")
     return value if value in SUPPORTED_OBSERVABILITY_PROVIDERS else "local"
+
+
+def _attempt_summary_for_trace(attempts: tuple[dict[str, object], ...]) -> dict:
+    rows = [attempt for attempt in attempts if isinstance(attempt, dict)]
+    first = rows[0] if rows else {}
+    final = rows[-1] if rows else {}
+    failed = [attempt for attempt in rows if str(attempt.get("outcome") or "") != "success"]
+    return {
+        "models_tried": _ordered_attempt_values(rows, "model"),
+        "providers_tried": _ordered_attempt_values(rows, "provider"),
+        "fallback_path_used": bool(
+            rows
+            and final.get("outcome") == "success"
+            and (
+                str(first.get("model") or "") != str(final.get("model") or "")
+                or str(first.get("provider") or "") != str(final.get("provider") or "")
+            )
+        ),
+        "primary_failure_category": _trace_failure_category(failed[0]) if failed else None,
+    }
+
+
+def _ordered_attempt_values(attempts: list[dict[str, object]], key: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(attempt.get(key))
+            for attempt in attempts
+            if attempt.get(key) not in {None, ""}
+        )
+    )
+
+
+def _trace_failure_category(attempt: dict[str, object]) -> str:
+    status = attempt.get("status")
+    if status is not None:
+        try:
+            status_code = int(status)
+        except (TypeError, ValueError):
+            return "http_error"
+        if status_code == 429:
+            return "rate_limited"
+        if status_code in {401, 403}:
+            return "auth_or_permission_error"
+        if status_code in {500, 502, 503, 504}:
+            return "upstream_error"
+        return "http_error"
+    return str(attempt.get("outcome") or "unknown_error")

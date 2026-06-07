@@ -6,6 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
+from app.api.error_details import task_queue_unavailable_detail
 from app.api.schemas import FollowUpRunRequest, ReportFollowUpTaskRequest
 from app.models.schemas import ReportRequest, ReportResponse
 
@@ -94,7 +95,10 @@ def create_report_router(
                 (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
             )
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=task_queue_unavailable_detail(exc, operation="report_follow_up"),
+            ) from exc
 
     @router.delete("/reports/{report_id}")
     def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:

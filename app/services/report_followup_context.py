@@ -72,6 +72,7 @@ class ReportFollowUpContextService:
             markdown = report.markdown
             topic = report.topic
             run_payload = parse_run_payload(run_payload_json)
+            quality_gate = self.parse_quality_gate_func(markdown) or {}
             company_data_audit = (
                 self.audit_company_data_func(
                     session,
@@ -79,7 +80,7 @@ class ReportFollowUpContextService:
                     markdown=markdown,
                     run_payload=run_payload,
                 )
-                if tickers
+                if tickers and (quality_gate or run_payload)
                 else {}
             )
         request = request_from_report_record(topic, tickers, run_payload_json)
@@ -93,7 +94,7 @@ class ReportFollowUpContextService:
             "source_report_created_at": datetime_iso_or_none(getattr(report, "created_at", None)),
             "request": request,
             "markdown": markdown,
-            "quality_gate": self.parse_quality_gate_func(markdown) or {},
+            "quality_gate": quality_gate,
             "candidate_whitelist": candidates,
             "company_data_audit": company_data_audit,
             "source_audit": run_payload.get("source_audit") or {},

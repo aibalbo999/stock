@@ -156,9 +156,16 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     status_response = client.get("/tasks/task-123")
 
     assert queue_response.status_code == 503
-    assert queue_response.json()["detail"] == "task queue unavailable"
+    queue_detail = queue_response.json()["detail"]
+    assert queue_detail["code"] == "task_queue_unavailable"
+    assert queue_detail["message"] == "task queue unavailable"
+    assert queue_detail["operation"] == "market_refresh"
+    assert queue_detail["retryable"] is True
+    assert queue_detail["next_steps"]
     assert status_response.status_code == 503
-    assert status_response.json()["detail"] == "task queue unavailable"
+    status_detail = status_response.json()["detail"]
+    assert status_detail["code"] == "task_queue_unavailable"
+    assert status_detail["operation"] == "task_status"
 
 
 def _client(data_api=None, run_task_api=None) -> TestClient:

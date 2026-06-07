@@ -156,6 +156,7 @@ def build_report_quality_gate(
     high_credibility_ratio = source_quality.get("high_credibility_ratio")
     low_credibility_ratio = source_quality.get("low_credibility_ratio")
     rag_status = rag_status or {}
+    llm_observability = (llm_status or {}).get("observability") or {}
     rag_embedding_status = rag_status.get("embedding_status") or {}
     rag_reranker_status = rag_status.get("reranker_status") or {}
     rag_reranker_provider = str(
@@ -431,6 +432,13 @@ def build_report_quality_gate(
             "llm_retryable_failure_count": (llm_status.get("attempt_summary") or {}).get(
                 "retryable_failure_count"
             ),
+            "llm_latency_ms": llm_observability.get("latency_ms"),
+            "llm_input_token_estimate": llm_observability.get("input_token_estimate"),
+            "llm_output_token_estimate": llm_observability.get("output_token_estimate"),
+            "llm_total_token_estimate": llm_observability.get("total_token_estimate"),
+            "llm_estimated_cost_usd": llm_observability.get("estimated_cost_usd"),
+            "llm_cost_tracking_mode": llm_observability.get("cost_tracking_mode"),
+            "llm_external_trace_provider": llm_observability.get("external_trace_provider"),
             "rag_retrieval_mode": rag_status.get("retrieval_mode"),
             "rag_retrieval_strategy": rag_retrieval_status.get("strategy"),
             "rag_hybrid_search_enabled": rag_retrieval_status.get("hybrid_search_enabled"),
@@ -883,6 +891,7 @@ def summarize_llm_status(llm_result: object | None) -> dict | None:
         "provider": getattr(llm_result, "provider", None),
         "attempt_summary": summarize_llm_attempts(attempts),
         "attempts": list(attempts[-10:]) if isinstance(attempts, (tuple, list)) else [],
+        "observability": getattr(llm_result, "observability", {}) or {},
     }
 
 
@@ -1116,12 +1125,29 @@ def _format_llm_status(metrics: dict) -> str:
         elif metrics.get("llm_provider_fallback_used"):
             recovery_bits.append("已切換備援供應商")
         recovery_text = f"，{ '、'.join(recovery_bits) }" if recovery_bits else ""
-        return f"已啟用（模型：{model}{provider_text}{recovery_text}）"
+        trace_text = _format_llm_observability(metrics)
+        return f"已啟用（模型：{model}{provider_text}{recovery_text}{trace_text}）"
     if status == "fallback":
         reason = metrics.get("llm_primary_failure_category")
         reason_text = f"；主要原因：{reason}" if reason else ""
         return f"未啟用或呼叫失敗，已改用資料規則判讀{reason_text}"
     return "未評估"
+
+
+def _format_llm_observability(metrics: dict) -> str:
+    total_tokens = metrics.get("llm_total_token_estimate")
+    latency_ms = metrics.get("llm_latency_ms")
+    cost = metrics.get("llm_estimated_cost_usd")
+    parts = []
+    if total_tokens is not None:
+        parts.append(f"token估算：{int(total_tokens):,}")
+    if latency_ms is not None:
+        parts.append(f"延遲：{int(float(latency_ms))}ms")
+    if cost is not None:
+        parts.append(f"估算成本：${float(cost):.6f}")
+    if not parts:
+        return ""
+    return "，" + "，".join(parts)
 
 
 def _format_rag_status(metrics: dict) -> str:

@@ -63,7 +63,7 @@ def render_data_enrichment() -> None:
                 st.session_state.pop("refresh_data_task_status_status", None)
                 st.success(f"已送出股價刷新背景任務：{task_response['task_id']}")
             except requests.RequestException as exc:
-                st.error(f"股價刷新任務送出失敗：{exc}")
+                st.error(f"股價刷新任務送出失敗：{request_error_message(exc)}")
 
         if refresh_financials:
             try:
@@ -78,7 +78,7 @@ def render_data_enrichment() -> None:
                 st.session_state.pop("refresh_data_task_status_status", None)
                 st.success(f"已送出財報刷新背景任務：{task_response['task_id']}")
             except requests.RequestException as exc:
-                st.error(f"財報刷新任務送出失敗：{exc}")
+                st.error(f"財報刷新任務送出失敗：{request_error_message(exc)}")
 
         if refresh_valuations:
             try:
@@ -87,7 +87,7 @@ def render_data_enrichment() -> None:
                 st.session_state.pop("refresh_data_task_status_status", None)
                 st.success(f"已送出估值刷新背景任務：{task_response['task_id']}")
             except requests.RequestException as exc:
-                st.error(f"估值刷新任務送出失敗：{exc}")
+                st.error(f"估值刷新任務送出失敗：{request_error_message(exc)}")
 
         if refresh_filings:
             try:
@@ -99,7 +99,7 @@ def render_data_enrichment() -> None:
                 st.session_state.pop("refresh_data_task_status_status", None)
                 st.success(f"已送出公司文件補抓背景任務：{task_response['task_id']}")
             except requests.RequestException as exc:
-                st.error(f"公司文件補抓任務送出失敗：{exc}")
+                st.error(f"公司文件補抓任務送出失敗：{request_error_message(exc)}")
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:
@@ -286,7 +286,7 @@ def render_data_enrichment() -> None:
                         st.session_state.pop("refresh_data_task_status_status", None)
                         st.success(f"已送出 URL 公司文件匯入背景任務：{task_response['task_id']}")
                     except requests.RequestException as exc:
-                        st.error(f"URL 公司文件匯入任務送出失敗：{exc}")
+                        st.error(f"URL 公司文件匯入任務送出失敗：{request_error_message(exc)}")
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:
@@ -327,7 +327,7 @@ def render_data_enrichment() -> None:
                 st.session_state.pop("refresh_data_task_status_status", None)
                 st.success(f"已送出 RSS 抓取背景任務：{task_response['task_id']}")
             except requests.RequestException as exc:
-                st.error(f"RSS 抓取任務送出失敗：{exc}")
+                st.error(f"RSS 抓取任務送出失敗：{request_error_message(exc)}")
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:

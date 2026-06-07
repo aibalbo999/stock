@@ -70,6 +70,23 @@ def test_company_filing_render_smoke_reports_not_configured(monkeypatch) -> None
     assert smoke.smoke_exit_code(report, strict=True) == 1
 
 
+def test_company_filing_render_smoke_collects_runtime_outside_event_loop(monkeypatch) -> None:
+    def fake_playwright_status(_browser):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return _playwright_runtime()
+        raise AssertionError("sync Playwright runtime check ran inside the event loop")
+
+    monkeypatch.setattr(smoke, "company_filing_browser_render_status", lambda: _browser_runtime())
+    monkeypatch.setattr(smoke, "company_filing_playwright_browser_status", fake_playwright_status)
+    monkeypatch.setattr(smoke, "company_filing_proxy_urls", lambda: [])
+
+    report = asyncio.run(smoke.company_filing_render_smoke_report())
+
+    assert report["status"] == "not_configured"
+
+
 def test_company_filing_render_smoke_uses_browser_render(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
     monkeypatch.setattr(

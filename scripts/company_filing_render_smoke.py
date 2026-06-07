@@ -30,11 +30,10 @@ async def company_filing_render_smoke_report(
     fetcher: CompanyFilingFetcher | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
-    browser_runtime = company_filing_browser_render_status()
-    playwright_runtime = company_filing_playwright_browser_status(
-        settings.company_filing_playwright_browser
+    browser_runtime, playwright_runtime, proxy_urls = await asyncio.to_thread(
+        render_runtime_snapshot,
+        settings.company_filing_playwright_browser,
     )
-    proxy_urls = company_filing_proxy_urls()
     proxy_configured = bool(proxy_urls)
     attempts = render_smoke_attempt_plan(
         browser_runtime=browser_runtime,
@@ -113,6 +112,14 @@ async def company_filing_render_smoke_report(
         proxy_count=len(proxy_urls),
         attempts=results,
         remediation=remediation,
+    )
+
+
+def render_runtime_snapshot(browser_name: str | None) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    return (
+        company_filing_browser_render_status(),
+        company_filing_playwright_browser_status(browser_name),
+        company_filing_proxy_urls(),
     )
 
 

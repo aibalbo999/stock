@@ -370,6 +370,10 @@ def test_service_status_shape() -> None:
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_exports"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_helpers_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_helpers"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["api_runtime_present"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_api_runtime"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["task_uses_api_runtime"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["task_imports_api_main"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_direct_domain_import_count"] == 0
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_service_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_imports_legacy_facade"] is False

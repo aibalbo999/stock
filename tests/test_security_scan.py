@@ -6,6 +6,7 @@ from scripts.security_scan import (
     detect_secrets_hook_findings,
     external_engine_command,
     resolve_engine,
+    run_detect_secrets,
     scan_paths,
     scan_with_engine,
 )
@@ -131,6 +132,32 @@ def test_security_scan_can_run_detect_secrets_engine(monkeypatch, tmp_path) -> N
     assert captured["command"] == ["detect-secrets", "scan", "sample.py"]
     assert captured["cwd"] == tmp_path
     assert findings[0]["type"] == "detect-secrets:Secret Keyword"
+
+
+def test_detect_secrets_hook_excludes_baseline_from_scanned_paths(monkeypatch, tmp_path) -> None:
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text('{"results":{}}', encoding="utf-8")
+    path = tmp_path / "sample.py"
+    path.write_text("token = 'example'", encoding="utf-8")
+    captured = {}
+
+    def fake_engine_command(engine: str):
+        return "/bin/detect-secrets-hook" if engine == "detect-secrets-hook" else None
+
+    def fake_runner(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("scripts.security_scan.external_engine_command", fake_engine_command)
+
+    assert run_detect_secrets([baseline, path], tmp_path, runner=fake_runner, baseline=baseline) == []
+    assert captured["command"] == [
+        "/bin/detect-secrets-hook",
+        "--json",
+        "--baseline",
+        ".secrets.baseline",
+        "sample.py",
+    ]
 
 
 def test_security_scan_finds_engine_in_current_python_bin(monkeypatch, tmp_path) -> None:

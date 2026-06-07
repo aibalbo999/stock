@@ -84,9 +84,9 @@ def _json_tickers(value: str | None) -> list[str]:
 
 
 def _api_services_for_tasks():
-    from app.api.main import _api_services
+    from app.api.runtime import get_task_api_services
 
-    return _api_services
+    return get_task_api_services()
 
 
 def _payload_date(payload: dict, key: str) -> date | None:

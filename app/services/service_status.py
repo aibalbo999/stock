@@ -598,6 +598,10 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and api_status.get("compatibility_helpers_present")
                 and api_status.get("main_uses_compatibility_helpers")
                 and api_status.get("compatibility_service_present")
+                and api_status.get("api_runtime_present")
+                and api_status.get("main_uses_api_runtime")
+                and api_status.get("task_uses_api_runtime")
+                and not api_status.get("task_imports_api_main")
                 and api_status.get("main_direct_domain_import_count") == 0
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
@@ -868,12 +872,24 @@ def _api_controller_status() -> dict:
     app_dir = Path(__file__).resolve().parents[1]
     api_dir = app_dir / "api"
     main_path = api_dir / "main.py"
+    runtime_path = api_dir / "runtime.py"
+    tasks_path = app_dir / "tasks" / "tasks.py"
     main_source = ""
+    runtime_source = ""
+    tasks_source = ""
     try:
         main_source = main_path.read_text(encoding="utf-8")
         main_py_lines = len(main_source.splitlines())
     except OSError:
         main_py_lines = None
+    try:
+        runtime_source = runtime_path.read_text(encoding="utf-8")
+    except OSError:
+        runtime_source = ""
+    try:
+        tasks_source = tasks_path.read_text(encoding="utf-8")
+    except OSError:
+        tasks_source = ""
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
@@ -904,10 +920,28 @@ def _api_controller_status() -> dict:
         "app_factory_present": (api_dir / "app_factory.py").exists(),
         "main_uses_app_factory": "from app.api.app_factory import create_app" in main_source,
         "service_factory_present": (api_dir / "service_factory.py").exists(),
+        "api_runtime_present": runtime_path.exists(),
+        "main_uses_api_runtime": "build_api_runtime" in main_source,
+        "task_uses_api_runtime": "get_task_api_services" in tasks_source,
+        "task_imports_api_main": "app.api.main" in tasks_source,
         "compatibility_exports_present": compatibility_exports_path.exists(),
-        "main_uses_compatibility_exports": "compatibility_export_namespace" in main_source,
+        "main_uses_compatibility_exports": (
+            "compatibility_export_namespace" in main_source
+            or (
+                "build_api_runtime" in main_source
+                and "compatibility_exports" in main_source
+                and "compatibility_export_namespace" in runtime_source
+            )
+        ),
         "compatibility_helpers_present": compatibility_helpers_path.exists(),
-        "main_uses_compatibility_helpers": "compatibility_helper_namespace" in main_source,
+        "main_uses_compatibility_helpers": (
+            "compatibility_helper_namespace" in main_source
+            or (
+                "build_api_runtime" in main_source
+                and "compatibility_helpers" in main_source
+                and "compatibility_helper_namespace" in runtime_source
+            )
+        ),
         "main_direct_domain_import_count": len(direct_domain_imports),
         "main_direct_domain_imports": direct_domain_imports,
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),

@@ -6,22 +6,18 @@ from contextlib import asynccontextmanager
 from app.api.app_factory import create_app
 from app.api.compatibility_helpers import (
     LEGACY_DELEGATE_EXPORT_NAMES,
-    compatibility_helper_namespace,
 )
 from app.api.compatibility_exports import (
     COMPATIBILITY_EXPORT_NAMES,
     LEGACY_HELPER_EXPORT_NAMES,
-    compatibility_export_namespace,
 )
-from app.api.dependencies import build_service_factory_dependencies
-from app.api.service_factory import ApiServiceFactory
-from app.services.api_compatibility import ApiCompatibilityService
+from app.api.runtime import build_api_runtime
 
 
 LOGGER = logging.getLogger(__name__)
 
-_compatibility_exports = compatibility_export_namespace()
-globals().update(_compatibility_exports)
+_api_runtime = build_api_runtime(globals(), logger=LOGGER)
+_compatibility_exports = _api_runtime.compatibility_exports
 init_db = _compatibility_exports["init_db"]
 candidate_revalidation = _compatibility_exports["candidate_revalidation"]
 FollowUpRunRequest = _compatibility_exports["FollowUpRunRequest"]
@@ -33,12 +29,7 @@ __all__ = [
     "_api_services",
 ]
 
-
-_compatibility_helpers = compatibility_helper_namespace(
-    lambda: _api_compatibility,
-    globals_provider=lambda: globals(),
-)
-globals().update(_compatibility_helpers)
+_compatibility_helpers = _api_runtime.compatibility_helpers
 get_report_follow_up_plan = _compatibility_helpers["get_report_follow_up_plan"]
 maybe_auto_start_required_follow_up = _compatibility_helpers["maybe_auto_start_required_follow_up"]
 run_report_follow_up = _compatibility_helpers["run_report_follow_up"]
@@ -50,13 +41,8 @@ async def lifespan(_app):
     yield
 
 
-_api_services = ApiServiceFactory(build_service_factory_dependencies(globals()), logger=LOGGER)
-_api_compatibility = ApiCompatibilityService(
-    api_services=_api_services,
-    candidate_revalidation_module=candidate_revalidation,
-    follow_up_run_request_cls=FollowUpRunRequest,
-    logger=LOGGER,
-)
+_api_services = _api_runtime.api_services
+_api_compatibility = _api_runtime.api_compatibility
 
 app = create_app(
     api_services=_api_services,

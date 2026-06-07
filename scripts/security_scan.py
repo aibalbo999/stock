@@ -135,14 +135,14 @@ def run_detect_secrets(
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     baseline: Path | None = None,
 ) -> list[dict]:
+    baseline_path = baseline or (root / DEFAULT_DETECT_SECRETS_BASELINE)
     relative_paths = [
         str(path.relative_to(root))
         for path in paths
-        if path.exists() and path.is_file()
+        if path.exists() and path.is_file() and path.resolve() != baseline_path.resolve()
     ]
     if not relative_paths:
         return []
-    baseline_path = baseline or (root / DEFAULT_DETECT_SECRETS_BASELINE)
     hook_command = external_engine_command("detect-secrets-hook")
     if baseline_path.exists() and hook_command is not None:
         completed = runner(

@@ -21,6 +21,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
         "architecture": {
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
+            "streamlit_mpa_background_tasks": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {}},
             "secret_scanning": {"status": "ready", "evidence": {}},
         },
@@ -171,3 +172,21 @@ def test_upgrade_audit_fails_required_capability_regression() -> None:
     assert audit["deployment"]["status"] == "caution"
     assert any(check["capability"] == "reranking" for check in audit["failures"])
     assert audit["areas"]["ai_rag"]["failures"] == 1
+
+
+def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "architecture.streamlit_mpa_background_tasks": {
+                    "status": "degraded",
+                    "evidence": {"asyncio_run_count": 1, "long_blocking_post_timeout_present": True},
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    assert any(check["capability"] == "streamlit_mpa_background_tasks" for check in audit["failures"])
+    assert audit["areas"]["architecture"]["failures"] == 1

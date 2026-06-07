@@ -273,6 +273,16 @@ def test_service_status_shape() -> None:
         "gitleaks",
         "local_regex",
     }
+    assert status["frontend"]["streamlit_entry_uses_navigation"] is True
+    assert status["frontend"]["page_count"] >= 4
+    assert status["frontend"]["expected_pages_present"] is True
+    assert status["frontend"]["external_css_loaded"] is True
+    assert status["frontend"]["uses_task_enqueue_helper"] is True
+    assert status["frontend"]["uses_task_status_panel"] is True
+    assert status["frontend"]["asyncio_run_count"] == 0
+    assert status["frontend"]["long_blocking_post_timeout_present"] is False
+    assert status["frontend"]["sync_report_generate_used"] is False
+    assert status["frontend"]["api_task_queue_timeout_seconds"] == 20
     assert status["candidate_confidence"]["high_threshold"] == HIGH_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["medium_threshold"] == MEDIUM_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["source_credibility_weights"]["official"] == 1.0
@@ -383,6 +393,14 @@ def test_service_status_shape() -> None:
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_alias_only"] is True
     assert matrix["architecture"]["workflow_orchestration"]["status"] == "ready"
+    frontend_arch = matrix["architecture"]["streamlit_mpa_background_tasks"]
+    assert frontend_arch["status"] == "ready"
+    assert frontend_arch["evidence"]["streamlit_entry_uses_navigation"] is True
+    assert frontend_arch["evidence"]["expected_pages_present"] is True
+    assert frontend_arch["evidence"]["asyncio_run_count"] == 0
+    assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False
+    assert frontend_arch["evidence"]["sync_report_generate_used"] is False
+    assert all(frontend_arch["evidence"]["async_task_endpoint_coverage"].values())
     assert matrix["architecture"]["database_migrations"]["status"] in {"ready", "degraded"}
     assert matrix["architecture"]["database_migrations"]["evidence"]["head_revision"]
     assert matrix["architecture"]["secret_scanning"]["status"] == "ready"

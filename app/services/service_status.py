@@ -76,6 +76,7 @@ def service_status() -> dict:
     )
     llm_observability = llm_observability_status(settings)
     visual_rag_runtime = visual_rag_status(settings)
+    frontend_status = _frontend_status()
     status = {
         "database": {
             "init_mode": settings.database_init_mode,
@@ -100,6 +101,7 @@ def service_status() -> dict:
             "base_retry_delay_seconds": max(0.0, float(settings.llm_base_retry_delay_seconds)),
             "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
         },
+        "frontend": frontend_status,
         "llm_observability": llm_observability,
         "finmind": {
             "configured": bool(settings.finmind_token),
@@ -313,6 +315,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
     market_cache_status = status.get("market_data_cache") or {}
     company_filing_status = status.get("company_filings") or {}
     api_status = _api_controller_status()
+    frontend_status = status.get("frontend") or {}
     security_scan_status = status.get("security_scanning") or {}
     market_provider_readiness = _market_data_provider_readiness(
         market_cache_status,
@@ -623,6 +626,24 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "local_fallback_enabled": workflow_status.get("local_fallback_enabled"),
                     "fallback_reason": workflow_status.get("fallback_reason"),
                 },
+            ),
+            "streamlit_mpa_background_tasks": _capability(
+                "ready"
+                if frontend_status.get("streamlit_entry_uses_navigation")
+                and int(frontend_status.get("page_count") or 0) >= 4
+                and frontend_status.get("expected_pages_present")
+                and frontend_status.get("external_css_loaded")
+                and frontend_status.get("uses_task_enqueue_helper")
+                and frontend_status.get("uses_task_status_panel")
+                and frontend_status.get("asyncio_run_count") == 0
+                and not frontend_status.get("long_blocking_post_timeout_present")
+                and not frontend_status.get("sync_report_generate_used")
+                else "degraded",
+                evidence=frontend_status,
+                detail=(
+                    "Streamlit uses a multi-page shell, external CSS, and FastAPI/Celery task "
+                    "enqueue/status polling instead of running long ingestion/report calls inline."
+                ),
             ),
             "database_migrations": _capability(
                 "ready"
@@ -962,6 +983,97 @@ def _api_controller_status() -> dict:
         "legacy_facade_alias_only": "ApiCompatibilityService" in legacy_facade_source
         and "class LegacyApiFacade(ApiCompatibilityService)" in legacy_facade_source,
     }
+
+
+def _frontend_status() -> dict:
+    root = Path(__file__).resolve().parents[2]
+    streamlit_path = root / "streamlit_app.py"
+    pages_dir = root / "pages"
+    ui_dir = root / "app" / "ui"
+    style_path = ui_dir / "styles" / "stock_dashboard.css"
+    streamlit_source = _read_text(streamlit_path)
+    ui_paths = [
+        ui_dir / "dashboard_core.py",
+        ui_dir / "analysis_workspace.py",
+        ui_dir / "report_center.py",
+        ui_dir / "data_enrichment.py",
+        ui_dir / "system_settings.py",
+        ui_dir / "system_settings_maintenance.py",
+        ui_dir / "streamlit_dashboard.py",
+    ]
+    ui_source = "\n".join(_read_text(path) for path in ui_paths)
+    pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
+    async_task_endpoints = [
+        "/pipeline/run_discovered_async",
+        "/reports/generate_async",
+        "/tasks/data-operation",
+        "/follow-up/run_async",
+    ]
+    sync_report_generate_used = any(
+        pattern in ui_source
+        for pattern in (
+            'api_post("/reports/generate",',
+            "api_post('/reports/generate',",
+            'api_task_post("/reports/generate",',
+            "api_task_post('/reports/generate',",
+        )
+    )
+    return {
+        "streamlit_app_lines": len(streamlit_source.splitlines()) if streamlit_source else None,
+        "streamlit_entry_uses_navigation": "st.navigation" in streamlit_source
+        and "st.Page" in streamlit_source,
+        "page_count": len(pages),
+        "pages": pages,
+        "expected_pages_present": all(
+            page in pages
+            for page in [
+                "01_分析工作區.py",
+                "02_報告中心.py",
+                "03_資料補強.py",
+                "04_系統設定.py",
+            ]
+        ),
+        "ui_modules_present": [path.name for path in ui_paths if path.exists()],
+        "external_css_path": str(style_path.relative_to(root)),
+        "external_css_loaded": style_path.exists()
+        and "STYLE_PATH.read_text" in ui_source
+        and "unsafe_allow_html=True" in ui_source,
+        "asyncio_run_count": ui_source.count("asyncio.run") + streamlit_source.count("asyncio.run"),
+        "long_blocking_post_timeout_present": "timeout=900" in ui_source,
+        "api_write_timeout_seconds": _frontend_constant_value(ui_source, "API_WRITE_TIMEOUT_SECONDS"),
+        "api_task_queue_timeout_seconds": _frontend_constant_value(
+            ui_source,
+            "API_TASK_QUEUE_TIMEOUT_SECONDS",
+        ),
+        "uses_task_enqueue_helper": "def api_task_post(" in ui_source,
+        "uses_task_status_panel": "def render_task_status_panel(" in ui_source
+        and '"fragment"' in ui_source
+        and "run_every" in ui_source,
+        "async_task_endpoints": async_task_endpoints,
+        "async_task_endpoint_coverage": {
+            endpoint: endpoint in ui_source for endpoint in async_task_endpoints
+        },
+        "sync_report_generate_used": sync_report_generate_used,
+        "data_operation_endpoint_used": "/tasks/data-operation" in ui_source,
+    }
+
+
+def _frontend_constant_value(source: str, name: str) -> int | None:
+    prefix = f"{name} = "
+    for line in source.splitlines():
+        if line.startswith(prefix):
+            try:
+                return int(line.removeprefix(prefix).strip())
+            except ValueError:
+                return None
+    return None
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
 
 def _security_scan_status() -> dict:

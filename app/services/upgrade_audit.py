@@ -117,6 +117,16 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "architecture",
+        "streamlit_mpa_background_tasks",
+        "Streamlit MPA 與背景任務輪詢",
+        ("upgrade_capability_matrix", "architecture", "streamlit_mpa_background_tasks"),
+        remediation=(
+            "確認 streamlit_app.py 使用 st.navigation/pages，CSS 已外部化，"
+            "分析/補資料/補強改走 FastAPI/Celery task endpoint，且 UI source 沒有 asyncio.run 或長 POST timeout。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
         "database_migrations",
         "Alembic database migrations",
         ("upgrade_capability_matrix", "architecture", "database_migrations"),

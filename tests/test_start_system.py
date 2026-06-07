@@ -39,6 +39,7 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
         "architecture": {
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
+            "streamlit_mpa_background_tasks": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {"up_to_date": True}},
             "secret_scanning": {"status": "ready", "evidence": {}},
         },

@@ -119,6 +119,11 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
         "data_operation": True,
         "report_follow_up": True,
     }
+    assert evidence["sync_report_network_refresh_opt_in"] is True
+    assert evidence["sync_report_pre_refresh_default_enabled"] is False
+    assert evidence["sync_report_quality_recovery_default_enabled"] is False
+    assert evidence["sync_report_blocking_async_refresh_calls_present"] is True
+    assert evidence["sync_report_blocking_async_calls_gated"] is True
     assert evidence["compatibility_service_present"] is True
     assert evidence["main_imports_legacy_facade"] is False
     assert evidence["legacy_facade_present"] is True

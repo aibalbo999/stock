@@ -35,6 +35,7 @@ def architecture_capabilities(
             and not api_status.get("compatibility_exports_imports_tasks")
             and api_status.get("main_direct_domain_import_count") == 0
             and api_status.get("structured_task_submission_errors")
+            and api_status.get("sync_report_network_refresh_opt_in")
             and api_status.get("report_service_factory_extracted")
             and api_status.get("data_service_factory_extracted")
             and api_status.get("workflow_service_factory_extracted")
@@ -44,7 +45,7 @@ def architecture_capabilities(
             evidence=api_status,
             detail=(
                 "FastAPI main is a thin app entry; routers, app assembly, legacy helper exports, "
-                "and use-case services live in separate modules."
+                "use-case services, and opt-in sync report network refresh wiring live in separate modules."
             ),
         ),
         "workflow_orchestration": _capability(

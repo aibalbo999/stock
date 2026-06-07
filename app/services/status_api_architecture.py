@@ -16,6 +16,8 @@ def api_controller_status() -> dict:
     run_task_api_path = app_dir / "services" / "run_task_api.py"
     persistence_path = app_dir / "services" / "persistence.py"
     task_failure_diagnostics_path = app_dir / "services" / "task_failure_diagnostics.py"
+    config_path = app_dir / "core" / "config.py"
+    report_generation_api_path = app_dir / "services" / "report_generation_api.py"
     main_source = ""
     runtime_source = ""
     tasks_source = ""
@@ -60,6 +62,14 @@ def api_controller_status() -> dict:
         task_failure_diagnostics_source = task_failure_diagnostics_path.read_text(encoding="utf-8")
     except OSError:
         task_failure_diagnostics_source = ""
+    try:
+        config_source = config_path.read_text(encoding="utf-8")
+    except OSError:
+        config_source = ""
+    try:
+        report_generation_api_source = report_generation_api_path.read_text(encoding="utf-8")
+    except OSError:
+        report_generation_api_source = ""
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
@@ -108,6 +118,21 @@ def api_controller_status() -> dict:
             )
         )
     ]
+    sync_report_blocking_async_refresh_calls = (
+        "return asyncio.run(self.ingestion_pipeline_cls().pre_report_refresh(request))"
+        in report_generation_api_source
+        or "market_summary = asyncio.run(" in report_generation_api_source
+    )
+    sync_report_async_refresh_gates_present = (
+        '"IngestionPipeline"] if sync_pre_refresh_enabled else None'
+        in report_service_factory_source
+        and '"IngestionPipeline"] if sync_quality_recovery_enabled else None'
+        in report_service_factory_source
+    )
+    sync_report_refresh_defaults_disabled = (
+        "sync_report_pre_refresh_enabled: bool = False" in config_source
+        and "sync_report_quality_recovery_enabled: bool = False" in config_source
+    )
     return {
         "collector_path": "app/services/status_api_architecture.py",
         "main_py_lines": main_py_lines,
@@ -207,6 +232,24 @@ def api_controller_status() -> dict:
             "report_follow_up": 'operation="report_follow_up"' in report_routes_source
             and "task_submission_failed_detail" in report_routes_source,
         },
+        "sync_report_network_refresh_opt_in": sync_report_refresh_defaults_disabled
+        and (
+            not sync_report_blocking_async_refresh_calls
+            or sync_report_async_refresh_gates_present
+        ),
+        "sync_report_pre_refresh_default_enabled": (
+            "sync_report_pre_refresh_enabled: bool = True" in config_source
+        ),
+        "sync_report_quality_recovery_default_enabled": (
+            "sync_report_quality_recovery_enabled: bool = True" in config_source
+        ),
+        "sync_report_blocking_async_refresh_calls_present": (
+            sync_report_blocking_async_refresh_calls
+        ),
+        "sync_report_blocking_async_calls_gated": (
+            not sync_report_blocking_async_refresh_calls
+            or sync_report_async_refresh_gates_present
+        ),
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),
         "main_imports_legacy_facade": "app.api.legacy_facade" in main_source
         or "LegacyApiFacade" in main_source,

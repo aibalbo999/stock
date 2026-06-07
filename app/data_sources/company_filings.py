@@ -65,6 +65,37 @@ MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
 BROWSER_RENDER_PROVIDERS = {"browserless", "generic", "flaresolverr", "scrapingbee", "brightdata"}
+STRUCTURED_API_PROVIDER_PROFILES = {
+    "tej": {
+        "label": "TEJ structured company filings",
+        "auth_mode": "bearer",
+        "token_location": "authorization_header",
+        "document_type_param": "document_type",
+        "request_param_keys": ["ticker", "company_name", "limit", "document_type"],
+    },
+    "scrapingbee_dataset": {
+        "label": "ScrapingBee dataset/API fallback",
+        "auth_mode": "query_param",
+        "token_location": "query_param",
+        "token_param": "api_key",
+        "document_type_param": "document_types",
+        "request_param_keys": ["ticker", "company_name", "limit", "document_types", "api_key"],
+    },
+    "brightdata_dataset": {
+        "label": "BrightData dataset/API fallback",
+        "auth_mode": "bearer",
+        "token_location": "authorization_header",
+        "document_type_param": "document_types",
+        "request_param_keys": ["ticker", "company_name", "limit", "document_types"],
+    },
+    "custom": {
+        "label": "Custom structured company filing API",
+        "auth_mode": "bearer_optional",
+        "token_location": "authorization_header",
+        "document_type_param": "document_types",
+        "request_param_keys": ["ticker", "company_name", "limit", "document_types"],
+    },
+}
 PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
 RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES = {
     "blocked_or_forbidden",
@@ -411,15 +442,36 @@ def company_filing_structured_api_status() -> dict:
     endpoint = str(settings.company_filing_structured_api_url or "").strip()
     configured = bool(provider and endpoint)
     parsed = urlparse(endpoint)
+    profile = structured_api_provider_profile(provider)
     return {
         "configured": configured,
         "provider": provider or None,
-        "supported_provider_examples": ["tej", "scrapingbee_dataset", "brightdata_dataset", "custom"],
+        "provider_profile": profile,
+        "provider_profile_key": profile["profile_key"],
+        "supported_provider_examples": list(STRUCTURED_API_PROVIDER_PROFILES),
+        "supported_provider_profiles": {
+            key: {
+                "label": value["label"],
+                "auth_mode": value["auth_mode"],
+                "token_location": value["token_location"],
+                "document_type_param": value["document_type_param"],
+                "request_param_keys": value["request_param_keys"],
+            }
+            for key, value in STRUCTURED_API_PROVIDER_PROFILES.items()
+        },
         "url_configured": bool(endpoint),
         "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
         "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
+        "request_contract": {
+            "method": "GET",
+            "auth_mode": profile["auth_mode"],
+            "token_location": profile["token_location"],
+            "query_param_keys": profile["request_param_keys"],
+            "document_type_param": profile["document_type_param"],
+            "response_rows": ["documents", "data", "results", "items", "records", "list"],
+        },
         "contract": (
-            "GET JSON with documents/data/results/items/records rows; supported aliases include "
+            "GET JSON with documents/data/results/items/records/list rows; supported aliases include "
             "title/headline/doc_title, text/content/body/abstract, url/file_url/download_url, "
             "publisher/source_name, published_at/publish_date/report_date, document_type/doc_type/category."
         ),
@@ -437,6 +489,54 @@ def company_filing_structured_api_status() -> dict:
         else "missing_structured_api_provider_or_url"
         if not configured
         else "invalid_structured_api_url",
+    }
+
+
+def structured_api_provider_profile(provider: str) -> dict:
+    provider_key = str(provider or "").strip().lower() or "custom"
+    profile_key = provider_key if provider_key in STRUCTURED_API_PROVIDER_PROFILES else "custom"
+    profile = dict(STRUCTURED_API_PROVIDER_PROFILES[profile_key])
+    profile["provider"] = provider_key
+    profile["profile_key"] = profile_key
+    profile["profile_supported"] = provider_key in STRUCTURED_API_PROVIDER_PROFILES or profile_key == "custom"
+    return profile
+
+
+def structured_api_request_contract(
+    *,
+    provider: str,
+    endpoint: str,
+    token: str = "",
+    ticker: str,
+    company_name: str = "",
+    limit: int = 3,
+    document_types: list[str] | tuple[str, ...] | None = None,
+) -> dict:
+    profile = structured_api_provider_profile(provider)
+    headers = {"Accept": "application/json"}
+    params: dict[str, object] = {
+        "ticker": ticker,
+        "company_name": company_name,
+        "limit": max(1, int(limit)),
+    }
+    requested_types = ",".join(document_types or ())
+    if requested_types:
+        params[str(profile["document_type_param"])] = requested_types
+    normalized_token = str(token or "").strip()
+    if normalized_token and profile["token_location"] == "authorization_header":
+        headers["Authorization"] = f"Bearer {normalized_token}"
+    elif normalized_token and profile["token_location"] == "query_param":
+        params[str(profile.get("token_param") or "api_key")] = normalized_token
+    return {
+        "method": "GET",
+        "provider": profile["provider"],
+        "profile_key": profile["profile_key"],
+        "endpoint": endpoint,
+        "headers": headers,
+        "params": params,
+        "auth_mode": profile["auth_mode"],
+        "token_location": profile["token_location"],
+        "document_type_param": profile["document_type_param"],
     }
 
 
@@ -1165,25 +1265,24 @@ class CompanyFilingFetcher:
         settings = get_settings()
         endpoint = str(settings.company_filing_structured_api_url or "").strip()
         provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
-        headers = {"Accept": "application/json"}
         token = str(settings.company_filing_structured_api_token or "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        params = {
-            "ticker": ticker,
-            "company_name": company_name,
-            "limit": max(1, int(limit)),
-        }
-        if document_types:
-            params["document_types"] = ",".join(document_types)
+        request_contract = structured_api_request_contract(
+            provider=provider,
+            endpoint=endpoint,
+            token=token,
+            ticker=ticker,
+            company_name=company_name,
+            limit=limit,
+            document_types=document_types,
+        )
         try:
             response = await company_filing_fetch_response_with_retries(
-                "GET",
-                endpoint,
+                request_contract["method"],
+                request_contract["endpoint"],
                 timeout=max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
                 follow_redirects=True,
-                headers=headers,
-                params=params,
+                headers=request_contract["headers"],
+                params=request_contract["params"],
             )
             rows = structured_api_document_rows(response.json())
             documents = [
@@ -1816,6 +1915,7 @@ def structured_api_document_rows(payload: object) -> list[dict]:
             or payload.get("results")
             or payload.get("items")
             or payload.get("records")
+            or payload.get("list")
             or []
         )
     else:

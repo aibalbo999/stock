@@ -70,6 +70,12 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["structured_api_provider"] is None
     assert status["company_filings"]["structured_api_url_configured"] is False
     assert status["company_filings"]["structured_api_token_configured"] is False
+    assert status["company_filings"]["structured_api_runtime"]["provider_profile_key"] == "custom"
+    assert status["company_filings"]["structured_api_runtime"]["request_contract"]["method"] == "GET"
+    assert "tej" in status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"]
+    assert status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"][
+        "scrapingbee_dataset"
+    ]["token_location"] == "query_param"
     assert "structured_company_filing_sample.json" in status["company_filings"][
         "structured_api_runtime"
     ]["sample_contract_cli"]

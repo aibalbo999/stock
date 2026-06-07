@@ -223,6 +223,15 @@ def data_business_capabilities(
                 "provider": company_filing_status.get("structured_api_provider"),
                 "url_configured": company_filing_status.get("structured_api_url_configured"),
                 "token_configured": company_filing_status.get("structured_api_token_configured"),
+                "provider_profile_key": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("provider_profile_key"),
+                "request_contract": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("request_contract"),
+                "supported_provider_examples": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("supported_provider_examples"),
                 "runtime": company_filing_status.get("structured_api_runtime"),
             },
             detail=(

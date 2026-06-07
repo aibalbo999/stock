@@ -117,6 +117,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     structured_api = matrix["data_business_logic"]["company_filing_structured_api_fallback"]
     assert structured_api["status"] == "not_configured"
     assert structured_api["evidence"]["configured"] is False
+    assert structured_api["evidence"]["provider_profile_key"] == "custom"
+    assert structured_api["evidence"]["request_contract"]["method"] == "GET"
+    assert "scrapingbee_dataset" in structured_api["evidence"]["supported_provider_examples"]
     assert (
         structured_api["evidence"]["runtime"]["fallback_reason"]
         == "missing_structured_api_provider_or_url"

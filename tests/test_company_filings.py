@@ -40,6 +40,8 @@ from app.data_sources.company_filings import (
     parse_mops_annual_report_rows,
     parse_mops_roc_datetime,
     structured_api_document_rows,
+    structured_api_provider_profile,
+    structured_api_request_contract,
     validate_fetched_company_filing_document,
     validate_public_document_url,
 )
@@ -160,9 +162,10 @@ def test_company_filing_browser_render_is_explicitly_configured(monkeypatch) -> 
 
 
 def test_company_filing_structured_api_status_requires_provider_and_url(monkeypatch) -> None:
+    token = "tej-" + "token"
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
-    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", "tej-token")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
     get_settings.cache_clear()
     try:
         assert company_filing_structured_api_configured() is True
@@ -174,6 +177,12 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["provider"] == "tej"
     assert status["url_configured"] is True
     assert status["token_configured"] is True
+    assert status["provider_profile_key"] == "tej"
+    assert status["provider_profile"]["auth_mode"] == "bearer"
+    assert status["request_contract"]["token_location"] == "authorization_header"
+    assert status["request_contract"]["document_type_param"] == "document_type"
+    assert "tej" in status["supported_provider_profiles"]
+    assert status["supported_provider_profiles"]["scrapingbee_dataset"]["token_location"] == "query_param"
     assert status["smoke_cli"].endswith(
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
@@ -186,12 +195,110 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["fallback_reason"] is None
 
 
+def test_structured_api_provider_profiles_and_request_contracts() -> None:
+    tej_profile = structured_api_provider_profile("tej")
+    scrapingbee_profile = structured_api_provider_profile("scrapingbee_dataset")
+    custom_profile = structured_api_provider_profile("unknown_provider")
+    tej_token = "tej-" + "token"
+    bee_token = "bee-" + "token"
+
+    assert tej_profile["profile_key"] == "tej"
+    assert tej_profile["document_type_param"] == "document_type"
+    assert scrapingbee_profile["token_location"] == "query_param"
+    assert custom_profile["profile_key"] == "custom"
+    assert custom_profile["provider"] == "unknown_provider"
+
+    tej_contract = structured_api_request_contract(
+        provider="tej",
+        endpoint="https://api.tej.example/filings",
+        token=tej_token,
+        ticker="2330",
+        company_name="台積電",
+        limit=2,
+        document_types=["investor_presentation"],
+    )
+    scrapingbee_contract = structured_api_request_contract(
+        provider="scrapingbee_dataset",
+        endpoint="https://app.scrapingbee.example/dataset",
+        token=bee_token,
+        ticker="2330",
+        company_name="台積電",
+        document_types=["investor_presentation"],
+    )
+
+    assert tej_contract["headers"]["Authorization"] == f"Bearer {tej_token}"
+    assert tej_contract["params"]["document_type"] == "investor_presentation"
+    assert "api_key" not in tej_contract["params"]
+    assert scrapingbee_contract["headers"] == {"Accept": "application/json"}
+    assert scrapingbee_contract["params"]["api_key"] == bee_token
+    assert scrapingbee_contract["params"]["document_types"] == "investor_presentation"
+
+
 def test_structured_api_document_rows_accepts_common_payload_shapes() -> None:
     assert structured_api_document_rows({"documents": [{"title": "A"}, "bad"]}) == [{"title": "A"}]
     assert structured_api_document_rows({"data": [{"title": "B"}]}) == [{"title": "B"}]
     assert structured_api_document_rows({"items": [{"title": "C"}]}) == [{"title": "C"}]
     assert structured_api_document_rows({"records": [{"title": "D"}]}) == [{"title": "D"}]
+    assert structured_api_document_rows({"list": [{"title": "E"}]}) == [{"title": "E"}]
     assert structured_api_document_rows([{"title": "C"}]) == [{"title": "C"}]
+
+
+def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypatch) -> None:
+    captured = {}
+    token = "tej-" + "token"
+
+    class FakeResponse:
+        def json(self):
+            return {
+                "documents": [
+                    {
+                        "title": "2330 台積電 法說會簡報",
+                        "text": "2330 台積電 investor presentation 說明 AI/HPC 需求。",
+                        "url": "https://api.tej.example/documents/2330.pdf",
+                        "publisher": "TEJ",
+                        "published_at": "2026-05-01",
+                        "document_type": "investor_presentation",
+                    }
+                ]
+            }
+
+    async def fake_fetch_response(method, url, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return FakeResponse()
+
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
+        fake_fetch_response,
+    )
+    get_settings.cache_clear()
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_structured_api_documents(
+                "2330",
+                "台積電",
+                limit=2,
+                document_types=["investor_presentation"],
+            )
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert errors == []
+    assert len(documents) == 1
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://api.tej.example/filings"
+    assert captured["kwargs"]["headers"]["Authorization"] == f"Bearer {token}"
+    assert captured["kwargs"]["params"] == {
+        "ticker": "2330",
+        "company_name": "台積電",
+        "limit": 2,
+        "document_type": "investor_presentation",
+    }
 
 
 def test_structured_api_row_to_document_accepts_provider_alias_fields() -> None:
@@ -736,6 +843,7 @@ def test_company_filing_web_search_fetches_candidate_documents(monkeypatch) -> N
 
 def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> None:
     captured = {}
+    token = "tej-" + "token"
 
     class FakeAsyncClient:
         def __init__(self, **options) -> None:
@@ -771,7 +879,7 @@ def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> N
 
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
-    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", "tej-token")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
     monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
     monkeypatch.setattr(CompanyFilingFetcher, "google_news_urls", classmethod(lambda cls, *args, **kwargs: []))
     get_settings.cache_clear()
@@ -793,8 +901,8 @@ def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> N
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.tej.example/filings"
     assert captured["kwargs"]["params"]["ticker"] == "2330"
-    assert captured["kwargs"]["params"]["document_types"] == "investor_presentation"
-    assert captured["kwargs"]["headers"]["Authorization"] == "Bearer tej-token"
+    assert captured["kwargs"]["params"]["document_type"] == "investor_presentation"
+    assert captured["kwargs"]["headers"]["Authorization"] == f"Bearer {token}"
 
 
 def test_company_filing_web_search_errors_include_category(monkeypatch) -> None:

@@ -28,6 +28,7 @@ class GraphRAGGoldenCase:
     required_context_fragments: tuple[str, ...] = ()
     forbidden_context_fragments: tuple[str, ...] = ()
     expected_path_tickers: tuple[str, ...] = ()
+    forbidden_path_tickers: tuple[tuple[str, ...], ...] = ()
     expected_impact_direction: str = ""
     expected_no_path: bool = False
     expected_cypher_intent: str = ""
@@ -95,6 +96,7 @@ def format_graphrag_eval_summary(report: dict) -> str:
             ("missing context", "missing_context_fragments"),
             ("forbidden context", "forbidden_context_fragments_present"),
             ("missing path", "missing_path_tickers"),
+            ("forbidden path", "forbidden_path_tickers_present"),
             ("missing impact", "missing_impact_direction"),
             ("cypher mismatch", "cypher_mismatches"),
             ("missing validation errors", "missing_validation_errors"),
@@ -142,6 +144,11 @@ def _evaluate_reasoning_case(case: GraphRAGGoldenCase, *, graph: SupplyChainGrap
         for path in flattened_paths
     ):
         missing_path.append(" -> ".join(case.expected_path_tickers))
+    forbidden_paths = [
+        " -> ".join(forbidden)
+        for forbidden in case.forbidden_path_tickers
+        if any(tuple(path.get("path_tickers") or ()) == forbidden for path in flattened_paths)
+    ]
     missing_impact = []
     if case.expected_impact_direction and not any(
         path.get("impact_direction") == case.expected_impact_direction for path in flattened_paths
@@ -153,6 +160,7 @@ def _evaluate_reasoning_case(case: GraphRAGGoldenCase, *, graph: SupplyChainGrap
         len(case.required_context_fragments)
         + len(case.forbidden_context_fragments)
         + int(bool(case.expected_path_tickers))
+        + len(case.forbidden_path_tickers)
         + int(bool(case.expected_impact_direction))
         + int(case.expected_no_path)
         + len(cypher_mismatches["expected_checks"])
@@ -161,6 +169,7 @@ def _evaluate_reasoning_case(case: GraphRAGGoldenCase, *, graph: SupplyChainGrap
         len(missing_context)
         + len(forbidden_context)
         + len(missing_path)
+        + len(forbidden_paths)
         + len(missing_impact)
         + int(no_path_mismatch)
         + len(cypher_mismatches["failed"])
@@ -175,6 +184,7 @@ def _evaluate_reasoning_case(case: GraphRAGGoldenCase, *, graph: SupplyChainGrap
         "missing_context_fragments": missing_context,
         "forbidden_context_fragments_present": forbidden_context,
         "missing_path_tickers": missing_path,
+        "forbidden_path_tickers_present": forbidden_paths,
         "missing_impact_direction": missing_impact,
         "unexpected_paths_present": no_path_mismatch,
         "cypher_mismatches": cypher_mismatches["failed"],
@@ -286,6 +296,11 @@ def _golden_case_from_payload(payload: dict[str, Any], *, line_number: int) -> G
             str(item) for item in payload.get("forbidden_context_fragments") or []
         ),
         expected_path_tickers=tuple(str(item) for item in payload.get("expected_path_tickers") or []),
+        forbidden_path_tickers=tuple(
+            tuple(str(item) for item in path)
+            for path in payload.get("forbidden_path_tickers") or []
+            if isinstance(path, list)
+        ),
         expected_impact_direction=str(payload.get("expected_impact_direction") or ""),
         expected_no_path=bool(payload.get("expected_no_path")),
         expected_cypher_intent=str(payload.get("expected_cypher_intent") or ""),

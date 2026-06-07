@@ -88,6 +88,18 @@
           "ticker": "3231",
           "name": "緯創",
           "aliases": ["Wistron", "緯創資通"]
+        },
+        {
+          "ticker": "6669",
+          "name": "緯穎",
+          "aliases": ["Wiwynn", "緯穎科技"],
+          "evidence_keywords": ["AI 伺服器", "CSP", "資料中心"]
+        },
+        {
+          "ticker": "2317",
+          "name": "鴻海",
+          "aliases": ["Foxconn", "鴻海精密"],
+          "evidence_keywords": ["AI 伺服器", "機櫃", "CSP"]
         }
       ]
     },
@@ -99,6 +111,114 @@
           "ticker": "3324",
           "name": "雙鴻",
           "aliases": ["雙鴻科技", "Auras"]
+        },
+        {
+          "ticker": "3017",
+          "name": "奇鋐",
+          "aliases": ["奇鋐科技", "AVC"],
+          "evidence_keywords": ["液冷", "散熱", "CDU"]
+        }
+      ]
+    },
+    {
+      "id": "power_delivery",
+      "name": "電源與散熱",
+      "companies": [
+        {
+          "ticker": "2308",
+          "name": "台達電",
+          "aliases": ["Delta", "台達電子"],
+          "evidence_keywords": ["電源", "資料中心", "液冷"]
+        }
+      ]
+    },
+    {
+      "id": "server_mechanics",
+      "name": "AI 伺服器機構件",
+      "companies": [
+        {
+          "ticker": "2059",
+          "name": "川湖",
+          "aliases": ["King Slide", "川湖科技"],
+          "evidence_keywords": ["伺服器導軌", "AI 伺服器", "毛利率"]
+        }
+      ]
+    },
+    {
+      "id": "pcb_substrate",
+      "name": "AI 伺服器 PCB / ABF 載板",
+      "companies": [
+        {
+          "ticker": "2368",
+          "name": "金像電",
+          "aliases": ["金像電子"],
+          "evidence_keywords": ["AI 伺服器", "PCB", "高速板"]
+        },
+        {
+          "ticker": "3037",
+          "name": "欣興",
+          "aliases": ["Unimicron", "欣興電子"],
+          "evidence_keywords": ["ABF", "載板", "AI 伺服器"]
+        },
+        {
+          "ticker": "8046",
+          "name": "南電",
+          "aliases": ["Nan Ya PCB", "南亞電路板"],
+          "evidence_keywords": ["ABF", "載板", "AI 晶片"]
+        }
+      ]
+    },
+    {
+      "id": "high_speed_ccl",
+      "name": "高速 CCL / 低損耗材料",
+      "companies": [
+        {
+          "ticker": "6274",
+          "name": "台燿",
+          "aliases": ["台燿科技"],
+          "evidence_keywords": ["CCL", "高速材料", "AI 伺服器"]
+        },
+        {
+          "ticker": "2383",
+          "name": "台光電",
+          "aliases": ["台光電子"],
+          "evidence_keywords": ["CCL", "低損耗材料", "AI 伺服器"]
+        },
+        {
+          "ticker": "6213",
+          "name": "聯茂",
+          "aliases": ["聯茂電子"],
+          "evidence_keywords": ["CCL", "高速材料", "資料中心"]
+        }
+      ]
+    },
+    {
+      "id": "pcb_materials",
+      "name": "PCB 上游材料",
+      "companies": [
+        {
+          "ticker": "1815",
+          "name": "富喬",
+          "aliases": ["富喬工業"],
+          "evidence_keywords": ["玻纖布", "PCB", "AI 伺服器"]
+        },
+        {
+          "ticker": "8358",
+          "name": "金居",
+          "aliases": ["金居開發"],
+          "evidence_keywords": ["銅箔", "PCB", "AI 伺服器"]
+        }
+      ]
+    },
+    {
+      "id": "semiconductor_materials",
+      "name": "矽晶圓 / 半導體材料",
+      "companies": [
+        {
+          "ticker": "6488",
+          "name": "環球晶",
+          "aliases": ["GlobalWafers", "環球晶圓"],
+          "evidence_keywords": ["矽晶圓", "半導體材料", "AI 晶片"]
         }
       ]
     },

@@ -24,7 +24,11 @@ def test_supply_chain_graph_builds_taxonomy_edges_from_static_whitelist() -> Non
 
     assert ("3324", "2382", "structural_upstream_to") in edges
     assert ("3324", "3231", "structural_upstream_to") in edges
+    assert ("2308", "2382", "structural_upstream_to") in edges
+    assert ("2383", "2382", "structural_upstream_to") in edges
+    assert ("6488", "2330", "structural_upstream_to") in edges
     assert ("2382", "3231", "same_segment_peer") in edges
+    assert ("3324", "3017", "same_segment_peer") in edges
     assert graph.to_dict()["note"].startswith("GraphRAG edges are structural")
 
 
@@ -41,8 +45,8 @@ def test_supply_chain_graph_context_warns_not_to_treat_graph_as_supplier_proof()
 def test_supply_chain_graph_retrieval_hints_preserve_edge_direction() -> None:
     graph = SupplyChainWhitelist().graph()
 
-    server_hints = graph.retrieval_hints("2382")
-    thermal_hints = graph.retrieval_hints("3324")
+    server_hints = graph.retrieval_hints("2382", max_neighbors=20)
+    thermal_hints = graph.retrieval_hints("3324", max_neighbors=20)
 
     upstream_hint = next(hint for hint in server_hints if hint.ticker == "3324")
     downstream_hint = next(hint for hint in thermal_hints if hint.ticker == "2382")
@@ -145,6 +149,11 @@ def test_supply_chain_graph_classifier_handles_known_segments() -> None:
     assert categories["晶圓代工"] == "foundry"
     assert categories["AI 伺服器代工"] == "server_odm"
     assert categories["散熱"] == "power_thermal"
+    assert categories["電源與散熱"] == "power_thermal"
+    assert categories["AI 伺服器機構件"] == "server_components"
+    assert categories["AI 伺服器 PCB / ABF 載板"] == "pcb_substrate"
+    assert categories["高速 CCL / 低損耗材料"] == "pcb_substrate"
+    assert categories["矽晶圓 / 半導體材料"] == "semiconductor_materials"
 
 
 def test_supply_chain_graph_endpoint_can_focus_on_requested_ticker() -> None:

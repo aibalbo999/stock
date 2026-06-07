@@ -14,12 +14,21 @@ def test_default_graphrag_golden_set_passes() -> None:
     cases = load_graphrag_golden_cases("data/graphrag_reasoning_golden.jsonl")
     report = evaluate_graphrag_cases(cases)
 
-    assert report["case_count"] >= 4
+    assert report["case_count"] >= 13
     assert report["passed"] is True
     assert report["score"] == 1.0
     ids = {result["id"] for result in report["results"]}
     assert "thermal_to_odm_downstream_path" in ids
+    assert "cowos_equipment_to_foundry_path" in ids
     assert "server_odm_peer_path" in ids
+    assert "memory_peer_comparison_path" in ids
+    assert "ccl_to_odm_downstream_path" in ids
+    assert "copper_foil_to_odm_downstream_path" in ids
+    assert "silicon_wafer_to_foundry_path" in ids
+    assert "server_mechanics_to_odm_downstream_path" in ids
+    assert "power_to_odm_downstream_path" in ids
+    assert "thermal_peer_comparison_path" in ids
+    assert "pcb_peer_comparison_path" in ids
     assert "no_path_keeps_context_warning" in ids
     assert "guardrail_rejects_write_cypher" in ids
     guardrail = next(
@@ -52,6 +61,29 @@ def test_graphrag_eval_reports_missing_guardrail_error(tmp_path) -> None:
 
     assert report["passed"] is False
     assert report["results"][0]["missing_validation_errors"] == ["unknown_error_marker"]
+
+
+def test_graphrag_eval_reports_forbidden_path(tmp_path) -> None:
+    golden = tmp_path / "graphrag_forbidden_path.jsonl"
+    golden.write_text(
+        json.dumps(
+            {
+                "id": "bad-forbidden-path",
+                "tickers": ["3324"],
+                "target_ticker": "2382",
+                "expected_path_tickers": ["3324", "2382"],
+                "forbidden_path_tickers": [["3324", "2382"]],
+                "expected_validation_valid": True,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = evaluate_graphrag_cases(load_graphrag_golden_cases(golden))
+
+    assert report["passed"] is False
+    assert report["results"][0]["forbidden_path_tickers_present"] == ["3324 -> 2382"]
 
 
 def test_evaluate_graphrag_reasoning_cli(tmp_path) -> None:

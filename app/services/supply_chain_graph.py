@@ -114,17 +114,19 @@ class SegmentCategory:
 
 
 CATEGORY_SPECS = (
-    SegmentCategory("chip_design", "晶片/IP", ("算力晶片", "gpu", "晶片設計", "ai 晶片")),
     SegmentCategory("foundry", "晶圓製造", ("晶圓代工", "foundry", "台積電")),
     SegmentCategory("semiconductor_equipment", "半導體設備", ("設備", "先進封裝設備", "半導體設備")),
     SegmentCategory("advanced_packaging", "先進封裝", ("先進封裝", "cowos", "封裝", "封測")),
     SegmentCategory("pcb_substrate", "PCB/載板材料", ("pcb", "abf", "載板", "ccl", "高速板", "銅箔", "玻纖")),
     SegmentCategory("power_thermal", "電源/散熱", ("散熱", "液冷", "水冷", "電源", "cdu")),
+    SegmentCategory("server_components", "伺服器零組件/機構件", ("伺服器導軌", "伺服器機構件", "滑軌", "機構件")),
     SegmentCategory("server_odm", "伺服器/系統代工", ("ai 伺服器", "伺服器代工", "伺服器", "資料中心", "機櫃")),
+    SegmentCategory("semiconductor_materials", "半導體材料", ("矽晶圓", "半導體材料", "晶圓材料")),
     SegmentCategory("robot_sensing", "機器人感測/視覺", ("3d 視覺", "3d 感測", "機器視覺", "感測", "鏡頭", "視覺")),
     SegmentCategory("robot_components", "機器人零組件/控制", ("伺服驅動", "伺服馬達", "控制器", "滑軌", "螺桿", "減速器", "氣動", "傳動", "定位", "工業電腦", "機構件", "鎂鋁")),
     SegmentCategory("robot_systems", "機器人/自動化系統", ("協作型機器人", "系統整合", "自動化系統", "機器人")),
     SegmentCategory("materials", "基礎材料", ("材料", "矽晶圓", "化學", "特用氣體", "光阻", "cmp", "工程塑膠", "特殊鋼", "稀土", "磁材", "碳纖")),
+    SegmentCategory("chip_design", "晶片/IP", ("算力晶片", "gpu", "晶片設計", "ai 晶片")),
 )
 
 DOWNSTREAM_CATEGORIES = {
@@ -134,6 +136,8 @@ DOWNSTREAM_CATEGORIES = {
     "advanced_packaging": ("server_odm",),
     "pcb_substrate": ("server_odm",),
     "power_thermal": ("server_odm",),
+    "server_components": ("server_odm",),
+    "semiconductor_materials": ("foundry", "advanced_packaging"),
     "materials": ("foundry", "advanced_packaging", "pcb_substrate", "robot_components", "robot_systems"),
     "robot_sensing": ("robot_systems",),
     "robot_components": ("robot_systems",),

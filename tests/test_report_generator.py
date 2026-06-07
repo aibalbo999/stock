@@ -495,8 +495,8 @@ def test_document_matches_prefer_persisted_entity_metadata_over_text_guessing() 
 
 def test_generate_fails_when_dynamic_candidates_are_not_loaded() -> None:
     document = NewsFetcher.from_manual_text(
-        title="台達電 機器人伺服驅動",
-        text="台達電機器人伺服驅動與控制器需求升溫。",
+        title="上銀 機器人線性滑軌",
+        text="上銀機器人線性滑軌與滾珠螺桿需求升溫。",
         publisher="測試新聞",
         published_at=date(2026, 5, 20),
     )
@@ -525,7 +525,7 @@ def test_generate_fails_when_dynamic_candidates_are_not_loaded() -> None:
     try:
         ReportGenerator.generate(
             generator,
-            ReportRequest(topic="機器人 產業鏈", tickers=["2308"]),
+            ReportRequest(topic="機器人 產業鏈", tickers=["2049"]),
             documents=[document],
         )
     except ReportExecutionError as exc:
@@ -534,7 +534,7 @@ def test_generate_fails_when_dynamic_candidates_are_not_loaded() -> None:
         raise AssertionError("ReportExecutionError was not raised")
 
     assert generator.last_filtered_tickers == []
-    assert generator.last_dropped_tickers == ["2308"]
+    assert generator.last_dropped_tickers == ["2049"]
     assert generator.llm.called is False
 
 
@@ -570,17 +570,17 @@ def test_generate_fails_when_any_requested_ticker_is_dropped() -> None:
     try:
         ReportGenerator.generate(
             generator,
-            ReportRequest(topic="AI 與機器人混合主題", tickers=["2330", "2308"]),
+            ReportRequest(topic="AI 與機器人混合主題", tickers=["2330", "2049"]),
             documents=[document],
         )
     except ReportExecutionError as exc:
-        assert "2308" in str(exc)
+        assert "2049" in str(exc)
         assert "缺漏個股分析" in str(exc)
     else:
         raise AssertionError("ReportExecutionError was not raised")
 
     assert generator.last_filtered_tickers == ["2330"]
-    assert generator.last_dropped_tickers == ["2308"]
+    assert generator.last_dropped_tickers == ["2049"]
     assert generator.llm.called is False
 
 

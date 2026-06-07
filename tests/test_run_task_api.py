@@ -89,6 +89,30 @@ def _data_run(run_id: int = 21) -> SimpleNamespace:
     )
 
 
+def _follow_up_run(run_id: int = 22) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=run_id,
+        source="follow_up_api",
+        status="failed",
+        payload_json=json.dumps(
+            {
+                "source_report_id": 7,
+                "purpose": "tracking",
+                "force_refresh": True,
+                "rerun_report_requested": False,
+                "news_limit": 12,
+                "record_noop": True,
+                "celery_task_id": "task-followup",
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error="follow-up failed",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+
 def test_run_task_service_queues_async_report_after_whitelist_check() -> None:
     captured = {}
 
@@ -527,4 +551,46 @@ def test_run_task_service_retries_data_operation_from_run_payload() -> None:
     assert captured["payload"] == {
         "operation": "market_refresh",
         "payload": {"tickers": ["2330"]},
+    }
+
+
+def test_run_task_service_retries_follow_up_with_original_options() -> None:
+    captured = {}
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            return _follow_up_run() if task_id == "task-followup" else None
+
+    class FakeTask:
+        def delay(self, payload):
+            captured["payload"] = payload
+            return SimpleNamespace(id="task-followup-retry")
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        report_follow_up_task=FakeTask(),
+    )
+
+    response = service.retry_task("task-followup")
+
+    assert response["task_id"] == "task-followup-retry"
+    assert response["retried_from_task_id"] == "task-followup"
+    assert response["retried_from_run_id"] == 22
+    assert captured["payload"] == {
+        "report_id": 7,
+        "payload": {
+            "purpose": "tracking",
+            "force_refresh": True,
+            "record_noop": True,
+            "news_limit": 12,
+            "rerun_report": False,
+        },
     }

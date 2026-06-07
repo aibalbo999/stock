@@ -228,8 +228,7 @@ class ReportFollowUpRunService:
             "freshness": freshness,
             "planned_actions": [action.to_dict() for action in actions],
             "rerun_report": payload.rerun_report,
-            "purpose": payload.purpose,
-            "force_refresh": payload.force_refresh,
+            **self._follow_up_request_options(payload),
         }
         if celery_task_id:
             run_payload["celery_task_id"] = celery_task_id
@@ -265,8 +264,7 @@ class ReportFollowUpRunService:
             "candidate_audit_required": candidate_audit_required,
             "available_actions": [action.to_dict() for action in all_actions],
             "planned_actions": [],
-            "purpose": payload.purpose,
-            "force_refresh": payload.force_refresh,
+            **self._follow_up_request_options(payload),
             "summary": {
                 "available": available_summary,
                 "selected": selected_summary,
@@ -409,8 +407,7 @@ class ReportFollowUpRunService:
             "execution": execution,
             "rerun_report": response_payload["rerun_report"],
             "candidate_whitelist": persisted_candidates,
-            "purpose": payload.purpose,
-            "force_refresh": payload.force_refresh,
+            **self._follow_up_request_options(payload),
             "summary": response_payload["summary"],
         }
         if celery_task_id:
@@ -433,6 +430,16 @@ class ReportFollowUpRunService:
             "skipped_actions": skipped_action_payloads,
             "skipped_details": skipped_details,
             "thresholds": self.tracking_freshness_thresholds,
+        }
+
+    @staticmethod
+    def _follow_up_request_options(payload: Any) -> dict[str, Any]:
+        return {
+            "rerun_report_requested": payload.rerun_report,
+            "news_limit": payload.news_limit,
+            "record_noop": payload.record_noop,
+            "purpose": payload.purpose,
+            "force_refresh": payload.force_refresh,
         }
 
     def _mark_run_cancelled(self, run_id: int, reason: str) -> None:

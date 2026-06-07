@@ -83,6 +83,7 @@ def test_follow_up_run_service_records_noop_when_requested() -> None:
 
         def start(self, source, payload):
             captured["start_source"] = source
+            captured["start_payload"] = payload
             return FakeRun()
 
         def update_payload(self, run_id, payload):
@@ -94,14 +95,20 @@ def test_follow_up_run_service_records_noop_when_requested() -> None:
     result = run_async(
         _service(analysis_run_repository_cls=FakeRunRepository).run(
             7,
-            _payload(record_noop=True),
+            _payload(record_noop=True, rerun_report=False, news_limit=18),
         )
     )
 
     assert result["status"] == "no_action_required"
     assert result["run_id"] == 42
     assert captured["start_source"] == "follow_up_api"
+    assert captured["start_payload"]["rerun_report_requested"] is False
+    assert captured["start_payload"]["news_limit"] == 18
+    assert captured["start_payload"]["record_noop"] is True
     assert captured["updated_payload"]["status"] == "no_action_required"
+    assert captured["updated_payload"]["rerun_report_requested"] is False
+    assert captured["updated_payload"]["news_limit"] == 18
+    assert captured["updated_payload"]["record_noop"] is True
     assert captured["success"] == (42, 7)
 
 
@@ -163,7 +170,13 @@ def test_follow_up_run_service_force_refresh_creates_manual_tracking_actions() -
         "rerun_analysis",
     ]
     assert captured["news_limit"] == 100
+    assert captured["start_payload"]["rerun_report_requested"] is False
+    assert captured["start_payload"]["news_limit"] == 100
+    assert captured["start_payload"]["record_noop"] is False
     assert captured["updated_payload"]["force_refresh"] is True
+    assert captured["updated_payload"]["rerun_report_requested"] is False
+    assert captured["updated_payload"]["news_limit"] == 100
+    assert captured["updated_payload"]["record_noop"] is False
     assert captured["success"] == (43, 7)
 
 

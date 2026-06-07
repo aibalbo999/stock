@@ -252,11 +252,7 @@ class RunTaskApiService:
             retried = self.queue_data_operation(operation, operation_payload)
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         if payload.get("source_report_id") is not None:
-            follow_up_payload = {
-                key: payload.get(key)
-                for key in ("purpose", "force_refresh")
-                if key in payload
-            }
+            follow_up_payload = self._follow_up_retry_payload(payload)
             retried = self.queue_report_follow_up(int(payload["source_report_id"]), follow_up_payload)
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
@@ -274,6 +270,23 @@ class RunTaskApiService:
             except TypeError:
                 return dump()
         return dict(payload or {})
+
+    @staticmethod
+    def _follow_up_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        retry_payload = {
+            key: payload.get(key)
+            for key in ("purpose", "force_refresh", "record_noop", "news_limit")
+            if key in payload
+        }
+        if "rerun_report_requested" in payload:
+            retry_payload["rerun_report"] = bool(payload.get("rerun_report_requested"))
+        elif isinstance(payload.get("rerun_report"), bool):
+            retry_payload["rerun_report"] = payload["rerun_report"]
+        elif isinstance(payload.get("rerun_report"), dict):
+            retry_payload["rerun_report"] = True
+        elif "rerun_report" in payload:
+            retry_payload["rerun_report"] = False
+        return retry_payload
 
     @staticmethod
     def _delay_task(task: Any, payload: dict[str, Any], operation: str) -> Any:

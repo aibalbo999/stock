@@ -10,6 +10,9 @@ from app.ui.api_client import api_get, api_post, request_error_message
 from app.ui.dashboard_core import render_section_header
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
+    task_queue_health_alert,
+    task_queue_health_rows,
+    task_queue_smoke_command,
     upgrade_audit_html,
     upgrade_audit_rows,
 )
@@ -190,6 +193,24 @@ def render_maintenance_tab() -> None:
             )
 
     with st.expander("背景任務觀測", expanded=False):
+        st.caption("Queue / Worker readiness")
+        st.dataframe(task_queue_health_rows(service_snapshot), width="stretch", hide_index=True)
+        queue_alert = task_queue_health_alert(service_snapshot)
+        if queue_alert:
+            message = str(queue_alert.get("message") or "")
+            if queue_alert.get("severity") == "error":
+                st.error(message)
+            elif queue_alert.get("severity") == "warning":
+                st.warning(message)
+            elif queue_alert.get("severity") == "success":
+                st.success(message)
+            else:
+                st.info(message)
+        smoke_command = task_queue_smoke_command(service_snapshot)
+        if smoke_command:
+            st.caption("診斷指令")
+            st.code(smoke_command, language="bash")
+
         task_totals = task_summary.get("totals") if isinstance(task_summary.get("totals"), dict) else {}
         task_cols = st.columns(5)
         task_cols[0].metric("7 日任務", int(task_totals.get("run_count") or 0))

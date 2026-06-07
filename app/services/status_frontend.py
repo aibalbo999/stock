@@ -135,6 +135,12 @@ def frontend_status() -> dict:
         "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
         "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning(" in background_tasks_source
         and "Celery worker 未回應" in background_tasks_source,
+        "ui_task_queue_health_panel_extracted": "def task_queue_health_rows(" in maintenance_status_source
+        and "def task_queue_health_alert(" in maintenance_status_source
+        and "def task_queue_smoke_command(" in maintenance_status_source
+        and "task_queue_health_rows(service_snapshot)" in ui_source
+        and "task_queue_health_alert(service_snapshot)" in ui_source
+        and "task_queue_smoke_command(service_snapshot)" in ui_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

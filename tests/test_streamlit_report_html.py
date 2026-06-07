@@ -140,6 +140,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_preflight_ready(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def task_queue_worker_warning(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def api_task_queue_status(" in API_CLIENT_SOURCE.read_text()
+    assert "def task_queue_health_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def task_queue_health_alert(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def task_queue_smoke_command(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -208,6 +211,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "估算成本 USD" in source
     assert "/tasks/summary?days=7" in source
     assert "背景任務觀測" in source
+    assert "Queue / Worker readiness" in source
+    assert "task_queue_health_rows(service_snapshot)" in source
+    assert "task_queue_health_alert(service_snapshot)" in source
+    assert "task_queue_smoke_command(service_snapshot)" in source
     assert "/reports/quality/summary?limit=20" in source
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
@@ -225,6 +232,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_preflight_ready(" in source
     assert "def task_queue_unready_message(" in source
     assert "def task_queue_worker_warning(" in source
+    assert "def task_queue_health_rows(" in source
+    assert "def task_queue_health_alert(" in source
     assert "仍會嘗試送出" in source
     assert "Celery worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source
@@ -916,6 +925,93 @@ def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:
     )
 
     assert metrics["背景任務"] == "可排隊"
+
+
+def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
+    helpers = load_report_helpers()
+    snapshot = {
+        "task_queue": {
+            "ready": True,
+            "broker_configured": True,
+            "broker_ok": True,
+            "backend_ok": True,
+            "broker_url": "redis://localhost:6379/0",
+            "backend_url": "redis://localhost:6379/0",
+            "submission_contract_ready": True,
+            "worker_ping_checked": True,
+            "worker_online": True,
+            "worker_count": 1,
+            "worker_nodes": ["celery@test.local"],
+            "smoke_commands": [".venv/bin/python -m celery inspect ping"],
+        }
+    }
+
+    rows = helpers["task_queue_health_rows"](snapshot)
+    alert = helpers["task_queue_health_alert"](snapshot)
+
+    assert rows[0]["項目"] == "Queue 提交"
+    assert rows[0]["狀態"] == "可送出"
+    assert rows[4]["項目"] == "Celery Worker"
+    assert rows[4]["狀態"] == "在線"
+    assert "celery@test.local" in rows[4]["說明"]
+    assert alert == {
+        "severity": "success",
+        "message": "Queue 與 Celery worker 可用；目前 1 個 worker 節點回應。",
+    }
+    assert helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
+
+
+def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_submit() -> None:
+    helpers = load_report_helpers()
+    snapshot = {
+        "task_queue": {
+            "ready": True,
+            "broker_configured": True,
+            "broker_ok": True,
+            "backend_ok": True,
+            "submission_contract_ready": True,
+            "worker_ping_checked": True,
+            "worker_online": False,
+            "worker_count": 0,
+            "worker_nodes": [],
+            "worker_ping_timeout_seconds": 1.0,
+        }
+    }
+
+    rows = helpers["task_queue_health_rows"](snapshot)
+    alert = helpers["task_queue_health_alert"](snapshot)
+
+    assert rows[0]["狀態"] == "可排隊"
+    assert "worker 未回應" in rows[0]["說明"]
+    assert rows[4]["狀態"] == "未回應"
+    assert "timeout 1.0s" in rows[4]["說明"]
+    assert alert["severity"] == "warning"
+    assert "Celery worker 未回應" in alert["message"]
+
+
+def test_task_queue_health_alert_blocks_unready_queue() -> None:
+    helpers = load_report_helpers()
+    snapshot = {
+        "task_queue": {
+            "ready": False,
+            "broker_configured": True,
+            "broker_ok": False,
+            "backend_ok": False,
+            "submission_contract_ready": True,
+            "redis_error": "connection refused",
+            "broker_url": "redis://localhost:6379/0",
+            "backend_url": "redis://localhost:6379/0",
+        }
+    }
+
+    rows = helpers["task_queue_health_rows"](snapshot)
+    alert = helpers["task_queue_health_alert"](snapshot)
+
+    assert rows[0]["狀態"] == "檢查"
+    assert "Redis broker 未連線" in rows[0]["說明"]
+    assert "connection refused" in rows[1]["說明"]
+    assert alert["severity"] == "error"
+    assert "背景任務 queue 尚不可送出" in alert["message"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

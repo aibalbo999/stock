@@ -15,6 +15,7 @@ from app.data_sources.company_filings import (
     categorize_company_filing_error,
     company_filing_browser_render_configured,
     company_filing_browser_render_provider,
+    company_filing_browser_render_provider_capability,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
     company_filing_render_fallback_configured,
@@ -159,6 +160,19 @@ def test_company_filing_browser_render_is_explicitly_configured(monkeypatch) -> 
         assert company_filing_browser_render_provider() == "browserless"
     finally:
         get_settings.cache_clear()
+
+
+def test_company_filing_browser_render_provider_capability_labels_unlockers() -> None:
+    assert company_filing_browser_render_provider_capability("browserless") == {
+        "provider": "browserless",
+        "tier": "browser_render",
+        "captcha_unlocker": False,
+        "purpose": "JavaScript rendering and browser-like page fetches.",
+    }
+    flaresolverr = company_filing_browser_render_provider_capability("flaresolverr")
+
+    assert flaresolverr["tier"] == "unlocker"
+    assert flaresolverr["captcha_unlocker"] is True
 
 
 def test_company_filing_structured_api_status_requires_provider_and_url(monkeypatch) -> None:

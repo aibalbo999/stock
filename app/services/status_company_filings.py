@@ -6,6 +6,8 @@ from typing import Callable
 from app.data_sources.company_filings import (
     COMPANY_FILING_RETRYABLE_HTTP_STATUSES,
     DEFAULT_COMPANY_FILING_USER_AGENTS,
+    HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS,
+    UNLOCKER_BROWSER_RENDER_PROVIDERS,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
     company_filing_structured_api_status,
@@ -52,6 +54,11 @@ def company_filing_status(
         and playwright_browser_available
     )
     structured_api_runtime = structured_api_status_func()
+    high_risk_source_policy = _company_filing_high_risk_source_policy(
+        browser_render_runtime=browser_render_runtime,
+        playwright_configured=playwright_configured,
+        proxy_count=proxy_count,
+    )
     return {
         "collector_path": "app/services/status_company_filings.py",
         **user_agent_status,
@@ -85,6 +92,15 @@ def company_filing_status(
         "browser_render_supported_providers": browser_render_runtime.get(
             "supported_providers"
         ),
+        "browser_render_provider_capability": browser_render_runtime.get(
+            "provider_capability"
+        ),
+        "browser_render_provider_capabilities": browser_render_runtime.get(
+            "provider_capabilities"
+        ),
+        "browser_render_captcha_unlocker_provider": browser_render_runtime.get(
+            "captcha_unlocker_provider"
+        ),
         "browser_render_url_configured": browser_render_runtime.get("url_configured"),
         "browser_render_endpoint_reachable": browser_render_runtime.get(
             "endpoint_reachable"
@@ -107,6 +123,14 @@ def company_filing_status(
             browser_render_configured
             or playwright_configured
             or _split_config_values(settings.company_filing_proxy_urls)
+        ),
+        "high_risk_source_policy": high_risk_source_policy,
+        "high_risk_source_domains": high_risk_source_policy.get("domains"),
+        "high_risk_source_mitigation_ready": high_risk_source_policy.get(
+            "high_risk_mitigation_ready"
+        ),
+        "high_risk_captcha_unlocker_ready": high_risk_source_policy.get(
+            "captcha_challenge_ready"
         ),
         "browser_render_timeout_seconds": settings.company_filing_browser_render_timeout_seconds,
         "structured_api_configured": structured_api_runtime.get("configured"),
@@ -136,6 +160,56 @@ def company_filing_status(
         "visual_rag_max_pages": visual_rag_runtime.get("max_pages"),
         "visual_rag_dpi": visual_rag_runtime.get("dpi"),
         "visual_rag_runtime": visual_rag_runtime,
+    }
+
+
+def _company_filing_high_risk_source_policy(
+    *,
+    browser_render_runtime: dict,
+    playwright_configured: bool,
+    proxy_count: int,
+) -> dict:
+    provider = str(browser_render_runtime.get("provider") or "browserless")
+    provider_capability = browser_render_runtime.get("provider_capability") or {}
+    browser_render_ready = bool(browser_render_runtime.get("runtime_available"))
+    unlocker_provider_ready = bool(
+        browser_render_ready and provider_capability.get("captcha_unlocker")
+    )
+    ip_rotation_ready = proxy_count > 0
+    browser_only_render_ready = bool(browser_render_ready or playwright_configured)
+    high_risk_mitigation_ready = bool(unlocker_provider_ready or ip_rotation_ready)
+    fallback_reason = None
+    if not unlocker_provider_ready:
+        if ip_rotation_ready:
+            fallback_reason = "proxy_configured_without_captcha_unlocker"
+        elif browser_only_render_ready:
+            fallback_reason = "browser_or_playwright_render_lacks_captcha_unlocker"
+        else:
+            fallback_reason = "missing_high_risk_unlocker_or_proxy"
+    return {
+        "domains": list(HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS),
+        "recommended_unlocker_providers": sorted(UNLOCKER_BROWSER_RENDER_PROVIDERS),
+        "configured_provider": provider,
+        "provider_tier": provider_capability.get("tier"),
+        "provider_capability": provider_capability,
+        "browser_render_runtime_available": browser_render_ready,
+        "playwright_render_configured": bool(playwright_configured),
+        "proxy_count": int(proxy_count),
+        "browser_only_render_ready": browser_only_render_ready,
+        "ip_rotation_ready": ip_rotation_ready,
+        "unlocker_provider_ready": unlocker_provider_ready,
+        "captcha_challenge_ready": unlocker_provider_ready,
+        "high_risk_mitigation_ready": high_risk_mitigation_ready,
+        "fallback_reason": fallback_reason,
+        "recommended_env": [
+            f"{key}={value}"
+            for key, value in (
+                ("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr"),
+                ("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:8191/v1"),
+                ("COMPANY_FILING_PROXY_URLS", "<rotating-proxy-list>"),
+            )
+        ],
+        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
     }
 
 

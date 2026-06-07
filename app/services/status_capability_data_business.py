@@ -109,6 +109,18 @@ def data_business_capabilities(
                 "browser_render_supported_providers": company_filing_status.get(
                     "browser_render_supported_providers"
                 ),
+                "browser_render_provider_capability": company_filing_status.get(
+                    "browser_render_provider_capability"
+                ),
+                "high_risk_source_policy": company_filing_status.get(
+                    "high_risk_source_policy"
+                ),
+                "high_risk_source_mitigation_ready": company_filing_status.get(
+                    "high_risk_source_mitigation_ready"
+                ),
+                "high_risk_captcha_unlocker_ready": company_filing_status.get(
+                    "high_risk_captcha_unlocker_ready"
+                ),
                 "browser_render_url_configured": company_filing_status.get(
                     "browser_render_url_configured"
                 ),
@@ -132,6 +144,17 @@ def data_business_capabilities(
                     "playwright_render_configured"
                 ),
             },
+        ),
+        "company_filing_high_risk_unlocker": _capability(
+            "ready"
+            if company_filing_status.get("high_risk_captcha_unlocker_ready")
+            else "not_configured",
+            evidence=company_filing_status.get("high_risk_source_policy") or {},
+            detail=(
+                "MOPS/TWSE/TPEx high-risk disclosure sources need an unlocker-grade "
+                "provider such as FlareSolverr, ScrapingBee, or BrightData for CAPTCHA/anti-bot challenges; "
+                "Playwright/Browserless remain useful browser render fallbacks but are not counted as CAPTCHA unlockers."
+            ),
         ),
         "company_filing_pdf_table_parser_runtime": _capability(
             "ready"
@@ -173,6 +196,18 @@ def data_business_capabilities(
                 "browser_render_provider": company_filing_status.get("browser_render_provider"),
                 "browser_render_supported_providers": company_filing_status.get(
                     "browser_render_supported_providers"
+                ),
+                "browser_render_provider_capability": company_filing_status.get(
+                    "browser_render_provider_capability"
+                ),
+                "high_risk_source_policy": company_filing_status.get(
+                    "high_risk_source_policy"
+                ),
+                "high_risk_source_mitigation_ready": company_filing_status.get(
+                    "high_risk_source_mitigation_ready"
+                ),
+                "high_risk_captcha_unlocker_ready": company_filing_status.get(
+                    "high_risk_captcha_unlocker_ready"
                 ),
                 "browser_render_url_configured": company_filing_status.get(
                     "browser_render_url_configured"

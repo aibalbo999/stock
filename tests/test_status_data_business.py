@@ -69,6 +69,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         is status["company_filings"]["browser_or_proxy_fallback_configured"]
     )
     assert filing_hardening["browser_render_provider"] == "browserless"
+    assert filing_hardening["browser_render_provider_capability"]["tier"] == "browser_render"
+    assert filing_hardening["high_risk_source_policy"]["configured_provider"] == "browserless"
+    assert filing_hardening["high_risk_captcha_unlocker_ready"] is False
     assert filing_hardening["structured_api_configured"] is False
     assert "browser_render_runtime" in filing_hardening
     assert filing_hardening["playwright_render_enabled"] is True
@@ -78,6 +81,20 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     )
     assert "playwright_render_runtime" in filing_hardening
     assert "pdf_parser_dependencies" in filing_hardening
+
+    high_risk_unlocker = matrix["data_business_logic"]["company_filing_high_risk_unlocker"]
+    expected_high_risk_unlocker_status = (
+        "ready"
+        if status["company_filings"]["high_risk_captcha_unlocker_ready"]
+        else "not_configured"
+    )
+    assert high_risk_unlocker["status"] == expected_high_risk_unlocker_status
+    assert "mops.twse.com.tw" in high_risk_unlocker["evidence"]["domains"]
+    assert "flaresolverr" in high_risk_unlocker["evidence"]["recommended_unlocker_providers"]
+    assert (
+        high_risk_unlocker["evidence"]["fallback_reason"]
+        == status["company_filings"]["high_risk_source_policy"]["fallback_reason"]
+    )
 
     pdf_parser_runtime = matrix["data_business_logic"]["company_filing_pdf_table_parser_runtime"]
     expected_pdf_runtime_status = (
@@ -107,6 +124,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert filing_fallback["evidence"]["proxy_count"] == 0
     assert filing_fallback["evidence"]["browser_render_configured"] is False
     assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
+    assert filing_fallback["evidence"]["high_risk_captcha_unlocker_ready"] is status[
+        "company_filings"
+    ]["high_risk_captcha_unlocker_ready"]
     assert "browser_render_runtime" in filing_fallback["evidence"]
     assert (
         filing_fallback["evidence"]["playwright_render_configured"]
@@ -253,10 +273,50 @@ def test_company_filing_browser_render_fallback_ready_when_endpoint_reachable(mo
     assert status["company_filings"]["browser_render_enabled"] is True
     assert status["company_filings"]["browser_render_configured"] is True
     assert status["company_filings"]["browser_or_proxy_fallback_configured"] is True
+    assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is False
     fallback = status["upgrade_capability_matrix"]["data_business_logic"][
         "company_filing_browser_or_proxy_fallback"
     ]
     assert fallback["status"] == "ready"
+
+
+def test_company_filing_high_risk_unlocker_ready_with_flaresolverr(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:8191/v1")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.services.service_status.company_filing_browser_render_status",
+        lambda: {
+            "enabled": True,
+            "provider": "flaresolverr",
+            "provider_capability": {
+                "provider": "flaresolverr",
+                "tier": "unlocker",
+                "captcha_unlocker": True,
+            },
+            "url_configured": True,
+            "endpoint": "http://127.0.0.1:8191/v1",
+            "connection_checked": True,
+            "endpoint_reachable": True,
+            "runtime_available": True,
+            "high_risk_runtime_available": True,
+            "fallback_reason": None,
+        },
+    )
+    try:
+        status = service_status()
+    finally:
+        get_settings.cache_clear()
+
+    assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is True
+    assert status["company_filings"]["high_risk_source_mitigation_ready"] is True
+    high_risk_unlocker = status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_high_risk_unlocker"
+    ]
+    assert high_risk_unlocker["status"] == "ready"
+    assert high_risk_unlocker["evidence"]["configured_provider"] == "flaresolverr"
 
 
 def test_company_filing_playwright_fallback_requires_browser_binary(monkeypatch) -> None:

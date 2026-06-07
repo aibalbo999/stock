@@ -3,6 +3,7 @@ from pathlib import Path
 from app.core.config import Settings
 from app.data_sources.company_filings import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
 from app.services.status_company_filings import (
+    _company_filing_high_risk_source_policy,
     _company_filing_pdf_parser_status,
     _company_filing_user_agent_status,
 )
@@ -59,9 +60,22 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["browser_render_enabled"] is False
     assert status["company_filings"]["browser_render_provider"] == "browserless"
     assert "flaresolverr" in status["company_filings"]["browser_render_supported_providers"]
+    assert status["company_filings"]["browser_render_provider_capability"]["tier"] == (
+        "browser_render"
+    )
+    assert (
+        status["company_filings"]["browser_render_provider_capability"]["captcha_unlocker"]
+        is False
+    )
     assert status["company_filings"]["browser_render_configured"] is False
     assert status["company_filings"]["browser_render_endpoint_reachable"] is False
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
+    assert "mops.twse.com.tw" in status["company_filings"]["high_risk_source_domains"]
+    assert status["company_filings"]["high_risk_source_policy"]["configured_provider"] == "browserless"
+    assert "flaresolverr" in status["company_filings"]["high_risk_source_policy"][
+        "recommended_unlocker_providers"
+    ]
+    assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is False
     assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
         "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     )
@@ -158,3 +172,31 @@ def test_company_filing_user_agent_status_counts_custom_agents() -> None:
     assert status["effective_user_agent_count"] == 2
     assert status["user_agent_mode"] == "custom"
     assert status["anti_crawl_identity_enabled"] is True
+
+
+def test_company_filing_high_risk_source_policy_requires_unlocker_for_captcha() -> None:
+    browserless_policy = _company_filing_high_risk_source_policy(
+        browser_render_runtime={
+            "provider": "browserless",
+            "runtime_available": True,
+            "provider_capability": {"tier": "browser_render", "captcha_unlocker": False},
+        },
+        playwright_configured=True,
+        proxy_count=0,
+    )
+    unlocker_policy = _company_filing_high_risk_source_policy(
+        browser_render_runtime={
+            "provider": "flaresolverr",
+            "runtime_available": True,
+            "provider_capability": {"tier": "unlocker", "captcha_unlocker": True},
+        },
+        playwright_configured=False,
+        proxy_count=0,
+    )
+
+    assert browserless_policy["browser_only_render_ready"] is True
+    assert browserless_policy["captcha_challenge_ready"] is False
+    assert browserless_policy["fallback_reason"] == "browser_or_playwright_render_lacks_captcha_unlocker"
+    assert unlocker_policy["captcha_challenge_ready"] is True
+    assert unlocker_policy["high_risk_mitigation_ready"] is True
+    assert unlocker_policy["fallback_reason"] is None

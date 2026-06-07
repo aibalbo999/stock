@@ -65,6 +65,41 @@ MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
 BROWSER_RENDER_PROVIDERS = {"browserless", "generic", "flaresolverr", "scrapingbee", "brightdata"}
+HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS = (
+    "mops.twse.com.tw",
+    "mopsov.twse.com.tw",
+    "doc.twse.com.tw",
+    "www.twse.com.tw",
+    "www.tpex.org.tw",
+)
+UNLOCKER_BROWSER_RENDER_PROVIDERS = {"brightdata", "flaresolverr", "scrapingbee"}
+BROWSER_RENDER_PROVIDER_CAPABILITIES = {
+    "browserless": {
+        "tier": "browser_render",
+        "captcha_unlocker": False,
+        "purpose": "JavaScript rendering and browser-like page fetches.",
+    },
+    "generic": {
+        "tier": "browser_render",
+        "captcha_unlocker": False,
+        "purpose": "Custom browser rendering endpoint.",
+    },
+    "flaresolverr": {
+        "tier": "unlocker",
+        "captcha_unlocker": True,
+        "purpose": "Cloudflare/CAPTCHA challenge solving for protected public pages.",
+    },
+    "scrapingbee": {
+        "tier": "managed_unlocker",
+        "captcha_unlocker": True,
+        "purpose": "Managed anti-bot rendering and proxy-backed public page fetches.",
+    },
+    "brightdata": {
+        "tier": "managed_unlocker",
+        "captcha_unlocker": True,
+        "purpose": "Managed proxy/unlocker rendering for high-risk disclosure sources.",
+    },
+}
 STRUCTURED_API_PROVIDER_PROFILES = {
     "tej": {
         "label": "TEJ structured company filings",
@@ -212,6 +247,22 @@ def company_filing_browser_render_provider() -> str:
     return provider or "browserless"
 
 
+def company_filing_browser_render_provider_capability(provider: str) -> dict:
+    provider_key = (provider or "browserless").strip().lower().replace("-", "_")
+    capability = dict(
+        BROWSER_RENDER_PROVIDER_CAPABILITIES.get(
+            provider_key,
+            {
+                "tier": "unsupported",
+                "captcha_unlocker": False,
+                "purpose": "Unsupported company filing browser render provider.",
+            },
+        )
+    )
+    capability["provider"] = provider_key
+    return capability
+
+
 def company_filing_browser_render_status(
     *,
     enabled: bool | None = None,
@@ -240,14 +291,27 @@ def company_filing_browser_render_status(
         "enabled": bool(render_enabled),
         "provider": company_filing_browser_render_provider(),
         "supported_providers": sorted(BROWSER_RENDER_PROVIDERS),
+        "provider_capabilities": {
+            provider: company_filing_browser_render_provider_capability(provider)
+            for provider in sorted(BROWSER_RENDER_PROVIDERS)
+        },
         "url_configured": bool(render_endpoint),
         "endpoint": render_endpoint,
         "connection_checked": False,
         "endpoint_reachable": False,
         "runtime_available": False,
         "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
+        "high_risk_domains": list(HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS),
+        "recommended_high_risk_providers": sorted(UNLOCKER_BROWSER_RENDER_PROVIDERS),
+        "high_risk_runtime_available": False,
         "fallback_reason": None,
     }
+    status["provider_capability"] = company_filing_browser_render_provider_capability(
+        str(status["provider"])
+    )
+    status["captcha_unlocker_provider"] = bool(
+        status["provider_capability"].get("captcha_unlocker")
+    )
     if not render_enabled:
         status["fallback_reason"] = "browser_render_disabled"
         return status
@@ -274,6 +338,7 @@ def company_filing_browser_render_status(
     status["connection_checked"] = True
     status["endpoint_reachable"] = True
     status["runtime_available"] = True
+    status["high_risk_runtime_available"] = bool(status["captcha_unlocker_provider"])
     return status
 
 

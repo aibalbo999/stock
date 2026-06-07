@@ -37,6 +37,9 @@ def test_service_status_shape() -> None:
     status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
     status_market_data_source = Path("app/services/status_market_data.py").read_text()
     status_vector_store_source = Path("app/services/status_vector_store.py").read_text()
+    status_python_runtime_source = Path("app/services/status_python_runtime.py").read_text()
+    status_report_retention_source = Path("app/services/status_report_retention.py").read_text()
+    status_security_source = Path("app/services/status_security.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
     assert "database" in status
@@ -343,6 +346,12 @@ def test_service_status_shape() -> None:
     assert status["security_scanning"]["external_engine_integration"] is True
     assert status["security_scanning"]["detect_secrets_dependency_declared"] is True
     assert status["security_scanning"]["local_regex_fallback_enabled"] is True
+    assert status["security_scanning"]["collector_path"] == "app/services/status_security.py"
+    assert "from app.services.status_security import security_scan_status as collect_security_scan_status" in (
+        service_status_source
+    )
+    assert "def _security_scan_status(" not in service_status_source
+    assert "def security_scan_status(" in status_security_source
     assert status["security_scanning"]["default_engine"] in {
         "detect-secrets",
         "gitleaks",
@@ -549,6 +558,10 @@ def test_service_status_shape() -> None:
     assert status["python_runtime"]["minimum_supported"] == "3.11"
     assert status["python_runtime"]["python_version_file"] == "3.11"
     assert status["python_runtime"]["project_targets_aligned"] is True
+    assert status["python_runtime"]["collector_path"] == "app/services/status_python_runtime.py"
+    assert "from app.services.status_python_runtime import (" in service_status_source
+    assert "def _python_runtime_status(" not in service_status_source
+    assert "def python_runtime_status(" in status_python_runtime_source
     assert (
         status["python_runtime"]["bootstrap_cli"]
         == ".venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing"
@@ -595,6 +608,10 @@ def test_service_status_shape() -> None:
     report_retention = matrix["data_business_logic"]["latest_report_retention"]
     assert report_retention["status"] == "ready"
     assert status["report_retention"]["policy"] == "latest_per_topic"
+    assert status["report_retention"]["collector_path"] == "app/services/status_report_retention.py"
+    assert "from app.services.status_report_retention import (" in service_status_source
+    assert "def _report_retention_status(" not in service_status_source
+    assert "def report_retention_status(" in status_report_retention_source
     assert report_retention["evidence"]["write_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["write_prunes_markdown_by_topic"] is True
     assert report_retention["evidence"]["list_reports_uses_latest_by_topic"] is True

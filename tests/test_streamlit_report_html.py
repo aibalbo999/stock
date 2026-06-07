@@ -8,6 +8,7 @@ API_CLIENT_SOURCE = Path("app/ui/api_client.py")
 TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
+REPORT_MARKDOWN_SOURCE = Path("app/ui/report_markdown.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
@@ -18,6 +19,7 @@ UI_SOURCE_FILES = [
     TASK_STATUS_PANEL_SOURCE,
     REPORT_STATE_SOURCE,
     REPORT_PANELS_SOURCE,
+    REPORT_MARKDOWN_SOURCE,
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
@@ -75,6 +77,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.task_status_panel import" in source
     assert "from app.ui.report_state import " in source
     assert "from app.ui.report_panels import (" in source
+    assert "from app.ui.report_markdown import (" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
     assert "F403" not in source
@@ -123,6 +126,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_follow_up_controls(" in REPORT_PANELS_SOURCE.read_text()
     assert "def render_quality_gate(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_quality_gate(" in REPORT_PANELS_SOURCE.read_text()
+    assert "def markdown_table_rows(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def markdown_table_rows(" in REPORT_MARKDOWN_SOURCE.read_text()
+    assert "def first_tranche_allocation_label(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def first_tranche_allocation_label(" in REPORT_MARKDOWN_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

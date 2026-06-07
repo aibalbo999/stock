@@ -14,11 +14,11 @@ from app.ui.follow_up_status import (
 )
 from app.ui.report_html import (
     confidence_label,
-    markdown_table_rows,
     metric_int,
     metric_percent,
     report_html,
 )
+from app.ui.report_markdown import markdown_table_rows
 from app.ui.task_status_panel import render_task_status_panel
 
 

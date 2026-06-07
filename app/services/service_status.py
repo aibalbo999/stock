@@ -670,6 +670,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("ui_report_state_extracted")
                 and frontend_status.get("ui_report_panels_extracted")
+                and frontend_status.get("ui_report_markdown_helpers_extracted")
                 and frontend_status.get("ui_wildcard_imports_removed")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
@@ -1065,6 +1066,7 @@ def _frontend_status() -> dict:
         ui_dir / "task_status_panel.py",
         ui_dir / "report_state.py",
         ui_dir / "report_panels.py",
+        ui_dir / "report_markdown.py",
         ui_dir / "report_html.py",
         ui_dir / "follow_up_status.py",
         ui_dir / "maintenance_status.py",
@@ -1092,6 +1094,7 @@ def _frontend_status() -> dict:
     task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
     report_state_source = _read_text(ui_dir / "report_state.py")
     report_panels_source = _read_text(ui_dir / "report_panels.py")
+    report_markdown_source = _read_text(ui_dir / "report_markdown.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
@@ -1177,6 +1180,14 @@ def _frontend_status() -> dict:
         and "def render_quality_gate(" not in dashboard_core_source
         and "from app.ui.report_panels import (" in ui_source,
         "ui_report_panels_path": "app/ui/report_panels.py",
+        "ui_report_markdown_helpers_extracted": (ui_dir / "report_markdown.py").exists()
+        and "def markdown_table_rows(" in report_markdown_source
+        and "def markdown_table_rows_by_header(" in report_markdown_source
+        and "def first_tranche_allocation_label(" in report_markdown_source
+        and "def markdown_table_rows(" not in report_html_source
+        and "def first_tranche_allocation_label(" not in report_html_source
+        and "from app.ui.report_markdown import (" in ui_source,
+        "ui_report_markdown_helpers_path": "app/ui/report_markdown.py",
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

@@ -333,6 +333,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and api_status.get("report_service_factory_extracted")
                 and api_status.get("data_service_factory_extracted")
                 and api_status.get("workflow_service_factory_extracted")
+                and api_status.get("ai_graph_service_factory_extracted")
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
                 evidence=api_status,
@@ -778,6 +779,7 @@ def _api_controller_status() -> dict:
     report_service_factory_path = api_dir / "service_factory_report.py"
     data_service_factory_path = api_dir / "service_factory_data.py"
     workflow_service_factory_path = api_dir / "service_factory_workflow.py"
+    ai_graph_service_factory_path = api_dir / "service_factory_ai.py"
     try:
         compatibility_exports_source = compatibility_exports_path.read_text(encoding="utf-8")
     except OSError:
@@ -798,6 +800,10 @@ def _api_controller_status() -> dict:
         workflow_service_factory_source = workflow_service_factory_path.read_text(encoding="utf-8")
     except OSError:
         workflow_service_factory_source = ""
+    try:
+        ai_graph_service_factory_source = ai_graph_service_factory_path.read_text(encoding="utf-8")
+    except OSError:
+        ai_graph_service_factory_source = ""
     direct_domain_imports = [
         line.strip()
         for line in main_source.splitlines()
@@ -850,6 +856,14 @@ def _api_controller_status() -> dict:
         and "def run_task_api(" not in service_factory_source
         and "def pipeline_api(" not in service_factory_source
         and "def standard_report_pipeline(" not in service_factory_source,
+        "ai_graph_service_factory_path": "app/api/service_factory_ai.py",
+        "ai_graph_service_factory_extracted": ai_graph_service_factory_path.exists()
+        and "class AiGraphServiceFactoryMixin" in ai_graph_service_factory_source
+        and "def supply_chain_graph_api(" in ai_graph_service_factory_source
+        and "def llm_api(" in ai_graph_service_factory_source
+        and "AiGraphServiceFactoryMixin" in service_factory_source
+        and "def supply_chain_graph_api(" not in service_factory_source
+        and "def llm_api(" not in service_factory_source,
         "api_runtime_present": runtime_path.exists(),
         "main_uses_api_runtime": "build_api_runtime" in main_source,
         "task_uses_api_runtime": "get_task_api_services" in tasks_source,

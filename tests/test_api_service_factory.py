@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.api.service_factory import ApiServiceFactory
+from app.api.service_factory_ai import AiGraphServiceFactoryMixin
 from app.api.service_factory_data import DataServiceFactoryMixin
 from app.api.service_factory_report import ReportServiceFactoryMixin
 from app.api.service_factory_workflow import WorkflowServiceFactoryMixin
@@ -22,9 +23,12 @@ class DummyReportRepository:
 
 
 def test_api_service_factory_uses_domain_mixins() -> None:
+    assert issubclass(ApiServiceFactory, AiGraphServiceFactoryMixin)
     assert issubclass(ApiServiceFactory, DataServiceFactoryMixin)
     assert issubclass(ApiServiceFactory, ReportServiceFactoryMixin)
     assert issubclass(ApiServiceFactory, WorkflowServiceFactoryMixin)
+    assert ApiServiceFactory.llm_api is AiGraphServiceFactoryMixin.llm_api
+    assert ApiServiceFactory.supply_chain_graph_api is AiGraphServiceFactoryMixin.supply_chain_graph_api
     assert ApiServiceFactory.data_operations_api is DataServiceFactoryMixin.data_operations_api
     assert ApiServiceFactory.discovery_api is DataServiceFactoryMixin.discovery_api
     assert ApiServiceFactory.report_query is ReportServiceFactoryMixin.report_query

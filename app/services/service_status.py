@@ -669,6 +669,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_api_client_extracted")
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("ui_report_state_extracted")
+                and frontend_status.get("ui_report_panels_extracted")
                 and frontend_status.get("ui_wildcard_imports_removed")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
@@ -1063,6 +1064,7 @@ def _frontend_status() -> dict:
         ui_dir / "api_client.py",
         ui_dir / "task_status_panel.py",
         ui_dir / "report_state.py",
+        ui_dir / "report_panels.py",
         ui_dir / "report_html.py",
         ui_dir / "follow_up_status.py",
         ui_dir / "maintenance_status.py",
@@ -1089,6 +1091,7 @@ def _frontend_status() -> dict:
     api_client_source = _read_text(ui_dir / "api_client.py")
     task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
     report_state_source = _read_text(ui_dir / "report_state.py")
+    report_panels_source = _read_text(ui_dir / "report_panels.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
@@ -1133,14 +1136,14 @@ def _frontend_status() -> dict:
         "report_html_renderer_extracted": (ui_dir / "report_html.py").exists()
         and "def report_html(" in report_html_source
         and "def report_html(" not in dashboard_core_source
-        and "from app.ui.report_html import (" in dashboard_core_source,
+        and "from app.ui.report_html import (" in ui_source,
         "ui_status_helpers_extracted": (ui_dir / "follow_up_status.py").exists()
         and (ui_dir / "maintenance_status.py").exists()
         and "def follow_up_result_message(" in follow_up_status_source
         and "def follow_up_result_message(" not in dashboard_core_source
         and "def upgrade_audit_html(" in maintenance_status_source
         and "def upgrade_audit_html(" not in dashboard_core_source
-        and "from app.ui.follow_up_status import (" in dashboard_core_source
+        and "from app.ui.follow_up_status import (" in ui_source
         and "from app.ui.maintenance_status import (" in ui_source,
         "ui_status_helper_paths": [
             "app/ui/follow_up_status.py",
@@ -1151,13 +1154,13 @@ def _frontend_status() -> dict:
         and "def request_error_message(" in api_client_source
         and "def queue_data_operation(" in api_client_source
         and "def api_task_post(" not in dashboard_core_source
-        and "from app.ui.api_client import (" in dashboard_core_source,
+        and "from app.ui.api_client import (" in ui_source,
         "ui_api_client_path": "app/ui/api_client.py",
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source
         and "run_every" in task_status_panel_source
-        and "from app.ui.task_status_panel import (" in dashboard_core_source,
+        and "from app.ui.task_status_panel import" in ui_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "ui_report_state_extracted": (ui_dir / "report_state.py").exists()
         and "def hydrate_active_report_result(" in report_state_source
@@ -1166,6 +1169,14 @@ def _frontend_status() -> dict:
         and "def parse_json_object(" not in dashboard_core_source
         and "from app.ui.report_state import " in ui_source,
         "ui_report_state_path": "app/ui/report_state.py",
+        "ui_report_panels_extracted": (ui_dir / "report_panels.py").exists()
+        and "def render_follow_up_controls(" in report_panels_source
+        and "def render_quality_gate(" in report_panels_source
+        and "def render_source_audit(" in report_panels_source
+        and "def render_follow_up_controls(" not in dashboard_core_source
+        and "def render_quality_gate(" not in dashboard_core_source
+        and "from app.ui.report_panels import (" in ui_source,
+        "ui_report_panels_path": "app/ui/report_panels.py",
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

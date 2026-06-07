@@ -23,6 +23,14 @@ def _interpreter(command: str, version: str, major: int, minor: int) -> dict:
     }
 
 
+def test_candidate_interpreters_prefer_target_then_closest_newer(monkeypatch) -> None:
+    monkeypatch.delenv("PYTHON_BOOTSTRAP_INTERPRETER", raising=False)
+
+    commands = bootstrap.candidate_interpreter_commands(target_version="3.11")
+
+    assert commands[:5] == ["python3.11", "python3.12", "python3.13", "python3", "python"]
+
+
 def test_plan_selects_supported_python_and_builds_install_commands(tmp_path, monkeypatch) -> None:
     _write_project_files(tmp_path)
 
@@ -44,6 +52,11 @@ def test_plan_selects_supported_python_and_builds_install_commands(tmp_path, mon
     assert '.venv/bin/python -m pip install -e ".[dev,pdf,visual,browser,graph]"' in plan[
         "commands"
     ]
+    assert plan["interpreter_install_hints"][0] == {
+        "tool": "homebrew",
+        "command": "brew install python@3.11",
+        "venv_command": "python3.11 -m venv .venv",
+    }
     assert plan["safe_apply"]["dry_run_by_default"] is True
 
 
@@ -80,6 +93,12 @@ def test_plan_reports_missing_supported_interpreter(tmp_path, monkeypatch) -> No
     assert plan["status"] == "missing_supported_interpreter"
     assert plan["selected_interpreter"] is None
     assert "Install Python 3.11+" in plan["remediation"]
+    assert "brew install python@3.11" in plan["remediation"]
+    assert plan["interpreter_install_hints"][1]["command"] == "pyenv install 3.11"
+
+    formatted = bootstrap.format_bootstrap_result(plan)
+    assert "install Python first" in formatted
+    assert "uv python install 3.11" in formatted
 
 
 def test_apply_refuses_to_replace_unsupported_venv_without_flag(tmp_path, monkeypatch) -> None:

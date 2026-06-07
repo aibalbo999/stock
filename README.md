@@ -79,7 +79,8 @@ cp .env.example .env
 本專案支援目標為 Python 3.11+；CI 與 Docker 均使用 Python 3.11。macOS 內建
 `python3` 常仍是 3.9，會觸發 Google/urllib3 的 EOL 與 LibreSSL 警告，建議用
 Homebrew、pyenv 或 uv 安裝 3.11 後重建 `.venv`。若想先檢查本機可用 interpreter
-與將執行的命令，可用安全的 dry-run：
+與將執行的命令，可用安全的 dry-run；JSON 會列出已偵測到的可用 interpreter、
+`interpreter_install_hints` 與重建 `.venv` 前會執行的命令：
 
 ```bash
 python3 scripts/bootstrap_python_runtime.py --json

@@ -719,15 +719,18 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
     if python_runtime and python_runtime.get("status") != "ready":
         minimum_supported = str(python_runtime_evidence.get("minimum_supported") or "3.11")
         current_version = str(python_runtime_evidence.get("current_version") or "unknown")
+        install_hint_text = _python_install_hint_text(
+            python_runtime_evidence.get("interpreter_install_hints")
+        )
         items.append(
             {
                 "capability": "python_runtime",
                 "status": str(python_runtime.get("status") or "unknown"),
                 "reason": f"目前 Python {current_version}，專案目標為 {minimum_supported}+",
                 "action": (
-                    "先執行 "
+                    f"{install_hint_text}"
+                    "再執行 "
                     f"{python_display} scripts/bootstrap_python_runtime.py --apply --replace-existing；"
-                    f"若尚未有支援 interpreter，可先安裝 Python {minimum_supported}+。"
                     f"手動路徑仍可用 python{minimum_supported} -m venv .venv，"
                     f"再執行 {_pip_install_action(python_display, '.[dev,pdf,visual,browser,graph]')}"
                 ),
@@ -992,6 +995,19 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         )
 
     return items
+
+
+def _python_install_hint_text(hints: object) -> str:
+    if not isinstance(hints, list):
+        return ""
+    commands = [
+        str(hint.get("command"))
+        for hint in hints
+        if isinstance(hint, dict) and str(hint.get("command") or "").strip()
+    ]
+    if not commands:
+        return ""
+    return "若尚未有支援 interpreter，可先安裝：" + " 或 ".join(commands[:3]) + "；"
 
 
 def _pip_install_action(python_display: str, target: str) -> str:

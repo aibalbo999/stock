@@ -649,6 +649,13 @@ def test_upgrade_dependency_advice_points_to_python_runtime_mismatch() -> None:
                     "current_version": "3.9.6",
                     "minimum_supported": "3.11",
                     "current_runtime_supported": False,
+                    "interpreter_install_hints": [
+                        {
+                            "tool": "homebrew",
+                            "command": "brew install python@3.11",
+                            "venv_command": "python3.11 -m venv .venv",
+                        }
+                    ],
                 },
             }
         }
@@ -662,6 +669,7 @@ def test_upgrade_dependency_advice_points_to_python_runtime_mismatch() -> None:
 
     assert advice[0]["capability"] == "python_runtime"
     assert "Python 3.9.6" in advice[0]["reason"]
+    assert "brew install python@3.11" in advice[0]["action"]
     assert "scripts/bootstrap_python_runtime.py --apply --replace-existing" in advice[0]["action"]
     assert "python3.11 -m venv .venv" in advice[0]["action"]
 

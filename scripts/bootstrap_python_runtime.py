@@ -12,6 +12,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EXTRAS = "dev,pdf,visual,browser,graph"
+KNOWN_BOOTSTRAP_PYTHON_VERSIONS = ("3.11", "3.12", "3.13")
 INSPECT_CODE = (
     "import json, sys; "
     "print(json.dumps({'executable': sys.executable, "
@@ -141,6 +142,7 @@ def plan_python_runtime_bootstrap(
         "skip_install": bool(skip_install),
         "install_playwright_browser": bool(install_playwright_browser),
         "commands": commands,
+        "interpreter_install_hints": interpreter_install_hints(target_version),
         "safe_apply": {
             "dry_run_by_default": True,
             "replace_existing_required": bool(existing and not existing.get("supported")),
@@ -231,6 +233,12 @@ def format_bootstrap_result(result: dict) -> str:
         lines.append(f"- remediation: {result['remediation']}")
     if result.get("backup_paths"):
         lines.append("- backups: " + ", ".join(str(path) for path in result["backup_paths"]))
+    install_hints = result.get("interpreter_install_hints") or []
+    if result.get("status") == "missing_supported_interpreter" and install_hints:
+        lines.append("- install Python first:")
+        for hint in install_hints:
+            if isinstance(hint, dict) and hint.get("command"):
+                lines.append(f"  {hint['command']}")
     commands = result.get("commands") or result.get("executed_commands") or []
     if commands:
         lines.append("- commands:")
@@ -291,10 +299,7 @@ def candidate_interpreter_commands(
     commands = [
         requested_python,
         os.environ.get("PYTHON_BOOTSTRAP_INTERPRETER"),
-        f"python{target_version}",
-        "python3.13",
-        "python3.12",
-        "python3.11",
+        *candidate_versioned_interpreter_commands(target_version),
         "python3",
         "python",
     ]
@@ -304,6 +309,32 @@ def candidate_interpreter_commands(
             continue
         deduped.append(command)
     return deduped
+
+
+def candidate_versioned_interpreter_commands(target_version: str) -> list[str]:
+    target = parse_major_minor(target_version)
+    versions = [str(target_version).strip()] if str(target_version or "").strip() else []
+    known_versions = list(KNOWN_BOOTSTRAP_PYTHON_VERSIONS)
+    if target:
+        supported_known = [
+            version for version in known_versions if parse_major_minor(version) >= target
+        ]
+        older_known = [version for version in known_versions if parse_major_minor(version) < target]
+        versions.extend(sorted(supported_known, key=parse_major_minor))
+        versions.extend(sorted(older_known, key=parse_major_minor, reverse=True))
+    else:
+        versions.extend(known_versions)
+    return [f"python{version}" for version in dict.fromkeys(versions)]
+
+
+def parse_major_minor(value: str) -> tuple[int, int] | None:
+    parts = str(value or "").strip().split(".")
+    if len(parts) < 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
 
 
 def inspect_interpreter(command: str) -> dict | None:
@@ -361,6 +392,29 @@ def planned_commands(
     return commands
 
 
+def interpreter_install_hints(target_version: str) -> list[dict[str, str]]:
+    version = str(target_version or "").strip()
+    if not version:
+        return []
+    return [
+        {
+            "tool": "homebrew",
+            "command": f"brew install python@{version}",
+            "venv_command": f"python{version} -m venv .venv",
+        },
+        {
+            "tool": "pyenv",
+            "command": f"pyenv install {version}",
+            "venv_command": f"pyenv local {version} && python -m venv .venv",
+        },
+        {
+            "tool": "uv",
+            "command": f"uv python install {version}",
+            "venv_command": f"uv venv --python {version} .venv",
+        },
+    ]
+
+
 def normalize_extras(value: str | None) -> str:
     extras = [item.strip() for item in str(value or "").split(",") if item.strip()]
     return ",".join(dict.fromkeys(extras))
@@ -372,9 +426,12 @@ def project_install_target(extras: str) -> str:
 
 def remediation_for_status(status: str, target_version: str) -> str | None:
     if status == "missing_supported_interpreter":
+        install_commands = ", ".join(
+            hint["command"] for hint in interpreter_install_hints(target_version)
+        )
         return (
-            f"Install Python {target_version}+ first, for example: brew install python@{target_version}, "
-            f"pyenv install {target_version}, or uv python install {target_version}."
+            f"Install Python {target_version}+ first with one of these commands: "
+            f"{install_commands}."
         )
     if status == "replace_required":
         return (

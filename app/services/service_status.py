@@ -1164,12 +1164,37 @@ def _python_runtime_status() -> dict:
         "bootstrap_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing",
         "bootstrap_dry_run_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --json",
         "bootstrap_backup_policy": "Unsupported existing .venv is moved to .venv.backup-<timestamp> only with --replace-existing.",
+        "interpreter_install_hints": _python_interpreter_install_hints(target_version),
         "recommended_action": (
-            f"Rebuild .venv with Python {target_version}+ before production startup."
+            "Install a supported Python interpreter if needed, then rebuild .venv with "
+            f"Python {target_version}+ before production startup."
             if target_version and not current_supported
             else None
         ),
     }
+
+
+def _python_interpreter_install_hints(target_version: str) -> list[dict[str, str]]:
+    version = str(target_version or "").strip()
+    if not version:
+        return []
+    return [
+        {
+            "tool": "homebrew",
+            "command": f"brew install python@{version}",
+            "venv_command": f"python{version} -m venv .venv",
+        },
+        {
+            "tool": "pyenv",
+            "command": f"pyenv install {version}",
+            "venv_command": f"pyenv local {version} && python -m venv .venv",
+        },
+        {
+            "tool": "uv",
+            "command": f"uv python install {version}",
+            "venv_command": f"uv venv --python {version} .venv",
+        },
+    ]
 
 
 def _pyproject_requires_python(pyproject_text: str) -> str:

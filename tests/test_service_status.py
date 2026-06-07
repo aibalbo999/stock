@@ -459,6 +459,11 @@ def test_service_status_shape() -> None:
     assert status["python_runtime"]["bootstrap_dry_run_cli"].endswith(
         "scripts/bootstrap_python_runtime.py --json"
     )
+    assert status["python_runtime"]["interpreter_install_hints"][0] == {
+        "tool": "homebrew",
+        "command": "brew install python@3.11",
+        "venv_command": "python3.11 -m venv .venv",
+    }
     assert matrix["architecture"]["database_migrations"]["status"] in {"ready", "degraded"}
     assert matrix["architecture"]["database_migrations"]["evidence"]["head_revision"]
     assert matrix["architecture"]["secret_scanning"]["status"] == "ready"

@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from app.services.report_files import (
+    prune_older_report_files_by_topic,
+    report_file_topic_key,
+)
 
 
 def report_retention_status() -> dict:
@@ -17,6 +23,7 @@ def report_retention_status() -> dict:
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
         in report_files_source
     )
+    markdown_retention_smoke = _markdown_retention_smoke()
     return {
         "collector_path": "app/services/status_report_retention.py",
         "policy": "latest_per_topic",
@@ -31,6 +38,8 @@ def report_retention_status() -> dict:
         "run_links_cleared_for_pruned_reports": ".values(report_id=None)" in persistence_source,
         "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
         "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
+        "markdown_retention_smoke_passed": markdown_retention_smoke["passed"],
+        "markdown_retention_smoke": markdown_retention_smoke,
         "list_reports_uses_latest_by_topic": "latest_by_topic(limit)" in report_query_source,
         "quality_summary_uses_latest_by_topic": "latest_by_topic(safe_limit)"
         in report_query_source,
@@ -60,3 +69,52 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except OSError:
         return ""
+
+
+def _markdown_retention_smoke() -> dict:
+    try:
+        with TemporaryDirectory() as temp_dir:
+            report_dir = Path(temp_dir)
+            old_ai = report_dir / "20260606_120000_AI_topic.md"
+            latest_ai = report_dir / "20260607_080000_AI_topic.md"
+            old_robot = report_dir / "010_robot_topic.md"
+            latest_robot = report_dir / "20260607_090000_robot_topic.md"
+            standalone = report_dir / "single_report.md"
+            for path in (old_ai, latest_ai, old_robot, latest_robot, standalone):
+                path.write_text(path.name, encoding="utf-8")
+
+            timestamped_topic_key = report_file_topic_key(latest_ai)
+            legacy_topic_key = report_file_topic_key(old_robot)
+            deleted_count = prune_older_report_files_by_topic(report_dir)
+            kept_files = sorted(path.name for path in report_dir.glob("*.md"))
+            expected_kept_files = sorted(
+                [latest_ai.name, latest_robot.name, standalone.name]
+            )
+            checks = {
+                "deleted_count": deleted_count == 2,
+                "latest_timestamped_report_kept": latest_ai.exists(),
+                "old_timestamped_report_removed": not old_ai.exists(),
+                "latest_legacy_topic_report_kept": latest_robot.exists(),
+                "old_legacy_topic_report_removed": not old_robot.exists(),
+                "standalone_report_kept": standalone.exists(),
+                "timestamped_topic_key": timestamped_topic_key == "AI_topic",
+                "legacy_topic_key": legacy_topic_key == "robot_topic",
+                "kept_files": kept_files == expected_kept_files,
+            }
+            return {
+                "passed": all(checks.values()),
+                "deleted_count": deleted_count,
+                "kept_files": kept_files,
+                "expected_kept_files": expected_kept_files,
+                "checks": checks,
+                "error": None,
+            }
+    except Exception as exc:
+        return {
+            "passed": False,
+            "deleted_count": 0,
+            "kept_files": [],
+            "expected_kept_files": [],
+            "checks": {},
+            "error": f"{type(exc).__name__}: {exc}",
+        }

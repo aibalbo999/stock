@@ -9,6 +9,11 @@ from app.core.time import today_taipei, utc_now_naive
 from app.ui.api_client import api_get, api_post, api_task_post, request_error_message
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_enrichment_runtime import company_filing_visual_rag_model_chain_rows
+from app.ui.llm_quota_panel import (
+    llm_quota_captions,
+    llm_quota_metric_values,
+    llm_quota_model_rows,
+)
 from app.ui.maintenance_status import (
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
@@ -123,48 +128,19 @@ def render_maintenance_tab() -> None:
             st.success("外部部署選配目前沒有警示。")
 
     with st.expander("AI 額度與模型路由", expanded=True):
-        quota_window = llm_quota.get("window") if isinstance(llm_quota.get("window"), dict) else {}
-        quota_totals = llm_quota.get("totals") if isinstance(llm_quota.get("totals"), dict) else {}
+        quota_metrics = llm_quota_metric_values(llm_quota)
         quota_cols = st.columns(4)
-        quota_cols[0].metric("推薦模型", llm_quota.get("recommended_model") or "-")
-        quota_cols[1].metric("今日請求", int(quota_totals.get("request_count") or 0))
-        quota_cols[2].metric("今日 Token", int(quota_totals.get("total_token_estimate") or 0))
-        quota_cols[3].metric("額度時區", quota_window.get("timezone") or "-")
-        if llm_quota.get("recommended_reason"):
-            st.caption(str(llm_quota["recommended_reason"]))
-        quota_rows = []
-        for model in llm_quota.get("models") or []:
-            quota_rows.append(
-                {
-                    "rank": model.get("rank"),
-                    "model": model.get("model"),
-                    "status": model.get("status"),
-                    "tier": model.get("routing_tier"),
-                    "reason": model.get("status_reason"),
-                    "requests_used": model.get("requests_used"),
-                    "request_budget": model.get("request_budget"),
-                    "requests_remaining": model.get("requests_remaining"),
-                    "tokens_used": model.get("tokens_used"),
-                    "token_budget": model.get("token_budget"),
-                }
-            )
+        quota_cols[0].metric("推薦模型", quota_metrics["推薦模型"])
+        quota_cols[1].metric("今日請求", quota_metrics["今日請求"])
+        quota_cols[2].metric("今日 Token", quota_metrics["今日 Token"])
+        quota_cols[3].metric("額度重置", quota_metrics["額度重置"])
+        for caption in llm_quota_captions(llm_quota):
+            st.caption(caption)
+        quota_rows = llm_quota_model_rows(llm_quota)
         if quota_rows:
             st.dataframe(quota_rows, width="stretch", hide_index=True)
         else:
             st.info("尚未有 AI 用量紀錄。")
-        budget_source = llm_quota.get("budget_source") if isinstance(llm_quota.get("budget_source"), dict) else {}
-        if budget_source.get("note"):
-            st.caption(str(budget_source["note"]))
-        routing_policy = (
-            llm_quota.get("routing_policy")
-            if isinstance(llm_quota.get("routing_policy"), dict)
-            else {}
-        )
-        if routing_policy.get("high_quota_fallback_models"):
-            st.caption(
-                "高額度保底模型："
-                + "、".join(str(model) for model in routing_policy["high_quota_fallback_models"])
-            )
         visual_rag_chain_rows = company_filing_visual_rag_model_chain_rows(service_snapshot)
         if visual_rag_chain_rows:
             st.caption("Visual RAG / PDF 圖片解析模型鏈")

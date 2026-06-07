@@ -25,6 +25,7 @@ def frontend_status() -> dict:
         ui_dir / "report_sections.py",
         ui_dir / "report_html.py",
         ui_dir / "follow_up_status.py",
+        ui_dir / "llm_quota_panel.py",
         ui_dir / "maintenance_status.py",
         ui_dir / "analysis_workspace.py",
         ui_dir / "report_center.py",
@@ -68,6 +69,7 @@ def frontend_status() -> dict:
     report_sections_source = _read_text(ui_dir / "report_sections.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
+    llm_quota_panel_source = _read_text(ui_dir / "llm_quota_panel.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
     data_enrichment_source = "\n".join(
         _read_text(path)
@@ -232,6 +234,15 @@ def frontend_status() -> dict:
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
+        "ui_llm_quota_panel_extracted": (ui_dir / "llm_quota_panel.py").exists()
+        and "def llm_quota_metric_values(" in llm_quota_panel_source
+        and "def llm_quota_model_rows(" in llm_quota_panel_source
+        and "def llm_quota_captions(" in llm_quota_panel_source
+        and "額度重置" in llm_quota_panel_source
+        and "from app.ui.llm_quota_panel import (" in ui_source
+        and "llm_quota_metric_values(llm_quota)" in ui_source
+        and "llm_quota_model_rows(llm_quota)" in ui_source,
+        "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
         "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows(" in data_enrichment_source
         and 'api_get("/services/status"' in data_enrichment_source
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in data_enrichment_source

@@ -17,11 +17,19 @@ from app.services.run_task_api import (
 
 
 class FakeTaskResult:
-    def __init__(self, status: str, ready: bool, successful: bool, result: object) -> None:
+    def __init__(
+        self,
+        status: str,
+        ready: bool,
+        successful: bool,
+        result: object,
+        info: object | None = None,
+    ) -> None:
         self.status = status
         self._ready = ready
         self._successful = successful
         self.result = result
+        self.info = info
 
     def ready(self) -> bool:
         return self._ready
@@ -255,6 +263,119 @@ def test_run_task_service_gets_task_status_with_linked_run() -> None:
     assert status["run"]["workflow_summary"] is None
     assert status["progress"]["status"] == "success"
     assert status["progress"]["progress_pct"] == 1.0
+
+
+def test_run_task_service_reports_queued_progress_before_run_exists() -> None:
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-pending"
+            return FakeTaskResult("PENDING", False, False, None)
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-pending"
+            return None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-pending")
+
+    assert status["status"] == "PENDING"
+    assert status["ready"] is False
+    assert "run" not in status
+    assert status["progress"] == {
+        "status": "queued",
+        "progress_pct": 0.0,
+        "current_step": "waiting_for_worker",
+        "resume_hint": "任務已送出，等待 Celery worker 建立 analysis run。",
+    }
+
+
+def test_run_task_service_prefers_celery_progress_before_run_exists() -> None:
+    celery_progress = {
+        "status": "running",
+        "progress_pct": 0.4,
+        "current_step": "market_data_refresh",
+        "resume_hint": None,
+    }
+
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-started"
+            return FakeTaskResult(
+                "STARTED",
+                False,
+                False,
+                None,
+                info={"progress": celery_progress},
+            )
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-started"
+            return None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-started")
+
+    assert status["status"] == "STARTED"
+    assert status["progress"] == celery_progress
+
+
+def test_run_task_service_reports_failure_progress_before_run_exists() -> None:
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-failed"
+            return FakeTaskResult("FAILURE", True, False, RuntimeError("boom"))
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-failed"
+            return None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-failed")
+
+    assert status["ready"] is True
+    assert status["successful"] is False
+    assert status["error"] == "boom"
+    assert status["progress"]["status"] == "failed"
+    assert status["progress"]["current_step"] == "task_failed"
 
 
 def test_run_task_service_lists_gets_and_deletes_runs() -> None:

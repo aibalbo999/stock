@@ -205,6 +205,8 @@ class RunTaskApiService:
             response["progress"] = self._progress_payload(response["run"], celery_progress)
         elif celery_progress:
             response["progress"] = celery_progress
+        else:
+            response["progress"] = self._celery_status_progress(result.status, ready=result.ready())
         return response
 
     def get_run_by_task_id(self, task_id: str) -> dict:
@@ -326,6 +328,51 @@ class RunTaskApiService:
             "progress_pct": 1.0 if status == "success" else 0.0 if status == "running" else None,
             "current_step": None,
             "resume_hint": None,
+        }
+
+    @staticmethod
+    def _celery_status_progress(status: str | None, *, ready: bool) -> dict:
+        normalized = str(status or "PENDING").upper()
+        if normalized == "SUCCESS":
+            return {
+                "status": "success",
+                "progress_pct": 1.0,
+                "current_step": "task_completed",
+                "resume_hint": None,
+            }
+        if normalized == "FAILURE":
+            return {
+                "status": "failed",
+                "progress_pct": None,
+                "current_step": "task_failed",
+                "resume_hint": "任務失敗；可查看錯誤後使用重試任務。",
+            }
+        if normalized == "REVOKED":
+            return {
+                "status": "cancelled",
+                "progress_pct": None,
+                "current_step": "task_cancelled",
+                "resume_hint": "任務已取消。",
+            }
+        if normalized == "RETRY":
+            return {
+                "status": "retrying",
+                "progress_pct": 0.0,
+                "current_step": "task_retrying",
+                "resume_hint": "Celery 正在重試，等待 worker 更新 run 狀態。",
+            }
+        if normalized == "STARTED":
+            return {
+                "status": "running",
+                "progress_pct": 0.05,
+                "current_step": "worker_started",
+                "resume_hint": "Worker 已接手，等待 analysis run metadata。",
+            }
+        return {
+            "status": "queued" if not ready else normalized.casefold(),
+            "progress_pct": 0.0 if not ready else None,
+            "current_step": "waiting_for_worker",
+            "resume_hint": "任務已送出，等待 Celery worker 建立 analysis run。",
         }
 
     @classmethod

@@ -214,6 +214,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "估算成本 USD" in source
     assert "/tasks/summary?days=7" in source
     assert "背景任務觀測" in source
+    assert "/reports/observability/summary?limit=20" in source
+    assert "報告生成觀測" in source
+    assert "trace_captured_count" in source
+    assert "keyword_fallback_count" in source
     assert "Queue / Worker readiness" in source
     assert "task_queue_health_rows(service_snapshot)" in source
     assert "task_queue_health_alert(service_snapshot)" in source

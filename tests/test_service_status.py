@@ -420,6 +420,7 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
+    assert status["frontend"]["ui_report_observability_summary_enabled"] is True
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
     assert status["frontend"]["ui_report_state_extracted"] is True
     assert status["frontend"]["ui_report_state_path"] == "app/ui/report_state.py"

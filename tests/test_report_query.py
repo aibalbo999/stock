@@ -521,3 +521,181 @@ def test_report_query_service_summarizes_latest_report_quality_gates() -> None:
     assert summary["reports"][0]["id"] == 8
     assert summary["reports"][0]["company_filing_coverage"] == 0.5
     assert summary["alerts"][0]["code"] == "report_quality_warning"
+
+
+def test_report_query_service_summarizes_latest_report_observability() -> None:
+    reports = [
+        SimpleNamespace(
+            id=8,
+            title="AI 報告",
+            topic="AI",
+            generated_at=datetime(2026, 6, 1, 8, 0, 0),
+        )
+    ]
+    run_payload = {
+        "report_execution": {
+            "retrieval_trace": {
+                "strategy": "hybrid-vector-bm25-rerank",
+                "duration_ms": 18.5,
+                "candidate_count": 42,
+                "returned_count": 8,
+                "reranker_status": {
+                    "resolved_provider": "keyword",
+                    "execution_mode": "keyword",
+                    "quality_tier": "lexical_fallback",
+                    "model_reranker_ready": False,
+                    "keyword_fallback": True,
+                    "model_reranker_gap": "keyword_provider_selected",
+                },
+            },
+            "graph_reasoning": {
+                "status": "ready",
+                "strategy": "shortest_path_context",
+                "max_paths": 8,
+            },
+            "llm": {
+                "model": "gemini-3.5-flash",
+                "provider": "google_genai",
+                "fallback": False,
+                "observability": {
+                    "latency_ms": 1200.25,
+                    "total_token_estimate": 4096,
+                    "estimated_cost_usd": 0.0012,
+                    "cost_tracking_mode": "configured_rate_card",
+                },
+                "attempt_summary": {
+                    "attempt_count": 2,
+                    "retryable_failure_count": 1,
+                    "fallback_path_used": True,
+                    "primary_failure_category": "rate_limited",
+                },
+            },
+        }
+    }
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def latest_by_topic(self, limit: int):
+            assert limit == 20
+            return reports
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int):
+            assert report_id == 8
+            return SimpleNamespace(
+                id=88,
+                source="celery_report_generation",
+                status="success",
+                started_at=datetime(2026, 6, 1, 8, 0, 0),
+                finished_at=datetime(2026, 6, 1, 8, 1, 0),
+                payload_json=json.dumps(run_payload, ensure_ascii=False),
+            )
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+    )
+
+    summary = service.observability_summary(20)
+
+    assert summary["status"] == "caution"
+    assert summary["policy"] == "latest_per_topic"
+    assert summary["totals"]["report_count"] == 1
+    assert summary["totals"]["trace_captured_count"] == 1
+    assert summary["totals"]["total_token_estimate"] == 4096
+    assert summary["totals"]["estimated_cost_usd"] == 0.0012
+    assert summary["totals"]["fallback_path_count"] == 1
+    assert summary["totals"]["retryable_failure_count"] == 1
+    assert summary["totals"]["keyword_fallback_count"] == 1
+    assert summary["totals"]["graph_reasoning_ready_count"] == 1
+    assert summary["reports"][0]["run_id"] == 88
+    assert summary["reports"][0]["model"] == "gemini-3.5-flash"
+    assert summary["reports"][0]["retrieval_latency_ms"] == 18.5
+    assert summary["reports"][0]["reranker_fallback_reason"] == "keyword_provider_selected"
+    assert {alert["code"] for alert in summary["alerts"]} == {
+        "report_llm_fallback_used",
+        "report_llm_retryable_failures",
+        "report_reranker_keyword_fallback",
+    }
+
+
+def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def latest_by_topic(self, limit: int):
+            assert limit == 20
+            return [
+                SimpleNamespace(
+                    id=9,
+                    title="盤後更新報告",
+                    topic="AI",
+                    generated_at=datetime(2026, 6, 2, 8, 0, 0),
+                )
+            ]
+
+    class FakeAnalysisRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_report_id(self, report_id: int):
+            assert report_id == 9
+            return SimpleNamespace(
+                id=90,
+                source="celery_after_close",
+                status="success",
+                started_at=datetime(2026, 6, 2, 8, 0, 0),
+                finished_at=datetime(2026, 6, 2, 8, 1, 0),
+                payload_json=json.dumps(
+                    {
+                        "rerun_report": {
+                            "report_execution": {
+                                "retrieval_trace": {
+                                    "strategy": "hybrid-vector-bm25-rerank",
+                                    "duration_ms": 9.5,
+                                },
+                                "llm": {
+                                    "model": "gemini-3.5-flash",
+                                    "provider": "google_genai",
+                                    "observability": {
+                                        "latency_ms": 800,
+                                        "total_token_estimate": 2048,
+                                    },
+                                    "attempt_summary": {"attempt_count": 1},
+                                },
+                            }
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+    )
+
+    summary = service.observability_summary(20)
+
+    assert summary["status"] == "ready"
+    assert summary["totals"]["trace_captured_count"] == 1
+    assert summary["totals"]["trace_missing_count"] == 0
+    assert summary["reports"][0]["run_source"] == "celery_after_close"
+    assert summary["reports"][0]["retrieval_latency_ms"] == 9.5
+    assert summary["reports"][0]["total_token_estimate"] == 2048

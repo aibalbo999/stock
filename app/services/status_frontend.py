@@ -168,6 +168,10 @@ def frontend_status() -> dict:
         and '"category": task_status.get("error_category")' in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
+        "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20" in ui_source
+        and "報告生成觀測" in ui_source
+        and "trace_captured_count" in ui_source
+        and "keyword_fallback_count" in ui_source,
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
         and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,
         "ui_report_state_extracted": (ui_dir / "report_state.py").exists()

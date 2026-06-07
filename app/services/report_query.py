@@ -195,6 +195,51 @@ class ReportQueryService:
             "reports": rows,
         }
 
+    def observability_summary(self, limit: int = 20) -> dict:
+        safe_limit = max(1, min(int(limit or 20), 100))
+        snapshots = []
+        with self.session_scope_factory() as session:
+            report_repository = self.report_repository_cls(session)
+            run_repository = self.analysis_run_repository_cls(session)
+            latest_by_topic = getattr(report_repository, "latest_by_topic", None)
+            reports = (
+                latest_by_topic(safe_limit)
+                if callable(latest_by_topic)
+                else report_repository.latest(safe_limit)
+            )
+            for report in reports:
+                run = run_repository.get_by_report_id(getattr(report, "id", 0))
+                snapshots.append(
+                    {
+                        "id": getattr(report, "id", None),
+                        "title": getattr(report, "title", ""),
+                        "topic": getattr(report, "topic", ""),
+                        "generated_at": getattr(report, "generated_at", None).isoformat()
+                        if getattr(report, "generated_at", None) is not None
+                        else None,
+                        "run_id": getattr(run, "id", None) if run is not None else None,
+                        "run_source": getattr(run, "source", None) if run is not None else None,
+                        "run_status": getattr(run, "status", None) if run is not None else None,
+                        "run_started_at": getattr(run, "started_at", None).isoformat()
+                        if run is not None and getattr(run, "started_at", None) is not None
+                        else None,
+                        "run_finished_at": getattr(run, "finished_at", None).isoformat()
+                        if run is not None and getattr(run, "finished_at", None) is not None
+                        else None,
+                        "run_payload": getattr(run, "payload_json", None) if run is not None else None,
+                    }
+                )
+        rows = [self._observability_summary_row(snapshot) for snapshot in snapshots]
+        totals = _observability_totals(rows)
+        status = _observability_status(rows, totals)
+        return {
+            "status": status,
+            "policy": "latest_per_topic",
+            "totals": totals,
+            "alerts": self._observability_alerts(rows, totals),
+            "reports": rows,
+        }
+
     def get_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:
             report_repository = self.report_repository_cls(session)
@@ -302,6 +347,84 @@ class ReportQueryService:
             "llm_estimated_cost_usd": metrics.get("llm_estimated_cost_usd"),
         }
 
+    def _observability_summary_row(self, snapshot: dict[str, Any]) -> dict:
+        payload = self.parse_run_payload_func(snapshot.get("run_payload"))
+        execution = _report_execution_from_payload(payload)
+        llm = execution.get("llm") if isinstance(execution.get("llm"), dict) else {}
+        llm_observability = (
+            llm.get("observability")
+            if isinstance(llm.get("observability"), dict)
+            else {}
+        )
+        attempt_summary = (
+            llm.get("attempt_summary")
+            if isinstance(llm.get("attempt_summary"), dict)
+            else {}
+        )
+        retrieval_trace = (
+            execution.get("retrieval_trace")
+            if isinstance(execution.get("retrieval_trace"), dict)
+            else {}
+        )
+        reranker_status = (
+            retrieval_trace.get("reranker_status")
+            if isinstance(retrieval_trace.get("reranker_status"), dict)
+            else {}
+        )
+        graph_reasoning = (
+            execution.get("graph_reasoning")
+            if isinstance(execution.get("graph_reasoning"), dict)
+            else {}
+        )
+        return {
+            "id": snapshot.get("id"),
+            "title": snapshot.get("title"),
+            "topic": snapshot.get("topic"),
+            "generated_at": snapshot.get("generated_at"),
+            "run_id": snapshot.get("run_id"),
+            "run_source": snapshot.get("run_source"),
+            "run_status": snapshot.get("run_status"),
+            "model": llm.get("model"),
+            "provider": llm.get("provider"),
+            "fallback": bool(llm.get("fallback")),
+            "fallback_path_used": bool(attempt_summary.get("fallback_path_used")),
+            "attempt_count": _metric_int(attempt_summary.get("attempt_count")),
+            "retryable_failure_count": _metric_int(
+                attempt_summary.get("retryable_failure_count"),
+                default=0,
+            ),
+            "primary_failure_category": attempt_summary.get("primary_failure_category"),
+            "llm_latency_ms": _metric_float(llm_observability.get("latency_ms")),
+            "total_token_estimate": _metric_int(llm_observability.get("total_token_estimate")),
+            "estimated_cost_usd": _metric_float(llm_observability.get("estimated_cost_usd")),
+            "cost_tracking_mode": llm_observability.get("cost_tracking_mode"),
+            "retrieval_strategy": retrieval_trace.get("strategy"),
+            "retrieval_latency_ms": _metric_float(
+                retrieval_trace.get("duration_ms")
+                if retrieval_trace.get("duration_ms") is not None
+                else llm_observability.get("retrieval_latency_ms")
+            ),
+            "retrieval_candidate_count": _metric_int(retrieval_trace.get("candidate_count")),
+            "retrieval_returned_count": _metric_int(retrieval_trace.get("returned_count")),
+            "reranker_provider": (
+                reranker_status.get("resolved_provider")
+                or reranker_status.get("normalized_provider")
+                or reranker_status.get("provider")
+            ),
+            "reranker_execution_mode": reranker_status.get("execution_mode"),
+            "reranker_quality_tier": reranker_status.get("quality_tier"),
+            "model_reranker_ready": bool(reranker_status.get("model_reranker_ready")),
+            "keyword_fallback": bool(reranker_status.get("keyword_fallback")),
+            "reranker_fallback_reason": (
+                reranker_status.get("fallback_reason")
+                or reranker_status.get("model_reranker_gap")
+            ),
+            "graph_reasoning_status": graph_reasoning.get("status"),
+            "graph_reasoning_strategy": graph_reasoning.get("strategy"),
+            "graph_reasoning_max_paths": graph_reasoning.get("max_paths"),
+            "trace_captured": bool(llm_observability or retrieval_trace or graph_reasoning),
+        }
+
     @staticmethod
     def _quality_summary_alerts(rows: list[dict]) -> list[dict[str, str]]:
         alerts = []
@@ -324,6 +447,43 @@ class ReportQueryService:
                 )
         return alerts[:10]
 
+    @staticmethod
+    def _observability_alerts(rows: list[dict], totals: dict[str, Any]) -> list[dict[str, str]]:
+        alerts = []
+        if rows and int(totals.get("trace_missing_count") or 0):
+            alerts.append(
+                {
+                    "severity": "warning",
+                    "code": "report_trace_missing",
+                    "message": "Some latest reports do not have stored LLM/RAG trace payloads.",
+                }
+            )
+        if int(totals.get("fallback_path_count") or 0):
+            alerts.append(
+                {
+                    "severity": "warning",
+                    "code": "report_llm_fallback_used",
+                    "message": "Some latest reports used LLM fallback routing.",
+                }
+            )
+        if int(totals.get("retryable_failure_count") or 0):
+            alerts.append(
+                {
+                    "severity": "warning",
+                    "code": "report_llm_retryable_failures",
+                    "message": "Retryable LLM failures were observed during latest report generation.",
+                }
+            )
+        if int(totals.get("keyword_fallback_count") or 0):
+            alerts.append(
+                {
+                    "severity": "info",
+                    "code": "report_reranker_keyword_fallback",
+                    "message": "Some latest reports used keyword reranking instead of a model/API reranker.",
+                }
+            )
+        return alerts[:10]
+
     def delete_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:
             deleted = self.report_repository_cls(session).delete(report_id)
@@ -338,3 +498,76 @@ def _count_values(rows: list[dict], key: str) -> dict[str, int]:
         value = str(row.get(key) or "unknown")
         counts[value] = counts.get(value, 0) + 1
     return counts
+
+
+def _report_execution_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    direct = payload.get("report_execution")
+    if isinstance(direct, dict):
+        return direct
+    for key in ("rerun_report", "report_result"):
+        nested = payload.get(key)
+        if isinstance(nested, dict) and isinstance(nested.get("report_execution"), dict):
+            return nested["report_execution"]
+    return {}
+
+
+def _observability_totals(rows: list[dict]) -> dict[str, Any]:
+    latency_values = [row["llm_latency_ms"] for row in rows if row.get("llm_latency_ms") is not None]
+    retrieval_latency_values = [
+        row["retrieval_latency_ms"]
+        for row in rows
+        if row.get("retrieval_latency_ms") is not None
+    ]
+    return {
+        "report_count": len(rows),
+        "trace_captured_count": sum(1 for row in rows if row.get("trace_captured")),
+        "trace_missing_count": sum(1 for row in rows if not row.get("trace_captured")),
+        "total_token_estimate": sum(row.get("total_token_estimate") or 0 for row in rows),
+        "estimated_cost_usd": round(sum(row.get("estimated_cost_usd") or 0.0 for row in rows), 6),
+        "fallback_count": sum(1 for row in rows if row.get("fallback")),
+        "fallback_path_count": sum(1 for row in rows if row.get("fallback_path_used")),
+        "retryable_failure_count": sum(row.get("retryable_failure_count") or 0 for row in rows),
+        "retrieval_trace_count": sum(1 for row in rows if row.get("retrieval_strategy")),
+        "model_reranker_ready_count": sum(1 for row in rows if row.get("model_reranker_ready")),
+        "keyword_fallback_count": sum(1 for row in rows if row.get("keyword_fallback")),
+        "graph_reasoning_ready_count": sum(
+            1 for row in rows if row.get("graph_reasoning_status") == "ready"
+        ),
+        "avg_llm_latency_ms": round(sum(latency_values) / len(latency_values), 2)
+        if latency_values
+        else None,
+        "avg_retrieval_latency_ms": round(
+            sum(retrieval_latency_values) / len(retrieval_latency_values),
+            2,
+        )
+        if retrieval_latency_values
+        else None,
+    }
+
+
+def _observability_status(rows: list[dict], totals: dict[str, Any]) -> str:
+    if not rows:
+        return "no_reports"
+    if int(totals.get("trace_missing_count") or 0):
+        return "caution"
+    if int(totals.get("fallback_path_count") or 0) or int(totals.get("retryable_failure_count") or 0):
+        return "caution"
+    return "ready"
+
+
+def _metric_int(value: Any, default: int | None = None) -> int | None:
+    if value is None:
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _metric_float(value: Any, default: float | None = None) -> float | None:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default

@@ -48,6 +48,10 @@ def create_report_router(
     def report_quality_summary(limit: int = 20, services: Any = Depends(services_dependency)) -> dict:
         return services.report_query().quality_summary(limit)
 
+    @router.get("/reports/observability/summary")
+    def report_observability_summary(limit: int = 20, services: Any = Depends(services_dependency)) -> dict:
+        return services.report_query().observability_summary(limit)
+
     @router.get("/reports/{report_id}")
     def get_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:
         try:

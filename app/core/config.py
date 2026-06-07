@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     company_filing_browser_render_token: str = ""
     company_filing_browser_render_timeout_seconds: float = 30.0
     company_filing_browser_render_concurrency: int = 4
-    company_filing_playwright_render_enabled: bool = False
+    company_filing_playwright_render_enabled: bool = True
     company_filing_playwright_browser: str = "chromium"
     company_filing_playwright_wait_until: str = "networkidle"
     company_filing_playwright_timeout_seconds: float = 30.0

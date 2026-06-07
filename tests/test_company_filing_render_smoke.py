@@ -57,6 +57,7 @@ def _document(text: str = "Example Domain rendered text") -> NewsDocument:
 
 
 def test_company_filing_render_smoke_reports_not_configured(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
     monkeypatch.setattr(smoke, "company_filing_browser_render_status", lambda: _browser_runtime())
     monkeypatch.setattr(smoke, "company_filing_playwright_browser_status", lambda _browser: _playwright_runtime())
     monkeypatch.setattr(smoke, "company_filing_proxy_urls", lambda: [])
@@ -71,6 +72,8 @@ def test_company_filing_render_smoke_reports_not_configured(monkeypatch) -> None
 
 
 def test_company_filing_render_smoke_collects_runtime_outside_event_loop(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
+
     def fake_playwright_status(_browser):
         try:
             asyncio.get_running_loop()

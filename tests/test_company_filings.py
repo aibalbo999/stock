@@ -17,6 +17,7 @@ from app.data_sources.company_filings import (
     company_filing_browser_render_provider,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
+    company_filing_render_fallback_configured,
     company_filing_playwright_render_enabled,
     company_filing_structured_api_configured,
     company_filing_structured_api_status,
@@ -235,11 +236,28 @@ def test_company_filing_browser_render_status_reports_unreachable_endpoint(monke
     assert status["fallback_reason"] == "browser_render_endpoint_unreachable:TimeoutError"
 
 
-def test_company_filing_playwright_render_is_explicitly_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+def test_company_filing_playwright_render_is_enabled_by_default() -> None:
     get_settings.cache_clear()
     try:
         assert company_filing_playwright_render_enabled() is True
+    finally:
+        get_settings.cache_clear()
+
+
+def test_company_filing_playwright_render_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        assert company_filing_playwright_render_enabled() is False
+    finally:
+        get_settings.cache_clear()
+
+
+def test_company_filing_render_fallback_ignores_playwright_without_dependency(monkeypatch) -> None:
+    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: False)
+    get_settings.cache_clear()
+    try:
+        assert company_filing_render_fallback_configured() is False
     finally:
         get_settings.cache_clear()
 

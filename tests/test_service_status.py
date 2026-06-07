@@ -127,8 +127,10 @@ def test_service_status_shape() -> None:
     assert status["company_filings"]["visual_rag_max_pages"] == Settings().company_filing_visual_rag_max_pages
     assert status["company_filings"]["visual_rag_dpi"] == 144
     assert "fallback_reason" in status["company_filings"]["visual_rag_runtime"]
-    assert status["company_filings"]["playwright_render_enabled"] is False
-    assert status["company_filings"]["playwright_render_configured"] is False
+    assert status["company_filings"]["playwright_render_enabled"] is True
+    assert status["company_filings"]["playwright_render_configured"] is bool(
+        status["company_filings"]["playwright_render_browser_available"]
+    )
     assert isinstance(status["company_filings"]["playwright_render_dependency_available"], bool)
     assert isinstance(status["company_filings"]["playwright_render_browser_available"], bool)
     assert "fallback_reason" in status["company_filings"]["playwright_render_runtime"]
@@ -146,7 +148,11 @@ def test_service_status_shape() -> None:
     assert status["company_filings"]["user_agent_retry_rotation_enabled"] is True
     assert status["company_filings"]["proxy_retry_rotation_enabled"] is False
     assert status["company_filings"]["identity_retry_rotation_enabled"] is True
-    assert status["company_filings"]["browser_or_proxy_fallback_configured"] is False
+    assert status["company_filings"]["browser_or_proxy_fallback_configured"] is bool(
+        status["company_filings"]["browser_render_configured"]
+        or status["company_filings"]["playwright_render_configured"]
+        or status["company_filings"]["proxy_count"]
+    )
     assert status["finmind"]["retryable_http_statuses"] == sorted(FINMIND_RETRYABLE_HTTP_STATUSES)
     assert status["finmind"]["public_fallback_enabled"] is True
     assert status["finmind"]["data_access_ready"] is True
@@ -512,12 +518,18 @@ def test_service_status_shape() -> None:
     assert filing_hardening["user_agent_retry_rotation_enabled"] is True
     assert filing_hardening["proxy_retry_rotation_enabled"] is False
     assert filing_hardening["identity_retry_rotation_enabled"] is True
-    assert filing_hardening["browser_or_proxy_fallback_configured"] is False
+    assert (
+        filing_hardening["browser_or_proxy_fallback_configured"]
+        is status["company_filings"]["browser_or_proxy_fallback_configured"]
+    )
     assert filing_hardening["browser_render_provider"] == "browserless"
     assert filing_hardening["structured_api_configured"] is False
     assert "browser_render_runtime" in filing_hardening
-    assert filing_hardening["playwright_render_enabled"] is False
-    assert filing_hardening["playwright_render_configured"] is False
+    assert filing_hardening["playwright_render_enabled"] is True
+    assert (
+        filing_hardening["playwright_render_configured"]
+        is status["company_filings"]["playwright_render_configured"]
+    )
     assert "playwright_render_runtime" in filing_hardening
     assert "pdf_parser_dependencies" in filing_hardening
     pdf_parser_runtime = matrix["data_business_logic"]["company_filing_pdf_table_parser_runtime"]
@@ -534,13 +546,22 @@ def test_service_status_shape() -> None:
         "pdf_table_parser_available"
     ]
     filing_fallback = matrix["data_business_logic"]["company_filing_browser_or_proxy_fallback"]
-    assert filing_fallback["status"] == "not_configured"
-    assert filing_fallback["evidence"]["browser_or_proxy_fallback_configured"] is False
+    expected_filing_fallback_status = (
+        "ready" if status["company_filings"]["browser_or_proxy_fallback_configured"] else "not_configured"
+    )
+    assert filing_fallback["status"] == expected_filing_fallback_status
+    assert (
+        filing_fallback["evidence"]["browser_or_proxy_fallback_configured"]
+        is status["company_filings"]["browser_or_proxy_fallback_configured"]
+    )
     assert filing_fallback["evidence"]["proxy_count"] == 0
     assert filing_fallback["evidence"]["browser_render_configured"] is False
     assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
     assert "browser_render_runtime" in filing_fallback["evidence"]
-    assert filing_fallback["evidence"]["playwright_render_configured"] is False
+    assert (
+        filing_fallback["evidence"]["playwright_render_configured"]
+        is status["company_filings"]["playwright_render_configured"]
+    )
     assert "playwright_render_runtime" in filing_fallback["evidence"]
     structured_api = matrix["data_business_logic"]["company_filing_structured_api_fallback"]
     assert structured_api["status"] == "not_configured"
@@ -868,7 +889,7 @@ def test_company_filing_fetch_settings_defaults() -> None:
     assert settings.company_filing_browser_render_token == ""
     assert settings.company_filing_browser_render_timeout_seconds == 30.0
     assert settings.company_filing_browser_render_concurrency == 4
-    assert settings.company_filing_playwright_render_enabled is False
+    assert settings.company_filing_playwright_render_enabled is True
     assert settings.company_filing_playwright_browser == "chromium"
     assert settings.company_filing_playwright_wait_until == "networkidle"
     assert settings.company_filing_playwright_timeout_seconds == 30.0
@@ -906,9 +927,40 @@ def test_company_filing_playwright_fallback_requires_available_dependency(monkey
     assert fallback["status"] == "not_configured"
 
 
+def test_company_filing_playwright_fallback_ready_when_browser_available(monkeypatch) -> None:
+    monkeypatch.delenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", raising=False)
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.services.service_status.company_filing_playwright_browser_status",
+        lambda browser: {
+            "browser": browser,
+            "dependency_available": True,
+            "browser_available": True,
+            "browser_executable_exists": True,
+            "executable_path": "/tmp/chromium",
+            "fallback_reason": None,
+        },
+    )
+    try:
+        status = service_status()
+    finally:
+        get_settings.cache_clear()
+
+    assert status["company_filings"]["playwright_render_enabled"] is True
+    assert status["company_filings"]["playwright_render_dependency_available"] is True
+    assert status["company_filings"]["playwright_render_browser_available"] is True
+    assert status["company_filings"]["playwright_render_configured"] is True
+    assert status["company_filings"]["browser_or_proxy_fallback_configured"] is True
+    fallback = status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_browser_or_proxy_fallback"
+    ]
+    assert fallback["status"] == "ready"
+
+
 def test_company_filing_browser_render_fallback_requires_reachable_endpoint(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:3000/content")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
     get_settings.cache_clear()
     monkeypatch.setattr(
         "app.services.service_status.company_filing_browser_render_status",
@@ -945,6 +997,7 @@ def test_company_filing_browser_render_fallback_requires_reachable_endpoint(monk
 def test_company_filing_browser_render_fallback_ready_when_endpoint_reachable(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:3000/content")
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
     get_settings.cache_clear()
     monkeypatch.setattr(
         "app.services.service_status.company_filing_browser_render_status",

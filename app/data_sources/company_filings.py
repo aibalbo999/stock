@@ -392,7 +392,9 @@ def company_filing_playwright_browser_status(browser_name: str | None = None) ->
 
 
 def company_filing_render_fallback_configured() -> bool:
-    return company_filing_browser_render_configured() or company_filing_playwright_render_enabled()
+    return company_filing_browser_render_configured() or (
+        company_filing_playwright_render_enabled() and company_filing_playwright_available()
+    )
 
 
 def company_filing_structured_api_configured() -> bool:

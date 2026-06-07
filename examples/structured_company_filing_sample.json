@@ -1,12 +1,18 @@
 {
-  "documents": [
+  "items": [
     {
-      "title": "2330 TSMC 2026 investor presentation",
-      "text": "2330 TSMC investor presentation and earnings presentation sample. This filing discusses AI/HPC demand, capital expenditure, revenue outlook, and supply chain capacity planning for contract validation.",
-      "url": "https://example.com/2330-investor-presentation.pdf",
-      "publisher": "sample_structured_api",
-      "published_at": "2026-05-01",
-      "document_type": "investor_presentation"
+      "headline": "2026 Q2 earnings materials",
+      "abstract": "AI/HPC demand, capital expenditure, revenue outlook, and supply chain capacity planning for contract validation.",
+      "stock_id": "2330",
+      "companyName": "TSMC 台積電",
+      "doc_type": "法說會簡報",
+      "file": {
+        "url": "https://example.com/2330-investor-presentation.pdf"
+      },
+      "source": {
+        "publisher": "sample_structured_api"
+      },
+      "report_date": "2026-05-01T09:30:00+08:00"
     }
   ]
 }

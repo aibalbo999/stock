@@ -418,7 +418,11 @@ def company_filing_structured_api_status() -> dict:
         "url_configured": bool(endpoint),
         "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
         "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
-        "contract": "GET JSON with documents/data rows: title, text, url, publisher, published_at, document_type",
+        "contract": (
+            "GET JSON with documents/data/results/items/records rows; supported aliases include "
+            "title/headline/doc_title, text/content/body/abstract, url/file_url/download_url, "
+            "publisher/source_name, published_at/publish_date/report_date, document_type/doc_type/category."
+        ),
         "smoke_cli": (
             ".venv/bin/python scripts/structured_company_filing_smoke.py "
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
@@ -1208,20 +1212,81 @@ class CompanyFilingFetcher:
         provider: str,
         document_types: list[str] | tuple[str, ...] | None = None,
     ) -> CompanyFilingDocument | None:
-        title = str(row.get("title") or row.get("name") or "").strip()
-        text = str(row.get("text") or row.get("content") or row.get("summary") or "").strip()
-        url = str(row.get("url") or row.get("source_url") or "").strip() or None
-        document_type = str(row.get("document_type") or infer_document_type(f"{title}\n{text}\n{url or ''}"))
+        title = structured_api_row_text(
+            row,
+            "title",
+            "name",
+            "headline",
+            "subject",
+            "doc_title",
+            "document_title",
+            "report_title",
+        )
+        text = structured_api_row_text(
+            row,
+            "text",
+            "content",
+            "summary",
+            "body",
+            "abstract",
+            "description",
+            "plain_text",
+            "ocr_text",
+        )
+        url = structured_api_row_text(
+            row,
+            "url",
+            "source_url",
+            "file_url",
+            "download_url",
+            "document_url",
+            "documentUrl",
+            "pdf_url",
+            "source.url",
+            "file.url",
+            "document.url",
+        ) or None
+        document_type = structured_api_document_type(row, title=title, text=text, url=url)
         if document_types and document_type not in set(document_types):
             return None
         if not title or not text:
             return None
-        publisher = str(row.get("publisher") or provider or "structured company filing API")
+        text = structured_api_enriched_text(
+            text,
+            row,
+            ticker=ticker,
+            company_name=company_name,
+            document_type=document_type,
+        )
+        publisher = (
+            structured_api_row_text(
+                row,
+                "publisher",
+                "source_name",
+                "provider",
+                "source.publisher",
+                "metadata.publisher",
+            )
+            or provider
+            or "structured company filing API"
+        )
         source = Source(
             title=title,
             url=url,
             publisher=publisher,
-            published_at=parse_structured_api_date(row.get("published_at") or row.get("date")),
+            published_at=parse_structured_api_date(
+                structured_api_row_value(
+                    row,
+                    "published_at",
+                    "date",
+                    "publish_date",
+                    "publishedDate",
+                    "report_date",
+                    "filing_date",
+                    "announcement_date",
+                    "updated_at",
+                )
+            ),
             fetched_at=utc_now_naive(),
         )
         news_document = NewsDocument(
@@ -1745,10 +1810,81 @@ def structured_api_document_rows(payload: object) -> list[dict]:
     if isinstance(payload, list):
         rows = payload
     elif isinstance(payload, dict):
-        rows = payload.get("documents") or payload.get("data") or payload.get("results") or []
+        rows = (
+            payload.get("documents")
+            or payload.get("data")
+            or payload.get("results")
+            or payload.get("items")
+            or payload.get("records")
+            or []
+        )
     else:
         rows = []
     return [row for row in rows if isinstance(row, dict)]
+
+
+def structured_api_row_value(row: dict, *keys: str) -> object:
+    for key in keys:
+        current: object = row
+        for part in str(key).split("."):
+            if not isinstance(current, dict) or part not in current:
+                current = None
+                break
+            current = current.get(part)
+        if current not in (None, ""):
+            return current
+    return None
+
+
+def structured_api_row_text(row: dict, *keys: str) -> str:
+    value = structured_api_row_value(row, *keys)
+    if isinstance(value, (dict, list, tuple, set)):
+        return ""
+    return str(value or "").strip()
+
+
+def structured_api_document_type(row: dict, *, title: str, text: str, url: str | None) -> str:
+    raw_type = structured_api_row_text(
+        row,
+        "document_type",
+        "documentType",
+        "doc_type",
+        "filing_type",
+        "category",
+        "type",
+    )
+    if raw_type in DOCUMENT_TYPE_KEYWORDS:
+        return raw_type
+    return infer_document_type(f"{raw_type}\n{title}\n{text}\n{url or ''}")
+
+
+def structured_api_enriched_text(
+    text: str,
+    row: dict,
+    *,
+    ticker: str,
+    company_name: str,
+    document_type: str,
+) -> str:
+    metadata_terms = [
+        ticker,
+        company_name,
+        document_type,
+        document_type.replace("_", " "),
+        structured_api_row_text(
+            row,
+            "document_type",
+            "documentType",
+            "doc_type",
+            "filing_type",
+            "category",
+            "type",
+        ),
+        structured_api_row_text(row, "ticker", "stock_id", "stockId", "stock_no", "stockNo", "company_id"),
+        structured_api_row_text(row, "company", "company_name", "companyName", "company_full_name"),
+    ]
+    metadata = " ".join(term for term in metadata_terms if term)
+    return f"[Structured API metadata] {metadata}\n{text}" if metadata else text
 
 
 def parse_structured_api_date(value: object) -> date | None:

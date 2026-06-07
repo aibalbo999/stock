@@ -189,7 +189,39 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
 def test_structured_api_document_rows_accepts_common_payload_shapes() -> None:
     assert structured_api_document_rows({"documents": [{"title": "A"}, "bad"]}) == [{"title": "A"}]
     assert structured_api_document_rows({"data": [{"title": "B"}]}) == [{"title": "B"}]
+    assert structured_api_document_rows({"items": [{"title": "C"}]}) == [{"title": "C"}]
+    assert structured_api_document_rows({"records": [{"title": "D"}]}) == [{"title": "D"}]
     assert structured_api_document_rows([{"title": "C"}]) == [{"title": "C"}]
+
+
+def test_structured_api_row_to_document_accepts_provider_alias_fields() -> None:
+    row = {
+        "headline": "2026 Q2 earnings materials",
+        "abstract": "AI/HPC demand, capital expenditure, and supply chain capacity planning update.",
+        "stock_id": "2330",
+        "companyName": "台積電",
+        "doc_type": "法說會簡報",
+        "file": {"url": "https://api.tej.example/download/2330-q2.pdf"},
+        "source": {"publisher": "TEJ"},
+        "report_date": "2026-05-01T09:30:00+08:00",
+    }
+
+    document = CompanyFilingFetcher()._structured_api_row_to_document(
+        row,
+        ticker="2330",
+        company_name="台積電",
+        provider="tej",
+        document_types=["investor_presentation"],
+    )
+
+    assert document is not None
+    assert document.document_type == "investor_presentation"
+    assert document.source.url == "https://api.tej.example/download/2330-q2.pdf"
+    assert document.source.publisher == "TEJ"
+    assert document.source.published_at == date(2026, 5, 1)
+    assert "Structured API metadata" in document.text
+    assert "2330" in document.text
+    assert "investor presentation" in document.text
 
 
 def test_company_filing_browser_render_status_checks_endpoint_reachability(monkeypatch) -> None:

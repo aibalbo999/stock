@@ -18,58 +18,19 @@ def api_controller_status() -> dict:
     task_failure_diagnostics_path = app_dir / "services" / "task_failure_diagnostics.py"
     config_path = app_dir / "core" / "config.py"
     report_generation_api_path = app_dir / "services" / "report_generation_api.py"
-    main_source = ""
-    runtime_source = ""
-    tasks_source = ""
-    try:
-        main_source = main_path.read_text(encoding="utf-8")
-        main_py_lines = len(main_source.splitlines())
-    except OSError:
-        main_py_lines = None
-    try:
-        runtime_source = runtime_path.read_text(encoding="utf-8")
-    except OSError:
-        runtime_source = ""
-    try:
-        service_factory_source = service_factory_path.read_text(encoding="utf-8")
-    except OSError:
-        service_factory_source = ""
-    try:
-        tasks_source = tasks_path.read_text(encoding="utf-8")
-    except OSError:
-        tasks_source = ""
-    try:
-        operations_routes_source = operations_routes_path.read_text(encoding="utf-8")
-    except OSError:
-        operations_routes_source = ""
-    try:
-        report_routes_source = report_routes_path.read_text(encoding="utf-8")
-    except OSError:
-        report_routes_source = ""
-    try:
-        error_details_source = error_details_path.read_text(encoding="utf-8")
-    except OSError:
-        error_details_source = ""
-    try:
-        run_task_api_source = run_task_api_path.read_text(encoding="utf-8")
-    except OSError:
-        run_task_api_source = ""
-    try:
-        persistence_source = persistence_path.read_text(encoding="utf-8")
-    except OSError:
-        persistence_source = ""
-    try:
-        task_failure_diagnostics_source = task_failure_diagnostics_path.read_text(encoding="utf-8")
-    except OSError:
-        task_failure_diagnostics_source = ""
-    try:
-        config_source = config_path.read_text(encoding="utf-8")
-    except OSError:
-        config_source = ""
-    try:
-        report_generation_api_source = report_generation_api_path.read_text(encoding="utf-8")
-    except OSError:
-        report_generation_api_source = ""
+    main_source = _read_source(main_path)
+    main_py_lines = len(main_source.splitlines()) if main_source else None
+    runtime_source = _read_source(runtime_path)
+    service_factory_source = _read_source(service_factory_path)
+    tasks_source = _read_source(tasks_path)
+    operations_routes_source = _read_source(operations_routes_path)
+    report_routes_source = _read_source(report_routes_path)
+    error_details_source = _read_source(error_details_path)
+    run_task_api_source = _read_source(run_task_api_path)
+    persistence_source = _read_source(persistence_path)
+    task_failure_diagnostics_source = _read_source(task_failure_diagnostics_path)
+    config_source = _read_source(config_path)
+    report_generation_api_source = _read_source(report_generation_api_path)
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
@@ -79,30 +40,12 @@ def api_controller_status() -> dict:
     data_service_factory_path = api_dir / "service_factory_data.py"
     workflow_service_factory_path = api_dir / "service_factory_workflow.py"
     ai_graph_service_factory_path = api_dir / "service_factory_ai.py"
-    try:
-        compatibility_exports_source = compatibility_exports_path.read_text(encoding="utf-8")
-    except OSError:
-        compatibility_exports_source = ""
-    try:
-        legacy_facade_source = legacy_facade_path.read_text(encoding="utf-8")
-    except OSError:
-        legacy_facade_source = ""
-    try:
-        report_service_factory_source = report_service_factory_path.read_text(encoding="utf-8")
-    except OSError:
-        report_service_factory_source = ""
-    try:
-        data_service_factory_source = data_service_factory_path.read_text(encoding="utf-8")
-    except OSError:
-        data_service_factory_source = ""
-    try:
-        workflow_service_factory_source = workflow_service_factory_path.read_text(encoding="utf-8")
-    except OSError:
-        workflow_service_factory_source = ""
-    try:
-        ai_graph_service_factory_source = ai_graph_service_factory_path.read_text(encoding="utf-8")
-    except OSError:
-        ai_graph_service_factory_source = ""
+    compatibility_exports_source = _read_source(compatibility_exports_path)
+    legacy_facade_source = _read_source(legacy_facade_path)
+    report_service_factory_source = _read_source(report_service_factory_path)
+    data_service_factory_source = _read_source(data_service_factory_path)
+    workflow_service_factory_source = _read_source(workflow_service_factory_path)
+    ai_graph_service_factory_source = _read_source(ai_graph_service_factory_path)
     direct_domain_imports = [
         line.strip()
         for line in main_source.splitlines()
@@ -268,3 +211,10 @@ def api_controller_status() -> dict:
         "legacy_facade_alias_only": "ApiCompatibilityService" in legacy_facade_source
         and "class LegacyApiFacade(ApiCompatibilityService)" in legacy_facade_source,
     }
+
+
+def _read_source(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""

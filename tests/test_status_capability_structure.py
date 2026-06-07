@@ -47,6 +47,8 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
     helpers_source = Path("app/services/status_capability_helpers.py").read_text()
 
     assert "def api_controller_status(" in api_architecture_source
+    assert "def _read_source(" in api_architecture_source
+    assert api_architecture_source.count(".read_text(") == 1
 
     assert "def ai_rag_capabilities(" in ai_rag_source
     assert '"graphrag_live_cypher_query": _capability(' in ai_rag_source

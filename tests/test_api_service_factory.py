@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from app.api.service_factory import ApiServiceFactory
 from app.api.service_factory_data import DataServiceFactoryMixin
 from app.api.service_factory_report import ReportServiceFactoryMixin
+from app.api.service_factory_workflow import WorkflowServiceFactoryMixin
 from app.services.report_generation_api import SyncReportGenerationApiService
 
 
@@ -23,10 +24,13 @@ class DummyReportRepository:
 def test_api_service_factory_uses_domain_mixins() -> None:
     assert issubclass(ApiServiceFactory, DataServiceFactoryMixin)
     assert issubclass(ApiServiceFactory, ReportServiceFactoryMixin)
+    assert issubclass(ApiServiceFactory, WorkflowServiceFactoryMixin)
     assert ApiServiceFactory.data_operations_api is DataServiceFactoryMixin.data_operations_api
     assert ApiServiceFactory.discovery_api is DataServiceFactoryMixin.discovery_api
     assert ApiServiceFactory.report_query is ReportServiceFactoryMixin.report_query
     assert ApiServiceFactory.sync_report_generation_api is ReportServiceFactoryMixin.sync_report_generation_api
+    assert ApiServiceFactory.run_task_api is WorkflowServiceFactoryMixin.run_task_api
+    assert ApiServiceFactory.pipeline_api is WorkflowServiceFactoryMixin.pipeline_api
 
 
 def test_sync_report_generation_factory_disables_network_recovery_by_default() -> None:

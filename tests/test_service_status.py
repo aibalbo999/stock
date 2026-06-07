@@ -574,6 +574,11 @@ def test_service_status_shape() -> None:
         matrix["architecture"]["thin_api_controller"]["evidence"]["data_service_factory_path"]
         == "app/api/service_factory_data.py"
     )
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["workflow_service_factory_extracted"] is True
+    assert (
+        matrix["architecture"]["thin_api_controller"]["evidence"]["workflow_service_factory_path"]
+        == "app/api/service_factory_workflow.py"
+    )
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_helpers_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_helpers"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["api_runtime_present"] is True

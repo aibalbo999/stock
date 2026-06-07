@@ -129,6 +129,13 @@ def ai_rag_capabilities(
                 "provider": llm_observability.get("provider"),
                 "local_trace_enabled": llm_observability.get("local_trace_enabled"),
                 "external_trace_configured": llm_observability.get("external_trace_configured"),
+                "external_trace_ready": llm_observability.get("external_trace_ready"),
+                "external_trace_missing_settings": llm_observability.get(
+                    "external_trace_missing_settings"
+                ),
+                "trace_export_mode": llm_observability.get("trace_export_mode"),
+                "trace_export_target": llm_observability.get("trace_export_target"),
+                "trace_sink": llm_observability.get("trace_sink"),
                 "langsmith_configured": llm_observability.get("langsmith_configured"),
                 "phoenix_endpoint_configured": llm_observability.get(
                     "phoenix_endpoint_configured"
@@ -142,7 +149,8 @@ def ai_rag_capabilities(
             },
             detail=(
                 "Local traces capture LLM latency, token estimates, configurable cost estimates, "
-                "retrieval latency, and reranker status; LangSmith/Phoenix are optional external sinks."
+                "retrieval latency, and reranker status; LangSmith/Phoenix sink profiles declare "
+                "required settings and keep local traces active when external sinks are pending."
             ),
         ),
         "visual_rag": _capability(

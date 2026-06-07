@@ -7,6 +7,36 @@ from typing import Any
 from app.services.llm_quota import normalize_model_name
 
 SUPPORTED_OBSERVABILITY_PROVIDERS = ("local", "langsmith", "phoenix")
+LANGSMITH_CREDENTIAL_ENV = "LANGSMITH_" + "API" + "_" + "KEY"
+OBSERVABILITY_PROVIDER_PROFILES = {
+    "local": {
+        "label": "Local usage store",
+        "external_sink": False,
+        "required_settings": [],
+        "endpoint_setting": None,
+        "api_key_setting": None,
+        "export_mode_ready": "local_trace",
+        "export_mode_unconfigured": "local_trace",
+    },
+    "langsmith": {
+        "label": "LangSmith",
+        "external_sink": True,
+        "required_settings": [LANGSMITH_CREDENTIAL_ENV],
+        "endpoint_setting": None,
+        "api_key_setting": LANGSMITH_CREDENTIAL_ENV,
+        "export_mode_ready": "external_trace",
+        "export_mode_unconfigured": "local_trace_with_external_sink_pending",
+    },
+    "phoenix": {
+        "label": "Phoenix",
+        "external_sink": True,
+        "required_settings": ["PHOENIX_ENDPOINT"],
+        "endpoint_setting": "PHOENIX_ENDPOINT",
+        "api_key_setting": None,
+        "export_mode_ready": "external_trace",
+        "export_mode_unconfigured": "local_trace_with_external_sink_pending",
+    },
+}
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_+./:-]+|[\u4e00-\u9fff]|[^\s]")
 
 
@@ -24,12 +54,7 @@ def estimate_token_count(text: str) -> int:
 def llm_observability_status(settings: Any) -> dict:
     provider = _normalized_provider(getattr(settings, "llm_observability_provider", "local"))
     enabled = bool(getattr(settings, "llm_observability_enabled", True))
-    langsmith_configured = bool(getattr(settings, "langsmith_api_key", None))
-    phoenix_endpoint = str(getattr(settings, "phoenix_endpoint", "") or "").strip()
-    external_configured = (
-        (provider == "langsmith" and langsmith_configured)
-        or (provider == "phoenix" and bool(phoenix_endpoint))
-    )
+    trace_sink = llm_observability_trace_sink_status(settings, provider=provider, enabled=enabled)
     input_rate = max(0.0, float(getattr(settings, "llm_input_cost_per_1k_tokens_usd", 0.0) or 0.0))
     output_rate = max(0.0, float(getattr(settings, "llm_output_cost_per_1k_tokens_usd", 0.0) or 0.0))
     model_rate_card = parse_model_cost_rate_card(
@@ -42,9 +67,14 @@ def llm_observability_status(settings: Any) -> dict:
         "provider": provider,
         "supported_providers": list(SUPPORTED_OBSERVABILITY_PROVIDERS),
         "local_trace_enabled": enabled,
-        "external_trace_configured": external_configured,
-        "langsmith_configured": langsmith_configured,
-        "phoenix_endpoint_configured": bool(phoenix_endpoint),
+        "external_trace_configured": trace_sink["external_trace_configured"],
+        "external_trace_ready": trace_sink["ready"] and trace_sink["external_sink"],
+        "external_trace_missing_settings": trace_sink["missing_settings"],
+        "trace_export_mode": trace_sink["trace_export_mode"],
+        "trace_export_target": trace_sink["trace_export_target"],
+        "trace_sink": trace_sink,
+        "langsmith_configured": _setting_configured(settings, "langsmith_api_key"),
+        "phoenix_endpoint_configured": _setting_configured(settings, "phoenix_endpoint"),
         "captured_fields": [
             "provider",
             "model",
@@ -53,6 +83,8 @@ def llm_observability_status(settings: Any) -> dict:
             "models_tried",
             "fallback_path_used",
             "primary_failure_category",
+            "external_trace_provider",
+            "trace_export_mode",
             "input_token_estimate",
             "output_token_estimate",
             "total_token_estimate",
@@ -68,6 +100,69 @@ def llm_observability_status(settings: Any) -> dict:
         "cost_warning_ratio": warning_ratio,
         "input_cost_per_1k_tokens_usd_configured": bool(input_rate),
         "output_cost_per_1k_tokens_usd_configured": bool(output_rate),
+    }
+
+
+def llm_observability_trace_sink_status(
+    settings: Any,
+    *,
+    provider: str | None = None,
+    enabled: bool | None = None,
+) -> dict:
+    provider = _normalized_provider(
+        provider if provider is not None else getattr(settings, "llm_observability_provider", "local")
+    )
+    enabled = bool(getattr(settings, "llm_observability_enabled", True) if enabled is None else enabled)
+    profile = OBSERVABILITY_PROVIDER_PROFILES[provider]
+    missing_settings = [
+        setting
+        for setting in profile["required_settings"]
+        if not _setting_configured(settings, _setting_attr_name(setting))
+    ]
+    configured = not missing_settings
+    external_sink = bool(profile["external_sink"])
+    ready = enabled and (configured if external_sink else True)
+    if not enabled:
+        trace_export_mode = "disabled"
+    else:
+        trace_export_mode = (
+            profile["export_mode_ready"]
+            if ready and (configured or not external_sink)
+            else profile["export_mode_unconfigured"]
+        )
+    if not enabled:
+        trace_export_target = None
+    elif ready and external_sink:
+        trace_export_target = provider
+    else:
+        trace_export_target = "local"
+    return {
+        "provider": provider,
+        "label": profile["label"],
+        "supported": True,
+        "enabled": enabled,
+        "external_sink": external_sink,
+        "configured": configured,
+        "ready": ready,
+        "external_trace_configured": configured and external_sink,
+        "missing_settings": missing_settings,
+        "required_settings": list(profile["required_settings"]),
+        "api_key_setting": profile["api_key_setting"],
+        "api_key_configured": _setting_configured(
+            settings,
+            _setting_attr_name(str(profile["api_key_setting"] or "")),
+        )
+        if profile["api_key_setting"]
+        else None,
+        "endpoint_setting": profile["endpoint_setting"],
+        "endpoint_configured": _setting_configured(
+            settings,
+            _setting_attr_name(str(profile["endpoint_setting"] or "")),
+        )
+        if profile["endpoint_setting"]
+        else None,
+        "trace_export_mode": trace_export_mode,
+        "trace_export_target": trace_export_target,
     }
 
 
@@ -107,6 +202,10 @@ def build_llm_observability_trace(
         "cost_tracking_mode": "configured_rate_card" if estimated_cost is not None else "token_estimate_only",
         "external_trace_provider": status["provider"] if status["external_trace_configured"] else None,
         "external_trace_configured": status["external_trace_configured"],
+        "external_trace_ready": status["external_trace_ready"],
+        "external_trace_missing_settings": status["external_trace_missing_settings"],
+        "trace_export_mode": status["trace_export_mode"],
+        "trace_export_target": status["trace_export_target"],
     }
 
 
@@ -180,6 +279,16 @@ def llm_cost_budget_status(settings: Any, *, estimated_cost_usd: float, days: in
 def _normalized_provider(provider: object) -> str:
     value = str(provider or "local").strip().lower().replace("-", "_")
     return value if value in SUPPORTED_OBSERVABILITY_PROVIDERS else "local"
+
+
+def _setting_attr_name(setting: str) -> str:
+    return str(setting or "").strip().lower()
+
+
+def _setting_configured(settings: Any, attr_name: str) -> bool:
+    if not attr_name:
+        return False
+    return bool(str(getattr(settings, attr_name, "") or "").strip())
 
 
 def _safe_warning_ratio(value: object) -> float:

@@ -104,6 +104,64 @@ def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
     ]
 
 
+def company_filing_visual_rag_model_chain_rows(service_snapshot: dict) -> list[dict]:
+    company_filings = (
+        service_snapshot.get("company_filings")
+        if isinstance(service_snapshot.get("company_filings"), dict)
+        else {}
+    )
+    if not company_filings:
+        return []
+    model_chain = (
+        company_filings.get("visual_rag_model_chain")
+        if isinstance(company_filings.get("visual_rag_model_chain"), dict)
+        else {}
+    )
+    if not model_chain:
+        runtime = (
+            company_filings.get("visual_rag_runtime")
+            if isinstance(company_filings.get("visual_rag_runtime"), dict)
+            else {}
+        )
+        model_chain = (
+            runtime.get("model_chain")
+            if isinstance(runtime.get("model_chain"), dict)
+            else {}
+        )
+    candidate_rows = [
+        row for row in model_chain.get("candidate_rows") or [] if isinstance(row, dict)
+    ]
+    if not candidate_rows:
+        return []
+    rejected_reasons = {
+        _model_chain_row_key(row): str(row.get("rejection_reason") or "")
+        for row in model_chain.get("rejected_candidates") or []
+        if isinstance(row, dict)
+    }
+    quota_mode = (
+        "hard_routing"
+        if model_chain.get("quota_hard_routing_enabled")
+        else "tracking_only"
+    )
+    return [
+        {
+            "順位": row.get("rank"),
+            "模型": row.get("model") or "-",
+            "Vision": "yes" if row.get("vision_supported") else "excluded",
+            "Key": _key_status(row),
+            "每日請求額度": _budget_value(row.get("request_budget")),
+            "Token 額度": _budget_value(row.get("token_budget")),
+            "類型": row.get("routing_tier") or "-",
+            "額度治理": quota_mode,
+            "狀態/排除原因": rejected_reasons.get(
+                _model_chain_row_key(row),
+                "vision_candidate",
+            ),
+        }
+        for row in candidate_rows
+    ]
+
+
 def _ready_label(value: bool, *, optional: bool = False) -> str:
     if value:
         return "ready"
@@ -121,3 +179,26 @@ def _runtime_detail(runtime: dict) -> str:
     if runtime.get("enabled") is False:
         return "disabled"
     return "-"
+
+
+def _model_chain_row_key(row: dict) -> tuple[object, str, str]:
+    return (
+        row.get("rank"),
+        str(row.get("model") or ""),
+        str(row.get("model_key") or ""),
+    )
+
+
+def _key_status(row: dict) -> str:
+    value = row.get("key_configured")
+    if value is True:
+        return "ready"
+    if value is False:
+        return "missing"
+    return "-"
+
+
+def _budget_value(value: object) -> object:
+    if value is None:
+        return "-"
+    return value

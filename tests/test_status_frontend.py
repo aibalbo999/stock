@@ -19,6 +19,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def frontend_status(" in status_frontend_source
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
+    assert status["frontend"]["streamlit_page_import_contract_ready"] is True
     assert status["frontend"]["report_html_renderer_extracted"] is True
     assert status["frontend"]["report_html_renderer_path"] == "app/ui/report_html.py"
     assert status["frontend"]["ui_status_helpers_extracted"] is True
@@ -44,6 +45,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_status_poll_backoff_enabled"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_company_filing_runtime_panel_enabled"] is True
+    assert status["frontend"]["ui_visual_rag_model_chain_panel_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_tabs_extracted"] is True
     assert status["frontend"]["ui_data_enrichment_module_paths"] == [
         "app/ui/data_enrichment_market.py",
@@ -95,6 +97,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["status"] == "ready"
     assert frontend_arch["evidence"]["streamlit_entry_uses_navigation"] is True
     assert frontend_arch["evidence"]["expected_pages_present"] is True
+    assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
@@ -112,6 +115,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_status_poll_backoff_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
+    assert frontend_arch["evidence"]["ui_visual_rag_model_chain_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_data_enrichment_tabs_extracted"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True

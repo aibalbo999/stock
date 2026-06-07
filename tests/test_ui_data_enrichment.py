@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.ui.data_enrichment import company_filing_runtime_rows
+from app.ui.data_enrichment import (
+    company_filing_runtime_rows,
+    company_filing_visual_rag_model_chain_rows,
+)
 
 
 def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks() -> None:
@@ -76,3 +79,101 @@ def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks()
 
 def test_company_filing_runtime_rows_hide_when_service_status_missing() -> None:
     assert company_filing_runtime_rows({}) == []
+
+
+def test_company_filing_visual_rag_model_chain_rows_surface_quota_and_rejections() -> None:
+    rows = company_filing_visual_rag_model_chain_rows(
+        {
+            "company_filings": {
+                "visual_rag_model_chain": {
+                    "quota_hard_routing_enabled": True,
+                    "candidate_rows": [
+                        {
+                            "rank": 1,
+                            "model": "gemini-3.5-flash",
+                            "model_key": "gemini-3.5-flash",
+                            "vision_supported": True,
+                            "key_configured": True,
+                            "request_budget": 250,
+                            "token_budget": None,
+                            "routing_tier": "preferred_visual_rag_model",
+                        },
+                        {
+                            "rank": 2,
+                            "model": "imagen-4-ultra-generate",
+                            "model_key": "imagen-4-ultra-generate",
+                            "vision_supported": False,
+                            "key_configured": None,
+                            "request_budget": None,
+                            "token_budget": None,
+                            "routing_tier": "fallback",
+                        },
+                        {
+                            "rank": 3,
+                            "model": "gemma-4-31b-it",
+                            "model_key": "gemma-4-31b-it",
+                            "vision_supported": False,
+                            "key_configured": None,
+                            "request_budget": 14400,
+                            "token_budget": None,
+                            "routing_tier": "high_quota_text_fallback_excluded_from_vision",
+                        },
+                    ],
+                    "rejected_candidates": [
+                        {
+                            "rank": 2,
+                            "model": "imagen-4-ultra-generate",
+                            "model_key": "imagen-4-ultra-generate",
+                            "rejection_reason": "non_vision_media_embedding_or_live_model",
+                        },
+                        {
+                            "rank": 3,
+                            "model": "gemma-4-31b-it",
+                            "model_key": "gemma-4-31b-it",
+                            "rejection_reason": "text_only_gemma_fallback",
+                        },
+                    ],
+                }
+            }
+        }
+    )
+
+    assert rows == [
+        {
+            "順位": 1,
+            "模型": "gemini-3.5-flash",
+            "Vision": "yes",
+            "Key": "ready",
+            "每日請求額度": 250,
+            "Token 額度": "-",
+            "類型": "preferred_visual_rag_model",
+            "額度治理": "hard_routing",
+            "狀態/排除原因": "vision_candidate",
+        },
+        {
+            "順位": 2,
+            "模型": "imagen-4-ultra-generate",
+            "Vision": "excluded",
+            "Key": "-",
+            "每日請求額度": "-",
+            "Token 額度": "-",
+            "類型": "fallback",
+            "額度治理": "hard_routing",
+            "狀態/排除原因": "non_vision_media_embedding_or_live_model",
+        },
+        {
+            "順位": 3,
+            "模型": "gemma-4-31b-it",
+            "Vision": "excluded",
+            "Key": "-",
+            "每日請求額度": 14400,
+            "Token 額度": "-",
+            "類型": "high_quota_text_fallback_excluded_from_vision",
+            "額度治理": "hard_routing",
+            "狀態/排除原因": "text_only_gemma_fallback",
+        },
+    ]
+
+
+def test_company_filing_visual_rag_model_chain_rows_hide_when_missing() -> None:
+    assert company_filing_visual_rag_model_chain_rows({}) == []

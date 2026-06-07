@@ -8,6 +8,7 @@ import streamlit as st
 from app.core.time import today_taipei, utc_now_naive
 from app.ui.api_client import api_get, api_post, api_task_post, request_error_message
 from app.ui.dashboard_core import render_section_header
+from app.ui.data_enrichment_runtime import company_filing_visual_rag_model_chain_rows
 from app.ui.maintenance_status import (
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
@@ -164,6 +165,10 @@ def render_maintenance_tab() -> None:
                 "高額度保底模型："
                 + "、".join(str(model) for model in routing_policy["high_quota_fallback_models"])
             )
+        visual_rag_chain_rows = company_filing_visual_rag_model_chain_rows(service_snapshot)
+        if visual_rag_chain_rows:
+            st.caption("Visual RAG / PDF 圖片解析模型鏈")
+            st.dataframe(visual_rag_chain_rows, width="stretch", hide_index=True)
 
     with st.expander("AI 用量趨勢與成本", expanded=True):
         usage_totals = (

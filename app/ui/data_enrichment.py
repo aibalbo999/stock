@@ -6,11 +6,18 @@ from app.services.whitelist import SupplyChainWhitelist
 from app.ui.data_enrichment_manual import render_manual_ingest_tab
 from app.ui.data_enrichment_market import render_market_data_tab
 from app.ui.data_enrichment_rss import render_rss_ingest_tab
-from app.ui.data_enrichment_runtime import company_filing_runtime_rows as _company_filing_runtime_rows
+from app.ui.data_enrichment_runtime import (
+    company_filing_runtime_rows as _company_filing_runtime_rows,
+    company_filing_visual_rag_model_chain_rows as _company_filing_visual_rag_model_chain_rows,
+)
 
 
 def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
     return _company_filing_runtime_rows(service_snapshot)
+
+
+def company_filing_visual_rag_model_chain_rows(service_snapshot: dict) -> list[dict]:
+    return _company_filing_visual_rag_model_chain_rows(service_snapshot)
 
 
 def render_data_enrichment() -> None:

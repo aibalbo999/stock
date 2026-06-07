@@ -113,6 +113,7 @@ def architecture_capabilities(
             if frontend_status.get("streamlit_entry_uses_navigation")
             and int(frontend_status.get("page_count") or 0) >= 4
             and frontend_status.get("expected_pages_present")
+            and frontend_status.get("streamlit_page_import_contract_ready")
             and frontend_status.get("external_css_loaded")
             and frontend_status.get("external_report_css_loaded")
             and frontend_status.get("report_html_renderer_extracted")
@@ -132,6 +133,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_status_poll_backoff_enabled")
             and frontend_status.get("ui_task_status_failure_diagnostics_enabled")
             and frontend_status.get("ui_company_filing_runtime_panel_enabled")
+            and frontend_status.get("ui_visual_rag_model_chain_panel_enabled")
             and frontend_status.get("ui_data_enrichment_tabs_extracted")
             and frontend_status.get("task_retry_uses_scoped_state_key")
             and frontend_status.get("ui_report_state_extracted")

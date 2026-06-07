@@ -81,6 +81,9 @@ def frontend_status() -> dict:
         ]
     )
     pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
+    streamlit_pages_source = "\n".join(
+        _read_text(pages_dir / page_name) for page_name in pages
+    )
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
         "/reports/generate_async",
@@ -111,6 +114,15 @@ def frontend_status() -> dict:
                 "03_資料補強.py",
                 "04_系統設定.py",
             ]
+        ),
+        "streamlit_page_import_contract_ready": (
+            "from app.ui.dashboard_core import configure_page" in ui_source
+            and "from app.ui.streamlit_dashboard import configure_page"
+            in streamlit_pages_source
+            and "render_analysis_workspace" in streamlit_pages_source
+            and "render_report_center" in streamlit_pages_source
+            and "render_data_enrichment" in streamlit_pages_source
+            and "render_system_settings" in streamlit_pages_source
         ),
         "ui_modules_present": [path.name for path in ui_paths if path.exists()],
         "ui_wildcard_imports_removed": "import *" not in page_source
@@ -222,6 +234,13 @@ def frontend_status() -> dict:
         and "visual_rag_runtime_available" in data_enrichment_source
         and "structured_api_configured" in data_enrichment_source
         and "playwright_render_configured" in data_enrichment_source,
+        "ui_visual_rag_model_chain_panel_enabled": (
+            "def company_filing_visual_rag_model_chain_rows("
+            in data_enrichment_source
+        )
+        and "visual_rag_model_chain" in data_enrichment_source
+        and "Visual RAG 模型鏈" in ui_source
+        and "Visual RAG / PDF 圖片解析模型鏈" in ui_source,
         "ui_data_enrichment_tabs_extracted": (ui_dir / "data_enrichment_market.py").exists()
         and (ui_dir / "data_enrichment_manual.py").exists()
         and (ui_dir / "data_enrichment_rss.py").exists()

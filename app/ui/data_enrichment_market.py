@@ -18,7 +18,10 @@ from app.ui.data_enrichment_common import (
     DATA_TASK_STATUS_STATE_KEYS,
     render_last_data_task_status,
 )
-from app.ui.data_enrichment_runtime import company_filing_runtime_rows
+from app.ui.data_enrichment_runtime import (
+    company_filing_runtime_rows,
+    company_filing_visual_rag_model_chain_rows,
+)
 
 
 def render_market_data_tab(allowed_tickers: list[str]) -> None:
@@ -42,9 +45,13 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
         service_snapshot = {}
         st.error(f"讀取公司文件能力狀態失敗：{request_error_message(exc)}")
     runtime_rows = company_filing_runtime_rows(service_snapshot)
+    visual_rag_chain_rows = company_filing_visual_rag_model_chain_rows(service_snapshot)
     if runtime_rows:
         with st.expander("公司文件補抓能力", expanded=False):
             st.dataframe(runtime_rows, width="stretch", hide_index=True)
+            if visual_rag_chain_rows:
+                st.caption("Visual RAG 模型鏈")
+                st.dataframe(visual_rag_chain_rows, width="stretch", hide_index=True)
 
     default_market_tickers = ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
     selected_market_tickers = st.multiselect(

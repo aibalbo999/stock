@@ -77,6 +77,16 @@ def test_streamlit_app_defers_annotation_evaluation_for_modern_python() -> None:
     assert dashboard_source.startswith("from __future__ import annotations")
 
 
+def test_streamlit_page_import_contract_exports_page_functions() -> None:
+    from app.ui import streamlit_dashboard
+
+    assert callable(streamlit_dashboard.configure_page)
+    assert callable(streamlit_dashboard.render_analysis_workspace)
+    assert callable(streamlit_dashboard.render_report_center)
+    assert callable(streamlit_dashboard.render_data_enrichment)
+    assert callable(streamlit_dashboard.render_system_settings)
+
+
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = read_ui_source()
     styles = STYLE_SOURCE.read_text()
@@ -104,6 +114,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
     assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
     assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source
+    assert "from app.ui.dashboard_core import configure_page" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
     assert "F403" not in source
@@ -118,6 +129,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
     assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
     assert 'def render_rss_ingest_tab() -> None:' in source
+    assert "def company_filing_visual_rag_model_chain_rows(" in source
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()
@@ -251,6 +263,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
     assert "結構化文件 API 操作提示" in source
+    assert "Visual RAG 模型鏈" in source
+    assert "Visual RAG / PDF 圖片解析模型鏈" in source
     assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source

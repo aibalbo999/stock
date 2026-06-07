@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from app.core.time import today_taipei
@@ -19,6 +20,7 @@ from app.services.persistence import (
     ReportRepository,
     ValuationMetricRepository,
 )
+from app.services.report_files import prune_older_report_files_by_topic
 from app.services.schedule_config import ScheduleConfigStore
 
 
@@ -40,6 +42,7 @@ class DataOperationsApiService:
         news_source_store_cls: type[NewsSourceStore] = NewsSourceStore,
         entity_mapper_cls: type[EntityMapper] = EntityMapper,
         schedule_config_store_cls: type[ScheduleConfigStore] = ScheduleConfigStore,
+        report_file_retention_func: Callable[[], int] | None = None,
         today_func: Callable[[], date] = today_taipei,
     ) -> None:
         self.session_scope_factory = session_scope_factory
@@ -56,6 +59,7 @@ class DataOperationsApiService:
         self.news_source_store_cls = news_source_store_cls
         self.entity_mapper_cls = entity_mapper_cls
         self.schedule_config_store_cls = schedule_config_store_cls
+        self.report_file_retention_func = report_file_retention_func
         self.today_func = today_func
 
     def ingest_manual_news(
@@ -203,6 +207,7 @@ class DataOperationsApiService:
             "old_runs_deleted": 0,
             "old_reports_deleted": 0,
             "old_report_versions_deleted": 0,
+            "old_report_files_deleted": 0,
             "report_retention_policy": "latest_per_topic",
         }
         with self.session_scope_factory() as session:
@@ -223,7 +228,16 @@ class DataOperationsApiService:
                 result["old_reports_deleted"] = reports.delete_before(reports_before)
             if latest_reports_only:
                 result["old_report_versions_deleted"] = reports.prune_older_by_topic()
+        if latest_reports_only:
+            result["old_report_files_deleted"] = self._prune_older_report_files()
         return result
+
+    def _prune_older_report_files(self) -> int:
+        if self.report_file_retention_func is not None:
+            return self.report_file_retention_func()
+        from app.core.config import get_settings
+
+        return prune_older_report_files_by_topic(Path(get_settings().report_dir))
 
     @staticmethod
     def _news_item(document: Any) -> dict:

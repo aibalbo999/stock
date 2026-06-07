@@ -320,6 +320,7 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
         schedule_config_store_cls=FakeScheduleStore,
         analysis_run_repository_cls=FakeAnalysisRunRepository,
         report_repository_cls=FakeReportRepository,
+        report_file_retention_func=lambda: cleanup_calls.append(("prune_report_files_by_topic",)) or 7,
     )
     stale_before = datetime(2026, 5, 1, 8, 0, 0)
     runs_before = datetime(2026, 4, 1, 8, 0, 0)
@@ -343,6 +344,7 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
         "old_runs_deleted": 4,
         "old_reports_deleted": 5,
         "old_report_versions_deleted": 6,
+        "old_report_files_deleted": 7,
         "report_retention_policy": "latest_per_topic",
     }
     assert cleanup_calls == [
@@ -354,4 +356,5 @@ def test_data_operations_service_handles_schedule_sources_and_cleanup() -> None:
         ("delete_runs_before", runs_before),
         ("delete_reports_before", reports_before),
         ("prune_older_by_topic",),
+        ("prune_report_files_by_topic",),
     ]

@@ -263,6 +263,7 @@ def render_maintenance_tab() -> None:
                 )
                 st.success(
                     f"已刪除 {result.get('old_report_versions_deleted', 0)} 筆舊版報告，"
+                    f"{result.get('old_report_files_deleted', 0)} 個舊 markdown 檔，"
                     "每個主題只保留最新版。"
                 )
             except requests.RequestException as exc:

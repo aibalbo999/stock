@@ -113,6 +113,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "disabled=not cleanup_confirmed" in source
     assert "套用最新版報告保留策略" in source
     assert '"latest_reports_only": True' in source
+    assert "old_report_files_deleted" in source
     assert "/llm/usage/summary?days=7" in source
     assert "AI 用量趨勢與成本" in source
     assert "估算成本 USD" in source

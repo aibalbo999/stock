@@ -429,7 +429,7 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 
-報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，避免報告中心累積同主題歷史版本。若資料庫已有早期累積的重複報告，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。
+報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，對應的舊 markdown 檔也會被清掉，避免報告中心與 `reports/` 累積同主題歷史版本。若資料庫已有早期累積的重複報告或 markdown 檔，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。
 
 系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path、retryable failure、成本預算狀態與 alerts，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。「AI 額度與模型路由」會讀取 `GET /llm/quota`，顯示推薦模型、推薦原因、每模型 routing tier/status reason 與高額度保底模型。「背景任務觀測」會讀取 `GET /tasks/summary?days=7`，顯示近期 Celery/API run 成功率、平均耗時、失敗任務與疑似卡住任務；「報告品質 Gate 總覽」會讀取 `GET /reports/quality/summary?limit=20`，以 latest-per-topic 報告檢查 blockers、warnings、正式分析信心與資料覆蓋。
 

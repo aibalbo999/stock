@@ -32,6 +32,7 @@ from app.services.report_followup import (
     summarize_candidate_support_payload,
 )
 from app.services.report_followup_context import ReportFollowUpContextService
+from app.services.report_files import write_report_file
 from app.services.task_cancellation import TaskCancelledError, mark_run_cancelled, raise_if_task_cancelled
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
@@ -350,35 +351,7 @@ def _coverage_after_close_update(target: dict) -> dict:
 
 def _write_report_file(request: ReportRequest, response) -> Path:
     settings = get_settings()
-    settings.report_dir.mkdir(parents=True, exist_ok=True)
-    safe_topic = _safe_report_topic(request.topic)
-    filename = f"{response.generated_at.strftime('%Y%m%d_%H%M%S')}_{safe_topic}.md"
-    path = Path(settings.report_dir) / filename.replace("/", "_")
-    path.write_text(response.markdown, encoding="utf-8")
-    _prune_report_files_for_topic(Path(settings.report_dir), safe_topic, keep_path=path)
-    return path
-
-
-def _safe_report_topic(topic: str) -> str:
-    return str(topic or "report").replace("/", "_")
-
-
-def _prune_report_files_for_topic(report_dir: Path, safe_topic: str, *, keep_path: Path) -> int:
-    deleted = 0
-    keep_path = keep_path.resolve()
-    for candidate in report_dir.glob("*.md"):
-        if candidate.resolve() == keep_path:
-            continue
-        if not _report_file_matches_topic(candidate, safe_topic):
-            continue
-        candidate.unlink()
-        deleted += 1
-    return deleted
-
-
-def _report_file_matches_topic(path: Path, safe_topic: str) -> bool:
-    stem = path.stem
-    return stem == safe_topic or stem.endswith(f"_{safe_topic}")
+    return write_report_file(Path(settings.report_dir), request, response)
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")

@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.ui.task_status_panel import (
     company_filing_gap_rows,
     task_status_diagnostic_rows,
+    task_status_poll_caption,
     task_status_poll_interval_seconds,
 )
 
@@ -175,3 +176,30 @@ def test_task_status_poll_interval_keeps_fast_polling_for_active_progress() -> N
         )
         == 5
     )
+
+
+def test_task_status_poll_caption_explains_queued_poll_cadence() -> None:
+    assert task_status_poll_caption(
+        {"status": "PENDING", "ready": False},
+        auto_refresh=True,
+        fragment_supported=True,
+        default_seconds=5,
+    ) == "狀態輪詢：約每 8 秒更新，排隊中。"
+
+
+def test_task_status_poll_caption_explains_retry_poll_cadence() -> None:
+    assert task_status_poll_caption(
+        {"status": "RETRY", "ready": False},
+        auto_refresh=True,
+        fragment_supported=True,
+        default_seconds=5,
+    ) == "狀態輪詢：約每 15 秒更新，等待重試。"
+
+
+def test_task_status_poll_caption_reports_stopped_when_ready() -> None:
+    assert task_status_poll_caption(
+        {"status": "SUCCESS", "ready": True},
+        auto_refresh=True,
+        fragment_supported=True,
+        default_seconds=5,
+    ) == "狀態輪詢：任務已結束，自動刷新停止。"

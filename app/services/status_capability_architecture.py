@@ -131,6 +131,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_failure_alerts_enabled")
             and frontend_status.get("ui_task_status_panel_extracted")
             and frontend_status.get("ui_task_status_poll_backoff_enabled")
+            and frontend_status.get("ui_task_status_autorefresh_feedback_enabled")
             and frontend_status.get("ui_task_status_failure_diagnostics_enabled")
             and frontend_status.get("ui_company_filing_runtime_panel_enabled")
             and frontend_status.get("ui_visual_rag_model_chain_panel_enabled")

@@ -223,6 +223,11 @@ def frontend_status() -> dict:
         and "TASK_STATUS_QUEUED_POLL_SECONDS" in task_status_panel_source
         and "TASK_STATUS_RETRY_POLL_SECONDS" in task_status_panel_source
         and "task_status_poll_interval_seconds(" in task_status_panel_source,
+        "ui_task_status_autorefresh_feedback_enabled": "def task_status_poll_caption("
+        in task_status_panel_source
+        and "狀態輪詢：" in task_status_panel_source
+        and "fragment_supported" in task_status_panel_source
+        and "st.caption(\n        task_status_poll_caption(" in task_status_panel_source,
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows(" in task_status_panel_source
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source

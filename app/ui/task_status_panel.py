@@ -207,6 +207,38 @@ def task_status_poll_interval_seconds(
     return interval
 
 
+def task_status_poll_caption(
+    task_status: dict | None,
+    *,
+    auto_refresh: bool,
+    fragment_supported: bool,
+    default_seconds: int,
+) -> str:
+    if _task_status_ready(task_status):
+        return "狀態輪詢：任務已結束，自動刷新停止。"
+    if not auto_refresh:
+        return "狀態輪詢：已暫停。"
+    if not fragment_supported:
+        return "狀態輪詢：目前環境不支援自動刷新。"
+
+    interval = task_status_poll_interval_seconds(
+        task_status,
+        default_seconds=default_seconds,
+    )
+    status = str((task_status or {}).get("status") or "").upper()
+    progress = (task_status or {}).get("progress")
+    progress_pct = progress.get("progress_pct") if isinstance(progress, dict) else None
+    if status in {"PENDING", "QUEUED", "RECEIVED"}:
+        reason = "排隊中"
+    elif status == "RETRY":
+        reason = "等待重試"
+    elif isinstance(progress_pct, (int, float)) and progress_pct > 0:
+        reason = "執行中"
+    else:
+        reason = "處理中"
+    return f"狀態輪詢：約每 {interval} 秒更新，{reason}。"
+
+
 def _fetch_task_status(task_id: str, status_state_key: str) -> dict | None:
     try:
         task_status = api_get(f"/tasks/{task_id}")
@@ -294,7 +326,16 @@ def render_task_status_panel(
     if not isinstance(task_status, dict):
         task_status = _fetch_task_status(task_id, status_state_key)
     fragment_factory = getattr(st, "fragment", None)
-    if auto_refresh and not _task_status_ready(task_status) and callable(fragment_factory):
+    fragment_supported = callable(fragment_factory)
+    st.caption(
+        task_status_poll_caption(
+            task_status,
+            auto_refresh=auto_refresh,
+            fragment_supported=fragment_supported,
+            default_seconds=auto_refresh_seconds,
+        )
+    )
+    if auto_refresh and not _task_status_ready(task_status) and fragment_supported:
         interval = task_status_poll_interval_seconds(
             task_status,
             default_seconds=auto_refresh_seconds,
@@ -314,8 +355,6 @@ def render_task_status_panel(
             )
 
         return _auto_task_status_panel()
-    if auto_refresh and not callable(fragment_factory):
-        st.caption("目前 Streamlit 版本不支援片段式自動刷新；請使用手動刷新。")
     return _render_task_status_panel_controls(
         task_id=task_id,
         refresh_key=refresh_key,

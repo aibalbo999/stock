@@ -43,6 +43,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_failure_alerts_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_poll_backoff_enabled"] is True
+    assert status["frontend"]["ui_task_status_autorefresh_feedback_enabled"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_company_filing_runtime_panel_enabled"] is True
     assert status["frontend"]["ui_visual_rag_model_chain_panel_enabled"] is True
@@ -113,6 +114,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_failure_alerts_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_status_poll_backoff_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_status_autorefresh_feedback_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_visual_rag_model_chain_panel_enabled"] is True

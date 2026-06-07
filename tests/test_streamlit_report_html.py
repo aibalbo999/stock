@@ -147,6 +147,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "def task_status_diagnostic_rows(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def hydrate_active_report_result(" in REPORT_STATE_SOURCE.read_text()
     assert "def parse_json_object(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -245,8 +246,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_alert(" in source
     assert "def task_failure_drilldown_rows(" in source
     assert "def task_retry_options(" in source
+    assert "def task_status_diagnostic_rows(" in source
     assert '"category": row.get("error_category")' in source
     assert '"next_steps": _task_next_steps_text(row)' in source
+    assert '"category": task_status.get("error_category")' in source
+    assert '"next_steps": _task_status_next_steps_text(task_status)' in source
+    assert "失敗診斷" in source
     assert "仍會嘗試送出" in source
     assert "Celery worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source

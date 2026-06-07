@@ -158,6 +158,10 @@ def frontend_status() -> dict:
         and "def render_task_status_panel(" not in dashboard_core_source
         and "run_every" in task_status_panel_source
         and "from app.ui.task_status_panel import" in ui_source,
+        "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows(" in task_status_panel_source
+        and "失敗診斷" in task_status_panel_source
+        and '"category": task_status.get("error_category")' in task_status_panel_source
+        and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
         and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,

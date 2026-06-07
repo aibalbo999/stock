@@ -304,14 +304,23 @@ class RunTaskApiService:
                 response["error"] = str(result.result)
         with self.session_scope_factory() as session:
             run = self.analysis_run_repository_cls(session).get_by_celery_task_id(task_id)
+        serialized_run = self.serialize_run_func(run) if run is not None else None
         celery_progress = self._celery_progress(getattr(result, "info", None))
-        if run is not None:
-            response["run"] = self.serialize_run_func(run)
-            response["progress"] = self._progress_payload(response["run"], celery_progress)
+        if serialized_run is not None:
+            response["run"] = serialized_run
+            response["progress"] = self._progress_payload(serialized_run, celery_progress)
         elif celery_progress:
             response["progress"] = celery_progress
         else:
             response["progress"] = self._celery_status_progress(result.status, ready=result.ready())
+        failure_detail = self._task_status_failure_detail(
+            task_id=task_id,
+            task_status=str(result.status or ""),
+            error=response.get("error"),
+            serialized_run=serialized_run,
+        )
+        if failure_detail:
+            response.update(failure_detail)
         return response
 
     def get_run_by_task_id(self, task_id: str) -> dict:
@@ -637,6 +646,53 @@ class RunTaskApiService:
                 "查看任務狀態 drilldown 與 run payload。",
                 "若錯誤可重現，補上錯誤分類規則或手動重新送出。",
             ],
+        }
+
+    @classmethod
+    def _task_status_failure_detail(
+        cls,
+        *,
+        task_id: str,
+        task_status: str,
+        error: object,
+        serialized_run: dict | None,
+    ) -> dict:
+        run_payload = cls._serialized_run_payload(serialized_run or {})
+        retry_kind = cls._run_retry_kind(run_payload, serialized_run or {}) if serialized_run else None
+        retryable = bool(task_id and retry_kind)
+        run_status = str((serialized_run or {}).get("status") or task_status or "unknown")
+        operation = cls._run_operation(run_payload, serialized_run or {}) if serialized_run else "task_status"
+        error_text = error or (serialized_run or {}).get("error")
+        diagnostic = cls._task_failure_diagnostic(
+            status=run_status,
+            error=error_text,
+            operation=operation,
+            retryable=retryable,
+        )
+        if not diagnostic.get("category"):
+            return {}
+        return {
+            "operation": operation,
+            "error_category": diagnostic.get("category"),
+            "error_severity": diagnostic.get("severity"),
+            "error_summary": diagnostic.get("summary"),
+            "next_steps": diagnostic.get("next_steps") or [],
+            "retryable": retryable,
+            "retry_kind": retry_kind,
+            "retry_endpoint": f"POST /tasks/{task_id}/retry" if retryable else None,
+            "status_endpoint": f"GET /tasks/{task_id}",
+            "run_endpoint": (
+                f"GET /runs/{serialized_run.get('id')}"
+                if isinstance(serialized_run, dict) and serialized_run.get("id")
+                else None
+            ),
+            "next_action": cls._task_next_action(
+                status=run_status,
+                task_id=task_id,
+                retry_kind=retry_kind,
+                error=error_text,
+                diagnostic=diagnostic,
+            ),
         }
 
     @staticmethod

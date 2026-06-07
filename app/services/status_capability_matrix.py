@@ -400,6 +400,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_task_failure_drilldown_enabled")
                 and frontend_status.get("ui_task_failure_category_display_enabled")
                 and frontend_status.get("ui_task_status_panel_extracted")
+                and frontend_status.get("ui_task_status_failure_diagnostics_enabled")
                 and frontend_status.get("task_retry_uses_scoped_state_key")
                 and frontend_status.get("ui_report_state_extracted")
                 and frontend_status.get("ui_report_panels_extracted")

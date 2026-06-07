@@ -29,6 +29,10 @@ def render_task_status(task_status: dict) -> None:
         st.json(task_status["result"])
     if task_status.get("error"):
         st.error(task_status["error"])
+    diagnostic_rows = task_status_diagnostic_rows(task_status)
+    if diagnostic_rows:
+        st.caption("失敗診斷")
+        st.dataframe(diagnostic_rows, width="stretch", hide_index=True)
     if isinstance(run, dict):
         st.dataframe(
             [
@@ -44,6 +48,31 @@ def render_task_status(task_status: dict) -> None:
             width="stretch",
             hide_index=True,
         )
+
+
+def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
+    if not isinstance(task_status, dict) or not task_status.get("error_category"):
+        return []
+    return [
+        {
+            "operation": task_status.get("operation") or "-",
+            "category": task_status.get("error_category") or "-",
+            "severity": task_status.get("error_severity") or "-",
+            "summary": task_status.get("error_summary") or "-",
+            "retry": "可重試" if task_status.get("retryable") else "需人工",
+            "retry_kind": task_status.get("retry_kind") or "-",
+            "next_action": task_status.get("next_action") or "-",
+            "next_steps": _task_status_next_steps_text(task_status),
+        }
+    ]
+
+
+def _task_status_next_steps_text(task_status: dict) -> str:
+    next_steps = task_status.get("next_steps")
+    if not isinstance(next_steps, list):
+        return "-"
+    steps = [str(step).strip() for step in next_steps if str(step).strip()]
+    return "；".join(steps) if steps else "-"
 
 
 def _task_status_ready(task_status: dict | None) -> bool:

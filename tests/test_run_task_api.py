@@ -419,8 +419,75 @@ def test_run_task_service_reports_failure_progress_before_run_exists() -> None:
     assert status["ready"] is True
     assert status["successful"] is False
     assert status["error"] == "boom"
+    assert status["operation"] == "task_status"
+    assert status["error_category"] == "unknown"
+    assert status["error_severity"] == "error"
+    assert status["error_summary"] == "未分類任務失敗"
+    assert status["retryable"] is False
+    assert status["retry_kind"] is None
+    assert status["status_endpoint"] == "GET /tasks/task-failed"
+    assert status["retry_endpoint"] is None
+    assert "查看任務狀態 drilldown" in status["next_steps"][0]
     assert status["progress"]["status"] == "failed"
     assert status["progress"]["current_step"] == "task_failed"
+
+
+def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> None:
+    failed_run = SimpleNamespace(
+        id=31,
+        source="celery",
+        status="failed",
+        payload_json=json.dumps(
+            {
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+                "celery_task_id": "task-quota",
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error="RESOURCE_EXHAUSTED quota exceeded",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-quota"
+            return FakeTaskResult("FAILURE", True, False, RuntimeError("RESOURCE_EXHAUSTED quota exceeded"))
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-quota"
+            return failed_run
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-quota")
+
+    assert status["error_category"] == "quota"
+    assert status["error_severity"] == "warning"
+    assert status["error_summary"] == "模型/API 額度或速率限制"
+    assert status["operation"] == "celery"
+    assert status["retryable"] is True
+    assert status["retry_kind"] == "report_generation"
+    assert status["retry_endpoint"] == "POST /tasks/task-quota/retry"
+    assert status["run_endpoint"] == "GET /runs/31"
+    assert "查看 AI 額度" in status["next_action"]
+    assert status["next_steps"] == [
+        "查看 AI 額度與模型路由或資料源額度。",
+        "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+    ]
 
 
 def test_run_task_service_lists_gets_and_deletes_runs() -> None:

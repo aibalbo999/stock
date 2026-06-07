@@ -1475,11 +1475,43 @@ def test_company_filing_pdf_without_text_has_actionable_error(monkeypatch) -> No
     try:
         extract_pdf_text(b"%PDF fake")
     except ValueError as exc:
-        assert str(exc) == PDF_IMPORT_NO_TEXT_MESSAGE
+        assert PDF_IMPORT_NO_TEXT_MESSAGE in str(exc)
+        assert "Visual RAG 後援失敗" in str(exc)
         assert "OCR" in str(exc)
         assert "文字版文件" in str(exc)
     else:
         raise AssertionError("PDF without extractable text should provide OCR guidance")
+
+
+def test_company_filing_pdf_visual_rag_failure_preserves_fallback_reason(monkeypatch) -> None:
+    def fake_extract_pypdf(_content: bytes) -> str:
+        raise ValueError(PDF_IMPORT_NO_TEXT_MESSAGE)
+
+    def fake_visual_extract(_content: bytes, *, reason: str):
+        assert reason == PDF_IMPORT_NO_TEXT_MESSAGE
+        raise ValueError("Visual RAG vision LLM API key 或本地 gateway 尚未配置。")
+
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "pypdf")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODE", "fallback")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.data_sources.company_filings._extract_pdf_text_with_pypdf",
+        fake_extract_pypdf,
+    )
+    monkeypatch.setattr("app.services.visual_rag.extract_visual_pdf_text", fake_visual_extract)
+    try:
+        extract_pdf_text(b"%PDF fake")
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("failed Visual RAG fallback should preserve diagnostics")
+    finally:
+        get_settings.cache_clear()
+
+    assert PDF_IMPORT_NO_TEXT_MESSAGE in message
+    assert "Visual RAG 後援失敗" in message
+    assert "vision LLM API key" in message
 
 
 def test_company_filing_pdf_without_text_can_use_visual_rag_fallback(monkeypatch) -> None:

@@ -1803,8 +1803,8 @@ def _extract_pdf_text_with_visual_rag_fallback(content: bytes, error: ValueError
 
     try:
         return extract_visual_pdf_text(content, reason=str(error))
-    except Exception:
-        return ""
+    except Exception as exc:
+        raise ValueError(f"{error}；Visual RAG 後援失敗：{exc}") from exc
 
 
 def _maybe_augment_pdf_text_with_visual_rag(content: bytes, text: str) -> str:

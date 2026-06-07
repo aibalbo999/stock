@@ -5,11 +5,8 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
-
 from app.core.time import now_taipei
 from app.data_sources.company_filings import CompanyFilingFetcher
-from app.api import main
 from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
 from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportRequest, ReportResponse, Source
 from app.services.candidate_revalidation import (
@@ -39,6 +36,7 @@ from app.services.discovery_workflow import (
     summarize_candidate_support,
 )
 from app.services.persistence import CompanyFilingRepository
+from app.services.report_build import ReportBuildService
 from app.services.report_followup import (
     follow_up_plan_next_actions,
     latest_follow_up_run_for_report,
@@ -46,7 +44,9 @@ from app.services.report_followup import (
     should_require_candidate_audit_follow_up,
 )
 from app.services.report_followup_context import ReportFollowUpContextNotFound, ReportFollowUpContextService
-from app.services.report_followup_plan import AutoFollowUpStartService
+from app.services.report_followup_plan import AutoFollowUpStartService, ReportFollowUpPlanService
+from app.services.report_followup_runner import ReportFollowUpRunService
+from app.services.report_generation_api import SyncReportGenerationApiService
 from app.services.report_query import ReportQueryService
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -148,7 +148,7 @@ def test_merge_financial_metric_history_dedupes_cached_and_fetched_rows() -> Non
     assert values == {("2330", "revenue"): 110.0, ("2382", "revenue"): 50.0}
 
 
-def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypatch) -> None:
+def test_generate_report_sync_attaches_quality_gate_from_used_evidence() -> None:
     captured = {"updated_payloads": []}
 
     class FakeGenerator:
@@ -225,26 +225,21 @@ def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypat
             "recommendation": "資料品質達到本系統產出投資建議的基本門檻。",
         }
 
-    monkeypatch.setattr(main, "ReportGenerator", FakeGenerator)
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-    monkeypatch.setattr(main, "build_quality_gate_for_request", fake_quality_gate_for_request)
-    monkeypatch.setattr(main, "count_sufficient_company_filings", lambda tickers: 1)
-
-    response = TestClient(main.app).post(
-        "/reports/generate",
-        json={
-            "topic": "AI 產業鏈",
-            "tickers": ["2330"],
-            "lookback_days": 7,
-        },
+    service = SyncReportGenerationApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        report_repository_cls=FakeReportRepository,
+        report_build_service_factory=lambda: ReportBuildService(
+            report_generator_cls=FakeGenerator,
+            build_quality_gate_for_request_func=fake_quality_gate_for_request,
+            report_execution_summary_func=lambda generator: {},
+        ),
+        count_sufficient_company_filings_func=lambda tickers: 1,
     )
+    result = service.generate(ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=7))
 
-    body = response.json()
-    assert response.status_code == 200
-    assert body["quality_gate"]["status"] == "ready"
-    assert "## 報告品質門檻" in body["markdown"]
+    assert result.quality_gate["status"] == "ready"
+    assert "## 報告品質門檻" in result.markdown
     assert captured["quality_documents"] == ["used-doc"]
     assert captured["quality_source_count"] is None
     assert captured["stored_quality_gate"]["status"] == "ready"
@@ -2484,19 +2479,86 @@ def test_load_report_follow_up_context_raises_404() -> None:
         raise AssertionError("expected ReportFollowUpContextNotFound")
 
 
-def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> None:
-    class FakeReport:
-        id = 7
-        title = "AI 產業鏈 自動分析報告"
-        topic = "AI 產業鏈"
-        tickers_json = '["2330"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 監控清單\n"
-            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
-            "|---|---|---|---|---|\n"
-            "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
-        )
+async def _default_prepare_follow_up_context(context, request, actions):
+    return {
+        "request": request,
+        "whitelist": None,
+        "candidate_whitelist": context.get("candidate_whitelist") or [],
+        "candidate_revalidation": {
+            "candidate_whitelist": context.get("candidate_whitelist") or [],
+            "promoted_tickers": request.tickers,
+            "newly_promoted": [],
+            "no_longer_promoted": [],
+            "status_changes": [],
+            "changed": False,
+        },
+    }
+
+
+async def _default_execute_follow_up_actions(actions, request, news_limit=30):
+    return {"actions": [action.to_dict() for action in actions], "results": {}, "execution_summary": {}}
+
+
+def _follow_up_runner_service(
+    *,
+    context: dict,
+    analysis_run_repository_cls: type,
+    report_repository_cls: type = object,
+    follow_up_action_planner_cls: type,
+    execute_follow_up_actions_func=_default_execute_follow_up_actions,
+    prepare_follow_up_report_context_func=_default_prepare_follow_up_context,
+    report_build_service_factory=lambda: None,
+    split_fresh_tracking_actions_func=lambda actions, request: (actions, []),
+    render_follow_up_actions_markdown_func=lambda actions: "",
+    tracking_freshness_thresholds: dict | None = None,
+) -> ReportFollowUpRunService:
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    return ReportFollowUpRunService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=analysis_run_repository_cls,
+        report_repository_cls=report_repository_cls,
+        follow_up_action_planner_cls=follow_up_action_planner_cls,
+        load_report_follow_up_context_func=lambda report_id: context,
+        prepare_follow_up_report_context_func=prepare_follow_up_report_context_func,
+        execute_follow_up_actions_func=execute_follow_up_actions_func,
+        summarize_follow_up_execution_func=lambda execution: execution.get("execution_summary") or {},
+        split_fresh_tracking_actions_func=split_fresh_tracking_actions_func,
+        render_follow_up_actions_markdown_func=render_follow_up_actions_markdown_func,
+        report_build_service_factory=report_build_service_factory,
+        count_sufficient_company_filings_func=lambda tickers: 0,
+        safe_mark_run_failed_func=lambda run_id, error: None,
+        tracking_freshness_thresholds=tracking_freshness_thresholds or {"refresh_market": 5},
+        task_cancellation_checker=lambda run_id: None,
+    )
+
+
+def _follow_up_context(
+    *,
+    request: ReportRequest,
+    markdown: str = "# report",
+    quality_gate: dict | None = None,
+    company_data_audit: dict | None = None,
+    candidate_whitelist: list[dict] | None = None,
+    run_payload: dict | None = None,
+) -> dict:
+    return {
+        "source_report_id": 7,
+        "source_report_topic": request.topic,
+        "source_report_tickers": request.tickers,
+        "source_report_generated_at": None,
+        "source_report_created_at": None,
+        "request": request,
+        "quality_gate": quality_gate or {"status": "ready", "warnings": [], "blockers": []},
+        "company_data_audit": company_data_audit or {"status": "sufficient"},
+        "source_audit": {},
+        "markdown": markdown,
+        "candidate_whitelist": candidate_whitelist or [],
+        "run_payload": run_payload or {"request": request.model_dump(mode="json")},
+    }
+
 
     class NewReport:
         id = 8
@@ -2504,10 +2566,6 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
     class FakeReportRepository:
         def __init__(self, session: object) -> None:
             self.session = session
-
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
 
         def create(self, request, response) -> NewReport:
             assert request.tickers == ["2330"]
@@ -2554,12 +2612,22 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
             FakeAnalysisRunRepository.success_report_id = report_id
             return FakeRun()
 
-    class FakeGenerator:
-        last_evidence_documents = []
-
-        def generate(self, request):
+    class FakeBuildService:
+        def build(self, request, **kwargs):
             assert request.topic == "AI 產業鏈"
-            return ReportResponse(title="重跑後報告", markdown="# 重跑後報告")
+            return {
+                "response": ReportResponse(title="重跑後報告", markdown="# 重跑後報告"),
+                "quality_gate": {"status": "ready", "warnings": [], "blockers": []},
+                "report_execution": {},
+            }
+
+    class FakePlanner:
+            def plan(self, *args, **kwargs):
+                return [
+                FollowUpAction("refresh_monthly_revenue", "補月營收", ("2330",), "high", "monthly", "tracking"),
+                FollowUpAction("refresh_valuations", "補估值", ("2330",), "high", "daily", "tracking"),
+                FollowUpAction("rerun_analysis", "補資料後重新產生報告", ("2330",), "high", "once", "tracking"),
+            ]
 
     async def fake_execute(actions, request, news_limit=30):
         assert {action.action_type for action in actions} >= {
@@ -2580,21 +2648,25 @@ def test_report_follow_up_endpoint_executes_actions_and_reruns(monkeypatch) -> N
             },
         }
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "ReportGenerator", FakeGenerator)
-    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
-    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
-    monkeypatch.setattr(
-        main,
-        "build_quality_gate_for_request",
-        lambda request, documents, **kwargs: {"status": "ready", "warnings": [], "blockers": []},
+    service = _follow_up_runner_service(
+        context=_follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=30),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 監控清單\n"
+                "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+                "|---|---|---|---|---|\n"
+                "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
+            ),
+        ),
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        report_repository_cls=FakeReportRepository,
+        follow_up_action_planner_cls=FakePlanner,
+        execute_follow_up_actions_func=fake_execute,
+        report_build_service_factory=lambda: FakeBuildService(),
     )
 
-    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
-
-    assert response.status_code == 200
-    body = response.json()
+    body = asyncio.run(service.run(7, FollowUpRunRequest(rerun_report=True)))
     assert body["status"] == "executed"
     assert body["run_id"] == 31
     assert body["summary"]["selected"]["total_count"] >= 3
@@ -2735,25 +2807,10 @@ def test_auto_start_required_follow_up_runs_candidate_gaps_even_when_report_is_r
     assert captured["payload"].purpose == "required"
 
 
-def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatch) -> None:
-    class FakeReport:
-        id = 7
-        title = "AI 產業鏈 自動分析報告"
-        topic = "AI 產業鏈"
-        tickers_json = '["2382"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 資料完整度\n"
-            "- 缺高品質必要公司文件：annual_report\n"
-        )
-
+def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain() -> None:
     class FakeReportRepository:
         def __init__(self, session: object) -> None:
             self.session = session
-
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
 
         def create(self, request, response):
             raise AssertionError("report should not rerun while company filing blockers remain")
@@ -2837,36 +2894,30 @@ def test_report_follow_up_skips_rerun_when_company_filing_gaps_remain(monkeypatc
                 )
             ]
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "FollowUpActionPlanner", FakePlanner)
-    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
-    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    service = _follow_up_runner_service(
+        context=_follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2382"], lookback_days=30),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 資料完整度\n"
+                "- 缺高品質必要公司文件：annual_report\n"
+            ),
+        ),
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        report_repository_cls=FakeReportRepository,
+        follow_up_action_planner_cls=FakePlanner,
+        execute_follow_up_actions_func=fake_execute,
+    )
 
-    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
-
-    assert response.status_code == 200
-    body = response.json()
+    body = asyncio.run(service.run(7, FollowUpRunRequest(rerun_report=True)))
     assert body["rerun_report"]["status"] == "skipped"
     assert body["rerun_report"]["blockers"] == ["公司公開文件仍不足：2382"]
     assert body["rerun_report"]["next_actions"][0]["ticker"] == "2382"
     assert FakeAnalysisRunRepository.success_report_id == 7
 
 
-def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> None:
+def test_report_follow_up_rerun_persists_revalidated_request() -> None:
     captured = {}
-
-    class FakeReport:
-        topic = "AI 產業鏈"
-        tickers_json = '["2330"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 候選公司審計\n"
-            "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |\n"
-            "|---|---|---|---:|---|---|\n"
-            "| 2330 台積電 | 晶圓代工 | 正式分析 | 2 篇 / 2 來源 | 通過 | 納入正式分析 |\n"
-            "| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據 | 補抓公司新聞 |\n"
-        )
 
     class NewReport:
         id = 18
@@ -2874,10 +2925,6 @@ def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> Non
     class FakeReportRepository:
         def __init__(self, session: object) -> None:
             self.session = session
-
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
 
         def create(self, request, response) -> NewReport:
             captured["created_request"] = request.model_dump(mode="json")
@@ -2910,55 +2957,79 @@ def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> Non
         def mark_success(self, run_id: int, report_id: int, output_path: str | None = None) -> FakeRun:
             return FakeRun()
 
-    class FakeGenerator:
-        last_evidence_documents = []
-
-        def __init__(self, whitelist=None):
-            self.whitelist = whitelist
-
-        def generate(self, request):
+    class FakeBuildService:
+        def build(self, request, **kwargs):
             assert request.tickers == ["2330", "3324"]
-            return ReportResponse(title="升格後報告", markdown="# 升格後報告")
+            return {
+                "response": ReportResponse(title="升格後報告", markdown="# 升格後報告"),
+                "quality_gate": {"status": "ready"},
+                "report_execution": {},
+            }
+
+    class FakePlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction("ingest_news", "補候選", ("3324",), "high", "daily", "required"),
+                FollowUpAction("rerun_analysis", "補資料後重新產生報告", ("3324",), "high", "once"),
+            ]
 
     async def fake_execute(actions, request, news_limit=30):
         return {"actions": [action.to_dict() for action in actions], "results": {}, "execution_summary": {}}
 
-    async def fake_refresh_market_data(request):
-        captured["refreshed_request"] = request.model_dump(mode="json")
-        return {}
-
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "ReportGenerator", FakeGenerator)
-    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
-    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
-    monkeypatch.setattr(
-        main,
-        "revalidate_candidate_whitelist",
-        lambda run_payload, candidates: {
+    async def fake_prepare(context, request, actions):
+        rerun_request = request.model_copy(update={"tickers": ["2330", "3324"]})
+        captured["refreshed_request"] = rerun_request.model_dump(mode="json")
+        return {
+            "request": rerun_request,
+            "whitelist": None,
             "candidate_whitelist": [
                 {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
                 {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "evidence_supported"},
             ],
-            "promoted_tickers": ["2330", "3324"],
-            "newly_promoted": ["3324"],
-            "no_longer_promoted": [],
-            "status_changes": [
-                {
-                    "ticker": "3324",
-                    "previous_status": "weak_evidence",
-                    "current_status": "evidence_supported",
-                }
+            "candidate_revalidation": {
+                "candidate_whitelist": [
+                    {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
+                    {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "evidence_supported"},
+                ],
+                "promoted_tickers": ["2330", "3324"],
+                "newly_promoted": ["3324"],
+                "no_longer_promoted": [],
+                "status_changes": [
+                    {
+                        "ticker": "3324",
+                        "previous_status": "weak_evidence",
+                        "current_status": "evidence_supported",
+                    }
+                ],
+                "changed": True,
+            },
+        }
+
+    service = _follow_up_runner_service(
+        context=_follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=30),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 候選公司審計\n"
+                "| 股票 | 產業位置 | 狀態 | 證據 | 排除 / 升格原因 | 下一步 |\n"
+                "|---|---|---|---:|---|---|\n"
+                "| 2330 台積電 | 晶圓代工 | 正式分析 | 2 篇 / 2 來源 | 通過 | 納入正式分析 |\n"
+                "| 3324 雙鴻 | 散熱模組 | 弱證據觀察 | 1 篇 / 1 來源 | 弱證據 | 補抓公司新聞 |\n"
+            ),
+            candidate_whitelist=[
+                {"ticker": "2330", "name": "台積電", "segment": "晶圓代工", "status": "evidence_supported"},
+                {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "weak_evidence"},
             ],
-            "changed": True,
-        },
+        ),
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        report_repository_cls=FakeReportRepository,
+        follow_up_action_planner_cls=FakePlanner,
+        execute_follow_up_actions_func=fake_execute,
+        prepare_follow_up_report_context_func=fake_prepare,
+        report_build_service_factory=lambda: FakeBuildService(),
     )
-    monkeypatch.setattr(main, "refresh_market_data_for_report", fake_refresh_market_data)
-    monkeypatch.setattr(main, "build_quality_gate_for_request", lambda request, documents, **kwargs: {"status": "ready"})
 
-    response = TestClient(main.app).post("/reports/7/follow-up/run", json={"rerun_report": True})
-
-    assert response.status_code == 200
+    asyncio.run(service.run(7, FollowUpRunRequest(rerun_report=True)))
     assert captured["created_request"]["tickers"] == ["2330", "3324"]
     assert captured["refreshed_request"]["tickers"] == ["2330", "3324"]
     assert captured["payload"]["request"]["tickers"] == ["2330", "3324"]
@@ -2966,26 +3037,7 @@ def test_report_follow_up_rerun_persists_revalidated_request(monkeypatch) -> Non
     assert captured["payload"]["rerun_report"]["candidate_revalidation"]["newly_promoted"] == ["3324"]
 
 
-def test_report_follow_up_endpoint_can_skip_tracking_when_required_only(monkeypatch) -> None:
-    class FakeReport:
-        topic = "AI 產業鏈"
-        tickers_json = '["2330"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 監控清單\n"
-            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
-            "|---|---|---|---|---|\n"
-            "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
-        )
-
-    class FakeReportRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
-
+def test_report_follow_up_runner_can_skip_tracking_when_required_only() -> None:
     class FakeRun:
         id = 41
         payload_json = "{}"
@@ -3015,44 +3067,41 @@ def test_report_follow_up_endpoint_can_skip_tracking_when_required_only(monkeypa
     async def fake_execute(actions, request, news_limit=30):
         raise AssertionError("required-only run should skip tracking actions")
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
-    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
+    class FakePlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction("refresh_market", "追蹤股價", ("2330",), "high", "daily", "tracking"),
+                FollowUpAction("rerun_analysis", "補資料後重新產生報告", ("2330",), "high", "once", "tracking"),
+            ]
 
-    response = TestClient(main.app).post(
-        "/reports/7/follow-up/run",
-        json={"rerun_report": True, "purpose": "required"},
+    service = _follow_up_runner_service(
+        context=_follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 監控清單\n"
+                "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+                "|---|---|---|---|---|\n"
+                "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
+            ),
+        ),
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        follow_up_action_planner_cls=FakePlanner,
+        execute_follow_up_actions_func=fake_execute,
     )
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "no_action_required"
-    assert response.json()["run_id"] is None
-    assert response.json()["summary"]["selected"]["total_count"] == 0
-    assert response.json()["summary"]["available"]["tracking_count"] >= 1
-    assert response.json()["available_actions"]
+    result = asyncio.run(
+        service.run(7, FollowUpRunRequest(rerun_report=True, purpose="required"))
+    )
+
+    assert result["status"] == "no_action_required"
+    assert result["run_id"] is None
+    assert result["summary"]["selected"]["total_count"] == 0
+    assert result["summary"]["available"]["tracking_count"] >= 1
+    assert result["available_actions"]
 
 
-def test_report_follow_up_endpoint_can_force_fresh_tracking_actions(monkeypatch) -> None:
-    class FakeReport:
-        topic = "AI 產業鏈"
-        tickers_json = '["2330"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 監控清單\n"
-            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
-            "|---|---|---|---|---|\n"
-            "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
-        )
-
-    class FakeReportRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
-
+def test_report_follow_up_runner_can_force_fresh_tracking_actions() -> None:
     class FakeRun:
         id = 51
         payload_json = "{}"
@@ -3084,13 +3133,28 @@ def test_report_follow_up_endpoint_can_force_fresh_tracking_actions(monkeypatch)
         assert any(action.action_type == "refresh_market" for action in actions)
         return {"actions": [action.to_dict() for action in actions], "results": {}, "execution_summary": {}}
 
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeAnalysisRunRepository)
-    monkeypatch.setattr(main, "execute_follow_up_actions", fake_execute)
-    monkeypatch.setattr(
-        main,
-        "split_fresh_tracking_actions",
-        lambda actions, request: (
+    class FakePlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction("refresh_market", "追蹤股價", ("2330",), "high", "daily", "tracking"),
+                FollowUpAction("rerun_analysis", "補資料後重新產生報告", ("2330",), "high", "once", "tracking"),
+            ]
+
+    service = _follow_up_runner_service(
+        context=_follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 監控清單\n"
+                "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+                "|---|---|---|---|---|\n"
+                "| 2330 台積電 | 觀察 / 等風險降低 | 領先訊號由偏空轉為中性以上 | 降值風險高於 5% | 每週 |\n"
+            ),
+        ),
+        analysis_run_repository_cls=FakeAnalysisRunRepository,
+        follow_up_action_planner_cls=FakePlanner,
+        execute_follow_up_actions_func=fake_execute,
+        split_fresh_tracking_actions_func=lambda actions, request: (
             [],
             [
                 {
@@ -3103,52 +3167,45 @@ def test_report_follow_up_endpoint_can_force_fresh_tracking_actions(monkeypatch)
         ),
     )
 
-    response = TestClient(main.app).post(
-        "/reports/7/follow-up/run",
-        json={"rerun_report": False, "purpose": "tracking", "force_refresh": True},
+    result = asyncio.run(
+        service.run(
+            7,
+            FollowUpRunRequest(rerun_report=False, purpose="tracking", force_refresh=True),
+        )
     )
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "executed"
-    assert response.json()["force_refresh"] is True
+    assert result["status"] == "executed"
+    assert result["force_refresh"] is True
 
 
-def test_report_follow_up_plan_preview_uses_report_history(monkeypatch) -> None:
-    class FakeReport:
-        topic = "AI 產業鏈"
-        tickers_json = '["2330"]'
-        markdown = (
-            "# AI 產業鏈 自動分析報告\n\n"
-            "## 監控清單\n"
-            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
-            "|---|---|---|---|---|\n"
-            "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
-        )
+def test_report_follow_up_plan_preview_uses_report_history() -> None:
+    class FakePlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction("refresh_monthly_revenue", "補月營收", ("2330",), "high", "monthly", "tracking"),
+                FollowUpAction("refresh_valuations", "補估值", ("2330",), "high", "daily", "tracking"),
+                FollowUpAction("rerun_analysis", "補資料後重新產生報告", ("2330",), "high", "once", "tracking"),
+            ]
 
-    class FakeReportRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
+    service = ReportFollowUpPlanService(
+        load_report_follow_up_context_func=lambda report_id: _follow_up_context(
+            request=ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            markdown=(
+                "# AI 產業鏈 自動分析報告\n\n"
+                "## 監控清單\n"
+                "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |\n"
+                "|---|---|---|---|---|\n"
+                "| 2330 台積電 | 觀察 / 等風險降低 | 補齊月營收與估值 | 降值風險高於 5% | 每週 |\n"
+            ),
+        ),
+        follow_up_action_planner_cls=FakePlanner,
+        split_fresh_tracking_actions_func=lambda actions, request: (actions, []),
+        render_follow_up_actions_markdown_func=lambda actions: "| 任務 | 股票 | 性質 | 優先級 | 頻率 | 觸發原因 |",
+        tracking_freshness_thresholds={"refresh_market": 5},
+    )
 
-        def get(self, report_id: int) -> FakeReport | None:
-            assert report_id == 7
-            return FakeReport()
+    body = service.build(7)
 
-    class FakeRunRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get_by_report_id(self, report_id: int) -> None:
-            assert report_id == 7
-            return None
-
-    monkeypatch.setattr(main, "ReportRepository", FakeReportRepository)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeRunRepository)
-    monkeypatch.setattr("app.services.followup_actions.tracking_freshness_details_by_action", lambda actions, request: {})
-
-    response = TestClient(main.app).get("/reports/7/follow-up/plan")
-
-    assert response.status_code == 200
-    body = response.json()
     assert body["freshness"]["thresholds"]["refresh_market"] == 5
     action_types = {action["action_type"] for action in body["actions"]}
     assert "refresh_monthly_revenue" in action_types

@@ -9,6 +9,7 @@ TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
 REPORT_MARKDOWN_SOURCE = Path("app/ui/report_markdown.py")
+REPORT_CANDIDATE_AUDIT_SOURCE = Path("app/ui/report_candidate_audit.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
@@ -20,6 +21,7 @@ UI_SOURCE_FILES = [
     REPORT_STATE_SOURCE,
     REPORT_PANELS_SOURCE,
     REPORT_MARKDOWN_SOURCE,
+    REPORT_CANDIDATE_AUDIT_SOURCE,
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
@@ -38,12 +40,15 @@ def read_ui_source() -> str:
 
 
 def load_report_helpers() -> dict:
+    candidate_audit_source = REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
     report_source = REPORT_HTML_SOURCE.read_text()
     follow_up_source = FOLLOW_UP_STATUS_SOURCE.read_text()
     maintenance_source = MAINTENANCE_STATUS_SOURCE.read_text()
     namespace = {
-        "__file__": str(REPORT_HTML_SOURCE),
+        "__file__": str(REPORT_CANDIDATE_AUDIT_SOURCE),
     }
+    exec(candidate_audit_source, namespace)
+    namespace["__file__"] = str(REPORT_HTML_SOURCE)
     exec(report_source, namespace)
     exec(follow_up_source, namespace)
     exec(maintenance_source, namespace)
@@ -78,6 +83,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_state import " in source
     assert "from app.ui.report_panels import (" in source
     assert "from app.ui.report_markdown import (" in source
+    assert "from app.ui.report_candidate_audit import" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
     assert "F403" not in source
@@ -130,6 +136,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def markdown_table_rows(" in REPORT_MARKDOWN_SOURCE.read_text()
     assert "def first_tranche_allocation_label(" not in REPORT_HTML_SOURCE.read_text()
     assert "def first_tranche_allocation_label(" in REPORT_MARKDOWN_SOURCE.read_text()
+    assert "def candidate_audit_html(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def candidate_audit_html(" in REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
+    assert "def candidate_source_matches_display_entity(" not in REPORT_HTML_SOURCE.read_text()
+    assert "def candidate_source_matches_display_entity(" in REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

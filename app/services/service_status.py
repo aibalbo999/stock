@@ -435,6 +435,9 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                     "cost_rate_card_configured": llm_observability.get(
                         "cost_rate_card_configured"
                     ),
+                    "model_cost_rate_card_count": llm_observability.get("model_cost_rate_card_count"),
+                    "daily_cost_budget_usd": llm_observability.get("daily_cost_budget_usd"),
+                    "cost_warning_ratio": llm_observability.get("cost_warning_ratio"),
                 },
                 detail=(
                     "Local traces capture LLM latency, token estimates, configurable cost estimates, "

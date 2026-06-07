@@ -171,6 +171,19 @@ def test_operations_router_delegates_task_cancel_and_retry() -> None:
     assert captured == {"cancel": "task-123", "retry": "task-123"}
 
 
+def test_operations_router_delegates_task_summary_before_task_id_route() -> None:
+    class FakeRunTaskApi:
+        def task_summary(self, days: int, limit: int) -> dict:
+            return {"window": {"days": days}, "totals": {"run_count": limit}}
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    response = client.get("/tasks/summary?days=3&limit=9")
+
+    assert response.status_code == 200
+    assert response.json() == {"window": {"days": 3}, "totals": {"run_count": 9}}
+
+
 def test_operations_router_maps_task_queue_errors_to_503() -> None:
     class FakeRunTaskApi:
         def queue_data_operation(self, operation: str, payload: dict) -> dict:

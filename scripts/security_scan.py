@@ -33,6 +33,7 @@ DEFAULT_EXCLUDED_PARTS = {
 DEFAULT_EXCLUDED_SUFFIXES = {".db", ".sqlite", ".sqlite3", ".pyc", ".png", ".jpg", ".jpeg", ".pdf"}
 EXTERNAL_ENGINES = ("detect-secrets", "gitleaks")
 LOCAL_ENGINE = "local_regex"
+DEFAULT_DETECT_SECRETS_BASELINE = ".secrets.baseline"
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -84,11 +85,12 @@ def scan_with_engine(
     root: Path,
     *,
     engine: str = "auto",
+    baseline: Path | None = None,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> tuple[str, list[dict]]:
     resolved = resolve_engine(engine)
     if resolved == "detect-secrets":
-        return resolved, run_detect_secrets(paths, root, runner=runner)
+        return resolved, run_detect_secrets(paths, root, runner=runner, baseline=baseline)
     if resolved == "gitleaks":
         return resolved, run_gitleaks(root, runner=runner)
     return LOCAL_ENGINE, scan_paths(paths, root)
@@ -113,7 +115,17 @@ def resolve_engine(engine: str) -> str:
 
 
 def external_engine_available(engine: str) -> bool:
-    return shutil.which(engine) is not None
+    return external_engine_command(engine) is not None
+
+
+def external_engine_command(engine: str) -> str | None:
+    if shutil.which(engine) is not None:
+        return engine
+    for base in (Path(sys.prefix), Path(sys.executable).parent):
+        local_command = base / "bin" / engine if base.name != "bin" else base / engine
+        if local_command.exists():
+            return str(local_command)
+    return None
 
 
 def run_detect_secrets(
@@ -121,6 +133,7 @@ def run_detect_secrets(
     root: Path,
     *,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    baseline: Path | None = None,
 ) -> list[dict]:
     relative_paths = [
         str(path.relative_to(root))
@@ -129,8 +142,36 @@ def run_detect_secrets(
     ]
     if not relative_paths:
         return []
+    baseline_path = baseline or (root / DEFAULT_DETECT_SECRETS_BASELINE)
+    hook_command = external_engine_command("detect-secrets-hook")
+    if baseline_path.exists() and hook_command is not None:
+        completed = runner(
+            [
+                hook_command,
+                "--json",
+                "--baseline",
+                str(baseline_path.relative_to(root)),
+                *relative_paths,
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 0:
+            return []
+        if completed.returncode != 1:
+            raise RuntimeError((completed.stderr or completed.stdout or "detect-secrets-hook failed").strip())
+        try:
+            payload = json.loads(completed.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("detect-secrets-hook returned invalid JSON") from exc
+        return detect_secrets_hook_findings(payload)
+    command = external_engine_command("detect-secrets")
+    if command is None:
+        raise RuntimeError("security scan engine is not available: detect-secrets")
     completed = runner(
-        ["detect-secrets", "scan", *relative_paths],
+        [command, "scan", *relative_paths],
         cwd=root,
         check=False,
         capture_output=True,
@@ -160,13 +201,31 @@ def detect_secrets_findings(payload: dict) -> list[dict]:
     return findings
 
 
+def detect_secrets_hook_findings(payload: dict) -> list[dict]:
+    findings = []
+    for path, rows in sorted((payload.get("results") or {}).items()):
+        for row in rows or []:
+            findings.append(
+                {
+                    "type": f"detect-secrets:{row.get('type') or 'secret'}",
+                    "path": str(path),
+                    "line": int(row.get("line_number") or row.get("line") or 0),
+                    "match": "***",
+                }
+            )
+    return findings
+
+
 def run_gitleaks(
     root: Path,
     *,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> list[dict]:
+    command = external_engine_command("gitleaks")
+    if command is None:
+        raise RuntimeError("security scan engine is not available: gitleaks")
     completed = runner(
-        ["gitleaks", "detect", "--source", str(root), "--redact", "--exit-code", "1", "--no-banner"],
+        [command, "detect", "--source", str(root), "--redact", "--exit-code", "1", "--no-banner"],
         cwd=root,
         check=False,
         capture_output=True,
@@ -203,12 +262,22 @@ def main(argv: list[str] | None = None) -> int:
         choices=("auto", "detect-secrets", "gitleaks", "local", LOCAL_ENGINE),
         help="Secret scanning engine. auto prefers detect-secrets/gitleaks, then local regex fallback.",
     )
+    parser.add_argument(
+        "--baseline",
+        default=DEFAULT_DETECT_SECRETS_BASELINE,
+        help="detect-secrets baseline used to ignore audited placeholders and test fixtures.",
+    )
     args = parser.parse_args(argv)
 
     root = Path(__file__).resolve().parents[1]
     paths = all_project_files(root) if args.all else tracked_files(root)
     try:
-        engine, findings = scan_with_engine(paths, root, engine=args.engine)
+        engine, findings = scan_with_engine(
+            paths,
+            root,
+            engine=args.engine,
+            baseline=root / args.baseline,
+        )
     except RuntimeError as exc:
         print(f"Security scan failed: {exc}", file=sys.stderr)
         return 2

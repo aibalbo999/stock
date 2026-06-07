@@ -152,6 +152,49 @@ class ReportQueryService:
             for report in reports
         ]
 
+    def quality_summary(self, limit: int = 20) -> dict:
+        safe_limit = max(1, min(int(limit or 20), 100))
+        with self.session_scope_factory() as session:
+            repository = self.report_repository_cls(session)
+            latest_by_topic = getattr(repository, "latest_by_topic", None)
+            reports = latest_by_topic(safe_limit) if callable(latest_by_topic) else repository.latest(safe_limit)
+        rows = [self._quality_summary_row(report) for report in reports]
+        status_counts = _count_values(rows, "status")
+        blocker_count = sum(int(row.get("blocker_count") or 0) for row in rows)
+        warning_count = sum(int(row.get("warning_count") or 0) for row in rows)
+        status = (
+            "no_reports"
+            if not rows
+            else "insufficient"
+            if status_counts.get("insufficient") or blocker_count
+            else "caution"
+            if status_counts.get("caution") or status_counts.get("unknown") or warning_count
+            else "ready"
+        )
+        confidence_values = [
+            float(row["formal_confidence_min"])
+            for row in rows
+            if row.get("formal_confidence_min") is not None
+        ]
+        return {
+            "status": status,
+            "policy": "latest_per_topic",
+            "totals": {
+                "report_count": len(rows),
+                "ready_count": int(status_counts.get("ready") or 0),
+                "caution_count": int(status_counts.get("caution") or 0),
+                "insufficient_count": int(status_counts.get("insufficient") or 0),
+                "unknown_count": int(status_counts.get("unknown") or 0),
+                "blocker_count": blocker_count,
+                "warning_count": warning_count,
+                "avg_formal_confidence_min": round(sum(confidence_values) / len(confidence_values), 2)
+                if confidence_values
+                else None,
+            },
+            "alerts": self._quality_summary_alerts(rows),
+            "reports": rows,
+        }
+
     def get_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:
             report_repository = self.report_repository_cls(session)
@@ -237,9 +280,61 @@ class ReportQueryService:
         response = ReportResponse(**response_payload)
         return self.attach_quality_gate_to_report_func(response, quality_gate).markdown
 
+    def _quality_summary_row(self, report: Any) -> dict:
+        markdown = self.remove_low_quality_lines_func(str(getattr(report, "markdown", "") or ""))
+        gate = _quality_gate_from_report(report, markdown, self.parse_quality_gate_func) or {}
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        return {
+            "id": getattr(report, "id", None),
+            "title": getattr(report, "title", ""),
+            "topic": getattr(report, "topic", ""),
+            "generated_at": getattr(report, "generated_at", None).isoformat()
+            if getattr(report, "generated_at", None) is not None
+            else None,
+            "status": str(gate.get("status") or "unknown"),
+            "blocker_count": len(gate.get("blockers") or []),
+            "warning_count": len(gate.get("warnings") or []),
+            "observation_count": len(gate.get("observations") or []),
+            "promoted_count": metrics.get("promoted_count"),
+            "dynamic_source_count": metrics.get("dynamic_source_count"),
+            "formal_confidence_min": metrics.get("formal_confidence_min"),
+            "company_filing_coverage": metrics.get("company_filing_coverage"),
+            "llm_estimated_cost_usd": metrics.get("llm_estimated_cost_usd"),
+        }
+
+    @staticmethod
+    def _quality_summary_alerts(rows: list[dict]) -> list[dict[str, str]]:
+        alerts = []
+        for row in rows:
+            if row.get("status") == "insufficient" or int(row.get("blocker_count") or 0):
+                alerts.append(
+                    {
+                        "severity": "error",
+                        "code": "report_quality_blocker",
+                        "message": f"Report #{row.get('id')} has quality blockers.",
+                    }
+                )
+            elif row.get("status") == "caution" or int(row.get("warning_count") or 0):
+                alerts.append(
+                    {
+                        "severity": "warning",
+                        "code": "report_quality_warning",
+                        "message": f"Report #{row.get('id')} has quality warnings.",
+                    }
+                )
+        return alerts[:10]
+
     def delete_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:
             deleted = self.report_repository_cls(session).delete(report_id)
         if not deleted:
             raise ReportQueryNotFound("report not found")
         return {"deleted": True, "id": report_id}
+
+
+def _count_values(rows: list[dict], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(key) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return counts

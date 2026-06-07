@@ -53,6 +53,9 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - name: Security scan
+        run: python scripts/security_scan.py --engine detect-secrets
+
       - name: Tests
         run: pytest -q
 

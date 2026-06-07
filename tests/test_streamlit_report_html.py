@@ -112,6 +112,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/llm/usage/summary?days=7" in source
     assert "AI 用量趨勢與成本" in source
     assert "估算成本 USD" in source
+    assert "/tasks/summary?days=7" in source
+    assert "背景任務觀測" in source
+    assert "/reports/quality/summary?limit=20" in source
+    assert "報告品質 Gate 總覽" in source
+    assert "外部部署選配狀態" in source
     assert "正式分析不等於買進" in source
     assert "letter-spacing: -" not in combined
     assert "stock-hero" not in combined

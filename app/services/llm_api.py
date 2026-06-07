@@ -110,6 +110,7 @@ class LLMApiService:
             return {}
         return summarize_llm_usage_records(
             days=days,
+            settings=self.settings_provider(),
             session_scope_factory=self.session_scope_factory,
             llm_usage_repository_cls=self.llm_usage_repository_cls,
         )

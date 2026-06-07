@@ -136,8 +136,12 @@ class Settings(BaseSettings):
     llm_observability_provider: str = "local"
     llm_input_cost_per_1k_tokens_usd: float = 0.0
     llm_output_cost_per_1k_tokens_usd: float = 0.0
+    llm_model_cost_rate_card_usd: str = ""
+    llm_daily_cost_budget_usd: float = 0.0
+    llm_cost_warning_ratio: float = 0.8
     langsmith_api_key: Optional[str] = None
     phoenix_endpoint: str = ""
+    task_observability_stale_minutes: int = 60
     auto_follow_up_enabled: bool = True
     auto_follow_up_news_limit: int = 30
     sync_report_pre_refresh_enabled: bool = False

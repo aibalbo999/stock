@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.models.schemas import ReportRequest
@@ -49,6 +50,7 @@ class RunTaskApiService:
         report_follow_up_task: Any = None,
         celery_app: Any = None,
         serialize_run_func: Callable[[Any], dict] = serialize_run,
+        settings_provider: Callable[[], Any] | None = None,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls
@@ -59,11 +61,49 @@ class RunTaskApiService:
         self.report_follow_up_task = report_follow_up_task
         self.celery_app = celery_app
         self.serialize_run_func = serialize_run_func
+        self.settings_provider = settings_provider
 
     def list_runs(self, limit: int = 20) -> list[dict]:
         with self.session_scope_factory() as session:
             runs = self.analysis_run_repository_cls(session).latest(limit)
         return [self.serialize_run_func(run) for run in runs]
+
+    def task_summary(self, days: int = 7, limit: int = 500, stale_minutes: int | None = None) -> dict:
+        safe_days = max(1, min(int(days or 7), 90))
+        safe_limit = max(1, min(int(limit or 500), 1000))
+        if stale_minutes is None and self.settings_provider is not None:
+            settings = self.settings_provider()
+            stale_minutes = int(getattr(settings, "task_observability_stale_minutes", 60) or 60)
+        stale_after = max(5, int(stale_minutes or 60))
+        end = datetime.utcnow()
+        start = end - timedelta(days=safe_days)
+        with self.session_scope_factory() as session:
+            repository = self.analysis_run_repository_cls(session)
+            since = getattr(repository, "since", None)
+            runs = since(start, safe_limit) if callable(since) else repository.latest(safe_limit)
+        rows = [
+            self._run_summary_row(self.serialize_run_func(run), stale_after_minutes=stale_after, now=end)
+            for run in runs
+        ]
+        rows = [row for row in rows if row["started_at"] >= start.isoformat()]
+        totals = self._task_summary_totals(rows)
+        return {
+            "window": {
+                "days": safe_days,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "stale_minutes": stale_after,
+            },
+            "totals": totals,
+            "by_status": self._count_rows(rows, "status"),
+            "by_source": self._count_rows(rows, "source"),
+            "by_operation": self._count_rows(rows, "operation"),
+            "recent_failures": [
+                row for row in rows if row["status"] in {"failed", "cancelled"} or row.get("error")
+            ][:10],
+            "stale_running": [row for row in rows if row.get("stale_running")][:10],
+            "recent": rows[:20],
+        }
 
     def get_run(self, run_id: int) -> dict:
         with self.session_scope_factory() as session:
@@ -287,3 +327,88 @@ class RunTaskApiService:
             "current_step": None,
             "resume_hint": None,
         }
+
+    @classmethod
+    def _run_summary_row(cls, run: dict, *, stale_after_minutes: int, now: datetime) -> dict:
+        payload = run.get("payload") if isinstance(run.get("payload"), dict) else {}
+        started_at = str(run.get("started_at") or "")
+        finished_at = str(run.get("finished_at") or "")
+        started_dt = cls._parse_datetime(started_at)
+        finished_dt = cls._parse_datetime(finished_at)
+        status = str(run.get("status") or "unknown")
+        duration_seconds = None
+        if started_dt and finished_dt:
+            duration_seconds = max(0.0, (finished_dt - started_dt).total_seconds())
+        running_age_seconds = None
+        if status == "running" and started_dt:
+            running_age_seconds = max(0.0, (now - started_dt).total_seconds())
+        return {
+            "id": run.get("id"),
+            "source": str(run.get("source") or "unknown"),
+            "operation": cls._run_operation(payload, run),
+            "status": status,
+            "report_id": run.get("report_id"),
+            "task_id": payload.get("celery_task_id"),
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_seconds": round(duration_seconds, 3) if duration_seconds is not None else None,
+            "running_age_seconds": round(running_age_seconds, 3) if running_age_seconds is not None else None,
+            "stale_running": bool(
+                running_age_seconds is not None
+                and running_age_seconds >= stale_after_minutes * 60
+            ),
+            "error": run.get("error"),
+        }
+
+    @staticmethod
+    def _run_operation(payload: dict, run: dict) -> str:
+        for key in ("operation", "task", "workflow_name"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+        workflow = run.get("workflow") if isinstance(run.get("workflow"), dict) else {}
+        if workflow.get("name"):
+            return str(workflow["name"])
+        return str(run.get("source") or "unknown")
+
+    @staticmethod
+    def _task_summary_totals(rows: list[dict]) -> dict:
+        completed = [
+            float(row["duration_seconds"])
+            for row in rows
+            if row.get("duration_seconds") is not None
+        ]
+        success_count = sum(1 for row in rows if row.get("status") == "success")
+        failed_count = sum(1 for row in rows if row.get("status") == "failed")
+        cancelled_count = sum(1 for row in rows if row.get("status") == "cancelled")
+        running_count = sum(1 for row in rows if row.get("status") == "running")
+        total_count = len(rows)
+        return {
+            "run_count": total_count,
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "cancelled_count": cancelled_count,
+            "running_count": running_count,
+            "stale_running_count": sum(1 for row in rows if row.get("stale_running")),
+            "success_rate": round(success_count / total_count, 4) if total_count else None,
+            "avg_duration_seconds": round(sum(completed) / len(completed), 3) if completed else None,
+        }
+
+    @staticmethod
+    def _count_rows(rows: list[dict], key: str) -> list[dict]:
+        counts: dict[str, int] = {}
+        for row in rows:
+            counts[str(row.get(key) or "unknown")] = counts.get(str(row.get(key) or "unknown"), 0) + 1
+        return [
+            {key: bucket, "count": count}
+            for bucket, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        ]
+
+    @staticmethod
+    def _parse_datetime(value: object) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            return None

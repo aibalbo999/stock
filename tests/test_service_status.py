@@ -480,6 +480,10 @@ def test_llm_retry_settings_defaults() -> None:
     assert settings.llm_model_quota_cooldown_seconds == 3600
     assert settings.llm_quota_window_timezone == "America/Los_Angeles"
     assert "gemini-3.5-flash=250" in settings.llm_model_daily_request_budgets
+    assert settings.llm_model_cost_rate_card_usd == ""
+    assert settings.llm_daily_cost_budget_usd == 0.0
+    assert settings.llm_cost_warning_ratio == 0.8
+    assert settings.task_observability_stale_minutes == 60
 
 
 def test_rag_settings_defaults(monkeypatch) -> None:

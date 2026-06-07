@@ -52,7 +52,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 ## 核心安全護欄
 
 - 不提交 `.env`、SQLite DB、向量庫、報告輸出、快取與 Celery beat DB。
-- 提交前可執行 `.venv/bin/python scripts/security_scan.py` 掃描已追蹤檔案中的 Gemini/OpenAI key 與私鑰；預設 `--engine auto` 會優先使用 `detect-secrets`，其次可接 `gitleaks`，兩者都不可用時才退回本地 regex 後援。開發環境可用 `pip install -e ".[dev]"` 安裝 `detect-secrets`，CI 若已有 gitleaks 也可執行 `.venv/bin/python scripts/security_scan.py --engine gitleaks`。
+- 提交前可執行 `.venv/bin/python scripts/security_scan.py` 掃描已追蹤檔案中的 Gemini/OpenAI key 與私鑰；預設 `--engine auto` 會優先使用 `detect-secrets`，其次可接 `gitleaks`，兩者都不可用時才退回本地 regex 後援。開發環境可用 `pip install -e ".[dev]"` 安裝 `detect-secrets`；`.secrets.baseline` 保存已審核的樣板值與測試假值 hash，CI 會用 `detect-secrets-hook --baseline` 擋新增未審核 secret。CI 若已有 gitleaks 也可執行 `.venv/bin/python scripts/security_scan.py --engine gitleaks`。
 - API key 使用 `.env` 的 `GOOGLE_API_KEYS` 或 `GOOGLE_API_KEY`，可用逗號設定多組 Gemini key 輪調。
 - LLM 不能只憑模型回答把公司放進產業鏈；候選公司需同時命中公司實體與主題證據關鍵詞。
 - 子題拆解不可只輸出熱門股票或關鍵字，必須先說明產業因果、要查的資料與要監控的風險。
@@ -142,6 +142,9 @@ LLM_MODEL_DAILY_REQUEST_BUDGETS=gemini-3.5-flash=250,gemini-2.5-flash=250,gemini
 LLM_MODEL_DAILY_TOKEN_BUDGETS=
 LLM_BASE_RETRY_DELAY_SECONDS=0.5
 LLM_MAX_RETRY_DELAY_SECONDS=5.0
+LLM_MODEL_COST_RATE_CARD_USD=
+LLM_DAILY_COST_BUDGET_USD=0
+LLM_COST_WARNING_RATIO=0.8
 ```
 
 免費版 API key 目前採取智慧優先策略：`gemini-3.5-flash` 作為正式報告、GraphRAG 推理、結構化補充分析、LLM reranker 與 Visual RAG PDF 圖片解析的主模型；只有該模型回傳 429/quota、上游錯誤或空回覆時，才依序降級到 `gemini-2.5-flash`、`gemini-3.1-flash-lite`、`gemini-2.5-flash-lite`，最後才使用高額度保底的 `gemma-4-31b-it`。`gemini-embedding-2` 作為 RAG embedding。Google 的 Gemini API rate limits 以 project 計算，不是以 API key 計算，因此 `GOOGLE_API_KEYS` 多把 key 只用於輪替錯誤/分散瞬時失敗，不代表免費 RPD/TPM 會倍增。`gemini-3.5-flash` 保留為第一順位；`gemini-3.5-flash`、`gemini-2.5-flash`、`gemini-3.1-flash-lite` 與 `gemini-2.5-flash-lite` 在本專案以同級免費 request budget 追蹤，`gemma-4-31b-it` 則作為高量文字任務保底。若本機 smoke test 回傳 quota 429，通常代表該 project 今日或當前視窗額度已耗盡。系統會在模型回傳 429 時套用 `LLM_MODEL_QUOTA_COOLDOWN_SECONDS`，短時間跳過該模型，避免每次報告都先撞已耗盡的模型；cooldown 結束後會自動再次把高階模型放回優先嘗試。`GET /llm/quota` 與系統設定頁會顯示 Pacific-day 額度視窗、今日已用 request/token、每模型剩餘估算與目前建議模型；實際限制仍以 Google AI Studio 顯示的 project limit 為準。Imagen / Live 模型偏圖片生成或即時語音互動，不進入目前報告與資料管線核心流程。
@@ -185,7 +188,7 @@ pip install -e ".[dev,rag]"
 Chroma collection 名稱會納入實際 embedding provider、model 與 `RAG_INDEX_SCHEMA_VERSION`；從 Chroma 預設 embedding 切到繁中/多語 embedding，或修改向量化文本格式（例如新增公司對應 identity header）時，會自動使用不同 collection，避免新舊向量索引混用。若未來調整 embedding 文本欄位或 chunk metadata 規格，請同步調高 `RAG_INDEX_SCHEMA_VERSION`，`GET /services/status` 的 `vector_store.retrieval_status.collection_name_example` 可確認目前會寫入哪個 collection。
 `RAG_RERANKER_PROVIDER=auto` 會先嘗試本機 cross-encoder reranker（`bge` / `sentence_transformers`，預設模型 `BAAI/bge-reranker-v2-m3`），若不可用再嘗試 Cohere Rerank；兩者都不可用時，會用既有 LLM SDK/key 對前 `RAG_LLM_RERANKER_MAX_DOCUMENTS` 筆候選做 JSON 排序；LLM reranker 也不可用才退回 hybrid 分數的關鍵字排序 fallback。若要固定本機模型，可設為 `sentence_transformers`、`cross_encoder` 或 `bge`；若要固定 Cohere，可設為 `cohere` 或 `cohere_rerank`，搭配 `RAG_RERANKER_MODEL=rerank-v3.5` 與 `COHERE_API_KEY`；若要固定 LLM reranker，可設為 `llm` 或 `llm_rerank`。`keyword` 仍可作為明確的 lexical fallback，但不會被視為模型級 reranker。Chroma query/get/upsert、模型載入與外部 rerank 都有 timeout；逾時、SDK 缺少、API key 缺少、LLM 回傳不可解析 JSON 或推論失敗時會保留可用排序並退回 keyword，不阻斷報告生成。`GET /services/status` 會回傳 `vector_store.retrieval_status`（hybrid/BM25、中文 n-gram tokenizer、entity metadata 是否納入 embedding/BM25、source credibility weights、keyword corpus limit、權重、rerank top-k 與 timeout 秒數）以及 `vector_store.reranker_status.execution_mode`、`configured_provider`、`resolved_provider`、`auto_candidates`、`quality_tier`、`keyword_fallback`、`model_reranker_ready`、`dependency_available`、`api_key_configured`、`model_available` 與 `fallback_reason`。`upgrade_capability_matrix.ai_rag.reranking` 只有在 cross-encoder、Cohere 或 LLM 這類 learned/API/model reranker 可用時才會標為 `ready`；auto 退回 keyword 時會顯示 `degraded`，避免把 lexical fallback 誤認成模型重排序。
 
-LLM/RAG observability 預設啟用本地 trace（`LLM_OBSERVABILITY_ENABLED=true`、`LLM_OBSERVABILITY_PROVIDER=local`）：每次 LLM result 會附上 provider/model、latency、attempt count、input/output/total token estimate 與成本估算模式；RAG retrieval trace 也會記錄 `duration_ms` 與 reranker status。若要估算 API 成本，可設定 `LLM_INPUT_COST_PER_1K_TOKENS_USD` 與 `LLM_OUTPUT_COST_PER_1K_TOKENS_USD` 作為部署自己的 rate card。外部觀測平台可用 `LLM_OBSERVABILITY_PROVIDER=langsmith` 搭配 `LANGSMITH_API_KEY`，或 `LLM_OBSERVABILITY_PROVIDER=phoenix` 搭配 `PHOENIX_ENDPOINT`；目前 status 會揭露外部 sink 是否已配置，報告執行摘要則保留本地 trace，便於後續接 LangSmith/Phoenix SDK。`GET /services/status` 會回傳 `llm_observability` 與 `upgrade_capability_matrix.ai_rag.llm_observability`，用來確認 token、latency、retrieval latency、reranker status 與成本追蹤欄位是否可用。
+LLM/RAG observability 預設啟用本地 trace（`LLM_OBSERVABILITY_ENABLED=true`、`LLM_OBSERVABILITY_PROVIDER=local`）：每次 LLM result 會附上 provider/model、latency、attempt count、input/output/total token estimate 與成本估算模式；RAG retrieval trace 也會記錄 `duration_ms` 與 reranker status。若要估算 API 成本，可設定 `LLM_INPUT_COST_PER_1K_TOKENS_USD` / `LLM_OUTPUT_COST_PER_1K_TOKENS_USD` 作為全域 rate card，或用 `LLM_MODEL_COST_RATE_CARD_USD=gemini-3.5-flash=0.000075:0.0003` 這種 `model=input_per_1k:output_per_1k` 格式指定模型單價。`LLM_DAILY_COST_BUDGET_USD` 與 `LLM_COST_WARNING_RATIO` 會讓 `GET /llm/usage/summary?days=7` 回傳 cost budget status 與 alerts；免費版 key 可維持 budget 為 0，只追蹤 token/額度。外部觀測平台可用 `LLM_OBSERVABILITY_PROVIDER=langsmith` 搭配 `LANGSMITH_API_KEY`，或 `LLM_OBSERVABILITY_PROVIDER=phoenix` 搭配 `PHOENIX_ENDPOINT`；目前 status 會揭露外部 sink 是否已配置，報告執行摘要則保留本地 trace，便於後續接 LangSmith/Phoenix SDK。`GET /services/status` 會回傳 `llm_observability` 與 `upgrade_capability_matrix.ai_rag.llm_observability`，用來確認 token、latency、retrieval latency、reranker status 與成本追蹤欄位是否可用。
 
 設定 GraphRAG / Neo4j：
 
@@ -420,9 +423,9 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 服務啟動後可跑 `.venv/bin/python scripts/frontend_smoke.py --json`，它會檢查 Streamlit 首頁、FastAPI `/services/status`，並在 Playwright 可用時截圖到 `artifacts/frontend_smoke/streamlit.png` 且驗證畫面不是空白 PNG。CI 或沒有瀏覽器 binary 的環境可加 `--skip-browser`，保留 HTTP smoke。
 
-GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`pytest -q`、`scripts/upgrade_audit.py --json`、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
+GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 
-系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path 與 retryable failure，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。
+系統設定頁的「AI 用量趨勢與成本」會讀取 `GET /llm/usage/summary?days=7`，顯示 7 日 request/token、成本估算、fallback path、retryable failure、成本預算狀態與 alerts，並依模型、任務與日期彙總，方便確認免費額度是否被有效使用。「背景任務觀測」會讀取 `GET /tasks/summary?days=7`，顯示近期 Celery/API run 成功率、平均耗時、失敗任務與疑似卡住任務；「報告品質 Gate 總覽」會讀取 `GET /reports/quality/summary?limit=20`，以 latest-per-topic 報告檢查 blockers、warnings、正式分析信心與資料覆蓋。
 
 ## 升級稽核
 

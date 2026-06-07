@@ -163,6 +163,16 @@ def render_system_settings() -> None:
         except requests.RequestException as exc:
             llm_usage_summary = {"totals": {}, "by_model": [], "by_operation": [], "daily": []}
             st.error(f"讀取 AI 用量趨勢失敗：{request_error_message(exc)}")
+        try:
+            task_summary = api_get("/tasks/summary?days=7")
+        except requests.RequestException as exc:
+            task_summary = {"totals": {}, "by_status": [], "by_operation": [], "recent_failures": []}
+            st.error(f"讀取背景任務觀測失敗：{request_error_message(exc)}")
+        try:
+            report_quality_summary = api_get("/reports/quality/summary?limit=20")
+        except requests.RequestException as exc:
+            report_quality_summary = {"status": "unknown", "totals": {}, "reports": [], "alerts": []}
+            st.error(f"讀取報告品質總覽失敗：{request_error_message(exc)}")
         strict_upgrade_audit = st.toggle(
             "正式部署檢查",
             value=False,
@@ -181,6 +191,35 @@ def render_system_settings() -> None:
         service_cols = st.columns(len(service_metrics))
         for column, (label, value) in zip(service_cols, service_metrics.items()):
             column.metric(label, value)
+        external_warnings = [
+            item
+            for item in upgrade_audit.get("warnings", []) or []
+            if isinstance(item, dict) and item.get("external_integration")
+        ]
+        with st.expander("外部部署選配狀態", expanded=bool(external_warnings)):
+            deploy = upgrade_audit.get("deployment") if isinstance(upgrade_audit.get("deployment"), dict) else {}
+            deploy_cols = st.columns(4)
+            deploy_cols[0].metric("部署狀態", deploy.get("status") or upgrade_audit.get("deployment_status") or "-")
+            deploy_cols[1].metric("Ready", int(deploy.get("ready") or 0))
+            deploy_cols[2].metric("Warnings", int(deploy.get("warnings") or 0))
+            deploy_cols[3].metric("Failures", int(deploy.get("failures") or 0))
+            if external_warnings:
+                st.dataframe(
+                    [
+                        {
+                            "area": row.get("area"),
+                            "capability": row.get("capability"),
+                            "status": row.get("status"),
+                            "remediation": row.get("remediation"),
+                        }
+                        for row in external_warnings
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+                st.code(".venv/bin/python scripts/external_integrations_smoke.py --strict --json", language="bash")
+            else:
+                st.success("外部部署選配目前沒有警示。")
         with st.expander("AI 額度與模型路由", expanded=True):
             quota_window = llm_quota.get("window") if isinstance(llm_quota.get("window"), dict) else {}
             quota_totals = llm_quota.get("totals") if isinstance(llm_quota.get("totals"), dict) else {}
@@ -239,6 +278,52 @@ def render_system_settings() -> None:
                 st.dataframe(operation_usage_rows, width="stretch", hide_index=True)
             if not (daily_usage_rows or model_usage_rows or operation_usage_rows):
                 st.info("尚未有可彙總的 AI 用量紀錄。")
+            usage_alerts = llm_usage_summary.get("alerts") or []
+            for alert in usage_alerts:
+                message = str(alert.get("message") or alert.get("code") or "")
+                if alert.get("severity") == "error":
+                    st.error(message)
+                elif alert.get("severity") == "warning":
+                    st.warning(message)
+                else:
+                    st.caption(message)
+            cost_budget = llm_usage_summary.get("cost_budget")
+            if isinstance(cost_budget, dict):
+                st.caption(
+                    "成本預算："
+                    f"{cost_budget.get('status')}｜"
+                    f"window ${float(cost_budget.get('window_cost_budget_usd') or 0.0):.4f}"
+                )
+        with st.expander("背景任務觀測", expanded=False):
+            task_totals = task_summary.get("totals") if isinstance(task_summary.get("totals"), dict) else {}
+            task_cols = st.columns(5)
+            task_cols[0].metric("7 日任務", int(task_totals.get("run_count") or 0))
+            task_cols[1].metric("成功率", "-" if task_totals.get("success_rate") is None else f"{float(task_totals['success_rate']) * 100:.1f}%")
+            task_cols[2].metric("失敗", int(task_totals.get("failed_count") or 0))
+            task_cols[3].metric("執行中", int(task_totals.get("running_count") or 0))
+            task_cols[4].metric("疑似卡住", int(task_totals.get("stale_running_count") or 0))
+            if task_summary.get("by_operation"):
+                st.caption("任務類型")
+                st.dataframe(task_summary["by_operation"], width="stretch", hide_index=True)
+            if task_summary.get("recent_failures"):
+                st.caption("近期失敗 / 取消")
+                st.dataframe(task_summary["recent_failures"], width="stretch", hide_index=True)
+        with st.expander("報告品質 Gate 總覽", expanded=False):
+            quality_totals = (
+                report_quality_summary.get("totals")
+                if isinstance(report_quality_summary.get("totals"), dict)
+                else {}
+            )
+            quality_cols = st.columns(5)
+            quality_cols[0].metric("狀態", report_quality_summary.get("status") or "-")
+            quality_cols[1].metric("最新版報告", int(quality_totals.get("report_count") or 0))
+            quality_cols[2].metric("Ready", int(quality_totals.get("ready_count") or 0))
+            quality_cols[3].metric("Blockers", int(quality_totals.get("blocker_count") or 0))
+            quality_cols[4].metric("Warnings", int(quality_totals.get("warning_count") or 0))
+            if report_quality_summary.get("alerts"):
+                st.dataframe(report_quality_summary["alerts"], width="stretch", hide_index=True)
+            if report_quality_summary.get("reports"):
+                st.dataframe(report_quality_summary["reports"], width="stretch", hide_index=True)
         with st.expander("進階：服務細節"):
             st.json(status["settings"])
             st.json(status["integrity"])

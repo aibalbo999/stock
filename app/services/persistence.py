@@ -707,6 +707,15 @@ class AnalysisRunRepository:
         statement = select(AnalysisRun).order_by(AnalysisRun.started_at.desc()).limit(limit)
         return list(self.session.scalars(statement))
 
+    def since(self, started_at: datetime, limit: int = 500) -> list[AnalysisRun]:
+        statement = (
+            select(AnalysisRun)
+            .where(AnalysisRun.started_at >= started_at)
+            .order_by(AnalysisRun.started_at.desc())
+            .limit(max(1, int(limit)))
+        )
+        return list(self.session.scalars(statement))
+
     def get(self, run_id: int) -> AnalysisRun | None:
         return self.session.get(AnalysisRun, run_id)
 

@@ -38,6 +38,10 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
             captured["limit"] = limit
             return [{"report_id": 7}]
 
+        def quality_summary(self, limit: int) -> dict:
+            captured["quality_limit"] = limit
+            return {"status": "ready", "totals": {"report_count": limit}}
+
         def get_report(self, report_id: int) -> dict:
             captured["report_id"] = report_id
             return {"report_id": report_id}
@@ -46,6 +50,7 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
 
     generated = client.post("/reports/generate", json={"topic": "AI 產業鏈", "tickers": ["2330"]})
     listed = client.get("/reports?limit=3")
+    quality = client.get("/reports/quality/summary?limit=5")
     fetched = client.get("/reports/7")
 
     assert generated.status_code == 200
@@ -53,6 +58,8 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
     assert captured["request"]["topic"] == "AI 產業鏈"
     assert listed.json() == [{"report_id": 7}]
     assert captured["limit"] == 3
+    assert quality.json() == {"status": "ready", "totals": {"report_count": 5}}
+    assert captured["quality_limit"] == 5
     assert fetched.json() == {"report_id": 7}
 
 

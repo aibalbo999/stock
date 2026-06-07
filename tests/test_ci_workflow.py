@@ -18,6 +18,7 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "python-version" in str(job)
     assert "redis" in job["services"]
     assert "ruff check ." in step_text
+    assert "scripts/security_scan.py --engine detect-secrets" in step_text
     assert "pytest -q" in step_text
     assert "scripts/upgrade_audit.py --json" in step_text
     assert "scripts/external_integrations_smoke.py --json" in step_text

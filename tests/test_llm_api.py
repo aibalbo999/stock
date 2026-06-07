@@ -24,6 +24,9 @@ def test_llm_api_service_reports_status_from_settings() -> None:
         llm_observability_provider="local",
         llm_input_cost_per_1k_tokens_usd=0.0,
         llm_output_cost_per_1k_tokens_usd=0.0,
+        llm_model_cost_rate_card_usd="",
+        llm_daily_cost_budget_usd=0.0,
+        llm_cost_warning_ratio=0.8,
         langsmith_api_key=None,
         phoenix_endpoint="",
     )
@@ -77,6 +80,9 @@ def test_llm_api_service_reports_status_from_settings() -> None:
             ],
             "cost_tracking_enabled": True,
             "cost_rate_card_configured": False,
+            "model_cost_rate_card_count": 0,
+            "daily_cost_budget_usd": 0.0,
+            "cost_warning_ratio": 0.8,
             "input_cost_per_1k_tokens_usd_configured": False,
             "output_cost_per_1k_tokens_usd_configured": False,
         },
@@ -247,3 +253,60 @@ def test_llm_api_service_returns_usage_summary() -> None:
     assert summary["totals"]["fallback_path_count"] == 1
     assert summary["by_model"][0]["model"] == "gemini-3.5-flash"
     assert summary["by_operation"][0]["operation"] == "report_generation"
+
+
+def test_llm_api_usage_summary_flags_cost_budget_and_fallback_alerts() -> None:
+    class FakeUsageRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def since(self, created_at):
+            return [SimpleNamespace(id=1)]
+
+        @staticmethod
+        def to_dict(record):
+            return {
+                "id": record.id,
+                "operation": "visual_rag",
+                "model": "gemini-3.5-flash",
+                "provider": "google_genai",
+                "fallback": False,
+                "fallback_path_used": True,
+                "latency_ms": 900.0,
+                "total_token_estimate": 1200,
+                "estimated_cost_usd": 0.0123,
+                "attempt_count": 2,
+                "retryable_failure_count": 1,
+                "created_at": "2026-06-07T08:00:00",
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    settings = SimpleNamespace(
+        llm_observability_enabled=True,
+        llm_observability_provider="local",
+        llm_input_cost_per_1k_tokens_usd=0.0,
+        llm_output_cost_per_1k_tokens_usd=0.0,
+        llm_model_cost_rate_card_usd="gemini-3.5-flash=0.000075:0.0003",
+        llm_daily_cost_budget_usd=0.01,
+        llm_cost_warning_ratio=0.8,
+        langsmith_api_key=None,
+        phoenix_endpoint="",
+    )
+    service = LLMApiService(
+        settings_provider=lambda: settings,
+        session_scope_factory=fake_session_scope,
+        llm_usage_repository_cls=FakeUsageRepository,
+    )
+
+    summary = service.usage_summary(1)
+
+    assert summary["cost_budget"]["status"] == "exceeded"
+    assert summary["cost_budget"]["window_cost_budget_usd"] == 0.01
+    assert {alert["code"] for alert in summary["alerts"]} == {
+        "llm_cost_budget_exceeded",
+        "llm_fallback_used",
+        "llm_retryable_failures",
+    }

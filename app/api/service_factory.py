@@ -277,6 +277,7 @@ class ApiServiceFactory:
             report_follow_up_task=d["report_follow_up_task"],
             celery_app=d["celery_app"],
             serialize_run_func=d["serialize_run"],
+            settings_provider=d["get_settings"],
         )
 
     def pipeline_api(self):

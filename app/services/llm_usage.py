@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.db.session import session_scope
+from app.services.llm_observability import llm_cost_budget_status, llm_observability_status
 from app.services.persistence import LLMUsageRepository
 
 
@@ -52,6 +53,7 @@ def list_llm_usage_records(
 def summarize_llm_usage_records(
     *,
     days: int = 7,
+    settings: Any | None = None,
     session_scope_factory: Callable[[], AbstractContextManager] = session_scope,
     llm_usage_repository_cls: type[LLMUsageRepository] = LLMUsageRepository,
     clock: Callable[[], datetime] = datetime.utcnow,
@@ -63,18 +65,29 @@ def summarize_llm_usage_records(
         repository = llm_usage_repository_cls(session)
         records = [repository.to_dict(record) for record in repository.since(since)]
     rows = [_normalized_usage_row(record) for record in records]
-    return {
+    totals = _usage_totals(rows)
+    summary = {
         "window": {
             "days": safe_days,
             "start": since.isoformat(),
             "end": end.isoformat(),
         },
-        "totals": _usage_totals(rows),
+        "totals": totals,
         "by_model": _aggregate_usage(rows, "model"),
         "by_operation": _aggregate_usage(rows, "operation"),
         "daily": _aggregate_usage(rows, "date"),
         "recent": rows[-20:],
     }
+    if settings is not None:
+        cost_budget = llm_cost_budget_status(
+            settings,
+            estimated_cost_usd=float(totals.get("estimated_cost_usd") or 0.0),
+            days=safe_days,
+        )
+        observability = llm_observability_status(settings)
+        summary["cost_budget"] = cost_budget
+        summary["alerts"] = _usage_alerts(totals, cost_budget, observability)
+    return summary
 
 
 def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
@@ -133,6 +146,52 @@ def _aggregate_usage(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any
             str(item[key]),
         ),
     )
+
+
+def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observability: dict[str, Any]) -> list[dict[str, str]]:
+    alerts: list[dict[str, str]] = []
+    budget_status = str(cost_budget.get("status") or "")
+    if budget_status == "exceeded":
+        alerts.append(
+            {
+                "severity": "error",
+                "code": "llm_cost_budget_exceeded",
+                "message": "LLM estimated cost is above the configured window budget.",
+            }
+        )
+    elif budget_status == "warning":
+        alerts.append(
+            {
+                "severity": "warning",
+                "code": "llm_cost_budget_warning",
+                "message": "LLM estimated cost is near the configured window budget.",
+            }
+        )
+    if totals.get("request_count") and not observability.get("cost_rate_card_configured"):
+        alerts.append(
+            {
+                "severity": "info",
+                "code": "llm_cost_rate_card_missing",
+                "message": "LLM usage is tracked by token estimate only until cost rates are configured.",
+            }
+        )
+    if int(totals.get("fallback_path_count") or 0):
+        alerts.append(
+            {
+                "severity": "warning",
+                "code": "llm_fallback_used",
+                "message": "Some LLM calls required fallback routing.",
+            }
+        )
+    if int(totals.get("retryable_failure_count") or 0):
+        alerts.append(
+            {
+                "severity": "warning",
+                "code": "llm_retryable_failures",
+                "message": "Retryable LLM failures were observed in the selected window.",
+            }
+        )
+    return alerts
 
 
 def _int(value: Any) -> int | None:

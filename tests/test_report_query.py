@@ -467,3 +467,57 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
     else:
         raise AssertionError("missing report deletion should raise")
     assert deleted_ids == [1, 2]
+
+
+def test_report_query_service_summarizes_latest_report_quality_gates() -> None:
+    quality_gate = {
+        "status": "caution",
+        "blockers": [],
+        "warnings": ["高可信來源比例偏低"],
+        "observations": ["可追蹤"],
+        "metrics": {
+            "promoted_count": 2,
+            "dynamic_source_count": 18,
+            "formal_confidence_min": 76,
+            "company_filing_coverage": 0.5,
+            "llm_estimated_cost_usd": 0.0012,
+        },
+    }
+    reports = [
+        SimpleNamespace(
+            id=8,
+            title="AI 報告",
+            topic="AI",
+            markdown="# AI",
+            quality_gate_json=json.dumps(quality_gate, ensure_ascii=False),
+            generated_at=datetime(2026, 6, 1, 8, 0, 0),
+        )
+    ]
+
+    class FakeReportRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def latest_by_topic(self, limit: int):
+            assert limit == 20
+            return reports
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        report_repository_cls=FakeReportRepository,
+    )
+
+    summary = service.quality_summary(20)
+
+    assert summary["status"] == "caution"
+    assert summary["policy"] == "latest_per_topic"
+    assert summary["totals"]["report_count"] == 1
+    assert summary["totals"]["warning_count"] == 1
+    assert summary["totals"]["avg_formal_confidence_min"] == 76.0
+    assert summary["reports"][0]["id"] == 8
+    assert summary["reports"][0]["company_filing_coverage"] == 0.5
+    assert summary["alerts"][0]["code"] == "report_quality_warning"

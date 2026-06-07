@@ -189,6 +189,14 @@ def create_operations_router(
                 detail=task_queue_unavailable_detail(exc, operation=payload.operation),
             ) from exc
 
+    @router.get("/tasks/summary")
+    def task_summary(
+        days: int = 7,
+        limit: int = 500,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.run_task_api().task_summary(days=days, limit=limit)
+
     @router.get("/tasks/{task_id}")
     def get_task_status(task_id: str, services: Any = Depends(services_dependency)) -> dict:
         try:

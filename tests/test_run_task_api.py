@@ -113,6 +113,27 @@ def _follow_up_run(run_id: int = 22) -> SimpleNamespace:
     )
 
 
+def _after_close_run(run_id: int = 23) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=run_id,
+        source="celery_after_close",
+        status="failed",
+        payload_json=json.dumps(
+            {
+                "task": "after_close_report_update",
+                "source_report_id": 7,
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+                "celery_task_id": "task-after-close",
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error="after close failed",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+
 def test_run_task_service_queues_async_report_after_whitelist_check() -> None:
     captured = {}
 
@@ -594,3 +615,24 @@ def test_run_task_service_retries_follow_up_with_original_options() -> None:
             "rerun_report": False,
         },
     }
+
+
+def test_run_task_service_does_not_retry_after_close_task_as_follow_up() -> None:
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            return _after_close_run() if task_id == "task-after-close" else None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+    )
+
+    with pytest.raises(AsyncReportValidationError, match="not retryable"):
+        service.retry_task("task-after-close")

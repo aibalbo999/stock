@@ -141,6 +141,12 @@ def frontend_status() -> dict:
         and "task_queue_health_rows(service_snapshot)" in ui_source
         and "task_queue_health_alert(service_snapshot)" in ui_source
         and "task_queue_smoke_command(service_snapshot)" in ui_source,
+        "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in maintenance_status_source
+        and "def task_retry_options(" in maintenance_status_source
+        and "task_failure_drilldown_rows(task_summary)" in ui_source
+        and "task_retry_options(task_summary)" in ui_source
+        and 'api_task_post(\n                                f"/tasks/{selected_retry_task_id}/retry"' in ui_source
+        and "render_task_status_panel(" in ui_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

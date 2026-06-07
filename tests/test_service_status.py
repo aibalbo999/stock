@@ -413,6 +413,7 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
+    assert status["frontend"]["ui_task_failure_drilldown_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
@@ -602,6 +603,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_worker_warning_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_health_panel_extracted"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True

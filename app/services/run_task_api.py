@@ -246,18 +246,18 @@ class RunTaskApiService:
         if run is None:
             raise RunTaskNotFound("run not found for task")
         payload = self._parse_payload(getattr(run, "payload_json", None))
-        source = str(getattr(run, "source", "") or "")
-        if payload.get("task") == "data_operation" or source == "celery_data_operation":
+        retry_kind = self._run_retry_kind(payload, run)
+        if retry_kind == "data_operation":
             operation = str(payload.get("operation") or "")
             operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
             retried = self.queue_data_operation(operation, operation_payload)
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
-        if payload.get("source_report_id") is not None:
+        if retry_kind == "report_follow_up":
             follow_up_payload = self._follow_up_retry_payload(payload)
             retried = self.queue_report_follow_up(int(payload["source_report_id"]), follow_up_payload)
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
-        request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
-        if isinstance(request_payload, dict) and request_payload.get("topic"):
+        if retry_kind == "report_generation":
+            request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
             retried = self.generate_report_async(ReportRequest.model_validate(request_payload))
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         raise AsyncReportValidationError("task payload is not retryable")
@@ -391,12 +391,14 @@ class RunTaskApiService:
 
     @classmethod
     def _run_summary_row(cls, run: dict, *, stale_after_minutes: int, now: datetime) -> dict:
-        payload = run.get("payload") if isinstance(run.get("payload"), dict) else {}
+        payload = cls._serialized_run_payload(run)
         started_at = str(run.get("started_at") or "")
         finished_at = str(run.get("finished_at") or "")
         started_dt = cls._parse_datetime(started_at)
         finished_dt = cls._parse_datetime(finished_at)
         status = str(run.get("status") or "unknown")
+        task_id = payload.get("celery_task_id")
+        retry_kind = cls._run_retry_kind(payload, run)
         duration_seconds = None
         if started_dt and finished_dt:
             duration_seconds = max(0.0, (finished_dt - started_dt).total_seconds())
@@ -419,7 +421,65 @@ class RunTaskApiService:
                 and running_age_seconds >= stale_after_minutes * 60
             ),
             "error": run.get("error"),
+            "retryable": bool(task_id and retry_kind),
+            "retry_kind": retry_kind,
+            "retry_endpoint": f"POST /tasks/{task_id}/retry" if task_id and retry_kind else None,
+            "status_endpoint": f"GET /tasks/{task_id}" if task_id else None,
+            "run_endpoint": f"GET /runs/{run.get('id')}" if run.get("id") else None,
+            "next_action": cls._task_next_action(
+                status=status,
+                task_id=task_id,
+                retry_kind=retry_kind,
+                error=run.get("error"),
+            ),
         }
+
+    @staticmethod
+    def _serialized_run_payload(run: dict) -> dict:
+        raw_payload = run.get("payload")
+        if isinstance(raw_payload, dict):
+            return raw_payload
+        if isinstance(raw_payload, str):
+            return RunTaskApiService._parse_payload(raw_payload)
+        return {}
+
+    @staticmethod
+    def _run_retry_kind(payload: dict, run: dict | Any) -> str | None:
+        source = RunTaskApiService._run_source(run)
+        task_name = str(payload.get("task") or "")
+        if task_name == "after_close_report_update":
+            return None
+        if task_name == "data_operation" or source == "celery_data_operation":
+            operation = str(payload.get("operation") or "")
+            return "data_operation" if operation in DATA_OPERATION_TASKS else None
+        if payload.get("source_report_id") is not None:
+            return "report_follow_up"
+        request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
+        if isinstance(request_payload, dict) and request_payload.get("topic"):
+            return "report_generation"
+        return None
+
+    @staticmethod
+    def _run_source(run: dict | Any) -> str:
+        if isinstance(run, dict):
+            return str(run.get("source") or "")
+        return str(getattr(run, "source", "") or "")
+
+    @staticmethod
+    def _task_next_action(
+        *,
+        status: str,
+        task_id: object,
+        retry_kind: str | None,
+        error: object,
+    ) -> str:
+        if retry_kind and task_id:
+            return "可從維護頁重試，或呼叫 " + f"POST /tasks/{task_id}/retry"
+        if not task_id:
+            return "缺少 celery_task_id；請從 run 明細檢查原始 payload。"
+        if status in {"failed", "cancelled"} or error:
+            return "payload 不支援自動重試；請依錯誤內容手動重新送出。"
+        return "持續觀測任務狀態。"
 
     @staticmethod
     def _run_operation(payload: dict, run: dict) -> str:

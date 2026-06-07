@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -15,7 +16,14 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             id=1,
             source="celery_data_operation",
             status="success",
-            payload={"task": "data_operation", "operation": "market_refresh"},
+            payload_json=json.dumps(
+                {
+                    "task": "data_operation",
+                    "operation": "market_refresh",
+                    "payload": {"tickers": ["2330"]},
+                    "celery_task_id": "task-success",
+                }
+            ),
             report_id=None,
             error=None,
             started_at=now - timedelta(minutes=10),
@@ -25,7 +33,12 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             id=2,
             source="celery_report",
             status="failed",
-            payload={"celery_task_id": "task-failed"},
+            payload_json=json.dumps(
+                {
+                    "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+                    "celery_task_id": "task-failed",
+                }
+            ),
             report_id=None,
             error="boom",
             started_at=now - timedelta(minutes=7),
@@ -35,7 +48,12 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             id=3,
             source="celery_report",
             status="running",
-            payload={"celery_task_id": "task-running"},
+            payload_json=json.dumps(
+                {
+                    "request": {"topic": "機器人 產業鏈", "tickers": ["1504"]},
+                    "celery_task_id": "task-running",
+                }
+            ),
             report_id=None,
             error=None,
             started_at=now - timedelta(minutes=90),
@@ -61,7 +79,7 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             "id": run.id,
             "source": run.source,
             "status": run.status,
-            "payload": run.payload,
+            "payload": run.payload_json,
             "report_id": run.report_id,
             "error": run.error,
             "started_at": run.started_at.isoformat(),
@@ -83,5 +101,13 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
     assert summary["totals"]["running_count"] == 1
     assert summary["totals"]["stale_running_count"] == 1
     assert summary["by_operation"][0] == {"operation": "celery_report", "count": 2}
+    assert summary["by_operation"][1] == {"operation": "market_refresh", "count": 1}
     assert summary["recent_failures"][0]["task_id"] == "task-failed"
+    assert summary["recent_failures"][0]["retryable"] is True
+    assert summary["recent_failures"][0]["retry_kind"] == "report_generation"
+    assert summary["recent_failures"][0]["retry_endpoint"] == "POST /tasks/task-failed/retry"
+    assert summary["recent_failures"][0]["status_endpoint"] == "GET /tasks/task-failed"
+    assert summary["recent_failures"][0]["run_endpoint"] == "GET /runs/2"
+    assert "可從維護頁重試" in summary["recent_failures"][0]["next_action"]
     assert summary["stale_running"][0]["task_id"] == "task-running"
+    assert summary["stale_running"][0]["retry_kind"] == "report_generation"

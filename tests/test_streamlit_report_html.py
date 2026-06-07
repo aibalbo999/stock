@@ -143,6 +143,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_health_alert(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_smoke_command(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -215,6 +217,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_health_rows(service_snapshot)" in source
     assert "task_queue_health_alert(service_snapshot)" in source
     assert "task_queue_smoke_command(service_snapshot)" in source
+    assert "task_failure_drilldown_rows(task_summary)" in source
+    assert "task_retry_options(task_summary)" in source
+    assert "maintenance_retry_failed_task" in source
+    assert "maintenance_inspect_task_id" in source
+    assert 'f"/tasks/{selected_retry_task_id}/retry"' in source
     assert "/reports/quality/summary?limit=20" in source
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
@@ -234,6 +241,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_worker_warning(" in source
     assert "def task_queue_health_rows(" in source
     assert "def task_queue_health_alert(" in source
+    assert "def task_failure_drilldown_rows(" in source
+    assert "def task_retry_options(" in source
     assert "仍會嘗試送出" in source
     assert "Celery worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source
@@ -1012,6 +1021,56 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
     assert "connection refused" in rows[1]["說明"]
     assert alert["severity"] == "error"
     assert "背景任務 queue 尚不可送出" in alert["message"]
+
+
+def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
+    helpers = load_report_helpers()
+    task_summary = {
+        "recent_failures": [
+            {
+                "id": 22,
+                "operation": "report_generation",
+                "status": "failed",
+                "task_id": "task-failed",
+                "retryable": True,
+                "retry_kind": "report_generation",
+                "retry_endpoint": "POST /tasks/task-failed/retry",
+                "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
+                "error": "quota exhausted",
+                "started_at": "2026-06-07T10:00:00",
+            },
+            {
+                "id": 23,
+                "operation": "after_close_report_update",
+                "status": "failed",
+                "task_id": "task-after-close",
+                "retryable": False,
+                "retry_kind": None,
+                "next_action": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+                "error": "missing target",
+                "started_at": "2026-06-07T11:00:00",
+            },
+        ]
+    }
+
+    rows = helpers["task_failure_drilldown_rows"](task_summary)
+    options = helpers["task_retry_options"](task_summary)
+
+    assert rows[0]["run_id"] == 22
+    assert rows[0]["retry"] == "可重試"
+    assert rows[0]["retry_kind"] == "report_generation"
+    assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
+    assert rows[1]["retry"] == "需人工"
+    assert rows[1]["retry_kind"] == "-"
+    assert options == [
+        {
+            "task_id": "task-failed",
+            "label": "report_generation｜run #22｜task-failed",
+            "operation": "report_generation",
+            "run_id": 22,
+            "retry_endpoint": "POST /tasks/task-failed/retry",
+        }
+    ]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

@@ -6,16 +6,19 @@ import requests
 import streamlit as st
 
 from app.core.time import today_taipei, utc_now_naive
-from app.ui.api_client import api_get, api_post, request_error_message
+from app.ui.api_client import api_get, api_post, api_task_post, request_error_message
 from app.ui.dashboard_core import render_section_header
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
+    task_failure_drilldown_rows,
     task_queue_health_alert,
     task_queue_health_rows,
     task_queue_smoke_command,
+    task_retry_options,
     upgrade_audit_html,
     upgrade_audit_rows,
 )
+from app.ui.task_status_panel import render_task_status_panel
 
 
 def render_maintenance_tab() -> None:
@@ -224,9 +227,45 @@ def render_maintenance_tab() -> None:
         if task_summary.get("by_operation"):
             st.caption("任務類型")
             st.dataframe(task_summary["by_operation"], width="stretch", hide_index=True)
-        if task_summary.get("recent_failures"):
+        failure_rows = task_failure_drilldown_rows(task_summary)
+        if failure_rows:
             st.caption("近期失敗 / 取消")
-            st.dataframe(task_summary["recent_failures"], width="stretch", hide_index=True)
+            st.dataframe(failure_rows, width="stretch", hide_index=True)
+            retry_options = task_retry_options(task_summary)
+            if retry_options:
+                retry_labels = {option["task_id"]: option["label"] for option in retry_options}
+                selected_retry_task_id = st.selectbox(
+                    "選擇要重試的失敗任務",
+                    options=[option["task_id"] for option in retry_options],
+                    format_func=lambda task_id: retry_labels.get(str(task_id), str(task_id)),
+                    key="maintenance_retry_task_select",
+                )
+                retry_cols = st.columns([1, 1])
+                with retry_cols[0]:
+                    if st.button("重試選取任務", key="maintenance_retry_failed_task"):
+                        try:
+                            retry_response = api_task_post(
+                                f"/tasks/{selected_retry_task_id}/retry",
+                                {},
+                            )
+                            retry_task_id = str(retry_response.get("task_id") or selected_retry_task_id)
+                            st.session_state["maintenance_inspect_task_id"] = retry_task_id
+                            st.success(f"已送出重試任務：{retry_task_id}")
+                        except requests.RequestException as exc:
+                            st.error(f"重試失敗：{request_error_message(exc)}")
+                with retry_cols[1]:
+                    if st.button("查看選取任務", key="maintenance_inspect_failed_task"):
+                        st.session_state["maintenance_inspect_task_id"] = selected_retry_task_id
+            else:
+                st.caption("目前近期失敗沒有可由 API 自動重試的 task payload。")
+        inspect_task_id = st.session_state.get("maintenance_inspect_task_id")
+        if inspect_task_id:
+            st.caption("任務狀態 drilldown")
+            render_task_status_panel(
+                task_id=str(inspect_task_id),
+                refresh_key="maintenance_retry_task_status",
+                task_state_key="maintenance_inspect_task_id",
+            )
 
     with st.expander("報告品質 Gate 總覽", expanded=False):
         quality_totals = (

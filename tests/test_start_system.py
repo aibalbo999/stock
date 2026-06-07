@@ -7,13 +7,16 @@ from pathlib import Path
 
 import pytest
 
+import scripts.start_system as start_system_module
 from app.core.config import get_settings
 from scripts.start_system import (
     apply_local_dependency_env_defaults,
+    dependency_start_blocker,
     dependency_wait_status_lines,
     docker_compose_command,
     ensure_background_process,
     fallback_local_browser_render_to_playwright,
+    print_dependency_start_blocker,
     print_upgrade_capability_preflight,
     pull_missing_dependency_images,
     run_startup_migrations,
@@ -197,6 +200,58 @@ def test_start_dependencies_help_mentions_browserless() -> None:
     assert "Redis, Postgres, Neo4j, Browserless, and Chroma" in help_text
     assert "--pull-missing-dependencies" in help_text
     assert "--prefer-unlocker" in help_text
+
+
+def test_dependency_start_blocker_stops_on_download_or_failure() -> None:
+    assert dependency_start_blocker({"status": "需下載", "message": "missing image"})
+    assert dependency_start_blocker({"status": "失敗", "message": "compose failed"})
+    assert not dependency_start_blocker({"status": "已啟動", "message": "ok"})
+    assert not dependency_start_blocker({"status": "略過", "message": "docker compose missing"})
+    assert not dependency_start_blocker(None)
+
+
+def test_print_dependency_start_blocker_explains_next_step(capsys) -> None:
+    print_dependency_start_blocker(
+        {"status": "需下載", "message": "缺少 Docker image：chroma。"},
+        {"chroma": False},
+    )
+
+    output = capsys.readouterr().out
+    assert "依賴服務：需要先處理" in output
+    assert "缺少 Docker image：chroma" in output
+    assert "Chroma 8001：尚未就緒" in output
+    assert "已停止啟動流程" in output
+    assert "migration/API" in output
+
+
+def test_main_stops_before_migrations_when_dependency_start_needs_download(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    python = tmp_path / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(start_system_module, "ROOT", tmp_path)
+    monkeypatch.setattr(start_system_module, "RUN_DIR", tmp_path / ".run")
+    monkeypatch.setattr(start_system_module, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(sys, "argv", ["start_system.py", "--start-dependencies"])
+    monkeypatch.setattr(start_system_module, "apply_local_dependency_env_defaults", lambda **_kwargs: {})
+    monkeypatch.setattr(
+        start_system_module,
+        "start_dependency_services",
+        lambda *_args, **_kwargs: {"status": "需下載", "message": "缺少 Docker image：chroma。"},
+    )
+    monkeypatch.setattr(start_system_module, "wait_for_local_dependency_ports", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(start_system_module, "fallback_local_browser_render_to_playwright", lambda *_args: {})
+
+    def fail_if_migrations_run(*_args, **_kwargs):
+        raise AssertionError("migrations should not run when dependency startup is blocked")
+
+    monkeypatch.setattr(start_system_module, "run_startup_migrations", fail_if_migrations_run)
+
+    assert start_system_module.main() == 1
+    assert "已停止啟動流程" in capsys.readouterr().out
 
 
 def test_run_startup_migrations_runs_alembic_upgrade(monkeypatch, tmp_path) -> None:

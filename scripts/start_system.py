@@ -131,6 +131,9 @@ def main() -> int:
         )
         if switch_status:
             dependency_wait_status["browser_render_fallback"] = switch_status
+        if dependency_start_blocker(dependency_status):
+            print_dependency_start_blocker(dependency_status, dependency_wait_status)
+            return 1
 
     migration_status = run_startup_migrations(ROOT, python, skip=bool(args.skip_migrations))
     if migration_status.get("status") == "失敗":
@@ -317,6 +320,19 @@ def print_upgrade_capability_preflight(
     for item in warning_advice:
         print(f"- {item['capability']}：{item['status']}，{item['reason']}")
         print(f"  建議：{item['action']}")
+
+
+def dependency_start_blocker(dependency_status: dict | None) -> bool:
+    return bool(dependency_status and dependency_status.get("status") in {"需下載", "失敗"})
+
+
+def print_dependency_start_blocker(dependency_status: dict, dependency_wait_status: dict | None = None) -> None:
+    print("")
+    print("依賴服務：需要先處理")
+    print(f"- {dependency_status.get('status', 'unknown')}，{dependency_status.get('message', '')}")
+    for line in dependency_wait_status_lines(dependency_wait_status or {}):
+        print(line)
+    print("- 已停止啟動流程；請先處理本機 Docker 依賴後重試，避免後續 migration/API 顯示誤導性錯誤。")
 
 
 def run_startup_migrations(root: Path, python: Path, *, skip: bool = False) -> dict[str, str]:

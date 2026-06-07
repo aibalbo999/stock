@@ -190,6 +190,25 @@ def test_report_router_maps_follow_up_queue_errors_to_503() -> None:
     assert detail["next_steps"]
 
 
+def test_report_router_maps_unexpected_follow_up_task_submission_errors_to_structured_500() -> None:
+    class FakeRunTaskApi:
+        def queue_report_follow_up(self, report_id: int, payload: dict) -> dict:
+            raise RuntimeError("service wiring missing follow-up task")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    response = client.post("/reports/7/follow-up/run_async")
+
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["code"] == "background_task_submission_failed"
+    assert detail["message"] == "背景任務送出時發生未預期錯誤。"
+    assert detail["operation"] == "report_follow_up"
+    assert detail["retryable"] is False
+    assert detail["error_type"] == "RuntimeError"
+    assert detail["next_steps"]
+
+
 def _client(
     generation_api=None,
     report_query=None,

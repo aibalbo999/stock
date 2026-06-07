@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
-from app.api.error_details import task_queue_unavailable_detail
+from app.api.error_details import task_queue_unavailable_detail, task_submission_failed_detail
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
@@ -156,6 +156,11 @@ def create_operations_router(
                 status_code=503,
                 detail=task_queue_unavailable_detail(exc, operation="generate_report"),
             ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=task_submission_failed_detail(exc, operation="generate_report"),
+            ) from exc
 
     @router.post("/pipeline/run_discovered_async")
     def generate_discovered_report_async(
@@ -170,6 +175,11 @@ def create_operations_router(
             raise HTTPException(
                 status_code=503,
                 detail=task_queue_unavailable_detail(exc, operation="run_discovered"),
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=task_submission_failed_detail(exc, operation="run_discovered"),
             ) from exc
 
     @router.post("/tasks/data-operation")
@@ -188,6 +198,11 @@ def create_operations_router(
             raise HTTPException(
                 status_code=503,
                 detail=task_queue_unavailable_detail(exc, operation=payload.operation),
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=task_submission_failed_detail(exc, operation=payload.operation),
             ) from exc
 
     @router.get("/tasks/summary")

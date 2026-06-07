@@ -529,6 +529,16 @@ def test_service_status_shape() -> None:
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["task_imports_api_main"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_exports_imports_tasks"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_direct_domain_import_count"] == 0
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["structured_task_submission_errors"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["task_submission_error_detail_path"] == (
+        "app/api/error_details.py"
+    )
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["task_submission_error_endpoint_coverage"] == {
+        "generate_report_async": True,
+        "run_discovered_async": True,
+        "data_operation": True,
+        "report_follow_up": True,
+    }
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_service_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_imports_legacy_facade"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_present"] is True

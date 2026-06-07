@@ -328,6 +328,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and not api_status.get("task_imports_api_main")
                 and not api_status.get("compatibility_exports_imports_tasks")
                 and api_status.get("main_direct_domain_import_count") == 0
+                and api_status.get("structured_task_submission_errors")
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
                 evidence=api_status,
@@ -660,6 +661,9 @@ def _api_controller_status() -> dict:
     api_dir = app_dir / "api"
     main_path = api_dir / "main.py"
     runtime_path = api_dir / "runtime.py"
+    operations_routes_path = api_dir / "operations_routes.py"
+    report_routes_path = api_dir / "report_routes.py"
+    error_details_path = api_dir / "error_details.py"
     tasks_path = app_dir / "tasks" / "tasks.py"
     main_source = ""
     runtime_source = ""
@@ -677,6 +681,18 @@ def _api_controller_status() -> dict:
         tasks_source = tasks_path.read_text(encoding="utf-8")
     except OSError:
         tasks_source = ""
+    try:
+        operations_routes_source = operations_routes_path.read_text(encoding="utf-8")
+    except OSError:
+        operations_routes_source = ""
+    try:
+        report_routes_source = report_routes_path.read_text(encoding="utf-8")
+    except OSError:
+        report_routes_source = ""
+    try:
+        error_details_source = error_details_path.read_text(encoding="utf-8")
+    except OSError:
+        error_details_source = ""
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
@@ -739,6 +755,23 @@ def _api_controller_status() -> dict:
         "compatibility_exports_imports_tasks": "from app.tasks." in compatibility_exports_source,
         "main_direct_domain_import_count": len(direct_domain_imports),
         "main_direct_domain_imports": direct_domain_imports,
+        "structured_task_submission_errors": (
+            "def task_submission_failed_detail(" in error_details_source
+            and operations_routes_source.count("task_submission_failed_detail(") >= 3
+            and report_routes_source.count("task_submission_failed_detail(") >= 1
+            and "background_task_submission_failed" in error_details_source
+        ),
+        "task_submission_error_detail_path": "app/api/error_details.py",
+        "task_submission_error_endpoint_coverage": {
+            "generate_report_async": 'operation="generate_report"' in operations_routes_source
+            and "task_submission_failed_detail" in operations_routes_source,
+            "run_discovered_async": 'operation="run_discovered"' in operations_routes_source
+            and "task_submission_failed_detail" in operations_routes_source,
+            "data_operation": "operation=payload.operation" in operations_routes_source
+            and "task_submission_failed_detail" in operations_routes_source,
+            "report_follow_up": 'operation="report_follow_up"' in report_routes_source
+            and "task_submission_failed_detail" in report_routes_source,
+        },
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),
         "main_imports_legacy_facade": "app.api.legacy_facade" in main_source
         or "LegacyApiFacade" in main_source,

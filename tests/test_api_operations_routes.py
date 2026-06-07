@@ -253,6 +253,48 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     assert status_detail["operation"] == "task_status"
 
 
+def test_operations_router_maps_unexpected_task_submission_errors_to_structured_500() -> None:
+    class FakeRunTaskApi:
+        def generate_report_async(self, request) -> dict:
+            raise RuntimeError("service wiring missing report task")
+
+        def generate_discovered_report_async(self, payload) -> dict:
+            raise RuntimeError("service wiring missing discovery task")
+
+        def queue_data_operation(self, operation: str, payload: dict) -> dict:
+            raise RuntimeError("service wiring missing data task")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    report_response = client.post(
+        "/reports/generate_async",
+        json={"topic": "AI 產業鏈", "tickers": ["2330"]},
+    )
+    discovered_response = client.post(
+        "/pipeline/run_discovered_async",
+        json={"topic": "AI 產業鏈", "lookback_days": 14},
+    )
+    data_response = client.post(
+        "/tasks/data-operation",
+        json={"operation": "market_refresh", "payload": {"tickers": ["2330"]}},
+    )
+
+    assert report_response.status_code == 500
+    assert report_response.json()["detail"]["code"] == "background_task_submission_failed"
+    assert report_response.json()["detail"]["operation"] == "generate_report"
+    assert discovered_response.status_code == 500
+    assert discovered_response.json()["detail"]["code"] == "background_task_submission_failed"
+    assert discovered_response.json()["detail"]["operation"] == "run_discovered"
+    assert data_response.status_code == 500
+    data_detail = data_response.json()["detail"]
+    assert data_detail["code"] == "background_task_submission_failed"
+    assert data_detail["message"] == "背景任務送出時發生未預期錯誤。"
+    assert data_detail["operation"] == "market_refresh"
+    assert data_detail["retryable"] is False
+    assert data_detail["error_type"] == "RuntimeError"
+    assert data_detail["next_steps"]
+
+
 def _client(data_api=None, run_task_api=None) -> TestClient:
     app = FastAPI()
     app.include_router(

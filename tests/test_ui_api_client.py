@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import requests
+
 from app.ui import api_client
 
 
@@ -43,3 +45,24 @@ def test_api_task_post_uses_queue_timeout(monkeypatch) -> None:
     }
     assert captured["url"].endswith("/tasks/data-operation")
     assert captured["timeout"] == api_client.API_TASK_QUEUE_TIMEOUT_SECONDS
+
+
+def test_request_error_message_formats_structured_task_submission_500() -> None:
+    response = FakeResponse(
+        {
+            "detail": {
+                "code": "background_task_submission_failed",
+                "message": "背景任務送出時發生未預期錯誤。",
+                "operation": "market_refresh",
+                "retryable": False,
+                "error_type": "RuntimeError",
+                "next_steps": ["查看 API log。", "確認 Celery task 匯出。"],
+            }
+        }
+    )
+    exc = requests.HTTPError("500 Server Error")
+    exc.response = response
+
+    assert api_client.request_error_message(exc) == (
+        "背景任務送出時發生未預期錯誤。 建議：查看 API log。；確認 Celery task 匯出。"
+    )

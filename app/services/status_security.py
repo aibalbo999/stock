@@ -24,6 +24,10 @@ def security_scan_status(
         pyproject_text = pyproject_path.read_text(encoding="utf-8")
     except OSError:
         pyproject_text = ""
+    try:
+        script_text = script_path.read_text(encoding="utf-8")
+    except OSError:
+        script_text = ""
     detect_secrets_command = _external_engine_command(DETECT_ENGINE_NAME)
     detect_secrets_hook_command = _external_engine_command(DETECT_HOOK_NAME)
     gitleaks_command = _external_engine_command("gitleaks")
@@ -49,9 +53,10 @@ def security_scan_status(
         "detect_secrets_hook_available": detect_secrets_hook_command is not None,
         "detect_secrets_module_available": module_available("detect_secrets"),
         "gitleaks_cli_available": gitleaks_cli,
-        "gitleaks_json_report_supported": "def gitleaks_findings(" in script_path.read_text(encoding="utf-8")
-        if script_path.exists()
-        else False,
+        "gitleaks_json_report_supported": "def gitleaks_findings(" in script_text,
+        "baseline_read_only_default": "TemporaryDirectory" in script_text
+        and "--update-baseline" in script_text,
+        "baseline_update_flag": "--update-baseline",
         "external_engine_available": external_engine_available,
         "default_engine": default_engine,
         "default_engine_external": default_engine != LOCAL_ENGINE_NAME,

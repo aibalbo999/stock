@@ -150,11 +150,46 @@ def test_detect_secrets_hook_excludes_baseline_from_scanned_paths(monkeypatch, t
 
     def fake_runner(command, **kwargs):
         captured["command"] = command
+        hook_baseline = Path(command[command.index("--baseline") + 1])
+        assert hook_baseline.exists()
+        assert hook_baseline != baseline
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr("scripts.security_scan.external_engine_command", fake_engine_command)
 
     assert run_detect_secrets([baseline, path], tmp_path, runner=fake_runner, baseline=baseline) == []
+    assert captured["command"][:3] == ["/bin/detect-secrets-hook", "--json", "--baseline"]
+    assert captured["command"][-1] == "sample.py"
+    assert ".secrets.baseline" not in captured["command"][4:]
+    assert baseline.read_text(encoding="utf-8") == '{"results":{}}'
+
+
+def test_detect_secrets_hook_can_update_baseline_when_requested(monkeypatch, tmp_path) -> None:
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text('{"results":{}}', encoding="utf-8")
+    path = tmp_path / "sample.py"
+    path.write_text("token = 'example'", encoding="utf-8")
+    captured = {}
+
+    def fake_engine_command(engine: str):
+        return "/bin/detect-secrets-hook" if engine == "detect-secrets-hook" else None
+
+    def fake_runner(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("scripts.security_scan.external_engine_command", fake_engine_command)
+
+    assert (
+        run_detect_secrets(
+            [baseline, path],
+            tmp_path,
+            runner=fake_runner,
+            baseline=baseline,
+            update_baseline=True,
+        )
+        == []
+    )
     assert captured["command"] == [
         "/bin/detect-secrets-hook",
         "--json",

@@ -87,11 +87,18 @@ def scan_with_engine(
     *,
     engine: str = "auto",
     baseline: Path | None = None,
+    update_baseline: bool = False,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> tuple[str, list[dict]]:
     resolved = resolve_engine(engine)
     if resolved == "detect-secrets":
-        return resolved, run_detect_secrets(paths, root, runner=runner, baseline=baseline)
+        return resolved, run_detect_secrets(
+            paths,
+            root,
+            runner=runner,
+            baseline=baseline,
+            update_baseline=update_baseline,
+        )
     if resolved == "gitleaks":
         return resolved, run_gitleaks(root, runner=runner)
     return LOCAL_ENGINE, scan_paths(paths, root)
@@ -135,6 +142,7 @@ def run_detect_secrets(
     *,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     baseline: Path | None = None,
+    update_baseline: bool = False,
 ) -> list[dict]:
     baseline_path = baseline or (root / DEFAULT_DETECT_SECRETS_BASELINE)
     relative_paths = [
@@ -146,31 +154,24 @@ def run_detect_secrets(
         return []
     hook_command = external_engine_command("detect-secrets-hook")
     if baseline_path.exists() and hook_command is not None:
-        completed = runner(
-            [
+        if update_baseline:
+            return _run_detect_secrets_hook(
                 hook_command,
-                "--json",
-                "--baseline",
-                str(baseline_path.relative_to(root)),
-                *relative_paths,
-            ],
-            cwd=root,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode == 0:
-            return []
-        if completed.returncode != 1:
-            raise RuntimeError((completed.stderr or completed.stdout or "detect-secrets-hook failed").strip())
-        try:
-            payload = json.loads(completed.stdout or "{}")
-        except json.JSONDecodeError as exc:
-            detail = (completed.stdout or completed.stderr or "").strip()
-            if detail:
-                raise RuntimeError(detail) from exc
-            raise RuntimeError("detect-secrets-hook returned invalid JSON") from exc
-        return detect_secrets_hook_findings(payload)
+                baseline_path,
+                relative_paths,
+                root,
+                runner=runner,
+            )
+        with tempfile.TemporaryDirectory(prefix="detect-secrets-baseline-") as temp_dir:
+            hook_baseline_path = Path(temp_dir) / baseline_path.name
+            shutil.copy2(baseline_path, hook_baseline_path)
+            return _run_detect_secrets_hook(
+                hook_command,
+                hook_baseline_path,
+                relative_paths,
+                root,
+                runner=runner,
+            )
     command = external_engine_command("detect-secrets")
     if command is None:
         raise RuntimeError("security scan engine is not available: detect-secrets")
@@ -188,6 +189,48 @@ def run_detect_secrets(
     except json.JSONDecodeError as exc:
         raise RuntimeError("detect-secrets returned invalid JSON") from exc
     return detect_secrets_findings(payload)
+
+
+def _run_detect_secrets_hook(
+    hook_command: str,
+    baseline_path: Path,
+    relative_paths: list[str],
+    root: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> list[dict]:
+    completed = runner(
+        [
+            hook_command,
+            "--json",
+            "--baseline",
+            _hook_baseline_arg(baseline_path, root),
+            *relative_paths,
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode == 0:
+        return []
+    if completed.returncode != 1:
+        raise RuntimeError((completed.stderr or completed.stdout or "detect-secrets-hook failed").strip())
+    try:
+        payload = json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        detail = (completed.stdout or completed.stderr or "").strip()
+        if detail:
+            raise RuntimeError(detail) from exc
+        raise RuntimeError("detect-secrets-hook returned invalid JSON") from exc
+    return detect_secrets_hook_findings(payload)
+
+
+def _hook_baseline_arg(baseline_path: Path, root: Path) -> str:
+    try:
+        return str(baseline_path.relative_to(root))
+    except ValueError:
+        return str(baseline_path)
 
 
 def detect_secrets_findings(payload: dict) -> list[dict]:
@@ -324,6 +367,11 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_DETECT_SECRETS_BASELINE,
         help="detect-secrets baseline used to ignore audited placeholders and test fixtures.",
     )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Allow detect-secrets-hook to update the real baseline. Default scans use a temporary copy.",
+    )
     args = parser.parse_args(argv)
 
     root = Path(__file__).resolve().parents[1]
@@ -334,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
             root,
             engine=args.engine,
             baseline=root / args.baseline,
+            update_baseline=args.update_baseline,
         )
     except RuntimeError as exc:
         print(f"Security scan failed: {exc}", file=sys.stderr)

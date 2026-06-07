@@ -31,6 +31,8 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert status["security_scanning"]["local_regex_fallback_enabled"] is True
     assert status["security_scanning"]["external_engine_structured_findings"] is True
     assert status["security_scanning"]["gitleaks_json_report_supported"] is True
+    assert status["security_scanning"]["baseline_read_only_default"] is True
+    assert status["security_scanning"]["baseline_update_flag"] == "--update-baseline"
     assert status["security_scanning"]["collector_path"] == "app/services/status_security.py"
     assert (
         "from app.services.status_security import security_scan_status as collect_security_scan_status"

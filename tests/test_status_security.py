@@ -26,6 +26,8 @@ def test_security_status_finds_detect_secrets_in_current_python_bin(monkeypatch,
     assert status["default_engine"] == "detect-secrets"
     assert status["default_engine_external"] is True
     assert status["local_regex_active"] is False
+    assert status["baseline_read_only_default"] is True
+    assert status["baseline_update_flag"] == "--update-baseline"
 
 
 def test_security_status_marks_regex_as_active_only_when_external_engines_missing(

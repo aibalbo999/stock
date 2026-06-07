@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from types import SimpleNamespace
 
-from app.models.schemas import ReportResponse
+from app.models.schemas import ReportRequest, ReportResponse
 from app.tasks import tasks
 from app.tasks.tasks import build_run_payload
 
@@ -272,3 +272,27 @@ def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path
     assert statuses["report_build"] == "success"
     assert statuses["report_persist"] == "success"
     assert payload["quality_gate"] == {"status": "ready"}
+
+
+def test_write_report_file_prunes_older_files_for_same_topic(monkeypatch, tmp_path) -> None:
+    old_same_topic = tmp_path / "20260606_120000_記憶體產業鏈.md"
+    old_numeric_same_topic = tmp_path / "010_記憶體產業鏈.md"
+    other_topic = tmp_path / "009_機器人_產業鏈.md"
+    old_same_topic.write_text("old", encoding="utf-8")
+    old_numeric_same_topic.write_text("old numeric", encoding="utf-8")
+    other_topic.write_text("robot", encoding="utf-8")
+    monkeypatch.setattr(tasks, "get_settings", lambda: SimpleNamespace(report_dir=tmp_path))
+
+    path = tasks._write_report_file(
+        ReportRequest(topic="記憶體產業鏈"),
+        SimpleNamespace(
+            generated_at=datetime(2026, 6, 7, 8, 0, 0),
+            markdown="# latest",
+        ),
+    )
+
+    assert path.name == "20260607_080000_記憶體產業鏈.md"
+    assert path.read_text(encoding="utf-8") == "# latest"
+    assert not old_same_topic.exists()
+    assert not old_numeric_same_topic.exists()
+    assert other_topic.exists()

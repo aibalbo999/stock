@@ -17,6 +17,7 @@ from app.services.persistence import (
     RiskClassificationRepository,
     ValuationMetricRepository,
 )
+from app.services.task_cancellation import TaskCancelledError
 
 
 class FakeMarketDataCache:
@@ -1148,6 +1149,19 @@ def test_price_histories_keep_all_rows_for_leading_signals(monkeypatch) -> None:
         date(2026, 5, 20),
         date(2026, 5, 22),
     ]
+
+
+def test_price_histories_re_raise_task_cancellation() -> None:
+    client = MarketDataClient(cancellation_checker=lambda: (_ for _ in ()).throw(TaskCancelledError(7)))
+
+    with pytest.raises(TaskCancelledError):
+        asyncio.run(
+            client.get_price_histories_with_errors(
+                ["2330", "2382"],
+                date(2026, 5, 1),
+                date(2026, 5, 22),
+            )
+        )
 
 
 def test_monthly_revenue_collect_partial_errors(monkeypatch) -> None:

@@ -35,7 +35,7 @@ class ApiServiceFactory:
             candidate_revalidation_service=self.candidate_revalidation(),
         )
 
-    def discovered_market_data(self):
+    def discovered_market_data(self, cancellation_checker=None):
         d = self.dependencies
         return d["DiscoveredMarketDataService"](
             session_scope_factory=d["session_scope"],
@@ -44,6 +44,7 @@ class ApiServiceFactory:
             monthly_revenue_repository_cls=d["MonthlyRevenueRepository"],
             financial_metric_repository_cls=d["FinancialMetricRepository"],
             valuation_metric_repository_cls=d["ValuationMetricRepository"],
+            cancellation_checker=cancellation_checker,
         )
 
     def discovered_report_builder(self):

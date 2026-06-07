@@ -88,7 +88,7 @@ class StandardReportPipelineService:
             self._check_cancelled(run_id)
             if start_from_step == "pre_report_refresh":
                 workflow.start_step(run_id, current_step)
-                ingestion_summary = await self.ingestion_pipeline_cls().pre_report_refresh(request)
+                ingestion_summary = await self._ingestion_pipeline(run_id).pre_report_refresh(request)
                 self._check_cancelled(run_id)
                 workflow.complete_step(
                     run_id,
@@ -250,7 +250,7 @@ class StandardReportPipelineService:
         quality_gate = report_result.get("quality_gate") or {}
         if not self.market_quality_recovery_required_func(quality_gate):
             return report_result, None
-        pipeline = self.ingestion_pipeline_cls()
+        pipeline = self._ingestion_pipeline(run_id)
         refresh_market = getattr(pipeline, "refresh_market", None)
         if refresh_market is None or not request.tickers:
             return report_result, {"status": "skipped", "reason": "refresh_market_unavailable"}
@@ -296,6 +296,12 @@ class StandardReportPipelineService:
             session_scope_factory=self.session_scope_factory,
             analysis_run_repository_cls=self.analysis_run_repository_cls,
         )
+
+    def _ingestion_pipeline(self, run_id: int) -> Any:
+        try:
+            return self.ingestion_pipeline_cls(cancellation_checker=lambda: self._check_cancelled(run_id))
+        except TypeError:
+            return self.ingestion_pipeline_cls()
 
     def _load_resumable_standard_run(self, run_id: int) -> tuple[Any, dict, dict]:
         with self.session_scope_factory() as session:

@@ -66,6 +66,27 @@ def create_supply_chain_router(api_services: Any | None = None) -> APIRouter:
             use_llm=use_llm,
         )
 
+    @router.get("/supply-chain/graph/cypher-query")
+    def supply_chain_graph_cypher_query(
+        tickers: str = "",
+        target_ticker: str = "",
+        topic: str = "",
+        question: str = "",
+        max_depth: int = 3,
+        use_llm: bool = False,
+        max_records: int = 25,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return services.supply_chain_graph_api().graph_cypher_query(
+            tickers,
+            target_ticker=target_ticker,
+            topic=topic,
+            question=question,
+            max_depth=max_depth,
+            use_llm=use_llm,
+            max_records=max_records,
+        )
+
     @router.post("/supply-chain/graph/neo4j/import")
     def import_supply_chain_graph_neo4j(
         tickers: str = "",

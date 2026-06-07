@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from collections.abc import Callable
 import json
 from datetime import date, timedelta
 
@@ -33,11 +34,20 @@ from app.services.persistence import (
 )
 from app.services.report_quality import is_stale_market_data_source
 from app.services.source_quality import is_low_quality_investor_forum_document
+from app.services.task_cancellation import TaskCancelledError
 
 
 class IngestionPipeline:
-    def __init__(self) -> None:
+    def __init__(self, cancellation_checker: Callable[[], None] | None = None) -> None:
         self.mapper = EntityMapper()
+        self.cancellation_checker = cancellation_checker
+
+    def _check_cancelled(self) -> None:
+        if self.cancellation_checker is not None:
+            self.cancellation_checker()
+
+    def _market_client(self) -> MarketDataClient:
+        return MarketDataClient(cancellation_checker=self._check_cancelled)
 
     async def ingest_feeds(
         self,
@@ -50,6 +60,7 @@ class IngestionPipeline:
         end_date: date | None = None,
         quality_filter: bool = True,
     ) -> dict:
+        self._check_cancelled()
         fetcher = NewsFetcher()
         documents = []
         errors = []
@@ -87,6 +98,7 @@ class IngestionPipeline:
 
             async def fetch_source(source):
                 async with semaphore:
+                    self._check_cancelled()
                     try:
                         source_documents = await asyncio.wait_for(
                             fetcher.fetch_feed(
@@ -109,6 +121,8 @@ class IngestionPipeline:
                             "stored_count": len(filtered_documents),
                             "error_count": 0,
                         }, None
+                    except TaskCancelledError:
+                        raise
                     except Exception as exc:
                         return [], {
                             "name": source.name,
@@ -126,6 +140,7 @@ class IngestionPipeline:
             for filtered_documents, source_result, error in await asyncio.gather(
                 *(fetch_source(source) for source in sources)
             ):
+                self._check_cancelled()
                 documents.extend(filtered_documents)
                 source_results.append(source_result)
                 if error:
@@ -134,6 +149,7 @@ class IngestionPipeline:
             source_results = []
 
         documents = self._dedupe_documents(documents)
+        self._check_cancelled()
         VectorStore().upsert_documents(documents)
         ingested = []
         with session_scope() as session:
@@ -346,12 +362,14 @@ class IngestionPipeline:
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        histories, errors = await MarketDataClient().get_price_histories_with_errors(
+        self._check_cancelled()
+        histories, errors = await self._market_client().get_price_histories_with_errors(
             allowed,
             start_date,
             end_date,
             force_refresh=True,
         )
+        self._check_cancelled()
         all_snapshots = [snapshot for history in histories.values() for snapshot in history]
         latest_snapshots = [
             sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
@@ -380,11 +398,13 @@ class IngestionPipeline:
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        revenues, errors = await MarketDataClient().get_monthly_revenue_histories_with_errors(
+        self._check_cancelled()
+        revenues, errors = await self._market_client().get_monthly_revenue_histories_with_errors(
             allowed,
             start_date,
             end_date,
         )
+        self._check_cancelled()
         with session_scope() as session:
             repository = MonthlyRevenueRepository(session)
             repository.upsert_revenues(revenues)
@@ -407,11 +427,13 @@ class IngestionPipeline:
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        metrics, errors = await MarketDataClient().get_financial_metrics_histories_with_errors(
+        self._check_cancelled()
+        metrics, errors = await self._market_client().get_financial_metrics_histories_with_errors(
             allowed,
             start_date,
             end_date,
         )
+        self._check_cancelled()
         with session_scope() as session:
             FinancialMetricRepository(session).upsert_metrics(metrics)
         return {
@@ -431,11 +453,13 @@ class IngestionPipeline:
     ) -> dict:
         requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
         allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        valuations, errors = await MarketDataClient().get_latest_valuations_with_errors(
+        self._check_cancelled()
+        valuations, errors = await self._market_client().get_latest_valuations_with_errors(
             allowed,
             start_date,
             end_date,
         )
+        self._check_cancelled()
         with session_scope() as session:
             ValuationMetricRepository(session).upsert_valuations(valuations)
         return {
@@ -479,6 +503,7 @@ class IngestionPipeline:
         company_names = company_names or {}
         cached_documents_by_ticker = self._cached_company_filings_by_ticker(allowed)
         for ticker in allowed:
+            self._check_cancelled()
             company = companies.get(ticker)
             cached_documents = cached_documents_by_ticker.get(ticker, [])
             company_name = (
@@ -510,6 +535,7 @@ class IngestionPipeline:
                     ticker,
                     company_name,
                 )
+                self._check_cancelled()
                 mops_attempted = True
                 mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
                 company_documents.extend(mops_documents)
@@ -533,6 +559,7 @@ class IngestionPipeline:
                     limit_per_query=limit_per_query,
                     document_types=missing_document_types or document_types,
                 )
+                self._check_cancelled()
                 targeted_enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
                 company_documents.extend(fetched_documents)
                 enriched_errors.extend(targeted_enriched_errors)
@@ -555,6 +582,7 @@ class IngestionPipeline:
                     limit_per_query=limit_per_query,
                     document_types=missing_document_types or document_types,
                 )
+                self._check_cancelled()
                 retry_enriched_errors = enrich_company_filing_errors(retry_errors, ticker, company_name)
                 company_documents.extend(retry_documents)
                 enriched_errors.extend(retry_enriched_errors)
@@ -573,6 +601,7 @@ class IngestionPipeline:
                     limit_per_query=limit_per_query + 2,
                     document_types=None,
                 )
+                self._check_cancelled()
                 broad_enriched_errors = enrich_company_filing_errors(broad_errors, ticker, company_name)
                 company_documents.extend(broad_documents)
                 enriched_errors.extend(broad_enriched_errors)
@@ -593,6 +622,7 @@ class IngestionPipeline:
                     ticker,
                     company_name,
                 )
+                self._check_cancelled()
                 mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
                 company_documents.extend(mops_documents)
                 enriched_errors.extend(mops_enriched_errors)
@@ -615,6 +645,7 @@ class IngestionPipeline:
                     limit=limit_per_query + 5,
                     document_types=missing_document_types or document_types,
                 )
+                self._check_cancelled()
                 official_enriched_errors = enrich_company_filing_errors(official_errors, ticker, company_name)
                 company_documents.extend(official_documents)
                 enriched_errors.extend(official_enriched_errors)
@@ -637,6 +668,7 @@ class IngestionPipeline:
                     limit_per_query=limit_per_query + 3,
                     document_types=missing_document_types or document_types,
                 )
+                self._check_cancelled()
                 web_enriched_errors = enrich_company_filing_errors(web_errors, ticker, company_name)
                 company_documents.extend(web_documents)
                 enriched_errors.extend(web_enriched_errors)
@@ -663,6 +695,7 @@ class IngestionPipeline:
             )
 
         news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
+        self._check_cancelled()
         VectorStore().upsert_documents(news_documents)
         with session_scope() as session:
             repository = CompanyFilingRepository(session)
@@ -711,6 +744,7 @@ class IngestionPipeline:
         errors = []
         per_ticker_results = []
         for ticker in allowed:
+            self._check_cancelled()
             company = companies.get(ticker)
             company_name = company.name if company else self._company_name_from_cached_evidence(ticker)
             try:
@@ -718,6 +752,8 @@ class IngestionPipeline:
                     fetcher.fetch_mops_annual_report_documents(ticker, company_name),
                     timeout=30,
                 )
+            except TaskCancelledError:
+                raise
             except Exception as exc:
                 ticker_documents = []
                 ticker_errors = [{"source": "MOPS annual report", "error": str(exc) or exc.__class__.__name__}]
@@ -736,6 +772,7 @@ class IngestionPipeline:
             )
 
         documents = self._dedupe_documents(documents)
+        self._check_cancelled()
         news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
         VectorStore().upsert_documents(news_documents)
         with session_scope() as session:
@@ -818,6 +855,7 @@ class IngestionPipeline:
         return cached
 
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
+        self._check_cancelled()
         end_date = today_taipei()
         start_date = end_date - timedelta(days=request.lookback_days)
         tickers = self.mapper.filter_allowed_tickers(request.tickers)
@@ -830,22 +868,27 @@ class IngestionPipeline:
             start_date=start_date,
             end_date=end_date,
         )
+        self._check_cancelled()
         market = await self.refresh_market(tickers, start_date, end_date)
+        self._check_cancelled()
         monthly_revenue = await self.refresh_monthly_revenue(
             tickers,
             end_date - timedelta(days=450),
             end_date,
         )
+        self._check_cancelled()
         financial_metrics = await self.refresh_financial_metrics(
             tickers,
             end_date - timedelta(days=365 * 6),
             end_date,
         )
+        self._check_cancelled()
         valuations = await self.refresh_valuations(
             tickers,
             start_date,
             end_date,
         )
+        self._check_cancelled()
         company_filings = await self.ingest_company_filings(
             tickers,
             limit_per_query=2,

@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+import json
+import zlib
+from pathlib import Path
+from typing import Any, Callable
+from urllib.error import URLError
+from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
+
+
+DEFAULT_API_ENDPOINTS = ("/services/status",)
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def run_frontend_smoke(
+    *,
+    streamlit_url: str = "http://127.0.0.1:8501",
+    api_url: str = "http://127.0.0.1:8000",
+    api_endpoints: tuple[str, ...] = DEFAULT_API_ENDPOINTS,
+    screenshot_path: str | Path | None = "artifacts/frontend_smoke/streamlit.png",
+    skip_browser: bool = False,
+    timeout_seconds: float = 10.0,
+) -> dict:
+    checks = [
+        check_http_target(
+            streamlit_url,
+            expected_fragments=("streamlit", "<!doctype", "<html"),
+            timeout_seconds=timeout_seconds,
+            label="streamlit_http",
+            require_any_fragment=True,
+        )
+    ]
+    for endpoint in api_endpoints:
+        checks.append(
+            check_http_target(
+                _join_url(api_url, endpoint),
+                expected_fragments=("{",),
+                timeout_seconds=timeout_seconds,
+                label=f"api_http:{endpoint}",
+                require_any_fragment=False,
+            )
+        )
+    if skip_browser:
+        checks.append(
+            {
+                "label": "streamlit_playwright",
+                "status": "skipped",
+                "reason": "skip_browser_requested",
+            }
+        )
+    else:
+        checks.append(
+            run_playwright_visual_smoke(
+                streamlit_url,
+                screenshot_path=screenshot_path,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+    failed = [check for check in checks if check.get("status") == "failed"]
+    return {
+        "status": "failed" if failed else "passed",
+        "checks": checks,
+        "failed_count": len(failed),
+        "skipped_count": sum(1 for check in checks if check.get("status") == "skipped"),
+    }
+
+
+def check_http_target(
+    url: str,
+    *,
+    expected_fragments: tuple[str, ...] = (),
+    timeout_seconds: float = 10.0,
+    label: str = "http",
+    require_any_fragment: bool = True,
+    opener: Callable[..., Any] | None = None,
+) -> dict:
+    opener = opener or urlopen
+    url = _iri_to_uri(url)
+    request = Request(url, headers={"User-Agent": "stock-ai-frontend-smoke/1.0"})
+    try:
+        with opener(request, timeout=timeout_seconds) as response:
+            status_code = int(getattr(response, "status", getattr(response, "code", 0)) or 0)
+            body = response.read(250_000).decode("utf-8", errors="ignore")
+    except (OSError, URLError, TimeoutError) as exc:
+        return {
+            "label": label,
+            "url": url,
+            "status": "failed",
+            "error": str(exc) or exc.__class__.__name__,
+        }
+    body_lower = body.casefold()
+    fragments = [fragment.casefold() for fragment in expected_fragments if fragment]
+    matched_fragments = [fragment for fragment in fragments if fragment in body_lower]
+    fragment_ok = True
+    if fragments:
+        fragment_ok = bool(matched_fragments) if require_any_fragment else all(
+            fragment in body_lower for fragment in fragments
+        )
+    passed = 200 <= status_code < 500 and fragment_ok
+    return {
+        "label": label,
+        "url": url,
+        "status": "passed" if passed else "failed",
+        "status_code": status_code,
+        "matched_fragments": matched_fragments,
+        "body_bytes_sampled": len(body.encode("utf-8")),
+    }
+
+
+def run_playwright_visual_smoke(
+    url: str,
+    *,
+    screenshot_path: str | Path | None = "artifacts/frontend_smoke/streamlit.png",
+    timeout_seconds: float = 10.0,
+) -> dict:
+    url = _iri_to_uri(url)
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:
+        return {
+            "label": "streamlit_playwright",
+            "status": "skipped",
+            "reason": "playwright_unavailable",
+            "error": str(exc) or exc.__class__.__name__,
+        }
+    target = Path(screenshot_path) if screenshot_path else None
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            response = page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=int(timeout_seconds * 1000),
+            )
+            page.wait_for_selector("body", state="attached", timeout=int(timeout_seconds * 1000))
+            try:
+                page.wait_for_selector(
+                    '[data-testid="stApp"], .stApp',
+                    state="attached",
+                    timeout=int(timeout_seconds * 1000),
+                )
+            except Exception:
+                pass
+            page.wait_for_function(
+                "() => document.body && (document.body.innerText || '').trim().length >= 80",
+                timeout=int(timeout_seconds * 1000),
+            )
+            if target:
+                target.parent.mkdir(parents=True, exist_ok=True)
+            screenshot = page.screenshot(path=str(target) if target else None, full_page=True)
+            title = page.title()
+            body_text = page.evaluate(
+                "() => document.body ? (document.body.innerText || document.body.textContent || '') : ''"
+            )
+            browser.close()
+    except Exception as exc:
+        return {
+            "label": "streamlit_playwright",
+            "status": "failed",
+            "url": url,
+            "error": str(exc) or exc.__class__.__name__,
+        }
+    nonblank = png_has_nonblank_pixels(screenshot)
+    passed = bool(nonblank and len(screenshot) > 1000 and len(body_text.strip()) >= 80)
+    return {
+        "label": "streamlit_playwright",
+        "status": "passed" if passed else "failed",
+        "url": url,
+        "http_status": getattr(response, "status", None) if response else None,
+        "title": title,
+        "body_text_length": len(body_text.strip()),
+        "screenshot_path": str(target) if target else None,
+        "screenshot_bytes": len(screenshot),
+        "screenshot_nonblank": nonblank,
+    }
+
+
+def png_has_nonblank_pixels(data: bytes) -> bool:
+    parsed = _parse_png_rgba_rows(data)
+    if parsed is None:
+        return len(set(data[: min(len(data), 2048)])) > 1
+    width, _height, channels, rows = parsed
+    first_pixel: bytes | None = None
+    for row in rows:
+        for offset in range(0, width * channels, channels):
+            pixel = row[offset : offset + channels]
+            if first_pixel is None:
+                first_pixel = pixel
+                continue
+            if pixel != first_pixel:
+                return True
+    return False
+
+
+def format_frontend_smoke_report(report: dict) -> str:
+    lines = [
+        f"Frontend smoke: {report['status']}",
+        (
+            f"Checks: {len(report.get('checks') or [])}, "
+            f"failed={report.get('failed_count', 0)}, "
+            f"skipped={report.get('skipped_count', 0)}"
+        ),
+    ]
+    for check in report.get("checks") or []:
+        lines.append(
+            f"- [{str(check.get('status', 'unknown')).upper()}] "
+            f"{check.get('label')}: {check.get('url') or check.get('reason') or ''}"
+        )
+        if check.get("error"):
+            lines.append(f"  error: {check['error']}")
+    return "\n".join(lines)
+
+
+def _parse_png_rgba_rows(data: bytes) -> tuple[int, int, int, list[bytes]] | None:
+    if not data.startswith(PNG_SIGNATURE):
+        return None
+    offset = len(PNG_SIGNATURE)
+    width = height = channels = 0
+    idat_chunks: list[bytes] = []
+    while offset + 8 <= len(data):
+        length = int.from_bytes(data[offset : offset + 4], "big")
+        chunk_type = data[offset + 4 : offset + 8]
+        chunk_data = data[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+        if chunk_type == b"IHDR":
+            width = int.from_bytes(chunk_data[0:4], "big")
+            height = int.from_bytes(chunk_data[4:8], "big")
+            bit_depth = chunk_data[8]
+            color_type = chunk_data[9]
+            if bit_depth != 8 or color_type not in {0, 2, 6}:
+                return None
+            channels = {0: 1, 2: 3, 6: 4}[color_type]
+        elif chunk_type == b"IDAT":
+            idat_chunks.append(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+    if not width or not height or not channels or not idat_chunks:
+        return None
+    try:
+        raw = zlib.decompress(b"".join(idat_chunks))
+    except zlib.error:
+        return None
+    return width, height, channels, _png_unfilter_rows(raw, width=width, height=height, channels=channels)
+
+
+def _png_unfilter_rows(raw: bytes, *, width: int, height: int, channels: int) -> list[bytes]:
+    row_length = width * channels
+    rows: list[bytes] = []
+    previous = bytes(row_length)
+    offset = 0
+    for _ in range(height):
+        filter_type = raw[offset]
+        offset += 1
+        row = bytearray(raw[offset : offset + row_length])
+        offset += row_length
+        for index in range(row_length):
+            left = row[index - channels] if index >= channels else 0
+            up = previous[index]
+            upper_left = previous[index - channels] if index >= channels else 0
+            if filter_type == 1:
+                row[index] = (row[index] + left) & 0xFF
+            elif filter_type == 2:
+                row[index] = (row[index] + up) & 0xFF
+            elif filter_type == 3:
+                row[index] = (row[index] + ((left + up) // 2)) & 0xFF
+            elif filter_type == 4:
+                row[index] = (row[index] + _paeth_predictor(left, up, upper_left)) & 0xFF
+        previous = bytes(row)
+        rows.append(previous)
+    return rows
+
+
+def _paeth_predictor(left: int, up: int, upper_left: int) -> int:
+    prediction = left + up - upper_left
+    distance_left = abs(prediction - left)
+    distance_up = abs(prediction - up)
+    distance_upper_left = abs(prediction - upper_left)
+    if distance_left <= distance_up and distance_left <= distance_upper_left:
+        return left
+    if distance_up <= distance_upper_left:
+        return up
+    return upper_left
+
+
+def _join_url(base_url: str, endpoint: str) -> str:
+    return base_url.rstrip("/") + "/" + endpoint.lstrip("/")
+
+
+def _iri_to_uri(url: str) -> str:
+    parsed = urlsplit(url)
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            quote(parsed.path, safe="/%"),
+            quote(parsed.query, safe="=&%:/?+-_.,"),
+            quote(parsed.fragment, safe="=&%:/?+-_.,"),
+        )
+    )
+
+
+def to_json(report: dict) -> str:
+    return json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)

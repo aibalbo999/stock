@@ -193,3 +193,59 @@ def test_supply_chain_graph_api_delegates_cypher_plan() -> None:
         "max_depth": 4,
         "use_llm": True,
     }
+
+
+def test_supply_chain_graph_api_delegates_live_cypher_query() -> None:
+    captured = {}
+
+    class FakeGraph:
+        pass
+
+    class FakeWhitelist:
+        def graph(self):
+            return FakeGraph()
+
+    class FakePlanner:
+        def plan(self, graph, *, tickers=None, target_ticker="", topic="", question="", max_depth=3, use_llm=False):
+            captured["planner"] = {
+                "graph": graph,
+                "tickers": tickers,
+                "target_ticker": target_ticker,
+                "topic": topic,
+                "question": question,
+                "max_depth": max_depth,
+                "use_llm": use_llm,
+            }
+            return {
+                "strategy": "guarded_llm_cypher_planner",
+                "plan": {"cypher": "MATCH (c:Company) RETURN c LIMIT $limit"},
+            }
+
+    class FakeImportService:
+        def execute_read_query(self, plan, *, max_records=25):
+            captured["execution"] = {"plan": plan, "max_records": max_records}
+            return {"status": "executed"}
+
+    service = SupplyChainGraphApiService(
+        whitelist_cls=FakeWhitelist,
+        cypher_planner_factory=lambda: FakePlanner(),
+        neo4j_import_service_factory=lambda: FakeImportService(),
+    )
+
+    result = service.graph_cypher_query(
+        "2330, 3324",
+        target_ticker="2382",
+        topic="AI 伺服器",
+        question="上下游衝擊",
+        max_depth=4,
+        use_llm=True,
+        max_records=7,
+    )
+
+    assert result["strategy"] == "guarded_llm_cypher_planner"
+    assert result["execution"] == {"status": "executed"}
+    assert captured["planner"]["tickers"] == ["2330", "3324"]
+    assert captured["planner"]["max_depth"] == 4
+    assert captured["planner"]["use_llm"] is True
+    assert captured["execution"]["max_records"] == 7
+    assert captured["execution"]["plan"] == {"cypher": "MATCH (c:Company) RETURN c LIMIT $limit"}

@@ -4,6 +4,19 @@ from app.services.supply_chain_graph_neo4j import Neo4jGraphImportService
 from app.services.whitelist import SupplyChainWhitelist
 
 
+def _valid_live_query_plan(limit: int = 50) -> dict:
+    return {
+        "intent": "same_segment_peers",
+        "cypher": (
+            "MATCH (company:Company {ticker: $ticker})-[:SAME_SEGMENT_PEER]-"
+            "(peer:Company) RETURN company, peer ORDER BY peer.ticker LIMIT $limit"
+        ),
+        "parameters": {"ticker": "3324", "limit": limit},
+        "source": "deterministic_template",
+        "validation": {"valid": True, "read_only": True},
+    }
+
+
 def test_neo4j_graph_import_status_reports_missing_uri() -> None:
     service = Neo4jGraphImportService(
         settings_provider=lambda: SimpleNamespace(
@@ -227,4 +240,109 @@ def test_neo4j_graph_import_returns_actionable_failure_when_connection_fails() -
     assert result["error"] == "connection refused"
     assert result["retryable"] is True
     assert result["payload"]["format"] == "neo4j_cypher_v1"
+    assert captured["driver_closed"] is True
+
+
+def test_neo4j_read_query_returns_not_configured_without_live_connection() -> None:
+    service = Neo4jGraphImportService(
+        settings_provider=lambda: SimpleNamespace(
+            neo4j_uri="",
+            neo4j_database="",
+            neo4j_user="",
+            neo4j_password=None,
+            neo4j_timeout_seconds=15.0,
+            neo4j_status_check_connection=True,
+        ),
+        dependency_checker=lambda dependency: True,
+    )
+
+    result = service.execute_read_query(_valid_live_query_plan(), max_records=5)
+
+    assert result["status"] == "not_configured"
+    assert result["neo4j"]["fallback_reason"] == "missing_settings:neo4j_uri"
+    assert result["validation"]["valid"] is True
+    assert result["record_limit"] == 5
+
+
+def test_neo4j_read_query_rejects_unguarded_or_unbounded_cypher() -> None:
+    service = Neo4jGraphImportService(
+        settings_provider=lambda: SimpleNamespace(neo4j_uri="neo4j://localhost:7687"),
+        dependency_checker=lambda dependency: True,
+    )
+
+    result = service.execute_read_query(
+        {
+            "cypher": "MATCH (c:Company) DELETE c RETURN c",
+            "parameters": {},
+            "validation": {"valid": True},
+        }
+    )
+
+    assert result["status"] == "rejected"
+    assert "blocked_keywords:DELETE" in result["validation"]["errors"]
+    assert "cypher_must_use_limit_parameter_for_live_execution" in result["validation"]["errors"]
+
+
+def test_neo4j_read_query_runs_guarded_plan_clamps_limit_and_closes_driver() -> None:
+    captured = {}
+
+    class FakeResult:
+        def __iter__(self):
+            return iter(
+                [
+                    {"peer": {"ticker": "3017", "name": "奇鋐"}},
+                    {"peer": {"ticker": "8999", "name": "測試公司"}},
+                ]
+            )
+
+        def consume(self):
+            return SimpleNamespace(
+                result_available_after=3,
+                result_consumed_after=4,
+                query_type="r",
+            )
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            captured["session_closed"] = True
+
+        def run(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+            return FakeResult()
+
+    class FakeDriver:
+        def session(self, database=None):
+            captured["database"] = database
+            return FakeSession()
+
+        def close(self):
+            captured["driver_closed"] = True
+
+    service = Neo4jGraphImportService(
+        settings_provider=lambda: SimpleNamespace(
+            neo4j_uri="neo4j://localhost:7687",
+            neo4j_database="stock",
+            neo4j_user="neo4j",
+            neo4j_password="secret",
+            neo4j_timeout_seconds=15.0,
+            neo4j_status_check_connection=True,
+        ),
+        driver_factory=lambda uri, auth=None: FakeDriver(),
+    )
+
+    result = service.execute_read_query(_valid_live_query_plan(limit=99), max_records=1)
+
+    assert result["status"] == "executed"
+    assert result["record_limit"] == 1
+    assert result["row_count"] == 1
+    assert result["rows"] == [{"peer": {"ticker": "3017", "name": "奇鋐"}}]
+    assert result["summary"]["result_available_after_ms"] == 3
+    assert captured["database"] == "stock"
+    assert captured["parameters"]["limit"] == 1
+    assert "MATCH" in captured["statement"]
+    assert captured["session_closed"] is True
     assert captured["driver_closed"] is True

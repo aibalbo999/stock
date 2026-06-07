@@ -281,7 +281,7 @@ class DiscoveredTopicPipelineService:
             current_step = "market_data_refresh"
             self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"promoted_count": len(promoted_tickers)})
-            market_data = await self.discovered_market_data_service_factory().fetch_and_persist_for_discovery(
+            market_data = await self._discovered_market_data_service(run_id).fetch_and_persist_for_discovery(
                 payload,
                 promoted_tickers,
                 end_date,
@@ -792,7 +792,7 @@ class DiscoveredTopicPipelineService:
             current_step,
             {"promoted_count": len(promoted_tickers), "resumed": True},
         )
-        market_data = await self.discovered_market_data_service_factory().fetch_and_persist_for_discovery(
+        market_data = await self._discovered_market_data_service(run_id).fetch_and_persist_for_discovery(
             payload,
             promoted_tickers,
             end_date,
@@ -1024,6 +1024,17 @@ class DiscoveredTopicPipelineService:
             session_scope_factory=self.session_scope_factory,
             analysis_run_repository_cls=self.analysis_run_repository_cls,
         )
+
+    def _discovered_market_data_service(self, run_id: int) -> Any:
+        try:
+            return self.discovered_market_data_service_factory(
+                cancellation_checker=lambda: self._check_cancelled(run_id)
+            )
+        except TypeError:
+            service = self.discovered_market_data_service_factory()
+            if hasattr(service, "cancellation_checker"):
+                service.cancellation_checker = lambda: self._check_cancelled(run_id)
+            return service
 
     def _load_resumable_discovered_run(self, run_id: int) -> tuple[Any, dict, dict]:
         with self.session_scope_factory() as session:

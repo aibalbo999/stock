@@ -100,6 +100,13 @@ class LLMQuotaGovernanceService:
             },
         }
 
+    def exhausted_model_keys(self) -> set[str]:
+        return {
+            str(item.get("model_key") or "")
+            for item in self.summary().get("models", [])
+            if item.get("status") == "exhausted" and item.get("model_key")
+        }
+
     def _usage_records(self, since_utc_naive: datetime) -> list[dict]:
         with self.session_scope_factory() as session:
             repository = self.llm_usage_repository_cls(session)

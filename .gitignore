@@ -24,6 +24,8 @@ celerybeat-schedule*
 
 # Generated reports and logs
 reports/
+backups/
+artifacts/
 *.log
 
 # OS/editor

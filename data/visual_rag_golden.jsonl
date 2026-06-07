@@ -1,0 +1,2 @@
+{"id":"financial_table_basic","description":"財報主要表格欄位與數字需保留","required_fragments":["營業收入","毛利率","每股盈餘"],"required_table_rows":["2025 Q4 | 1,250 | 42.1% | 3.18"],"forbidden_fragments":["無法辨識","自行估算"]}
+{"id":"presentation_kpi_chart","description":"法說會 KPI 圖表文字需保留且不可杜撰","required_fragments":["AI 伺服器","散熱模組","YoY +18%"],"required_table_rows":["產品線 | 營收占比 | 年增率"],"forbidden_fragments":["圖片中未揭露","推估"]}

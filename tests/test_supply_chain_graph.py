@@ -208,6 +208,21 @@ def test_supply_chain_graph_cypher_plan_endpoint_returns_guarded_plan() -> None:
     assert "MATCH" in body["plan"]["cypher"]
 
 
+def test_supply_chain_graph_cypher_query_endpoint_degrades_without_neo4j() -> None:
+    response = TestClient(main.app).get(
+        "/supply-chain/graph/cypher-query"
+        "?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱&question=上下游衝擊"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["strategy"] == "guarded_llm_cypher_planner"
+    assert body["plan"]["validation"]["valid"] is True
+    assert body["execution"]["status"] == "not_configured"
+    assert body["execution"]["validation"]["valid"] is True
+    assert body["execution"]["neo4j"]["fallback_reason"] == "missing_settings:neo4j_uri"
+
+
 def test_supply_chain_graph_neo4j_import_endpoint_is_safe_without_config() -> None:
     response = TestClient(main.app).post("/supply-chain/graph/neo4j/import?tickers=3324")
 

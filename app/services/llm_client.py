@@ -11,6 +11,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import get_settings
+from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 from app.services.llm_observability import build_llm_observability_trace
 
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
@@ -27,6 +28,7 @@ LLM_ATTEMPT_OUTCOME_CATEGORIES = {
     "missing_model": "configuration_error",
     "provider_error": "provider_error",
     "quota_cooldown": "rate_limited",
+    "quota_daily_exhausted": "rate_limited",
     "sdk_error": "provider_error",
     "timeout": "timeout",
     "transport_error": "network_error",
@@ -361,7 +363,18 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         models = self._gemini_model_candidates()
         use_model_fallback = len(models) > 1
+        daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in models:
+            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
+                attempts.append(
+                    self._attempt_record(
+                        provider="gemini_http",
+                        model=model_name,
+                        outcome="quota_daily_exhausted",
+                        retryable=True,
+                    )
+                )
+                continue
             if use_model_fallback:
                 cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
                 if cooldown_remaining > 0:
@@ -537,7 +550,18 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         models = self._gemini_model_candidates()
         use_model_fallback = len(models) > 1
+        daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in models:
+            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
+                attempts.append(
+                    self._attempt_record(
+                        provider="google_genai",
+                        model=model_name,
+                        outcome="quota_daily_exhausted",
+                        retryable=True,
+                    )
+                )
+                continue
             if use_model_fallback:
                 cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
                 if cooldown_remaining > 0:
@@ -690,8 +714,19 @@ class LLMClient:
         attempts: list[dict[str, object]] = []
         deadline = monotonic() + self.total_timeout_seconds
         use_fast_model_chain_fallback = len(models) > 1
+        daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model in models:
             stop_model_after_quota = False
+            if self._model_daily_quota_exhausted(model, daily_exhausted):
+                attempts.append(
+                    self._attempt_record(
+                        provider="litellm",
+                        model=model,
+                        outcome="quota_daily_exhausted",
+                        retryable=True,
+                    )
+                )
+                continue
             if use_fast_model_chain_fallback:
                 cooldown_remaining = self._model_quota_cooldown_remaining(model)
                 if cooldown_remaining > 0:
@@ -856,8 +891,19 @@ class LLMClient:
         attempts: list[dict[str, object]] = []
         deadline = monotonic() + self.total_timeout_seconds
         use_model_fallback = len(models) > 1
+        daily_exhausted = self._daily_quota_exhausted_model_keys()
         for candidate_model in models:
             stop_model_after_quota = False
+            if self._model_daily_quota_exhausted(candidate_model, daily_exhausted):
+                attempts.append(
+                    self._attempt_record(
+                        provider="litellm",
+                        model=candidate_model,
+                        outcome="quota_daily_exhausted",
+                        retryable=True,
+                    )
+                )
+                continue
             if use_model_fallback:
                 cooldown_remaining = self._model_quota_cooldown_remaining(candidate_model)
                 if cooldown_remaining > 0:
@@ -976,7 +1022,18 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         model_candidates = self._gemini_vision_model_candidates(preferred_model=model)
         use_model_fallback = len(model_candidates) > 1
+        daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in model_candidates:
+            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
+                attempts.append(
+                    self._attempt_record(
+                        provider="gemini_http",
+                        model=model_name,
+                        outcome="quota_daily_exhausted",
+                        retryable=True,
+                    )
+                )
+                continue
             if use_model_fallback:
                 cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
                 if cooldown_remaining > 0:
@@ -1185,6 +1242,18 @@ class LLMClient:
         until = monotonic() + cooldown_seconds
         with _model_quota_cooldowns_lock:
             _model_quota_cooldowns[key] = max(_model_quota_cooldowns.get(key, 0.0), until)
+
+    def _daily_quota_exhausted_model_keys(self) -> set[str]:
+        if not bool(getattr(self.settings, "llm_quota_hard_routing_enabled", True)):
+            return set()
+        try:
+            return LLMQuotaGovernanceService(settings_provider=lambda: self.settings).exhausted_model_keys()
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
+        return normalize_model_name(model) in exhausted_model_keys
 
     @staticmethod
     def _model_quota_cooldown_key(model: str) -> str:

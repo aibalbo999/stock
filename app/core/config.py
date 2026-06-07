@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     llm_max_retry_delay_seconds: float = 5.0
     llm_total_timeout_seconds: float = 60.0
     llm_model_quota_cooldown_seconds: float = 60 * 60
+    llm_quota_hard_routing_enabled: bool = True
     llm_quota_window_timezone: str = "America/Los_Angeles"
     llm_model_daily_request_budgets: str = (
         "gemini-3.5-flash=250,"

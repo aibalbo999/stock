@@ -104,34 +104,59 @@ async def _run_discovered_report_payload(payload: dict, *, task_id: str | None =
     return await services.pipeline_api().run_discovered(request, celery_task_id=task_id)
 
 
-async def _run_data_operation_payload(operation: str, payload: dict) -> dict:
+def _cancellable_ingestion_pipeline(run_id: int | None = None) -> IngestionPipeline:
+    if run_id is None:
+        return IngestionPipeline()
+    try:
+        return IngestionPipeline(cancellation_checker=lambda: _raise_if_cancelled(run_id))
+    except TypeError:
+        return IngestionPipeline()
+
+
+async def _run_data_operation_payload(operation: str, payload: dict, *, run_id: int | None = None) -> dict:
     services = _api_services_for_tasks()
-    data_api = services.data_operations_api()
+    pipeline = _cancellable_ingestion_pipeline(run_id)
     tickers = _normalize_tickers(payload.get("tickers") or [])
     start_date = _payload_date(payload, "start_date")
     end_date = _payload_date(payload, "end_date")
     if operation == "market_refresh":
-        return await data_api.refresh_market(
-            tickers=tickers,
-            start_date=start_date,
-            end_date=end_date,
+        resolved_end_date = end_date or today_taipei()
+        resolved_start_date = start_date or resolved_end_date - timedelta(days=14)
+        return await pipeline.refresh_market(
+            tickers,
+            resolved_start_date,
+            resolved_end_date,
         )
     if operation == "fundamentals_refresh":
-        return await data_api.refresh_fundamentals(
-            tickers=tickers,
-            start_date=start_date,
-            end_date=end_date,
+        resolved_end_date = end_date or today_taipei()
+        resolved_start_date = start_date or resolved_end_date - timedelta(days=365 * 6)
+        financial_metrics = await pipeline.refresh_financial_metrics(
+            tickers,
+            resolved_start_date,
+            resolved_end_date,
         )
+        if run_id is not None:
+            _raise_if_cancelled(run_id)
+        valuations = await pipeline.refresh_valuations(
+            tickers,
+            resolved_end_date - timedelta(days=30),
+            resolved_end_date,
+        )
+        return {"financial_metrics": financial_metrics, "valuations": valuations}
     if operation == "valuation_refresh":
         resolved_end_date = end_date or today_taipei()
         resolved_start_date = start_date or resolved_end_date - timedelta(days=30)
-        return await data_api.ingestion_pipeline_cls().refresh_valuations(
+        return await pipeline.refresh_valuations(
             tickers,
             resolved_start_date,
             resolved_end_date,
         )
     if operation == "company_filings_fetch":
-        return await services.company_filing_api().fetch_company_filings(tickers)
+        return await pipeline.ingest_company_filings(
+            tickers,
+            limit_per_query=3,
+            filter_allowed=bool(tickers),
+        )
     if operation == "company_filing_from_url":
         return await services.company_filing_api().ingest_from_url(
             url=str(payload.get("url") or ""),
@@ -142,7 +167,7 @@ async def _run_data_operation_payload(operation: str, payload: dict) -> dict:
             published_at=_payload_date(payload, "published_at"),
         )
     if operation == "feed_fetch":
-        return await data_api.fetch_news(
+        return await pipeline.ingest_feeds(
             url=payload.get("url"),
             publisher=payload.get("publisher"),
             limit=int(payload.get("limit") or 10),
@@ -200,12 +225,12 @@ def _latest_report_update_target(schedule_payload: dict) -> dict:
     }
 
 
-async def _refresh_after_close_data(target: dict, schedule_payload: dict) -> dict:
+async def _refresh_after_close_data(target: dict, schedule_payload: dict, *, run_id: int | None = None) -> dict:
     today = today_taipei()
     request = target["request"]
     tickers = target["tickers"]
     lookback_days = max(int(getattr(request, "lookback_days", 120) or 120), 120)
-    pipeline = IngestionPipeline()
+    pipeline = _cancellable_ingestion_pipeline(run_id)
     market = await pipeline.refresh_market(
         tickers,
         today - timedelta(days=lookback_days),
@@ -326,10 +351,34 @@ def _coverage_after_close_update(target: dict) -> dict:
 def _write_report_file(request: ReportRequest, response) -> Path:
     settings = get_settings()
     settings.report_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{response.generated_at.strftime('%Y%m%d_%H%M%S')}_{request.topic}.md"
+    safe_topic = _safe_report_topic(request.topic)
+    filename = f"{response.generated_at.strftime('%Y%m%d_%H%M%S')}_{safe_topic}.md"
     path = Path(settings.report_dir) / filename.replace("/", "_")
     path.write_text(response.markdown, encoding="utf-8")
+    _prune_report_files_for_topic(Path(settings.report_dir), safe_topic, keep_path=path)
     return path
+
+
+def _safe_report_topic(topic: str) -> str:
+    return str(topic or "report").replace("/", "_")
+
+
+def _prune_report_files_for_topic(report_dir: Path, safe_topic: str, *, keep_path: Path) -> int:
+    deleted = 0
+    keep_path = keep_path.resolve()
+    for candidate in report_dir.glob("*.md"):
+        if candidate.resolve() == keep_path:
+            continue
+        if not _report_file_matches_topic(candidate, safe_topic):
+            continue
+        candidate.unlink()
+        deleted += 1
+    return deleted
+
+
+def _report_file_matches_topic(path: Path, safe_topic: str) -> bool:
+    stem = path.stem
+    return stem == safe_topic or stem.endswith(f"_{safe_topic}")
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
@@ -362,7 +411,7 @@ def data_operation_task(self, payload: dict) -> dict:
         run_id = run.id
     try:
         _raise_if_cancelled(run_id)
-        result = asyncio.run(_run_data_operation_payload(operation, operation_payload))
+        result = asyncio.run(_run_data_operation_payload(operation, operation_payload, run_id=run_id))
         _raise_if_cancelled(run_id)
         with session_scope() as session:
             repository = AnalysisRunRepository(session)
@@ -422,7 +471,7 @@ def generate_report_task(self, payload: dict) -> dict:
     try:
         _raise_if_cancelled(run_id)
         workflow.start_step(run_id, current_step)
-        ingestion_summary = asyncio.run(IngestionPipeline().pre_report_refresh(request))
+        ingestion_summary = asyncio.run(_cancellable_ingestion_pipeline(run_id).pre_report_refresh(request))
         _raise_if_cancelled(run_id)
         workflow.complete_step(
             run_id,
@@ -571,7 +620,7 @@ def after_close_report_update_task(self, payload: dict | None = None) -> dict:
         _raise_if_cancelled(run_id)
         target = _latest_report_update_target(schedule_payload)
         _raise_if_cancelled(run_id)
-        refresh = asyncio.run(_refresh_after_close_data(target, schedule_payload))
+        refresh = asyncio.run(_refresh_after_close_data(target, schedule_payload, run_id=run_id))
         _raise_if_cancelled(run_id)
         coverage = _coverage_after_close_update(target)
         _raise_if_cancelled(run_id)

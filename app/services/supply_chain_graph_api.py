@@ -100,6 +100,31 @@ class SupplyChainGraphApiService:
             use_llm=use_llm,
         )
 
+    def graph_cypher_query(
+        self,
+        tickers: str = "",
+        *,
+        target_ticker: str = "",
+        topic: str = "",
+        question: str = "",
+        max_depth: int = 3,
+        use_llm: bool = False,
+        max_records: int = 25,
+    ) -> dict:
+        plan_payload = self.graph_cypher_plan(
+            tickers,
+            target_ticker=target_ticker,
+            topic=topic,
+            question=question,
+            max_depth=max_depth,
+            use_llm=use_llm,
+        )
+        execution = self.neo4j_import_service_factory().execute_read_query(
+            plan_payload["plan"],
+            max_records=max_records,
+        )
+        return {**plan_payload, "execution": execution}
+
     def import_graph_to_neo4j(self, tickers: str = "") -> dict:
         requested_tickers = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
         graph = self.whitelist_cls().graph()

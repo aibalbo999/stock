@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from calendar import monthrange
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 import time
@@ -11,6 +12,7 @@ import httpx
 from app.core.config import get_settings
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
+from app.services.task_cancellation import TaskCancelledError
 
 FINMIND_RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 FUGLE_RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
@@ -139,8 +141,9 @@ class MarketDataClient:
         "https://api.fugle.tw/marketdata/v1.0/stock/historical/stats/{ticker}"
     )
 
-    def __init__(self) -> None:
+    def __init__(self, cancellation_checker: Callable[[], None] | None = None) -> None:
         self.settings = get_settings()
+        self.cancellation_checker = cancellation_checker
         self.timeout = httpx.Timeout(
             max(1.0, float(getattr(self.settings, "finmind_timeout_seconds", 20.0))),
             connect=max(1.0, float(getattr(self.settings, "finmind_connect_timeout_seconds", 8.0))),
@@ -175,6 +178,10 @@ class MarketDataClient:
                 recovery_seconds=self._provider_circuit_setting("fugle", "recovery_seconds", 60.0),
             ),
         }
+
+    def _check_cancelled(self) -> None:
+        if self.cancellation_checker is not None:
+            self.cancellation_checker()
 
     async def get_price_history(
         self,
@@ -252,6 +259,7 @@ class MarketDataClient:
 
         async def fetch_one(ticker: str):
             async with semaphore:
+                self._check_cancelled()
                 try:
                     return (
                         ticker,
@@ -263,6 +271,8 @@ class MarketDataClient:
                         ),
                         None,
                     )
+                except TaskCancelledError:
+                    raise
                 except Exception as exc:
                     return ticker, [], self._fetch_error(ticker, "TaiwanStockPrice", exc)
 
@@ -338,8 +348,11 @@ class MarketDataClient:
 
         async def fetch_one(ticker: str):
             async with semaphore:
+                self._check_cancelled()
                 try:
                     return ticker, await self.get_monthly_revenue_history(ticker, start_date, end_date), None
+                except TaskCancelledError:
+                    raise
                 except Exception as exc:
                     return ticker, [], self._fetch_error(ticker, "TaiwanStockMonthRevenue", exc)
 
@@ -424,8 +437,11 @@ class MarketDataClient:
 
         async def fetch_one(ticker: str):
             async with semaphore:
+                self._check_cancelled()
                 try:
                     return ticker, await self.get_financial_metrics_history(ticker, start_date, end_date), None
+                except TaskCancelledError:
+                    raise
                 except Exception as exc:
                     return ticker, [], self._fetch_error(ticker, "FinMindFinancialStatements", exc)
 
@@ -491,8 +507,11 @@ class MarketDataClient:
 
         async def fetch_one(ticker: str):
             async with semaphore:
+                self._check_cancelled()
                 try:
                     return ticker, await self.get_valuation_history(ticker, start_date, end_date), None
+                except TaskCancelledError:
+                    raise
                 except Exception as exc:
                     return ticker, [], self._fetch_error(ticker, "TaiwanStockPER", exc)
 

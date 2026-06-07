@@ -561,6 +561,27 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 evidence=graph_status.get("neo4j_import") or {},
                 detail="External Neo4j import is ready only when URI, dependency, auth, and connection checks are available.",
             ),
+            "graphrag_live_cypher_query": _capability(
+                "ready"
+                if (graph_status.get("neo4j_import") or {}).get("ready")
+                and graph_status.get("agentic_cypher_planner_enabled")
+                else "degraded",
+                evidence={
+                    "endpoint": graph_status.get("agentic_cypher_live_query_endpoint"),
+                    "external_dependency": graph_status.get(
+                        "agentic_cypher_live_query_external_dependency"
+                    ),
+                    "neo4j_ready": (graph_status.get("neo4j_import") or {}).get("ready"),
+                    "planner_enabled": graph_status.get("agentic_cypher_planner_enabled"),
+                    "plan_validation": (
+                        graph_status.get("agentic_cypher_plan_example") or {}
+                    ).get("validation"),
+                },
+                detail=(
+                    "Live GraphRAG Cypher execution only runs server-generated guarded plans; "
+                    "without Neo4j it remains available as a validated plan plus clear degraded status."
+                ),
+            ),
         },
         "architecture": {
             "thin_api_controller": _capability(
@@ -989,6 +1010,8 @@ def _supply_chain_graph_status() -> dict:
             "agentic_cypher_planner_enabled": bool(cypher_plan.get("plan")),
             "agentic_cypher_strategy": cypher_plan.get("strategy"),
             "agentic_cypher_endpoint": "GET /supply-chain/graph/cypher-plan",
+            "agentic_cypher_live_query_endpoint": "GET /supply-chain/graph/cypher-query",
+            "agentic_cypher_live_query_external_dependency": "Neo4j",
             "agentic_cypher_guardrails": cypher_plan.get("allowed_schema"),
             "agentic_cypher_plan_example": cypher_plan.get("plan"),
             "prompt_context_enabled": True,

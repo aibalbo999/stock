@@ -18,6 +18,7 @@ from app.services.persistence import (
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
+from app.services.task_cancellation import TaskCancelledError
 
 
 def merge_latest_by_ticker(tickers: list[str], fetched_items: list, cached_items: list, date_attr: str) -> list:
@@ -61,6 +62,7 @@ class DiscoveredMarketDataService:
         monthly_revenue_repository_cls=MonthlyRevenueRepository,
         financial_metric_repository_cls=FinancialMetricRepository,
         valuation_metric_repository_cls=ValuationMetricRepository,
+        cancellation_checker: Callable[[], None] | None = None,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.market_client_cls = market_client_cls
@@ -68,6 +70,17 @@ class DiscoveredMarketDataService:
         self.monthly_revenue_repository_cls = monthly_revenue_repository_cls
         self.financial_metric_repository_cls = financial_metric_repository_cls
         self.valuation_metric_repository_cls = valuation_metric_repository_cls
+        self.cancellation_checker = cancellation_checker
+
+    def _check_cancelled(self) -> None:
+        if self.cancellation_checker is not None:
+            self.cancellation_checker()
+
+    def _market_client(self) -> Any:
+        try:
+            return self.market_client_cls(cancellation_checker=self._check_cancelled)
+        except TypeError:
+            return self.market_client_cls()
 
     async def fetch_and_persist_for_discovery(
         self,
@@ -75,7 +88,8 @@ class DiscoveredMarketDataService:
         promoted_tickers: list[str],
         end_date: date,
     ) -> dict:
-        market_client = self.market_client_cls()
+        self._check_cancelled()
+        market_client = self._market_client()
         market_start_date = end_date - timedelta(days=discovery_market_history_days(payload))
         valuation_start_date = end_date - timedelta(days=discovery_valuation_history_days(payload))
         try:
@@ -89,8 +103,11 @@ class DiscoveredMarketDataService:
                 timeout=60,
             )
         except Exception as exc:
+            if isinstance(exc, TaskCancelledError):
+                raise
             price_histories = {}
             market_errors = market_timeout_errors(promoted_tickers, "TaiwanStockPrice", exc)
+        self._check_cancelled()
         snapshots = [
             sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
             for history in price_histories.values()
@@ -107,12 +124,15 @@ class DiscoveredMarketDataService:
                 timeout=60,
             )
         except Exception as exc:
+            if isinstance(exc, TaskCancelledError):
+                raise
             monthly_revenues = []
             monthly_revenue_errors = market_timeout_errors(
                 promoted_tickers,
                 "TaiwanStockMonthRevenue",
                 exc,
             )
+        self._check_cancelled()
         try:
             financial_metrics, financial_metric_errors = await asyncio.wait_for(
                 market_client.get_financial_metrics_histories_with_errors(
@@ -123,12 +143,15 @@ class DiscoveredMarketDataService:
                 timeout=90,
             )
         except Exception as exc:
+            if isinstance(exc, TaskCancelledError):
+                raise
             financial_metrics = []
             financial_metric_errors = market_timeout_errors(
                 promoted_tickers,
                 "FinMindFinancialStatements",
                 exc,
             )
+        self._check_cancelled()
         try:
             valuations, valuation_errors = await asyncio.wait_for(
                 market_client.get_latest_valuations_with_errors(
@@ -139,8 +162,11 @@ class DiscoveredMarketDataService:
                 timeout=45,
             )
         except Exception as exc:
+            if isinstance(exc, TaskCancelledError):
+                raise
             valuations = []
             valuation_errors = market_timeout_errors(promoted_tickers, "TaiwanStockPER", exc)
+        self._check_cancelled()
         with self.session_scope_factory() as session:
             market_repository = self.market_repository_cls(session)
             monthly_repository = self.monthly_revenue_repository_cls(session)

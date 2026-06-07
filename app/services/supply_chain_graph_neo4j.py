@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from importlib.util import find_spec
 from typing import Any
 from urllib.parse import urlparse
@@ -119,6 +120,78 @@ class Neo4jGraphImportService:
             "note": payload["note"],
         }
 
+    def execute_read_query(self, plan: dict[str, Any], *, max_records: int = 25) -> dict:
+        safe_max_records = max(1, min(100, int(max_records or 25)))
+        validation = _validate_live_read_plan(plan)
+        if not validation["valid"]:
+            return {
+                "status": "rejected",
+                "validation": validation,
+                "plan": _redact_plan_for_response(plan),
+                "record_limit": safe_max_records,
+            }
+
+        status = self.status(verify_connection=False)
+        if not status["ready"]:
+            return {
+                "status": "not_configured" if not status["configured"] else "dependency_missing",
+                "neo4j": status,
+                "validation": validation,
+                "plan": _redact_plan_for_response(plan),
+                "record_limit": safe_max_records,
+            }
+
+        cypher = str(plan.get("cypher") or "").strip()
+        parameters = _clamped_query_parameters(
+            plan.get("parameters") if isinstance(plan.get("parameters"), dict) else {},
+            max_records=safe_max_records,
+        )
+        settings = self.settings_provider()
+        driver = None
+        database = str(getattr(settings, "neo4j_database", "") or "").strip() or None
+        rows: list[dict[str, Any]] = []
+        summary_payload: dict[str, Any] = {}
+        try:
+            driver = self._driver(settings)
+            with driver.session(database=database) as session:
+                result = session.run(cypher, parameters)
+                for index, record in enumerate(result):
+                    if index >= safe_max_records:
+                        break
+                    rows.append(_serialize_neo4j_record(record))
+                consume = getattr(result, "consume", None)
+                if callable(consume):
+                    summary_payload = _serialize_neo4j_summary(consume())
+        except Exception as exc:
+            return {
+                "status": "query_failed",
+                "neo4j": {
+                    **status,
+                    "fallback_reason": "neo4j_read_query_failed",
+                },
+                "validation": validation,
+                "plan": _redact_plan_for_response(plan),
+                "record_limit": safe_max_records,
+                "error": str(exc) or exc.__class__.__name__,
+                "retryable": True,
+            }
+        finally:
+            if driver is not None:
+                close = getattr(driver, "close", None)
+                if callable(close):
+                    close()
+
+        return {
+            "status": "executed",
+            "neo4j": status,
+            "validation": validation,
+            "plan": _redact_plan_for_response(plan),
+            "record_limit": safe_max_records,
+            "row_count": len(rows),
+            "rows": rows,
+            "summary": summary_payload,
+        }
+
     def _probe_connection(self, settings: Any) -> tuple[bool, str | None]:
         driver = None
         database = str(getattr(settings, "neo4j_database", "") or "").strip() or None
@@ -172,6 +245,140 @@ def _neo4j_auth(settings: Any):
 
 def _module_available(module_name: str) -> bool:
     return find_spec(module_name) is not None
+
+
+def _validate_live_read_plan(plan: dict[str, Any]) -> dict:
+    cypher = str(plan.get("cypher") or "").strip()
+    parameters = plan.get("parameters") if isinstance(plan.get("parameters"), dict) else {}
+    plan_validation = plan.get("validation") if isinstance(plan.get("validation"), dict) else {}
+    errors: list[str] = []
+    if plan_validation.get("valid") is not True:
+        errors.append("guarded_plan_validation_required")
+    if not cypher.upper().startswith("MATCH "):
+        errors.append("cypher_must_start_with_match")
+    if ";" in cypher or "--" in cypher or "/*" in cypher:
+        errors.append("cypher_must_not_contain_statement_separators_or_comments")
+    upper_tokens = {token.upper() for token in re.findall(r"\b[A-Za-z_]+\b", cypher)}
+    blocked_tokens = sorted(
+        upper_tokens
+        & {
+            "ALTER",
+            "CALL",
+            "CREATE",
+            "DELETE",
+            "DENY",
+            "DETACH",
+            "DROP",
+            "GRANT",
+            "LOAD",
+            "MERGE",
+            "REMOVE",
+            "REVOKE",
+            "SET",
+            "TERMINATE",
+            "UNWIND",
+        }
+    )
+    if blocked_tokens:
+        errors.append("blocked_keywords:" + ",".join(blocked_tokens))
+    uses_limit_parameter = bool(
+        re.search(r"\bLIMIT\s+\$limit\b", cypher, flags=re.IGNORECASE)
+    )
+    if not uses_limit_parameter:
+        errors.append("cypher_must_use_limit_parameter_for_live_execution")
+    if "limit" not in parameters:
+        errors.append("limit_parameter_required_for_live_execution")
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "read_only": not any(error.startswith("blocked_keywords") for error in errors),
+        "uses_limit_parameter": uses_limit_parameter,
+    }
+
+
+def _clamped_query_parameters(parameters: dict[str, Any], *, max_records: int) -> dict[str, Any]:
+    clamped = dict(parameters)
+    try:
+        requested_limit = int(clamped.get("limit", max_records))
+    except (TypeError, ValueError):
+        requested_limit = max_records
+    clamped["limit"] = max(1, min(max_records, requested_limit))
+    return clamped
+
+
+def _redact_plan_for_response(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "intent": plan.get("intent"),
+        "cypher": plan.get("cypher"),
+        "parameters": plan.get("parameters") if isinstance(plan.get("parameters"), dict) else {},
+        "source": plan.get("source"),
+        "validation": plan.get("validation") if isinstance(plan.get("validation"), dict) else {},
+    }
+
+
+def _serialize_neo4j_record(record: Any) -> dict[str, Any]:
+    if isinstance(record, Mapping):
+        payload = dict(record)
+    else:
+        data = getattr(record, "data", None)
+        if callable(data):
+            payload = data()
+        elif hasattr(record, "keys"):
+            payload = {key: record[key] for key in record.keys()}
+        else:
+            return {"value": _serialize_neo4j_value(record)}
+    return {str(key): _serialize_neo4j_value(value) for key, value in payload.items()}
+
+
+def _serialize_neo4j_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _serialize_neo4j_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_serialize_neo4j_value(item) for item in value]
+    if hasattr(value, "nodes") and hasattr(value, "relationships"):
+        return {
+            "type": "path",
+            "nodes": [_serialize_neo4j_value(node) for node in value.nodes],
+            "relationships": [
+                _serialize_neo4j_value(relationship)
+                for relationship in value.relationships
+            ],
+        }
+    if hasattr(value, "labels") and hasattr(value, "items"):
+        return {
+            "type": "node",
+            "element_id": getattr(value, "element_id", None),
+            "labels": sorted(str(label) for label in getattr(value, "labels", [])),
+            "properties": {
+                str(key): _serialize_neo4j_value(item)
+                for key, item in dict(value.items()).items()
+            },
+        }
+    if hasattr(value, "type") and hasattr(value, "items"):
+        return {
+            "type": "relationship",
+            "element_id": getattr(value, "element_id", None),
+            "relationship_type": str(getattr(value, "type", "")),
+            "start_element_id": getattr(getattr(value, "start_node", None), "element_id", None),
+            "end_element_id": getattr(getattr(value, "end_node", None), "element_id", None),
+            "properties": {
+                str(key): _serialize_neo4j_value(item)
+                for key, item in dict(value.items()).items()
+            },
+        }
+    return str(value)
+
+
+def _serialize_neo4j_summary(summary: Any) -> dict[str, Any]:
+    if summary is None:
+        return {}
+    return {
+        "result_available_after_ms": getattr(summary, "result_available_after", None),
+        "result_consumed_after_ms": getattr(summary, "result_consumed_after", None),
+        "query_type": getattr(summary, "query_type", None),
+    }
 
 
 def _local_docker_defaults_status() -> dict:

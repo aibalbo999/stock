@@ -28,6 +28,7 @@ def fake_settings(**overrides) -> SimpleNamespace:
         "llm_max_retry_delay_seconds": 5.0,
         "llm_total_timeout_seconds": 60.0,
         "llm_model_quota_cooldown_seconds": 3600.0,
+        "llm_quota_hard_routing_enabled": False,
         "llm_observability_enabled": True,
         "llm_observability_provider": "local",
         "llm_input_cost_per_1k_tokens_usd": 0.01,
@@ -586,6 +587,36 @@ def test_google_genai_model_quota_cooldown_skips_recently_limited_model(monkeypa
     )
     with llm_module._model_quota_cooldowns_lock:
         llm_module._model_quota_cooldowns.clear()
+
+
+def test_google_genai_daily_quota_guard_skips_exhausted_model(monkeypatch) -> None:
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(
+        llm_provider="google_genai",
+        primary_llm_model="gemini-primary",
+        llm_fallback_models="gemini-backup",
+        llm_quota_hard_routing_enabled=True,
+    )
+    client.rotator = APIKeyRotator(["key"])
+    calls = []
+
+    monkeypatch.setattr(llm_module, "import_module", lambda name: object())
+    monkeypatch.setattr(client, "_daily_quota_exhausted_model_keys", lambda: {"gemini-primary"})
+
+    def fake_call(prompt: str, api_key: str, *, model: str, **_kwargs) -> str:
+        calls.append((prompt, api_key, model))
+        return "ok"
+
+    monkeypatch.setattr(client, "_call_google_genai", fake_call)
+
+    result = client._generate_with_google_genai("prompt")
+
+    assert result.text == "ok"
+    assert calls == [("prompt", "key", "gemini-backup")]
+    assert result.attempts[0]["model"] == "gemini-primary"
+    assert result.attempts[0]["outcome"] == "quota_daily_exhausted"
+    assert result.attempts[-1]["model"] == "gemini-backup"
+    assert result.attempts[-1]["outcome"] == "success"
 
 
 def test_google_genai_unavailable_falls_back_to_existing_gemini_http(monkeypatch) -> None:

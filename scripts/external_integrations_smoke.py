@@ -11,6 +11,13 @@ NEO4J_GRAPHRAG_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
     "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
 )
+NEO4J_IMPORT_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
+)
+NEO4J_PAYLOAD_DRY_RUN_COMMAND = (
+    ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run"
+)
 STRUCTURED_COMPANY_FILING_SMOKE_COMMAND = (
     ".venv/bin/python scripts/structured_company_filing_smoke.py "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
@@ -46,6 +53,32 @@ EXTERNAL_CHECKS = (
         "Configure COMPANY_FILING_STRUCTURED_API_PROVIDER/URL/TOKEN for TEJ or another provider.",
     ),
 )
+SMOKE_COMMAND_KEYS = frozenset(
+    {
+        "smoke_cli",
+        "smoke_command",
+        "smoke_commands",
+        "payload_dry_run_cli",
+        "import_smoke_cli",
+        "neo4j_graphrag_smoke_command",
+        "company_filing_render_smoke_command",
+        "structured_company_filing_smoke_command",
+    }
+)
+DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
+    "neo4j_import": [
+        NEO4J_PAYLOAD_DRY_RUN_COMMAND,
+        NEO4J_GRAPHRAG_SMOKE_COMMAND,
+        NEO4J_IMPORT_SMOKE_COMMAND,
+    ],
+    "graphrag_live_cypher_query": [
+        NEO4J_PAYLOAD_DRY_RUN_COMMAND,
+        NEO4J_GRAPHRAG_SMOKE_COMMAND,
+        NEO4J_IMPORT_SMOKE_COMMAND,
+    ],
+    "company_filing_browser_or_proxy_fallback": [COMPANY_FILING_RENDER_SMOKE_COMMAND],
+    "company_filing_structured_api_fallback": [STRUCTURED_COMPANY_FILING_SMOKE_COMMAND],
+}
 
 
 def external_integration_report(status: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -54,6 +87,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
     checks = []
     for area, capability, label, remediation in EXTERNAL_CHECKS:
         item = ((matrix.get(area) or {}).get(capability) or {})
+        evidence = item.get("evidence") or {}
         checks.append(
             {
                 "area": area,
@@ -61,7 +95,8 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
                 "label": label,
                 "status": item.get("status") or "unknown",
                 "ready": item.get("status") == "ready",
-                "evidence": item.get("evidence") or {},
+                "evidence": evidence,
+                "smoke_commands": external_check_smoke_commands(capability, evidence),
                 "remediation": item.get("remediation") or remediation,
             }
         )
@@ -70,12 +105,82 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "ready_count": sum(1 for check in checks if check["ready"]),
         "check_count": len(checks),
         "checks": checks,
+        "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
+        "neo4j_import_smoke_command": NEO4J_IMPORT_SMOKE_COMMAND,
+        "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
     }
+
+
+def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> list[str]:
+    commands = _commands_from_payload(evidence)
+    preferred_order = DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY.get(capability, [])
+    if not commands:
+        commands = preferred_order
+    elif preferred_order:
+        commands = _order_commands(commands, preferred_order)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for command in commands:
+        if command in seen:
+            continue
+        seen.add(command)
+        deduped.append(command)
+    return deduped
+
+
+def _order_commands(commands: list[str], preferred_order: list[str]) -> list[str]:
+    ordered: list[str] = []
+    remaining = list(commands)
+    for preferred in preferred_order:
+        for command in list(remaining):
+            if command == preferred:
+                ordered.append(command)
+                remaining.remove(command)
+                break
+    ordered.extend(remaining)
+    return ordered
+
+
+def _commands_from_payload(payload: Any) -> list[str]:
+    commands: list[str] = []
+    _collect_commands(payload, commands)
+    return commands
+
+
+def _collect_commands(payload: Any, commands: list[str]) -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            key_text = str(key)
+            if (
+                key_text in SMOKE_COMMAND_KEYS
+                or key_text.endswith("_smoke_cli")
+                or key_text.endswith("_smoke_command")
+            ):
+                _append_command(value, commands)
+            else:
+                _collect_commands(value, commands)
+    elif isinstance(payload, list):
+        for value in payload:
+            _collect_commands(value, commands)
+
+
+def _append_command(value: Any, commands: list[str]) -> None:
+    if isinstance(value, str):
+        command = value.strip()
+        if command:
+            commands.append(command)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _append_command(item, commands)
+        return
+    if isinstance(value, dict):
+        _collect_commands(value, commands)
 
 
 def format_external_integration_report(report: dict[str, Any]) -> str:
@@ -88,6 +193,14 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         lines.append(f"- [{marker}] {check['label']}: {check['status']}")
         if not check.get("ready"):
             lines.append(f"  fix: {check['remediation']}")
+        smoke_commands = [
+            str(command)
+            for command in check.get("smoke_commands") or []
+            if str(command).strip()
+        ]
+        if smoke_commands:
+            lines.append("  smoke:")
+            lines.extend(f"    - {command}" for command in smoke_commands)
     lines.append(f"Local start: {report['local_start_command']}")
     lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")

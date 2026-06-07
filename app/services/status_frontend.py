@@ -153,6 +153,8 @@ def frontend_status() -> dict:
         and '"next_steps": _task_next_steps_text(row)' in maintenance_status_source
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
+        "ui_task_failure_trend_enabled": 'task_summary.get("error_category_daily")' in ui_source
+        and "失敗原因趨勢" in ui_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

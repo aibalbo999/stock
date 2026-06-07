@@ -100,6 +100,7 @@ class RunTaskApiService:
             "by_source": self._count_rows(rows, "source"),
             "by_operation": self._count_rows(rows, "operation"),
             "by_error_category": self._count_error_categories(rows),
+            "error_category_daily": self._error_category_daily_rows(rows),
             "recent_failures": [
                 row for row in rows if row["status"] in {"failed", "cancelled"} or row.get("error")
             ][:10],
@@ -624,6 +625,31 @@ class RunTaskApiService:
             for (category, severity), count in sorted(
                 counts.items(),
                 key=lambda item: (-item[1], item[0][0], item[0][1]),
+            )
+        ]
+
+    @classmethod
+    def _error_category_daily_rows(cls, rows: list[dict]) -> list[dict]:
+        counts: dict[tuple[str, str, str], int] = {}
+        for row in rows:
+            category = row.get("error_category")
+            if not category:
+                continue
+            started_at = cls._parse_datetime(row.get("started_at"))
+            date_value = started_at.date().isoformat() if started_at else "unknown"
+            severity = str(row.get("error_severity") or "unknown")
+            key = (date_value, str(category), severity)
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            {
+                "date": date_value,
+                "error_category": category,
+                "severity": severity,
+                "count": count,
+            }
+            for (date_value, category, severity), count in sorted(
+                counts.items(),
+                key=lambda item: (item[0][0], item[0][1], item[0][2]),
             )
         ]
 

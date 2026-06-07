@@ -230,6 +230,9 @@ def render_maintenance_tab() -> None:
         if task_summary.get("by_error_category"):
             st.caption("失敗原因分類")
             st.dataframe(task_summary["by_error_category"], width="stretch", hide_index=True)
+        if task_summary.get("error_category_daily"):
+            st.caption("失敗原因趨勢")
+            st.dataframe(task_summary["error_category_daily"], width="stretch", hide_index=True)
         failure_rows = task_failure_drilldown_rows(task_summary)
         if failure_rows:
             st.caption("近期失敗 / 取消")

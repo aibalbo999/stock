@@ -59,6 +59,23 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             started_at=now - timedelta(minutes=90),
             finished_at=None,
         ),
+        SimpleNamespace(
+            id=4,
+            source="celery_data_operation",
+            status="failed",
+            payload_json=json.dumps(
+                {
+                    "task": "data_operation",
+                    "operation": "company_filings_fetch",
+                    "payload": {"tickers": ["2330"]},
+                    "celery_task_id": "task-filing",
+                }
+            ),
+            report_id=None,
+            error="MOPS returned HTTP 403 captcha",
+            started_at=now - timedelta(days=1, minutes=3),
+            finished_at=now - timedelta(days=1, minutes=2),
+        ),
     ]
 
     class FakeRunRepository:
@@ -93,17 +110,33 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
         settings_provider=lambda: SimpleNamespace(task_observability_stale_minutes=60),
     )
 
-    summary = service.task_summary(days=1)
+    summary = service.task_summary(days=2)
 
-    assert summary["totals"]["run_count"] == 3
+    assert summary["totals"]["run_count"] == 4
     assert summary["totals"]["success_count"] == 1
-    assert summary["totals"]["failed_count"] == 1
+    assert summary["totals"]["failed_count"] == 2
     assert summary["totals"]["running_count"] == 1
     assert summary["totals"]["stale_running_count"] == 1
     assert summary["by_operation"][0] == {"operation": "celery_report", "count": 2}
-    assert summary["by_operation"][1] == {"operation": "market_refresh", "count": 1}
+    assert summary["by_operation"][1] == {"operation": "company_filings_fetch", "count": 1}
+    assert summary["by_operation"][2] == {"operation": "market_refresh", "count": 1}
     assert summary["by_error_category"] == [
+        {"error_category": "data_source", "severity": "warning", "count": 1},
         {"error_category": "quota", "severity": "warning", "count": 1}
+    ]
+    assert summary["error_category_daily"] == [
+        {
+            "date": (now - timedelta(days=1, minutes=3)).date().isoformat(),
+            "error_category": "data_source",
+            "severity": "warning",
+            "count": 1,
+        },
+        {
+            "date": (now - timedelta(minutes=7)).date().isoformat(),
+            "error_category": "quota",
+            "severity": "warning",
+            "count": 1,
+        },
     ]
     assert summary["recent_failures"][0]["task_id"] == "task-failed"
     assert summary["recent_failures"][0]["error_category"] == "quota"

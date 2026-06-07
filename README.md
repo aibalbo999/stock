@@ -110,7 +110,7 @@ macOS 一鍵啟動：
 docker compose up -d redis postgres neo4j browserless chroma
 ```
 
-本機 Chroma 對外 port 使用 `8001`，避免和 FastAPI 的 `8000` 衝突；主機端若要使用 Chroma HTTP server，可設定 `USE_CHROMA=true` 與 `CHROMA_API_URL=http://127.0.0.1:8001`。compose 服務內仍使用 `http://chroma:8000`。
+本機 Chroma 對外 port 使用 `8001`，避免和 FastAPI 的 `8000` 衝突；主機端若要使用 Chroma HTTP server，可設定 `USE_CHROMA=true` 與 `CHROMA_API_URL=http://127.0.0.1:8001`。compose 服務內仍使用 `http://chroma:8000`。Docker Compose 會對 Browserless `/json/version`、Chroma `/api/v2/heartbeat` 與 FlareSolverr `/health` 做 healthcheck，app / Celery 會等 Browserless 與 Chroma healthy 後再啟動，降低剛開 container 時的誤判與連線失敗。
 
 若公開資訊觀測站或公司 IR 入口遇到 Cloudflare / CAPTCHA / 空殼頁，可額外啟動 FlareSolverr unlocker profile：
 

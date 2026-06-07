@@ -21,13 +21,18 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert compose["services"]["browserless"]["ports"] == ["3000:3000"]
     assert compose["services"]["browserless"]["environment"]["TOKEN"] == "stock_ai_browserless_token"
     assert compose["services"]["browserless"]["environment"]["CONCURRENT"] == "4"
+    assert "json/version?token=stock_ai_browserless_token" in compose["services"]["browserless"]["healthcheck"]["test"][1]
     assert compose["services"]["flaresolverr"]["profiles"] == ["unlocker"]
     assert compose["services"]["flaresolverr"]["ports"] == ["8191:8191"]
     assert compose["services"]["flaresolverr"]["image"] == "ghcr.io/flaresolverr/flaresolverr:latest"
+    assert "http://127.0.0.1:8191/health" in compose["services"]["flaresolverr"]["healthcheck"]["test"][1]
     assert compose["services"]["chroma"]["image"] == "chromadb/chroma:latest"
     assert compose["services"]["chroma"]["ports"] == ["8001:8000"]
+    assert "api/v2/heartbeat" in compose["services"]["chroma"]["healthcheck"]["test"][1]
     worker = compose["services"]["celery-worker"]
     beat = compose["services"]["celery-beat"]
+    assert worker["depends_on"]["browserless"]["condition"] == "service_healthy"
+    assert worker["depends_on"]["chroma"]["condition"] == "service_healthy"
     assert worker["environment"]["DATABASE_URL"].startswith("postgresql+psycopg://stock_ai:")
     assert worker["environment"]["REDIS_URL"] == "redis://redis:6379/0"
     assert worker["environment"]["CHROMA_API_URL"] == "http://chroma:8000"

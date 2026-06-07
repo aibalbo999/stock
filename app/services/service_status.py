@@ -16,8 +16,6 @@ from app.data_sources.company_filings import (
 )
 from app.db.migration_status import db_migration_status
 from app.db.session import engine
-from app.rag.vector_store import VectorStore
-from app.rag.reranker import RagReranker
 from app.services.candidate_confidence import confidence_thresholds
 from app.services.llm_client import RETRYABLE_HTTP_STATUSES
 from app.services.llm_observability import llm_observability_status
@@ -40,6 +38,7 @@ from app.services.status_market_data import (
     _market_data_provider_readiness,
     market_data_status as collect_market_data_status,
 )
+from app.services.status_vector_store import vector_store_status as collect_vector_store_status
 from app.services.visual_rag import visual_rag_status
 from app.services.workflow_orchestration import workflow_orchestration_status
 
@@ -47,11 +46,6 @@ from app.services.workflow_orchestration import workflow_orchestration_status
 def service_status() -> dict:
     settings = get_settings()
     high_threshold, medium_threshold = confidence_thresholds()
-    embedding_status = VectorStore.runtime_embedding_provider_status(settings)
-    retrieval_status = VectorStore.retrieval_runtime_status(settings)
-    chroma_available = _module_available("chromadb")
-    reranker = RagReranker()
-    reranker_status = reranker.status()
     redis_status = _redis_status(settings.redis_url)
     llm_fallback_models = _llm_effective_fallback_models(settings)
     llm_local_gateway_configured = any(
@@ -62,6 +56,10 @@ def service_status() -> dict:
     visual_rag_runtime = visual_rag_status(settings)
     market_data_status = collect_market_data_status(settings, redis_status=redis_status)
     supply_chain_graph_status = collect_supply_chain_graph_status()
+    vector_store_status = collect_vector_store_status(
+        settings,
+        module_available=_module_available,
+    )
     company_filing_status = collect_company_filing_status(
         settings,
         redis_status=redis_status,
@@ -107,36 +105,7 @@ def service_status() -> dict:
         "fugle": market_data_status["fugle"],
         "market_data_cache": market_data_status["market_data_cache"],
         "company_filings": company_filing_status,
-        "vector_store": {
-            "use_chroma": settings.use_chroma,
-            "chroma_available": chroma_available,
-            "path": str(settings.vector_db_path),
-            "storage_mode": "http" if settings.chroma_api_url else "persistent",
-            "chroma_api_url_configured": bool(settings.chroma_api_url),
-            "chroma_api_url": _redact_url(settings.chroma_api_url),
-            "chroma_tenant": settings.chroma_tenant,
-            "chroma_database": settings.chroma_database,
-            "embedding_provider": settings.rag_embedding_provider,
-            "embedding_model": settings.rag_embedding_model,
-            "allow_chroma_default_embedding_fallback": settings.rag_allow_chroma_default_embedding_fallback,
-            "persistent_collection_enabled": _vector_store_persistent_collection_enabled(
-                settings,
-                embedding_status,
-                chroma_available,
-            ),
-            "embedding_status": embedding_status,
-            "retrieval_status": retrieval_status,
-            "hybrid_search_enabled": settings.rag_hybrid_search_enabled,
-            "vector_weight": settings.rag_vector_weight,
-            "keyword_weight": settings.rag_keyword_weight,
-            "rerank_top_k": settings.rag_rerank_top_k,
-            "keyword_corpus_limit": settings.rag_keyword_corpus_limit,
-            "reranker_provider": settings.rag_reranker_provider,
-            "reranker_model": settings.rag_reranker_model,
-            "reranker_text_limit": settings.rag_reranker_text_limit,
-            "reranker_available": reranker_status["available"],
-            "reranker_status": reranker_status,
-        },
+        "vector_store": vector_store_status,
         "supply_chain_graph": supply_chain_graph_status,
         "celery": {
             "broker_url": _redact_url(settings.redis_url),
@@ -1074,22 +1043,6 @@ def _security_scan_status() -> dict:
         "scan_scope_default": "git_tracked_files",
         "all_files_flag": "--all",
     }
-
-
-def _vector_store_persistent_collection_enabled(
-    settings,
-    embedding_status: dict,
-    chroma_available: bool,
-) -> bool:
-    if not settings.use_chroma:
-        return False
-    if not chroma_available:
-        return False
-    if not embedding_status.get("custom_embedding_requested"):
-        return True
-    if embedding_status.get("custom_embedding_enabled"):
-        return True
-    return bool(settings.rag_allow_chroma_default_embedding_fallback)
 
 
 def _redis_status(redis_url: str) -> dict:

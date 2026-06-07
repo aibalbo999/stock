@@ -33,6 +33,7 @@ def test_service_status_shape() -> None:
     status_llm_source = Path("app/services/status_llm.py").read_text()
     status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
     status_market_data_source = Path("app/services/status_market_data.py").read_text()
+    status_vector_store_source = Path("app/services/status_vector_store.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
     assert "database" in status
@@ -267,6 +268,12 @@ def test_service_status_shape() -> None:
             "auto_model_reranker_unavailable:"
         )
     assert status["vector_store"]["reranker_status"]["fallback_reason"] is None
+    assert status["vector_store"]["collector_path"] == "app/services/status_vector_store.py"
+    assert "from app.services.status_vector_store import vector_store_status as collect_vector_store_status" in (
+        service_status_source
+    )
+    assert "def _vector_store_persistent_collection_enabled(" not in service_status_source
+    assert "def vector_store_status(" in status_vector_store_source
     assert status["supply_chain_graph"]["enabled"] is True
     assert status["supply_chain_graph"]["node_count"] >= 1
     assert status["supply_chain_graph"]["edge_confidence"] == "taxonomy"

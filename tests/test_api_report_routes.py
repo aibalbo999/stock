@@ -63,6 +63,23 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
     assert fetched.json() == {"report_id": 7}
 
 
+def test_report_router_delegates_company_data_audit() -> None:
+    captured = {}
+
+    class FakeCompanyDataAuditApi:
+        def report_company_data_audit(self, report_id: int) -> dict:
+            captured["report_id"] = report_id
+            return {"status": "needs_attention", "rows": [{"ticker": "3017", "status": "partial"}]}
+
+    client = _client(company_data_audit_api=FakeCompanyDataAuditApi())
+
+    response = client.get("/reports/7/company-data-audit")
+
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["ticker"] == "3017"
+    assert captured["report_id"] == 7
+
+
 def test_report_router_maps_generation_and_lookup_errors() -> None:
     class FakeGenerationApi:
         def generate(self, request) -> ReportResponse:

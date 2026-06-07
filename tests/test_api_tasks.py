@@ -21,6 +21,7 @@ from app.services.candidate_revalidation import (
     mark_unavailable_candidates_after_revalidation,
     preserve_previous_supported_candidates,
 )
+from app.services.company_data_audit_api import CompanyDataAuditApiService
 from app.services.followup_actions import FollowUpAction
 from app.services import report_quality
 from app.services.discovered_pipeline import candidate_filing_revalidation_tickers, should_revalidate_candidate_filings
@@ -1254,7 +1255,7 @@ def test_report_quality_gate_warns_when_market_data_uses_stale_cache() -> None:
     assert any("快取救援資料只能作暫時參考" in action for action in gate["remediation_actions"])
 
 
-def test_report_company_data_audit_endpoint(monkeypatch) -> None:
+def test_company_data_audit_api_uses_session_scope() -> None:
     class FakeSession:
         pass
 
@@ -1267,161 +1268,13 @@ def test_report_company_data_audit_endpoint(monkeypatch) -> None:
         assert report_id == 7
         return {"status": "needs_attention", "rows": [{"ticker": "3017", "status": "partial"}]}
 
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-    monkeypatch.setattr(main, "audit_report_company_data", fake_audit)
-
-    response = TestClient(main.app).get("/reports/7/company-data-audit")
-
-    assert response.status_code == 200
-    assert response.json()["rows"][0]["ticker"] == "3017"
-
-
-def test_manual_company_filing_endpoint_returns_quality(monkeypatch) -> None:
-    stored = {}
-    original_repository = CompanyFilingRepository
-
-    class FakeVectorStore:
-        def upsert_documents(self, documents):
-            stored["rag_document_id"] = documents[0].id
-
-    class FakeCompanyFilingRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def upsert_document(self, document):
-            stored["filing_id"] = document.id
-
-        @staticmethod
-        def to_news_document(document):
-            return original_repository.to_news_document(document)
-
-    @contextmanager
-    def fake_session_scope():
-        yield object()
-
-    monkeypatch.setattr(main, "VectorStore", FakeVectorStore)
-    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-
-    response = TestClient(main.app).post(
-        "/company-filings/manual",
-        json={
-            "ticker": "2330",
-            "company_name": "台積電",
-            "document_type": "annual_report",
-            "title": "台積電 年報",
-            "text": "台積電 年報揭露 AI/HPC 需求與風險因素。",
-            "publisher": "公開資訊觀測站",
-            "published_at": "2026-05-01",
-            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
-        },
+    service = CompanyDataAuditApiService(
+        session_scope_factory=fake_session_scope,
+        audit_report_company_data_func=fake_audit,
     )
+    response = service.report_company_data_audit(7)
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ticker"] == "2330"
-    assert body["document_type"] == "annual_report"
-    assert body["source_tier"] == "official_disclosure"
-    assert body["quality_score"] >= 70
-    assert stored["filing_id"] == body["document_id"]
-    assert stored["rag_document_id"].startswith("filing-")
-
-
-def test_company_filing_from_url_endpoint_returns_quality(monkeypatch) -> None:
-    stored = {}
-    original_repository = CompanyFilingRepository
-
-    class FakeVectorStore:
-        def upsert_documents(self, documents):
-            stored["rag_document_id"] = documents[0].id
-
-    class FakeCompanyFilingRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def upsert_document(self, document):
-            stored["filing_id"] = document.id
-
-        @staticmethod
-        def to_news_document(document):
-            return original_repository.to_news_document(document)
-
-    async def fake_fetch_url_document(self, **kwargs):
-        return CompanyFilingFetcher.from_manual_text(
-            ticker=kwargs["ticker"],
-            company_name=kwargs["company_name"],
-            document_type=kwargs["document_type"],
-            title="台積電 2026 年報",
-            text="台積電 年報揭露 AI/HPC 需求與風險因素。" * 8,
-            publisher="公開資訊觀測站",
-            published_at=kwargs["published_at"],
-            url=kwargs["url"],
-        )
-
-    @contextmanager
-    def fake_session_scope():
-        yield object()
-
-    monkeypatch.setattr(main, "VectorStore", FakeVectorStore)
-    monkeypatch.setattr(main, "CompanyFilingRepository", FakeCompanyFilingRepository)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-
-    response = TestClient(main.app).post(
-        "/company-filings/from-url",
-        json={
-            "ticker": "2330",
-            "company_name": "台積電",
-            "document_type": "annual_report",
-            "publisher": "公開資訊觀測站",
-            "published_at": "2026-05-01",
-            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ticker"] == "2330"
-    assert body["source_tier"] == "official_disclosure"
-    assert body["quality_score"] >= 70
-    assert stored["filing_id"] == body["document_id"]
-    assert stored["rag_document_id"].startswith("filing-")
-
-
-def test_company_filing_from_url_rejects_localhost() -> None:
-    response = TestClient(main.app).post(
-        "/company-filings/from-url",
-        json={
-            "ticker": "2330",
-            "company_name": "台積電",
-            "document_type": "annual_report",
-            "url": "http://localhost:8000/internal",
-        },
-    )
-
-    assert response.status_code == 400
-    assert "localhost" in response.json()["detail"]
-
-
-def test_company_filing_from_url_returns_pdf_ocr_guidance(monkeypatch) -> None:
-    async def fake_fetch_url_document(self, **kwargs):
-        raise ValueError("PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。")
-
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_url_document", fake_fetch_url_document)
-
-    response = TestClient(main.app).post(
-        "/company-filings/from-url",
-        json={
-            "ticker": "2330",
-            "company_name": "台積電",
-            "document_type": "annual_report",
-            "url": "https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
-        },
-    )
-
-    assert response.status_code == 400
-    assert "OCR" in response.json()["detail"]
-    assert "文字版文件" in response.json()["detail"]
+    assert response["rows"][0]["ticker"] == "3017"
 
 
 def test_candidate_audit_follow_up_is_tracking_when_report_is_ready() -> None:

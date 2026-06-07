@@ -3,7 +3,8 @@ from __future__ import annotations
 import requests
 import streamlit as st
 
-from app.ui.api_client import api_get, api_task_post, request_error_message
+from app.ui.api_client import api_get, request_error_message
+from app.ui.background_tasks import submit_api_task
 from app.ui.follow_up_status import (
     candidate_revalidation_summary,
     follow_up_blocker_action_rows,
@@ -25,7 +26,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         plan_next_actions = plan.get("next_actions") or []
         freshness = plan.get("freshness") or {}
     except requests.RequestException as exc:
-        plan_error = str(exc)
+        plan_error = request_error_message(exc)
         freshness = {}
     st.markdown("**自動補強**")
     if planned_actions:
@@ -178,21 +179,19 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         key=f"followup_run_{key_suffix}",
         disabled=not has_executable_actions,
     ):
-        try:
-            task_response = api_task_post(
-                f"/reports/{report_id}/follow-up/run_async",
-                {
-                    "rerun_report": bool(rerun_report),
-                    "news_limit": int(news_limit),
-                    "purpose": selected_purpose,
-                    "force_refresh": bool(force_refresh or manual_tracking_selected),
-                },
-            )
-            st.session_state["last_follow_up_task_id"] = task_response["task_id"]
-            st.session_state.pop(f"refresh_followup_task_{key_suffix}_status", None)
-            st.success(f"已送出補強背景任務：{task_response['task_id']}")
-        except requests.RequestException as exc:
-            st.error(f"自動補強任務送出失敗：{request_error_message(exc)}")
+        submit_api_task(
+            f"/reports/{report_id}/follow-up/run_async",
+            {
+                "rerun_report": bool(rerun_report),
+                "news_limit": int(news_limit),
+                "purpose": selected_purpose,
+                "force_refresh": bool(force_refresh or manual_tracking_selected),
+            },
+            task_state_key="last_follow_up_task_id",
+            status_state_keys=(f"refresh_followup_task_{key_suffix}_status",),
+            success_message="已送出補強背景任務",
+            error_message="自動補強任務送出失敗",
+        )
 
     last_follow_up_task_id = st.session_state.get("last_follow_up_task_id")
     if last_follow_up_task_id:
@@ -205,6 +204,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
             task_status = render_task_status_panel(
                 task_id=task_id,
                 refresh_key=f"refresh_followup_task_{key_suffix}",
+                task_state_key="last_follow_up_task_id",
             )
             result = (task_status or {}).get("result") if isinstance(task_status, dict) else None
             if isinstance(result, dict) and st.button("套用背景補強結果", key=f"apply_followup_task_{key_suffix}"):

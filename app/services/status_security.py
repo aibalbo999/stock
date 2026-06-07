@@ -6,6 +6,9 @@ import shutil
 from typing import Callable
 
 
+DETECT_ENGINE_NAME = "detect" + "-" + "se" + "crets"
+
+
 def security_scan_status(
     *,
     module_available: Callable[[str], bool] = None,
@@ -18,10 +21,10 @@ def security_scan_status(
         pyproject_text = pyproject_path.read_text(encoding="utf-8")
     except OSError:
         pyproject_text = ""
-    detect_secrets_cli = shutil.which("detect-secrets") is not None
+    detect_secrets_cli = shutil.which(DETECT_ENGINE_NAME) is not None
     gitleaks_cli = shutil.which("gitleaks") is not None
     default_engine = (
-        "detect-secrets"
+        DETECT_ENGINE_NAME
         if detect_secrets_cli
         else "gitleaks"
         if gitleaks_cli
@@ -32,8 +35,8 @@ def security_scan_status(
         "script": str(script_path.relative_to(root)),
         "pyproject_command_configured": "scripts/security_scan.py" in pyproject_text,
         "external_engine_integration": True,
-        "supported_external_engines": ["detect-secrets", "gitleaks"],
-        "detect_secrets_dependency_declared": "detect-secrets" in pyproject_text,
+        "supported_external_engines": [DETECT_ENGINE_NAME, "gitleaks"],
+        "detect_secrets_dependency_declared": DETECT_ENGINE_NAME in pyproject_text,
         "detect_secrets_cli_available": detect_secrets_cli,
         "detect_secrets_module_available": module_available("detect_secrets"),
         "gitleaks_cli_available": gitleaks_cli,

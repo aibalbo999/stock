@@ -5,7 +5,8 @@ import streamlit as st
 
 from app.core.time import today_taipei
 from app.services.whitelist import SupplyChainWhitelist
-from app.ui.api_client import api_get, api_task_post, request_error_message
+from app.ui.api_client import api_get, request_error_message
+from app.ui.background_tasks import submit_api_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.report_panels import (
     candidate_rows,
@@ -129,13 +130,16 @@ def render_analysis_workspace() -> None:
                     "max_position_pct": float(max_position_pct) / 100,
                     "cash_reserve_pct": float(cash_reserve_pct) / 100,
                 }
-                try:
-                    task_response = api_task_post("/pipeline/run_discovered_async", payload)
-                    st.session_state["last_async_task_id"] = task_response["task_id"]
-                    st.session_state["last_analysis_task_type"] = "discovered"
-                    st.success(f"已送出 AI 探索背景任務：{task_response['task_id']}")
-                except requests.RequestException as exc:
-                    st.error(f"AI 探索背景任務送出失敗：{request_error_message(exc)}")
+                submit_api_task(
+                    "/pipeline/run_discovered_async",
+                    payload,
+                    task_state_key="last_async_task_id",
+                    status_state_keys=("refresh_analysis_task_status_status",),
+                    success_message="已送出 AI 探索背景任務",
+                    error_message="AI 探索背景任務送出失敗",
+                    task_type_state_key="last_analysis_task_type",
+                    task_type="discovered",
+                )
             elif not tickers:
                 st.warning("手動模式背景執行請至少選擇一檔白名單股票。")
             else:
@@ -150,13 +154,16 @@ def render_analysis_workspace() -> None:
                     "max_position_pct": float(max_position_pct) / 100,
                     "cash_reserve_pct": float(cash_reserve_pct) / 100,
                 }
-                try:
-                    task_response = api_task_post("/reports/generate_async", payload)
-                    st.session_state["last_async_task_id"] = task_response["task_id"]
-                    st.session_state["last_analysis_task_type"] = "manual"
-                    st.success(f"已送出分析背景任務：{task_response['task_id']}")
-                except requests.RequestException as exc:
-                    st.error(f"分析背景任務送出失敗：{request_error_message(exc)}")
+                submit_api_task(
+                    "/reports/generate_async",
+                    payload,
+                    task_state_key="last_async_task_id",
+                    status_state_keys=("refresh_analysis_task_status_status",),
+                    success_message="已送出分析背景任務",
+                    error_message="分析背景任務送出失敗",
+                    task_type_state_key="last_analysis_task_type",
+                    task_type="manual",
+                )
 
         with st.expander("疑難排解：查詢背景分析"):
             last_task_id = st.session_state.get("last_async_task_id")
@@ -165,6 +172,7 @@ def render_analysis_workspace() -> None:
                 task_id=task_id,
                 refresh_key="refresh_analysis_task_status",
                 apply_result_key="apply_analysis_task_result",
+                task_state_key="last_async_task_id",
             )
             if st.button("查詢紀錄", key="lookup_analysis_task_run"):
                 if not task_id:
@@ -176,9 +184,9 @@ def render_analysis_workspace() -> None:
                         if exc.response.status_code == 404:
                             st.info("尚未找到對應紀錄；任務剛送出時可能需要等待。")
                         else:
-                            st.error(f"查詢失敗：{exc}")
+                            st.error(f"查詢失敗：{request_error_message(exc)}")
                     except requests.RequestException as exc:
-                        st.error(f"查詢失敗：{exc}")
+                        st.error(f"查詢失敗：{request_error_message(exc)}")
 
     with analysis_result_col:
         result = st.session_state.get("last_analysis_result")

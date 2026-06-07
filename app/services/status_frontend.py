@@ -14,6 +14,7 @@ def frontend_status() -> dict:
     ui_paths = [
         ui_dir / "dashboard_core.py",
         ui_dir / "api_client.py",
+        ui_dir / "background_tasks.py",
         ui_dir / "task_status_panel.py",
         ui_dir / "report_state.py",
         ui_dir / "report_panels.py",
@@ -46,6 +47,7 @@ def frontend_status() -> dict:
     )
     dashboard_core_source = _read_text(ui_dir / "dashboard_core.py")
     api_client_source = _read_text(ui_dir / "api_client.py")
+    background_tasks_source = _read_text(ui_dir / "background_tasks.py")
     task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
     report_state_source = _read_text(ui_dir / "report_state.py")
     report_panels_source = _read_text(ui_dir / "report_panels.py")
@@ -119,12 +121,21 @@ def frontend_status() -> dict:
         and "def api_task_post(" not in dashboard_core_source
         and "from app.ui.api_client import (" in ui_source,
         "ui_api_client_path": "app/ui/api_client.py",
+        "ui_background_task_client_extracted": (ui_dir / "background_tasks.py").exists()
+        and "def submit_background_task(" in background_tasks_source
+        and "def submit_api_task(" in background_tasks_source
+        and "def submit_data_operation_task(" in background_tasks_source
+        and "def submit_background_task(" not in dashboard_core_source
+        and "from app.ui.background_tasks import" in ui_source,
+        "ui_background_task_client_path": "app/ui/background_tasks.py",
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source
         and "run_every" in task_status_panel_source
         and "from app.ui.task_status_panel import" in ui_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
+        "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
+        and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,
         "ui_report_state_extracted": (ui_dir / "report_state.py").exists()
         and "def hydrate_active_report_result(" in report_state_source
         and "def parse_json_object(" in report_state_source
@@ -198,6 +209,8 @@ def frontend_status() -> dict:
             "API_TASK_QUEUE_TIMEOUT_SECONDS",
         ),
         "uses_task_enqueue_helper": "def api_task_post(" in ui_source,
+        "uses_background_task_submit_helper": "submit_api_task(" in ui_source
+        and "submit_data_operation_task(" in ui_source,
         "uses_task_status_panel": "def render_task_status_panel(" in ui_source
         and '"fragment"' in ui_source
         and "run_every" in ui_source,

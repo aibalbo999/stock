@@ -72,6 +72,7 @@ def _render_task_status_panel_controls(
     refresh_key: str,
     status_state_key: str,
     apply_result_key: str | None,
+    task_state_key: str | None,
 ) -> dict | None:
     task_status = st.session_state.get(status_state_key)
     if not isinstance(task_status, dict) or task_status.get("task_id") != task_id:
@@ -89,9 +90,11 @@ def _render_task_status_panel_controls(
         if st.button("重試任務", key=f"{refresh_key}_retry"):
             try:
                 retry_response = api_task_post(f"/tasks/{task_id}/retry", {})
-                st.session_state["last_data_task_id"] = retry_response.get("task_id") or task_id
+                retry_task_id = retry_response.get("task_id") or task_id
+                if task_state_key:
+                    st.session_state[task_state_key] = retry_task_id
                 st.session_state[status_state_key] = retry_response
-                st.success(f"已送出重試任務：{retry_response.get('task_id')}")
+                st.success(f"已送出重試任務：{retry_task_id}")
             except requests.RequestException as exc:
                 st.error(f"重試失敗：{request_error_message(exc)}")
     result = (task_status or {}).get("result")
@@ -114,6 +117,7 @@ def render_task_status_panel(
     task_id: str,
     refresh_key: str,
     apply_result_key: str | None = None,
+    task_state_key: str | None = None,
     auto_refresh_seconds: int = 5,
 ) -> dict | None:
     if not task_id:
@@ -152,6 +156,7 @@ def render_task_status_panel(
                 refresh_key=refresh_key,
                 status_state_key=status_state_key,
                 apply_result_key=apply_result_key,
+                task_state_key=task_state_key,
             )
 
         return _auto_task_status_panel()
@@ -162,4 +167,5 @@ def render_task_status_panel(
         refresh_key=refresh_key,
         status_state_key=status_state_key,
         apply_result_key=apply_result_key,
+        task_state_key=task_state_key,
     )

@@ -37,7 +37,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - LLM 補充分析來源歸屬：送入模型的證據摘要會標示來源日期、發布者、標題與公司對應；模型回傳的 claim 會再比對 source_id、claim 中公司與該來源實際對應公司，避免把 A 公司新聞寫成 B 公司結論。
 - 風險控制：資料不足時報告自動降級為研究草稿，並限制可投入資金上限。
 - 個股分析：包含商業模式、護城河、產業趨勢、財務健康、估值、情境分析、12-24 個月展望。
-- 前端介面：Streamlit 提供分析、報告、資料、設定頁；各 page 使用明確 import，API client、背景任務狀態面板、報告狀態 hydration、報告 markdown parsing、報告格式化 helper、報告內容區塊 renderer、候選審計 renderer、報告 HTML renderer、報告查核 panels、補強任務控制、補強狀態與維護稽核摘要都拆成獨立 UI helper。
+- 前端介面：Streamlit 提供分析、報告、資料、設定頁；各 page 使用明確 import，API client、背景任務提交 helper、背景任務狀態面板、報告狀態 hydration、報告 markdown parsing、報告格式化 helper、報告內容區塊 renderer、候選審計 renderer、報告 HTML renderer、報告查核 panels、補強任務控制、補強狀態與維護稽核摘要都拆成獨立 UI helper。
 - 系統狀態檢查：`service_status` 負責彙整整體狀態，前端 MPA/背景任務 ready 條件、LLM 額度/降級路由、vector store/reranker runtime、市場資料快取/來源後援、GraphRAG/Neo4j runtime、Python runtime、最新版報告保留、security scanning 與公司文件爬蟲/PDF runtime 由獨立 status collector 掃描，`upgrade_capability_matrix` 由獨立 builder 組裝，避免單一 audit 檔案持續膨脹。
 - 排程與背景任務：Celery + Redis 支援背景產報與定時排程。
 - 時區：系統顯示時間以 Asia/Taipei 為準。
@@ -366,7 +366,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 .venv/bin/python -m streamlit run streamlit_app.py
 ```
 
-`streamlit_app.py` 是薄入口；主要 UI 已拆到 `pages/` 與 `app/ui/`，其中 `dashboard_core.py` 放共用 renderer/helper，`analysis_workspace.py`、`report_center.py`、`data_enrichment.py`、`system_settings.py` 與 `system_settings_maintenance.py` 分別對應主要頁面與維護分頁，`streamlit_dashboard.py` 只保留相容 facade。自訂樣式集中在 `app/ui/styles/stock_dashboard.css`，單檔 HTML 報告樣式集中在 `app/ui/styles/report_html.css` 並於產出時內嵌，分析、資料刷新、公司文件 URL 匯入、RSS 抓取與報告補強會先送到 FastAPI/Celery，再從 Streamlit 以 task id 查詢狀態，避免前端等待長時間爬蟲或報告生成。若未來要支援更多同時使用者或更複雜的報告互動，建議保留目前 FastAPI/Celery API 邊界，把前端替換為 Next.js 或 Nuxt，讓 HTML 報表 renderer、互動篩選與背景任務輪詢由現代前端框架接手。
+`streamlit_app.py` 是薄入口；主要 UI 已拆到 `pages/` 與 `app/ui/`，其中 `dashboard_core.py` 放共用 renderer/helper，`analysis_workspace.py`、`report_center.py`、`data_enrichment.py`、`system_settings.py` 與 `system_settings_maintenance.py` 分別對應主要頁面與維護分頁，`streamlit_dashboard.py` 只保留相容 facade。自訂樣式集中在 `app/ui/styles/stock_dashboard.css`，單檔 HTML 報告樣式集中在 `app/ui/styles/report_html.css` 並於產出時內嵌，分析、資料刷新、公司文件 URL 匯入、RSS 抓取與報告補強會透過 `app/ui/background_tasks.py` 統一送到 FastAPI/Celery、記錄 task id、清掉舊輪詢狀態並格式化錯誤訊息，再從 Streamlit 以 task id 查詢狀態，避免前端等待長時間爬蟲或報告生成。若未來要支援更多同時使用者或更複雜的報告互動，建議保留目前 FastAPI/Celery API 邊界，把前端替換為 Next.js 或 Nuxt，讓 HTML 報表 renderer、互動篩選與背景任務輪詢由現代前端框架接手。
 
 專案已設定 Streamlit 監聽 `0.0.0.0:8501`。同一個區域網路內的手機可用電腦 IP 開啟，例如 `http://192.168.1.117:8501`。
 若手機仍無法連線，請確認啟動指令沒有覆蓋成 `--server.address 127.0.0.1`，並允許 macOS 防火牆讓 Python/Streamlit 接受傳入連線。

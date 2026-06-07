@@ -10,12 +10,19 @@ from app.services.whitelist import SupplyChainWhitelist
 from app.ui.api_client import (
     api_get,
     api_post,
-    queue_data_operation,
     request_error_message,
     task_payload_dates,
 )
+from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.task_status_panel import render_task_status_panel
+
+
+DATA_TASK_STATUS_STATE_KEYS = (
+    "refresh_data_task_status_status",
+    "refresh_manual_data_task_status_status",
+    "refresh_rss_data_task_status_status",
+)
 
 
 def render_data_enrichment() -> None:
@@ -75,49 +82,43 @@ def render_data_enrichment() -> None:
             **task_payload_dates(market_start, market_end),
         }
         if refresh_price:
-            try:
-                task_response = queue_data_operation("market_refresh", data_task_payload)
-                st.session_state["last_data_task_id"] = task_response["task_id"]
-                st.session_state.pop("refresh_data_task_status_status", None)
-                st.success(f"已送出股價刷新背景任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"股價刷新任務送出失敗：{request_error_message(exc)}")
+            submit_data_operation_task(
+                "market_refresh",
+                data_task_payload,
+                status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                success_message="已送出股價刷新背景任務",
+                error_message="股價刷新任務送出失敗",
+            )
 
         if refresh_financials:
-            try:
-                task_response = queue_data_operation(
-                    "fundamentals_refresh",
-                    {
-                        "tickers": selected_market_tickers,
-                        **task_payload_dates(market_end - timedelta(days=365 * 6), market_end),
-                    },
-                )
-                st.session_state["last_data_task_id"] = task_response["task_id"]
-                st.session_state.pop("refresh_data_task_status_status", None)
-                st.success(f"已送出財報刷新背景任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"財報刷新任務送出失敗：{request_error_message(exc)}")
+            submit_data_operation_task(
+                "fundamentals_refresh",
+                {
+                    "tickers": selected_market_tickers,
+                    **task_payload_dates(market_end - timedelta(days=365 * 6), market_end),
+                },
+                status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                success_message="已送出財報刷新背景任務",
+                error_message="財報刷新任務送出失敗",
+            )
 
         if refresh_valuations:
-            try:
-                task_response = queue_data_operation("valuation_refresh", data_task_payload)
-                st.session_state["last_data_task_id"] = task_response["task_id"]
-                st.session_state.pop("refresh_data_task_status_status", None)
-                st.success(f"已送出估值刷新背景任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"估值刷新任務送出失敗：{request_error_message(exc)}")
+            submit_data_operation_task(
+                "valuation_refresh",
+                data_task_payload,
+                status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                success_message="已送出估值刷新背景任務",
+                error_message="估值刷新任務送出失敗",
+            )
 
         if refresh_filings:
-            try:
-                task_response = queue_data_operation(
-                    "company_filings_fetch",
-                    {"tickers": selected_market_tickers},
-                )
-                st.session_state["last_data_task_id"] = task_response["task_id"]
-                st.session_state.pop("refresh_data_task_status_status", None)
-                st.success(f"已送出公司文件補抓背景任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"公司文件補抓任務送出失敗：{request_error_message(exc)}")
+            submit_data_operation_task(
+                "company_filings_fetch",
+                {"tickers": selected_market_tickers},
+                status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                success_message="已送出公司文件補抓背景任務",
+                error_message="公司文件補抓任務送出失敗",
+            )
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:
@@ -126,6 +127,7 @@ def render_data_enrichment() -> None:
                 render_task_status_panel(
                     task_id=data_task_id,
                     refresh_key="refresh_data_task_status",
+                    task_state_key="last_data_task_id",
                 )
         try:
             cache_summary = api_get("/market/cache-summary?tickers=" + ",".join(allowed_tickers))
@@ -300,23 +302,20 @@ def render_data_enrichment() -> None:
                     except requests.RequestException as exc:
                         st.error(f"匯入公司文件失敗：{request_error_message(exc)}")
                 if import_url_filing:
-                    try:
-                        task_response = queue_data_operation(
-                            "company_filing_from_url",
-                            {
-                                "url": filing_url.strip(),
-                                "ticker": filing_ticker,
-                                "company_name": filing_company,
-                                "document_type": filing_type,
-                                "publisher": (filing_publisher or "公司 IR / MOPS").strip(),
-                                "published_at": filing_date.isoformat(),
-                            },
-                        )
-                        st.session_state["last_data_task_id"] = task_response["task_id"]
-                        st.session_state.pop("refresh_data_task_status_status", None)
-                        st.success(f"已送出 URL 公司文件匯入背景任務：{task_response['task_id']}")
-                    except requests.RequestException as exc:
-                        st.error(f"URL 公司文件匯入任務送出失敗：{request_error_message(exc)}")
+                    submit_data_operation_task(
+                        "company_filing_from_url",
+                        {
+                            "url": filing_url.strip(),
+                            "ticker": filing_ticker,
+                            "company_name": filing_company,
+                            "document_type": filing_type,
+                            "publisher": (filing_publisher or "公司 IR / MOPS").strip(),
+                            "published_at": filing_date.isoformat(),
+                        },
+                        status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                        success_message="已送出 URL 公司文件匯入背景任務",
+                        error_message="URL 公司文件匯入任務送出失敗",
+                    )
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:
@@ -325,6 +324,7 @@ def render_data_enrichment() -> None:
                 render_task_status_panel(
                     task_id=data_task_id,
                     refresh_key="refresh_manual_data_task_status",
+                    task_state_key="last_data_task_id",
                 )
 
     with data_tabs[2]:
@@ -347,20 +347,17 @@ def render_data_enrichment() -> None:
         if not feed_ready:
             st.caption("請先輸入 RSS URL。")
         if st.button("抓取 RSS", type="primary", disabled=not feed_ready):
-            try:
-                task_response = queue_data_operation(
-                    "feed_fetch",
-                    {
-                        "url": feed_url.strip(),
-                        "publisher": (feed_publisher or "rss").strip(),
-                        "limit": int(feed_limit),
-                    },
-                )
-                st.session_state["last_data_task_id"] = task_response["task_id"]
-                st.session_state.pop("refresh_data_task_status_status", None)
-                st.success(f"已送出 RSS 抓取背景任務：{task_response['task_id']}")
-            except requests.RequestException as exc:
-                st.error(f"RSS 抓取任務送出失敗：{request_error_message(exc)}")
+            submit_data_operation_task(
+                "feed_fetch",
+                {
+                    "url": feed_url.strip(),
+                    "publisher": (feed_publisher or "rss").strip(),
+                    "limit": int(feed_limit),
+                },
+                status_state_keys=DATA_TASK_STATUS_STATE_KEYS,
+                success_message="已送出 RSS 抓取背景任務",
+                error_message="RSS 抓取任務送出失敗",
+            )
 
         last_data_task_id = st.session_state.get("last_data_task_id")
         if last_data_task_id:
@@ -369,4 +366,5 @@ def render_data_enrichment() -> None:
                 render_task_status_panel(
                     task_id=data_task_id,
                     refresh_key="refresh_rss_data_task_status",
+                    task_state_key="last_data_task_id",
                 )

@@ -5,6 +5,7 @@ from pathlib import Path
 DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
 DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
 API_CLIENT_SOURCE = Path("app/ui/api_client.py")
+BACKGROUND_TASKS_SOURCE = Path("app/ui/background_tasks.py")
 TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
@@ -20,6 +21,7 @@ UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
     API_CLIENT_SOURCE,
+    BACKGROUND_TASKS_SOURCE,
     TASK_STATUS_PANEL_SOURCE,
     REPORT_STATE_SOURCE,
     REPORT_PANELS_SOURCE,
@@ -85,6 +87,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.maintenance_status import (" in source
     assert "from app.ui.follow_up_status import (" in source
     assert "from app.ui.api_client import (" in source
+    assert "from app.ui.background_tasks import" in source
     assert "from app.ui.task_status_panel import" in source
     assert "from app.ui.report_state import " in source
     assert "from app.ui.report_panels import (" in source
@@ -131,6 +134,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def follow_up_result_message(" in FOLLOW_UP_STATUS_SOURCE.read_text()
     assert "def api_task_post(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def api_task_post(" in API_CLIENT_SOURCE.read_text()
+    assert "def submit_background_task(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def submit_background_task(" in BACKGROUND_TASKS_SOURCE.read_text()
+    assert "def submit_data_operation_task(" in BACKGROUND_TASKS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -210,17 +216,22 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "timeout=900" not in source
     assert "API_TASK_QUEUE_TIMEOUT_SECONDS = 20" in source
     assert "def api_task_post(" in source
+    assert "def submit_background_task(" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source
-    assert 'api_task_post("/pipeline/run_discovered_async"' in source
-    assert 'api_task_post("/reports/generate_async"' in source
+    assert 'submit_api_task(\n                    "/pipeline/run_discovered_async"' in source
+    assert 'submit_api_task(\n                    "/reports/generate_async"' in source
     assert 'api_post("/pipeline/run_discovered_async"' not in source
     assert 'api_post("/reports/generate_async"' not in source
     assert "def request_error_message(" in source
-    assert "股價刷新任務送出失敗：{request_error_message(exc)}" in source
-    assert "分析背景任務送出失敗：{request_error_message(exc)}" in source
-    assert "自動補強任務送出失敗：{request_error_message(exc)}" in source
+    assert 'error_message="股價刷新任務送出失敗"' in source
+    assert 'error_message="分析背景任務送出失敗"' in source
+    assert 'error_message="自動補強任務送出失敗"' in source
+    assert "st.session_state[\"last_data_task_id\"]" not in TASK_STATUS_PANEL_SOURCE.read_text()
+    assert 'task_state_key="last_data_task_id"' in source
+    assert 'task_state_key="last_async_task_id"' in source
+    assert 'task_state_key="last_follow_up_task_id"' in source
 
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:

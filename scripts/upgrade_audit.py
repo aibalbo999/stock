@@ -171,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
 def _format_text(audit: dict) -> str:
     implementation = audit.get("implementation") or {}
     deployment = audit.get("deployment") or {}
+    summary = audit.get("summary") or {}
+    warning_text = f"{summary.get('warnings', 0)} warnings"
+    optional_warnings = int(summary.get("optional_warnings") or 0)
+    if optional_warnings:
+        warning_text += f", {optional_warnings} optional deployment warnings"
     lines = [
         f"Upgrade audit: {audit['overall_status']}",
         (
@@ -182,9 +187,9 @@ def _format_text(audit: dict) -> str:
             f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} ready)"
         ),
         (
-            f"Checks: {audit['summary']['ready']} ready, "
-            f"{audit['summary']['warnings']} warnings, "
-            f"{audit['summary']['failures']} failures"
+            f"Checks: {summary.get('ready', 0)} ready, "
+            f"{warning_text}, "
+            f"{summary.get('failures', 0)} failures"
         ),
     ]
     local_defaults = audit.get("local_dependency_defaults")

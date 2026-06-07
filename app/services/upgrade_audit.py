@@ -282,7 +282,13 @@ def audit_upgrade_capabilities(
         for requirement in REQUIREMENTS
     ]
     failures = [check for check in checks if check["severity"] == "fail"]
-    warnings = [check for check in checks if check["severity"] == "warn"]
+    all_warnings = [check for check in checks if check["severity"] == "warn"]
+    optional_warnings = [
+        check
+        for check in all_warnings
+        if _is_nonblocking_optional_deployment_warning(check, strict_external=strict_external)
+    ]
+    warnings = [check for check in all_warnings if check not in optional_warnings]
     implementation_checks = [check for check in checks if not check.get("deployment_check")]
     deployment_checks = [check for check in checks if check.get("deployment_check")]
     implementation = _summarize_checks(implementation_checks)
@@ -305,6 +311,8 @@ def audit_upgrade_capabilities(
             "total_checks": len(checks),
             "ready": sum(1 for check in checks if check["severity"] == "pass"),
             "warnings": len(warnings),
+            "optional_warnings": len(optional_warnings),
+            "total_warnings": len(all_warnings),
             "failures": len(failures),
             "implementation_status": implementation["status"],
             "deployment_status": deployment["status"],
@@ -315,6 +323,8 @@ def audit_upgrade_capabilities(
         "checks": checks,
         "failures": failures,
         "warnings": warnings,
+        "optional_warnings": optional_warnings,
+        "all_warnings": all_warnings,
     }
 
 
@@ -371,6 +381,16 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
             _first_nested_value(evidence, ("runtime", "smoke_cli")),
         )
     return requirement.remediation
+
+
+def _is_nonblocking_optional_deployment_warning(check: dict, *, strict_external: bool) -> bool:
+    return bool(
+        not strict_external
+        and check.get("severity") == "warn"
+        and check.get("optional")
+        and check.get("deployment_check")
+        and check.get("external_integration")
+    )
 
 
 def _python_runtime_remediation(evidence: dict, default: str) -> str:

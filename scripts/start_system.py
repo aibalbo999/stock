@@ -258,12 +258,24 @@ def print_upgrade_capability_preflight(
 
     advice = upgrade_dependency_advice(matrix, python=python, root=root)
     failure_capabilities = {item.get("capability") for item in audit.get("failures") or []}
-    warning_capabilities = {item.get("capability") for item in audit.get("warnings") or []}
+    warning_capabilities = {
+        item.get("capability")
+        for item in [
+            *(audit.get("warnings") or []),
+            *(audit.get("optional_warnings") or []),
+        ]
+    }
     failure_advice = [item for item in advice if item["capability"] in failure_capabilities]
     warning_advice = [item for item in advice if item["capability"] in warning_capabilities]
     summary = audit.get("summary") or {}
     implementation = audit.get("implementation") or {}
     deployment = audit.get("deployment") or {}
+    optional_warning_count = int(summary.get("optional_warnings") or 0)
+    optional_warning_text = (
+        f"，外部選配 {optional_warning_count}"
+        if optional_warning_count
+        else ""
+    )
     print("")
     print("升級能力檢查")
     if local_dependency_env:
@@ -274,7 +286,8 @@ def print_upgrade_capability_preflight(
         f"{'正式部署' if strict_external else '一般'}；"
         f"狀態 {audit.get('overall_status')}；"
         f"通過 {summary.get('ready', 0)}/{summary.get('total_checks', 0)}，"
-        f"注意 {summary.get('warnings', 0)}，需處理 {summary.get('failures', 0)}。"
+        f"注意 {summary.get('warnings', 0)}{optional_warning_text}，"
+        f"需處理 {summary.get('failures', 0)}。"
     )
     print(
         "- 狀態拆解："

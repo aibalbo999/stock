@@ -702,7 +702,7 @@ def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(monkey
 
     output = capsys.readouterr().out
     assert "稽核模式：一般" in output
-    assert "狀態 caution" in output
+    assert "狀態 ready" in output
     assert "核心升級 ready" in output
     assert "外部整合 caution" in output
     assert "選配或部署注意" in output

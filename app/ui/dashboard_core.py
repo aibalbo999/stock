@@ -1505,6 +1505,7 @@ def upgrade_audit_html(audit: dict) -> str:
     total = int(summary.get("total_checks") or 0)
     ready = int(summary.get("ready") or 0)
     warnings = int(summary.get("warnings") or 0)
+    optional_warnings = int(summary.get("optional_warnings") or 0)
     failures = int(summary.get("failures") or 0)
     implementation_ready = int(implementation.get("ready") or 0)
     implementation_total = int(implementation.get("total_checks") or 0)
@@ -1542,7 +1543,7 @@ def upgrade_audit_html(audit: dict) -> str:
             <div class="upgrade-audit-tile"><span>通過項目</span><strong>{ready}/{total}</strong></div>
         </div>
         <div class="upgrade-audit-note">
-            整體狀態：{status_label}；核心 {implementation_ready}/{implementation_total} 通過，外部 {deployment_ready}/{deployment_total} 通過；注意 {warnings} 項、需處理 {failures} 項。
+            整體狀態：{status_label}；核心 {implementation_ready}/{implementation_total} 通過，外部 {deployment_ready}/{deployment_total} 通過；注意 {warnings} 項、外部選配 {optional_warnings} 項、需處理 {failures} 項。
         </div>
         <div class="upgrade-audit-areas">{areas}</div>
     </div>
@@ -1564,6 +1565,7 @@ def upgrade_audit_html(audit: dict) -> str:
         deployment_ready=deployment_ready,
         deployment_total=deployment_total,
         warnings=warnings,
+        optional_warnings=optional_warnings,
         failures=failures,
         areas="".join(area_cards) or "<div class='upgrade-audit-area'><strong>未評估</strong><span>尚無稽核資料</span></div>",
     )

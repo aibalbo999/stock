@@ -63,14 +63,17 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     assert audit["deployment"]["status"] == "caution"
     assert audit["summary"]["implementation_status"] == "ready"
     assert audit["summary"]["deployment_status"] == "caution"
     assert audit["summary"]["failures"] == 0
-    assert audit["summary"]["warnings"] == 1
-    warning = audit["warnings"][0]
+    assert audit["summary"]["warnings"] == 0
+    assert audit["summary"]["optional_warnings"] == 1
+    assert audit["summary"]["total_warnings"] == 1
+    assert audit["warnings"] == []
+    warning = audit["optional_warnings"][0]
     assert warning["capability"] == "neo4j_import"
     assert warning["optional"] is True
     assert warning["external_integration"] is True
@@ -107,10 +110,10 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     warning = next(
-        item for item in audit["warnings"] if item["capability"] == "graphrag_live_cypher_query"
+        item for item in audit["optional_warnings"] if item["capability"] == "graphrag_live_cypher_query"
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
@@ -135,12 +138,12 @@ def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_harde
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     assert audit["deployment"]["status"] == "caution"
     warning = next(
         item
-        for item in audit["warnings"]
+        for item in audit["optional_warnings"]
         if item["capability"] == "company_filing_browser_or_proxy_fallback"
     )
     assert warning["capability"] == "company_filing_browser_or_proxy_fallback"
@@ -166,11 +169,11 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     warning = next(
         item
-        for item in audit["warnings"]
+        for item in audit["optional_warnings"]
         if item["capability"] == "company_filing_structured_api_fallback"
     )
     assert warning["optional"] is True
@@ -190,9 +193,9 @@ def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
-    warning = next(item for item in audit["warnings"] if item["capability"] == "visual_rag")
+    warning = next(item for item in audit["optional_warnings"] if item["capability"] == "visual_rag")
     assert warning["optional"] is True
     assert warning["external_integration"] is True
 
@@ -212,10 +215,10 @@ def test_upgrade_audit_treats_pdf_table_parser_runtime_as_deployment_hardening()
         )
     )
 
-    assert audit["overall_status"] == "caution"
+    assert audit["overall_status"] == "ready"
     warning = next(
         item
-        for item in audit["warnings"]
+        for item in audit["optional_warnings"]
         if item["capability"] == "company_filing_pdf_table_parser_runtime"
     )
     assert warning["optional"] is True

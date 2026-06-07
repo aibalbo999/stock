@@ -802,12 +802,14 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
     helpers = load_report_helpers()
 
     audit = {
-        "overall_status": "caution",
+        "overall_status": "ready",
         "strict_external": False,
         "summary": {
             "total_checks": 23,
             "ready": 18,
-            "warnings": 5,
+            "warnings": 0,
+            "optional_warnings": 5,
+            "total_warnings": 5,
             "failures": 0,
             "implementation_status": "ready",
             "deployment_status": "caution",
@@ -879,6 +881,7 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
     assert "一般檢查" in html
     assert "18/23" in html
     assert "核心 18/18 通過，外部 0/5 通過" in html
+    assert "外部選配 5 項" in html
     assert "AI / RAG" in html
     assert rows[0] == {
         "面向": "AI / RAG",

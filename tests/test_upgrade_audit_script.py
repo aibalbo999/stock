@@ -11,8 +11,14 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monke
         upgrade_audit,
         "audit_upgrade_capabilities",
         lambda strict_external=False: {
-            "overall_status": "caution",
-            "summary": {"ready": 1, "warnings": 1, "failures": 0},
+            "overall_status": "ready",
+            "summary": {
+                "ready": 1,
+                "warnings": 0,
+                "optional_warnings": 1,
+                "total_warnings": 1,
+                "failures": 0,
+            },
             "implementation": {"status": "ready", "ready": 1, "total_checks": 1},
             "deployment": {"status": "caution", "ready": 0, "total_checks": 1},
             "checks": [
@@ -36,6 +42,18 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monke
                 },
             ],
             "failures": [],
+            "warnings": [],
+            "optional_warnings": [
+                {
+                    "severity": "warn",
+                    "optional": True,
+                    "area": "ai_rag",
+                    "capability": "neo4j_import",
+                    "label": "Neo4j import",
+                    "status": "degraded",
+                    "remediation": "設定 NEO4J_URI",
+                }
+            ],
         },
     )
 
@@ -43,9 +61,10 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monke
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "Upgrade audit: caution" in output
+    assert "Upgrade audit: ready" in output
     assert "Core implementation: ready (1/1 ready)" in output
     assert "External integrations: caution (0/1 ready)" in output
+    assert "Checks: 1 ready, 0 warnings, 1 optional deployment warnings, 0 failures" in output
     assert "[WARN optional] ai_rag.neo4j_import" in output
 
 

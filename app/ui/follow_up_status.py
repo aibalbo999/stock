@@ -3,6 +3,25 @@ from __future__ import annotations
 from typing import Optional
 
 
+COMPANY_FILING_ACTION_LABELS = {
+    "manual_company_filing_import": "人工匯入官方文件",
+    "retry_company_filing_search": "稍後自動重試",
+    "broaden_company_filing_search": "擴大官方搜尋",
+    "configure_company_filing_browser_render": "設定瀏覽器後援",
+    "install_company_filing_pdf_dependencies": "安裝 PDF 相依套件",
+    "configure_company_filing_visual_rag": "設定 Visual RAG",
+    "review_visual_rag_or_manual_import": "檢查 Visual RAG/人工匯入",
+    "ocr_or_manual_company_filing_text_import": "OCR 或人工匯入",
+    "retry_company_filing_with_browser_or_proxy": "改用瀏覽器/Proxy 重試",
+    "complete_follow_up_check": "補齊未達標資料",
+}
+
+
+def company_filing_action_label(action: object) -> str:
+    value = str(action or "").strip()
+    return COMPANY_FILING_ACTION_LABELS.get(value, value or "-")
+
+
 def candidate_revalidation_summary(result: dict) -> dict:
     rerun = result.get("rerun_report")
     rerun = rerun if isinstance(rerun, dict) else {}
@@ -122,18 +141,7 @@ def follow_up_blocker_action_rows(result: dict) -> list[dict]:
                 {
                     "股票": action.get("ticker") or "-",
                     "公司": action.get("company_name") or "-",
-                    "下一步": {
-                        "manual_company_filing_import": "人工匯入官方文件",
-                        "retry_company_filing_search": "稍後自動重試",
-                        "broaden_company_filing_search": "擴大官方搜尋",
-                        "configure_company_filing_browser_render": "設定瀏覽器後援",
-                        "install_company_filing_pdf_dependencies": "安裝 PDF 相依套件",
-                        "configure_company_filing_visual_rag": "設定 Visual RAG",
-                        "review_visual_rag_or_manual_import": "檢查 Visual RAG/人工匯入",
-                        "ocr_or_manual_company_filing_text_import": "OCR 或人工匯入",
-                        "retry_company_filing_with_browser_or_proxy": "改用瀏覽器/Proxy 重試",
-                        "complete_follow_up_check": "補齊未達標資料",
-                    }.get(action.get("action"), action.get("action") or "-"),
+                    "下一步": company_filing_action_label(action.get("action")),
                     "缺必要文件": "、".join(action.get("missing_required_types") or []),
                     "缺建議文件": "、".join(action.get("missing_recommended_types") or []),
                     "目前": follow_up_check_value_text(action.get("observed")),

@@ -4,6 +4,7 @@ import requests
 import streamlit as st
 
 from app.ui.api_client import api_get, api_task_post, request_error_message
+from app.ui.follow_up_status import company_filing_action_label
 
 
 def render_task_status(task_status: dict) -> None:
@@ -25,6 +26,10 @@ def render_task_status(task_status: dict) -> None:
         )
         if progress.get("resume_hint"):
             st.caption(str(progress["resume_hint"]))
+    company_filing_rows = company_filing_gap_rows(task_status)
+    if company_filing_rows:
+        st.caption("公司文件補抓摘要")
+        st.dataframe(company_filing_rows, width="stretch", hide_index=True)
     if task_status.get("result"):
         st.json(task_status["result"])
     if task_status.get("error"):
@@ -65,6 +70,99 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
             "next_steps": _task_status_next_steps_text(task_status),
         }
     ]
+
+
+def company_filing_gap_rows(task_status: dict) -> list[dict]:
+    result = _company_filing_result_payload(task_status.get("result") if isinstance(task_status, dict) else None)
+    if not result:
+        return []
+    action_rows = _company_filing_next_action_rows(result)
+    if action_rows:
+        return action_rows
+    return _company_filing_gap_summary_rows(result)
+
+
+def _company_filing_result_payload(result: object) -> dict:
+    if not isinstance(result, dict):
+        return {}
+    candidates: list[dict] = [result]
+    nested_result = result.get("result")
+    if isinstance(nested_result, dict):
+        candidates.append(nested_result)
+    company_filings = result.get("company_filings")
+    if isinstance(company_filings, dict):
+        candidates.append(company_filings)
+    pre_report = result.get("pre_report_ingestion")
+    if isinstance(pre_report, dict) and isinstance(pre_report.get("company_filings"), dict):
+        candidates.append(pre_report["company_filings"])
+
+    for candidate in candidates:
+        if any(key in candidate for key in ("gap_summary", "next_actions", "per_ticker_results")):
+            return candidate
+    return {}
+
+
+def _company_filing_next_action_rows(result: dict) -> list[dict]:
+    rows = []
+    for action in result.get("next_actions") or []:
+        if not isinstance(action, dict):
+            continue
+        rows.append(
+            {
+                "股票": action.get("ticker") or "-",
+                "公司": action.get("company_name") or "-",
+                "下一步": company_filing_action_label(action.get("action")),
+                "缺必要文件": _join_values(action.get("missing_required_types")),
+                "缺建議文件": _join_values(action.get("missing_recommended_types")),
+                "錯誤類型": _join_values(action.get("error_categories")),
+                "原因": action.get("reason") or "-",
+            }
+        )
+    return rows
+
+
+def _company_filing_gap_summary_rows(result: dict) -> list[dict]:
+    summary = result.get("gap_summary")
+    if not isinstance(summary, dict):
+        return []
+    rows = []
+    specs = (
+        ("visual_rag_setup_tickers", "設定 Visual RAG", "需要 PyMuPDF、VLM model 或 vision key/gateway"),
+        ("visual_rag_review_tickers", "檢查 Visual RAG/人工匯入", "VLM 額度、模型回應或抽取結果需要檢查"),
+        ("browser_recovery_tickers", "改用瀏覽器/Proxy 重試", "官方頁面疑似被反爬蟲或動態渲染擋住"),
+        ("setup_required_tickers", "補齊執行環境設定", "缺少 PDF parser、Browser render 或 Visual RAG 設定"),
+        ("ocr_required_tickers", "OCR 或人工匯入", "PDF 沒有可抽取文字或解析失敗"),
+        ("broaden_search_tickers", "擴大官方搜尋", "現有搜尋結果不足或文件不匹配"),
+        ("retryable_tickers", "稍後自動重試", "資料源暫時錯誤"),
+        ("blocked_tickers", "人工補齊公司文件", "公司文件仍不足"),
+    )
+    for key, action_label, reason in specs:
+        tickers = _string_values(summary.get(key))
+        if not tickers:
+            continue
+        rows.append(
+            {
+                "股票": "、".join(tickers),
+                "公司": "-",
+                "下一步": action_label,
+                "缺必要文件": "-",
+                "缺建議文件": "-",
+                "錯誤類型": key,
+                "原因": reason,
+            }
+        )
+    return rows
+
+
+def _join_values(value: object) -> str:
+    values = _string_values(value)
+    return "、".join(values) if values else "-"
+
+
+def _string_values(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _task_status_next_steps_text(task_status: dict) -> str:

@@ -38,6 +38,9 @@ def test_service_status_shape() -> None:
     status_capability_architecture_source = Path(
         "app/services/status_capability_architecture.py"
     ).read_text()
+    status_capability_data_business_source = Path(
+        "app/services/status_capability_data_business.py"
+    ).read_text()
     status_capability_helpers_source = Path(
         "app/services/status_capability_helpers.py"
     ).read_text()
@@ -480,15 +483,18 @@ def test_service_status_shape() -> None:
         in status_capability_matrix_source
     )
     assert (
-        "from app.services.status_capability_helpers import capability as _capability"
+        "from app.services.status_capability_data_business import data_business_capabilities"
         in status_capability_matrix_source
     )
     assert '"ai_rag": ai_rag_capabilities(' in status_capability_matrix_source
     assert '"architecture": architecture_capabilities(' in status_capability_matrix_source
+    assert '"data_business_logic": data_business_capabilities(' in status_capability_matrix_source
     assert '"graphrag_live_cypher_query": _capability(' not in status_capability_matrix_source
     assert '"streamlit_mpa_background_tasks": _capability(' not in status_capability_matrix_source
+    assert '"market_data_provider_fallback": _capability(' not in status_capability_matrix_source
     assert "def _module_available(" not in status_capability_matrix_source
     assert "def _capability(" not in status_capability_matrix_source
+    assert "from app.services.status_capability_helpers import" not in status_capability_matrix_source
     assert "def api_controller_status(" in status_api_architecture_source
     assert "def ai_rag_capabilities(" in status_capability_ai_rag_source
     assert '"graphrag_live_cypher_query": _capability(' in status_capability_ai_rag_source
@@ -496,6 +502,12 @@ def test_service_status_shape() -> None:
     assert "def _module_available(" in status_capability_ai_rag_source
     assert "def architecture_capabilities(" in status_capability_architecture_source
     assert '"streamlit_mpa_background_tasks": _capability(' in status_capability_architecture_source
+    assert "def data_business_capabilities(" in status_capability_data_business_source
+    assert '"market_data_provider_fallback": _capability(' in status_capability_data_business_source
+    assert (
+        "from app.services.status_market_data import _market_data_provider_readiness"
+        in status_capability_data_business_source
+    )
     assert "def capability(" in status_capability_helpers_source
     llm_matrix = matrix["ai_rag"]["llm_sdk_and_fallback"]
     llm_evidence = llm_matrix["evidence"]

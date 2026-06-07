@@ -143,6 +143,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_health_alert(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_smoke_command(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def external_deployment_warning_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def external_deployment_smoke_commands(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -222,6 +224,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_health_rows(service_snapshot)" in source
     assert "task_queue_health_alert(service_snapshot)" in source
     assert "task_queue_smoke_command(service_snapshot)" in source
+    assert "external_deployment_warning_rows(upgrade_audit)" in source
+    assert "external_deployment_smoke_commands(upgrade_audit)" in source
+    assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source
     assert 'task_summary.get("by_error_category")' in source
@@ -253,6 +258,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_worker_warning(" in source
     assert "def task_queue_health_rows(" in source
     assert "def task_queue_health_alert(" in source
+    assert "def external_deployment_warning_rows(" in source
+    assert "def external_deployment_smoke_commands(" in source
     assert "def task_failure_drilldown_rows(" in source
     assert "def task_retry_options(" in source
     assert "def task_status_diagnostic_rows(" in source
@@ -1100,6 +1107,100 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "run_id": 22,
             "retry_endpoint": "POST /tasks/task-failed/retry",
         }
+    ]
+
+
+def test_external_deployment_warning_rows_include_optional_and_smoke_commands() -> None:
+    helpers = load_report_helpers()
+    audit = {
+        "failures": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "status": "degraded",
+                "severity": "fail",
+                "external_integration": True,
+                "detail": "connection_failed:neo4j",
+                "evidence": {
+                    "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
+                    "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+                    "import_smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+                },
+                "remediation": "啟動 Neo4j 並設定帳密。",
+            }
+        ],
+        "warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_browser_or_proxy_fallback",
+                "label": "公司文件 Proxy / Browser render / Playwright 後援",
+                "status": "not_configured",
+                "severity": "warn",
+                "external_integration": True,
+                "detail": "browser_or_proxy_fallback_configured=false",
+                "evidence": {
+                    "browser_render_runtime": {
+                        "fallback_reason": "missing_browser_render_url",
+                        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
+                    },
+                    "playwright_render_runtime": {
+                        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
+                    },
+                },
+                "remediation": "設定 Browserless 或 Playwright。",
+            }
+        ],
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "configured=false",
+                "evidence": {
+                    "runtime": {
+                        "fallback_reason": "missing_structured_api_provider_or_url",
+                        "smoke_cli": ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
+                    }
+                },
+                "remediation": "設定 TEJ 或專業資料 API。",
+            }
+        ],
+        "all_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "external_integration": True,
+                "severity": "warn",
+            }
+        ],
+    }
+
+    rows = helpers["external_deployment_warning_rows"](audit)
+    commands = helpers["external_deployment_smoke_commands"](audit)
+
+    assert [row["能力"] for row in rows] == [
+        "外部 Neo4j 匯入連線",
+        "公司文件 Proxy / Browser render / Playwright 後援",
+        "公司文件結構化 API 備援",
+    ]
+    assert rows[0]["警示層級"] == "需處理"
+    assert rows[1]["警示層級"] == "注意"
+    assert rows[2]["警示層級"] == "外部選配"
+    assert "missing_browser_render_url" in rows[1]["說明"]
+    assert "structured_company_filing_smoke.py" in rows[2]["診斷指令"]
+    assert len(rows) == 3
+    assert commands == [
+        ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
+        ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+        ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+        ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
+        ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
+        ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
 
 

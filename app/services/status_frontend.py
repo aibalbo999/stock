@@ -142,6 +142,14 @@ def frontend_status() -> dict:
         and "task_queue_health_rows(service_snapshot)" in ui_source
         and "task_queue_health_alert(service_snapshot)" in ui_source
         and "task_queue_smoke_command(service_snapshot)" in ui_source,
+        "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
+        in maintenance_status_source
+        and "def external_deployment_smoke_commands(" in maintenance_status_source
+        and "optional_warnings" in maintenance_status_source
+        and "external_deployment_warning_rows(upgrade_audit)" in ui_source
+        and "external_deployment_smoke_commands(upgrade_audit)" in ui_source
+        and "單項診斷指令" in ui_source
+        and "external_integrations_smoke.py --strict --json" in ui_source,
         "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in maintenance_status_source
         and "def task_retry_options(" in maintenance_status_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source

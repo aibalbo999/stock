@@ -34,6 +34,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
+    assert status["frontend"]["ui_external_deployment_diagnostics_enabled"] is True
     assert status["frontend"]["ui_task_failure_drilldown_enabled"] is True
     assert status["frontend"]["ui_task_failure_category_display_enabled"] is True
     assert status["frontend"]["ui_task_failure_trend_enabled"] is True
@@ -91,6 +92,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_worker_warning_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_health_panel_extracted"] is True
+    assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_trend_enabled"] is True

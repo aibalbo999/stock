@@ -120,6 +120,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_queue_preflight_enabled")
             and frontend_status.get("ui_task_queue_worker_warning_enabled")
             and frontend_status.get("ui_task_queue_health_panel_extracted")
+            and frontend_status.get("ui_external_deployment_diagnostics_enabled")
             and frontend_status.get("ui_task_failure_drilldown_enabled")
             and frontend_status.get("ui_task_failure_category_display_enabled")
             and frontend_status.get("ui_task_failure_trend_enabled")

@@ -9,6 +9,8 @@ from app.core.time import today_taipei, utc_now_naive
 from app.ui.api_client import api_get, api_post, api_task_post, request_error_message
 from app.ui.dashboard_core import render_section_header
 from app.ui.maintenance_status import (
+    external_deployment_smoke_commands,
+    external_deployment_warning_rows,
     maintenance_service_metrics,
     task_failure_drilldown_rows,
     task_queue_health_alert,
@@ -80,32 +82,21 @@ def render_maintenance_tab() -> None:
     for column, (label, value) in zip(service_cols, service_metrics.items()):
         column.metric(label, value)
 
-    external_warnings = [
-        item
-        for item in upgrade_audit.get("warnings", []) or []
-        if isinstance(item, dict) and item.get("external_integration")
-    ]
-    with st.expander("外部部署選配狀態", expanded=bool(external_warnings)):
+    external_warning_rows = external_deployment_warning_rows(upgrade_audit)
+    external_smoke_commands = external_deployment_smoke_commands(upgrade_audit)
+    with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
         deploy = upgrade_audit.get("deployment") if isinstance(upgrade_audit.get("deployment"), dict) else {}
         deploy_cols = st.columns(4)
         deploy_cols[0].metric("部署狀態", deploy.get("status") or upgrade_audit.get("deployment_status") or "-")
         deploy_cols[1].metric("Ready", int(deploy.get("ready") or 0))
         deploy_cols[2].metric("Warnings", int(deploy.get("warnings") or 0))
         deploy_cols[3].metric("Failures", int(deploy.get("failures") or 0))
-        if external_warnings:
-            st.dataframe(
-                [
-                    {
-                        "area": row.get("area"),
-                        "capability": row.get("capability"),
-                        "status": row.get("status"),
-                        "remediation": row.get("remediation"),
-                    }
-                    for row in external_warnings
-                ],
-                width="stretch",
-                hide_index=True,
-            )
+        if external_warning_rows:
+            st.dataframe(external_warning_rows, width="stretch", hide_index=True)
+            if external_smoke_commands:
+                st.caption("單項診斷指令")
+                st.code("\n".join(external_smoke_commands), language="bash")
+            st.caption("正式部署整合 smoke")
             st.code(".venv/bin/python scripts/external_integrations_smoke.py --strict --json", language="bash")
         else:
             st.success("外部部署選配目前沒有警示。")

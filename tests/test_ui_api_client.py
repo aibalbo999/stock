@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.ui import api_client, dashboard_core
+from app.ui import api_client
 
 
 class FakeResponse:
@@ -27,7 +27,6 @@ def test_api_post_uses_short_write_timeout(monkeypatch) -> None:
     assert captured["url"].endswith("/ingest/manual")
     assert captured["json"] == {"title": "x"}
     assert captured["timeout"] == api_client.API_WRITE_TIMEOUT_SECONDS
-    assert dashboard_core.api_post is api_client.api_post
 
 
 def test_api_task_post_uses_queue_timeout(monkeypatch) -> None:
@@ -44,4 +43,3 @@ def test_api_task_post_uses_queue_timeout(monkeypatch) -> None:
     }
     assert captured["url"].endswith("/tasks/data-operation")
     assert captured["timeout"] == api_client.API_TASK_QUEUE_TIMEOUT_SECONDS
-    assert dashboard_core.api_task_post is api_client.api_task_post

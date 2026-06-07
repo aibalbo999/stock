@@ -8,7 +8,6 @@ from app.services.whitelist import SupplyChainWhitelist
 from app.ui.api_client import api_get, api_task_post, request_error_message
 from app.ui.dashboard_core import (
     candidate_rows,
-    hydrate_active_report_result,
     metric_count_from_payload,
     render_company_data_audit,
     render_follow_up_controls,
@@ -19,6 +18,7 @@ from app.ui.dashboard_core import (
     render_source_audit,
 )
 from app.ui.report_html import report_html
+from app.ui.report_state import hydrate_active_report_result
 from app.ui.task_status_panel import render_task_status_panel
 
 

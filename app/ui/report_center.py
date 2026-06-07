@@ -9,7 +9,6 @@ from app.services.report_quality import parse_quality_gate_from_markdown
 from app.ui.api_client import api_delete, api_get, request_error_message
 from app.ui.dashboard_core import (
     candidate_rows,
-    parse_json_object,
     render_company_data_audit,
     render_follow_up_controls,
     render_follow_up_flash,
@@ -18,6 +17,7 @@ from app.ui.dashboard_core import (
     render_section_header,
 )
 from app.ui.report_html import report_html
+from app.ui.report_state import parse_json_object
 
 
 def render_report_center() -> None:

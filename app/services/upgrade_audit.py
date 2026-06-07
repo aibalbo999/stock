@@ -375,6 +375,17 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
         return _neo4j_import_remediation(evidence, requirement.remediation)
     if (requirement.area, requirement.capability) == ("ai_rag", "graphrag_live_cypher_query"):
         endpoint = evidence.get("endpoint") or "/supply-chain/graph/cypher-query"
+        commands = [
+            evidence.get("payload_dry_run_cli"),
+            evidence.get("smoke_cli"),
+            evidence.get("import_smoke_cli"),
+        ]
+        command_text = "；".join(str(command) for command in commands if command)
+        if command_text:
+            return (
+                f"{requirement.remediation} 可先以 {endpoint} 驗證 API contract；"
+                f"驗證指令：{command_text}"
+            )
         return f"{requirement.remediation} 可先以 {endpoint} 或 Neo4j GraphRAG smoke 指令驗證 read-only plan。"
     if requirement.capability == "company_filing_browser_or_proxy_fallback":
         return _append_smoke_command(

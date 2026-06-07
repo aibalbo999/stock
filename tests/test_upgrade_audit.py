@@ -105,6 +105,9 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
                         "neo4j_ready": False,
                         "planner_enabled": True,
                         "endpoint": "GET /supply-chain/graph/cypher-query",
+                        "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+                        "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
+                        "import_smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
                     },
                 }
             }
@@ -120,6 +123,9 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
     assert warning["external_integration"] is True
     assert warning["deployment_check"] is True
     assert "GET /supply-chain/graph/cypher-query" in warning["remediation"]
+    assert "scripts.import_supply_chain_graph_neo4j --dry-run" in warning["remediation"]
+    assert "neo4j_graphrag_smoke.py --json" in warning["remediation"]
+    assert "neo4j_graphrag_smoke.py --import-first --json" in warning["remediation"]
 
 
 def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_hardening() -> None:

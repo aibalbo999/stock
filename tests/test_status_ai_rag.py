@@ -255,6 +255,13 @@ def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
     assert live_cypher["evidence"]["endpoint"] == "GET /supply-chain/graph/cypher-query"
     assert live_cypher["evidence"]["neo4j_ready"] is False
     assert live_cypher["evidence"]["planner_enabled"] is True
+    assert live_cypher["evidence"]["payload_dry_run_cli"].startswith(
+        ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j"
+    )
+    assert live_cypher["evidence"]["smoke_cli"].endswith(
+        "scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+    )
+    assert "--import-first" in live_cypher["evidence"]["import_smoke_cli"]
 
 
 def test_rag_settings_defaults(monkeypatch) -> None:

@@ -35,6 +35,7 @@ def ai_rag_capabilities(
         provider_key_ready = False
     llm_sdk_ready = bool(llm_uses_sdk and llm_dependency_available and provider_key_ready)
     llm_fallback_ready = any(item.get("key_configured") for item in llm_fallback_readiness)
+    neo4j_import = graph_status.get("neo4j_import") or {}
 
     return {
         "multilingual_embedding": _capability(
@@ -230,42 +231,28 @@ def ai_rag_capabilities(
         ),
         "neo4j_payload_export": _capability(
             "ready"
-            if (graph_status.get("neo4j_import") or {}).get("payload_export_ready")
+            if neo4j_import.get("payload_export_ready")
             else "degraded",
             evidence={
-                "payload_export_ready": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_export_ready"
-                ),
-                "payload_format": (graph_status.get("neo4j_import") or {}).get("payload_format"),
-                "payload_node_count": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_node_count"
-                ),
-                "payload_structural_edge_count": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_structural_edge_count"
-                ),
-                "payload_peer_edge_count": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_peer_edge_count"
-                ),
-                "payload_statement_count": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_statement_count"
-                ),
-                "payload_export_endpoint": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_export_endpoint"
-                ),
-                "payload_dry_run_cli": (graph_status.get("neo4j_import") or {}).get(
-                    "payload_dry_run_cli"
-                ),
+                "payload_export_ready": neo4j_import.get("payload_export_ready"),
+                "payload_format": neo4j_import.get("payload_format"),
+                "payload_node_count": neo4j_import.get("payload_node_count"),
+                "payload_structural_edge_count": neo4j_import.get("payload_structural_edge_count"),
+                "payload_peer_edge_count": neo4j_import.get("payload_peer_edge_count"),
+                "payload_statement_count": neo4j_import.get("payload_statement_count"),
+                "payload_export_endpoint": neo4j_import.get("payload_export_endpoint"),
+                "payload_dry_run_cli": neo4j_import.get("payload_dry_run_cli"),
             },
             detail="Ready means GraphRAG can produce parameterized Neo4j Cypher payloads without requiring a live Neo4j connection.",
         ),
         "neo4j_import": _capability(
-            _neo4j_import_capability_status(graph_status.get("neo4j_import") or {}),
-            evidence=graph_status.get("neo4j_import") or {},
+            _neo4j_import_capability_status(neo4j_import),
+            evidence=neo4j_import,
             detail="External Neo4j import is ready only when URI, dependency, auth, and connection checks are available.",
         ),
         "graphrag_live_cypher_query": _capability(
             "ready"
-            if (graph_status.get("neo4j_import") or {}).get("ready")
+            if neo4j_import.get("ready")
             and graph_status.get("agentic_cypher_planner_enabled")
             else "degraded",
             evidence={
@@ -273,11 +260,14 @@ def ai_rag_capabilities(
                 "external_dependency": graph_status.get(
                     "agentic_cypher_live_query_external_dependency"
                 ),
-                "neo4j_ready": (graph_status.get("neo4j_import") or {}).get("ready"),
+                "neo4j_ready": neo4j_import.get("ready"),
                 "planner_enabled": graph_status.get("agentic_cypher_planner_enabled"),
                 "plan_validation": (graph_status.get("agentic_cypher_plan_example") or {}).get(
                     "validation"
                 ),
+                "payload_dry_run_cli": neo4j_import.get("payload_dry_run_cli"),
+                "smoke_cli": neo4j_import.get("smoke_cli"),
+                "import_smoke_cli": neo4j_import.get("import_smoke_cli"),
             },
             detail=(
                 "Live GraphRAG Cypher execution only runs server-generated guarded plans; "

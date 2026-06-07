@@ -1153,6 +1153,23 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         ],
         "optional_warnings": [
             {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "label": "GraphRAG guarded live Cypher query",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "Neo4j is required for live guarded Cypher execution.",
+                "evidence": {
+                    "endpoint": "GET /supply-chain/graph/cypher-query",
+                    "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
+                    "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+                    "import_smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
+                },
+                "remediation": "啟動 Neo4j 後驗證 live read-only query。",
+            },
+            {
                 "area": "data_business_logic",
                 "capability": "company_filing_structured_api_fallback",
                 "label": "公司文件結構化 API 備援",
@@ -1186,14 +1203,17 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert [row["能力"] for row in rows] == [
         "外部 Neo4j 匯入連線",
         "公司文件 Proxy / Browser render / Playwright 後援",
+        "GraphRAG guarded live Cypher query",
         "公司文件結構化 API 備援",
     ]
     assert rows[0]["警示層級"] == "需處理"
     assert rows[1]["警示層級"] == "注意"
     assert rows[2]["警示層級"] == "外部選配"
+    assert "neo4j_graphrag_smoke.py" in rows[2]["診斷指令"]
+    assert rows[3]["警示層級"] == "外部選配"
     assert "missing_browser_render_url" in rows[1]["說明"]
-    assert "structured_company_filing_smoke.py" in rows[2]["診斷指令"]
-    assert len(rows) == 3
+    assert "structured_company_filing_smoke.py" in rows[3]["診斷指令"]
+    assert len(rows) == 4
     assert commands == [
         ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",

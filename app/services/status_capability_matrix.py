@@ -331,6 +331,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and api_status.get("main_direct_domain_import_count") == 0
                 and api_status.get("structured_task_submission_errors")
                 and api_status.get("report_service_factory_extracted")
+                and api_status.get("data_service_factory_extracted")
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
                 evidence=api_status,
@@ -774,6 +775,7 @@ def _api_controller_status() -> dict:
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
     task_exports_path = api_dir / "task_exports.py"
     report_service_factory_path = api_dir / "service_factory_report.py"
+    data_service_factory_path = api_dir / "service_factory_data.py"
     try:
         compatibility_exports_source = compatibility_exports_path.read_text(encoding="utf-8")
     except OSError:
@@ -786,6 +788,10 @@ def _api_controller_status() -> dict:
         report_service_factory_source = report_service_factory_path.read_text(encoding="utf-8")
     except OSError:
         report_service_factory_source = ""
+    try:
+        data_service_factory_source = data_service_factory_path.read_text(encoding="utf-8")
+    except OSError:
+        data_service_factory_source = ""
     direct_domain_imports = [
         line.strip()
         for line in main_source.splitlines()
@@ -818,6 +824,16 @@ def _api_controller_status() -> dict:
         and "ReportServiceFactoryMixin" in service_factory_source
         and "def report_query(" not in service_factory_source
         and "def sync_report_generation_api(" not in service_factory_source,
+        "data_service_factory_path": "app/api/service_factory_data.py",
+        "data_service_factory_extracted": data_service_factory_path.exists()
+        and "class DataServiceFactoryMixin" in data_service_factory_source
+        and "def data_operations_api(" in data_service_factory_source
+        and "def discovery_api(" in data_service_factory_source
+        and "def company_filing_api(" in data_service_factory_source
+        and "DataServiceFactoryMixin" in service_factory_source
+        and "def data_operations_api(" not in service_factory_source
+        and "def discovery_api(" not in service_factory_source
+        and "def company_filing_api(" not in service_factory_source,
         "api_runtime_present": runtime_path.exists(),
         "main_uses_api_runtime": "build_api_runtime" in main_source,
         "task_uses_api_runtime": "get_task_api_services" in tasks_source,

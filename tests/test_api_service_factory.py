@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.api.service_factory import ApiServiceFactory
+from app.api.service_factory_data import DataServiceFactoryMixin
 from app.api.service_factory_report import ReportServiceFactoryMixin
 from app.services.report_generation_api import SyncReportGenerationApiService
 
@@ -19,8 +20,11 @@ class DummyReportRepository:
     pass
 
 
-def test_api_service_factory_uses_report_domain_mixin() -> None:
+def test_api_service_factory_uses_domain_mixins() -> None:
+    assert issubclass(ApiServiceFactory, DataServiceFactoryMixin)
     assert issubclass(ApiServiceFactory, ReportServiceFactoryMixin)
+    assert ApiServiceFactory.data_operations_api is DataServiceFactoryMixin.data_operations_api
+    assert ApiServiceFactory.discovery_api is DataServiceFactoryMixin.discovery_api
     assert ApiServiceFactory.report_query is ReportServiceFactoryMixin.report_query
     assert ApiServiceFactory.sync_report_generation_api is ReportServiceFactoryMixin.sync_report_generation_api
 

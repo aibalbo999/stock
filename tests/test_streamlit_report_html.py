@@ -159,6 +159,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def high_risk_filing_unlocker_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def local_neo4j_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def local_unlocker_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def structured_filing_api_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -243,9 +244,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "high_risk_filing_unlocker_rows(upgrade_audit)" in source
     assert "local_neo4j_operation_rows(upgrade_audit)" in source
     assert "local_unlocker_operation_rows(upgrade_audit)" in source
+    assert "structured_filing_api_operation_rows(upgrade_audit)" in source
     assert "高風險文件 unlocker" in source
     assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
+    assert "結構化文件 API 操作提示" in source
     assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source
@@ -1428,6 +1431,104 @@ def test_local_neo4j_operation_rows_include_actionable_commands() -> None:
     assert "--import-first" in rows[4]["指令"]
     assert "docker compose logs neo4j" in rows[5]["指令"]
     assert "missing_settings:neo4j_uri" in rows[5]["說明"]
+
+
+def test_structured_filing_api_operation_rows_include_actionable_commands() -> None:
+    helpers = load_report_helpers()
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "configured=false",
+                "evidence": {
+                    "configured": False,
+                    "provider": None,
+                    "provider_profile_key": "custom",
+                    "supported_provider_examples": [
+                        "tej",
+                        "scrapingbee_dataset",
+                        "brightdata_dataset",
+                        "custom",
+                    ],
+                    "required_document_fields": [
+                        "title/name/headline/doc_title",
+                        "text/content/body/abstract/summary",
+                        "ticker_or_company_mention",
+                        "document_type_match",
+                    ],
+                    "response_row_aliases": ["documents", "data", "results"],
+                    "runtime": {
+                        "configured": False,
+                        "fallback_reason": "missing_structured_api_provider_or_url",
+                        "provider": None,
+                        "provider_profile_key": "custom",
+                        "provider_profile": {
+                            "provider": "custom",
+                            "profile_key": "custom",
+                        },
+                        "request_contract": {
+                            "method": "GET",
+                            "auth_mode": "bearer_optional",
+                            "document_type_param": "document_types",
+                            "query_param_keys": [
+                                "ticker",
+                                "company_name",
+                                "limit",
+                                "document_types",
+                            ],
+                            "response_rows": ["documents", "data", "results"],
+                        },
+                        "required_document_fields": [
+                            "title/name/headline/doc_title",
+                            "text/content/body/abstract/summary",
+                            "ticker_or_company_mention",
+                            "document_type_match",
+                        ],
+                        "response_row_aliases": ["documents", "data", "results"],
+                        "sample_contract_cli": (
+                            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                            "--sample-json examples/structured_company_filing_sample.json "
+                            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+                        ),
+                        "smoke_cli": (
+                            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+                        ),
+                    },
+                },
+                "remediation": "設定 TEJ 或專業資料 API。",
+            }
+        ]
+    }
+
+    rows = helpers["structured_filing_api_operation_rows"](audit)
+
+    assert [row["項目"] for row in rows] == [
+        "Provider profile",
+        "Sample contract",
+        "Live smoke",
+        "Request contract",
+        "Required fields",
+        "Fallback 判斷",
+    ]
+    assert rows[0]["狀態"] == "待設定"
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[0]["指令"]
+    assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[0]["說明"]
+    assert "--sample-json examples/structured_company_filing_sample.json" in rows[1]["指令"]
+    assert rows[2]["狀態"] == "待設定"
+    assert "structured_company_filing_smoke.py" in rows[2]["指令"]
+    assert rows[3]["狀態"] == "GET"
+    assert "auth=bearer_optional" in rows[3]["說明"]
+    assert "ticker,company_name,limit,document_types" in rows[3]["說明"]
+    assert "title/name/headline/doc_title" in rows[4]["說明"]
+    assert rows[5]["狀態"] == "not_configured"
+    assert "missing_structured_api_provider_or_url" in rows[5]["說明"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

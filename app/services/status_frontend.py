@@ -179,6 +179,9 @@ def frontend_status() -> dict:
         and "def local_unlocker_operation_rows(" in maintenance_status_source
         and "local_unlocker_operation_rows(upgrade_audit)" in ui_source
         and "本機 unlocker 操作提示" in ui_source
+        and "def structured_filing_api_operation_rows(" in maintenance_status_source
+        and "structured_filing_api_operation_rows(upgrade_audit)" in ui_source
+        and "結構化文件 API 操作提示" in ui_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
         "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in maintenance_status_source

@@ -15,6 +15,7 @@ from app.ui.maintenance_status import (
     local_neo4j_operation_rows,
     local_unlocker_operation_rows,
     maintenance_service_metrics,
+    structured_filing_api_operation_rows,
     task_failure_drilldown_rows,
     task_queue_health_alert,
     task_queue_health_rows,
@@ -90,6 +91,7 @@ def render_maintenance_tab() -> None:
     high_risk_unlocker_rows = high_risk_filing_unlocker_rows(upgrade_audit)
     local_neo4j_rows = local_neo4j_operation_rows(upgrade_audit)
     local_unlocker_rows = local_unlocker_operation_rows(upgrade_audit)
+    structured_api_rows = structured_filing_api_operation_rows(upgrade_audit)
     with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
         deploy = upgrade_audit.get("deployment") if isinstance(upgrade_audit.get("deployment"), dict) else {}
         deploy_cols = st.columns(4)
@@ -108,6 +110,9 @@ def render_maintenance_tab() -> None:
             if local_unlocker_rows:
                 st.caption("本機 unlocker 操作提示")
                 st.dataframe(local_unlocker_rows, width="stretch", hide_index=True)
+            if structured_api_rows:
+                st.caption("結構化文件 API 操作提示")
+                st.dataframe(structured_api_rows, width="stretch", hide_index=True)
             if external_smoke_commands:
                 st.caption("單項診斷指令")
                 st.code("\n".join(external_smoke_commands), language="bash")

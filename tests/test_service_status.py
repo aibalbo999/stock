@@ -328,6 +328,8 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_report_state_path"] == "app/ui/report_state.py"
     assert status["frontend"]["ui_report_panels_extracted"] is True
     assert status["frontend"]["ui_report_panels_path"] == "app/ui/report_panels.py"
+    assert status["frontend"]["ui_report_follow_up_controls_extracted"] is True
+    assert status["frontend"]["ui_report_follow_up_controls_path"] == "app/ui/report_follow_up_controls.py"
     assert status["frontend"]["ui_report_markdown_helpers_extracted"] is True
     assert status["frontend"]["ui_report_markdown_helpers_path"] == "app/ui/report_markdown.py"
     assert status["frontend"]["ui_report_candidate_audit_extracted"] is True
@@ -480,6 +482,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_panels_extracted"] is True
+    assert frontend_arch["evidence"]["ui_report_follow_up_controls_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_markdown_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_candidate_audit_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_formatters_extracted"] is True

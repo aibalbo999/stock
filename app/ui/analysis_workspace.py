@@ -10,12 +10,12 @@ from app.ui.dashboard_core import render_section_header
 from app.ui.report_panels import (
     candidate_rows,
     render_company_data_audit,
-    render_follow_up_controls,
     render_market_errors,
     render_quality_gate,
     render_reader_report,
     render_source_audit,
 )
+from app.ui.report_follow_up_controls import render_follow_up_controls
 from app.ui.report_formatters import metric_count_from_payload
 from app.ui.report_html import report_html
 from app.ui.report_state import hydrate_active_report_result

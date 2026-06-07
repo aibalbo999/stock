@@ -8,6 +8,7 @@ API_CLIENT_SOURCE = Path("app/ui/api_client.py")
 TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
+REPORT_FOLLOW_UP_CONTROLS_SOURCE = Path("app/ui/report_follow_up_controls.py")
 REPORT_MARKDOWN_SOURCE = Path("app/ui/report_markdown.py")
 REPORT_CANDIDATE_AUDIT_SOURCE = Path("app/ui/report_candidate_audit.py")
 REPORT_FORMATTERS_SOURCE = Path("app/ui/report_formatters.py")
@@ -22,6 +23,7 @@ UI_SOURCE_FILES = [
     TASK_STATUS_PANEL_SOURCE,
     REPORT_STATE_SOURCE,
     REPORT_PANELS_SOURCE,
+    REPORT_FOLLOW_UP_CONTROLS_SOURCE,
     REPORT_MARKDOWN_SOURCE,
     REPORT_CANDIDATE_AUDIT_SOURCE,
     REPORT_FORMATTERS_SOURCE,
@@ -86,6 +88,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.task_status_panel import" in source
     assert "from app.ui.report_state import " in source
     assert "from app.ui.report_panels import (" in source
+    assert "from app.ui.report_follow_up_controls import" in source
     assert "from app.ui.report_markdown import (" in source
     assert "from app.ui.report_candidate_audit import" in source
     assert "from app.ui.report_formatters import" in source
@@ -135,7 +138,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def parse_json_object(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def parse_json_object(" in REPORT_STATE_SOURCE.read_text()
     assert "def render_follow_up_controls(" not in DASHBOARD_CORE_SOURCE.read_text()
-    assert "def render_follow_up_controls(" in REPORT_PANELS_SOURCE.read_text()
+    assert "def render_follow_up_controls(" not in REPORT_PANELS_SOURCE.read_text()
+    assert "def render_follow_up_controls(" in REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
+    assert "def render_follow_up_flash(" not in REPORT_PANELS_SOURCE.read_text()
+    assert "def render_follow_up_flash(" in REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
     assert "def render_quality_gate(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_quality_gate(" in REPORT_PANELS_SOURCE.read_text()
     assert "def markdown_table_rows(" not in REPORT_HTML_SOURCE.read_text()

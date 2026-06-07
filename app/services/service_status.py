@@ -670,6 +670,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("ui_report_state_extracted")
                 and frontend_status.get("ui_report_panels_extracted")
+                and frontend_status.get("ui_report_follow_up_controls_extracted")
                 and frontend_status.get("ui_report_markdown_helpers_extracted")
                 and frontend_status.get("ui_report_candidate_audit_extracted")
                 and frontend_status.get("ui_report_formatters_extracted")
@@ -1069,6 +1070,7 @@ def _frontend_status() -> dict:
         ui_dir / "task_status_panel.py",
         ui_dir / "report_state.py",
         ui_dir / "report_panels.py",
+        ui_dir / "report_follow_up_controls.py",
         ui_dir / "report_markdown.py",
         ui_dir / "report_candidate_audit.py",
         ui_dir / "report_formatters.py",
@@ -1100,6 +1102,7 @@ def _frontend_status() -> dict:
     task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
     report_state_source = _read_text(ui_dir / "report_state.py")
     report_panels_source = _read_text(ui_dir / "report_panels.py")
+    report_follow_up_controls_source = _read_text(ui_dir / "report_follow_up_controls.py")
     report_markdown_source = _read_text(ui_dir / "report_markdown.py")
     report_candidate_audit_source = _read_text(ui_dir / "report_candidate_audit.py")
     report_formatters_source = _read_text(ui_dir / "report_formatters.py")
@@ -1182,13 +1185,21 @@ def _frontend_status() -> dict:
         and "from app.ui.report_state import " in ui_source,
         "ui_report_state_path": "app/ui/report_state.py",
         "ui_report_panels_extracted": (ui_dir / "report_panels.py").exists()
-        and "def render_follow_up_controls(" in report_panels_source
         and "def render_quality_gate(" in report_panels_source
         and "def render_source_audit(" in report_panels_source
-        and "def render_follow_up_controls(" not in dashboard_core_source
+        and "def render_company_data_audit(" in report_panels_source
+        and "def render_follow_up_controls(" not in report_panels_source
         and "def render_quality_gate(" not in dashboard_core_source
         and "from app.ui.report_panels import (" in ui_source,
         "ui_report_panels_path": "app/ui/report_panels.py",
+        "ui_report_follow_up_controls_extracted": (ui_dir / "report_follow_up_controls.py").exists()
+        and "def render_follow_up_controls(" in report_follow_up_controls_source
+        and "def render_follow_up_flash(" in report_follow_up_controls_source
+        and "def render_follow_up_controls(" not in report_panels_source
+        and "def render_follow_up_flash(" not in report_panels_source
+        and "def render_follow_up_controls(" not in dashboard_core_source
+        and "from app.ui.report_follow_up_controls import" in ui_source,
+        "ui_report_follow_up_controls_path": "app/ui/report_follow_up_controls.py",
         "ui_report_markdown_helpers_extracted": (ui_dir / "report_markdown.py").exists()
         and "def markdown_table_rows(" in report_markdown_source
         and "def markdown_table_rows_by_header(" in report_markdown_source

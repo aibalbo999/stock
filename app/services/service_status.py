@@ -666,6 +666,8 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("external_report_css_loaded")
                 and frontend_status.get("report_html_renderer_extracted")
                 and frontend_status.get("ui_status_helpers_extracted")
+                and frontend_status.get("ui_api_client_extracted")
+                and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
                 and frontend_status.get("asyncio_run_count") == 0
@@ -674,7 +676,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 else "degraded",
                 evidence=frontend_status,
                 detail=(
-                    "Streamlit uses a multi-page shell, external CSS, extracted report/status "
+                    "Streamlit uses a multi-page shell, external CSS, extracted API/task/report "
                     "helpers, and FastAPI/Celery task enqueue/status polling instead of running "
                     "long ingestion/report calls inline."
                 ),
@@ -1056,6 +1058,8 @@ def _frontend_status() -> dict:
     streamlit_source = _read_text(streamlit_path)
     ui_paths = [
         ui_dir / "dashboard_core.py",
+        ui_dir / "api_client.py",
+        ui_dir / "task_status_panel.py",
         ui_dir / "report_html.py",
         ui_dir / "follow_up_status.py",
         ui_dir / "maintenance_status.py",
@@ -1068,6 +1072,8 @@ def _frontend_status() -> dict:
     ]
     ui_source = "\n".join(_read_text(path) for path in ui_paths)
     dashboard_core_source = _read_text(ui_dir / "dashboard_core.py")
+    api_client_source = _read_text(ui_dir / "api_client.py")
+    task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
@@ -1122,6 +1128,19 @@ def _frontend_status() -> dict:
             "app/ui/follow_up_status.py",
             "app/ui/maintenance_status.py",
         ],
+        "ui_api_client_extracted": (ui_dir / "api_client.py").exists()
+        and "def api_task_post(" in api_client_source
+        and "def request_error_message(" in api_client_source
+        and "def queue_data_operation(" in api_client_source
+        and "def api_task_post(" not in dashboard_core_source
+        and "from app.ui.api_client import (" in dashboard_core_source,
+        "ui_api_client_path": "app/ui/api_client.py",
+        "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
+        and "def render_task_status_panel(" in task_status_panel_source
+        and "def render_task_status_panel(" not in dashboard_core_source
+        and "run_every" in task_status_panel_source
+        and "from app.ui.task_status_panel import (" in dashboard_core_source,
+        "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

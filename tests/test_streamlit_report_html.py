@@ -4,12 +4,16 @@ from pathlib import Path
 
 DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
 DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
+API_CLIENT_SOURCE = Path("app/ui/api_client.py")
+TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
+    API_CLIENT_SOURCE,
+    TASK_STATUS_PANEL_SOURCE,
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
@@ -63,6 +67,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_status import (" in source
     assert "from app.ui.follow_up_status import (" in source
+    assert "from app.ui.api_client import (" in source
+    assert "from app.ui.task_status_panel import (" in source
     assert "upgrade-audit-grid" in combined
     assert '[data-baseweb="tab"] p' in combined
     assert 'def render_analysis_workspace() -> None:' in source
@@ -95,6 +101,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def upgrade_audit_html(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def follow_up_result_message(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def follow_up_result_message(" in FOLLOW_UP_STATUS_SOURCE.read_text()
+    assert "def api_task_post(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def api_task_post(" in API_CLIENT_SOURCE.read_text()
+    assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

@@ -128,7 +128,7 @@ DATABASE_INIT_MODE=alembic
 LLM_PROVIDER=google_genai
 PRIMARY_LLM_MODEL=gemini-3.5-flash
 LOCAL_LLM_MODEL=gemini-2.5-flash-lite
-LLM_FALLBACK_MODELS=gemini-2.5-flash,gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite
+LLM_FALLBACK_MODELS=gemini-2.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemma-4-31b-it
 GOOGLE_API_KEYS=key1,key2,key3,key4,key5
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
@@ -136,11 +136,14 @@ CANDIDATE_CONFIDENCE_HIGH_THRESHOLD=75
 CANDIDATE_CONFIDENCE_MEDIUM_THRESHOLD=45
 LLM_MAX_RETRIES_PER_KEY=1
 LLM_MODEL_QUOTA_COOLDOWN_SECONDS=3600
+LLM_QUOTA_WINDOW_TIMEZONE=America/Los_Angeles
+LLM_MODEL_DAILY_REQUEST_BUDGETS=gemini-3.5-flash=250,gemini-2.5-flash=250,gemini-3.1-flash-lite=250,gemini-2.5-flash-lite=250,gemma-4-31b-it=14400
+LLM_MODEL_DAILY_TOKEN_BUDGETS=
 LLM_BASE_RETRY_DELAY_SECONDS=0.5
 LLM_MAX_RETRY_DELAY_SECONDS=5.0
 ```
 
-免費版 API key 目前採取智慧優先策略：`gemini-3.5-flash` 作為正式報告、GraphRAG 推理、結構化補充分析、LLM reranker 與 Visual RAG PDF 圖片解析的主模型；只有該模型回傳 429/quota、上游錯誤或空回覆時，才依序降級到 `gemini-2.5-flash`、`gemma-4-31b-it`、`gemini-3.1-flash-lite`、`gemini-2.5-flash-lite`。`gemini-embedding-2` 作為 RAG embedding。Google 的 Gemini API rate limits 以 project 計算，不是以 API key 計算，因此 `GOOGLE_API_KEYS` 多把 key 只用於輪替錯誤/分散瞬時失敗，不代表免費 RPD/TPM 會倍增。`gemini-3.5-flash` 是可列出且可配置的模型，且官方 rate limit 表中與 `gemini-2.5-flash` 同級；若本機 smoke test 回傳 quota 429，通常代表該 project 今日或當前視窗額度已耗盡。`gemma-4-31b-it` 可列出且文字 context 約 262K/32K，適合在高階 Gemini 額度耗盡後承接高量文字任務，例如摘要、候選歸因、JSON 草稿與低風險 rerank；但它不放入 Visual RAG 圖片解析鏈。系統會在模型回傳 429 時套用 `LLM_MODEL_QUOTA_COOLDOWN_SECONDS`，短時間跳過該模型，避免每次報告都先撞已耗盡的模型；cooldown 結束後會自動再次把高階模型放回優先嘗試。Imagen / Live 模型偏圖片生成或即時語音互動，不進入目前報告與資料管線核心流程。
+免費版 API key 目前採取智慧優先策略：`gemini-3.5-flash` 作為正式報告、GraphRAG 推理、結構化補充分析、LLM reranker 與 Visual RAG PDF 圖片解析的主模型；只有該模型回傳 429/quota、上游錯誤或空回覆時，才依序降級到 `gemini-2.5-flash`、`gemini-3.1-flash-lite`、`gemini-2.5-flash-lite`，最後才使用高額度保底的 `gemma-4-31b-it`。`gemini-embedding-2` 作為 RAG embedding。Google 的 Gemini API rate limits 以 project 計算，不是以 API key 計算，因此 `GOOGLE_API_KEYS` 多把 key 只用於輪替錯誤/分散瞬時失敗，不代表免費 RPD/TPM 會倍增。`gemini-3.5-flash` 保留為第一順位；`gemini-3.5-flash`、`gemini-2.5-flash`、`gemini-3.1-flash-lite` 與 `gemini-2.5-flash-lite` 在本專案以同級免費 request budget 追蹤，`gemma-4-31b-it` 則作為高量文字任務保底。若本機 smoke test 回傳 quota 429，通常代表該 project 今日或當前視窗額度已耗盡。系統會在模型回傳 429 時套用 `LLM_MODEL_QUOTA_COOLDOWN_SECONDS`，短時間跳過該模型，避免每次報告都先撞已耗盡的模型；cooldown 結束後會自動再次把高階模型放回優先嘗試。`GET /llm/quota` 與系統設定頁會顯示 Pacific-day 額度視窗、今日已用 request/token、每模型剩餘估算與目前建議模型；實際限制仍以 Google AI Studio 顯示的 project limit 為準。Imagen / Live 模型偏圖片生成或即時語音互動，不進入目前報告與資料管線核心流程。
 
 `LLM_PROVIDER=google_genai` 會使用官方 `google-genai` SDK 呼叫 Gemini，SDK 不可用或失敗時仍會退回既有 Gemini HTTP key 輪調，最後才使用規則引擎草稿。若需要跨供應商或嚴格模型鏈降級，可改回 `LLM_PROVIDER=litellm`，此時 LiteLLM 會依 `LLM_FALLBACK_MODELS` 逐一降級；Gemini / Gemma 會使用 `GOOGLE_API_KEYS` / `GOOGLE_API_KEY`，`gpt-*` / `openai/*` 會使用 `OPENAI_API_KEY`，`claude*` / `anthropic/*` 會使用 `ANTHROPIC_API_KEY`，只有 `ollama/`、`lm_studio/`、`local/` 前綴的模型會被視為不需 API key 的本地/閘道模型。LiteLLM 執行時若某個候選模型缺少對應 API key，會記錄 `missing_api_key` 並跳到下一個模型，不會把缺 key 呼叫包裝成一般 provider failure。`LOCAL_LLM_MODEL` 也會自動併入 LiteLLM 候選模型；這個欄位目前保留相容既有設定，模型是否需要 key 仍由模型名稱判斷。`GET /llm/status` 會列出 provider、SDK dependency、fallback models、每個 fallback model 的 key readiness 與各供應商 key 是否設定；`GET /services/status` 的 `upgrade_capability_matrix.ai_rag.llm_sdk_and_fallback` 會把 SDK 可用性與 fallback model key readiness 分開列出，只有至少一個 fallback model 有可用 key，或模型明確為 local/ollama/lm_studio 本地閘道時才標為 ready，避免把「有 SDK」誤認成「已有跨模型降級」。`GET /llm/health` 會回傳 `attempt_summary`，包含嘗試次數、用過的 provider/model、HTTP 狀態、主要失敗類型、可重試失敗數、是否曾重試、是否成功前先失敗，以及是否切換 provider/model 備援；報告品質門檻也會揭露模型是否經由重試或備援模型才完成，方便分辨 rate limit、缺 key、SDK dependency 或上游故障。
 

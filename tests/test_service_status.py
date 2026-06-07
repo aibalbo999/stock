@@ -32,6 +32,7 @@ def test_service_status_shape() -> None:
     status = service_status()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_capability_matrix_source = Path("app/services/status_capability_matrix.py").read_text()
+    status_api_architecture_source = Path("app/services/status_api_architecture.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
     status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
@@ -459,7 +460,9 @@ def test_service_status_shape() -> None:
     assert "def _upgrade_capability_matrix(" not in service_status_source
     assert "def _api_controller_status(" not in service_status_source
     assert "def upgrade_capability_matrix(" in status_capability_matrix_source
-    assert "def _api_controller_status(" in status_capability_matrix_source
+    assert "def _api_controller_status(" not in status_capability_matrix_source
+    assert "from app.services.status_api_architecture import api_controller_status" in status_capability_matrix_source
+    assert "def api_controller_status(" in status_api_architecture_source
     llm_matrix = matrix["ai_rag"]["llm_sdk_and_fallback"]
     llm_evidence = llm_matrix["evidence"]
     assert "sdk_ready" in llm_evidence
@@ -557,6 +560,10 @@ def test_service_status_shape() -> None:
     assert live_cypher["evidence"]["neo4j_ready"] is False
     assert live_cypher["evidence"]["planner_enabled"] is True
     assert matrix["architecture"]["thin_api_controller"]["status"] == "ready"
+    assert (
+        matrix["architecture"]["thin_api_controller"]["evidence"]["collector_path"]
+        == "app/services/status_api_architecture.py"
+    )
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 120
     assert "report_routes.py" in matrix["architecture"]["thin_api_controller"]["evidence"]["route_modules"]
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["app_factory_present"] is True

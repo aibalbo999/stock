@@ -59,6 +59,7 @@ def frontend_status() -> dict:
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
+    data_enrichment_source = _read_text(ui_dir / "data_enrichment.py")
     pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
@@ -167,6 +168,13 @@ def frontend_status() -> dict:
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
+        "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows(" in data_enrichment_source
+        and 'api_get("/services/status"' in data_enrichment_source
+        and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in data_enrichment_source
+        and "公司文件補抓能力" in data_enrichment_source
+        and "visual_rag_runtime_available" in data_enrichment_source
+        and "structured_api_configured" in data_enrichment_source
+        and "playwright_render_configured" in data_enrichment_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20" in ui_source
         and "報告生成觀測" in ui_source

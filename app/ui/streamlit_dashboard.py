@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-# ruff: noqa: F403,F405
-from app.ui.dashboard_core import *
+import streamlit as st
+
 from app.ui.analysis_workspace import render_analysis_workspace
 from app.ui.data_enrichment import render_data_enrichment
 from app.ui.report_center import render_report_center

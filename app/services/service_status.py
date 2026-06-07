@@ -668,6 +668,7 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_status_helpers_extracted")
                 and frontend_status.get("ui_api_client_extracted")
                 and frontend_status.get("ui_task_status_panel_extracted")
+                and frontend_status.get("ui_wildcard_imports_removed")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
                 and frontend_status.get("asyncio_run_count") == 0
@@ -676,9 +677,9 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 else "degraded",
                 evidence=frontend_status,
                 detail=(
-                    "Streamlit uses a multi-page shell, external CSS, extracted API/task/report "
-                    "helpers, and FastAPI/Celery task enqueue/status polling instead of running "
-                    "long ingestion/report calls inline."
+                    "Streamlit uses a multi-page shell, explicit page imports, external CSS, "
+                    "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
+                    "polling instead of running long ingestion/report calls inline."
                 ),
             ),
             "python_runtime": _capability(
@@ -1071,6 +1072,17 @@ def _frontend_status() -> dict:
         ui_dir / "streamlit_dashboard.py",
     ]
     ui_source = "\n".join(_read_text(path) for path in ui_paths)
+    page_source = "\n".join(
+        _read_text(path)
+        for path in [
+            ui_dir / "analysis_workspace.py",
+            ui_dir / "report_center.py",
+            ui_dir / "data_enrichment.py",
+            ui_dir / "system_settings.py",
+            ui_dir / "system_settings_maintenance.py",
+            ui_dir / "streamlit_dashboard.py",
+        ]
+    )
     dashboard_core_source = _read_text(ui_dir / "dashboard_core.py")
     api_client_source = _read_text(ui_dir / "api_client.py")
     task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
@@ -1109,6 +1121,9 @@ def _frontend_status() -> dict:
             ]
         ),
         "ui_modules_present": [path.name for path in ui_paths if path.exists()],
+        "ui_wildcard_imports_removed": "import *" not in page_source
+        and "F403" not in page_source
+        and "F405" not in page_source,
         "dashboard_core_lines": len(dashboard_core_source.splitlines()) if dashboard_core_source else None,
         "report_html_renderer_path": "app/ui/report_html.py",
         "report_html_renderer_lines": len(report_html_source.splitlines()) if report_html_source else None,

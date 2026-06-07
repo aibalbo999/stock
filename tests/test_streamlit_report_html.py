@@ -69,6 +69,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.follow_up_status import (" in source
     assert "from app.ui.api_client import (" in source
     assert "from app.ui.task_status_panel import (" in source
+    assert "from app.ui.dashboard_core import *" not in source
+    assert "import *" not in source
+    assert "F403" not in source
+    assert "F405" not in source
     assert "upgrade-audit-grid" in combined
     assert '[data-baseweb="tab"] p' in combined
     assert 'def render_analysis_workspace() -> None:' in source

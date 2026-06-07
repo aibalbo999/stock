@@ -42,6 +42,13 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_company_filing_runtime_panel_enabled"] is True
+    assert status["frontend"]["ui_data_enrichment_tabs_extracted"] is True
+    assert status["frontend"]["ui_data_enrichment_module_paths"] == [
+        "app/ui/data_enrichment_market.py",
+        "app/ui/data_enrichment_manual.py",
+        "app/ui/data_enrichment_rss.py",
+        "app/ui/data_enrichment_runtime.py",
+    ]
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
     assert status["frontend"]["ui_report_observability_summary_enabled"] is True
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
@@ -100,6 +107,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
+    assert frontend_arch["evidence"]["ui_data_enrichment_tabs_extracted"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True
     assert frontend_arch["evidence"]["ui_report_state_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_panels_extracted"] is True

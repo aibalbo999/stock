@@ -128,6 +128,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_status_panel_extracted")
             and frontend_status.get("ui_task_status_failure_diagnostics_enabled")
             and frontend_status.get("ui_company_filing_runtime_panel_enabled")
+            and frontend_status.get("ui_data_enrichment_tabs_extracted")
             and frontend_status.get("task_retry_uses_scoped_state_key")
             and frontend_status.get("ui_report_state_extracted")
             and frontend_status.get("ui_report_panels_extracted")

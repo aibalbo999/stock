@@ -36,6 +36,11 @@ UI_SOURCE_FILES = [
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
+    Path("app/ui/data_enrichment_common.py"),
+    Path("app/ui/data_enrichment_manual.py"),
+    Path("app/ui/data_enrichment_market.py"),
+    Path("app/ui/data_enrichment_rss.py"),
+    Path("app/ui/data_enrichment_runtime.py"),
     Path("app/ui/system_settings.py"),
     Path("app/ui/system_settings_maintenance.py"),
 ]
@@ -96,6 +101,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_candidate_audit import" in source
     assert "from app.ui.report_formatters import" in source
     assert "from app.ui.report_sections import (" in source
+    assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
+    assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
+    assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
     assert "F403" not in source
@@ -107,6 +115,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_data_enrichment() -> None:' in source
     assert 'def render_system_settings() -> None:' in source
     assert 'def render_maintenance_tab() -> None:' in source
+    assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
+    assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
+    assert 'def render_rss_ingest_tab() -> None:' in source
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()

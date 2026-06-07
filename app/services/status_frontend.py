@@ -29,6 +29,11 @@ def frontend_status() -> dict:
         ui_dir / "analysis_workspace.py",
         ui_dir / "report_center.py",
         ui_dir / "data_enrichment.py",
+        ui_dir / "data_enrichment_common.py",
+        ui_dir / "data_enrichment_manual.py",
+        ui_dir / "data_enrichment_market.py",
+        ui_dir / "data_enrichment_rss.py",
+        ui_dir / "data_enrichment_runtime.py",
         ui_dir / "system_settings.py",
         ui_dir / "system_settings_maintenance.py",
         ui_dir / "streamlit_dashboard.py",
@@ -40,6 +45,11 @@ def frontend_status() -> dict:
             ui_dir / "analysis_workspace.py",
             ui_dir / "report_center.py",
             ui_dir / "data_enrichment.py",
+            ui_dir / "data_enrichment_common.py",
+            ui_dir / "data_enrichment_manual.py",
+            ui_dir / "data_enrichment_market.py",
+            ui_dir / "data_enrichment_rss.py",
+            ui_dir / "data_enrichment_runtime.py",
             ui_dir / "system_settings.py",
             ui_dir / "system_settings_maintenance.py",
             ui_dir / "streamlit_dashboard.py",
@@ -59,7 +69,17 @@ def frontend_status() -> dict:
     report_html_source = _read_text(ui_dir / "report_html.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
-    data_enrichment_source = _read_text(ui_dir / "data_enrichment.py")
+    data_enrichment_source = "\n".join(
+        _read_text(path)
+        for path in [
+            ui_dir / "data_enrichment.py",
+            ui_dir / "data_enrichment_common.py",
+            ui_dir / "data_enrichment_manual.py",
+            ui_dir / "data_enrichment_market.py",
+            ui_dir / "data_enrichment_rss.py",
+            ui_dir / "data_enrichment_runtime.py",
+        ]
+    )
     pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
@@ -183,6 +203,23 @@ def frontend_status() -> dict:
         and "visual_rag_runtime_available" in data_enrichment_source
         and "structured_api_configured" in data_enrichment_source
         and "playwright_render_configured" in data_enrichment_source,
+        "ui_data_enrichment_tabs_extracted": (ui_dir / "data_enrichment_market.py").exists()
+        and (ui_dir / "data_enrichment_manual.py").exists()
+        and (ui_dir / "data_enrichment_rss.py").exists()
+        and (ui_dir / "data_enrichment_runtime.py").exists()
+        and "def render_market_data_tab(" in data_enrichment_source
+        and "def render_manual_ingest_tab(" in data_enrichment_source
+        and "def render_rss_ingest_tab(" in data_enrichment_source
+        and "def company_filing_runtime_rows(" in data_enrichment_source
+        and "render_market_data_tab(allowed_tickers)" in data_enrichment_source
+        and "render_manual_ingest_tab(whitelist, allowed_tickers)" in data_enrichment_source
+        and "render_rss_ingest_tab()" in data_enrichment_source,
+        "ui_data_enrichment_module_paths": [
+            "app/ui/data_enrichment_market.py",
+            "app/ui/data_enrichment_manual.py",
+            "app/ui/data_enrichment_rss.py",
+            "app/ui/data_enrichment_runtime.py",
+        ],
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20" in ui_source
         and "報告生成觀測" in ui_source

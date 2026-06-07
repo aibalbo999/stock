@@ -1,8 +1,21 @@
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api import main
+from app.api.supply_chain_routes import create_supply_chain_router
 from app.services.supply_chain_graph import SupplyChainGraph
+from app.services.supply_chain_graph_api import SupplyChainGraphApiService
 from app.services.whitelist import SupplyChainWhitelist
+
+
+def supply_chain_client() -> TestClient:
+    class Services:
+        @staticmethod
+        def supply_chain_graph_api() -> SupplyChainGraphApiService:
+            return SupplyChainGraphApiService()
+
+    app = FastAPI()
+    app.include_router(create_supply_chain_router(api_services=Services()))
+    return TestClient(app)
 
 
 def test_supply_chain_graph_builds_taxonomy_edges_from_static_whitelist() -> None:
@@ -135,7 +148,7 @@ def test_supply_chain_graph_classifier_handles_known_segments() -> None:
 
 
 def test_supply_chain_graph_endpoint_can_focus_on_requested_ticker() -> None:
-    response = TestClient(main.app).get("/supply-chain/graph?tickers=3324&topic=AI%20伺服器散熱")
+    response = supply_chain_client().get("/supply-chain/graph?tickers=3324&topic=AI%20伺服器散熱")
 
     assert response.status_code == 200
     body = response.json()
@@ -167,7 +180,7 @@ def test_supply_chain_graph_neo4j_export_uses_parameterized_cypher() -> None:
 
 
 def test_supply_chain_graph_neo4j_endpoint_can_focus_on_requested_ticker() -> None:
-    response = TestClient(main.app).get("/supply-chain/graph/neo4j?tickers=3324")
+    response = supply_chain_client().get("/supply-chain/graph/neo4j?tickers=3324")
 
     assert response.status_code == 200
     body = response.json()
@@ -182,7 +195,7 @@ def test_supply_chain_graph_neo4j_endpoint_can_focus_on_requested_ticker() -> No
 
 
 def test_supply_chain_graph_reasoning_endpoint_returns_shortest_paths() -> None:
-    response = TestClient(main.app).get(
+    response = supply_chain_client().get(
         "/supply-chain/graph/reasoning?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱"
     )
 
@@ -195,7 +208,7 @@ def test_supply_chain_graph_reasoning_endpoint_returns_shortest_paths() -> None:
 
 
 def test_supply_chain_graph_cypher_plan_endpoint_returns_guarded_plan() -> None:
-    response = TestClient(main.app).get(
+    response = supply_chain_client().get(
         "/supply-chain/graph/cypher-plan"
         "?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱&question=上下游衝擊"
     )
@@ -209,7 +222,7 @@ def test_supply_chain_graph_cypher_plan_endpoint_returns_guarded_plan() -> None:
 
 
 def test_supply_chain_graph_cypher_query_endpoint_degrades_without_neo4j() -> None:
-    response = TestClient(main.app).get(
+    response = supply_chain_client().get(
         "/supply-chain/graph/cypher-query"
         "?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱&question=上下游衝擊"
     )
@@ -224,7 +237,7 @@ def test_supply_chain_graph_cypher_query_endpoint_degrades_without_neo4j() -> No
 
 
 def test_supply_chain_graph_neo4j_import_endpoint_is_safe_without_config() -> None:
-    response = TestClient(main.app).post("/supply-chain/graph/neo4j/import?tickers=3324")
+    response = supply_chain_client().post("/supply-chain/graph/neo4j/import?tickers=3324")
 
     assert response.status_code == 200
     body = response.json()

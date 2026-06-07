@@ -2301,24 +2301,35 @@ def render_task_status(task_status: dict) -> None:
         )
 
 
-def render_task_status_panel(
+def _task_status_ready(task_status: dict | None) -> bool:
+    if not isinstance(task_status, dict):
+        return False
+    return bool(task_status.get("ready")) or str(task_status.get("status") or "").upper() in {
+        "SUCCESS",
+        "FAILURE",
+        "REVOKED",
+    }
+
+
+def _fetch_task_status(task_id: str, status_state_key: str) -> dict | None:
+    try:
+        task_status = api_get(f"/tasks/{task_id}")
+    except requests.RequestException as exc:
+        st.error(f"查詢失敗：{request_error_message(exc)}")
+        return None
+    st.session_state[status_state_key] = task_status
+    return task_status
+
+
+def _render_task_status_panel_controls(
     *,
     task_id: str,
     refresh_key: str,
-    apply_result_key: str | None = None,
+    status_state_key: str,
+    apply_result_key: str | None,
 ) -> dict | None:
-    if not task_id:
-        st.warning("請輸入 task id。")
-        return None
-    status_state_key = f"{refresh_key}_status"
-    if st.button("刷新狀態", key=refresh_key):
-        try:
-            st.session_state[status_state_key] = api_get(f"/tasks/{task_id}")
-        except requests.RequestException as exc:
-            st.error(f"查詢失敗：{request_error_message(exc)}")
-            return None
     task_status = st.session_state.get(status_state_key)
-    if not isinstance(task_status, dict):
+    if not isinstance(task_status, dict) or task_status.get("task_id") != task_id:
         return None
     render_task_status(task_status)
     action_cols = st.columns(2)
@@ -2351,3 +2362,59 @@ def render_task_status_panel(
             st.session_state["pending_selected_report_id"] = int(active_report_id)
         st.rerun()
     return task_status
+
+
+def render_task_status_panel(
+    *,
+    task_id: str,
+    refresh_key: str,
+    apply_result_key: str | None = None,
+    auto_refresh_seconds: int = 5,
+) -> dict | None:
+    if not task_id:
+        st.warning("請輸入 task id。")
+        return None
+    status_state_key = f"{refresh_key}_status"
+    task_status = st.session_state.get(status_state_key)
+    if isinstance(task_status, dict) and task_status.get("task_id") != task_id:
+        task_status = None
+        st.session_state.pop(status_state_key, None)
+    control_cols = st.columns([1, 1])
+    with control_cols[0]:
+        if st.button("刷新狀態", key=refresh_key):
+            task_status = _fetch_task_status(task_id, status_state_key)
+            if task_status is None:
+                return None
+    with control_cols[1]:
+        auto_refresh = st.toggle(
+            "自動刷新",
+            value=not _task_status_ready(task_status),
+            key=f"{refresh_key}_auto_refresh",
+        )
+    if not isinstance(task_status, dict):
+        task_status = _fetch_task_status(task_id, status_state_key)
+    fragment_factory = getattr(st, "fragment", None)
+    if auto_refresh and not _task_status_ready(task_status) and callable(fragment_factory):
+        interval = max(1, int(auto_refresh_seconds or 5))
+
+        @fragment_factory(run_every=f"{interval}s")
+        def _auto_task_status_panel() -> dict | None:
+            current_status = st.session_state.get(status_state_key)
+            if not _task_status_ready(current_status if isinstance(current_status, dict) else None):
+                _fetch_task_status(task_id, status_state_key)
+            return _render_task_status_panel_controls(
+                task_id=task_id,
+                refresh_key=refresh_key,
+                status_state_key=status_state_key,
+                apply_result_key=apply_result_key,
+            )
+
+        return _auto_task_status_panel()
+    if auto_refresh and not callable(fragment_factory):
+        st.caption("目前 Streamlit 版本不支援片段式自動刷新；請使用手動刷新。")
+    return _render_task_status_panel_controls(
+        task_id=task_id,
+        refresh_key=refresh_key,
+        status_state_key=status_state_key,
+        apply_result_key=apply_result_key,
+    )

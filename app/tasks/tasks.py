@@ -32,6 +32,7 @@ from app.services.report_followup import (
     summarize_candidate_support_payload,
 )
 from app.services.report_followup_context import ReportFollowUpContextService
+from app.services.task_cancellation import TaskCancelledError, mark_run_cancelled, raise_if_task_cancelled
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
 from app.tasks.celery_app import celery_app
@@ -48,6 +49,22 @@ def build_run_payload(payload: dict, task_id: str | None = None, ingestion: dict
 
 def workflow_checkpoint_recorder() -> WorkflowCheckpointRecorder:
     return WorkflowCheckpointRecorder(
+        session_scope_factory=session_scope,
+        analysis_run_repository_cls=AnalysisRunRepository,
+    )
+
+
+def _raise_if_cancelled(run_id: int) -> None:
+    raise_if_task_cancelled(
+        run_id,
+        session_scope_factory=session_scope,
+        analysis_run_repository_cls=AnalysisRunRepository,
+    )
+
+
+def _mark_cancelled(run_id: int) -> None:
+    mark_run_cancelled(
+        run_id,
         session_scope_factory=session_scope,
         analysis_run_repository_cls=AnalysisRunRepository,
     )
@@ -81,10 +98,10 @@ def _payload_date(payload: dict, key: str) -> date | None:
     return date.fromisoformat(str(value))
 
 
-async def _run_discovered_report_payload(payload: dict) -> dict:
+async def _run_discovered_report_payload(payload: dict, *, task_id: str | None = None) -> dict:
     services = _api_services_for_tasks()
     request = TopicDiscoveryRequest.model_validate(payload)
-    return await services.pipeline_api().run_discovered(request)
+    return await services.pipeline_api().run_discovered(request, celery_task_id=task_id)
 
 
 async def _run_data_operation_payload(operation: str, payload: dict) -> dict:
@@ -135,10 +152,10 @@ async def _run_data_operation_payload(operation: str, payload: dict) -> dict:
     raise ValueError(f"unsupported data operation task: {operation or 'missing'}")
 
 
-async def _run_report_follow_up_payload(payload: dict) -> dict:
+async def _run_report_follow_up_payload(payload: dict, *, task_id: str | None = None) -> dict:
     services = _api_services_for_tasks()
     request = FollowUpRunRequest.model_validate(payload.get("payload") or {})
-    return await services.report_follow_up_run().run(int(payload["report_id"]), request)
+    return await services.report_follow_up_run().run(int(payload["report_id"]), request, celery_task_id=task_id)
 
 
 def _latest_report_update_target(schedule_payload: dict) -> dict:
@@ -319,7 +336,7 @@ def _write_report_file(request: ReportRequest, response) -> Path:
 def discovered_report_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    result = asyncio.run(_run_discovered_report_payload(payload))
+    result = asyncio.run(_run_discovered_report_payload(payload, task_id=task_id))
     return {
         **result,
         "task_id": task_id,
@@ -344,7 +361,9 @@ def data_operation_task(self, payload: dict) -> dict:
         )
         run_id = run.id
     try:
+        _raise_if_cancelled(run_id)
         result = asyncio.run(_run_data_operation_payload(operation, operation_payload))
+        _raise_if_cancelled(run_id)
         with session_scope() as session:
             repository = AnalysisRunRepository(session)
             repository.update_payload(
@@ -364,6 +383,14 @@ def data_operation_task(self, payload: dict) -> dict:
             "operation": operation,
             "result": result,
         }
+    except TaskCancelledError:
+        _mark_cancelled(run_id)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "operation": operation,
+            "cancelled": True,
+        }
     except Exception as exc:
         with session_scope() as session:
             AnalysisRunRepository(session).mark_failed(run_id, str(exc))
@@ -374,7 +401,7 @@ def data_operation_task(self, payload: dict) -> dict:
 def report_follow_up_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    result = asyncio.run(_run_report_follow_up_payload(payload))
+    result = asyncio.run(_run_report_follow_up_payload(payload, task_id=task_id))
     return {
         **result,
         "task_id": task_id,
@@ -393,8 +420,10 @@ def generate_report_task(self, payload: dict) -> dict:
     workflow.initialize(run_id, "celery_report_task", CELERY_REPORT_STEPS)
     current_step = "pre_report_refresh"
     try:
+        _raise_if_cancelled(run_id)
         workflow.start_step(run_id, current_step)
         ingestion_summary = asyncio.run(IngestionPipeline().pre_report_refresh(request))
+        _raise_if_cancelled(run_id)
         workflow.complete_step(
             run_id,
             current_step,
@@ -412,11 +441,13 @@ def generate_report_task(self, payload: dict) -> dict:
                 ),
             )
         current_step = "report_build"
+        _raise_if_cancelled(run_id)
         workflow.start_step(run_id, current_step)
         report_result = ReportBuildService().build(
             request,
             source_count=(ingestion_summary.get("news") or {}).get("count", 0),
         )
+        _raise_if_cancelled(run_id)
         response = report_result["response"]
         quality_gate = report_result["quality_gate"]
         workflow.complete_step(
@@ -430,10 +461,12 @@ def generate_report_task(self, payload: dict) -> dict:
         follow_up_summary = None
         if quality_gate.get("status") != "ready":
             current_step = "follow_up_actions"
+            _raise_if_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"quality_gate_status": quality_gate.get("status")})
             follow_up_actions = FollowUpActionPlanner().plan(request, quality_gate=quality_gate)
             if follow_up_actions:
                 follow_up_summary = execute_follow_up_actions_sync(follow_up_actions, request)
+                _raise_if_cancelled(run_id)
                 ingestion_summary = {
                     **ingestion_summary,
                     "follow_up": follow_up_summary,
@@ -444,6 +477,7 @@ def generate_report_task(self, payload: dict) -> dict:
                 )
                 response = report_result["response"]
                 quality_gate = report_result["quality_gate"]
+                _raise_if_cancelled(run_id)
             workflow.complete_step(
                 run_id,
                 current_step,
@@ -454,6 +488,7 @@ def generate_report_task(self, payload: dict) -> dict:
                 },
             )
         current_step = "report_persist"
+        _raise_if_cancelled(run_id)
         workflow.start_step(run_id, current_step, {"quality_gate_status": quality_gate.get("status")})
         with session_scope() as session:
             AnalysisRunRepository(session).update_payload(
@@ -468,6 +503,7 @@ def generate_report_task(self, payload: dict) -> dict:
                     },
                 ),
             )
+        _raise_if_cancelled(run_id)
         with session_scope() as session:
             report = ReportRepository(session).create(request, response)
             report_id = report.id
@@ -501,6 +537,14 @@ def generate_report_task(self, payload: dict) -> dict:
             "path": str(path),
             "generated_at": response.generated_at.isoformat(),
         }
+    except TaskCancelledError as exc:
+        workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})
+        _mark_cancelled(run_id)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "cancelled": True,
+        }
     except Exception as exc:
         workflow.fail_step(run_id, current_step, str(exc))
         with session_scope() as session:
@@ -524,12 +568,17 @@ def after_close_report_update_task(self, payload: dict | None = None) -> dict:
         )
         run_id = run.id
     try:
+        _raise_if_cancelled(run_id)
         target = _latest_report_update_target(schedule_payload)
+        _raise_if_cancelled(run_id)
         refresh = asyncio.run(_refresh_after_close_data(target, schedule_payload))
+        _raise_if_cancelled(run_id)
         coverage = _coverage_after_close_update(target)
+        _raise_if_cancelled(run_id)
         rerun_report = None
         if bool(schedule_payload.get("rerun_report", True)):
             rerun_report = _rerun_after_close_report(target)
+            _raise_if_cancelled(run_id)
         final_report_id = (rerun_report or {}).get("report_id") or target["report_id"]
         output_path = (rerun_report or {}).get("path")
         result = {
@@ -562,6 +611,13 @@ def after_close_report_update_task(self, payload: dict | None = None) -> dict:
             )
             repository.mark_success(run_id, final_report_id, output_path)
         return result
+    except TaskCancelledError:
+        _mark_cancelled(run_id)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "cancelled": True,
+        }
     except Exception as exc:
         with session_scope() as session:
             AnalysisRunRepository(session).mark_failed(run_id, str(exc))

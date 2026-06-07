@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     primary_llm_model: str = "gemini-3.5-flash"
     local_llm_model: str = "gemini-2.5-flash-lite"
     llm_provider: str = "google_genai"
-    llm_fallback_models: str = "gemini-2.5-flash,gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+    llm_fallback_models: str = "gemini-2.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemma-4-31b-it"
     google_api_key: Optional[str] = None
     google_api_keys: str = ""
     openai_api_key: Optional[str] = None
@@ -122,6 +122,15 @@ class Settings(BaseSettings):
     llm_max_retry_delay_seconds: float = 5.0
     llm_total_timeout_seconds: float = 60.0
     llm_model_quota_cooldown_seconds: float = 60 * 60
+    llm_quota_window_timezone: str = "America/Los_Angeles"
+    llm_model_daily_request_budgets: str = (
+        "gemini-3.5-flash=250,"
+        "gemini-2.5-flash=250,"
+        "gemini-3.1-flash-lite=250,"
+        "gemini-2.5-flash-lite=250,"
+        "gemma-4-31b-it=14400"
+    )
+    llm_model_daily_token_budgets: str = ""
     llm_observability_enabled: bool = True
     llm_observability_provider: str = "local"
     llm_input_cost_per_1k_tokens_usd: float = 0.0

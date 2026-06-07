@@ -475,9 +475,11 @@ def test_llm_retry_settings_defaults() -> None:
     assert settings.local_llm_model == "gemini-2.5-flash-lite"
     assert (
         settings.llm_fallback_models
-        == "gemini-2.5-flash,gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+        == "gemini-2.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemma-4-31b-it"
     )
     assert settings.llm_model_quota_cooldown_seconds == 3600
+    assert settings.llm_quota_window_timezone == "America/Los_Angeles"
+    assert "gemini-3.5-flash=250" in settings.llm_model_daily_request_budgets
 
 
 def test_rag_settings_defaults(monkeypatch) -> None:

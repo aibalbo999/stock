@@ -66,6 +66,12 @@ class WorkflowCheckpointRecorder:
             lambda payload: self.fail_step_payload(payload, step, error, self._now(), summary),
         )
 
+    def cancel_step(self, run_id: int, step: str, reason: str, summary: dict | None = None) -> bool:
+        return self._mutate(
+            run_id,
+            lambda payload: self.cancel_step_payload(payload, step, reason, self._now(), summary),
+        )
+
     def complete_workflow_payload(self, run_id: int, final_payload: dict) -> dict:
         workflow = self._current_workflow(run_id)
         if not workflow:
@@ -181,6 +187,29 @@ class WorkflowCheckpointRecorder:
         return {**payload, "workflow": workflow}
 
     @classmethod
+    def cancel_step_payload(
+        cls,
+        payload: dict,
+        step: str,
+        reason: str,
+        now: str,
+        summary: dict | None = None,
+    ) -> dict:
+        workflow = cls._ensure_workflow(payload, [step])
+        workflow["status"] = "cancelled"
+        workflow["finished_at"] = now
+        workflow["current_step"] = step
+        step_payload = cls._ensure_step(workflow, step)
+        step_payload["status"] = "cancelled"
+        step_payload["finished_at"] = now
+        step_payload["duration_ms"] = cls._duration_ms(step_payload.get("started_at"), now)
+        step_payload["error"] = str(reason)
+        if summary:
+            step_payload["summary"] = {**(step_payload.get("summary") or {}), **summary}
+        workflow = cls._with_resume_state(workflow)
+        return {**payload, "workflow": workflow}
+
+    @classmethod
     def resume_state(cls, workflow: dict) -> dict:
         steps = [step for step in workflow.get("steps") or [] if isinstance(step, dict)]
         completed_steps = [str(step.get("name")) for step in steps if step.get("status") == "success"]
@@ -208,7 +237,7 @@ class WorkflowCheckpointRecorder:
             if pending_steps
             else None
         )
-        if status == "success":
+        if status in {"success", "cancelled"}:
             resume_from_step = None
         return {
             "resumable": status in {"running", "failed"} and bool(resume_from_step),
@@ -327,6 +356,8 @@ def workflow_run_summary(workflow: dict | None) -> dict | None:
         resume_hint = f"可從 {resume_from_step} 重新啟動或人工接續。"
     elif status == "success":
         resume_hint = "流程已完成，無需續跑。"
+    elif status == "cancelled":
+        resume_hint = "流程已取消；可視需要重新送出任務。"
     else:
         resume_hint = "目前沒有可用的續跑步驟。"
     return {

@@ -34,10 +34,16 @@ class PipelineApiService:
             },
         )
 
-    async def run_discovered(self, payload: Any) -> dict:
+    async def run_discovered(self, payload: Any, *, celery_task_id: str | None = None) -> dict:
+        def local_runner():
+            runner = self.discovered_pipeline_factory()
+            if celery_task_id:
+                return runner.run(payload, celery_task_id=celery_task_id)
+            return runner.run(payload)
+
         return await self._run_with_orchestration(
             "ai_discovered_topic_pipeline",
-            lambda: self.discovered_pipeline_factory().run(payload),
+            local_runner,
             dispatch_payload={
                 "operation": "run_discovered",
                 "request": self._payload_model_dump(payload),

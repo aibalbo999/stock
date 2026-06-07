@@ -11,6 +11,7 @@ from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
 from app.services.report_quality import should_recover_market_data_quality
+from app.services.task_cancellation import TaskCancelledError, raise_if_task_cancelled
 from app.services.workflow_checkpoint import WorkflowCheckpointRecorder
 
 
@@ -29,6 +30,7 @@ class StandardReportPipelineService:
         safe_mark_run_failed_func: Callable[[int, str], None],
         workflow_steps: list[str],
         market_quality_recovery_required_func: Callable[[dict | None], bool] = should_recover_market_data_quality,
+        task_cancellation_checker: Callable[[int], None] | None = None,
         today_func: Callable = today_taipei,
     ) -> None:
         self.session_scope_factory = session_scope_factory
@@ -42,6 +44,7 @@ class StandardReportPipelineService:
         self.safe_mark_run_failed_func = safe_mark_run_failed_func
         self.workflow_steps = workflow_steps
         self.market_quality_recovery_required_func = market_quality_recovery_required_func
+        self.task_cancellation_checker = task_cancellation_checker
         self.today_func = today_func
 
     async def run(self, request: ReportRequest) -> dict:
@@ -82,9 +85,11 @@ class StandardReportPipelineService:
             workflow.initialize(run_id, "standard_report_pipeline", self.workflow_steps)
         current_step = start_from_step
         try:
+            self._check_cancelled(run_id)
             if start_from_step == "pre_report_refresh":
                 workflow.start_step(run_id, current_step)
                 ingestion_summary = await self.ingestion_pipeline_cls().pre_report_refresh(request)
+                self._check_cancelled(run_id)
                 workflow.complete_step(
                     run_id,
                     current_step,
@@ -104,6 +109,7 @@ class StandardReportPipelineService:
             quality_recovery = (existing_payload or {}).get("quality_recovery")
             if start_from_step in {"pre_report_refresh", "report_build"}:
                 current_step = "report_build"
+                self._check_cancelled(run_id)
                 workflow.start_step(run_id, current_step)
                 source_count = (ingestion_summary.get("news") or {}).get("count", 0)
                 report_result = self.report_build_service_factory().build(
@@ -113,8 +119,10 @@ class StandardReportPipelineService:
                 report_result, quality_recovery = await self._recover_market_quality_if_needed(
                     request,
                     report_result,
+                    run_id=run_id,
                     source_count=source_count,
                 )
+                self._check_cancelled(run_id)
                 response = report_result["response"]
                 quality_gate = report_result["quality_gate"]
                 report_id = self._store_report(
@@ -144,6 +152,7 @@ class StandardReportPipelineService:
             if report_result is None:
                 report_result = self._checkpoint_report_result(existing_payload or {})
             current_step = "auto_follow_up"
+            self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step)
             run_record_updated = self.safe_update_run_success_func(
                 run_id,
@@ -162,6 +171,7 @@ class StandardReportPipelineService:
                 report_id,
             )
             auto_follow_up = await self.auto_follow_up_func(report_id)
+            self._check_cancelled(run_id)
             active_report_id = (
                 matching_follow_up_rerun_report_id(
                     auto_follow_up,
@@ -193,6 +203,10 @@ class StandardReportPipelineService:
                 "report": response.model_dump(mode="json"),
                 "resumed_from_step": start_from_step if existing_payload is not None else None,
             }
+        except TaskCancelledError as exc:
+            workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})
+            self._mark_run_cancelled(run_id, str(exc))
+            raise
         except Exception as exc:
             workflow.fail_step(run_id, current_step, str(exc))
             self.safe_mark_run_failed_func(run_id, str(exc))
@@ -230,6 +244,7 @@ class StandardReportPipelineService:
         request: ReportRequest,
         report_result: dict,
         *,
+        run_id: int,
         source_count: int,
     ) -> tuple[dict, dict | None]:
         quality_gate = report_result.get("quality_gate") or {}
@@ -240,12 +255,14 @@ class StandardReportPipelineService:
         if refresh_market is None or not request.tickers:
             return report_result, {"status": "skipped", "reason": "refresh_market_unavailable"}
         today = self.today_func()
+        self._check_cancelled(run_id)
         market_summary = await refresh_market(
             request.tickers,
             today - timedelta(days=max(request.lookback_days, 240)),
             today,
             filter_allowed=False,
         )
+        self._check_cancelled(run_id)
         rebuilt = self.report_build_service_factory().build(request, source_count=source_count)
         return rebuilt, {
             "status": "completed",
@@ -260,6 +277,25 @@ class StandardReportPipelineService:
             repository = self.analysis_run_repository_cls(session)
             if hasattr(repository, "mark_running"):
                 repository.mark_running(run_id)
+
+    def _mark_run_cancelled(self, run_id: int, reason: str) -> None:
+        with self.session_scope_factory() as session:
+            repository = self.analysis_run_repository_cls(session)
+            mark_cancelled = getattr(repository, "mark_cancelled", None)
+            if callable(mark_cancelled):
+                mark_cancelled(run_id, reason)
+            else:
+                self.safe_mark_run_failed_func(run_id, reason)
+
+    def _check_cancelled(self, run_id: int) -> None:
+        if self.task_cancellation_checker is not None:
+            self.task_cancellation_checker(run_id)
+            return
+        raise_if_task_cancelled(
+            run_id,
+            session_scope_factory=self.session_scope_factory,
+            analysis_run_repository_cls=self.analysis_run_repository_cls,
+        )
 
     def _load_resumable_standard_run(self, run_id: int) -> tuple[Any, dict, dict]:
         with self.session_scope_factory() as session:

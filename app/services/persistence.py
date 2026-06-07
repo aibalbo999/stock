@@ -693,6 +693,16 @@ class AnalysisRunRepository:
         self.session.flush()
         return run
 
+    def mark_cancelled(self, run_id: int, reason: str = "task cancellation requested") -> AnalysisRun:
+        run = self.session.get(AnalysisRun, run_id)
+        if run is None:
+            raise ValueError(f"analysis run not found: {run_id}")
+        run.status = "cancelled"
+        run.error = reason
+        run.finished_at = datetime.utcnow()
+        self.session.flush()
+        return run
+
     def latest(self, limit: int = 20) -> list[AnalysisRun]:
         statement = select(AnalysisRun).order_by(AnalysisRun.started_at.desc()).limit(limit)
         return list(self.session.scalars(statement))
@@ -824,6 +834,14 @@ class LLMUsageRepository:
 
     def latest(self, limit: int = 50) -> list[LLMUsageRecord]:
         statement = select(LLMUsageRecord).order_by(LLMUsageRecord.created_at.desc()).limit(limit)
+        return list(self.session.scalars(statement))
+
+    def since(self, created_at: datetime) -> list[LLMUsageRecord]:
+        statement = (
+            select(LLMUsageRecord)
+            .where(LLMUsageRecord.created_at >= created_at)
+            .order_by(LLMUsageRecord.created_at.asc())
+        )
         return list(self.session.scalars(statement))
 
     @staticmethod

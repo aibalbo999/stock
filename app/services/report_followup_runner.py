@@ -14,6 +14,7 @@ from app.services.report_followup import (
     should_require_candidate_audit_follow_up,
     summarize_candidate_support_payload,
 )
+from app.services.task_cancellation import TaskCancelledError, raise_if_task_cancelled
 
 
 class ReportFollowUpRunService:
@@ -34,6 +35,7 @@ class ReportFollowUpRunService:
         count_sufficient_company_filings_func: Callable[[list[str]], int],
         safe_mark_run_failed_func: Callable[[int, str], None],
         tracking_freshness_thresholds: dict,
+        task_cancellation_checker: Callable[[int], None] | None = None,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls
@@ -49,8 +51,9 @@ class ReportFollowUpRunService:
         self.count_sufficient_company_filings_func = count_sufficient_company_filings_func
         self.safe_mark_run_failed_func = safe_mark_run_failed_func
         self.tracking_freshness_thresholds = tracking_freshness_thresholds
+        self.task_cancellation_checker = task_cancellation_checker
 
-    async def run(self, report_id: int, payload: Any) -> dict:
+    async def run(self, report_id: int, payload: Any, *, celery_task_id: str | None = None) -> dict:
         context = self.load_report_follow_up_context_func(report_id)
         request = context["request"]
         quality_gate = context["quality_gate"]
@@ -106,80 +109,96 @@ class ReportFollowUpRunService:
             actions,
             freshness,
             payload,
+            celery_task_id=celery_task_id,
         )
-        if not actions:
-            return self._mark_no_action_run_success(
+        try:
+            self._check_cancelled(run_id)
+            if not actions:
+                return self._mark_no_action_run_success(
+                    run_id,
+                    report_id,
+                    context,
+                    request,
+                    quality_gate,
+                    candidate_audit_required,
+                    all_actions,
+                    available_summary,
+                    selected_summary,
+                    freshness,
+                    payload,
+                    celery_task_id=celery_task_id,
+                )
+
+            execution = await self._execute_actions(run_id, actions, request, payload.news_limit)
+            self._check_cancelled(run_id)
+            execution_summary = execution.get("execution_summary") or {}
+            if "completion" not in execution_summary:
+                execution_summary = self.summarize_follow_up_execution_func(execution)
+            response_payload = {
+                "report_id": report_id,
+                "run_id": run_id,
+                "status": "executed",
+                "purpose": payload.purpose,
+                "force_refresh": payload.force_refresh,
+                "summary": {
+                    "available": available_summary,
+                    "selected": selected_summary,
+                    "execution": execution_summary,
+                },
+                "freshness": freshness,
+                "actions": [action.to_dict() for action in actions],
+                "results": execution["results"],
+                "rerun_report": None,
+            }
+            can_revalidate = can_rerun_candidate_revalidation_from_existing_evidence(context, actions)
+            if can_revalidate and execution_summary.get("rerun_blocked"):
+                execution_summary = {
+                    **execution_summary,
+                    "rerun_blocked": False,
+                    "rerun_blockers": [],
+                    "rerun_blocker_actions": [],
+                    "revalidation_from_existing_evidence": True,
+                }
+                response_payload["summary"]["execution"] = execution_summary
+            if payload.rerun_report and execution_summary.get("rerun_blocked") and not can_revalidate:
+                response_payload["rerun_report"] = {
+                    "status": "skipped",
+                    "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
+                    "blockers": execution_summary.get("rerun_blockers", []),
+                    "next_actions": execution_summary.get("rerun_blocker_actions", []),
+                }
+            elif payload.rerun_report:
+                self._check_cancelled(run_id)
+                response_payload["rerun_report"] = await self._build_rerun_report(
+                    run_id,
+                    context,
+                    request,
+                    actions,
+                )
+                self._check_cancelled(run_id)
+            self._persist_executed_run(
                 run_id,
                 report_id,
                 context,
                 request,
                 quality_gate,
-                candidate_audit_required,
                 all_actions,
-                available_summary,
-                selected_summary,
+                actions,
+                execution,
+                response_payload,
                 freshness,
                 payload,
+                celery_task_id=celery_task_id,
             )
-
-        execution = await self._execute_actions(run_id, actions, request, payload.news_limit)
-        execution_summary = execution.get("execution_summary") or {}
-        if "completion" not in execution_summary:
-            execution_summary = self.summarize_follow_up_execution_func(execution)
-        response_payload = {
-            "report_id": report_id,
-            "run_id": run_id,
-            "status": "executed",
-            "purpose": payload.purpose,
-            "force_refresh": payload.force_refresh,
-            "summary": {
-                "available": available_summary,
-                "selected": selected_summary,
-                "execution": execution_summary,
-            },
-            "freshness": freshness,
-            "actions": [action.to_dict() for action in actions],
-            "results": execution["results"],
-            "rerun_report": None,
-        }
-        can_revalidate = can_rerun_candidate_revalidation_from_existing_evidence(context, actions)
-        if can_revalidate and execution_summary.get("rerun_blocked"):
-            execution_summary = {
-                **execution_summary,
-                "rerun_blocked": False,
-                "rerun_blockers": [],
-                "rerun_blocker_actions": [],
-                "revalidation_from_existing_evidence": True,
+            return response_payload
+        except TaskCancelledError as exc:
+            self._mark_run_cancelled(run_id, str(exc))
+            return {
+                "report_id": report_id,
+                "run_id": run_id,
+                "status": "cancelled",
+                "cancelled": True,
             }
-            response_payload["summary"]["execution"] = execution_summary
-        if payload.rerun_report and execution_summary.get("rerun_blocked") and not can_revalidate:
-            response_payload["rerun_report"] = {
-                "status": "skipped",
-                "reason": "補資料後仍有關鍵缺口，先不重新產生報告。",
-                "blockers": execution_summary.get("rerun_blockers", []),
-                "next_actions": execution_summary.get("rerun_blocker_actions", []),
-            }
-        elif payload.rerun_report:
-            response_payload["rerun_report"] = await self._build_rerun_report(
-                run_id,
-                context,
-                request,
-                actions,
-            )
-        self._persist_executed_run(
-            run_id,
-            report_id,
-            context,
-            request,
-            quality_gate,
-            all_actions,
-            actions,
-            execution,
-            response_payload,
-            freshness,
-            payload,
-        )
-        return response_payload
 
     def _start_run(
         self,
@@ -192,28 +211,30 @@ class ReportFollowUpRunService:
         actions: list,
         freshness: dict,
         payload: Any,
+        *,
+        celery_task_id: str | None = None,
     ) -> int:
+        run_payload = {
+            "source_report_id": report_id,
+            "source_report_topic": context.get("source_report_topic"),
+            "source_report_tickers": context.get("source_report_tickers") or [],
+            "source_report_generated_at": context.get("source_report_generated_at"),
+            "source_report_created_at": context.get("source_report_created_at"),
+            "request": request.model_dump(mode="json"),
+            "quality_gate_before": quality_gate,
+            "company_data_audit_before": context["company_data_audit"],
+            "candidate_audit_required": candidate_audit_required,
+            "available_actions": [action.to_dict() for action in all_actions],
+            "freshness": freshness,
+            "planned_actions": [action.to_dict() for action in actions],
+            "rerun_report": payload.rerun_report,
+            "purpose": payload.purpose,
+            "force_refresh": payload.force_refresh,
+        }
+        if celery_task_id:
+            run_payload["celery_task_id"] = celery_task_id
         with self.session_scope_factory() as session:
-            run = self.analysis_run_repository_cls(session).start(
-                "follow_up_api",
-                {
-                    "source_report_id": report_id,
-                    "source_report_topic": context.get("source_report_topic"),
-                    "source_report_tickers": context.get("source_report_tickers") or [],
-                    "source_report_generated_at": context.get("source_report_generated_at"),
-                    "source_report_created_at": context.get("source_report_created_at"),
-                    "request": request.model_dump(mode="json"),
-                    "quality_gate_before": quality_gate,
-                    "company_data_audit_before": context["company_data_audit"],
-                    "candidate_audit_required": candidate_audit_required,
-                    "available_actions": [action.to_dict() for action in all_actions],
-                    "freshness": freshness,
-                    "planned_actions": [action.to_dict() for action in actions],
-                    "rerun_report": payload.rerun_report,
-                    "purpose": payload.purpose,
-                    "force_refresh": payload.force_refresh,
-                },
-            )
+            run = self.analysis_run_repository_cls(session).start("follow_up_api", run_payload)
             return run.id
 
     def _mark_no_action_run_success(
@@ -229,33 +250,35 @@ class ReportFollowUpRunService:
         selected_summary: dict,
         freshness: dict,
         payload: Any,
+        *,
+        celery_task_id: str | None = None,
     ) -> dict:
+        run_payload = {
+            "source_report_id": report_id,
+            "source_report_topic": context.get("source_report_topic"),
+            "source_report_tickers": context.get("source_report_tickers") or [],
+            "source_report_generated_at": context.get("source_report_generated_at"),
+            "source_report_created_at": context.get("source_report_created_at"),
+            "request": request.model_dump(mode="json"),
+            "quality_gate_before": quality_gate,
+            "company_data_audit_before": context["company_data_audit"],
+            "candidate_audit_required": candidate_audit_required,
+            "available_actions": [action.to_dict() for action in all_actions],
+            "planned_actions": [],
+            "purpose": payload.purpose,
+            "force_refresh": payload.force_refresh,
+            "summary": {
+                "available": available_summary,
+                "selected": selected_summary,
+            },
+            "freshness": freshness,
+            "status": "no_action_required",
+        }
+        if celery_task_id:
+            run_payload["celery_task_id"] = celery_task_id
         with self.session_scope_factory() as session:
             repository = self.analysis_run_repository_cls(session)
-            repository.update_payload(
-                run_id,
-                {
-                    "source_report_id": report_id,
-                    "source_report_topic": context.get("source_report_topic"),
-                    "source_report_tickers": context.get("source_report_tickers") or [],
-                    "source_report_generated_at": context.get("source_report_generated_at"),
-                    "source_report_created_at": context.get("source_report_created_at"),
-                    "request": request.model_dump(mode="json"),
-                    "quality_gate_before": quality_gate,
-                    "company_data_audit_before": context["company_data_audit"],
-                    "candidate_audit_required": candidate_audit_required,
-                    "available_actions": [action.to_dict() for action in all_actions],
-                    "planned_actions": [],
-                    "purpose": payload.purpose,
-                    "force_refresh": payload.force_refresh,
-                    "summary": {
-                        "available": available_summary,
-                        "selected": selected_summary,
-                    },
-                    "freshness": freshness,
-                    "status": "no_action_required",
-                },
-            )
+            repository.update_payload(run_id, run_payload)
             repository.mark_success(run_id, report_id)
         return {
             "report_id": report_id,
@@ -359,6 +382,8 @@ class ReportFollowUpRunService:
         response_payload: dict,
         freshness: dict,
         payload: Any,
+        *,
+        celery_task_id: str | None = None,
     ) -> None:
         persisted_request = (
             (response_payload["rerun_report"] or {}).get("request")
@@ -370,29 +395,29 @@ class ReportFollowUpRunService:
             .get("candidate_whitelist")
             or context.get("candidate_whitelist")
         )
+        run_payload = {
+            "source_report_id": report_id,
+            "source_report_topic": context.get("source_report_topic"),
+            "source_report_tickers": context.get("source_report_tickers") or [],
+            "source_report_generated_at": context.get("source_report_generated_at"),
+            "source_report_created_at": context.get("source_report_created_at"),
+            "request": persisted_request,
+            "quality_gate_before": quality_gate,
+            "available_actions": [action.to_dict() for action in all_actions],
+            "freshness": freshness,
+            "planned_actions": [action.to_dict() for action in actions],
+            "execution": execution,
+            "rerun_report": response_payload["rerun_report"],
+            "candidate_whitelist": persisted_candidates,
+            "purpose": payload.purpose,
+            "force_refresh": payload.force_refresh,
+            "summary": response_payload["summary"],
+        }
+        if celery_task_id:
+            run_payload["celery_task_id"] = celery_task_id
         with self.session_scope_factory() as session:
             repository = self.analysis_run_repository_cls(session)
-            repository.update_payload(
-                run_id,
-                {
-                    "source_report_id": report_id,
-                    "source_report_topic": context.get("source_report_topic"),
-                    "source_report_tickers": context.get("source_report_tickers") or [],
-                    "source_report_generated_at": context.get("source_report_generated_at"),
-                    "source_report_created_at": context.get("source_report_created_at"),
-                    "request": persisted_request,
-                    "quality_gate_before": quality_gate,
-                    "available_actions": [action.to_dict() for action in all_actions],
-                    "freshness": freshness,
-                    "planned_actions": [action.to_dict() for action in actions],
-                    "execution": execution,
-                    "rerun_report": response_payload["rerun_report"],
-                    "candidate_whitelist": persisted_candidates,
-                    "purpose": payload.purpose,
-                    "force_refresh": payload.force_refresh,
-                    "summary": response_payload["summary"],
-                },
-            )
+            repository.update_payload(run_id, run_payload)
             repository.mark_success(
                 run_id,
                 (response_payload["rerun_report"] or {}).get("report_id") or report_id,
@@ -409,3 +434,22 @@ class ReportFollowUpRunService:
             "skipped_details": skipped_details,
             "thresholds": self.tracking_freshness_thresholds,
         }
+
+    def _mark_run_cancelled(self, run_id: int, reason: str) -> None:
+        with self.session_scope_factory() as session:
+            repository = self.analysis_run_repository_cls(session)
+            mark_cancelled = getattr(repository, "mark_cancelled", None)
+            if callable(mark_cancelled):
+                mark_cancelled(run_id, reason)
+            else:
+                self.safe_mark_run_failed_func(run_id, reason)
+
+    def _check_cancelled(self, run_id: int) -> None:
+        if self.task_cancellation_checker is not None:
+            self.task_cancellation_checker(run_id)
+            return
+        raise_if_task_cancelled(
+            run_id,
+            session_scope_factory=self.session_scope_factory,
+            analysis_run_repository_cls=self.analysis_run_repository_cls,
+        )

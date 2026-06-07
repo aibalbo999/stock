@@ -337,3 +337,21 @@ def test_llm_usage_repository_records_report_execution_summary() -> None:
         assert payload["observability"]["latency_ms"] == 123.4
     finally:
         session.close()
+
+
+def test_analysis_run_repository_marks_run_cancelled() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repository = AnalysisRunRepository(session)
+        run = repository.start("celery", {"topic": "AI"})
+        cancelled = repository.mark_cancelled(run.id, "user cancelled")
+        session.commit()
+
+        assert cancelled.status == "cancelled"
+        assert cancelled.error == "user cancelled"
+        assert cancelled.finished_at is not None
+    finally:
+        session.close()

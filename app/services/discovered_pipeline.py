@@ -24,6 +24,7 @@ from app.services.ingestion import (
 )
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
+from app.services.task_cancellation import TaskCancelledError, raise_if_task_cancelled
 from app.services.workflow_checkpoint import WorkflowCheckpointRecorder
 
 
@@ -107,6 +108,7 @@ class DiscoveredTopicPipelineService:
         safe_mark_run_failed_func: Callable[[int, str], None],
         auto_follow_up_func: Callable[[int], Awaitable[dict]],
         workflow_steps: list[str],
+        task_cancellation_checker: Callable[[int], None] | None = None,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls
@@ -133,16 +135,21 @@ class DiscoveredTopicPipelineService:
         self.safe_mark_run_failed_func = safe_mark_run_failed_func
         self.auto_follow_up_func = auto_follow_up_func
         self.workflow_steps = workflow_steps
+        self.task_cancellation_checker = task_cancellation_checker
 
-    async def run(self, payload: Any) -> dict:
+    async def run(self, payload: Any, *, celery_task_id: str | None = None) -> dict:
         run_id = self._start_run(payload)
         workflow = self.workflow_recorder_factory()
         workflow.initialize(run_id, "ai_discovered_topic_pipeline", self.workflow_steps)
+        if celery_task_id:
+            self._attach_celery_task_id(run_id, celery_task_id)
         current_step = "topic_discovery"
         try:
+            self._check_cancelled(run_id)
             service = self.topic_discovery_service_cls()
             workflow.start_step(run_id, current_step, {"topic": payload.topic})
             discovery = await self.discover_topic_with_timeout_func(service, payload.topic)
+            self._check_cancelled(run_id)
             plan = self.topic_discovery_plan_cls.model_validate(discovery["plan"])
             limit_per_query, evidence_limit, max_queries = self.discovery_fetch_settings_func(payload)
             document_limit = self.discovery_document_limit_func(payload, evidence_limit)
@@ -171,6 +178,7 @@ class DiscoveredTopicPipelineService:
                 },
             )
             current_step = "source_ingestion"
+            self._check_cancelled(run_id)
             workflow.start_step(
                 run_id,
                 current_step,
@@ -189,6 +197,7 @@ class DiscoveredTopicPipelineService:
                 max_queries,
                 document_limit=document_limit,
             )
+            self._check_cancelled(run_id)
             urls = discovery_ingestion["urls"]
             end_date = discovery_ingestion["end_date"]
             documents = discovery_ingestion["documents"]
@@ -224,6 +233,7 @@ class DiscoveredTopicPipelineService:
                 },
             )
             current_step = "candidate_revalidation"
+            self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"candidate_count": len(candidate_payload)})
             candidate_filing_ingestion, candidate_payload, documents = self._revalidate_candidates(
                 payload,
@@ -233,6 +243,7 @@ class DiscoveredTopicPipelineService:
                 candidate_payload,
                 documents,
             )
+            self._check_cancelled(run_id)
             candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
             source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(candidate_payload)
             promoted_tickers = [
@@ -268,12 +279,14 @@ class DiscoveredTopicPipelineService:
             )
 
             current_step = "market_data_refresh"
+            self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"promoted_count": len(promoted_tickers)})
             market_data = await self.discovered_market_data_service_factory().fetch_and_persist_for_discovery(
                 payload,
                 promoted_tickers,
                 end_date,
             )
+            self._check_cancelled(run_id)
             workflow.complete_step(
                 run_id,
                 current_step,
@@ -290,6 +303,7 @@ class DiscoveredTopicPipelineService:
                 {"market_data": self._market_data_payload(market_data)},
             )
             current_step = "report_build"
+            self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"promoted_count": len(promoted_tickers)})
             report_result = self.discovered_report_builder_service_factory().build_and_store_report(
                 payload=payload,
@@ -309,6 +323,7 @@ class DiscoveredTopicPipelineService:
                 market_data=market_data,
                 run_id=run_id,
             )
+            self._check_cancelled(run_id)
             response = report_result["response"]
             request = report_result.get("request") or payload
             report_id = report_result["report_id"]
@@ -327,10 +342,12 @@ class DiscoveredTopicPipelineService:
             )
             self._checkpoint_report_build_payload(run_id, workflow, run_payload)
             current_step = "auto_follow_up"
+            self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"report_id": report_id})
             run_payload = workflow.complete_workflow_payload(run_id, run_payload)
             run_record_updated = self.safe_update_run_success_func(run_id, run_payload, report_id)
             auto_follow_up = await self.auto_follow_up_func(report_id)
+            self._check_cancelled(run_id)
             active_report_id = (
                 matching_follow_up_rerun_report_id(
                     auto_follow_up,
@@ -379,6 +396,10 @@ class DiscoveredTopicPipelineService:
                 "topic": request.topic,
                 "report": response.model_dump(mode="json"),
             }
+        except TaskCancelledError as exc:
+            workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})
+            self._mark_run_cancelled(run_id, str(exc))
+            raise
         except Exception as exc:
             workflow.fail_step(run_id, current_step, str(exc))
             self.safe_mark_run_failed_func(run_id, str(exc))
@@ -956,6 +977,10 @@ class DiscoveredTopicPipelineService:
         payload = workflow.payload_with_current_workflow(run_id, run_payload)
         return self._update_run_payload(run_id, payload)
 
+    def _attach_celery_task_id(self, run_id: int, celery_task_id: str) -> bool:
+        current_payload = self._current_run_payload(run_id)
+        return self._update_run_payload(run_id, {**current_payload, "celery_task_id": celery_task_id})
+
     def _update_run_payload(self, run_id: int, payload: dict) -> bool:
         try:
             with self.session_scope_factory() as session:
@@ -980,6 +1005,25 @@ class DiscoveredTopicPipelineService:
             repository = self.analysis_run_repository_cls(session)
             if hasattr(repository, "mark_running"):
                 repository.mark_running(run_id)
+
+    def _mark_run_cancelled(self, run_id: int, reason: str) -> None:
+        with self.session_scope_factory() as session:
+            repository = self.analysis_run_repository_cls(session)
+            mark_cancelled = getattr(repository, "mark_cancelled", None)
+            if callable(mark_cancelled):
+                mark_cancelled(run_id, reason)
+            else:
+                self.safe_mark_run_failed_func(run_id, reason)
+
+    def _check_cancelled(self, run_id: int) -> None:
+        if self.task_cancellation_checker is not None:
+            self.task_cancellation_checker(run_id)
+            return
+        raise_if_task_cancelled(
+            run_id,
+            session_scope_factory=self.session_scope_factory,
+            analysis_run_repository_cls=self.analysis_run_repository_cls,
+        )
 
     def _load_resumable_discovered_run(self, run_id: int) -> tuple[Any, dict, dict]:
         with self.session_scope_factory() as session:

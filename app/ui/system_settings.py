@@ -153,6 +153,11 @@ def render_system_settings() -> None:
         except requests.RequestException as exc:
             service_snapshot = {}
             st.error(f"讀取服務狀態失敗：{request_error_message(exc)}")
+        try:
+            llm_quota = api_get("/llm/quota")
+        except requests.RequestException as exc:
+            llm_quota = {"models": [], "totals": {}, "window": {}, "recommended_model": None}
+            st.error(f"讀取 AI 額度狀態失敗：{request_error_message(exc)}")
         strict_upgrade_audit = st.toggle(
             "正式部署檢查",
             value=False,
@@ -171,6 +176,35 @@ def render_system_settings() -> None:
         service_cols = st.columns(len(service_metrics))
         for column, (label, value) in zip(service_cols, service_metrics.items()):
             column.metric(label, value)
+        with st.expander("AI 額度與模型路由", expanded=True):
+            quota_window = llm_quota.get("window") if isinstance(llm_quota.get("window"), dict) else {}
+            quota_totals = llm_quota.get("totals") if isinstance(llm_quota.get("totals"), dict) else {}
+            quota_cols = st.columns(4)
+            quota_cols[0].metric("推薦模型", llm_quota.get("recommended_model") or "-")
+            quota_cols[1].metric("今日請求", int(quota_totals.get("request_count") or 0))
+            quota_cols[2].metric("今日 Token", int(quota_totals.get("total_token_estimate") or 0))
+            quota_cols[3].metric("額度時區", quota_window.get("timezone") or "-")
+            quota_rows = []
+            for model in llm_quota.get("models") or []:
+                quota_rows.append(
+                    {
+                        "rank": model.get("rank"),
+                        "model": model.get("model"),
+                        "status": model.get("status"),
+                        "requests_used": model.get("requests_used"),
+                        "request_budget": model.get("request_budget"),
+                        "requests_remaining": model.get("requests_remaining"),
+                        "tokens_used": model.get("tokens_used"),
+                        "token_budget": model.get("token_budget"),
+                    }
+                )
+            if quota_rows:
+                st.dataframe(quota_rows, width="stretch", hide_index=True)
+            else:
+                st.info("尚未有 AI 用量紀錄。")
+            budget_source = llm_quota.get("budget_source") if isinstance(llm_quota.get("budget_source"), dict) else {}
+            if budget_source.get("note"):
+                st.caption(str(budget_source["note"]))
         with st.expander("進階：服務細節"):
             st.json(status["settings"])
             st.json(status["integrity"])

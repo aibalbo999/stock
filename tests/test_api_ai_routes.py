@@ -15,11 +15,15 @@ def test_ai_router_delegates_llm_status_and_healthcheck() -> None:
         def usage_records(self, limit: int = 50) -> list[dict]:
             return [{"model": "gemini-3.5-flash", "limit": limit}]
 
+        def quota_summary(self) -> dict:
+            return {"recommended_model": "gemini-3.5-flash"}
+
     client = _client(llm_api=FakeLlmApi())
 
     assert client.get("/llm/status").json() == {"provider": "litellm", "enabled": True}
     assert client.post("/llm/test").json() == {"ok": True, "model": "gemini/gemini-2.5-flash"}
     assert client.get("/llm/usage?limit=3").json() == [{"model": "gemini-3.5-flash", "limit": 3}]
+    assert client.get("/llm/quota").json() == {"recommended_model": "gemini-3.5-flash"}
 
 
 def test_ai_router_delegates_discovery_endpoints() -> None:

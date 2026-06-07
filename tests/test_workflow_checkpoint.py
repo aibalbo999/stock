@@ -171,6 +171,28 @@ def test_workflow_checkpoint_marks_failed_step_and_duration() -> None:
     assert step["error"] == "timeout"
 
 
+def test_workflow_checkpoint_marks_cancelled_step_as_not_resumable() -> None:
+    payload = WorkflowCheckpointRecorder.initialize_payload(
+        {},
+        "workflow",
+        ["pre_report_refresh", "report_build"],
+        "2026-05-31T11:00:00",
+    )
+    payload = WorkflowCheckpointRecorder.cancel_step_payload(
+        payload,
+        "pre_report_refresh",
+        "task cancellation requested",
+        "2026-05-31T11:01:00",
+    )
+
+    summary = workflow_run_summary(payload["workflow"])
+
+    assert payload["workflow"]["status"] == "cancelled"
+    assert payload["workflow"]["resume"]["resumable"] is False
+    assert summary["status"] == "cancelled"
+    assert summary["resume_hint"] == "流程已取消；可視需要重新送出任務。"
+
+
 def test_workflow_checkpoint_resume_state_tracks_next_step_after_initialization() -> None:
     payload = WorkflowCheckpointRecorder.initialize_payload(
         {"request": {"topic": "AI"}},

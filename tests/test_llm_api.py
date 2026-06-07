@@ -179,3 +179,26 @@ def test_llm_api_service_lists_usage_records_from_repository() -> None:
     )
 
     assert service.usage_records(3) == [{"id": 1, "model": "gemini-3.5-flash"}]
+
+
+def test_llm_api_service_returns_quota_summary() -> None:
+    captured = {}
+
+    class FakeQuotaService:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def summary(self) -> dict:
+            return {"recommended_model": "gemini-3.5-flash"}
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = LLMApiService(
+        session_scope_factory=fake_session_scope,
+        llm_quota_service_cls=FakeQuotaService,
+    )
+
+    assert service.quota_summary() == {"recommended_model": "gemini-3.5-flash"}
+    assert captured["session_scope_factory"] is fake_session_scope

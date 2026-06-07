@@ -7,6 +7,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.services.llm_client import LLMClient, summarize_llm_attempts
 from app.services.llm_observability import llm_observability_status
+from app.services.llm_quota import LLMQuotaGovernanceService
 from app.services.llm_usage import list_llm_usage_records
 from app.services.persistence import LLMUsageRepository
 
@@ -19,11 +20,13 @@ class LLMApiService:
         llm_client_cls: type[LLMClient] = LLMClient,
         session_scope_factory: Callable | None = None,
         llm_usage_repository_cls: type[LLMUsageRepository] = LLMUsageRepository,
+        llm_quota_service_cls: type[LLMQuotaGovernanceService] = LLMQuotaGovernanceService,
     ) -> None:
         self.settings_provider = settings_provider
         self.llm_client_cls = llm_client_cls
         self.session_scope_factory = session_scope_factory
         self.llm_usage_repository_cls = llm_usage_repository_cls
+        self.llm_quota_service_cls = llm_quota_service_cls
 
     def status(self) -> dict:
         settings = self.settings_provider()
@@ -101,6 +104,15 @@ class LLMApiService:
             session_scope_factory=self.session_scope_factory,
             llm_usage_repository_cls=self.llm_usage_repository_cls,
         )
+
+    def quota_summary(self) -> dict:
+        if self.session_scope_factory is None:
+            return {}
+        return self.llm_quota_service_cls(
+            settings_provider=self.settings_provider,
+            session_scope_factory=self.session_scope_factory,
+            llm_usage_repository_cls=self.llm_usage_repository_cls,
+        ).summary()
 
     @staticmethod
     def _model_provider(model: str) -> str:

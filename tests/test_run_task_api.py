@@ -110,8 +110,17 @@ def test_run_task_service_queues_async_report_after_whitelist_check() -> None:
 
     assert result == {"task_id": "task-123", "status": "queued"}
     assert captured["tickers"] == ["2330"]
-    assert captured["payload"]["topic"] == "AI 產業鏈"
-    assert captured["payload"]["tickers"] == ["2330"]
+    assert captured["payload"] == {
+        "topic": "AI 產業鏈",
+        "tickers": ["2330"],
+        "lookback_days": 7,
+        "evidence_limit": 40,
+        "investor_capital": 1000000,
+        "beginner_mode": True,
+        "investor_profile": "beginner",
+        "max_position_pct": 0.1,
+        "cash_reserve_pct": 0.3,
+    }
 
 
 def test_run_task_service_queues_discovered_report_data_operation_and_follow_up() -> None:

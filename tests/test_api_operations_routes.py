@@ -188,6 +188,42 @@ def test_operations_router_delegates_task_summary_before_task_id_route() -> None
     assert response.json() == {"window": {"days": 3}, "totals": {"run_count": 9}}
 
 
+def test_operations_router_delegates_task_status_and_task_run_lookup() -> None:
+    captured = {}
+
+    class FakeRunTaskApi:
+        def get_task_status(self, task_id: str) -> dict:
+            captured["status"] = task_id
+            return {
+                "task_id": task_id,
+                "status": "SUCCESS",
+                "ready": True,
+                "successful": True,
+                "result": {"run_id": 19},
+            }
+
+        def get_run_by_task_id(self, task_id: str) -> dict:
+            captured["run"] = task_id
+            return {"id": 19, "status": "success", "task_id": task_id}
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    status_response = client.get("/tasks/task-linked")
+    run_response = client.get("/tasks/task-linked/run")
+
+    assert status_response.status_code == 200
+    assert status_response.json() == {
+        "task_id": "task-linked",
+        "status": "SUCCESS",
+        "ready": True,
+        "successful": True,
+        "result": {"run_id": 19},
+    }
+    assert run_response.status_code == 200
+    assert run_response.json() == {"id": 19, "status": "success", "task_id": "task-linked"}
+    assert captured == {"status": "task-linked", "run": "task-linked"}
+
+
 def test_operations_router_maps_task_queue_errors_to_503() -> None:
     class FakeRunTaskApi:
         def queue_data_operation(self, operation: str, payload: dict) -> dict:

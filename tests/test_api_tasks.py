@@ -13,29 +13,13 @@ from app.api import main
 from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportResponse, Source
 from app.services.followup_actions import FollowUpAction
 from app.services import report_quality
+from app.services.discovered_market_data import merge_financial_metric_history, merge_latest_by_ticker
+from app.services.report_followup import serialize_run
 from app.services.report_quality import (
     parse_quality_gate_from_markdown,
     render_quality_action_guard_markdown,
     summarize_document_source_quality,
 )
-
-
-class DummyQueuedTask:
-    id = "queued-task-id"
-
-
-class DummyTaskResult:
-    def __init__(self, status: str, ready: bool, successful: bool, result: object) -> None:
-        self.status = status
-        self._ready = ready
-        self._successful = successful
-        self.result = result
-
-    def ready(self) -> bool:
-        return self._ready
-
-    def successful(self) -> bool:
-        return self._successful
 
 
 class DummyRun:
@@ -66,7 +50,7 @@ def test_serialize_run_exposes_parsed_workflow() -> None:
         finished_at=datetime(2026, 5, 31, 9, 1, 0),
     )
 
-    serialized = main.serialize_run(run)
+    serialized = serialize_run(run)
 
     assert serialized["workflow"] == {
         "name": "standard_report_pipeline",
@@ -85,7 +69,7 @@ def test_merge_latest_by_ticker_uses_cached_data_when_fetch_fails() -> None:
     ]
     fetched = [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 30), close=1210.0)]
 
-    merged = main.merge_latest_by_ticker(["2330", "2382"], fetched, cached, "trade_date")
+    merged = merge_latest_by_ticker(["2330", "2382"], fetched, cached, "trade_date")
 
     assert [snapshot.ticker for snapshot in merged] == ["2330", "2382"]
     assert [snapshot.close for snapshot in merged] == [1210.0, 300.0]
@@ -121,120 +105,10 @@ def test_merge_financial_metric_history_dedupes_cached_and_fetched_rows() -> Non
         ),
     ]
 
-    merged = main.merge_financial_metric_history(fetched, cached)
+    merged = merge_financial_metric_history(fetched, cached)
     values = {(metric.ticker, metric.metric): metric.value for metric in merged}
 
     assert values == {("2330", "revenue"): 110.0, ("2382", "revenue"): 50.0}
-
-
-def test_task_status_success(monkeypatch) -> None:
-    def fake_async_result(task_id: str) -> DummyTaskResult:
-        assert task_id == "task-ok"
-        return DummyTaskResult(
-            "SUCCESS",
-            True,
-            True,
-            {"run_id": 1, "id": 2, "title": "report"},
-        )
-
-    monkeypatch.setattr(main.celery_app, "AsyncResult", fake_async_result)
-
-    response = TestClient(main.app).get("/tasks/task-ok")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "task_id": "task-ok",
-        "status": "SUCCESS",
-        "ready": True,
-        "successful": True,
-        "result": {"run_id": 1, "id": 2, "title": "report"},
-    }
-
-
-def test_task_status_includes_linked_run(monkeypatch) -> None:
-    class FakeRunRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get_by_celery_task_id(self, task_id: str) -> DummyRun | None:
-            assert task_id == "task-linked"
-            return DummyRun()
-
-    @contextmanager
-    def fake_session_scope():
-        yield object()
-
-    def fake_async_result(task_id: str) -> DummyTaskResult:
-        assert task_id == "task-linked"
-        return DummyTaskResult("SUCCESS", True, True, {"run_id": 19})
-
-    monkeypatch.setattr(main.celery_app, "AsyncResult", fake_async_result)
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeRunRepository)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-
-    response = TestClient(main.app).get("/tasks/task-linked")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["task_id"] == "task-linked"
-    assert body["status"] == "SUCCESS"
-    assert body["run"]["id"] == 19
-    assert body["run"]["report_id"] == 11
-    assert body["run"]["payload"] == '{"celery_task_id": "task-linked"}'
-
-
-def test_generate_report_async_queues_celery_task(monkeypatch) -> None:
-    captured_payload = {}
-
-    def fake_delay(payload: dict) -> DummyQueuedTask:
-        captured_payload.update(payload)
-        return DummyQueuedTask()
-
-    monkeypatch.setattr(main.generate_report_task, "delay", fake_delay)
-
-    response = TestClient(main.app).post(
-        "/reports/generate_async",
-        json={
-            "topic": "AI 產業鏈",
-            "tickers": ["2330"],
-            "lookback_days": 7,
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"task_id": "queued-task-id", "status": "queued"}
-    assert captured_payload == {
-        "topic": "AI 產業鏈",
-        "tickers": ["2330"],
-        "lookback_days": 7,
-        "evidence_limit": 40,
-        "investor_capital": 1000000,
-        "beginner_mode": True,
-        "investor_profile": "beginner",
-        "max_position_pct": 0.1,
-        "cash_reserve_pct": 0.3,
-    }
-
-
-def test_generate_report_async_requires_whitelisted_ticker(monkeypatch) -> None:
-    def fake_delay(payload: dict) -> DummyQueuedTask:
-        raise AssertionError("task should not be queued without whitelisted tickers")
-
-    monkeypatch.setattr(main.generate_report_task, "delay", fake_delay)
-
-    response = TestClient(main.app).post(
-        "/reports/generate_async",
-        json={
-            "topic": "AI 產業鏈",
-            "tickers": [],
-            "lookback_days": 7,
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.json() == {
-        "detail": "async report generation requires at least one whitelisted ticker"
-    }
 
 
 def test_pipeline_run_returns_503_when_workflow_engine_is_unavailable(monkeypatch) -> None:
@@ -3679,97 +3553,3 @@ def test_ready_quality_gate_does_not_add_action_guard() -> None:
     )
 
     assert render_quality_action_guard_markdown(gate) == ""
-
-
-def test_task_status_failure(monkeypatch) -> None:
-    def fake_async_result(task_id: str) -> DummyTaskResult:
-        assert task_id == "task-failed"
-        return DummyTaskResult("FAILURE", True, False, RuntimeError("boom"))
-
-    monkeypatch.setattr(main.celery_app, "AsyncResult", fake_async_result)
-
-    response = TestClient(main.app).get("/tasks/task-failed")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "task_id": "task-failed",
-        "status": "FAILURE",
-        "ready": True,
-        "successful": False,
-        "error": "boom",
-    }
-
-
-def test_task_status_pending(monkeypatch) -> None:
-    def fake_async_result(task_id: str) -> DummyTaskResult:
-        assert task_id == "task-pending"
-        return DummyTaskResult("PENDING", False, False, None)
-
-    monkeypatch.setattr(main.celery_app, "AsyncResult", fake_async_result)
-
-    response = TestClient(main.app).get("/tasks/task-pending")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "task_id": "task-pending",
-        "status": "PENDING",
-        "ready": False,
-        "successful": False,
-    }
-
-
-def test_get_run_by_task_id(monkeypatch) -> None:
-    class FakeRunRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get_by_celery_task_id(self, task_id: str) -> DummyRun | None:
-            assert task_id == "task-linked"
-            return DummyRun()
-
-    @contextmanager
-    def fake_session_scope():
-        yield object()
-
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeRunRepository)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-
-    response = TestClient(main.app).get("/tasks/task-linked/run")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "id": 19,
-        "source": "celery",
-        "status": "success",
-        "payload": '{"celery_task_id": "task-linked"}',
-        "workflow": None,
-        "workflow_summary": None,
-        "workflow_orchestration": None,
-        "report_id": 11,
-        "output_path": "reports/demo.md",
-        "error": None,
-        "started_at": "2026-05-24T04:52:33",
-        "finished_at": "2026-05-24T04:52:50",
-    }
-
-
-def test_get_run_by_task_id_not_found(monkeypatch) -> None:
-    class FakeRunRepository:
-        def __init__(self, session: object) -> None:
-            self.session = session
-
-        def get_by_celery_task_id(self, task_id: str) -> None:
-            assert task_id == "missing"
-            return None
-
-    @contextmanager
-    def fake_session_scope():
-        yield object()
-
-    monkeypatch.setattr(main, "AnalysisRunRepository", FakeRunRepository)
-    monkeypatch.setattr(main, "session_scope", fake_session_scope)
-
-    response = TestClient(main.app).get("/tasks/missing/run")
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "run not found for task"}

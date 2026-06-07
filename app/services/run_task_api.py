@@ -22,6 +22,11 @@ from app.services.task_failure_diagnostics import (
 )
 
 
+def _alert_sort_key(alert: dict) -> int:
+    severity_order = {"error": 0, "warning": 1, "info": 2}
+    return severity_order.get(str(alert.get("severity") or "info"), 3)
+
+
 class RunTaskApiError(ValueError):
     pass
 
@@ -88,6 +93,8 @@ class RunTaskApiService:
         ]
         rows = [row for row in rows if row["started_at"] >= start.isoformat()]
         totals = self._task_summary_totals(rows)
+        by_error_category = self._count_error_categories(rows)
+        error_category_daily = self._error_category_daily_rows(rows)
         return {
             "window": {
                 "days": safe_days,
@@ -99,8 +106,9 @@ class RunTaskApiService:
             "by_status": self._count_rows(rows, "status"),
             "by_source": self._count_rows(rows, "source"),
             "by_operation": self._count_rows(rows, "operation"),
-            "by_error_category": self._count_error_categories(rows),
-            "error_category_daily": self._error_category_daily_rows(rows),
+            "by_error_category": by_error_category,
+            "error_category_daily": error_category_daily,
+            "alerts": self._task_failure_alerts(rows, error_category_daily),
             "recent_failures": [
                 row for row in rows if row["status"] in {"failed", "cancelled"} or row.get("error")
             ][:10],
@@ -652,6 +660,87 @@ class RunTaskApiService:
                 key=lambda item: (item[0][0], item[0][1], item[0][2]),
             )
         ]
+
+    @classmethod
+    def _task_failure_alerts(cls, rows: list[dict], daily_rows: list[dict]) -> list[dict]:
+        category_rows: dict[str, list[dict]] = {}
+        daily_dates: dict[str, set[str]] = {}
+        for row in rows:
+            category = row.get("error_category")
+            if category:
+                category_rows.setdefault(str(category), []).append(row)
+        for row in daily_rows:
+            category = row.get("error_category")
+            date_value = row.get("date")
+            if category and date_value:
+                daily_dates.setdefault(str(category), set()).add(str(date_value))
+        alerts = []
+        for category, grouped_rows in sorted(category_rows.items()):
+            count = len(grouped_rows)
+            days = len(daily_dates.get(category, set()))
+            severity = cls._alert_severity_for_category(category, grouped_rows, count=count, days=days)
+            if not severity:
+                continue
+            sample = grouped_rows[0]
+            alerts.append(
+                {
+                    "severity": severity,
+                    "code": f"task_failure_{category}",
+                    "error_category": category,
+                    "count": count,
+                    "days": days,
+                    "message": cls._task_failure_alert_message(
+                        category=category,
+                        count=count,
+                        days=days,
+                        summary=str(sample.get("error_summary") or category),
+                    ),
+                    "next_steps": sample.get("next_steps") if isinstance(sample.get("next_steps"), list) else [],
+                }
+            )
+        stale_count = sum(1 for row in rows if row.get("stale_running"))
+        if stale_count:
+            alerts.append(
+                {
+                    "severity": "warning",
+                    "code": "task_stale_running",
+                    "error_category": "stale_running",
+                    "count": stale_count,
+                    "days": 0,
+                    "message": f"有 {stale_count} 個背景任務疑似卡住，請檢查 worker 與任務狀態。",
+                    "next_steps": [
+                        "查看背景任務觀測中的疑似卡住任務。",
+                        "確認 Celery worker 是否在線，必要時取消或重試任務。",
+                    ],
+                }
+            )
+        return sorted(alerts, key=lambda item: (_alert_sort_key(item), str(item.get("code") or "")))
+
+    @staticmethod
+    def _alert_severity_for_category(
+        category: str,
+        rows: list[dict],
+        *,
+        count: int,
+        days: int,
+    ) -> str | None:
+        if category in {"task_queue", "payload_validation"}:
+            return "error"
+        if count >= 2 or days >= 2:
+            return "warning" if any(row.get("error_severity") != "error" for row in rows) else "error"
+        return None
+
+    @staticmethod
+    def _task_failure_alert_message(
+        *,
+        category: str,
+        count: int,
+        days: int,
+        summary: str,
+    ) -> str:
+        if days >= 2:
+            return f"{summary} 在 {days} 天內重複出現 {count} 次，建議優先處理。"
+        return f"{summary} 近期出現 {count} 次，建議檢查相關設定或外部服務。"
 
     @staticmethod
     def _count_rows(rows: list[dict], key: str) -> list[dict]:

@@ -416,6 +416,7 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["ui_task_failure_drilldown_enabled"] is True
     assert status["frontend"]["ui_task_failure_category_display_enabled"] is True
     assert status["frontend"]["ui_task_failure_trend_enabled"] is True
+    assert status["frontend"]["ui_task_failure_alerts_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
@@ -611,6 +612,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_trend_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_alerts_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["task_retry_uses_scoped_state_key"] is True

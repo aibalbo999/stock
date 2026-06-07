@@ -213,6 +213,18 @@ def render_maintenance_tab() -> None:
         if smoke_command:
             st.caption("診斷指令")
             st.code(smoke_command, language="bash")
+        task_alerts = [alert for alert in task_summary.get("alerts") or [] if isinstance(alert, dict)]
+        for alert in task_alerts:
+            message = str(alert.get("message") or alert.get("code") or "")
+            next_steps = [str(step) for step in alert.get("next_steps") or [] if str(step).strip()]
+            if next_steps:
+                message = f"{message} 建議：" + "；".join(next_steps)
+            if alert.get("severity") == "error":
+                st.error(message)
+            elif alert.get("severity") == "warning":
+                st.warning(message)
+            else:
+                st.info(message)
 
         task_totals = task_summary.get("totals") if isinstance(task_summary.get("totals"), dict) else {}
         task_cols = st.columns(5)

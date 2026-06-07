@@ -138,6 +138,20 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             "count": 1,
         },
     ]
+    assert summary["alerts"] == [
+        {
+            "severity": "warning",
+            "code": "task_stale_running",
+            "error_category": "stale_running",
+            "count": 1,
+            "days": 0,
+            "message": "有 1 個背景任務疑似卡住，請檢查 worker 與任務狀態。",
+            "next_steps": [
+                "查看背景任務觀測中的疑似卡住任務。",
+                "確認 Celery worker 是否在線，必要時取消或重試任務。",
+            ],
+        }
+    ]
     assert summary["recent_failures"][0]["task_id"] == "task-failed"
     assert summary["recent_failures"][0]["error_category"] == "quota"
     assert summary["recent_failures"][0]["error_severity"] == "warning"
@@ -178,6 +192,48 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
         assert diagnostic["category"] == expected_category
         assert diagnostic["summary"]
         assert diagnostic["next_steps"]
+
+
+def test_run_task_api_alerts_on_queue_errors_and_repeated_failure_categories() -> None:
+    rows = [
+        {
+            "error_category": "task_queue",
+            "error_severity": "error",
+            "error_summary": "Redis/Celery queue 或 worker 異常",
+            "next_steps": ["重新啟動 Redis/Celery。"],
+            "stale_running": False,
+        },
+        {
+            "error_category": "data_source",
+            "error_severity": "warning",
+            "error_summary": "市場資料、公司文件或新聞來源異常",
+            "next_steps": ["檢查資料源 token。"],
+            "stale_running": False,
+        },
+        {
+            "error_category": "data_source",
+            "error_severity": "warning",
+            "error_summary": "市場資料、公司文件或新聞來源異常",
+            "next_steps": ["檢查資料源 token。"],
+            "stale_running": False,
+        },
+    ]
+    daily_rows = [
+        {"date": "2026-06-07", "error_category": "task_queue", "severity": "error", "count": 1},
+        {"date": "2026-06-07", "error_category": "data_source", "severity": "warning", "count": 1},
+        {"date": "2026-06-08", "error_category": "data_source", "severity": "warning", "count": 1},
+    ]
+
+    alerts = RunTaskApiService._task_failure_alerts(rows, daily_rows)
+
+    assert alerts[0]["severity"] == "error"
+    assert alerts[0]["code"] == "task_failure_task_queue"
+    assert alerts[0]["count"] == 1
+    assert alerts[1]["severity"] == "warning"
+    assert alerts[1]["code"] == "task_failure_data_source"
+    assert alerts[1]["count"] == 2
+    assert alerts[1]["days"] == 2
+    assert "2 天內重複出現 2 次" in alerts[1]["message"]
 
 
 def test_run_task_api_summary_prefers_persisted_failure_diagnostics() -> None:

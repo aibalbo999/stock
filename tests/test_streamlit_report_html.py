@@ -224,6 +224,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "失敗原因分類" in source
     assert 'task_summary.get("error_category_daily")' in source
     assert "失敗原因趨勢" in source
+    assert 'task_summary.get("alerts")' in source
+    assert 'alert.get("severity") == "error"' in source
+    assert 'alert.get("severity") == "warning"' in source
     assert "maintenance_retry_failed_task" in source
     assert "maintenance_inspect_task_id" in source
     assert 'f"/tasks/{selected_retry_task_id}/retry"' in source

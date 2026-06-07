@@ -4,8 +4,11 @@ import subprocess
 
 
 LOCAL_DOCKER_DEPENDENCY_IMAGES = {
+    "redis": "redis:7-alpine",
+    "postgres": "postgres:16-alpine",
     "neo4j": "neo4j:5-community",
     "browserless": "ghcr.io/browserless/chromium:latest",
+    "chroma": "chromadb/chroma:latest",
 }
 
 

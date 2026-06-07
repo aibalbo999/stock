@@ -27,6 +27,13 @@ STREAMLIT_HOST = "0.0.0.0"
 STREAMLIT_PORT = 8501
 LOCAL_BROWSERLESS_PORT = 3000
 LOCAL_FLARESOLVERR_PORT = 8191
+LOCAL_REDIS_PORT = 6379
+LOCAL_POSTGRES_PORT = 5432
+LOCAL_CHROMA_PORT = 8001
+LOCAL_CHROMA_ENV_DEFAULTS = {
+    "USE_CHROMA": "true",
+    "CHROMA_API_URL": f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
+}
 LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
     "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
     "COMPANY_FILING_BROWSER_RENDER_URL": (
@@ -47,7 +54,7 @@ def main() -> int:
     parser.add_argument(
         "--start-dependencies",
         action="store_true",
-        help="Start docker-compose dependencies: Redis, Postgres, Neo4j, and Browserless.",
+        help="Start docker-compose dependencies: Redis, Postgres, Neo4j, Browserless, and Chroma.",
     )
     parser.add_argument(
         "--prefer-unlocker",
@@ -103,6 +110,7 @@ def main() -> int:
     if args.start_dependencies:
         local_dependency_env = apply_local_dependency_env_defaults(
             enable_browser_render=True,
+            enable_chroma=True,
             prefer_browserless=True,
             prefer_unlocker=bool(args.prefer_unlocker),
         )
@@ -368,7 +376,9 @@ def start_dependency_services(
     image_status = local_docker_image_status(_dependency_images(include_unlocker=include_unlocker))
     if not image_status.get("all_present") and not allow_pull_missing_images:
         missing = "、".join(image_status.get("missing_services") or [])
-        remediation = image_status.get("remediation") or "docker compose pull neo4j browserless"
+        remediation = image_status.get("remediation") or (
+            "docker compose pull redis postgres neo4j browserless chroma"
+        )
         return {
             "status": "需下載",
             "message": (
@@ -414,10 +424,14 @@ def start_dependency_services(
         return {
             "status": "失敗",
             "message": (
-                "Docker Compose 啟動逾時，可能正在下載 Neo4j/Browserless/FlareSolverr image。"
+                "Docker Compose 啟動逾時，可能正在下載 Redis/Postgres/Neo4j/Browserless/Chroma/FlareSolverr image。"
                 "請確認 Docker Desktop 網路狀態，或先執行 "
                 + "docker compose pull "
-                + " ".join(service for service in dependency_services if service in {"neo4j", "browserless", "flaresolverr"})
+                + " ".join(
+                    service
+                    for service in dependency_services
+                    if service in _dependency_images(include_unlocker=True)
+                )
                 + " 後重試。"
             ),
         }
@@ -435,7 +449,7 @@ def start_dependency_services(
 
 
 def _dependency_services(*, include_unlocker: bool = False) -> list[str]:
-    services = ["redis", "postgres", "neo4j", "browserless"]
+    services = ["redis", "postgres", "neo4j", "browserless", "chroma"]
     if include_unlocker:
         services.append("flaresolverr")
     return services
@@ -447,6 +461,7 @@ def _dependency_service_labels(services: list[str]) -> list[str]:
         "postgres": "Postgres",
         "neo4j": "Neo4j",
         "browserless": "Browserless",
+        "chroma": "Chroma",
         "flaresolverr": "FlareSolverr",
     }
     return [labels.get(service, service) for service in services]
@@ -454,8 +469,11 @@ def _dependency_service_labels(services: list[str]) -> list[str]:
 
 def _dependency_images(*, include_unlocker: bool = False) -> dict[str, str]:
     images = {
+        "redis": "redis:7-alpine",
+        "postgres": "postgres:16-alpine",
         "neo4j": "neo4j:5-community",
         "browserless": "ghcr.io/browserless/chromium:latest",
+        "chroma": "chromadb/chroma:latest",
     }
     if include_unlocker:
         images["flaresolverr"] = LOCAL_FLARESOLVERR_IMAGE
@@ -469,11 +487,7 @@ def pull_missing_dependency_images(
     *,
     timeout_seconds: int = 300,
 ) -> dict[str, str]:
-    services = [
-        service
-        for service in missing_services
-        if service in {"neo4j", "browserless", "flaresolverr"}
-    ]
+    services = [service for service in missing_services if service in _dependency_images(include_unlocker=True)]
     if not services:
         return {"status": "已下載", "message": "沒有需要下載的 Docker image。"}
     for service in services:
@@ -514,6 +528,7 @@ def pull_missing_dependency_images(
 def apply_local_dependency_env_defaults(
     *,
     enable_browser_render: bool = False,
+    enable_chroma: bool = False,
     prefer_browserless: bool = False,
     prefer_unlocker: bool = False,
 ) -> dict[str, str]:
@@ -530,6 +545,18 @@ def apply_local_dependency_env_defaults(
                 prefer_unlocker=prefer_unlocker,
             )
         )
+    if enable_chroma:
+        applied.update(apply_local_chroma_env_defaults())
+    return applied
+
+
+def apply_local_chroma_env_defaults() -> dict[str, str]:
+    if os.environ.get("USE_CHROMA") or os.environ.get("CHROMA_API_URL"):
+        return {}
+    applied = {}
+    for key, value in LOCAL_CHROMA_ENV_DEFAULTS.items():
+        os.environ[key] = value
+        applied[key] = value
     return applied
 
 
@@ -573,6 +600,11 @@ def wait_for_local_dependency_ports(
     if not dependency_status or dependency_status.get("status") != "已啟動":
         return {}
     results: dict[str, bool] = {}
+    services = set(dependency_status.get("services") or [])
+    if "redis" in services:
+        results["redis"] = wait_for_port("127.0.0.1", LOCAL_REDIS_PORT, timeout_seconds=timeout_seconds)
+    if "postgres" in services:
+        results["postgres"] = wait_for_port("127.0.0.1", LOCAL_POSTGRES_PORT, timeout_seconds=timeout_seconds)
     neo4j_uri = str(local_dependency_env.get("NEO4J_URI") or os.environ.get("NEO4J_URI") or "")
     if _is_local_neo4j_uri(neo4j_uri):
         results["neo4j"] = wait_for_port("127.0.0.1", 7687, timeout_seconds=timeout_seconds)
@@ -581,11 +613,21 @@ def wait_for_local_dependency_ports(
         or os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
         or ""
     )
-    services = set(dependency_status.get("services") or [])
     if "browserless" in services or _is_local_browserless_render_url(browser_render_url):
         results["browserless"] = wait_for_port(
             "127.0.0.1",
             LOCAL_BROWSERLESS_PORT,
+            timeout_seconds=timeout_seconds,
+        )
+    chroma_api_url = str(
+        local_dependency_env.get("CHROMA_API_URL")
+        or os.environ.get("CHROMA_API_URL")
+        or ""
+    )
+    if "chroma" in services or _is_local_chroma_api_url(chroma_api_url):
+        results["chroma"] = wait_for_port(
+            "127.0.0.1",
+            LOCAL_CHROMA_PORT,
             timeout_seconds=timeout_seconds,
         )
     if "flaresolverr" in services or _is_local_flaresolverr_render_url(browser_render_url):
@@ -661,6 +703,9 @@ def dependency_wait_status_lines(wait_status: dict) -> list[str]:
     labels = {
         "neo4j": "Neo4j 7687",
         "browserless": "Browserless 3000",
+        "chroma": "Chroma 8001",
+        "postgres": "Postgres 5432",
+        "redis": "Redis 6379",
         "flaresolverr": "FlareSolverr 8191",
     }
     lines = []
@@ -674,9 +719,10 @@ def dependency_wait_status_lines(wait_status: dict) -> list[str]:
     if any(not ready for ready in bool_values):
         lines.append(
             "- 依賴服務尚未就緒時，可稍後重跑或檢查 "
-            "docker compose ps / docker compose logs neo4j / docker compose logs browserless / "
-            "docker compose logs flaresolverr；"
-            "若 image 下載卡住，可先執行 docker compose pull neo4j browserless flaresolverr。"
+            "docker compose ps / docker compose logs redis / docker compose logs postgres / "
+            "docker compose logs neo4j / docker compose logs browserless / "
+            "docker compose logs chroma / docker compose logs flaresolverr；"
+            "若 image 下載卡住，可先執行 docker compose pull redis postgres neo4j browserless chroma flaresolverr。"
         )
     return lines
 
@@ -699,6 +745,15 @@ def _is_local_flaresolverr_render_url(url: str) -> bool:
         (
             f"http://localhost:{LOCAL_FLARESOLVERR_PORT}/",
             f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/",
+        )
+    )
+
+
+def _is_local_chroma_api_url(url: str) -> bool:
+    return str(url or "").startswith(
+        (
+            f"http://localhost:{LOCAL_CHROMA_PORT}",
+            f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
         )
     )
 

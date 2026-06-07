@@ -194,7 +194,7 @@ def test_start_dependencies_help_mentions_browserless() -> None:
     )
 
     help_text = " ".join(completed.stdout.split())
-    assert "Redis, Postgres, Neo4j, and Browserless" in help_text
+    assert "Redis, Postgres, Neo4j, Browserless, and Chroma" in help_text
     assert "--pull-missing-dependencies" in help_text
     assert "--prefer-unlocker" in help_text
 
@@ -325,6 +325,18 @@ def test_apply_local_dependency_env_defaults_can_enable_browser_render_when_avai
     assert applied["NEO4J_URI"] == "neo4j://localhost:7687"
     assert applied["NEO4J_PASSWORD"] == "stock_ai_neo4j_password"
     os.environ.pop("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", None)
+
+
+def test_apply_local_dependency_env_defaults_can_enable_local_chroma(monkeypatch) -> None:
+    for key in ("USE_CHROMA", "CHROMA_API_URL"):
+        monkeypatch.delenv(key, raising=False)
+
+    applied = apply_local_dependency_env_defaults(enable_chroma=True)
+
+    assert applied["USE_CHROMA"] == "true"
+    assert applied["CHROMA_API_URL"] == "http://127.0.0.1:8001"
+    os.environ.pop("USE_CHROMA", None)
+    os.environ.pop("CHROMA_API_URL", None)
 
 
 def test_apply_local_dependency_env_defaults_prefers_browserless_when_starting_compose(monkeypatch) -> None:
@@ -807,6 +819,30 @@ def test_wait_for_local_dependency_ports_waits_for_flaresolverr_unlocker(monkeyp
     assert calls == [("127.0.0.1", 3000, 4), ("127.0.0.1", 8191, 4)]
 
 
+def test_wait_for_local_dependency_ports_waits_for_core_data_services(monkeypatch) -> None:
+    calls = []
+    monkeypatch.delenv("NEO4J_URI", raising=False)
+
+    def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
+        calls.append((host, port, timeout_seconds))
+        return port in {6379, 8001}
+
+    monkeypatch.setattr("scripts.start_system.wait_for_port", fake_wait_for_port)
+
+    result = wait_for_local_dependency_ports(
+        {"status": "已啟動", "message": "ok", "services": ["redis", "postgres", "chroma"]},
+        {"CHROMA_API_URL": "http://127.0.0.1:8001"},
+        timeout_seconds=5,
+    )
+
+    assert result == {"redis": True, "postgres": False, "chroma": True}
+    assert calls == [
+        ("127.0.0.1", 6379, 5),
+        ("127.0.0.1", 5432, 5),
+        ("127.0.0.1", 8001, 5),
+    ]
+
+
 def test_wait_for_local_dependency_ports_skips_when_compose_did_not_start(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.start_system.wait_for_port",
@@ -822,14 +858,29 @@ def test_wait_for_local_dependency_ports_skips_when_compose_did_not_start(monkey
     assert result == {}
 
 
-def test_dependency_wait_status_lines_explain_unready_neo4j() -> None:
-    lines = dependency_wait_status_lines({"browserless": False, "flaresolverr": False, "neo4j": False})
+def test_dependency_wait_status_lines_explain_unready_dependencies() -> None:
+    lines = dependency_wait_status_lines(
+        {
+            "browserless": False,
+            "chroma": False,
+            "flaresolverr": False,
+            "neo4j": False,
+            "postgres": False,
+            "redis": False,
+        }
+    )
 
     assert "- Browserless 3000：尚未就緒" in lines
+    assert "- Chroma 8001：尚未就緒" in lines
     assert "- FlareSolverr 8191：尚未就緒" in lines
     assert "- Neo4j 7687：尚未就緒" in lines
+    assert "- Postgres 5432：尚未就緒" in lines
+    assert "- Redis 6379：尚未就緒" in lines
+    assert "docker compose logs redis" in lines[-1]
+    assert "docker compose logs postgres" in lines[-1]
     assert "docker compose logs neo4j" in lines[-1]
     assert "docker compose logs browserless" in lines[-1]
+    assert "docker compose logs chroma" in lines[-1]
     assert "docker compose logs flaresolverr" in lines[-1]
 
 
@@ -1012,8 +1063,8 @@ def test_start_dependency_services_runs_compose_for_required_services(monkeypatc
 
     assert result["status"] == "已啟動"
     assert captured["cwd"] == tmp_path
-    assert captured["command"][-4:] == ["redis", "postgres", "neo4j", "browserless"]
-    assert result["services"] == ["redis", "postgres", "neo4j", "browserless"]
+    assert captured["command"][-5:] == ["redis", "postgres", "neo4j", "browserless", "chroma"]
+    assert result["services"] == ["redis", "postgres", "neo4j", "browserless", "chroma"]
 
 
 def test_start_dependency_services_can_include_flaresolverr_unlocker(monkeypatch, tmp_path) -> None:
@@ -1045,8 +1096,15 @@ def test_start_dependency_services_can_include_flaresolverr_unlocker(monkeypatch
     assert captured["cwd"] == tmp_path
     assert "--profile" in captured["command"]
     assert "unlocker" in captured["command"]
-    assert captured["command"][-5:] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
-    assert result["services"] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
+    assert captured["command"][-6:] == [
+        "redis",
+        "postgres",
+        "neo4j",
+        "browserless",
+        "chroma",
+        "flaresolverr",
+    ]
+    assert result["services"] == ["redis", "postgres", "neo4j", "browserless", "chroma", "flaresolverr"]
 
 
 def test_start_dependency_services_explains_missing_images_before_compose_pull(
@@ -1106,7 +1164,7 @@ def test_start_dependency_services_can_pull_missing_images_when_explicitly_allow
 
     assert result["status"] == "已啟動"
     assert calls[0][-2:] == ["pull", "neo4j"]
-    assert calls[1][-4:] == ["redis", "postgres", "neo4j", "browserless"]
+    assert calls[1][-5:] == ["redis", "postgres", "neo4j", "browserless", "chroma"]
 
 
 def test_start_dependency_services_can_pull_missing_flaresolverr_image_when_unlocker_enabled(
@@ -1142,7 +1200,7 @@ def test_start_dependency_services_can_pull_missing_flaresolverr_image_when_unlo
 
     assert result["status"] == "已啟動"
     assert calls[0][-2:] == ["pull", "flaresolverr"]
-    assert calls[1][-5:] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
+    assert calls[1][-6:] == ["redis", "postgres", "neo4j", "browserless", "chroma", "flaresolverr"]
 
 
 def test_start_dependency_services_reports_missing_image_after_pull(
@@ -1205,7 +1263,7 @@ def test_start_dependency_services_explains_image_pull_timeout(monkeypatch, tmp_
     result = start_dependency_services(tmp_path)
 
     assert result["status"] == "失敗"
-    assert "docker compose pull neo4j browserless" in result["message"]
+    assert "docker compose pull redis postgres neo4j browserless chroma" in result["message"]
 
 
 def test_start_dependency_services_skips_when_docker_compose_is_missing(monkeypatch, tmp_path) -> None:

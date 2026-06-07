@@ -25,7 +25,7 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert compose["services"]["flaresolverr"]["ports"] == ["8191:8191"]
     assert compose["services"]["flaresolverr"]["image"] == "ghcr.io/flaresolverr/flaresolverr:latest"
     assert compose["services"]["chroma"]["image"] == "chromadb/chroma:latest"
-    assert compose["services"]["chroma"]["ports"] == ["8000:8000"]
+    assert compose["services"]["chroma"]["ports"] == ["8001:8000"]
     worker = compose["services"]["celery-worker"]
     beat = compose["services"]["celery-beat"]
     assert worker["environment"]["DATABASE_URL"].startswith("postgresql+psycopg://stock_ai:")

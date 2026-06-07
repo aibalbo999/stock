@@ -415,8 +415,12 @@ def test_upgrade_audit_script_can_report_local_docker_image_status(monkeypatch, 
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "Local docker images: neo4j=present, browserless=missing" in output
-    assert "docker compose pull browserless" in output
+    assert "neo4j=present" in output
+    assert "redis=missing" in output
+    assert "postgres=missing" in output
+    assert "browserless=missing" in output
+    assert "chroma=missing" in output
+    assert "docker compose pull redis postgres browserless chroma" in output
 
 
 def test_upgrade_audit_script_includes_flaresolverr_image_when_unlocker_is_preferred(monkeypatch, capsys) -> None:

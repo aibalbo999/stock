@@ -106,7 +106,7 @@ services:
     image: chromadb/chroma:latest
     container_name: stock-ai-chroma
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - chroma_data:/data
 

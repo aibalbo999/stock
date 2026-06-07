@@ -353,6 +353,8 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 if task_queue_status.get("ready")
                 and task_queue_status.get("submission_contract_ready")
                 and api_status.get("structured_task_submission_errors")
+                and api_status.get("task_failure_diagnostics_shared_service")
+                and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
                 else "degraded",
                 evidence={
                     "ready": task_queue_status.get("ready"),
@@ -375,6 +377,12 @@ def upgrade_capability_matrix(status: dict) -> dict:
                     "submission_endpoints": task_queue_status.get("submission_endpoints"),
                     "status_endpoints": task_queue_status.get("status_endpoints"),
                     "structured_task_submission_errors": api_status.get("structured_task_submission_errors"),
+                    "task_failure_diagnostics_shared_service": api_status.get(
+                        "task_failure_diagnostics_shared_service"
+                    ),
+                    "task_failure_diagnostics_persisted_to_run_payload": api_status.get(
+                        "task_failure_diagnostics_persisted_to_run_payload"
+                    ),
                     "smoke_commands": task_queue_status.get("smoke_commands"),
                 },
                 detail=(
@@ -709,6 +717,9 @@ def _api_controller_status() -> dict:
     report_routes_path = api_dir / "report_routes.py"
     error_details_path = api_dir / "error_details.py"
     tasks_path = app_dir / "tasks" / "tasks.py"
+    run_task_api_path = app_dir / "services" / "run_task_api.py"
+    persistence_path = app_dir / "services" / "persistence.py"
+    task_failure_diagnostics_path = app_dir / "services" / "task_failure_diagnostics.py"
     main_source = ""
     runtime_source = ""
     tasks_source = ""
@@ -737,6 +748,18 @@ def _api_controller_status() -> dict:
         error_details_source = error_details_path.read_text(encoding="utf-8")
     except OSError:
         error_details_source = ""
+    try:
+        run_task_api_source = run_task_api_path.read_text(encoding="utf-8")
+    except OSError:
+        run_task_api_source = ""
+    try:
+        persistence_source = persistence_path.read_text(encoding="utf-8")
+    except OSError:
+        persistence_source = ""
+    try:
+        task_failure_diagnostics_source = task_failure_diagnostics_path.read_text(encoding="utf-8")
+    except OSError:
+        task_failure_diagnostics_source = ""
     route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
@@ -806,6 +829,15 @@ def _api_controller_status() -> dict:
             and "background_task_submission_failed" in error_details_source
         ),
         "task_submission_error_detail_path": "app/api/error_details.py",
+        "task_failure_diagnostics_shared_service": task_failure_diagnostics_path.exists()
+        and "def task_failure_diagnostic_payload(" in task_failure_diagnostics_source
+        and "def task_failure_diagnostic(" in task_failure_diagnostics_source
+        and "from app.services.task_failure_diagnostics import (" in run_task_api_source,
+        "task_failure_diagnostics_persisted_to_run_payload": (
+            "task_failure_diagnostic_payload" in persistence_source
+            and '"task_failure_diagnostic"' in persistence_source
+            and "def _clear_task_failure_diagnostic(" in persistence_source
+        ),
         "task_submission_error_endpoint_coverage": {
             "generate_report_async": 'operation="generate_report"' in operations_routes_source
             and "task_submission_failed_detail" in operations_routes_source,

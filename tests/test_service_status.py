@@ -592,6 +592,8 @@ def test_service_status_shape() -> None:
     assert task_queue_arch["evidence"]["worker_online"] == status["task_queue"]["worker_online"]
     assert "worker_nodes" in task_queue_arch["evidence"]
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
+    assert task_queue_arch["evidence"]["task_failure_diagnostics_shared_service"] is True
+    assert task_queue_arch["evidence"]["task_failure_diagnostics_persisted_to_run_payload"] is True
     assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]
     assert matrix["architecture"]["workflow_orchestration"]["status"] == "ready"
     frontend_arch = matrix["architecture"]["streamlit_mpa_background_tasks"]

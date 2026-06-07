@@ -33,6 +33,10 @@ from app.models.schemas import (
 )
 from app.services.report_integrity import assert_report_integrity
 from app.services.source_quality import is_formal_evidence_source, remove_low_quality_investor_forum_lines
+from app.services.task_failure_diagnostics import (
+    parse_payload as parse_task_payload,
+    task_failure_diagnostic_payload,
+)
 
 
 class NewsRepository:
@@ -690,6 +694,7 @@ class AnalysisRunRepository:
         run.report_id = report_id
         run.output_path = output_path
         run.finished_at = utc_now_naive()
+        self._clear_task_failure_diagnostic(run)
         self.session.flush()
         return run
 
@@ -708,6 +713,7 @@ class AnalysisRunRepository:
         run.status = "running"
         run.error = None
         run.finished_at = None
+        self._clear_task_failure_diagnostic(run)
         self.session.flush()
         return run
 
@@ -718,6 +724,7 @@ class AnalysisRunRepository:
         run.status = "failed"
         run.error = error
         run.finished_at = utc_now_naive()
+        self._store_task_failure_diagnostic(run, status="failed", error=error)
         self.session.flush()
         return run
 
@@ -728,8 +735,31 @@ class AnalysisRunRepository:
         run.status = "cancelled"
         run.error = reason
         run.finished_at = utc_now_naive()
+        self._store_task_failure_diagnostic(run, status="cancelled", error=reason)
         self.session.flush()
         return run
+
+    @staticmethod
+    def _payload_dict(run: AnalysisRun) -> dict:
+        return parse_task_payload(run.payload_json)
+
+    def _store_task_failure_diagnostic(self, run: AnalysisRun, *, status: str, error: str) -> None:
+        payload = self._payload_dict(run)
+        diagnostic = task_failure_diagnostic_payload(
+            run_id=run.id,
+            source=run.source,
+            payload=payload,
+            status=status,
+            error=error,
+        )
+        if diagnostic:
+            payload["task_failure_diagnostic"] = diagnostic
+            run.payload_json = json.dumps(payload, ensure_ascii=False)
+
+    def _clear_task_failure_diagnostic(self, run: AnalysisRun) -> None:
+        payload = self._payload_dict(run)
+        if payload.pop("task_failure_diagnostic", None) is not None:
+            run.payload_json = json.dumps(payload, ensure_ascii=False)
 
     def latest(self, limit: int = 20) -> list[AnalysisRun]:
         statement = select(AnalysisRun).order_by(AnalysisRun.started_at.desc()).limit(limit)

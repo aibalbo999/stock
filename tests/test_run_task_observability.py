@@ -145,3 +145,42 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
         assert diagnostic["category"] == expected_category
         assert diagnostic["summary"]
         assert diagnostic["next_steps"]
+
+
+def test_run_task_api_summary_prefers_persisted_failure_diagnostics() -> None:
+    now = utc_now_naive()
+    run = {
+        "id": 44,
+        "source": "celery",
+        "status": "failed",
+        "payload": json.dumps(
+            {
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+                "celery_task_id": "task-persisted",
+                "task_failure_diagnostic": {
+                    "operation": "report_generation",
+                    "error_category": "data_source",
+                    "error_severity": "warning",
+                    "error_summary": "持久化資料源診斷",
+                    "next_steps": ["使用持久化建議。"],
+                    "retryable": True,
+                    "retry_kind": "report_generation",
+                    "retry_endpoint": "POST /tasks/task-persisted/retry",
+                    "status_endpoint": "GET /tasks/task-persisted",
+                    "run_endpoint": "GET /runs/44",
+                    "next_action": "使用持久化 next action",
+                },
+            }
+        ),
+        "report_id": None,
+        "error": "RESOURCE_EXHAUSTED quota exceeded",
+        "started_at": now.isoformat(),
+        "finished_at": now.isoformat(),
+    }
+
+    row = RunTaskApiService._run_summary_row(run, stale_after_minutes=60, now=now)
+
+    assert row["error_category"] == "data_source"
+    assert row["error_summary"] == "持久化資料源診斷"
+    assert row["next_steps"] == ["使用持久化建議。"]
+    assert row["next_action"] == "使用持久化 next action"

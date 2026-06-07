@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
@@ -11,118 +10,16 @@ from app.models.schemas import ReportRequest
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import AnalysisRunRepository
 from app.services.report_followup import serialize_run
-
-DATA_OPERATION_TASKS = {
-    "market_refresh",
-    "fundamentals_refresh",
-    "valuation_refresh",
-    "company_filings_fetch",
-    "company_filing_from_url",
-    "feed_fetch",
-}
-
-TASK_FAILURE_CATEGORIES = {
-    "quota": {
-        "severity": "warning",
-        "summary": "模型/API 額度或速率限制",
-        "keywords": (
-            "resource_exhausted",
-            "quota",
-            "rate limit",
-            "rate_limit",
-            "429",
-            "daily limit",
-            "exhausted",
-        ),
-        "next_steps": [
-            "查看 AI 額度與模型路由或資料源額度。",
-            "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
-        ],
-    },
-    "task_queue": {
-        "severity": "error",
-        "summary": "Redis/Celery queue 或 worker 異常",
-        "keywords": (
-            "redis",
-            "celery",
-            "broker",
-            "backend",
-            "kombu",
-            "worker",
-            "task queue",
-            "connection refused",
-        ),
-        "next_steps": [
-            "確認 /services/status 的 task_queue.ready 與 worker_online。",
-            "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
-        ],
-    },
-    "payload_validation": {
-        "severity": "error",
-        "summary": "任務 payload 驗證失敗",
-        "keywords": (
-            "validation",
-            "pydantic",
-            "unsupported",
-            "invalid",
-            "whitelist",
-            "missing required",
-            "not retryable",
-        ),
-        "next_steps": [
-            "檢查任務 payload、股票白名單與必要欄位。",
-            "修正輸入後重新送出任務。",
-        ],
-    },
-    "timeout": {
-        "severity": "warning",
-        "summary": "外部呼叫或任務執行逾時",
-        "keywords": (
-            "timeout",
-            "timed out",
-            "readtimeout",
-            "connecttimeout",
-            "deadline",
-        ),
-        "next_steps": [
-            "降低單次批次大小或縮小股票/文件範圍。",
-            "確認外部資料源與網路狀態後再重試。",
-        ],
-    },
-    "data_source": {
-        "severity": "warning",
-        "summary": "市場資料、公司文件或新聞來源異常",
-        "keywords": (
-            "finmind",
-            "fugle",
-            "twse",
-            "tpex",
-            "mops",
-            "company filing",
-            "filing",
-            "market data",
-            "rss",
-            "feed",
-            "http 403",
-            "http 404",
-            "captcha",
-        ),
-        "next_steps": [
-            "檢查資料源 token、日期範圍與 company filing 後援設定。",
-            "可先重刷快取或降低本次資料補強範圍。",
-        ],
-    },
-}
-
-
-def _first_next_step(diagnostic: dict | None) -> str | None:
-    if not isinstance(diagnostic, dict):
-        return None
-    next_steps = diagnostic.get("next_steps")
-    if not isinstance(next_steps, list) or not next_steps:
-        return None
-    first = str(next_steps[0]).strip()
-    return first or None
+from app.services.task_failure_diagnostics import (
+    DATA_OPERATION_TASKS,
+    parse_payload as parse_task_payload,
+    run_operation as diagnostic_run_operation,
+    run_retry_kind as diagnostic_run_retry_kind,
+    run_source as diagnostic_run_source,
+    serialized_run_payload as diagnostic_serialized_run_payload,
+    task_failure_diagnostic as diagnostic_task_failure_diagnostic,
+    task_next_action as diagnostic_task_next_action,
+)
 
 
 class RunTaskApiError(ValueError):
@@ -415,13 +312,7 @@ class RunTaskApiService:
 
     @staticmethod
     def _parse_payload(payload_json: str | None) -> dict:
-        if not payload_json:
-            return {}
-        try:
-            payload = json.loads(payload_json)
-        except (TypeError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return parse_task_payload(payload_json)
 
     @staticmethod
     def _celery_progress(celery_info: Any) -> dict | None:
@@ -511,12 +402,22 @@ class RunTaskApiService:
         finished_dt = cls._parse_datetime(finished_at)
         status = str(run.get("status") or "unknown")
         task_id = payload.get("celery_task_id")
-        retry_kind = cls._run_retry_kind(payload, run)
-        retryable = bool(task_id and retry_kind)
-        failure_diagnostic = cls._task_failure_diagnostic(
+        persisted_failure = cls._persistent_task_failure_detail(payload)
+        operation = str(persisted_failure.get("operation") or cls._run_operation(payload, run))
+        retry_kind = (
+            persisted_failure.get("retry_kind")
+            if "retry_kind" in persisted_failure
+            else cls._run_retry_kind(payload, run)
+        )
+        retryable = bool(
+            persisted_failure.get("retryable")
+            if "retryable" in persisted_failure
+            else task_id and retry_kind
+        )
+        failure_diagnostic = cls._diagnostic_from_failure_detail(persisted_failure) or cls._task_failure_diagnostic(
             status=status,
             error=run.get("error"),
-            operation=cls._run_operation(payload, run),
+            operation=operation,
             retryable=retryable,
         )
         duration_seconds = None
@@ -528,7 +429,7 @@ class RunTaskApiService:
         return {
             "id": run.get("id"),
             "source": str(run.get("source") or "unknown"),
-            "operation": cls._run_operation(payload, run),
+            "operation": operation,
             "status": status,
             "report_id": run.get("report_id"),
             "task_id": payload.get("celery_task_id"),
@@ -547,10 +448,13 @@ class RunTaskApiService:
             "next_steps": failure_diagnostic.get("next_steps") or [],
             "retryable": retryable,
             "retry_kind": retry_kind,
-            "retry_endpoint": f"POST /tasks/{task_id}/retry" if task_id and retry_kind else None,
-            "status_endpoint": f"GET /tasks/{task_id}" if task_id else None,
-            "run_endpoint": f"GET /runs/{run.get('id')}" if run.get("id") else None,
-            "next_action": cls._task_next_action(
+            "retry_endpoint": persisted_failure.get("retry_endpoint")
+            or (f"POST /tasks/{task_id}/retry" if task_id and retry_kind else None),
+            "status_endpoint": persisted_failure.get("status_endpoint")
+            or (f"GET /tasks/{task_id}" if task_id else None),
+            "run_endpoint": persisted_failure.get("run_endpoint")
+            or (f"GET /runs/{run.get('id')}" if run.get("id") else None),
+            "next_action": persisted_failure.get("next_action") or cls._task_next_action(
                 status=status,
                 task_id=task_id,
                 retry_kind=retry_kind,
@@ -560,35 +464,32 @@ class RunTaskApiService:
         }
 
     @staticmethod
+    def _persistent_task_failure_detail(payload: dict) -> dict:
+        detail = payload.get("task_failure_diagnostic") if isinstance(payload, dict) else None
+        return detail if isinstance(detail, dict) else {}
+
+    @staticmethod
+    def _diagnostic_from_failure_detail(detail: dict) -> dict | None:
+        if not isinstance(detail, dict) or not detail.get("error_category"):
+            return None
+        return {
+            "category": detail.get("error_category"),
+            "severity": detail.get("error_severity"),
+            "summary": detail.get("error_summary"),
+            "next_steps": detail.get("next_steps") if isinstance(detail.get("next_steps"), list) else [],
+        }
+
+    @staticmethod
     def _serialized_run_payload(run: dict) -> dict:
-        raw_payload = run.get("payload")
-        if isinstance(raw_payload, dict):
-            return raw_payload
-        if isinstance(raw_payload, str):
-            return RunTaskApiService._parse_payload(raw_payload)
-        return {}
+        return diagnostic_serialized_run_payload(run)
 
     @staticmethod
     def _run_retry_kind(payload: dict, run: dict | Any) -> str | None:
-        source = RunTaskApiService._run_source(run)
-        task_name = str(payload.get("task") or "")
-        if task_name == "after_close_report_update":
-            return None
-        if task_name == "data_operation" or source == "celery_data_operation":
-            operation = str(payload.get("operation") or "")
-            return "data_operation" if operation in DATA_OPERATION_TASKS else None
-        if payload.get("source_report_id") is not None:
-            return "report_follow_up"
-        request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
-        if isinstance(request_payload, dict) and request_payload.get("topic"):
-            return "report_generation"
-        return None
+        return diagnostic_run_retry_kind(payload, run)
 
     @staticmethod
     def _run_source(run: dict | Any) -> str:
-        if isinstance(run, dict):
-            return str(run.get("source") or "")
-        return str(getattr(run, "source", "") or "")
+        return diagnostic_run_source(run)
 
     @staticmethod
     def _task_next_action(
@@ -599,16 +500,13 @@ class RunTaskApiService:
         error: object,
         diagnostic: dict | None = None,
     ) -> str:
-        first_step = _first_next_step(diagnostic)
-        if retry_kind and task_id:
-            suffix = f"；{first_step}" if first_step else ""
-            return "可從維護頁重試，或呼叫 " + f"POST /tasks/{task_id}/retry{suffix}"
-        if not task_id:
-            return "缺少 celery_task_id；請從 run 明細檢查原始 payload。"
-        if status in {"failed", "cancelled"} or error:
-            suffix = f"；{first_step}" if first_step else ""
-            return f"payload 不支援自動重試；請依錯誤內容手動重新送出。{suffix}"
-        return "持續觀測任務狀態。"
+        return diagnostic_task_next_action(
+            status=status,
+            task_id=task_id,
+            retry_kind=retry_kind,
+            error=error,
+            diagnostic=diagnostic,
+        )
 
     @staticmethod
     def _task_failure_diagnostic(
@@ -618,35 +516,12 @@ class RunTaskApiService:
         operation: str,
         retryable: bool,
     ) -> dict:
-        normalized_status = str(status or "").casefold()
-        error_text = str(error or "").strip()
-        if normalized_status not in {"failed", "cancelled"} and not error_text:
-            return {"category": None, "severity": None, "summary": None, "next_steps": []}
-        if normalized_status == "cancelled":
-            return {
-                "category": "cancelled",
-                "severity": "info",
-                "summary": "任務已取消",
-                "next_steps": ["確認是否需要重新送出；若為誤取消，可從原工作流程重新啟動。"],
-            }
-        text = f"{operation} {normalized_status} {error_text}".casefold()
-        for category, config in TASK_FAILURE_CATEGORIES.items():
-            if any(keyword in text for keyword in config["keywords"]):
-                return {
-                    "category": category,
-                    "severity": config["severity"],
-                    "summary": config["summary"],
-                    "next_steps": list(config["next_steps"]),
-                }
-        return {
-            "category": "unknown",
-            "severity": "warning" if retryable else "error",
-            "summary": "未分類任務失敗",
-            "next_steps": [
-                "查看任務狀態 drilldown 與 run payload。",
-                "若錯誤可重現，補上錯誤分類規則或手動重新送出。",
-            ],
-        }
+        return diagnostic_task_failure_diagnostic(
+            status=status,
+            error=error,
+            operation=operation,
+            retryable=retryable,
+        )
 
     @classmethod
     def _task_status_failure_detail(
@@ -658,6 +533,18 @@ class RunTaskApiService:
         serialized_run: dict | None,
     ) -> dict:
         run_payload = cls._serialized_run_payload(serialized_run or {})
+        persisted_failure = cls._persistent_task_failure_detail(run_payload)
+        if persisted_failure:
+            return {
+                **persisted_failure,
+                "status_endpoint": persisted_failure.get("status_endpoint") or f"GET /tasks/{task_id}",
+                "run_endpoint": persisted_failure.get("run_endpoint")
+                or (
+                    f"GET /runs/{serialized_run.get('id')}"
+                    if isinstance(serialized_run, dict) and serialized_run.get("id")
+                    else None
+                ),
+            }
         retry_kind = cls._run_retry_kind(run_payload, serialized_run or {}) if serialized_run else None
         retryable = bool(task_id and retry_kind)
         run_status = str((serialized_run or {}).get("status") or task_status or "unknown")
@@ -697,14 +584,7 @@ class RunTaskApiService:
 
     @staticmethod
     def _run_operation(payload: dict, run: dict) -> str:
-        for key in ("operation", "task", "workflow_name"):
-            value = payload.get(key)
-            if value:
-                return str(value)
-        workflow = run.get("workflow") if isinstance(run.get("workflow"), dict) else {}
-        if workflow.get("name"):
-            return str(workflow["name"])
-        return str(run.get("source") or "unknown")
+        return diagnostic_run_operation(payload, run)
 
     @staticmethod
     def _task_summary_totals(rows: list[dict]) -> dict:

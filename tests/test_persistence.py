@@ -400,5 +400,8 @@ def test_analysis_run_repository_marks_run_cancelled() -> None:
         assert cancelled.status == "cancelled"
         assert cancelled.error == "user cancelled"
         assert cancelled.finished_at is not None
+        payload = json.loads(cancelled.payload_json)
+        assert payload["task_failure_diagnostic"]["error_category"] == "cancelled"
+        assert payload["task_failure_diagnostic"]["error_severity"] == "info"
     finally:
         session.close()

@@ -490,6 +490,68 @@ def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> No
     ]
 
 
+def test_run_task_service_prefers_persisted_failure_diagnostics_for_task_status() -> None:
+    failed_run = SimpleNamespace(
+        id=32,
+        source="celery",
+        status="failed",
+        payload_json=json.dumps(
+            {
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+                "celery_task_id": "task-persisted",
+                "task_failure_diagnostic": {
+                    "operation": "report_generation",
+                    "error_category": "data_source",
+                    "error_severity": "warning",
+                    "error_summary": "持久化資料源診斷",
+                    "next_steps": ["使用持久化建議。"],
+                    "retryable": True,
+                    "retry_kind": "report_generation",
+                    "retry_endpoint": "POST /tasks/task-persisted/retry",
+                    "status_endpoint": "GET /tasks/task-persisted",
+                    "run_endpoint": "GET /runs/32",
+                    "next_action": "使用持久化 next action",
+                },
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error="RESOURCE_EXHAUSTED quota exceeded",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-persisted"
+            return FakeTaskResult("FAILURE", True, False, RuntimeError("RESOURCE_EXHAUSTED quota exceeded"))
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-persisted"
+            return failed_run
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-persisted")
+
+    assert status["error_category"] == "data_source"
+    assert status["error_summary"] == "持久化資料源診斷"
+    assert status["next_steps"] == ["使用持久化建議。"]
+    assert status["next_action"] == "使用持久化 next action"
+
+
 def test_run_task_service_lists_gets_and_deletes_runs() -> None:
     deleted = []
 

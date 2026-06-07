@@ -157,6 +157,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_warning_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def external_deployment_smoke_commands(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def high_risk_filing_unlocker_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def local_unlocker_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
@@ -239,7 +240,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "external_deployment_warning_rows(upgrade_audit)" in source
     assert "external_deployment_smoke_commands(upgrade_audit)" in source
     assert "high_risk_filing_unlocker_rows(upgrade_audit)" in source
+    assert "local_unlocker_operation_rows(upgrade_audit)" in source
     assert "高風險文件 unlocker" in source
+    assert "本機 unlocker 操作提示" in source
     assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source
@@ -1294,6 +1297,54 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     assert "mops.twse.com.tw" in rows[2]["目前"]
     assert provider_env in rows[3]["目前"]
     assert "https://mops.twse.com.tw/" in rows[4]["目前"]
+
+
+def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
+    helpers = load_report_helpers()
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "needs unlocker",
+                "evidence": {
+                    "configured_provider": "browserless",
+                    "provider_tier": "browser_render",
+                    "browser_only_render_ready": True,
+                    "unlocker_provider_ready": False,
+                    "captcha_challenge_ready": False,
+                    "fallback_reason": "browser_or_playwright_render_lacks_captcha_unlocker",
+                    "smoke_cli": (
+                        ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--url https://mops.twse.com.tw/ --json"
+                    ),
+                },
+                "remediation": "設定 FlareSolverr 或 managed unlocker。",
+            }
+        ]
+    }
+
+    rows = helpers["local_unlocker_operation_rows"](audit)
+
+    assert [row["項目"] for row in rows] == [
+        "一鍵啟動",
+        "本機稽核",
+        "Fallback 判斷",
+        "容器診斷",
+        "MOPS smoke",
+    ]
+    assert rows[0]["狀態"] == "建議升級"
+    assert "scripts/start_system.py --start-dependencies --prefer-unlocker" in rows[0]["指令"]
+    assert "--wait-local-flaresolverr 20" in rows[1]["指令"]
+    assert "Browserless/Playwright" in rows[2]["說明"]
+    assert rows[2]["指令"] == "-"
+    assert "docker compose logs flaresolverr" in rows[3]["指令"]
+    assert "https://mops.twse.com.tw/" in rows[4]["指令"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

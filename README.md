@@ -341,6 +341,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 ```
 
 若第一次啟動時本機尚未有 Neo4j / Browserless image，一鍵啟動會先停在 `需下載` 並提示 `docker compose pull neo4j browserless`，避免安靜卡在 Docker pull。確認網路與 Docker Desktop 正常後，可先手動 pull，或改用 `.venv/bin/python scripts/start_system.py --start-dependencies --pull-missing-dependencies` 允許啟動流程自動下載；自動下載會先逐一 pull 缺少的 service image，再重新檢查 image 是否存在，若 Docker Desktop 網路或 registry 逾時，訊息會指出卡在哪一個 service。遇到 MOPS / IR 入口被 Cloudflare、CAPTCHA 或空殼頁擋住時，可加 `--prefer-unlocker`，一鍵啟動會用 docker-compose `unlocker` profile 啟動 FlareSolverr，並在本次程序把公司文件 render provider 設為 `flaresolverr`；若 FlareSolverr 8191 尚未就緒但 Browserless 3000 已就緒，會自動退回 Browserless，兩者都不可用且本機 Playwright 套件與 Chromium binary 已安裝時，才切到 Playwright。這些臨時 env 不會改寫 `.env`。
+維護頁的「外部部署選配狀態」會同步顯示高風險文件 unlocker 狀態與本機操作提示，包含 `--prefer-unlocker` 一鍵啟動、本機 upgrade audit、FlareSolverr container 診斷與 MOPS smoke command。
 
 升級目標稽核：
 

@@ -206,6 +206,52 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
     ]
 
 
+def local_unlocker_operation_rows(upgrade_audit: dict) -> list[dict]:
+    item = _external_deployment_item_by_capability(
+        upgrade_audit,
+        "company_filing_high_risk_unlocker",
+    )
+    if not item:
+        return []
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    return [
+        {
+            "項目": "一鍵啟動",
+            "狀態": _local_unlocker_start_status(evidence),
+            "指令": ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker",
+            "說明": "啟動 Browserless 與 FlareSolverr，並在本次程序優先套用 unlocker provider。",
+        },
+        {
+            "項目": "本機稽核",
+            "狀態": "已就緒" if evidence.get("unlocker_provider_ready") else "待驗證",
+            "指令": (
+                ".venv/bin/python scripts/upgrade_audit.py "
+                "--prefer-unlocker --wait-local-flaresolverr 20 "
+                "--local-browser-render-defaults --json"
+            ),
+            "說明": "等待 FlareSolverr 8191 後套用本機 defaults；不改寫 .env。",
+        },
+        {
+            "項目": "Fallback 判斷",
+            "狀態": "目前路徑",
+            "指令": "-",
+            "說明": _local_unlocker_fallback_detail(evidence),
+        },
+        {
+            "項目": "容器診斷",
+            "狀態": "必要時",
+            "指令": "docker compose ps flaresolverr && docker compose logs flaresolverr",
+            "說明": "檢查 FlareSolverr container 是否啟動、port 是否綁定、image 是否拉取成功。",
+        },
+        {
+            "項目": "MOPS smoke",
+            "狀態": "可執行",
+            "指令": _high_risk_mops_smoke_command(evidence),
+            "說明": "驗證高風險公開資訊入口能走目前 render/unlocker contract 取得可解析 HTML。",
+        },
+    ]
+
+
 def task_failure_drilldown_rows(task_summary: dict) -> list[dict]:
     failures = _task_summary_failures(task_summary)
     return [
@@ -454,6 +500,31 @@ def _high_risk_unlocker_next_action(evidence: dict) -> str:
     if evidence.get("browser_only_render_ready"):
         return "目前只有 Browserless/Playwright；高風險 CAPTCHA 入口需補 unlocker provider。"
     return "設定 FlareSolverr、ScrapingBee 或 BrightData，或至少配置 rotating proxy。"
+
+
+def _local_unlocker_start_status(evidence: dict) -> str:
+    if evidence.get("unlocker_provider_ready"):
+        return "可重跑"
+    if evidence.get("browser_only_render_ready") or evidence.get("ip_rotation_ready"):
+        return "建議升級"
+    return "待啟動"
+
+
+def _local_unlocker_fallback_detail(evidence: dict) -> str:
+    if evidence.get("unlocker_provider_ready"):
+        return "目前使用 FlareSolverr、ScrapingBee 或 BrightData 等 unlocker provider。"
+    if evidence.get("ip_rotation_ready"):
+        return "目前具備 proxy/IP rotation，但高風險 CAPTCHA 入口仍缺 unlocker provider。"
+    if evidence.get("browser_only_render_ready"):
+        return "目前會 fallback 到 Browserless/Playwright；高風險 CAPTCHA 入口仍需 unlocker。"
+    return "尚未配置 browser render、proxy 或 unlocker；高風險公開文件容易只取到阻擋頁。"
+
+
+def _high_risk_mops_smoke_command(evidence: dict) -> str:
+    smoke_cli = str(evidence.get("smoke_cli") or "").strip()
+    if smoke_cli:
+        return smoke_cli
+    return ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
 
 
 def _ok_label(value: object) -> str:

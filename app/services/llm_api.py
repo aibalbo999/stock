@@ -71,6 +71,7 @@ class LLMApiService:
             "fallback_model_ready_count": sum(1 for item in fallback_readiness if item["key_configured"] is True),
             "provider_keys_configured": provider_keys,
             "observability": llm_observability_status(settings),
+            "quota_routing": self._quota_routing_snapshot(),
             "retry_policy": {
                 "max_retries_per_key": max(0, int(settings.llm_max_retries_per_key)),
                 "model_quota_cooldown_seconds": max(
@@ -124,6 +125,53 @@ class LLMApiService:
             llm_usage_repository_cls=self.llm_usage_repository_cls,
         ).summary()
 
+    def _quota_routing_snapshot(self) -> dict:
+        if self.session_scope_factory is None:
+            return {
+                "available": False,
+                "reason": "usage_store_unavailable",
+                "recommended_model": None,
+                "exhausted_models": [],
+                "high_quota_fallback_models": [],
+                "models": [],
+                "totals": {},
+            }
+        try:
+            summary = self.quota_summary()
+        except Exception as exc:
+            return {
+                "available": False,
+                "reason": f"quota_summary_error:{exc.__class__.__name__}",
+                "recommended_model": None,
+                "exhausted_models": [],
+                "high_quota_fallback_models": [],
+                "models": [],
+                "totals": {},
+            }
+        models = summary.get("models") if isinstance(summary.get("models"), list) else []
+        routing_policy = (
+            summary.get("routing_policy")
+            if isinstance(summary.get("routing_policy"), dict)
+            else {}
+        )
+        return {
+            "available": True,
+            "strategy": routing_policy.get("strategy"),
+            "selection_rule": routing_policy.get("selection_rule"),
+            "recommended_model": summary.get("recommended_model"),
+            "recommended_reason": summary.get("recommended_reason"),
+            "model_order": summary.get("model_order") if isinstance(summary.get("model_order"), list) else [],
+            "exhausted_models": [
+                str(model.get("model"))
+                for model in models
+                if isinstance(model, dict) and model.get("status") == "exhausted" and model.get("model")
+            ],
+            "high_quota_fallback_models": routing_policy.get("high_quota_fallback_models") or [],
+            "window": summary.get("window") if isinstance(summary.get("window"), dict) else {},
+            "totals": _quota_totals_snapshot(summary.get("totals")),
+            "models": [_quota_model_snapshot(model) for model in models if isinstance(model, dict)],
+        }
+
     @staticmethod
     def _model_provider(model: str) -> str:
         normalized = str(model or "").strip().lower()
@@ -169,3 +217,32 @@ class LLMApiService:
             return find_spec(module_name) is not None
         except (ImportError, ValueError):
             return False
+
+
+def _quota_totals_snapshot(totals: object) -> dict:
+    if not isinstance(totals, dict):
+        return {}
+    return {
+        "request_count": totals.get("request_count"),
+        "completion_count": totals.get("completion_count"),
+        "total_token_estimate": totals.get("total_token_estimate"),
+        "estimated_cost_usd": totals.get("estimated_cost_usd"),
+    }
+
+
+def _quota_model_snapshot(model: dict) -> dict:
+    return {
+        "rank": model.get("rank"),
+        "model": model.get("model"),
+        "status": model.get("status"),
+        "status_reason": model.get("status_reason"),
+        "routing_tier": model.get("routing_tier"),
+        "routing_reason": model.get("routing_reason"),
+        "requests_used": model.get("requests_used"),
+        "request_budget": model.get("request_budget"),
+        "requests_remaining": model.get("requests_remaining"),
+        "completion_count": model.get("completion_count"),
+        "tokens_used": model.get("tokens_used"),
+        "token_budget": model.get("token_budget"),
+        "tokens_remaining": model.get("tokens_remaining"),
+    }

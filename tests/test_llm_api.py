@@ -86,6 +86,15 @@ def test_llm_api_service_reports_status_from_settings() -> None:
             "input_cost_per_1k_tokens_usd_configured": False,
             "output_cost_per_1k_tokens_usd_configured": False,
         },
+        "quota_routing": {
+            "available": False,
+            "reason": "usage_store_unavailable",
+            "recommended_model": None,
+            "exhausted_models": [],
+            "high_quota_fallback_models": [],
+            "models": [],
+            "totals": {},
+        },
         "retry_policy": {
             "max_retries_per_key": 2,
             "model_quota_cooldown_seconds": 3600.0,
@@ -208,6 +217,129 @@ def test_llm_api_service_returns_quota_summary() -> None:
 
     assert service.quota_summary() == {"recommended_model": "gemini-3.5-flash"}
     assert captured["session_scope_factory"] is fake_session_scope
+
+
+def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
+    settings = SimpleNamespace(
+        primary_llm_model="gemini-3.5-flash",
+        local_llm_model="gemini-2.5-flash-lite",
+        gemini_api_keys=["key"],
+        llm_provider="google_genai",
+        llm_fallback_models="gemini-2.5-flash,gemma-4-31b-it",
+        openai_api_key=None,
+        anthropic_api_key=None,
+        llm_max_retries_per_key=1,
+        llm_model_quota_cooldown_seconds=3600,
+        llm_base_retry_delay_seconds=0.5,
+        llm_max_retry_delay_seconds=5.0,
+        llm_observability_enabled=True,
+        llm_observability_provider="local",
+        llm_input_cost_per_1k_tokens_usd=0.0,
+        llm_output_cost_per_1k_tokens_usd=0.0,
+        llm_model_cost_rate_card_usd="",
+        llm_daily_cost_budget_usd=0.0,
+        llm_cost_warning_ratio=0.8,
+        langsmith_api_key=None,
+        phoenix_endpoint="",
+    )
+    captured = {}
+
+    class FakeQuotaService:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def summary(self) -> dict:
+            return {
+                "recommended_model": "gemini-2.5-flash",
+                "recommended_reason": "Earlier model(s) exhausted in the current window: gemini-3.5-flash.",
+                "model_order": ["gemini-3.5-flash", "gemini-2.5-flash", "gemma-4-31b-it"],
+                "window": {"timezone": "America/Los_Angeles"},
+                "totals": {
+                    "request_count": 3,
+                    "completion_count": 2,
+                    "total_token_estimate": 1200,
+                    "estimated_cost_usd": 0.0,
+                    "ignored_extra": "not exposed",
+                },
+                "routing_policy": {
+                    "strategy": "smartest_first_then_budget_degrade",
+                    "selection_rule": "Use the first configured model that is not exhausted.",
+                    "high_quota_fallback_models": ["gemma-4-31b-it"],
+                },
+                "models": [
+                    {
+                        "rank": 1,
+                        "model": "gemini-3.5-flash",
+                        "status": "exhausted",
+                        "status_reason": "request_budget_exhausted",
+                        "routing_tier": "primary",
+                        "routing_reason": "Skipped until the next quota window.",
+                        "requests_used": 1,
+                        "request_budget": 1,
+                        "requests_remaining": 0,
+                        "completion_count": 0,
+                        "tokens_used": 0,
+                        "token_budget": None,
+                        "tokens_remaining": None,
+                        "estimated_cost_usd": 99.0,
+                    },
+                    {
+                        "rank": 2,
+                        "model": "gemini-2.5-flash",
+                        "status": "available",
+                        "status_reason": "within_configured_budget",
+                        "routing_tier": "fallback",
+                        "routing_reason": "Fallback candidate.",
+                        "requests_used": 2,
+                        "request_budget": 250,
+                        "requests_remaining": 248,
+                        "completion_count": 2,
+                        "tokens_used": 1200,
+                        "token_budget": None,
+                        "tokens_remaining": None,
+                    },
+                ],
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    status = LLMApiService(
+        settings_provider=lambda: settings,
+        session_scope_factory=fake_session_scope,
+        llm_quota_service_cls=FakeQuotaService,
+    ).status()
+
+    assert captured["session_scope_factory"] is fake_session_scope
+    quota = status["quota_routing"]
+    assert quota["available"] is True
+    assert quota["strategy"] == "smartest_first_then_budget_degrade"
+    assert quota["recommended_model"] == "gemini-2.5-flash"
+    assert quota["exhausted_models"] == ["gemini-3.5-flash"]
+    assert quota["high_quota_fallback_models"] == ["gemma-4-31b-it"]
+    assert quota["totals"] == {
+        "request_count": 3,
+        "completion_count": 2,
+        "total_token_estimate": 1200,
+        "estimated_cost_usd": 0.0,
+    }
+    assert quota["models"][0] == {
+        "rank": 1,
+        "model": "gemini-3.5-flash",
+        "status": "exhausted",
+        "status_reason": "request_budget_exhausted",
+        "routing_tier": "primary",
+        "routing_reason": "Skipped until the next quota window.",
+        "requests_used": 1,
+        "request_budget": 1,
+        "requests_remaining": 0,
+        "completion_count": 0,
+        "tokens_used": 0,
+        "token_budget": None,
+        "tokens_remaining": None,
+    }
+    assert "estimated_cost_usd" not in quota["models"][0]
 
 
 def test_llm_api_service_returns_usage_summary() -> None:

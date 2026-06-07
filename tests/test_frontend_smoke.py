@@ -5,6 +5,7 @@ import zlib
 
 from app.services.frontend_smoke import (
     check_http_target,
+    check_streamlit_page_import_contract,
     png_has_nonblank_pixels,
     run_frontend_smoke,
 )
@@ -63,6 +64,44 @@ def test_png_has_nonblank_pixels_detects_blank_and_nonblank_png() -> None:
     assert png_has_nonblank_pixels(_png(width=2, height=1, pixels=[(255, 255, 255), (0, 0, 0)])) is True
 
 
+def test_check_streamlit_page_import_contract_accepts_project_pages() -> None:
+    result = check_streamlit_page_import_contract()
+
+    assert result["status"] == "passed"
+    assert result["missing_exports"] == []
+    assert result["failed_pages"] == []
+    assert result["exports"]["configure_page"] is True
+    assert {page["render"] for page in result["pages"]} == {
+        "render_analysis_workspace",
+        "render_report_center",
+        "render_data_enrichment",
+        "render_system_settings",
+    }
+
+
+def test_check_streamlit_page_import_contract_fails_when_pages_are_missing(tmp_path) -> None:
+    class FakeDashboard:
+        configure_page = staticmethod(lambda *_args, **_kwargs: None)
+        render_analysis_workspace = staticmethod(lambda: None)
+        render_report_center = staticmethod(lambda: None)
+        render_data_enrichment = staticmethod(lambda: None)
+        render_system_settings = staticmethod(lambda: None)
+
+    result = check_streamlit_page_import_contract(
+        root_path=tmp_path,
+        module_loader=lambda _name: FakeDashboard,
+    )
+
+    assert result["status"] == "failed"
+    assert result["missing_exports"] == []
+    assert result["failed_pages"] == [
+        "pages/01_分析工作區.py",
+        "pages/02_報告中心.py",
+        "pages/03_資料補強.py",
+        "pages/04_系統設定.py",
+    ]
+
+
 def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None:
     def fake_check(url, **kwargs):
         return {
@@ -73,6 +112,10 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
         }
 
     monkeypatch.setattr("app.services.frontend_smoke.check_http_target", fake_check)
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.check_streamlit_page_import_contract",
+        lambda: {"label": "streamlit_page_import_contract", "status": "passed"},
+    )
 
     report = run_frontend_smoke(skip_browser=True, api_endpoints=("/services/status", "/llm/quota"))
 
@@ -82,6 +125,7 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
         "streamlit_http",
         "api_http:/services/status",
         "api_http:/llm/quota",
+        "streamlit_page_import_contract",
         "streamlit_playwright",
     ]
 

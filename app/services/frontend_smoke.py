@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import zlib
 from pathlib import Path
@@ -11,6 +12,19 @@ from urllib.request import Request, urlopen
 
 DEFAULT_API_ENDPOINTS = ("/services/status",)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
+    "configure_page",
+    "render_analysis_workspace",
+    "render_report_center",
+    "render_data_enrichment",
+    "render_system_settings",
+)
+STREAMLIT_PAGE_CONTRACTS = (
+    ("pages/01_分析工作區.py", "render_analysis_workspace"),
+    ("pages/02_報告中心.py", "render_report_center"),
+    ("pages/03_資料補強.py", "render_data_enrichment"),
+    ("pages/04_系統設定.py", "render_system_settings"),
+)
 
 
 def run_frontend_smoke(
@@ -41,6 +55,7 @@ def run_frontend_smoke(
                 require_any_fragment=False,
             )
         )
+    checks.append(check_streamlit_page_import_contract())
     if skip_browser:
         checks.append(
             {
@@ -105,6 +120,78 @@ def check_http_target(
         "status_code": status_code,
         "matched_fragments": matched_fragments,
         "body_bytes_sampled": len(body.encode("utf-8")),
+    }
+
+
+def check_streamlit_page_import_contract(
+    *,
+    root_path: str | Path = ".",
+    module_name: str = "app.ui.streamlit_dashboard",
+    module_loader: Callable[[str], Any] | None = None,
+) -> dict:
+    module_loader = module_loader or importlib.import_module
+    try:
+        dashboard_module = module_loader(module_name)
+    except Exception as exc:
+        return {
+            "label": "streamlit_page_import_contract",
+            "status": "failed",
+            "module": module_name,
+            "error": str(exc) or exc.__class__.__name__,
+        }
+
+    exports = {
+        export_name: callable(getattr(dashboard_module, export_name, None))
+        for export_name in STREAMLIT_DASHBOARD_REQUIRED_EXPORTS
+    }
+    pages = [
+        _check_streamlit_page_contract(Path(root_path), relative_path, render_name)
+        for relative_path, render_name in STREAMLIT_PAGE_CONTRACTS
+    ]
+    missing_exports = [export_name for export_name, ok in exports.items() if not ok]
+    failed_pages = [page["path"] for page in pages if page["status"] == "failed"]
+    passed = not missing_exports and not failed_pages
+    return {
+        "label": "streamlit_page_import_contract",
+        "status": "passed" if passed else "failed",
+        "module": module_name,
+        "exports": exports,
+        "missing_exports": missing_exports,
+        "pages": pages,
+        "failed_pages": failed_pages,
+    }
+
+
+def _check_streamlit_page_contract(root_path: Path, relative_path: str, render_name: str) -> dict:
+    page_path = root_path / relative_path
+    result = {
+        "path": relative_path,
+        "render": render_name,
+        "exists": page_path.exists(),
+        "imports_facade": False,
+        "calls_configure_page": False,
+        "calls_render": False,
+    }
+    if not page_path.exists():
+        return {**result, "status": "failed"}
+    try:
+        source = page_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {
+            **result,
+            "status": "failed",
+            "error": str(exc) or exc.__class__.__name__,
+        }
+    result["imports_facade"] = (
+        f"from app.ui.streamlit_dashboard import configure_page, {render_name}" in source
+    )
+    result["calls_configure_page"] = "configure_page(" in source
+    result["calls_render"] = f"{render_name}()" in source
+    return {
+        **result,
+        "status": "passed"
+        if result["imports_facade"] and result["calls_configure_page"] and result["calls_render"]
+        else "failed",
     }
 
 

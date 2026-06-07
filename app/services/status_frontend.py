@@ -147,6 +147,12 @@ def frontend_status() -> dict:
         and "task_retry_options(task_summary)" in ui_source
         and 'api_task_post(\n                                f"/tasks/{selected_retry_task_id}/retry"' in ui_source
         and "render_task_status_panel(" in ui_source,
+        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")' in maintenance_status_source
+        and '"severity": row.get("error_severity")' in maintenance_status_source
+        and '"summary": row.get("error_summary")' in maintenance_status_source
+        and '"next_steps": _task_next_steps_text(row)' in maintenance_status_source
+        and 'task_summary.get("by_error_category")' in ui_source
+        and "失敗原因分類" in ui_source,
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

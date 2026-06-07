@@ -398,6 +398,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and frontend_status.get("ui_task_queue_worker_warning_enabled")
                 and frontend_status.get("ui_task_queue_health_panel_extracted")
                 and frontend_status.get("ui_task_failure_drilldown_enabled")
+                and frontend_status.get("ui_task_failure_category_display_enabled")
                 and frontend_status.get("ui_task_status_panel_extracted")
                 and frontend_status.get("task_retry_uses_scoped_state_key")
                 and frontend_status.get("ui_report_state_extracted")
@@ -420,8 +421,8 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 detail=(
                     "Streamlit uses a multi-page shell, explicit page imports, external CSS, "
                     "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
-                    "polling, queue health diagnostics, and failed-task retry drilldown instead "
-                    "of running long ingestion/report calls inline."
+                    "polling, queue health diagnostics, and categorized failed-task retry "
+                    "drilldown instead of running long ingestion/report calls inline."
                 ),
             ),
             "python_runtime": _capability(

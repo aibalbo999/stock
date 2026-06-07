@@ -21,6 +21,109 @@ DATA_OPERATION_TASKS = {
     "feed_fetch",
 }
 
+TASK_FAILURE_CATEGORIES = {
+    "quota": {
+        "severity": "warning",
+        "summary": "模型/API 額度或速率限制",
+        "keywords": (
+            "resource_exhausted",
+            "quota",
+            "rate limit",
+            "rate_limit",
+            "429",
+            "daily limit",
+            "exhausted",
+        ),
+        "next_steps": [
+            "查看 AI 額度與模型路由或資料源額度。",
+            "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+        ],
+    },
+    "task_queue": {
+        "severity": "error",
+        "summary": "Redis/Celery queue 或 worker 異常",
+        "keywords": (
+            "redis",
+            "celery",
+            "broker",
+            "backend",
+            "kombu",
+            "worker",
+            "task queue",
+            "connection refused",
+        ),
+        "next_steps": [
+            "確認 /services/status 的 task_queue.ready 與 worker_online。",
+            "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
+        ],
+    },
+    "payload_validation": {
+        "severity": "error",
+        "summary": "任務 payload 驗證失敗",
+        "keywords": (
+            "validation",
+            "pydantic",
+            "unsupported",
+            "invalid",
+            "whitelist",
+            "missing required",
+            "not retryable",
+        ),
+        "next_steps": [
+            "檢查任務 payload、股票白名單與必要欄位。",
+            "修正輸入後重新送出任務。",
+        ],
+    },
+    "timeout": {
+        "severity": "warning",
+        "summary": "外部呼叫或任務執行逾時",
+        "keywords": (
+            "timeout",
+            "timed out",
+            "readtimeout",
+            "connecttimeout",
+            "deadline",
+        ),
+        "next_steps": [
+            "降低單次批次大小或縮小股票/文件範圍。",
+            "確認外部資料源與網路狀態後再重試。",
+        ],
+    },
+    "data_source": {
+        "severity": "warning",
+        "summary": "市場資料、公司文件或新聞來源異常",
+        "keywords": (
+            "finmind",
+            "fugle",
+            "twse",
+            "tpex",
+            "mops",
+            "company filing",
+            "filing",
+            "market data",
+            "rss",
+            "feed",
+            "http 403",
+            "http 404",
+            "captcha",
+        ),
+        "next_steps": [
+            "檢查資料源 token、日期範圍與 company filing 後援設定。",
+            "可先重刷快取或降低本次資料補強範圍。",
+        ],
+    },
+}
+
+
+def _first_next_step(diagnostic: dict | None) -> str | None:
+    if not isinstance(diagnostic, dict):
+        return None
+    next_steps = diagnostic.get("next_steps")
+    if not isinstance(next_steps, list) or not next_steps:
+        return None
+    first = str(next_steps[0]).strip()
+    return first or None
+
 
 class RunTaskApiError(ValueError):
     pass
@@ -99,6 +202,7 @@ class RunTaskApiService:
             "by_status": self._count_rows(rows, "status"),
             "by_source": self._count_rows(rows, "source"),
             "by_operation": self._count_rows(rows, "operation"),
+            "by_error_category": self._count_error_categories(rows),
             "recent_failures": [
                 row for row in rows if row["status"] in {"failed", "cancelled"} or row.get("error")
             ][:10],
@@ -399,6 +503,13 @@ class RunTaskApiService:
         status = str(run.get("status") or "unknown")
         task_id = payload.get("celery_task_id")
         retry_kind = cls._run_retry_kind(payload, run)
+        retryable = bool(task_id and retry_kind)
+        failure_diagnostic = cls._task_failure_diagnostic(
+            status=status,
+            error=run.get("error"),
+            operation=cls._run_operation(payload, run),
+            retryable=retryable,
+        )
         duration_seconds = None
         if started_dt and finished_dt:
             duration_seconds = max(0.0, (finished_dt - started_dt).total_seconds())
@@ -421,7 +532,11 @@ class RunTaskApiService:
                 and running_age_seconds >= stale_after_minutes * 60
             ),
             "error": run.get("error"),
-            "retryable": bool(task_id and retry_kind),
+            "error_category": failure_diagnostic.get("category"),
+            "error_severity": failure_diagnostic.get("severity"),
+            "error_summary": failure_diagnostic.get("summary"),
+            "next_steps": failure_diagnostic.get("next_steps") or [],
+            "retryable": retryable,
             "retry_kind": retry_kind,
             "retry_endpoint": f"POST /tasks/{task_id}/retry" if task_id and retry_kind else None,
             "status_endpoint": f"GET /tasks/{task_id}" if task_id else None,
@@ -431,6 +546,7 @@ class RunTaskApiService:
                 task_id=task_id,
                 retry_kind=retry_kind,
                 error=run.get("error"),
+                diagnostic=failure_diagnostic,
             ),
         }
 
@@ -472,14 +588,56 @@ class RunTaskApiService:
         task_id: object,
         retry_kind: str | None,
         error: object,
+        diagnostic: dict | None = None,
     ) -> str:
+        first_step = _first_next_step(diagnostic)
         if retry_kind and task_id:
-            return "可從維護頁重試，或呼叫 " + f"POST /tasks/{task_id}/retry"
+            suffix = f"；{first_step}" if first_step else ""
+            return "可從維護頁重試，或呼叫 " + f"POST /tasks/{task_id}/retry{suffix}"
         if not task_id:
             return "缺少 celery_task_id；請從 run 明細檢查原始 payload。"
         if status in {"failed", "cancelled"} or error:
-            return "payload 不支援自動重試；請依錯誤內容手動重新送出。"
+            suffix = f"；{first_step}" if first_step else ""
+            return f"payload 不支援自動重試；請依錯誤內容手動重新送出。{suffix}"
         return "持續觀測任務狀態。"
+
+    @staticmethod
+    def _task_failure_diagnostic(
+        *,
+        status: str,
+        error: object,
+        operation: str,
+        retryable: bool,
+    ) -> dict:
+        normalized_status = str(status or "").casefold()
+        error_text = str(error or "").strip()
+        if normalized_status not in {"failed", "cancelled"} and not error_text:
+            return {"category": None, "severity": None, "summary": None, "next_steps": []}
+        if normalized_status == "cancelled":
+            return {
+                "category": "cancelled",
+                "severity": "info",
+                "summary": "任務已取消",
+                "next_steps": ["確認是否需要重新送出；若為誤取消，可從原工作流程重新啟動。"],
+            }
+        text = f"{operation} {normalized_status} {error_text}".casefold()
+        for category, config in TASK_FAILURE_CATEGORIES.items():
+            if any(keyword in text for keyword in config["keywords"]):
+                return {
+                    "category": category,
+                    "severity": config["severity"],
+                    "summary": config["summary"],
+                    "next_steps": list(config["next_steps"]),
+                }
+        return {
+            "category": "unknown",
+            "severity": "warning" if retryable else "error",
+            "summary": "未分類任務失敗",
+            "next_steps": [
+                "查看任務狀態 drilldown 與 run payload。",
+                "若錯誤可重現，補上錯誤分類規則或手動重新送出。",
+            ],
+        }
 
     @staticmethod
     def _run_operation(payload: dict, run: dict) -> str:
@@ -514,6 +672,24 @@ class RunTaskApiService:
             "success_rate": round(success_count / total_count, 4) if total_count else None,
             "avg_duration_seconds": round(sum(completed) / len(completed), 3) if completed else None,
         }
+
+    @staticmethod
+    def _count_error_categories(rows: list[dict]) -> list[dict]:
+        counts: dict[tuple[str, str], int] = {}
+        for row in rows:
+            category = row.get("error_category")
+            if not category:
+                continue
+            severity = str(row.get("error_severity") or "unknown")
+            key = (str(category), severity)
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            {"error_category": category, "severity": severity, "count": count}
+            for (category, severity), count in sorted(
+                counts.items(),
+                key=lambda item: (-item[1], item[0][0], item[0][1]),
+            )
+        ]
 
     @staticmethod
     def _count_rows(rows: list[dict], key: str) -> list[dict]:

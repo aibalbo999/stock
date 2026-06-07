@@ -40,7 +40,7 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
                 }
             ),
             report_id=None,
-            error="boom",
+            error="RESOURCE_EXHAUSTED quota exceeded",
             started_at=now - timedelta(minutes=7),
             finished_at=now - timedelta(minutes=6),
         ),
@@ -102,12 +102,46 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
     assert summary["totals"]["stale_running_count"] == 1
     assert summary["by_operation"][0] == {"operation": "celery_report", "count": 2}
     assert summary["by_operation"][1] == {"operation": "market_refresh", "count": 1}
+    assert summary["by_error_category"] == [
+        {"error_category": "quota", "severity": "warning", "count": 1}
+    ]
     assert summary["recent_failures"][0]["task_id"] == "task-failed"
+    assert summary["recent_failures"][0]["error_category"] == "quota"
+    assert summary["recent_failures"][0]["error_severity"] == "warning"
+    assert summary["recent_failures"][0]["error_summary"] == "模型/API 額度或速率限制"
+    assert summary["recent_failures"][0]["next_steps"] == [
+        "查看 AI 額度與模型路由或資料源額度。",
+        "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+    ]
     assert summary["recent_failures"][0]["retryable"] is True
     assert summary["recent_failures"][0]["retry_kind"] == "report_generation"
     assert summary["recent_failures"][0]["retry_endpoint"] == "POST /tasks/task-failed/retry"
     assert summary["recent_failures"][0]["status_endpoint"] == "GET /tasks/task-failed"
     assert summary["recent_failures"][0]["run_endpoint"] == "GET /runs/2"
     assert "可從維護頁重試" in summary["recent_failures"][0]["next_action"]
+    assert "查看 AI 額度" in summary["recent_failures"][0]["next_action"]
     assert summary["stale_running"][0]["task_id"] == "task-running"
     assert summary["stale_running"][0]["retry_kind"] == "report_generation"
+
+
+def test_run_task_api_classifies_common_task_failure_causes() -> None:
+    cases = [
+        ("failed", "RESOURCE_EXHAUSTED quota exceeded", "report_generation", True, "quota"),
+        ("failed", "Redis broker connection refused", "market_refresh", True, "task_queue"),
+        ("failed", "unsupported data operation task", "data_operation", False, "payload_validation"),
+        ("failed", "ReadTimeout while fetching documents", "company_filings_fetch", True, "timeout"),
+        ("failed", "MOPS returned HTTP 403 captcha", "company_filings_fetch", True, "data_source"),
+        ("cancelled", "", "report_generation", False, "cancelled"),
+    ]
+
+    for status, error, operation, retryable, expected_category in cases:
+        diagnostic = RunTaskApiService._task_failure_diagnostic(
+            status=status,
+            error=error,
+            operation=operation,
+            retryable=retryable,
+        )
+
+        assert diagnostic["category"] == expected_category
+        assert diagnostic["summary"]
+        assert diagnostic["next_steps"]

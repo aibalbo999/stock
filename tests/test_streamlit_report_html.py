@@ -219,6 +219,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_smoke_command(service_snapshot)" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
     assert "task_retry_options(task_summary)" in source
+    assert 'task_summary.get("by_error_category")' in source
+    assert "失敗原因分類" in source
     assert "maintenance_retry_failed_task" in source
     assert "maintenance_inspect_task_id" in source
     assert 'f"/tasks/{selected_retry_task_id}/retry"' in source
@@ -243,6 +245,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_alert(" in source
     assert "def task_failure_drilldown_rows(" in source
     assert "def task_retry_options(" in source
+    assert '"category": row.get("error_category")' in source
+    assert '"next_steps": _task_next_steps_text(row)' in source
     assert "仍會嘗試送出" in source
     assert "Celery worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source
@@ -1034,6 +1038,13 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "task_id": "task-failed",
                 "retryable": True,
                 "retry_kind": "report_generation",
+                "error_category": "quota",
+                "error_severity": "warning",
+                "error_summary": "模型/API 額度或速率限制",
+                "next_steps": [
+                    "查看 AI 額度與模型路由或資料源額度。",
+                    "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+                ],
                 "retry_endpoint": "POST /tasks/task-failed/retry",
                 "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
                 "error": "quota exhausted",
@@ -1057,11 +1068,16 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     options = helpers["task_retry_options"](task_summary)
 
     assert rows[0]["run_id"] == 22
+    assert rows[0]["category"] == "quota"
+    assert rows[0]["severity"] == "warning"
+    assert rows[0]["summary"] == "模型/API 額度或速率限制"
+    assert rows[0]["next_steps"] == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。"
     assert rows[0]["retry"] == "可重試"
     assert rows[0]["retry_kind"] == "report_generation"
     assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
     assert rows[1]["retry"] == "需人工"
     assert rows[1]["retry_kind"] == "-"
+    assert rows[1]["next_steps"] == "-"
     assert options == [
         {
             "task_id": "task-failed",

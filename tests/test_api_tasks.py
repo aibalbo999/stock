@@ -10,16 +10,35 @@ from fastapi.testclient import TestClient
 
 from app.core.time import now_taipei
 from app.api import main
-from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportResponse, Source
+from app.api.schemas import TopicDiscoveryRequest
+from app.models.schemas import FinancialMetric, MarketSnapshot, NewsDocument, ReportRequest, ReportResponse, Source
 from app.services.followup_actions import FollowUpAction
 from app.services import report_quality
+from app.services.discovered_pipeline import candidate_filing_revalidation_tickers, should_revalidate_candidate_filings
 from app.services.discovered_market_data import merge_financial_metric_history, merge_latest_by_ticker
+from app.services.discovery_workflow import (
+    build_source_audit,
+    discovery_document_limit,
+    discovery_effective_lookback_days,
+    discovery_fetch_settings,
+    discovery_market_history_days,
+    discovery_query_budget,
+    discovery_valuation_history_days,
+    escalate_discovery_budget,
+    should_escalate_discovery_budget,
+    should_supplement_discovery_sources,
+    summarize_candidate_support,
+)
 from app.services.report_followup import serialize_run
 from app.services.report_quality import (
+    attach_quality_gate_to_report,
+    build_quality_gate_for_request,
+    build_report_quality_gate,
     parse_quality_gate_from_markdown,
     render_quality_action_guard_markdown,
     summarize_document_source_quality,
 )
+from app.services.topic_discovery import TopicDiscoveryPlan
 
 
 class DummyRun:
@@ -216,14 +235,14 @@ def test_generate_report_sync_attaches_quality_gate_from_used_evidence(monkeypat
 
 
 def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
-    payload = main.TopicDiscoveryRequest(
+    payload = TopicDiscoveryRequest(
         topic="AI 產業鏈",
         lookback_days=21,
         deep_analysis=True,
         include_international=True,
     )
 
-    audit = main.build_source_audit(
+    audit = build_source_audit(
         payload=payload,
         urls=["https://news.google.com/search?q=AI", "https://news.google.com/search?q=HBM"],
         fixed_source_ingestion={
@@ -316,33 +335,33 @@ def test_source_audit_summarizes_fixed_and_dynamic_ingestion() -> None:
 
 
 def test_deep_discovery_fetch_settings_raise_source_and_evidence_limits() -> None:
-    payload = main.TopicDiscoveryRequest(
+    payload = TopicDiscoveryRequest(
         topic="AI 產業鏈",
         limit_per_query=5,
         evidence_limit=40,
         deep_analysis=True,
     )
 
-    assert main.discovery_fetch_settings(payload) == (20, 180, 72)
-    assert main.discovery_effective_lookback_days(payload) == 120
-    assert main.discovery_document_limit(payload, 180) == 1000
-    assert main.discovery_market_history_days(payload) == 720
-    assert main.discovery_valuation_history_days(payload) == 180
+    assert discovery_fetch_settings(payload) == (20, 180, 72)
+    assert discovery_effective_lookback_days(payload) == 120
+    assert discovery_document_limit(payload, 180) == 1000
+    assert discovery_market_history_days(payload) == 720
+    assert discovery_valuation_history_days(payload) == 180
 
 
 def test_standard_discovery_fetch_settings_are_deeper_than_fast_preview() -> None:
-    fast = main.TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="fast")
-    standard = main.TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="standard")
+    fast = TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="fast")
+    standard = TopicDiscoveryRequest(topic="AI 產業鏈", analysis_mode="standard")
 
-    assert main.discovery_fetch_settings(fast) == (8, 80, 24)
-    assert main.discovery_fetch_settings(standard) == (8, 80, 36)
-    assert main.discovery_effective_lookback_days(standard) == 60
-    assert main.discovery_document_limit(standard, 80) == 600
+    assert discovery_fetch_settings(fast) == (8, 80, 24)
+    assert discovery_fetch_settings(standard) == (8, 80, 36)
+    assert discovery_effective_lookback_days(standard) == 60
+    assert discovery_document_limit(standard, 80) == 600
 
 
 def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
-    normal_budget = main.discovery_query_budget(36, analysis_mode="standard")
-    deep_budget = main.discovery_query_budget(80, deep_analysis=True)
+    normal_budget = discovery_query_budget(36, analysis_mode="standard")
+    deep_budget = discovery_query_budget(80, deep_analysis=True)
 
     assert normal_budget["initial_queries"] < 36
     assert normal_budget["supplemental_queries"] > 0
@@ -355,28 +374,28 @@ def test_discovery_query_budget_reserves_supplemental_capacity() -> None:
 
 
 def test_discovery_budget_auto_escalates_on_source_coverage_gaps() -> None:
-    budget = main.discovery_query_budget(36, analysis_mode="standard")
+    budget = discovery_query_budget(36, analysis_mode="standard")
     source_audit = {
         "plan_quality": {"status": "ready"},
         "source_relevance": {"missing_subtopic_count": 2, "weak_subtopic_count": 0},
     }
     candidate_support = {"total": 5, "supported_ratio": 0.8}
 
-    assert main.should_escalate_discovery_budget(source_audit, candidate_support, budget) is True
-    escalated = main.escalate_discovery_budget(budget, 36)
+    assert should_escalate_discovery_budget(source_audit, candidate_support, budget) is True
+    escalated = escalate_discovery_budget(budget, 36)
     assert escalated["escalated"] is True
     assert escalated["supplemental_rounds"] == 5
     assert escalated["supplemental_batch_size"] == 12
 
 
 def test_discovery_budget_does_not_escalate_deep_mode() -> None:
-    budget = main.discovery_query_budget(72, analysis_mode="deep")
+    budget = discovery_query_budget(72, analysis_mode="deep")
     source_audit = {
         "plan_quality": {"status": "insufficient"},
         "source_relevance": {"missing_subtopic_count": 3},
     }
 
-    assert main.should_escalate_discovery_budget(source_audit, {"total": 0}, budget) is False
+    assert should_escalate_discovery_budget(source_audit, {"total": 0}, budget) is False
 
 
 def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() -> None:
@@ -386,8 +405,8 @@ def test_candidate_filing_revalidation_triggers_when_supported_ratio_is_low() ->
         {"ticker": "3231", "status": "needs_evidence"},
     ]
 
-    assert main.should_revalidate_candidate_filings(candidates) is True
-    assert main.should_revalidate_candidate_filings([{"ticker": "2330", "status": "evidence_supported"}]) is False
+    assert should_revalidate_candidate_filings(candidates) is True
+    assert should_revalidate_candidate_filings([{"ticker": "2330", "status": "evidence_supported"}]) is False
 
 
 def test_candidate_filing_revalidation_prioritizes_unpromoted_candidates() -> None:
@@ -397,10 +416,10 @@ def test_candidate_filing_revalidation_prioritizes_unpromoted_candidates() -> No
         {"ticker": "3231", "status": "needs_evidence"},
         {"ticker": "3324", "status": "weak_evidence"},
     ]
-    payload = main.TopicDiscoveryRequest(topic="AI 產業鏈", deep_analysis=True)
+    payload = TopicDiscoveryRequest(topic="AI 產業鏈", deep_analysis=True)
 
-    assert main.candidate_filing_revalidation_tickers(candidates, payload)[:3] == ["2382", "3231", "3324"]
-    assert "2330" in main.candidate_filing_revalidation_tickers(candidates, payload)
+    assert candidate_filing_revalidation_tickers(candidates, payload)[:3] == ["2382", "3231", "3324"]
+    assert "2330" in candidate_filing_revalidation_tickers(candidates, payload)
 
 
 def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:
@@ -414,7 +433,7 @@ def test_source_audit_marks_low_candidate_coverage_for_supplement() -> None:
         "supported_ratio": 0.4,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+    assert should_supplement_discovery_sources(audit, candidate_support) is True
 
 
 def test_source_audit_supplements_when_multiple_candidates_still_have_gaps() -> None:
@@ -430,7 +449,7 @@ def test_source_audit_supplements_when_multiple_candidates_still_have_gaps() -> 
         "supported_ratio": 0.8,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+    assert should_supplement_discovery_sources(audit, candidate_support) is True
 
 
 def test_deep_source_audit_requires_higher_candidate_coverage() -> None:
@@ -446,7 +465,7 @@ def test_deep_source_audit_requires_higher_candidate_coverage() -> None:
         "supported_ratio": 0.7,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+    assert should_supplement_discovery_sources(audit, candidate_support) is True
 
 
 def test_source_audit_supplements_when_plan_query_quality_is_not_ready() -> None:
@@ -467,7 +486,7 @@ def test_source_audit_supplements_when_plan_query_quality_is_not_ready() -> None
         "supported_ratio": 1,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+    assert should_supplement_discovery_sources(audit, candidate_support) is True
 
 
 def test_source_audit_supplements_when_subtopic_has_no_relevant_sources() -> None:
@@ -482,7 +501,7 @@ def test_source_audit_supplements_when_subtopic_has_no_relevant_sources() -> Non
         "supported_ratio": 1,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is True
+    assert should_supplement_discovery_sources(audit, candidate_support) is True
 
 
 def test_source_audit_accepts_sufficient_candidate_and_source_coverage() -> None:
@@ -496,7 +515,7 @@ def test_source_audit_accepts_sufficient_candidate_and_source_coverage() -> None
         "supported_ratio": 0.8,
     }
 
-    assert main.should_supplement_discovery_sources(audit, candidate_support) is False
+    assert should_supplement_discovery_sources(audit, candidate_support) is False
 
 
 def test_summarize_document_source_quality_measures_diversity_and_recency() -> None:
@@ -573,7 +592,7 @@ def test_summarize_document_source_quality_measures_source_credibility() -> None
 
 
 def test_report_quality_gate_blocks_undated_sources() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 12},
@@ -595,7 +614,7 @@ def test_report_quality_gate_blocks_undated_sources() -> None:
 
 
 def test_report_quality_gate_warns_on_low_source_diversity() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 12},
@@ -617,7 +636,7 @@ def test_report_quality_gate_warns_on_low_source_diversity() -> None:
 
 
 def test_report_quality_gate_warns_when_low_credibility_sources_dominate() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 12},
@@ -642,7 +661,7 @@ def test_report_quality_gate_warns_when_low_credibility_sources_dominate() -> No
 
 
 def test_report_quality_gate_blocks_weak_research_inputs() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.4},
             "dynamic_queries": {"stored_count": 5},
@@ -664,7 +683,7 @@ def test_report_quality_gate_blocks_weak_research_inputs() -> None:
 
 
 def test_report_quality_gate_blocks_missing_subtopic_sources() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 24},
@@ -689,7 +708,7 @@ def test_report_quality_gate_blocks_missing_subtopic_sources() -> None:
 
 
 def test_report_quality_gate_treats_weak_subtopics_as_observation_when_sources_are_broad() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 160},
@@ -714,7 +733,7 @@ def test_report_quality_gate_treats_weak_subtopics_as_observation_when_sources_a
 
 
 def test_report_quality_gate_passes_complete_research_inputs() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.8,
@@ -740,7 +759,7 @@ def test_report_quality_gate_passes_complete_research_inputs() -> None:
 
 
 def test_report_quality_gate_warns_when_company_filings_are_missing() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 24},
@@ -834,7 +853,7 @@ def test_quality_gate_for_request_uses_dynamic_request_tickers(monkeypatch) -> N
     monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
     monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
 
-    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2059"]))
+    gate = build_quality_gate_for_request(ReportRequest(topic="AI 產業鏈", tickers=["2059"]))
 
     assert gate["status"] == "ready"
     assert captured["promoted_tickers"] == ["2059"]
@@ -899,7 +918,7 @@ def test_quality_gate_for_request_marks_stale_market_cache(monkeypatch) -> None:
     monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", FakeValuationMetricRepository)
     monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
 
-    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
+    gate = build_quality_gate_for_request(ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
 
     assert gate["metrics"]["market_stale_count"] == 1
     assert gate["metrics"]["monthly_revenue_stale_count"] == 1
@@ -956,8 +975,8 @@ def test_quality_gate_for_request_can_use_revalidated_candidate_confidence(monke
     monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
     monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
 
-    gate = main.build_quality_gate_for_request(
-        main.ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
+    gate = build_quality_gate_for_request(
+        ReportRequest(topic="機器人 產業鏈", tickers=["3037"]),
         candidate_support=support,
     )
 
@@ -1012,14 +1031,14 @@ def test_quality_gate_for_request_passes_runtime_rag_status(monkeypatch) -> None
     monkeypatch.setattr("app.services.report_quality.ValuationMetricRepository", EmptyRepository)
     monkeypatch.setattr("app.services.report_quality.session_scope", fake_session_scope)
 
-    gate = main.build_quality_gate_for_request(main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
+    gate = build_quality_gate_for_request(ReportRequest(topic="AI 產業鏈", tickers=["2330"]))
 
     assert gate["status"] == "ready"
     assert captured["rag_status"] == rag_status
 
 
 def test_report_quality_gate_warns_when_llm_falls_back() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 1.0,
@@ -1057,7 +1076,7 @@ def test_report_quality_gate_warns_when_llm_falls_back() -> None:
 
 
 def test_report_quality_gate_warns_when_rag_embedding_falls_back() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
             "dynamic_queries": {"stored_count": 24},
@@ -1112,7 +1131,7 @@ def test_report_quality_gate_warns_when_rag_embedding_falls_back() -> None:
 
 
 def test_report_quality_gate_warns_when_cross_encoder_reranker_falls_back() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
             "dynamic_queries": {"stored_count": 24},
@@ -1151,7 +1170,7 @@ def test_report_quality_gate_warns_when_cross_encoder_reranker_falls_back() -> N
 
 
 def test_report_quality_gate_warns_when_reranker_is_keyword_only() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
             "dynamic_queries": {"stored_count": 24},
@@ -1197,7 +1216,7 @@ def test_report_quality_gate_warns_when_reranker_is_keyword_only() -> None:
 
 
 def test_report_quality_gate_warns_when_market_data_uses_stale_cache() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0, "formal_confidence_avg": 88, "formal_confidence_min": 80},
             "dynamic_queries": {"stored_count": 24},
@@ -1639,7 +1658,7 @@ def test_candidate_audit_follow_up_is_required_when_no_formal_stock() -> None:
 
 
 def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 1.0,
@@ -1672,7 +1691,7 @@ def test_report_quality_gate_records_enabled_llm_as_observation() -> None:
 
 
 def test_report_quality_gate_discloses_llm_recovery_path() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 1.0,
@@ -1716,7 +1735,7 @@ def test_report_quality_gate_discloses_llm_recovery_path() -> None:
 
 
 def test_candidate_support_summarizes_formal_confidence_scores() -> None:
-    summary = main.summarize_candidate_support(
+    summary = summarize_candidate_support(
         [
             SimpleNamespace(status="evidence_supported", evidence_confidence_score=88),
             SimpleNamespace(status="evidence_supported", evidence_confidence_score=76),
@@ -1731,7 +1750,7 @@ def test_candidate_support_summarizes_formal_confidence_scores() -> None:
 
 
 def test_report_quality_gate_blocks_low_confidence_formal_stocks() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 1.0,
@@ -1756,7 +1775,7 @@ def test_report_quality_gate_blocks_low_confidence_formal_stocks() -> None:
 
 
 def test_report_quality_gate_treats_broad_candidate_list_as_observation_after_promotion() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.4,
@@ -1782,7 +1801,7 @@ def test_report_quality_gate_treats_broad_candidate_list_as_observation_after_pr
 
 
 def test_report_quality_gate_accepts_diffuse_exploration_when_formal_stocks_are_verified() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.2,
@@ -1804,7 +1823,7 @@ def test_report_quality_gate_accepts_diffuse_exploration_when_formal_stocks_are_
 
 
 def test_report_quality_gate_blocks_weak_formal_stocks() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.8,
@@ -1825,7 +1844,7 @@ def test_report_quality_gate_blocks_weak_formal_stocks() -> None:
 
 
 def test_report_quality_gate_warns_when_leading_signal_coverage_is_low() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 24},
@@ -1845,7 +1864,7 @@ def test_report_quality_gate_warns_when_leading_signal_coverage_is_low() -> None
 
 
 def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.8,
@@ -1874,7 +1893,7 @@ def test_report_quality_gate_blocks_incomplete_discovery_plan() -> None:
 
 
 def test_report_quality_gate_warns_on_caution_discovery_plan() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 24},
@@ -1900,7 +1919,7 @@ def test_report_quality_gate_warns_on_caution_discovery_plan() -> None:
 
 
 def test_report_quality_gate_caps_caution_deployable_amount() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 10},
@@ -1920,7 +1939,7 @@ def test_report_quality_gate_caps_caution_deployable_amount() -> None:
 
 
 def test_attach_quality_gate_to_report_persists_gate_in_markdown_and_payload() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 24},
@@ -1938,7 +1957,7 @@ def test_attach_quality_gate_to_report_persists_gate_in_markdown_and_payload() -
         markdown="# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n- 測試",
     )
 
-    updated = main.attach_quality_gate_to_report(response, gate)
+    updated = attach_quality_gate_to_report(response, gate)
 
     assert updated.quality_gate == gate
     assert "## 報告品質門檻" in updated.markdown
@@ -1949,7 +1968,7 @@ def test_attach_quality_gate_to_report_persists_gate_in_markdown_and_payload() -
 
 
 def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {
                 "supported_ratio": 0.8,
@@ -1976,7 +1995,7 @@ def test_parse_quality_gate_from_markdown_restores_history_report_metrics() -> N
             "missing": [],
         },
     )
-    response = main.attach_quality_gate_to_report(
+    response = attach_quality_gate_to_report(
         ReportResponse(
             title="AI 產業鏈 自動分析報告",
             markdown="# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n- 測試",
@@ -2028,7 +2047,7 @@ def test_quality_gate_markdown_uses_investor_friendly_model_warning() -> None:
 
 
 def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 1.0},
             "dynamic_queries": {"stored_count": 10},
@@ -2039,7 +2058,7 @@ def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None
         financial_metrics_count=12,
         valuation_count=1,
     )
-    response = main.attach_quality_gate_to_report(
+    response = attach_quality_gate_to_report(
         ReportResponse(
             title="AI 產業鏈 自動分析報告",
             markdown="# AI 產業鏈 自動分析報告\n\n## 一頁摘要\n- 測試",
@@ -2427,7 +2446,7 @@ def test_prepare_follow_up_report_context_revalidates_and_refreshes(monkeypatch)
     prepared = asyncio.run(
         main.prepare_follow_up_report_context(
             context,
-            main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
             [FollowUpAction("ingest_news", "補候選", ("3324",), purpose="required")],
         )
     )
@@ -2480,7 +2499,7 @@ def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalid
     prepared = asyncio.run(
         main.prepare_follow_up_report_context(
             context,
-            main.ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
             [FollowUpAction("ingest_news", "補候選", ("2330",), purpose="required")],
         )
     )
@@ -2492,7 +2511,7 @@ def test_prepare_follow_up_report_context_keeps_previous_promotions_when_revalid
 
 
 def test_candidate_revalidation_queries_are_company_specific() -> None:
-    plan = main.TopicDiscoveryPlan.model_validate(
+    plan = TopicDiscoveryPlan.model_validate(
         {
             "subtopics": [
                 {
@@ -3335,7 +3354,7 @@ def test_follow_up_plan_next_actions_describe_planned_work() -> None:
 
 
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.3},
             "dynamic_queries": {"stored_count": 3},
@@ -3351,7 +3370,7 @@ def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None
         markdown="# AI 產業鏈 自動分析報告\n\n## 投資建議\n- 測試",
     )
 
-    updated = main.attach_quality_gate_to_report(response, gate)
+    updated = attach_quality_gate_to_report(response, gate)
 
     assert "## 投資行動限制" in updated.markdown
     assert "不得視為買入清單" in updated.markdown
@@ -3359,7 +3378,7 @@ def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None
 
 
 def test_attach_quality_gate_replaces_existing_quality_sections() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 24},
@@ -3384,7 +3403,7 @@ def test_attach_quality_gate_replaces_existing_quality_sections() -> None:
         ),
     )
 
-    updated = main.attach_quality_gate_to_report(response, gate)
+    updated = attach_quality_gate_to_report(response, gate)
 
     assert updated.markdown.count("## 報告品質門檻") == 1
     assert "狀態：資料品質可用" in updated.markdown
@@ -3396,7 +3415,7 @@ def test_attach_quality_gate_replaces_existing_quality_sections() -> None:
 
 
 def test_attach_quality_gate_replaces_ready_section_with_new_action_guard() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.3},
             "dynamic_queries": {"stored_count": 3},
@@ -3418,7 +3437,7 @@ def test_attach_quality_gate_replaces_ready_section_with_new_action_guard() -> N
         ),
     )
 
-    updated = main.attach_quality_gate_to_report(response, gate)
+    updated = attach_quality_gate_to_report(response, gate)
 
     assert updated.markdown.count("## 報告品質門檻") == 1
     assert updated.markdown.count("## 投資行動限制") == 1
@@ -3429,7 +3448,7 @@ def test_attach_quality_gate_replaces_ready_section_with_new_action_guard() -> N
 
 
 def test_ready_quality_gate_does_not_add_action_guard() -> None:
-    gate = main.build_report_quality_gate(
+    gate = build_report_quality_gate(
         source_audit={
             "candidate_support": {"supported_ratio": 0.8},
             "dynamic_queries": {"stored_count": 24},

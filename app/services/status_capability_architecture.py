@@ -62,6 +62,7 @@ def architecture_capabilities(
             "ready"
             if task_queue_status.get("ready")
             and task_queue_status.get("submission_contract_ready")
+            and task_queue_status.get("task_async_bridge_guard_present")
             and api_status.get("structured_task_submission_errors")
             and api_status.get("task_failure_diagnostics_shared_service")
             and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
@@ -84,6 +85,10 @@ def architecture_capabilities(
                 "exported_tasks_present": task_queue_status.get("exported_tasks_present"),
                 "missing_task_exports": task_queue_status.get("missing_task_exports"),
                 "task_names_match_expected": task_queue_status.get("task_names_match_expected"),
+                "task_async_bridge_guard_present": task_queue_status.get(
+                    "task_async_bridge_guard_present"
+                ),
+                "task_async_bridge": task_queue_status.get("task_async_bridge"),
                 "submission_endpoints": task_queue_status.get("submission_endpoints"),
                 "status_endpoints": task_queue_status.get("status_endpoints"),
                 "structured_task_submission_errors": api_status.get("structured_task_submission_errors"),

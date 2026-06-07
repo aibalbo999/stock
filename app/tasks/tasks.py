@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
-from app.core.time import today_taipei
+from app.core.async_bridge import run_async_from_sync
 from app.core.config import get_settings
+from app.core.time import today_taipei
 from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest
 from app.services.candidate_revalidation import CandidateRevalidationService
@@ -358,7 +358,10 @@ def _write_report_file(request: ReportRequest, response) -> Path:
 def discovered_report_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    result = asyncio.run(_run_discovered_report_payload(payload, task_id=task_id))
+    result = run_async_from_sync(
+        _run_discovered_report_payload(payload, task_id=task_id),
+        operation="celery.discovered_report",
+    )
     return {
         **result,
         "task_id": task_id,
@@ -384,7 +387,10 @@ def data_operation_task(self, payload: dict) -> dict:
         run_id = run.id
     try:
         _raise_if_cancelled(run_id)
-        result = asyncio.run(_run_data_operation_payload(operation, operation_payload, run_id=run_id))
+        result = run_async_from_sync(
+            _run_data_operation_payload(operation, operation_payload, run_id=run_id),
+            operation=f"celery.data_operation.{operation or 'unknown'}",
+        )
         _raise_if_cancelled(run_id)
         with session_scope() as session:
             repository = AnalysisRunRepository(session)
@@ -423,7 +429,10 @@ def data_operation_task(self, payload: dict) -> dict:
 def report_follow_up_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    result = asyncio.run(_run_report_follow_up_payload(payload, task_id=task_id))
+    result = run_async_from_sync(
+        _run_report_follow_up_payload(payload, task_id=task_id),
+        operation="celery.report_follow_up",
+    )
     return {
         **result,
         "task_id": task_id,
@@ -444,7 +453,10 @@ def generate_report_task(self, payload: dict) -> dict:
     try:
         _raise_if_cancelled(run_id)
         workflow.start_step(run_id, current_step)
-        ingestion_summary = asyncio.run(_cancellable_ingestion_pipeline(run_id).pre_report_refresh(request))
+        ingestion_summary = run_async_from_sync(
+            _cancellable_ingestion_pipeline(run_id).pre_report_refresh(request),
+            operation="celery.generate_report.pre_report_refresh",
+        )
         _raise_if_cancelled(run_id)
         workflow.complete_step(
             run_id,
@@ -593,7 +605,10 @@ def after_close_report_update_task(self, payload: dict | None = None) -> dict:
         _raise_if_cancelled(run_id)
         target = _latest_report_update_target(schedule_payload)
         _raise_if_cancelled(run_id)
-        refresh = asyncio.run(_refresh_after_close_data(target, schedule_payload, run_id=run_id))
+        refresh = run_async_from_sync(
+            _refresh_after_close_data(target, schedule_payload, run_id=run_id),
+            operation="celery.after_close.refresh_data",
+        )
         _raise_if_cancelled(run_id)
         coverage = _coverage_after_close_update(target)
         _raise_if_cancelled(run_id)

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import timedelta
 
+from app.core.async_bridge import run_async_from_sync
 from app.core.time import today_taipei
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.ingestion import IngestionPipeline
@@ -98,7 +98,10 @@ class SyncReportGenerationApiService:
     def _pre_report_refresh(self, request: ReportRequest) -> dict:
         if self.ingestion_pipeline_cls is None:
             return {}
-        return asyncio.run(self.ingestion_pipeline_cls().pre_report_refresh(request))
+        return run_async_from_sync(
+            self.ingestion_pipeline_cls().pre_report_refresh(request),
+            operation="sync_report.pre_report_refresh",
+        )
 
     def _recover_market_quality_if_needed(
         self,
@@ -112,13 +115,14 @@ class SyncReportGenerationApiService:
         if self.quality_recovery_pipeline_cls is None or not request.tickers:
             return report_result, {"status": "skipped", "reason": "refresh_market_unavailable"}
         today = self.today_func()
-        market_summary = asyncio.run(
+        market_summary = run_async_from_sync(
             self.quality_recovery_pipeline_cls().refresh_market(
                 request.tickers,
                 today - timedelta(days=max(request.lookback_days, 240)),
                 today,
                 filter_allowed=False,
-            )
+            ),
+            operation="sync_report.refresh_market_quality_recovery",
         )
         rebuilt = self.report_build_service_factory().build(request, **build_kwargs)
         return rebuilt, {

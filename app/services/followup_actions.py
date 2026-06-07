@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from urllib.parse import quote_plus
 
+from app.core.async_bridge import run_async_from_sync
 from app.core.time import today_taipei
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
@@ -1008,7 +1009,10 @@ async def execute_follow_up_actions(
 
 
 def execute_follow_up_actions_sync(actions: list[FollowUpAction], request: ReportRequest, news_limit: int = 30) -> dict:
-    return asyncio.run(execute_follow_up_actions(actions, request, news_limit))
+    return run_async_from_sync(
+        execute_follow_up_actions(actions, request, news_limit),
+        operation="follow_up.execute_actions",
+    )
 
 
 async def execute_single_follow_up_action(

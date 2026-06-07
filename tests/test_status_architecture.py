@@ -68,6 +68,10 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     ]
     assert status["task_queue"]["missing_task_exports"] == []
     assert status["task_queue"]["task_names_match_expected"] is True
+    assert status["task_queue"]["task_async_bridge_guard_present"] is True
+    assert status["task_queue"]["task_async_bridge"]["direct_asyncio_run_count"] == 0
+    assert status["task_queue"]["task_async_bridge"]["helper_imported"] is True
+    assert all(status["task_queue"]["task_async_bridge"]["operation_markers"].values())
     assert "POST /tasks/data-operation" in status["task_queue"]["submission_endpoints"]
     assert "GET /tasks/summary" in status["task_queue"]["status_endpoints"]
     assert status["celery"]["ready"] == status["task_queue"]["ready"]
@@ -123,6 +127,7 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["sync_report_pre_refresh_default_enabled"] is False
     assert evidence["sync_report_quality_recovery_default_enabled"] is False
     assert evidence["sync_report_blocking_async_refresh_calls_present"] is True
+    assert evidence["sync_report_async_bridge_guard_present"] is True
     assert evidence["sync_report_blocking_async_calls_gated"] is True
     assert evidence["compatibility_service_present"] is True
     assert evidence["main_imports_legacy_facade"] is False
@@ -140,6 +145,8 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert task_queue_arch["evidence"]["processing_ready"] == status["task_queue"]["processing_ready"]
     assert task_queue_arch["evidence"]["worker_online"] == status["task_queue"]["worker_online"]
     assert "worker_nodes" in task_queue_arch["evidence"]
+    assert task_queue_arch["evidence"]["task_async_bridge_guard_present"] is True
+    assert task_queue_arch["evidence"]["task_async_bridge"]["direct_asyncio_run_count"] == 0
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
     assert task_queue_arch["evidence"]["task_failure_diagnostics_shared_service"] is True
     assert task_queue_arch["evidence"]["task_failure_diagnostics_persisted_to_run_payload"] is True

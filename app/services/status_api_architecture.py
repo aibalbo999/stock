@@ -122,6 +122,13 @@ def api_controller_status() -> dict:
         "return asyncio.run(self.ingestion_pipeline_cls().pre_report_refresh(request))"
         in report_generation_api_source
         or "market_summary = asyncio.run(" in report_generation_api_source
+        or "run_async_from_sync(" in report_generation_api_source
+    )
+    sync_report_async_bridge_guard_present = (
+        "from app.core.async_bridge import run_async_from_sync" in report_generation_api_source
+        and 'operation="sync_report.pre_report_refresh"' in report_generation_api_source
+        and 'operation="sync_report.refresh_market_quality_recovery"'
+        in report_generation_api_source
     )
     sync_report_async_refresh_gates_present = (
         '"IngestionPipeline"] if sync_pre_refresh_enabled else None'
@@ -235,7 +242,10 @@ def api_controller_status() -> dict:
         "sync_report_network_refresh_opt_in": sync_report_refresh_defaults_disabled
         and (
             not sync_report_blocking_async_refresh_calls
-            or sync_report_async_refresh_gates_present
+            or (
+                sync_report_async_refresh_gates_present
+                and sync_report_async_bridge_guard_present
+            )
         ),
         "sync_report_pre_refresh_default_enabled": (
             "sync_report_pre_refresh_enabled: bool = True" in config_source
@@ -246,6 +256,7 @@ def api_controller_status() -> dict:
         "sync_report_blocking_async_refresh_calls_present": (
             sync_report_blocking_async_refresh_calls
         ),
+        "sync_report_async_bridge_guard_present": sync_report_async_bridge_guard_present,
         "sync_report_blocking_async_calls_gated": (
             not sync_report_blocking_async_refresh_calls
             or sync_report_async_refresh_gates_present

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -19,6 +20,14 @@ EXPECTED_TASK_NAMES = {
     "report_follow_up_task": "app.tasks.tasks.report_follow_up_task",
 }
 
+TASK_ASYNC_BRIDGE_OPERATIONS = (
+    "celery.discovered_report",
+    "celery.data_operation.",
+    "celery.report_follow_up",
+    "celery.generate_report.pre_report_refresh",
+    "celery.after_close.refresh_data",
+)
+
 
 def task_queue_status(
     settings: Any,
@@ -29,6 +38,7 @@ def task_queue_status(
 ) -> dict:
     broker_url = str(getattr(settings, "redis_url", "") or "")
     export_status = _task_export_status()
+    async_bridge_status = _task_async_bridge_status()
     broker_ok = bool(redis_status.get("ok"))
     broker_configured = bool(broker_url.strip())
     worker_ping_timeout_seconds = max(
@@ -69,6 +79,8 @@ def task_queue_status(
         "task_names_match_expected": export_status["task_names_match_expected"],
         "task_export_namespace_available": export_status["task_export_namespace_available"],
         "task_export_error": export_status["task_export_error"],
+        "task_async_bridge_guard_present": async_bridge_status["ready"],
+        "task_async_bridge": async_bridge_status,
         "worker_ping_checked": worker_ping_status["worker_ping_checked"],
         "worker_ping_timeout_seconds": worker_ping_timeout_seconds,
         "worker_online": worker_ping_status["worker_online"],
@@ -91,6 +103,39 @@ def task_queue_status(
             ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
             ".venv/bin/python scripts/start_system.py --start-dependencies",
         ],
+    }
+
+
+def _task_async_bridge_status() -> dict:
+    tasks_path = Path(__file__).resolve().parents[1] / "tasks" / "tasks.py"
+    try:
+        tasks_source = tasks_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {
+            "ready": False,
+            "path": "app/tasks/tasks.py",
+            "fallback_reason": f"tasks_source_unreadable:{exc.__class__.__name__}",
+        }
+    operation_markers = {
+        operation: operation in tasks_source
+        for operation in TASK_ASYNC_BRIDGE_OPERATIONS
+    }
+    direct_asyncio_run_count = tasks_source.count("asyncio.run(")
+    helper_imported = "from app.core.async_bridge import run_async_from_sync" in tasks_source
+    return {
+        "ready": bool(
+            helper_imported
+            and direct_asyncio_run_count == 0
+            and all(operation_markers.values())
+        ),
+        "path": "app/tasks/tasks.py",
+        "helper_imported": helper_imported,
+        "direct_asyncio_run_count": direct_asyncio_run_count,
+        "bridge_call_count": tasks_source.count("run_async_from_sync("),
+        "operation_markers": operation_markers,
+        "fallback_reason": None
+        if helper_imported and direct_asyncio_run_count == 0 and all(operation_markers.values())
+        else "missing_task_async_bridge_guard",
     }
 
 

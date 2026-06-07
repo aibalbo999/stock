@@ -93,6 +93,18 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         ]
         is True
     )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["workflow"][
+            "WORKFLOW_ENGINE"
+        ]
+        is True
+    )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["report_policy"][
+            "SYNC_REPORT_PRE_REFRESH_ENABLED"
+        ]
+        is True
+    )
     assert "POST /tasks/data-operation" in status["task_queue"]["submission_endpoints"]
     assert "GET /tasks/summary" in status["task_queue"]["status_endpoints"]
     assert status["celery"]["ready"] == status["task_queue"]["ready"]

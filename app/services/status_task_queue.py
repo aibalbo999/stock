@@ -71,6 +71,23 @@ COMPOSE_RUNTIME_ENV_GROUPS = {
         "LANGSMITH_API_KEY",
         "PHOENIX_ENDPOINT",
     ),
+    "workflow": (
+        "WORKFLOW_ENGINE",
+        "WORKFLOW_LOCAL_FALLBACK_ENABLED",
+        "PREFECT_API_URL",
+        "TEMPORAL_ADDRESS",
+        "TEMPORAL_TASK_QUEUE",
+        "TEMPORAL_WORKFLOW_NAME",
+        "AIRFLOW_API_URL",
+        "AIRFLOW_DAG_ID",
+        "AIRFLOW_API_TOKEN",
+    ),
+    "report_policy": (
+        "AUTO_FOLLOW_UP_ENABLED",
+        "SYNC_REPORT_PRE_REFRESH_ENABLED",
+        "SYNC_REPORT_QUALITY_RECOVERY_ENABLED",
+        "REPORT_QUALITY_AUTO_RECOVERY_ENABLED",
+    ),
 }
 
 

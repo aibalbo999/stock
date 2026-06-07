@@ -111,7 +111,7 @@ docker compose up -d redis postgres neo4j browserless chroma
 ```
 
 本機 Chroma 對外 port 使用 `8001`，避免和 FastAPI 的 `8000` 衝突；主機端若要使用 Chroma HTTP server，可設定 `USE_CHROMA=true` 與 `CHROMA_API_URL=http://127.0.0.1:8001`。compose 服務內仍使用 `http://chroma:8000`。Docker Compose 會對 Browserless `/json/version`、Chroma `/api/v2/heartbeat` 與 FlareSolverr `/health` 做 healthcheck，app / Celery 會等 Browserless 與 Chroma healthy 後再啟動，降低剛開 container 時的誤判與連線失敗。
-Docker Compose 的 app / Celery 共用同一組 runtime env contract：Gemini / OpenAI / Anthropic / Cohere key、LLM 模型順序與免費額度、RAG embedding/reranker、FinMind/Fugle token、公司文件 structured API、Visual RAG 與 LangSmith/Phoenix observability 都可由 `.env` 或 host env 覆蓋後傳入 worker/beat。涉及服務 DNS 的 URL 則需分 host-only 與 compose 內部位址，例如主機端用 `127.0.0.1`，compose worker 內用 service name。
+Docker Compose 的 app / Celery 共用同一組 runtime env contract：Gemini / OpenAI / Anthropic / Cohere key、LLM 模型順序與免費額度、RAG embedding/reranker、FinMind/Fugle token、公司文件 structured API、Visual RAG、LangSmith/Phoenix observability、workflow engine 與 sync-report/recovery policy 都可由 `.env` 或 host env 覆蓋後傳入 worker/beat。涉及服務 DNS 的 URL 則需分 host-only 與 compose 內部位址，例如主機端用 `127.0.0.1`，compose worker 內用 service name。
 
 若公開資訊觀測站或公司 IR 入口遇到 Cloudflare / CAPTCHA / 空殼頁，可額外啟動 FlareSolverr unlocker profile：
 

@@ -70,6 +70,16 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
         "LLM_OBSERVABILITY_PROVIDER": "${LLM_OBSERVABILITY_PROVIDER:-local}",
         "LANGSMITH_API_KEY": "${LANGSMITH_API_KEY:-}",
         "PHOENIX_ENDPOINT": "${PHOENIX_ENDPOINT:-}",
+        "WORKFLOW_ENGINE": "${WORKFLOW_ENGINE:-local}",
+        "WORKFLOW_LOCAL_FALLBACK_ENABLED": "${WORKFLOW_LOCAL_FALLBACK_ENABLED:-true}",
+        "PREFECT_API_URL": "${PREFECT_API_URL:-}",
+        "TEMPORAL_ADDRESS": "${TEMPORAL_ADDRESS:-localhost:7233}",
+        "TEMPORAL_TASK_QUEUE": "${TEMPORAL_TASK_QUEUE:-stock-analysis}",
+        "AIRFLOW_API_URL": "${AIRFLOW_API_URL:-}",
+        "AIRFLOW_API_TOKEN": "${AIRFLOW_API_TOKEN:-}",
+        "SYNC_REPORT_PRE_REFRESH_ENABLED": "${SYNC_REPORT_PRE_REFRESH_ENABLED:-false}",
+        "SYNC_REPORT_QUALITY_RECOVERY_ENABLED": "${SYNC_REPORT_QUALITY_RECOVERY_ENABLED:-false}",
+        "REPORT_QUALITY_AUTO_RECOVERY_ENABLED": "${REPORT_QUALITY_AUTO_RECOVERY_ENABLED:-true}",
     }
     for key, expected_value in expected_runtime_env.items():
         assert worker["environment"][key] == expected_value

@@ -5,10 +5,14 @@ from pathlib import Path
 DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
 DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
+FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
+MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
     REPORT_HTML_SOURCE,
+    FOLLOW_UP_STATUS_SOURCE,
+    MAINTENANCE_STATUS_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
@@ -25,14 +29,14 @@ def read_ui_source() -> str:
 
 def load_report_helpers() -> dict:
     report_source = REPORT_HTML_SOURCE.read_text()
-    dashboard_source = DASHBOARD_CORE_SOURCE.read_text()
-    dashboard_start = dashboard_source.index("def candidate_revalidation_summary")
-    dashboard_end = dashboard_source.index("def render_reader_report(")
+    follow_up_source = FOLLOW_UP_STATUS_SOURCE.read_text()
+    maintenance_source = MAINTENANCE_STATUS_SOURCE.read_text()
     namespace = {
         "__file__": str(REPORT_HTML_SOURCE),
     }
     exec(report_source, namespace)
-    exec(dashboard_source[dashboard_start:dashboard_end], namespace)
+    exec(follow_up_source, namespace)
+    exec(maintenance_source, namespace)
     return namespace
 
 
@@ -57,6 +61,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility_html" in source
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
+    assert "from app.ui.maintenance_status import (" in source
+    assert "from app.ui.follow_up_status import (" in source
     assert "upgrade-audit-grid" in combined
     assert '[data-baseweb="tab"] p' in combined
     assert 'def render_analysis_workspace() -> None:' in source
@@ -85,6 +91,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_html import (" in source
     assert "def report_html(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def report_html(" in REPORT_HTML_SOURCE.read_text()
+    assert "def upgrade_audit_html(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def upgrade_audit_html(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def follow_up_result_message(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def follow_up_result_message(" in FOLLOW_UP_STATUS_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

@@ -189,6 +189,8 @@ def architecture_capabilities(
         "secret_scanning": _capability(
             "ready"
             if security_scan_status.get("external_engine_integration")
+            and security_scan_status.get("external_engine_available")
+            and security_scan_status.get("default_engine_external")
             and security_scan_status.get("detect_secrets_dependency_declared")
             and security_scan_status.get("external_engine_structured_findings")
             and security_scan_status.get("gitleaks_json_report_supported")
@@ -197,7 +199,7 @@ def architecture_capabilities(
             evidence=security_scan_status,
             detail=(
                 "Secret scanning prefers external tools such as detect-secrets/gitleaks "
-                "and keeps local regex only as a fallback."
+                "and only treats local regex as a degraded fallback."
             ),
         ),
     }

@@ -24,6 +24,9 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert status["workflow_orchestration"]["local_fallback_enabled"] is True
     assert status["workflow_orchestration"]["ready"] is True
     assert status["security_scanning"]["external_engine_integration"] is True
+    assert status["security_scanning"]["external_engine_available"] is True
+    assert status["security_scanning"]["default_engine_external"] is True
+    assert status["security_scanning"]["local_regex_active"] is False
     assert status["security_scanning"]["detect_secrets_dependency_declared"] is True
     assert status["security_scanning"]["local_regex_fallback_enabled"] is True
     assert status["security_scanning"]["external_engine_structured_findings"] is True
@@ -205,6 +208,9 @@ def test_runtime_migration_and_secret_scanning_architecture_capabilities(
     assert architecture["database_migrations"]["status"] in {"ready", "degraded"}
     assert architecture["database_migrations"]["evidence"]["head_revision"]
     assert architecture["secret_scanning"]["status"] == "ready"
+    assert architecture["secret_scanning"]["evidence"]["external_engine_available"] is True
+    assert architecture["secret_scanning"]["evidence"]["default_engine_external"] is True
+    assert architecture["secret_scanning"]["evidence"]["local_regex_active"] is False
     assert architecture["secret_scanning"]["evidence"]["local_regex_fallback_role"] == (
         "fallback_only"
     )

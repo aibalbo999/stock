@@ -243,6 +243,51 @@ def test_report_repository_lists_latest_report_per_topic_for_legacy_duplicates()
         session.close()
 
 
+def test_report_repository_latest_by_topic_breaks_timestamp_ties_by_newer_id() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        same_generated_at = datetime(2026, 5, 2, 9, 0, 0)
+        session.add_all(
+            [
+                GeneratedReport(
+                    title="old ai",
+                    topic="AI",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# old",
+                    generated_at=same_generated_at,
+                ),
+                GeneratedReport(
+                    title="new ai",
+                    topic="AI",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# new",
+                    generated_at=same_generated_at,
+                ),
+                GeneratedReport(
+                    title="robot",
+                    topic="Robot",
+                    tickers_json="[]",
+                    findings_json="[]",
+                    markdown="# robot",
+                    generated_at=datetime(2026, 5, 1, 9, 0, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+        repository = ReportRepository(session)
+
+        assert repository.latest(1)[0].title == "new ai"
+        assert [report.title for report in repository.latest_by_topic(20)] == ["new ai", "robot"]
+    finally:
+        session.close()
+
+
 def test_report_repository_prunes_legacy_duplicate_topic_reports_and_run_links() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)

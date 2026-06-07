@@ -49,6 +49,8 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "def report_retention_status(" in report_retention_source
     assert report_retention["evidence"]["write_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["write_prunes_markdown_by_topic"] is True
+    assert report_retention["evidence"]["repository_latest_by_topic_available"] is True
+    assert report_retention["evidence"]["repository_latest_tie_breaks_by_id"] is True
     assert report_retention["evidence"]["list_reports_uses_latest_by_topic"] is True
     assert report_retention["evidence"]["quality_summary_uses_latest_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True

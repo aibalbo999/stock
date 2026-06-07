@@ -23,7 +23,9 @@ def report_retention_status() -> dict:
         "write_prunes_db_by_topic": write_prunes_db,
         "write_prunes_markdown_by_topic": report_file_write_prunes,
         "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
-        and "seen_topics" in persistence_source,
+        and "row_number()" in persistence_source
+        and "partition_by=GeneratedReport.topic" in persistence_source,
+        "repository_latest_tie_breaks_by_id": "GeneratedReport.id.desc()" in persistence_source,
         "repository_bulk_prune_available": "def prune_older_by_topic(" in persistence_source,
         "repository_topic_prune_available": "def prune_older_for_topic(" in persistence_source,
         "run_links_cleared_for_pruned_reports": ".values(report_id=None)" in persistence_source,

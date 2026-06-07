@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now_naive
@@ -288,23 +288,34 @@ class ReportRepository:
         return report
 
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
-        statement = select(GeneratedReport).order_by(GeneratedReport.generated_at.desc()).limit(limit)
+        statement = (
+            select(GeneratedReport)
+            .order_by(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc())
+            .limit(limit)
+        )
         return list(self.session.scalars(statement))
 
     def latest_by_topic(self, limit: int = 20) -> list[GeneratedReport]:
-        reports = list(
-            self.session.scalars(select(GeneratedReport).order_by(GeneratedReport.generated_at.desc()))
+        ranked_reports = (
+            select(
+                GeneratedReport.id.label("report_id"),
+                func.row_number()
+                .over(
+                    partition_by=GeneratedReport.topic,
+                    order_by=(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc()),
+                )
+                .label("topic_rank"),
+            )
+            .subquery()
         )
-        latest: list[GeneratedReport] = []
-        seen_topics: set[str] = set()
-        for report in reports:
-            if report.topic in seen_topics:
-                continue
-            seen_topics.add(report.topic)
-            latest.append(report)
-            if len(latest) >= limit:
-                break
-        return latest
+        statement = (
+            select(GeneratedReport)
+            .join(ranked_reports, GeneratedReport.id == ranked_reports.c.report_id)
+            .where(ranked_reports.c.topic_rank == 1)
+            .order_by(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement))
 
     def get(self, report_id: int) -> GeneratedReport | None:
         return self.session.get(GeneratedReport, report_id)

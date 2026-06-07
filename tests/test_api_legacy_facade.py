@@ -39,6 +39,27 @@ def test_api_compatibility_service_splits_domain_delegates() -> None:
     assert "def safe_mark_run_failed(" in run_state_source
 
 
+def test_compatibility_helper_namespace_splits_domain_builders() -> None:
+    helper_source = Path("app/api/compatibility_helpers.py").read_text()
+    candidate_source = Path("app/api/compatibility_helper_candidate.py").read_text()
+    discovery_source = Path("app/api/compatibility_helper_discovery.py").read_text()
+    followup_source = Path("app/api/compatibility_helper_followup.py").read_text()
+    run_state_source = Path("app/api/compatibility_helper_run_state.py").read_text()
+
+    assert "candidate_compatibility_helper_namespace" in helper_source
+    assert "discovery_compatibility_helper_namespace" in helper_source
+    assert "follow_up_compatibility_helper_namespace" in helper_source
+    assert "run_state_compatibility_helper_namespace" in helper_source
+    assert "def apply_company_filing_gate_to_candidate_payload(" not in helper_source
+    assert "def run_topic_discovery_ingestion(" not in helper_source
+    assert "def run_report_follow_up(" not in helper_source
+    assert "def safe_mark_run_failed(" not in helper_source
+    assert "def apply_company_filing_gate_to_candidate_payload(" in candidate_source
+    assert "def run_topic_discovery_ingestion(" in discovery_source
+    assert "def run_report_follow_up(" in followup_source
+    assert "def safe_mark_run_failed(" in run_state_source
+
+
 def test_legacy_api_facade_delegates_candidate_filing_gate() -> None:
     captured = {}
 

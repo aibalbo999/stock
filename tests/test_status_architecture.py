@@ -107,6 +107,13 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["ai_graph_service_factory_path"] == "app/api/service_factory_ai.py"
     assert evidence["compatibility_helpers_present"] is True
     assert evidence["main_uses_compatibility_helpers"] is True
+    assert evidence["compatibility_helper_domain_builders_extracted"] is True
+    assert evidence["compatibility_helper_domain_builder_paths"] == [
+        "app/api/compatibility_helper_candidate.py",
+        "app/api/compatibility_helper_discovery.py",
+        "app/api/compatibility_helper_followup.py",
+        "app/api/compatibility_helper_run_state.py",
+    ]
     assert evidence["api_runtime_present"] is True
     assert evidence["main_uses_api_runtime"] is True
     assert evidence["task_uses_api_runtime"] is True

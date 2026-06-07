@@ -35,6 +35,10 @@ def api_controller_status() -> dict:
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
+    compatibility_helper_candidate_path = api_dir / "compatibility_helper_candidate.py"
+    compatibility_helper_discovery_path = api_dir / "compatibility_helper_discovery.py"
+    compatibility_helper_followup_path = api_dir / "compatibility_helper_followup.py"
+    compatibility_helper_run_state_path = api_dir / "compatibility_helper_run_state.py"
     task_exports_path = api_dir / "task_exports.py"
     api_compatibility_path = app_dir / "services" / "api_compatibility.py"
     compatibility_candidate_path = app_dir / "services" / "api_compatibility_candidate.py"
@@ -46,6 +50,11 @@ def api_controller_status() -> dict:
     workflow_service_factory_path = api_dir / "service_factory_workflow.py"
     ai_graph_service_factory_path = api_dir / "service_factory_ai.py"
     compatibility_exports_source = _read_source(compatibility_exports_path)
+    compatibility_helpers_source = _read_source(compatibility_helpers_path)
+    compatibility_helper_candidate_source = _read_source(compatibility_helper_candidate_path)
+    compatibility_helper_discovery_source = _read_source(compatibility_helper_discovery_path)
+    compatibility_helper_followup_source = _read_source(compatibility_helper_followup_path)
+    compatibility_helper_run_state_source = _read_source(compatibility_helper_run_state_path)
     legacy_facade_source = _read_source(legacy_facade_path)
     api_compatibility_source = _read_source(api_compatibility_path)
     compatibility_candidate_source = _read_source(compatibility_candidate_path)
@@ -161,6 +170,35 @@ def api_controller_status() -> dict:
                 and "compatibility_helper_namespace" in runtime_source
             )
         ),
+        "compatibility_helper_domain_builders_extracted": (
+            compatibility_helper_candidate_path.exists()
+            and compatibility_helper_discovery_path.exists()
+            and compatibility_helper_followup_path.exists()
+            and compatibility_helper_run_state_path.exists()
+            and "def candidate_compatibility_helper_namespace("
+            in compatibility_helper_candidate_source
+            and "def discovery_compatibility_helper_namespace("
+            in compatibility_helper_discovery_source
+            and "def follow_up_compatibility_helper_namespace("
+            in compatibility_helper_followup_source
+            and "def run_state_compatibility_helper_namespace("
+            in compatibility_helper_run_state_source
+            and "candidate_compatibility_helper_namespace" in compatibility_helpers_source
+            and "discovery_compatibility_helper_namespace" in compatibility_helpers_source
+            and "follow_up_compatibility_helper_namespace" in compatibility_helpers_source
+            and "run_state_compatibility_helper_namespace" in compatibility_helpers_source
+            and "def run_topic_discovery_ingestion(" not in compatibility_helpers_source
+            and "def run_report_follow_up(" not in compatibility_helpers_source
+            and "def apply_company_filing_gate_to_candidate_payload("
+            not in compatibility_helpers_source
+            and "def safe_mark_run_failed(" not in compatibility_helpers_source
+        ),
+        "compatibility_helper_domain_builder_paths": [
+            "app/api/compatibility_helper_candidate.py",
+            "app/api/compatibility_helper_discovery.py",
+            "app/api/compatibility_helper_followup.py",
+            "app/api/compatibility_helper_run_state.py",
+        ],
         "task_exports_present": task_exports_path.exists(),
         "api_runtime_uses_task_exports": "task_export_namespace" in runtime_source,
         "compatibility_exports_imports_tasks": "from app.tasks." in compatibility_exports_source,

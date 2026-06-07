@@ -25,6 +25,7 @@ def architecture_capabilities(
             and api_status.get("main_uses_compatibility_exports")
             and api_status.get("compatibility_helpers_present")
             and api_status.get("main_uses_compatibility_helpers")
+            and api_status.get("compatibility_helper_domain_builders_extracted")
             and api_status.get("compatibility_service_present")
             and api_status.get("api_runtime_present")
             and api_status.get("main_uses_api_runtime")

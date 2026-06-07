@@ -7,8 +7,10 @@ from scripts.security_scan import (
     detect_secrets_findings,
     detect_secrets_hook_findings,
     external_engine_command,
+    gitleaks_findings,
     resolve_engine,
     run_detect_secrets,
+    run_gitleaks,
     scan_paths,
     scan_with_engine,
 )
@@ -184,6 +186,67 @@ def test_detect_secrets_hook_preserves_actionable_non_json_errors(monkeypatch, t
 
     with pytest.raises(RuntimeError, match="baseline file"):
         run_detect_secrets([path], tmp_path, runner=fake_runner, baseline=baseline)
+
+
+def test_gitleaks_findings_parse_json_report() -> None:
+    findings = gitleaks_findings(
+        [
+            {
+                "RuleID": "generic-api-key",
+                "Description": "Generic API credential",
+                "File": "app.py",
+                "StartLine": 4,
+                "Secret": "***",
+            }
+        ]
+    )
+
+    assert findings == [
+        {
+            "type": "gitleaks:generic-api-key",
+            "path": "app.py",
+            "line": 4,
+            "match": "***",
+            "detail": "Generic API credential",
+        }
+    ]
+
+
+def test_security_scan_can_run_gitleaks_engine_with_structured_report(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("scripts.security_scan.shutil.which", lambda engine: "/bin/gitleaks" if engine == "gitleaks" else None)
+    captured = {}
+
+    def fake_runner(command, **kwargs):
+        captured["command"] = command
+        captured["cwd"] = kwargs["cwd"]
+        report_path = command[command.index("--report-path") + 1]
+        Path(report_path).write_text(
+            '[{"RuleID":"generic-api-key","Description":"Generic API credential","File":"app.py","StartLine":9}]',
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    findings = run_gitleaks(tmp_path, runner=fake_runner)
+
+    assert captured["command"][:5] == [
+        "gitleaks",
+        "detect",
+        "--source",
+        str(tmp_path),
+        "--redact",
+    ]
+    assert "--report-format" in captured["command"]
+    assert "json" in captured["command"]
+    assert captured["cwd"] == tmp_path
+    assert findings == [
+        {
+            "type": "gitleaks:generic-api-key",
+            "path": "app.py",
+            "line": 9,
+            "match": "***",
+            "detail": "Generic API credential",
+        }
+    ]
 
 
 def test_security_scan_finds_engine_in_current_python_bin(monkeypatch, tmp_path) -> None:

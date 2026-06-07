@@ -36,10 +36,14 @@ def security_scan_status(
         "pyproject_command_configured": "scripts/security_scan.py" in pyproject_text,
         "external_engine_integration": True,
         "supported_external_engines": [DETECT_ENGINE_NAME, "gitleaks"],
+        "external_engine_structured_findings": True,
         "detect_secrets_dependency_declared": DETECT_ENGINE_NAME in pyproject_text,
         "detect_secrets_cli_available": detect_secrets_cli,
         "detect_secrets_module_available": module_available("detect_secrets"),
         "gitleaks_cli_available": gitleaks_cli,
+        "gitleaks_json_report_supported": "def gitleaks_findings(" in script_path.read_text(encoding="utf-8")
+        if script_path.exists()
+        else False,
         "default_engine": default_engine,
         "local_regex_fallback_enabled": script_path.exists(),
         "local_regex_fallback_role": "fallback_only",

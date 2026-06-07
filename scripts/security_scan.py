@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -227,27 +228,80 @@ def run_gitleaks(
     command = external_engine_command("gitleaks")
     if command is None:
         raise RuntimeError("security scan engine is not available: gitleaks")
-    completed = runner(
-        [command, "detect", "--source", str(root), "--redact", "--exit-code", "1", "--no-banner"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(prefix="gitleaks-", suffix=".json") as report_file:
+        completed = runner(
+            [
+                command,
+                "detect",
+                "--source",
+                str(root),
+                "--redact",
+                "--exit-code",
+                "1",
+                "--no-banner",
+                "--report-format",
+                "json",
+                "--report-path",
+                report_file.name,
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        try:
+            report_text = Path(report_file.name).read_text(encoding="utf-8")
+        except OSError:
+            report_text = ""
     if completed.returncode == 0:
         return []
     if completed.returncode == 1:
-        detail = (completed.stderr or completed.stdout or "gitleaks detected a secret").strip()
-        return [
-            {
-                "type": "gitleaks:finding",
-                "path": "<gitleaks>",
-                "line": 0,
-                "match": "***",
-                "detail": detail[:4000],
-            }
-        ]
+        try:
+            payload = json.loads(report_text or "[]")
+        except json.JSONDecodeError as exc:
+            detail = (completed.stderr or completed.stdout or report_text or "").strip()
+            if detail:
+                raise RuntimeError(detail[:4000]) from exc
+            raise RuntimeError("gitleaks returned invalid JSON report") from exc
+        findings = gitleaks_findings(payload)
+        if findings:
+            return findings
+        return [_gitleaks_fallback_finding(completed.stderr or completed.stdout)]
     raise RuntimeError((completed.stderr or completed.stdout or "gitleaks failed").strip())
+
+
+def gitleaks_findings(payload: object) -> list[dict]:
+    rows = payload.get("findings") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        return []
+    findings = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        rule = row.get("RuleID") or row.get("rule_id") or row.get("rule") or row.get("Description")
+        path = row.get("File") or row.get("file") or row.get("path") or "<gitleaks>"
+        line = row.get("StartLine") or row.get("start_line") or row.get("line") or 0
+        detail = row.get("Description") or row.get("description") or row.get("Fingerprint")
+        findings.append(
+            {
+                "type": f"gitleaks:{rule or 'finding'}",
+                "path": str(path),
+                "line": int(line or 0),
+                "match": "***",
+                **({"detail": str(detail)[:4000]} if detail else {}),
+            }
+        )
+    return findings
+
+
+def _gitleaks_fallback_finding(detail: str | None = None) -> dict:
+    return {
+        "type": "gitleaks:finding",
+        "path": "<gitleaks>",
+        "line": 0,
+        "match": "***",
+        "detail": str(detail or "gitleaks detected a secret").strip()[:4000],
+    }
 
 
 def redact(value: str) -> str:

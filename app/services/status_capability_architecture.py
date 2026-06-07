@@ -188,6 +188,8 @@ def architecture_capabilities(
             "ready"
             if security_scan_status.get("external_engine_integration")
             and security_scan_status.get("detect_secrets_dependency_declared")
+            and security_scan_status.get("external_engine_structured_findings")
+            and security_scan_status.get("gitleaks_json_report_supported")
             and security_scan_status.get("local_regex_fallback_enabled")
             else "degraded",
             evidence=security_scan_status,

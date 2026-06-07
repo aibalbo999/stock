@@ -26,6 +26,8 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert status["security_scanning"]["external_engine_integration"] is True
     assert status["security_scanning"]["detect_secrets_dependency_declared"] is True
     assert status["security_scanning"]["local_regex_fallback_enabled"] is True
+    assert status["security_scanning"]["external_engine_structured_findings"] is True
+    assert status["security_scanning"]["gitleaks_json_report_supported"] is True
     assert status["security_scanning"]["collector_path"] == "app/services/status_security.py"
     assert (
         "from app.services.status_security import security_scan_status as collect_security_scan_status"
@@ -206,6 +208,8 @@ def test_runtime_migration_and_secret_scanning_architecture_capabilities(
     assert architecture["secret_scanning"]["evidence"]["local_regex_fallback_role"] == (
         "fallback_only"
     )
+    assert architecture["secret_scanning"]["evidence"]["external_engine_structured_findings"] is True
+    assert architecture["secret_scanning"]["evidence"]["gitleaks_json_report_supported"] is True
     assert "detect-secrets" in architecture["secret_scanning"]["evidence"][
         "supported_external_engines"
     ]

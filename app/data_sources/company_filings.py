@@ -206,6 +206,7 @@ def company_filing_browser_render_status(
         "connection_checked": False,
         "endpoint_reachable": False,
         "runtime_available": False,
+        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
         "fallback_reason": None,
     }
     if not render_enabled:
@@ -353,6 +354,7 @@ def company_filing_playwright_browser_status(browser_name: str | None = None) ->
         "browser_available": False,
         "browser_executable_exists": False,
         "executable_path": None,
+        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
         "fallback_reason": None,
     }
     if not dependency_available:

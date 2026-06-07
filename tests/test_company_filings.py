@@ -211,6 +211,7 @@ def test_company_filing_browser_render_status_checks_endpoint_reachability(monke
     assert captured == {"address": ("127.0.0.1", 3000), "timeout": 0.5}
     assert status["url_configured"] is True
     assert status["connection_checked"] is True
+    assert status["smoke_cli"].endswith("--url https://example.com/ --json")
     assert status["endpoint_reachable"] is True
     assert status["runtime_available"] is True
     assert status["fallback_reason"] is None

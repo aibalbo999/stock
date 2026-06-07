@@ -176,6 +176,7 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
     assert any("LLM_MODEL_DAILY_REQUEST_BUDGETS" in action and "gemma-4-31b-it" in action for action in actions)
     assert any("FINMIND_TOKEN" in action and "FUGLE_API_KEY" in action for action in actions)
     assert any("COMPANY_FILING_PROXY_URLS" in action for action in actions)
+    assert any("scripts/company_filing_render_smoke.py" in action for action in actions)
     assert any("COMPANY_FILING_STRUCTURED_API_PROVIDER" in action and "TEJ" in action for action in actions)
     assert any('.venv/bin/python -m pip install -e ".[browser]"' in action for action in actions)
     assert ".venv/bin/python -m alembic stamp head" in actions

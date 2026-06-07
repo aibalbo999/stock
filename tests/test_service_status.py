@@ -112,6 +112,9 @@ def test_service_status_shape() -> None:
     assert status["company_filings"]["browser_render_configured"] is False
     assert status["company_filings"]["browser_render_endpoint_reachable"] is False
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
+    assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
+        "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
+    )
     assert status["company_filings"]["browser_render_timeout_seconds"] == 30.0
     assert status["company_filings"]["structured_api_configured"] is False
     assert status["company_filings"]["structured_api_provider"] is None
@@ -129,6 +132,9 @@ def test_service_status_shape() -> None:
     assert isinstance(status["company_filings"]["playwright_render_dependency_available"], bool)
     assert isinstance(status["company_filings"]["playwright_render_browser_available"], bool)
     assert "fallback_reason" in status["company_filings"]["playwright_render_runtime"]
+    assert status["company_filings"]["playwright_render_runtime"]["smoke_cli"].endswith(
+        "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
+    )
     assert status["company_filings"]["playwright_render_browser"] == "chromium"
     assert status["company_filings"]["playwright_render_wait_until"] == "networkidle"
     assert status["company_filings"]["playwright_render_timeout_seconds"] == 30.0

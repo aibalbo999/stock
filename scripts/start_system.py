@@ -924,6 +924,7 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         actions = [
             "設定 COMPANY_FILING_PROXY_URLS 讓重試時可切換代理",
             "或設定 COMPANY_FILING_BROWSER_RENDER_ENABLED=true、COMPANY_FILING_BROWSER_RENDER_PROVIDER 與 COMPANY_FILING_BROWSER_RENDER_URL",
+            "設定後執行 .venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json 驗證後援可取得可解析 HTML",
         ]
         if filing_fallback_evidence.get("playwright_render_dependency_available"):
             actions.append("或啟用 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true 做本機瀏覽器渲染")

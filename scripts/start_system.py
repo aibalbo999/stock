@@ -26,12 +26,19 @@ API_PORT = 8000
 STREAMLIT_HOST = "0.0.0.0"
 STREAMLIT_PORT = 8501
 LOCAL_BROWSERLESS_PORT = 3000
+LOCAL_FLARESOLVERR_PORT = 8191
 LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
     "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
     "COMPANY_FILING_BROWSER_RENDER_URL": (
         f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/content?token=stock_ai_browserless_token"
     ),
 }
+LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS = {
+    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+    "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
+    "COMPANY_FILING_BROWSER_RENDER_URL": f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/v1",
+}
+LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 
 def main() -> int:
@@ -41,6 +48,14 @@ def main() -> int:
         "--start-dependencies",
         action="store_true",
         help="Start docker-compose dependencies: Redis, Postgres, Neo4j, and Browserless.",
+    )
+    parser.add_argument(
+        "--prefer-unlocker",
+        action="store_true",
+        help=(
+            "When starting dependencies, also start FlareSolverr and prefer it for company filing "
+            "browser render fallback."
+        ),
     )
     parser.add_argument(
         "--pull-missing-dependencies",
@@ -85,10 +100,12 @@ def main() -> int:
         local_dependency_env = apply_local_dependency_env_defaults(
             enable_browser_render=True,
             prefer_browserless=True,
+            prefer_unlocker=bool(args.prefer_unlocker),
         )
         dependency_status = start_dependency_services(
             ROOT,
             allow_pull_missing_images=bool(args.pull_missing_dependencies),
+            include_unlocker=bool(args.prefer_unlocker),
         )
         dependency_wait_status = wait_for_local_dependency_ports(
             dependency_status,
@@ -318,14 +335,20 @@ def startup_database_init_mode() -> str:
         return "alembic"
 
 
-def start_dependency_services(root: Path, *, allow_pull_missing_images: bool = False) -> dict[str, str]:
+def start_dependency_services(
+    root: Path,
+    *,
+    allow_pull_missing_images: bool = False,
+    include_unlocker: bool = False,
+) -> dict:
     compose_path = root / "docker-compose.yml"
     if not compose_path.exists():
         return {"status": "略過", "message": "找不到 docker-compose.yml。"}
     docker_command = docker_compose_command()
     if not docker_command:
         return {"status": "略過", "message": "找不到 Docker Compose；請先啟動 Docker Desktop。"}
-    image_status = local_docker_image_status()
+    dependency_services = _dependency_services(include_unlocker=include_unlocker)
+    image_status = local_docker_image_status(_dependency_images(include_unlocker=include_unlocker))
     if not image_status.get("all_present") and not allow_pull_missing_images:
         missing = "、".join(image_status.get("missing_services") or [])
         remediation = image_status.get("remediation") or "docker compose pull neo4j browserless"
@@ -344,23 +367,22 @@ def start_dependency_services(root: Path, *, allow_pull_missing_images: bool = F
         )
         if pull_status.get("status") != "已下載":
             return pull_status
-        image_status = local_docker_image_status()
+        image_status = local_docker_image_status(_dependency_images(include_unlocker=include_unlocker))
         if not image_status.get("all_present"):
             missing = "、".join(image_status.get("missing_services") or [])
             return {
                 "status": "失敗",
                 "message": f"Docker image 下載後仍缺少：{missing}。請檢查 Docker Desktop 網路或手動重試 pull。",
             }
+    profile_args = ["--profile", "unlocker"] if include_unlocker else []
     command = [
         *docker_command,
         "-f",
         str(compose_path),
+        *profile_args,
         "up",
         "-d",
-        "redis",
-        "postgres",
-        "neo4j",
-        "browserless",
+        *dependency_services,
     ]
     try:
         completed = subprocess.run(
@@ -375,8 +397,11 @@ def start_dependency_services(root: Path, *, allow_pull_missing_images: bool = F
         return {
             "status": "失敗",
             "message": (
-                "Docker Compose 啟動逾時，可能正在下載 Neo4j/Browserless image。"
-                "請確認 Docker Desktop 網路狀態，或先執行 docker compose pull neo4j browserless 後重試。"
+                "Docker Compose 啟動逾時，可能正在下載 Neo4j/Browserless/FlareSolverr image。"
+                "請確認 Docker Desktop 網路狀態，或先執行 "
+                + "docker compose pull "
+                + " ".join(service for service in dependency_services if service in {"neo4j", "browserless", "flaresolverr"})
+                + " 後重試。"
             ),
         }
     except (OSError, subprocess.SubprocessError) as exc:
@@ -384,7 +409,40 @@ def start_dependency_services(root: Path, *, allow_pull_missing_images: bool = F
     if completed.returncode != 0:
         message = (completed.stderr or completed.stdout or "Docker Compose 回傳錯誤").strip()
         return {"status": "失敗", "message": message.splitlines()[-1] if message else "Docker Compose 回傳錯誤。"}
-    return {"status": "已啟動", "message": "Redis、Postgres、Neo4j、Browserless 已送出啟動指令。"}
+    service_label = "、".join(_dependency_service_labels(dependency_services))
+    return {
+        "status": "已啟動",
+        "message": f"{service_label} 已送出啟動指令。",
+        "services": dependency_services,
+    }
+
+
+def _dependency_services(*, include_unlocker: bool = False) -> list[str]:
+    services = ["redis", "postgres", "neo4j", "browserless"]
+    if include_unlocker:
+        services.append("flaresolverr")
+    return services
+
+
+def _dependency_service_labels(services: list[str]) -> list[str]:
+    labels = {
+        "redis": "Redis",
+        "postgres": "Postgres",
+        "neo4j": "Neo4j",
+        "browserless": "Browserless",
+        "flaresolverr": "FlareSolverr",
+    }
+    return [labels.get(service, service) for service in services]
+
+
+def _dependency_images(*, include_unlocker: bool = False) -> dict[str, str]:
+    images = {
+        "neo4j": "neo4j:5-community",
+        "browserless": "ghcr.io/browserless/chromium:latest",
+    }
+    if include_unlocker:
+        images["flaresolverr"] = LOCAL_FLARESOLVERR_IMAGE
+    return images
 
 
 def pull_missing_dependency_images(
@@ -394,7 +452,11 @@ def pull_missing_dependency_images(
     *,
     timeout_seconds: int = 300,
 ) -> dict[str, str]:
-    services = [service for service in missing_services if service in {"neo4j", "browserless"}]
+    services = [
+        service
+        for service in missing_services
+        if service in {"neo4j", "browserless", "flaresolverr"}
+    ]
     if not services:
         return {"status": "已下載", "message": "沒有需要下載的 Docker image。"}
     for service in services:
@@ -436,6 +498,7 @@ def apply_local_dependency_env_defaults(
     *,
     enable_browser_render: bool = False,
     prefer_browserless: bool = False,
+    prefer_unlocker: bool = False,
 ) -> dict[str, str]:
     applied = {}
     for key, value in LOCAL_NEO4J_ENV_DEFAULTS.items():
@@ -444,11 +507,20 @@ def apply_local_dependency_env_defaults(
         os.environ[key] = value
         applied[key] = value
     if enable_browser_render:
-        applied.update(apply_local_browser_render_env_defaults(prefer_browserless=prefer_browserless))
+        applied.update(
+            apply_local_browser_render_env_defaults(
+                prefer_browserless=prefer_browserless,
+                prefer_unlocker=prefer_unlocker,
+            )
+        )
     return applied
 
 
-def apply_local_browser_render_env_defaults(*, prefer_browserless: bool = False) -> dict[str, str]:
+def apply_local_browser_render_env_defaults(
+    *,
+    prefer_browserless: bool = False,
+    prefer_unlocker: bool = False,
+) -> dict[str, str]:
     if os.environ.get("COMPANY_FILING_PROXY_URLS"):
         return {}
     if os.environ.get("COMPANY_FILING_BROWSER_RENDER_ENABLED") and os.environ.get(
@@ -457,6 +529,12 @@ def apply_local_browser_render_env_defaults(*, prefer_browserless: bool = False)
         return {}
     if os.environ.get("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED"):
         return {}
+    if prefer_unlocker:
+        applied = {}
+        for key, value in LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS.items():
+            os.environ[key] = value
+            applied[key] = value
+        return applied
     if prefer_browserless or is_port_open("127.0.0.1", LOCAL_BROWSERLESS_PORT):
         applied = {}
         for key, value in LOCAL_BROWSER_RENDER_ENV_DEFAULTS.items():
@@ -470,7 +548,7 @@ def apply_local_browser_render_env_defaults(*, prefer_browserless: bool = False)
 
 
 def wait_for_local_dependency_ports(
-    dependency_status: dict[str, str] | None,
+    dependency_status: dict | None,
     local_dependency_env: dict[str, str],
     *,
     timeout_seconds: int,
@@ -486,10 +564,17 @@ def wait_for_local_dependency_ports(
         or os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
         or ""
     )
-    if _is_local_browser_render_url(browser_render_url):
+    services = set(dependency_status.get("services") or [])
+    if "browserless" in services or _is_local_browserless_render_url(browser_render_url):
         results["browserless"] = wait_for_port(
             "127.0.0.1",
             LOCAL_BROWSERLESS_PORT,
+            timeout_seconds=timeout_seconds,
+        )
+    if "flaresolverr" in services or _is_local_flaresolverr_render_url(browser_render_url):
+        results["flaresolverr"] = wait_for_port(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
             timeout_seconds=timeout_seconds,
         )
     return results
@@ -497,19 +582,39 @@ def wait_for_local_dependency_ports(
 
 def fallback_local_browser_render_to_playwright(
     local_dependency_env: dict[str, str],
-    dependency_status: dict[str, str] | None,
+    dependency_status: dict | None,
     dependency_wait_status: dict[str, bool],
 ) -> dict[str, str]:
-    default_url = LOCAL_BROWSER_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
-    if local_dependency_env.get("COMPANY_FILING_BROWSER_RENDER_URL") != default_url:
+    browserless_url = LOCAL_BROWSER_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
+    flaresolverr_url = LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
+    current_url = local_dependency_env.get("COMPANY_FILING_BROWSER_RENDER_URL")
+    if current_url not in {browserless_url, flaresolverr_url}:
         return {}
-    browserless_ready = (
+    selected_browserless = current_url == browserless_url
+    selected_flaresolverr = current_url == flaresolverr_url
+    render_ready = (
         dependency_status is not None
         and dependency_status.get("status") == "已啟動"
-        and dependency_wait_status.get("browserless") is True
+        and (
+            (selected_browserless and dependency_wait_status.get("browserless") is True)
+            or (selected_flaresolverr and dependency_wait_status.get("flaresolverr") is True)
+        )
     )
-    if browserless_ready:
+    if render_ready:
         return {}
+    if selected_flaresolverr and dependency_wait_status.get("browserless") is True:
+        for key, value in LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS.items():
+            if os.environ.get(key) == value:
+                os.environ.pop(key, None)
+            local_dependency_env.pop(key, None)
+        for key, value in LOCAL_BROWSER_RENDER_ENV_DEFAULTS.items():
+            os.environ[key] = value
+            local_dependency_env[key] = value
+        return {
+            "status": "switched_to_browserless",
+            "reason": "flaresolverr_not_ready",
+            "provider": "browserless",
+        }
     if os.environ.get("COMPANY_FILING_PROXY_URLS"):
         return {}
     if os.environ.get("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED"):
@@ -517,7 +622,10 @@ def fallback_local_browser_render_to_playwright(
     runtime = company_filing_playwright_browser_status()
     if not runtime.get("browser_available"):
         return {}
-    for key, value in LOCAL_BROWSER_RENDER_ENV_DEFAULTS.items():
+    selected_defaults = (
+        LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS if selected_flaresolverr else LOCAL_BROWSER_RENDER_ENV_DEFAULTS
+    )
+    for key, value in selected_defaults.items():
         if os.environ.get(key) == value:
             os.environ.pop(key, None)
         local_dependency_env.pop(key, None)
@@ -525,7 +633,7 @@ def fallback_local_browser_render_to_playwright(
     local_dependency_env["COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED"] = "true"
     return {
         "status": "switched_to_playwright",
-        "reason": "browserless_not_ready",
+        "reason": "flaresolverr_not_ready" if selected_flaresolverr else "browserless_not_ready",
         "browser": str(runtime.get("browser") or "chromium"),
     }
 
@@ -533,7 +641,11 @@ def fallback_local_browser_render_to_playwright(
 def dependency_wait_status_lines(wait_status: dict) -> list[str]:
     if not wait_status:
         return []
-    labels = {"neo4j": "Neo4j 7687", "browserless": "Browserless 3000"}
+    labels = {
+        "neo4j": "Neo4j 7687",
+        "browserless": "Browserless 3000",
+        "flaresolverr": "FlareSolverr 8191",
+    }
     lines = []
     for service, ready in sorted(wait_status.items()):
         if isinstance(ready, bool):
@@ -545,8 +657,9 @@ def dependency_wait_status_lines(wait_status: dict) -> list[str]:
     if any(not ready for ready in bool_values):
         lines.append(
             "- 依賴服務尚未就緒時，可稍後重跑或檢查 "
-            "docker compose ps / docker compose logs neo4j / docker compose logs browserless；"
-            "若 image 下載卡住，可先執行 docker compose pull neo4j browserless。"
+            "docker compose ps / docker compose logs neo4j / docker compose logs browserless / "
+            "docker compose logs flaresolverr；"
+            "若 image 下載卡住，可先執行 docker compose pull neo4j browserless flaresolverr。"
         )
     return lines
 
@@ -555,11 +668,20 @@ def _is_local_neo4j_uri(uri: str) -> bool:
     return uri.startswith(("neo4j://localhost:", "neo4j://127.0.0.1:", "bolt://localhost:", "bolt://127.0.0.1:"))
 
 
-def _is_local_browser_render_url(url: str) -> bool:
+def _is_local_browserless_render_url(url: str) -> bool:
     return str(url or "").startswith(
         (
             f"http://localhost:{LOCAL_BROWSERLESS_PORT}/",
             f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/",
+        )
+    )
+
+
+def _is_local_flaresolverr_render_url(url: str) -> bool:
+    return str(url or "").startswith(
+        (
+            f"http://localhost:{LOCAL_FLARESOLVERR_PORT}/",
+            f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/",
         )
     )
 

@@ -165,6 +165,7 @@ def test_start_dependencies_help_mentions_browserless() -> None:
     help_text = " ".join(completed.stdout.split())
     assert "Redis, Postgres, Neo4j, and Browserless" in help_text
     assert "--pull-missing-dependencies" in help_text
+    assert "--prefer-unlocker" in help_text
 
 
 def test_run_startup_migrations_runs_alembic_upgrade(monkeypatch, tmp_path) -> None:
@@ -321,6 +322,35 @@ def test_apply_local_dependency_env_defaults_prefers_browserless_when_starting_c
     assert applied["COMPANY_FILING_BROWSER_RENDER_URL"].startswith("http://127.0.0.1:3000/content")
     assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" not in applied
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
+
+
+def test_apply_local_dependency_env_defaults_can_prefer_flaresolverr_unlocker(monkeypatch) -> None:
+    for key in (
+        "NEO4J_URI",
+        "NEO4J_USER",
+        "NEO4J_PASSWORD",
+        "NEO4J_DATABASE",
+        "COMPANY_FILING_PROXY_URLS",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    applied = apply_local_dependency_env_defaults(
+        enable_browser_render=True,
+        prefer_browserless=True,
+        prefer_unlocker=True,
+    )
+
+    assert applied["COMPANY_FILING_BROWSER_RENDER_ENABLED"] == "true"
+    assert applied["COMPANY_FILING_BROWSER_RENDER_PROVIDER"] == "flaresolverr"
+    assert applied["COMPANY_FILING_BROWSER_RENDER_URL"] == "http://127.0.0.1:8191/v1"
+    assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" not in applied
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
 
 
@@ -725,6 +755,26 @@ def test_wait_for_local_dependency_ports_waits_for_browserless_after_compose_sta
     assert calls == [("127.0.0.1", 3000, 4)]
 
 
+def test_wait_for_local_dependency_ports_waits_for_flaresolverr_unlocker(monkeypatch) -> None:
+    calls = []
+    monkeypatch.delenv("NEO4J_URI", raising=False)
+
+    def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
+        calls.append((host, port, timeout_seconds))
+        return port == 8191
+
+    monkeypatch.setattr("scripts.start_system.wait_for_port", fake_wait_for_port)
+
+    result = wait_for_local_dependency_ports(
+        {"status": "已啟動", "message": "ok", "services": ["browserless", "flaresolverr"]},
+        {"COMPANY_FILING_BROWSER_RENDER_URL": "http://127.0.0.1:8191/v1"},
+        timeout_seconds=4,
+    )
+
+    assert result == {"browserless": False, "flaresolverr": True}
+    assert calls == [("127.0.0.1", 3000, 4), ("127.0.0.1", 8191, 4)]
+
+
 def test_wait_for_local_dependency_ports_skips_when_compose_did_not_start(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.start_system.wait_for_port",
@@ -741,12 +791,14 @@ def test_wait_for_local_dependency_ports_skips_when_compose_did_not_start(monkey
 
 
 def test_dependency_wait_status_lines_explain_unready_neo4j() -> None:
-    lines = dependency_wait_status_lines({"browserless": False, "neo4j": False})
+    lines = dependency_wait_status_lines({"browserless": False, "flaresolverr": False, "neo4j": False})
 
     assert "- Browserless 3000：尚未就緒" in lines
+    assert "- FlareSolverr 8191：尚未就緒" in lines
     assert "- Neo4j 7687：尚未就緒" in lines
     assert "docker compose logs neo4j" in lines[-1]
     assert "docker compose logs browserless" in lines[-1]
+    assert "docker compose logs flaresolverr" in lines[-1]
 
 
 def test_dependency_wait_status_lines_show_browser_render_fallback() -> None:
@@ -830,6 +882,48 @@ def test_browserless_default_stays_when_browserless_is_ready(monkeypatch) -> Non
     assert "COMPANY_FILING_BROWSER_RENDER_URL" in local_env
 
 
+def test_flaresolverr_default_falls_back_to_browserless_when_unlocker_is_not_ready(monkeypatch) -> None:
+    for key in (
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    local_env = {
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
+        "COMPANY_FILING_BROWSER_RENDER_URL": "http://127.0.0.1:8191/v1",
+    }
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "http://127.0.0.1:8191/v1")
+    monkeypatch.setattr(
+        "scripts.start_system.company_filing_playwright_browser_status",
+        lambda: (_ for _ in ()).throw(AssertionError("should prefer ready browserless")),
+    )
+
+    result = fallback_local_browser_render_to_playwright(
+        local_env,
+        {"status": "已啟動", "message": "ok"},
+        {"flaresolverr": False, "browserless": True},
+    )
+
+    assert result == {
+        "status": "switched_to_browserless",
+        "reason": "flaresolverr_not_ready",
+        "provider": "browserless",
+    }
+    assert local_env == {
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+        "COMPANY_FILING_BROWSER_RENDER_URL": (
+            "http://127.0.0.1:3000/content?token=stock_ai_browserless_token"
+        ),
+    }
+    assert os.environ["COMPANY_FILING_BROWSER_RENDER_URL"].startswith("http://127.0.0.1:3000/content")
+    assert "COMPANY_FILING_BROWSER_RENDER_PROVIDER" not in os.environ
+
+
 def test_docker_compose_command_prefers_docker_compose_plugin(monkeypatch) -> None:
     calls = []
 
@@ -872,7 +966,7 @@ def test_start_dependency_services_runs_compose_for_required_services(monkeypatc
     monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
     monkeypatch.setattr(
         "scripts.start_system.local_docker_image_status",
-        lambda: {"all_present": True, "missing_services": [], "remediation": None},
+        lambda images=None: {"all_present": True, "missing_services": [], "remediation": None},
     )
 
     def fake_run(command, **kwargs):
@@ -887,6 +981,40 @@ def test_start_dependency_services_runs_compose_for_required_services(monkeypatc
     assert result["status"] == "已啟動"
     assert captured["cwd"] == tmp_path
     assert captured["command"][-4:] == ["redis", "postgres", "neo4j", "browserless"]
+    assert result["services"] == ["redis", "postgres", "neo4j", "browserless"]
+
+
+def test_start_dependency_services_can_include_flaresolverr_unlocker(monkeypatch, tmp_path) -> None:
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text("services: {}\n", encoding="utf-8")
+    captured = {}
+
+    monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
+    monkeypatch.setattr(
+        "scripts.start_system.local_docker_image_status",
+        lambda images=None: {
+            "all_present": True,
+            "missing_services": [],
+            "remediation": None,
+            "images": images or {},
+        },
+    )
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["cwd"] = kwargs["cwd"]
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    result = start_dependency_services(tmp_path, include_unlocker=True)
+
+    assert result["status"] == "已啟動"
+    assert captured["cwd"] == tmp_path
+    assert "--profile" in captured["command"]
+    assert "unlocker" in captured["command"]
+    assert captured["command"][-5:] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
+    assert result["services"] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
 
 
 def test_start_dependency_services_explains_missing_images_before_compose_pull(
@@ -897,7 +1025,7 @@ def test_start_dependency_services_explains_missing_images_before_compose_pull(
     monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
     monkeypatch.setattr(
         "scripts.start_system.local_docker_image_status",
-        lambda: {
+        lambda images=None: {
             "all_present": False,
             "missing_services": ["neo4j", "browserless"],
             "remediation": "docker compose pull neo4j browserless",
@@ -934,7 +1062,7 @@ def test_start_dependency_services_can_pull_missing_images_when_explicitly_allow
             {"all_present": True, "missing_services": [], "remediation": None},
         ]
     )
-    monkeypatch.setattr("scripts.start_system.local_docker_image_status", lambda: next(image_statuses))
+    monkeypatch.setattr("scripts.start_system.local_docker_image_status", lambda images=None: next(image_statuses))
 
     def fake_run(command, **kwargs):
         calls.append(command)
@@ -949,6 +1077,42 @@ def test_start_dependency_services_can_pull_missing_images_when_explicitly_allow
     assert calls[1][-4:] == ["redis", "postgres", "neo4j", "browserless"]
 
 
+def test_start_dependency_services_can_pull_missing_flaresolverr_image_when_unlocker_enabled(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
+    image_statuses = iter(
+        [
+            {
+                "all_present": False,
+                "missing_services": ["flaresolverr"],
+                "remediation": "docker compose pull flaresolverr",
+            },
+            {"all_present": True, "missing_services": [], "remediation": None},
+        ]
+    )
+    monkeypatch.setattr("scripts.start_system.local_docker_image_status", lambda images=None: next(image_statuses))
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    result = start_dependency_services(
+        tmp_path,
+        allow_pull_missing_images=True,
+        include_unlocker=True,
+    )
+
+    assert result["status"] == "已啟動"
+    assert calls[0][-2:] == ["pull", "flaresolverr"]
+    assert calls[1][-5:] == ["redis", "postgres", "neo4j", "browserless", "flaresolverr"]
+
+
 def test_start_dependency_services_reports_missing_image_after_pull(
     monkeypatch,
     tmp_path,
@@ -957,7 +1121,7 @@ def test_start_dependency_services_reports_missing_image_after_pull(
     monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
     monkeypatch.setattr(
         "scripts.start_system.local_docker_image_status",
-        lambda: {
+        lambda images=None: {
             "all_present": False,
             "missing_services": ["neo4j"],
             "remediation": "docker compose pull neo4j",
@@ -984,13 +1148,13 @@ def test_pull_missing_dependency_images_reports_service_timeout(monkeypatch, tmp
     result = pull_missing_dependency_images(
         tmp_path,
         ["docker", "compose"],
-        ["neo4j", "browserless"],
+        ["neo4j", "browserless", "flaresolverr"],
         timeout_seconds=30,
     )
 
     assert result["status"] == "失敗"
     assert "Docker image 下載逾時：neo4j" in result["message"]
-    assert "docker compose pull neo4j browserless" in result["message"]
+    assert "docker compose pull neo4j browserless flaresolverr" in result["message"]
 
 
 def test_start_dependency_services_explains_image_pull_timeout(monkeypatch, tmp_path) -> None:
@@ -998,7 +1162,7 @@ def test_start_dependency_services_explains_image_pull_timeout(monkeypatch, tmp_
     monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
     monkeypatch.setattr(
         "scripts.start_system.local_docker_image_status",
-        lambda: {"all_present": True, "missing_services": [], "remediation": None},
+        lambda images=None: {"all_present": True, "missing_services": [], "remediation": None},
     )
 
     def fake_run(command, **kwargs):

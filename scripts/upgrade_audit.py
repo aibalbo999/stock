@@ -13,12 +13,19 @@ from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 from app.services.upgrade_audit import audit_upgrade_capabilities
 
 LOCAL_BROWSERLESS_PORT = 3000
+LOCAL_FLARESOLVERR_PORT = 8191
 LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
     "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
     "COMPANY_FILING_BROWSER_RENDER_URL": (
         f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/content?token=stock_ai_browserless_token"
     ),
 }
+LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS = {
+    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+    "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
+    "COMPANY_FILING_BROWSER_RENDER_URL": f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/v1",
+}
+LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,6 +49,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--prefer-unlocker",
+        action="store_true",
+        help="Prefer local FlareSolverr over Browserless when applying local browser render defaults.",
+    )
+    parser.add_argument(
         "--wait-local-neo4j",
         type=int,
         default=0,
@@ -54,6 +66,13 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         metavar="SECONDS",
         help="Wait for localhost Browserless port before applying local browser render defaults.",
+    )
+    parser.add_argument(
+        "--wait-local-flaresolverr",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait for localhost FlareSolverr port before applying local browser render defaults.",
     )
     parser.add_argument(
         "--check-local-docker-images",
@@ -84,20 +103,41 @@ def main(argv: list[str] | None = None) -> int:
         )
         wait_result["browserless"] = browserless_wait_ready
         wait_result["browserless_timeout_seconds"] = int(args.wait_local_browserless)
+    flaresolverr_wait_ready = None
+    if int(args.wait_local_flaresolverr or 0) > 0:
+        flaresolverr_wait_ready = wait_for_port(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
+            timeout_seconds=int(args.wait_local_flaresolverr),
+        )
+        wait_result["flaresolverr"] = flaresolverr_wait_ready
+        wait_result["flaresolverr_timeout_seconds"] = int(args.wait_local_flaresolverr)
 
     browser_default_status = None
     if args.local_browser_render_defaults:
         browserless_port_available = bool(browserless_wait_ready) or is_port_open("127.0.0.1", LOCAL_BROWSERLESS_PORT)
-        browser_defaults = apply_local_browser_render_env_defaults(prefer_browserless=bool(browserless_wait_ready))
+        flaresolverr_port_available = bool(flaresolverr_wait_ready) or is_port_open(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
+        )
+        browser_defaults = apply_local_browser_render_env_defaults(
+            prefer_browserless=bool(browserless_wait_ready),
+            prefer_unlocker=bool(args.prefer_unlocker and flaresolverr_port_available),
+        )
         applied_defaults.update(browser_defaults)
         browser_default_status = {
             "requested": True,
             **company_filing_playwright_browser_status(),
             "browserless_port_available": browserless_port_available,
+            "flaresolverr_port_available": flaresolverr_port_available,
+            "preferred_unlocker": bool(args.prefer_unlocker),
             "applied_env_keys": sorted(browser_defaults),
             "reason": None
             if browser_defaults
-            else "browserless_port_or_playwright_dependency_missing_or_existing_render_fallback_configured",
+            else (
+                "flaresolverr_or_browserless_port_or_playwright_dependency_missing_"
+                "or_existing_render_fallback_configured"
+            ),
         }
     if applied_defaults:
         clear_settings_cache()
@@ -113,7 +153,14 @@ def main(argv: list[str] | None = None) -> int:
     if wait_result:
         audit["local_dependency_wait"] = wait_result
     if args.check_local_docker_images:
-        audit["local_docker_images"] = local_docker_image_status()
+        images = None
+        if args.prefer_unlocker:
+            images = {
+                "neo4j": "neo4j:5-community",
+                "browserless": "ghcr.io/browserless/chromium:latest",
+                "flaresolverr": LOCAL_FLARESOLVERR_IMAGE,
+            }
+        audit["local_docker_images"] = local_docker_image_status(images)
     if args.json:
         print(json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True))
     else:
@@ -171,6 +218,11 @@ def _format_text(audit: dict) -> str:
                 f"Local Browserless wait: {'ready' if local_wait.get('browserless') else 'not ready'} "
                 f"within {local_wait.get('browserless_timeout_seconds')}s"
             )
+        if "flaresolverr" in local_wait:
+            wait_lines.append(
+                f"Local FlareSolverr wait: {'ready' if local_wait.get('flaresolverr') else 'not ready'} "
+                f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
+            )
         lines.extend(wait_lines)
     local_images = audit.get("local_docker_images")
     if local_images:
@@ -203,7 +255,11 @@ def apply_local_neo4j_env_defaults() -> dict[str, str]:
     return applied
 
 
-def apply_local_browser_render_env_defaults(*, prefer_browserless: bool = False) -> dict[str, str]:
+def apply_local_browser_render_env_defaults(
+    *,
+    prefer_browserless: bool = False,
+    prefer_unlocker: bool = False,
+) -> dict[str, str]:
     if os.environ.get("COMPANY_FILING_PROXY_URLS"):
         return {}
     if os.environ.get("COMPANY_FILING_BROWSER_RENDER_ENABLED") and os.environ.get(
@@ -212,6 +268,12 @@ def apply_local_browser_render_env_defaults(*, prefer_browserless: bool = False)
         return {}
     if os.environ.get("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED"):
         return {}
+    if prefer_unlocker:
+        applied = {}
+        for key, value in LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS.items():
+            os.environ[key] = value
+            applied[key] = value
+        return applied
     if prefer_browserless or is_port_open("127.0.0.1", LOCAL_BROWSERLESS_PORT):
         applied = {}
         for key, value in LOCAL_BROWSER_RENDER_ENV_DEFAULTS.items():

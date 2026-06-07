@@ -100,6 +100,7 @@ def test_upgrade_audit_script_can_apply_local_browser_render_defaults(monkeypatc
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
         "COMPANY_FILING_BROWSER_RENDER_URL",
         "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
     ):
@@ -140,6 +141,7 @@ def test_upgrade_audit_script_can_apply_local_browserless_defaults(monkeypatch, 
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
         "COMPANY_FILING_BROWSER_RENDER_URL",
         "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
     ):
@@ -179,6 +181,60 @@ def test_upgrade_audit_script_can_apply_local_browserless_defaults(monkeypatch, 
     output = capsys.readouterr().out
     assert "COMPANY_FILING_BROWSER_RENDER_URL" in output
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
+
+
+def test_upgrade_audit_script_can_apply_local_flaresolverr_defaults(monkeypatch, capsys) -> None:
+    for key in (
+        "COMPANY_FILING_PROXY_URLS",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    monkeypatch.setattr(
+        upgrade_audit,
+        "company_filing_playwright_browser_status",
+        lambda: {"dependency_available": False, "browser_available": False},
+    )
+    monkeypatch.setattr(
+        upgrade_audit,
+        "is_port_open",
+        lambda host, port: (host, port) == ("127.0.0.1", 8191),
+    )
+    captured = {}
+
+    def fake_audit(strict_external=False):
+        captured["browser_render_enabled"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_ENABLED")
+        captured["browser_render_provider"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_PROVIDER")
+        captured["browser_render_url"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--local-browser-render-defaults", "--prefer-unlocker", "--json"])
+
+    assert exit_code == 0
+    assert captured == {
+        "browser_render_enabled": "true",
+        "browser_render_provider": "flaresolverr",
+        "browser_render_url": "http://127.0.0.1:8191/v1",
+    }
+    output = capsys.readouterr().out
+    assert "COMPANY_FILING_BROWSER_RENDER_PROVIDER" in output
+    assert '"flaresolverr_port_available": true' in output
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
 
 
@@ -213,6 +269,7 @@ def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
         "COMPANY_FILING_BROWSER_RENDER_URL",
         "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
     ):
@@ -253,6 +310,60 @@ def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
     output = capsys.readouterr().out
     assert "Local Browserless wait: ready within 3s" in output
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
+
+
+def test_upgrade_audit_script_can_wait_for_flaresolverr_before_applying_defaults(monkeypatch, capsys) -> None:
+    for key in (
+        "COMPANY_FILING_PROXY_URLS",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    monkeypatch.setattr(
+        upgrade_audit,
+        "company_filing_playwright_browser_status",
+        lambda: {"dependency_available": False, "browser_available": False},
+    )
+    monkeypatch.setattr(upgrade_audit, "is_port_open", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        upgrade_audit,
+        "wait_for_port",
+        lambda host, port, timeout_seconds: (host, port, timeout_seconds) == ("127.0.0.1", 8191, 3),
+    )
+    captured = {}
+
+    def fake_audit(strict_external=False):
+        captured["browser_render_provider"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_PROVIDER")
+        captured["browser_render_url"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(
+        ["--wait-local-flaresolverr", "3", "--local-browser-render-defaults", "--prefer-unlocker"]
+    )
+
+    assert exit_code == 0
+    assert captured == {
+        "browser_render_provider": "flaresolverr",
+        "browser_render_url": "http://127.0.0.1:8191/v1",
+    }
+    output = capsys.readouterr().out
+    assert "Local FlareSolverr wait: ready within 3s" in output
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
+    os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
 
 
@@ -287,6 +398,39 @@ def test_upgrade_audit_script_can_report_local_docker_image_status(monkeypatch, 
     output = capsys.readouterr().out
     assert "Local docker images: neo4j=present, browserless=missing" in output
     assert "docker compose pull browserless" in output
+
+
+def test_upgrade_audit_script_includes_flaresolverr_image_when_unlocker_is_preferred(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        upgrade_audit,
+        "audit_upgrade_capabilities",
+        lambda strict_external=False: {
+            "overall_status": "caution",
+            "summary": {"ready": 14, "warnings": 2, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "caution", "ready": 0, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        },
+    )
+
+    def fake_run(command, **kwargs):
+        image = command[-1]
+        return subprocess.CompletedProcess(
+            command,
+            0 if image != "ghcr.io/flaresolverr/flaresolverr:latest" else 1,
+            stdout="ok" if image != "ghcr.io/flaresolverr/flaresolverr:latest" else "",
+            stderr="" if image != "ghcr.io/flaresolverr/flaresolverr:latest" else "missing image",
+        )
+
+    monkeypatch.setattr("app.services.local_dependency_diagnostics.subprocess.run", fake_run)
+
+    exit_code = upgrade_audit.main(["--check-local-docker-images", "--prefer-unlocker"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "flaresolverr=missing" in output
+    assert "docker compose pull flaresolverr" in output
 
 
 def test_local_docker_image_status_is_machine_readable(monkeypatch) -> None:

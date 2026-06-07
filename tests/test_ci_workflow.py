@@ -23,11 +23,15 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "redis" in job["services"]
     assert "neo4j" in job["services"]
     assert job["services"]["neo4j"]["image"] == "neo4j:5-community"
+    assert "python -m playwright install --with-deps chromium" in step_text
     assert "ruff check ." in step_text
     assert "scripts/security_scan.py --engine detect-secrets" in step_text
     assert "pytest -q" in step_text
     assert "scripts/upgrade_audit.py --json" in step_text
     assert "scripts/external_integrations_smoke.py --json" in step_text
+    assert "scripts/company_filing_render_smoke.py" in step_text
+    assert "--min-text-chars 20" in step_text
+    assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" in str(job["steps"])
     assert "scripts/ci_neo4j_graphrag_live_smoke.py --timeout-seconds 90" in step_text
     assert "neo4j_graphrag_smoke.main" in neo4j_ci_smoke_source
     assert "--import-first" in neo4j_ci_smoke_source

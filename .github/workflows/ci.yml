@@ -56,6 +56,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,visual,graph,browser]"
 
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
       - name: Lint
         run: ruff check .
 
@@ -70,6 +73,18 @@ jobs:
 
       - name: External integration smoke
         run: python scripts/external_integrations_smoke.py --json
+
+      - name: Company filing render smoke
+        env:
+          COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED: "true"
+          COMPANY_FILING_PLAYWRIGHT_BROWSER: chromium
+          COMPANY_FILING_PLAYWRIGHT_WAIT_UNTIL: networkidle
+        run: |
+          python scripts/company_filing_render_smoke.py \
+            --url https://example.com/ \
+            --min-text-chars 20 \
+            --json \
+            --strict
 
       - name: Neo4j GraphRAG live smoke
         env:

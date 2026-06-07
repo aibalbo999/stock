@@ -443,7 +443,7 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 服務啟動後可跑 `.venv/bin/python scripts/frontend_smoke.py --json`，它會檢查 Streamlit 首頁、FastAPI `/services/status`，並在 Playwright 可用時截圖到 `artifacts/frontend_smoke/streamlit.png` 且驗證畫面不是空白 PNG。CI 或沒有瀏覽器 binary 的環境可加 `--skip-browser`，保留 HTTP smoke。
 
-GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、Neo4j GraphRAG live import/query smoke、結構化公司文件 sample contract smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
+GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、公司文件 Playwright render smoke、Neo4j GraphRAG live import/query smoke、結構化公司文件 sample contract smoke、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 
 報告寫入時會自動執行 latest-per-topic retention：同一分析主題產生新版後，舊版報告會被刪除，舊 analysis run 的 report link 會清空，對應的舊 markdown 檔也會被清掉，避免報告中心與 `reports/` 累積同主題歷史版本。若資料庫已有早期累積的重複報告或 markdown 檔，可在系統設定頁「進階：資料清理」勾選確認後按「套用最新版報告保留策略」，或呼叫 `POST /maintenance/cleanup` 並送出 `{"latest_reports_only": true, "orphan_report_refs": true}`。`GET /services/status` 的 `upgrade_capability_matrix.data_business_logic.latest_report_retention` 會檢查 DB 寫入 prune、報告中心 latest-by-topic、品質摘要、maintenance cleanup 與 markdown 檔清理路徑是否仍完整，避免後續改版又累積同主題舊報告。
 

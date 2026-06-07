@@ -7,6 +7,7 @@ import socket
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -88,7 +89,7 @@ def main() -> int:
         "--dependency-wait-seconds",
         type=int,
         default=20,
-        help="Seconds to wait for locally started dependency ports before running upgrade checks.",
+        help="Seconds to wait for locally started dependencies to become ready before running upgrade checks.",
     )
     args = parser.parse_args()
 
@@ -630,9 +631,13 @@ def wait_for_local_dependency_ports(
         or ""
     )
     if "browserless" in services or _is_local_browserless_render_url(browser_render_url):
-        results["browserless"] = wait_for_port(
-            "127.0.0.1",
-            LOCAL_BROWSERLESS_PORT,
+        browserless_health_source = (
+            browser_render_url
+            if _is_local_browserless_render_url(browser_render_url)
+            else LOCAL_BROWSER_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
+        )
+        results["browserless"] = wait_for_http_ok(
+            _browserless_health_url(browserless_health_source),
             timeout_seconds=timeout_seconds,
         )
     chroma_api_url = str(
@@ -641,15 +646,18 @@ def wait_for_local_dependency_ports(
         or ""
     )
     if "chroma" in services or _is_local_chroma_api_url(chroma_api_url):
-        results["chroma"] = wait_for_port(
-            "127.0.0.1",
-            LOCAL_CHROMA_PORT,
+        results["chroma"] = wait_for_http_ok(
+            _chroma_health_url(chroma_api_url),
             timeout_seconds=timeout_seconds,
         )
     if "flaresolverr" in services or _is_local_flaresolverr_render_url(browser_render_url):
-        results["flaresolverr"] = wait_for_port(
-            "127.0.0.1",
-            LOCAL_FLARESOLVERR_PORT,
+        flaresolverr_health_source = (
+            browser_render_url
+            if _is_local_flaresolverr_render_url(browser_render_url)
+            else LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
+        )
+        results["flaresolverr"] = wait_for_http_ok(
+            _flaresolverr_health_url(flaresolverr_health_source),
             timeout_seconds=timeout_seconds,
         )
     return results
@@ -772,6 +780,26 @@ def _is_local_chroma_api_url(url: str) -> bool:
             f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
         )
     )
+
+
+def _browserless_health_url(render_url: str) -> str:
+    url = str(render_url or LOCAL_BROWSER_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"])
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qs(parts.query)
+    token = (query.get("token") or [""])[0]
+    health_query = urllib.parse.urlencode({"token": token}) if token else ""
+    return urllib.parse.urlunsplit((parts.scheme or "http", parts.netloc, "/json/version", health_query, ""))
+
+
+def _chroma_health_url(api_url: str) -> str:
+    base_url = str(api_url or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"]).rstrip("/")
+    return f"{base_url}/api/v2/heartbeat"
+
+
+def _flaresolverr_health_url(render_url: str) -> str:
+    url = str(render_url or LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"])
+    parts = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((parts.scheme or "http", parts.netloc, "/health", "", ""))
 
 
 def docker_compose_command() -> list[str] | None:
@@ -1168,6 +1196,18 @@ def wait_for_http(url: str, timeout_seconds: int) -> bool:
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
                 if 200 <= response.status < 500:
+                    return True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            time.sleep(0.5)
+    return False
+
+
+def wait_for_http_ok(url: str, timeout_seconds: int) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if 200 <= response.status < 300:
                     return True
         except (urllib.error.URLError, TimeoutError, OSError):
             time.sleep(0.5)

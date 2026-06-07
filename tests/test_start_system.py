@@ -838,11 +838,11 @@ def test_wait_for_local_dependency_ports_waits_for_browserless_after_compose_sta
     calls = []
     monkeypatch.delenv("NEO4J_URI", raising=False)
 
-    def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
-        calls.append((host, port, timeout_seconds))
-        return port == 3000
+    def fake_wait_for_http_ok(url: str, timeout_seconds: int) -> bool:
+        calls.append((url, timeout_seconds))
+        return "json/version?token=x" in url
 
-    monkeypatch.setattr("scripts.start_system.wait_for_port", fake_wait_for_port)
+    monkeypatch.setattr("scripts.start_system.wait_for_http_ok", fake_wait_for_http_ok)
 
     result = wait_for_local_dependency_ports(
         {"status": "已啟動", "message": "ok"},
@@ -851,18 +851,18 @@ def test_wait_for_local_dependency_ports_waits_for_browserless_after_compose_sta
     )
 
     assert result == {"browserless": True}
-    assert calls == [("127.0.0.1", 3000, 4)]
+    assert calls == [("http://127.0.0.1:3000/json/version?token=x", 4)]
 
 
 def test_wait_for_local_dependency_ports_waits_for_flaresolverr_unlocker(monkeypatch) -> None:
     calls = []
     monkeypatch.delenv("NEO4J_URI", raising=False)
 
-    def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
-        calls.append((host, port, timeout_seconds))
-        return port == 8191
+    def fake_wait_for_http_ok(url: str, timeout_seconds: int) -> bool:
+        calls.append((url, timeout_seconds))
+        return url == "http://127.0.0.1:8191/health"
 
-    monkeypatch.setattr("scripts.start_system.wait_for_port", fake_wait_for_port)
+    monkeypatch.setattr("scripts.start_system.wait_for_http_ok", fake_wait_for_http_ok)
 
     result = wait_for_local_dependency_ports(
         {"status": "已啟動", "message": "ok", "services": ["browserless", "flaresolverr"]},
@@ -871,18 +871,27 @@ def test_wait_for_local_dependency_ports_waits_for_flaresolverr_unlocker(monkeyp
     )
 
     assert result == {"browserless": False, "flaresolverr": True}
-    assert calls == [("127.0.0.1", 3000, 4), ("127.0.0.1", 8191, 4)]
+    assert calls == [
+        ("http://127.0.0.1:3000/json/version?token=stock_ai_browserless_token", 4),
+        ("http://127.0.0.1:8191/health", 4),
+    ]
 
 
 def test_wait_for_local_dependency_ports_waits_for_core_data_services(monkeypatch) -> None:
-    calls = []
+    port_calls = []
+    http_calls = []
     monkeypatch.delenv("NEO4J_URI", raising=False)
 
     def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
-        calls.append((host, port, timeout_seconds))
-        return port in {6379, 8001}
+        port_calls.append((host, port, timeout_seconds))
+        return port == 6379
+
+    def fake_wait_for_http_ok(url: str, timeout_seconds: int) -> bool:
+        http_calls.append((url, timeout_seconds))
+        return url == "http://127.0.0.1:8001/api/v2/heartbeat"
 
     monkeypatch.setattr("scripts.start_system.wait_for_port", fake_wait_for_port)
+    monkeypatch.setattr("scripts.start_system.wait_for_http_ok", fake_wait_for_http_ok)
 
     result = wait_for_local_dependency_ports(
         {"status": "已啟動", "message": "ok", "services": ["redis", "postgres", "chroma"]},
@@ -891,11 +900,11 @@ def test_wait_for_local_dependency_ports_waits_for_core_data_services(monkeypatc
     )
 
     assert result == {"redis": True, "postgres": False, "chroma": True}
-    assert calls == [
+    assert port_calls == [
         ("127.0.0.1", 6379, 5),
         ("127.0.0.1", 5432, 5),
-        ("127.0.0.1", 8001, 5),
     ]
+    assert http_calls == [("http://127.0.0.1:8001/api/v2/heartbeat", 5)]
 
 
 def test_wait_for_local_dependency_ports_skips_when_compose_did_not_start(monkeypatch) -> None:

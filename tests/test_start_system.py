@@ -35,6 +35,7 @@ def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:
             "graphrag_agentic_cypher": {"status": "ready", "evidence": {}},
             "neo4j_payload_export": {"status": "ready", "evidence": {}},
             "neo4j_import": {"status": "ready", "evidence": {}},
+            "graphrag_live_cypher_query": {"status": "ready", "evidence": {}},
         },
         "architecture": {
             "thin_api_controller": {"status": "ready", "evidence": {}},
@@ -471,6 +472,28 @@ def test_upgrade_dependency_advice_explains_neo4j_connection_failure() -> None:
             ),
         }
     ]
+
+
+def test_upgrade_dependency_advice_explains_live_cypher_query_gap() -> None:
+    matrix = _ready_upgrade_matrix(
+        {
+            "ai_rag.graphrag_live_cypher_query": {
+                "status": "degraded",
+                "evidence": {"neo4j_ready": False, "planner_enabled": True},
+            }
+        }
+    )
+
+    advice = upgrade_dependency_advice(
+        matrix,
+        python=Path("/repo/.venv/bin/python"),
+        root=Path("/repo"),
+    )
+
+    assert len(advice) == 1
+    assert advice[0]["capability"] == "graphrag_live_cypher_query"
+    assert "Neo4j ready=False" in advice[0]["reason"]
+    assert "/supply-chain/graph/cypher-query" in advice[0]["action"]
 
 
 def test_upgrade_dependency_advice_explains_market_data_provider_gap() -> None:

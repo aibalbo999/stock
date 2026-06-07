@@ -102,6 +102,17 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         remediation="若正式部署需要 live graph import，設定 NEO4J_URI / 帳密並啟動 Neo4j。",
     ),
     UpgradeAuditRequirement(
+        "ai_rag",
+        "graphrag_live_cypher_query",
+        "GraphRAG guarded live Cypher query",
+        ("upgrade_capability_matrix", "ai_rag", "graphrag_live_cypher_query"),
+        optional=True,
+        remediation=(
+            "若正式部署需要 LLM 產生 guarded Cypher 後直接查 Neo4j，"
+            "設定 NEO4J_URI / 帳密並確認 /supply-chain/graph/cypher-query 可執行 read-only 查詢。"
+        ),
+    ),
+    UpgradeAuditRequirement(
         "architecture",
         "thin_api_controller",
         "API controller/service 分層",
@@ -236,6 +247,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
 EXTERNAL_INTEGRATION_CAPABILITIES = frozenset(
     {
         ("ai_rag", "neo4j_import"),
+        ("ai_rag", "graphrag_live_cypher_query"),
         ("ai_rag", "visual_rag"),
         ("data_business_logic", "company_filing_pdf_table_parser_runtime"),
         ("data_business_logic", "company_filing_browser_or_proxy_fallback"),

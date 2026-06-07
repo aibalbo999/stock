@@ -728,6 +728,25 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             }
         )
 
+    live_cypher = ai_rag.get("graphrag_live_cypher_query") or {}
+    live_cypher_evidence = live_cypher.get("evidence") or {}
+    if live_cypher and live_cypher.get("status") != "ready":
+        items.append(
+            {
+                "capability": "graphrag_live_cypher_query",
+                "status": str(live_cypher.get("status") or "unknown"),
+                "reason": (
+                    f"Neo4j ready={live_cypher_evidence.get('neo4j_ready')}；"
+                    f"planner enabled={live_cypher_evidence.get('planner_enabled')}"
+                ),
+                "action": (
+                    "啟動 Neo4j 並設定 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
+                    "本機可用 docker compose up -d neo4j 或 start_system.py --start-dependencies，"
+                    "再用 /supply-chain/graph/cypher-query 驗證 guarded read-only 查詢"
+                ),
+            }
+        )
+
     market_fallback = data_business_logic.get("market_data_provider_fallback") or {}
     market_fallback_evidence = market_fallback.get("evidence") or {}
     if market_fallback.get("status") != "ready":

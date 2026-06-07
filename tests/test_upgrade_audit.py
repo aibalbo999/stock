@@ -17,6 +17,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "graphrag_agentic_cypher": {"status": "ready", "evidence": {}},
             "neo4j_payload_export": {"status": "ready", "evidence": {}},
             "neo4j_import": {"status": "degraded", "evidence": {"fallback_reason": "missing_settings:neo4j_uri"}},
+            "graphrag_live_cypher_query": {"status": "ready", "evidence": {}},
         },
         "architecture": {
             "thin_api_controller": {"status": "ready", "evidence": {}},
@@ -70,6 +71,28 @@ def test_upgrade_audit_can_require_external_integrations_in_strict_mode() -> Non
     assert audit["failures"][0]["capability"] == "neo4j_import"
     assert audit["failures"][0]["optional"] is False
     assert audit["failures"][0]["external_integration"] is True
+
+
+def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "ai_rag.graphrag_live_cypher_query": {
+                    "status": "degraded",
+                    "evidence": {"neo4j_ready": False, "planner_enabled": True},
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "caution"
+    assert audit["implementation"]["status"] == "ready"
+    warning = next(
+        item for item in audit["warnings"] if item["capability"] == "graphrag_live_cypher_query"
+    )
+    assert warning["optional"] is True
+    assert warning["external_integration"] is True
+    assert warning["deployment_check"] is True
 
 
 def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_hardening() -> None:

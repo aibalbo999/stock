@@ -374,6 +374,11 @@ def test_service_status_shape() -> None:
     assert matrix["ai_rag"]["neo4j_import"]["status"] == "degraded"
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["payload_export_ready"] is True
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["fallback_reason"] == "missing_settings:neo4j_uri"
+    live_cypher = matrix["ai_rag"]["graphrag_live_cypher_query"]
+    assert live_cypher["status"] == "degraded"
+    assert live_cypher["evidence"]["endpoint"] == "GET /supply-chain/graph/cypher-query"
+    assert live_cypher["evidence"]["neo4j_ready"] is False
+    assert live_cypher["evidence"]["planner_enabled"] is True
     assert matrix["architecture"]["thin_api_controller"]["status"] == "ready"
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_py_lines"] <= 120
     assert "report_routes.py" in matrix["architecture"]["thin_api_controller"]["evidence"]["route_modules"]

@@ -86,6 +86,12 @@ class ApiServiceFactory:
             if settings is not None
             else True
         )
+        sync_quality_recovery_enabled = (
+            quality_recovery_enabled
+            and bool(getattr(settings, "sync_report_quality_recovery_enabled", False))
+            if settings is not None
+            else False
+        )
         return d["SyncReportGenerationApiService"](
             session_scope_factory=d["session_scope"],
             analysis_run_repository_cls=d["AnalysisRunRepository"],
@@ -93,10 +99,10 @@ class ApiServiceFactory:
             report_build_service_factory=self.report_build,
             count_sufficient_company_filings_func=d["count_sufficient_company_filings"],
             ingestion_pipeline_cls=d["IngestionPipeline"] if sync_pre_refresh_enabled else None,
-            quality_recovery_pipeline_cls=d["IngestionPipeline"] if quality_recovery_enabled else None,
+            quality_recovery_pipeline_cls=d["IngestionPipeline"] if sync_quality_recovery_enabled else None,
             market_quality_recovery_required_func=(
                 d["should_recover_market_data_quality"]
-                if quality_recovery_enabled
+                if sync_quality_recovery_enabled
                 else (lambda quality_gate: False)
             ),
         )

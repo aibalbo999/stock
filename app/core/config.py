@@ -145,6 +145,7 @@ class Settings(BaseSettings):
     auto_follow_up_enabled: bool = True
     auto_follow_up_news_limit: int = 30
     sync_report_pre_refresh_enabled: bool = False
+    sync_report_quality_recovery_enabled: bool = False
     report_quality_auto_recovery_enabled: bool = True
     workflow_engine: str = "local"
     workflow_local_fallback_enabled: bool = True

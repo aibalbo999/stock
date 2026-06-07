@@ -442,6 +442,13 @@ def test_service_status_shape() -> None:
     assert status["python_runtime"]["minimum_supported"] == "3.11"
     assert status["python_runtime"]["python_version_file"] == "3.11"
     assert status["python_runtime"]["project_targets_aligned"] is True
+    assert (
+        status["python_runtime"]["bootstrap_cli"]
+        == ".venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing"
+    )
+    assert status["python_runtime"]["bootstrap_dry_run_cli"].endswith(
+        "scripts/bootstrap_python_runtime.py --json"
+    )
     assert matrix["architecture"]["database_migrations"]["status"] in {"ready", "degraded"}
     assert matrix["architecture"]["database_migrations"]["evidence"]["head_revision"]
     assert matrix["architecture"]["secret_scanning"]["status"] == "ready"

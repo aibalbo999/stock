@@ -640,6 +640,7 @@ def test_upgrade_dependency_advice_points_to_python_runtime_mismatch() -> None:
 
     assert advice[0]["capability"] == "python_runtime"
     assert "Python 3.9.6" in advice[0]["reason"]
+    assert "scripts/bootstrap_python_runtime.py --apply --replace-existing" in advice[0]["action"]
     assert "python3.11 -m venv .venv" in advice[0]["action"]
 
 

@@ -1161,6 +1161,9 @@ def _python_runtime_status() -> dict:
         "ci_targets_python": ci_targets_python,
         "docker_targets_python": docker_targets_python,
         "project_targets_aligned": project_targets_aligned,
+        "bootstrap_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing",
+        "bootstrap_dry_run_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --json",
+        "bootstrap_backup_policy": "Unsupported existing .venv is moved to .venv.backup-<timestamp> only with --replace-existing.",
         "recommended_action": (
             f"Rebuild .venv with Python {target_version}+ before production startup."
             if target_version and not current_supported

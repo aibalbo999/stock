@@ -78,7 +78,20 @@ cp .env.example .env
 
 本專案支援目標為 Python 3.11+；CI 與 Docker 均使用 Python 3.11。macOS 內建
 `python3` 常仍是 3.9，會觸發 Google/urllib3 的 EOL 與 LibreSSL 警告，建議用
-Homebrew、pyenv 或 uv 安裝 3.11 後重建 `.venv`。
+Homebrew、pyenv 或 uv 安裝 3.11 後重建 `.venv`。若想先檢查本機可用 interpreter
+與將執行的命令，可用安全的 dry-run：
+
+```bash
+python3 scripts/bootstrap_python_runtime.py --json
+python3 scripts/bootstrap_python_runtime.py --apply
+```
+
+如果現有 `.venv` 是 Python 3.9，工具會要求明確加上 `--replace-existing` 才會把舊
+`.venv` 移到 `.venv.backup-<timestamp>` 並重建：
+
+```bash
+python3 scripts/bootstrap_python_runtime.py --apply --replace-existing
+```
 
 macOS 一鍵啟動：
 
@@ -335,7 +348,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 .venv/bin/python scripts/upgrade_audit.py --strict-external --local-neo4j-defaults --wait-local-neo4j 20
 ```
 
-`upgrade_audit.py` 會讀取 `GET /services/status` 同源的能力矩陣，逐項檢查 multilingual embedding、LLM SDK/fallback、hybrid search、reranking、LLM/RAG observability、Visual RAG/VLM 財報解析、GraphRAG/Neo4j payload、GraphRAG live guarded Cypher query、API 分層、Python runtime、workflow、Alembic、外部密鑰掃描工具整合、Redis cache、市場資料 fallback、公司文件反爬蟲/表格解析、PDF 表格 parser runtime、結構化公司文件 API 備援與來源可信度分層。預設會把 live Neo4j import、live Cypher query、Visual RAG、PDF 表格 parser runtime、Proxy/Browser render/Playwright 後援、結構化文件 API 與本機 Python runtime 版本不符視為部署注意，因此未設定 `NEO4J_URI`、未啟用 Visual RAG、未安裝 `pdfplumber` / `unstructured[pdf]` 或仍用 Python 3.9 `.venv` 只列 warning；若正式部署要求這些外部/部署能力，請加 `--strict-external`，此時外部整合或 runtime preflight 未就緒會讓稽核失敗。
+`upgrade_audit.py` 會讀取 `GET /services/status` 同源的能力矩陣，逐項檢查 multilingual embedding、LLM SDK/fallback、hybrid search、reranking、LLM/RAG observability、Visual RAG/VLM 財報解析、GraphRAG/Neo4j payload、GraphRAG live guarded Cypher query、API 分層、Python runtime、workflow、Alembic、外部密鑰掃描工具整合、Redis cache、市場資料 fallback、公司文件反爬蟲/表格解析、PDF 表格 parser runtime、結構化公司文件 API 備援與來源可信度分層。預設會把 live Neo4j import、live Cypher query、Visual RAG、PDF 表格 parser runtime、Proxy/Browser render/Playwright 後援、結構化文件 API 與本機 Python runtime 版本不符視為部署注意，因此未設定 `NEO4J_URI`、未啟用 Visual RAG、未安裝 `pdfplumber` / `unstructured[pdf]` 或仍用 Python 3.9 `.venv` 只列 warning；若 runtime warning 是因為 `.venv` 仍在 Python 3.9，可先跑 `.venv/bin/python scripts/bootstrap_python_runtime.py --json` 預覽，再用 `.venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing` 備份舊環境並重建。若正式部署要求這些外部/部署能力，請加 `--strict-external`，此時外部整合或 runtime preflight 未就緒會讓稽核失敗。
 本機 Docker 開發時，可加 `--local-neo4j-defaults` 暫時套用 docker-compose 的 Neo4j URI/帳密到這次稽核程序，並用 `--wait-local-neo4j 20` 等待 `localhost:7687`；若也要驗證 Browserless，可加 `--wait-local-browserless 20 --local-browser-render-defaults` 等待 `localhost:3000` 後臨時套用本機瀏覽器渲染 URL。若要驗證 FlareSolverr unlocker，可先執行 `docker compose --profile unlocker up -d flaresolverr`，再用 `--prefer-unlocker --wait-local-flaresolverr 20 --local-browser-render-defaults` 等待 `localhost:8191` 後臨時套用 `COMPANY_FILING_BROWSER_RENDER_PROVIDER=flaresolverr`。若不想觸發下載，只想確認本機是否已有必要 image，可加 `--check-local-docker-images`；搭配 `--prefer-unlocker` 時，稽核會一併列出 `ghcr.io/flaresolverr/flaresolverr:latest`。這些設定都不會改寫 `.env`，也不會在 JSON 中輸出密碼值。
 同一份稽核也可透過 API 查詢：`GET /services/upgrade-audit` 回傳預設稽核，`GET /services/upgrade-audit?strict_external=true` 會把外部 Neo4j 匯入連線與 live guarded Cypher query 納入必備項目，適合作為部署前檢查。
 一鍵啟動會使用同一套稽核輸出 preflight 摘要；若要把外部整合也列為必須通過，可執行 `.venv/bin/python scripts/start_system.py --start-dependencies --strict-upgrade-check`。搭配 `--start-dependencies` 時，啟動程式會先等本機 Neo4j 7687、Browserless 3000，以及 `--prefer-unlocker` 時的 FlareSolverr 8191 連線埠短暫就緒再跑稽核，降低 Docker 剛啟動時的誤判。

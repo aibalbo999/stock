@@ -87,7 +87,11 @@ def main() -> int:
 
     python = ROOT / ".venv" / "bin" / "python"
     if not python.exists():
-        print("找不到 .venv/bin/python，請先依 README 建立虛擬環境並安裝依賴。")
+        print(
+            "找不到 .venv/bin/python，請先執行 "
+            "python3 scripts/bootstrap_python_runtime.py --apply 建立虛擬環境，"
+            "或依 README 手動建立。"
+        )
         return 1
 
     RUN_DIR.mkdir(exist_ok=True)
@@ -721,7 +725,10 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
                 "status": str(python_runtime.get("status") or "unknown"),
                 "reason": f"目前 Python {current_version}，專案目標為 {minimum_supported}+",
                 "action": (
-                    f"用 Python {minimum_supported}+ 重建 .venv，例如 python{minimum_supported} -m venv .venv，"
+                    "先執行 "
+                    f"{python_display} scripts/bootstrap_python_runtime.py --apply --replace-existing；"
+                    f"若尚未有支援 interpreter，可先安裝 Python {minimum_supported}+。"
+                    f"手動路徑仍可用 python{minimum_supported} -m venv .venv，"
                     f"再執行 {_pip_install_action(python_display, '.[dev,pdf,visual,browser,graph]')}"
                 ),
             }

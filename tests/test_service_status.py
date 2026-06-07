@@ -10,7 +10,6 @@ from app.services.service_status import (
     _llm_fallback_readiness,
     _llm_model_provider,
     _llm_quota_routing_status,
-    _neo4j_import_capability_status,
     _redact_url,
     service_status,
 )
@@ -19,6 +18,7 @@ from app.services.status_company_filings import (
     _company_filing_user_agent_status,
 )
 from app.services.status_frontend import frontend_status
+from app.services.status_graphrag import _neo4j_import_capability_status
 from app.services.status_market_data import _market_data_provider_readiness
 
 
@@ -31,6 +31,7 @@ def test_service_status_shape() -> None:
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
+    status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
     status_market_data_source = Path("app/services/status_market_data.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
@@ -275,6 +276,10 @@ def test_service_status_shape() -> None:
     assert status["supply_chain_graph"]["retrieval_query_strategy"] == "taxonomy_graph_query_expansion"
     assert "corroborated" in status["supply_chain_graph"]["retrieval_evidence_policy"]
     assert status["supply_chain_graph"]["retrieval_query_example"]
+    assert status["supply_chain_graph"]["collector_path"] == "app/services/status_graphrag.py"
+    assert "from app.services.status_graphrag import (" in service_status_source
+    assert "def _supply_chain_graph_status(" not in service_status_source
+    assert "def supply_chain_graph_status(" in status_graphrag_source
     assert status["supply_chain_graph"]["neo4j_export_enabled"] is True
     assert status["supply_chain_graph"]["neo4j_import"]["ready"] is False
     assert status["supply_chain_graph"]["neo4j_import"]["fallback_reason"] == "missing_settings:neo4j_uri"

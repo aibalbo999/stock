@@ -32,6 +32,9 @@ def test_service_status_shape() -> None:
     status = service_status()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_capability_matrix_source = Path("app/services/status_capability_matrix.py").read_text()
+    status_capability_ai_rag_source = Path(
+        "app/services/status_capability_ai_rag.py"
+    ).read_text()
     status_capability_architecture_source = Path(
         "app/services/status_capability_architecture.py"
     ).read_text()
@@ -469,6 +472,10 @@ def test_service_status_shape() -> None:
     assert "def _api_controller_status(" not in status_capability_matrix_source
     assert "from app.services.status_api_architecture import api_controller_status" in status_capability_matrix_source
     assert (
+        "from app.services.status_capability_ai_rag import ai_rag_capabilities"
+        in status_capability_matrix_source
+    )
+    assert (
         "from app.services.status_capability_architecture import architecture_capabilities"
         in status_capability_matrix_source
     )
@@ -476,10 +483,17 @@ def test_service_status_shape() -> None:
         "from app.services.status_capability_helpers import capability as _capability"
         in status_capability_matrix_source
     )
+    assert '"ai_rag": ai_rag_capabilities(' in status_capability_matrix_source
     assert '"architecture": architecture_capabilities(' in status_capability_matrix_source
+    assert '"graphrag_live_cypher_query": _capability(' not in status_capability_matrix_source
     assert '"streamlit_mpa_background_tasks": _capability(' not in status_capability_matrix_source
+    assert "def _module_available(" not in status_capability_matrix_source
     assert "def _capability(" not in status_capability_matrix_source
     assert "def api_controller_status(" in status_api_architecture_source
+    assert "def ai_rag_capabilities(" in status_capability_ai_rag_source
+    assert '"graphrag_live_cypher_query": _capability(' in status_capability_ai_rag_source
+    assert "from app.services.status_llm import _llm_fallback_readiness" in status_capability_ai_rag_source
+    assert "def _module_available(" in status_capability_ai_rag_source
     assert "def architecture_capabilities(" in status_capability_architecture_source
     assert '"streamlit_mpa_background_tasks": _capability(' in status_capability_architecture_source
     assert "def capability(" in status_capability_helpers_source

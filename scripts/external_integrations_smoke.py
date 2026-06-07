@@ -7,6 +7,10 @@ from typing import Any
 from app.services.service_status import service_status
 
 
+NEO4J_GRAPHRAG_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+)
 STRUCTURED_COMPANY_FILING_SMOKE_COMMAND = (
     ".venv/bin/python scripts/structured_company_filing_smoke.py "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
@@ -67,6 +71,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "check_count": len(checks),
         "checks": checks,
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
@@ -84,6 +89,7 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         if not check.get("ready"):
             lines.append(f"  fix: {check['remediation']}")
     lines.append(f"Local start: {report['local_start_command']}")
+    lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
     lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)

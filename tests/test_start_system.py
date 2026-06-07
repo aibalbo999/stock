@@ -171,6 +171,7 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
     assert any('.venv/bin/python -m pip install -e ".[rag]"' in action for action in actions)
     assert any('.venv/bin/python -m pip install -e "."' in action for action in actions)
     assert any("NEO4J_URI" in action for action in actions)
+    assert any("scripts/neo4j_graphrag_smoke.py" in action for action in actions)
     assert any("COMPANY_FILING_VISUAL_RAG_ENABLED" in action for action in actions)
     assert any('.venv/bin/python -m pip install -e ".[visual]"' in action for action in actions)
     assert any("LLM_MODEL_DAILY_REQUEST_BUDGETS" in action and "gemma-4-31b-it" in action for action in actions)
@@ -451,17 +452,13 @@ def test_upgrade_dependency_advice_skips_graph_install_when_neo4j_driver_is_avai
         root=Path("/repo"),
     )
 
-    assert advice == [
-        {
-            "capability": "neo4j_import",
-            "status": "not_configured",
-            "reason": "missing_settings:neo4j_uri",
-            "action": (
-                "設定 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
-                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies"
-            ),
-        }
-    ]
+    assert len(advice) == 1
+    assert advice[0]["capability"] == "neo4j_import"
+    assert advice[0]["status"] == "not_configured"
+    assert advice[0]["reason"] == "missing_settings:neo4j_uri"
+    assert "NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD" in advice[0]["action"]
+    assert "start_system.py --start-dependencies" in advice[0]["action"]
+    assert "scripts/neo4j_graphrag_smoke.py" in advice[0]["action"]
 
 
 def test_upgrade_dependency_advice_installs_graph_extra_when_neo4j_driver_is_missing() -> None:
@@ -526,17 +523,13 @@ def test_upgrade_dependency_advice_explains_neo4j_connection_failure() -> None:
         root=Path("/repo"),
     )
 
-    assert advice == [
-        {
-            "capability": "neo4j_import",
-            "status": "degraded",
-            "reason": "connection_failed:neo4j",
-            "action": (
-                "Neo4j 已設定但連線失敗；確認帳密、7687 連線埠與服務狀態。"
-                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies"
-            ),
-        }
-    ]
+    assert len(advice) == 1
+    assert advice[0]["capability"] == "neo4j_import"
+    assert advice[0]["status"] == "degraded"
+    assert advice[0]["reason"] == "connection_failed:neo4j"
+    assert "Neo4j 已設定但連線失敗" in advice[0]["action"]
+    assert "start_system.py --start-dependencies" in advice[0]["action"]
+    assert "scripts/neo4j_graphrag_smoke.py" in advice[0]["action"]
 
 
 def test_upgrade_dependency_advice_explains_live_cypher_query_gap() -> None:

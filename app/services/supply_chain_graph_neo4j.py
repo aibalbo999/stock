@@ -69,6 +69,14 @@ class Neo4jGraphImportService:
             "connection_ok": connection_ok,
             "connection_error": connection_error,
             "fallback_reason": fallback_reason,
+            "smoke_cli": (
+                ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+            ),
+            "import_smoke_cli": (
+                ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
+            ),
             "local_docker_defaults": _local_docker_defaults_status(),
         }
 

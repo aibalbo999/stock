@@ -29,6 +29,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "company_filing_structured_api_fallback",
     }
     assert "start_system.py --start-dependencies" in report["local_start_command"]
+    assert "neo4j_graphrag_smoke.py" in report["neo4j_graphrag_smoke_command"]
     assert "company_filing_render_smoke.py" in report[
         "company_filing_render_smoke_command"
     ]

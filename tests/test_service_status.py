@@ -257,6 +257,10 @@ def test_service_status_shape() -> None:
     assert status["supply_chain_graph"]["neo4j_import"]["payload_format"] == "neo4j_cypher_v1"
     assert status["supply_chain_graph"]["neo4j_import"]["payload_node_count"] >= 1
     assert status["supply_chain_graph"]["neo4j_import"]["payload_statement_count"] >= 1
+    assert status["supply_chain_graph"]["neo4j_import"]["smoke_cli"].endswith(
+        "scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+    )
+    assert "--import-first" in status["supply_chain_graph"]["neo4j_import"]["import_smoke_cli"]
     assert status["supply_chain_graph"]["path_reasoning_enabled"] is True
     assert status["supply_chain_graph"]["shortest_path_context_enabled"] is True
     assert status["supply_chain_graph"]["path_reasoning_strategy"] == "taxonomy_graph_shortest_path_reasoning"

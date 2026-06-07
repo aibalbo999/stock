@@ -856,17 +856,23 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         if dependency_available is False:
             action = (
                 f'{_pip_install_action(python_display, ".[graph]")}，並設定 '
-                "NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD"
+                "NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
+                "設定後執行 .venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
             )
         elif fallback.startswith("connection_failed"):
             action = (
                 "Neo4j 已設定但連線失敗；確認帳密、7687 連線埠與服務狀態。"
-                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies"
+                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies；"
+                "再執行 .venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
             )
         else:
             action = (
                 "設定 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
-                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies"
+                "本機可先執行 docker compose up -d neo4j，或用 start_system.py --start-dependencies；"
+                "再執行 .venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
             )
         items.append(
             {
@@ -891,7 +897,10 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
                 "action": (
                     "啟動 Neo4j 並設定 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
                     "本機可用 docker compose up -d neo4j 或 start_system.py --start-dependencies，"
-                    "再用 /supply-chain/graph/cypher-query 驗證 guarded read-only 查詢"
+                    "再用 .venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                    "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json "
+                    "或 /supply-chain/graph/cypher-query 驗證 guarded read-only 查詢；"
+                    "若需要先匯入圖譜，加 --import-first"
                 ),
             }
         )

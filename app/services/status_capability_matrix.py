@@ -330,6 +330,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
                 and not api_status.get("compatibility_exports_imports_tasks")
                 and api_status.get("main_direct_domain_import_count") == 0
                 and api_status.get("structured_task_submission_errors")
+                and api_status.get("report_service_factory_extracted")
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
                 evidence=api_status,
@@ -714,6 +715,7 @@ def _api_controller_status() -> dict:
     app_dir = Path(__file__).resolve().parents[1]
     api_dir = app_dir / "api"
     main_path = api_dir / "main.py"
+    service_factory_path = api_dir / "service_factory.py"
     runtime_path = api_dir / "runtime.py"
     operations_routes_path = api_dir / "operations_routes.py"
     report_routes_path = api_dir / "report_routes.py"
@@ -734,6 +736,10 @@ def _api_controller_status() -> dict:
         runtime_source = runtime_path.read_text(encoding="utf-8")
     except OSError:
         runtime_source = ""
+    try:
+        service_factory_source = service_factory_path.read_text(encoding="utf-8")
+    except OSError:
+        service_factory_source = ""
     try:
         tasks_source = tasks_path.read_text(encoding="utf-8")
     except OSError:
@@ -767,6 +773,7 @@ def _api_controller_status() -> dict:
     compatibility_exports_path = api_dir / "compatibility_exports.py"
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
     task_exports_path = api_dir / "task_exports.py"
+    report_service_factory_path = api_dir / "service_factory_report.py"
     try:
         compatibility_exports_source = compatibility_exports_path.read_text(encoding="utf-8")
     except OSError:
@@ -775,6 +782,10 @@ def _api_controller_status() -> dict:
         legacy_facade_source = legacy_facade_path.read_text(encoding="utf-8")
     except OSError:
         legacy_facade_source = ""
+    try:
+        report_service_factory_source = report_service_factory_path.read_text(encoding="utf-8")
+    except OSError:
+        report_service_factory_source = ""
     direct_domain_imports = [
         line.strip()
         for line in main_source.splitlines()
@@ -796,7 +807,17 @@ def _api_controller_status() -> dict:
         "route_modules": route_modules,
         "app_factory_present": (api_dir / "app_factory.py").exists(),
         "main_uses_app_factory": "from app.api.app_factory import create_app" in main_source,
-        "service_factory_present": (api_dir / "service_factory.py").exists(),
+        "service_factory_present": service_factory_path.exists(),
+        "service_factory_lines": len(service_factory_source.splitlines()) if service_factory_source else None,
+        "report_service_factory_path": "app/api/service_factory_report.py",
+        "report_service_factory_extracted": report_service_factory_path.exists()
+        and "class ReportServiceFactoryMixin" in report_service_factory_source
+        and "def report_query(" in report_service_factory_source
+        and "def sync_report_generation_api(" in report_service_factory_source
+        and "def report_follow_up_run(" in report_service_factory_source
+        and "ReportServiceFactoryMixin" in service_factory_source
+        and "def report_query(" not in service_factory_source
+        and "def sync_report_generation_api(" not in service_factory_source,
         "api_runtime_present": runtime_path.exists(),
         "main_uses_api_runtime": "build_api_runtime" in main_source,
         "task_uses_api_runtime": "get_task_api_services" in tasks_source,

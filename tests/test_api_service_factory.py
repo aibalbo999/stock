@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.api.service_factory import ApiServiceFactory
+from app.api.service_factory_report import ReportServiceFactoryMixin
 from app.services.report_generation_api import SyncReportGenerationApiService
 
 
@@ -16,6 +17,12 @@ class DummyAnalysisRunRepository:
 
 class DummyReportRepository:
     pass
+
+
+def test_api_service_factory_uses_report_domain_mixin() -> None:
+    assert issubclass(ApiServiceFactory, ReportServiceFactoryMixin)
+    assert ApiServiceFactory.report_query is ReportServiceFactoryMixin.report_query
+    assert ApiServiceFactory.sync_report_generation_api is ReportServiceFactoryMixin.sync_report_generation_api
 
 
 def test_sync_report_generation_factory_disables_network_recovery_by_default() -> None:

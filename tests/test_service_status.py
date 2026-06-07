@@ -563,6 +563,12 @@ def test_service_status_shape() -> None:
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_app_factory"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_exports_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_exports"] is True
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["service_factory_lines"] < 260
+    assert matrix["architecture"]["thin_api_controller"]["evidence"]["report_service_factory_extracted"] is True
+    assert (
+        matrix["architecture"]["thin_api_controller"]["evidence"]["report_service_factory_path"]
+        == "app/api/service_factory_report.py"
+    )
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["compatibility_helpers_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_uses_compatibility_helpers"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["api_runtime_present"] is True

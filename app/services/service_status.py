@@ -601,7 +601,10 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and api_status.get("api_runtime_present")
                 and api_status.get("main_uses_api_runtime")
                 and api_status.get("task_uses_api_runtime")
+                and api_status.get("task_exports_present")
+                and api_status.get("api_runtime_uses_task_exports")
                 and not api_status.get("task_imports_api_main")
+                and not api_status.get("compatibility_exports_imports_tasks")
                 and api_status.get("main_direct_domain_import_count") == 0
                 and not api_status.get("main_imports_legacy_facade")
                 else "degraded",
@@ -894,6 +897,11 @@ def _api_controller_status() -> dict:
     legacy_facade_path = api_dir / "legacy_facade.py"
     compatibility_exports_path = api_dir / "compatibility_exports.py"
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
+    task_exports_path = api_dir / "task_exports.py"
+    try:
+        compatibility_exports_source = compatibility_exports_path.read_text(encoding="utf-8")
+    except OSError:
+        compatibility_exports_source = ""
     try:
         legacy_facade_source = legacy_facade_path.read_text(encoding="utf-8")
     except OSError:
@@ -942,6 +950,9 @@ def _api_controller_status() -> dict:
                 and "compatibility_helper_namespace" in runtime_source
             )
         ),
+        "task_exports_present": task_exports_path.exists(),
+        "api_runtime_uses_task_exports": "task_export_namespace" in runtime_source,
+        "compatibility_exports_imports_tasks": "from app.tasks." in compatibility_exports_source,
         "main_direct_domain_import_count": len(direct_domain_imports),
         "main_direct_domain_imports": direct_domain_imports,
         "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),

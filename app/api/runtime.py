@@ -9,6 +9,7 @@ from app.api.compatibility_exports import compatibility_export_namespace
 from app.api.compatibility_helpers import compatibility_helper_namespace
 from app.api.dependencies import build_service_factory_dependencies
 from app.api.service_factory import ApiServiceFactory
+from app.api.task_exports import task_export_namespace
 from app.services.api_compatibility import ApiCompatibilityService
 
 
@@ -21,6 +22,7 @@ class ApiRuntime:
     api_compatibility: ApiCompatibilityService
     compatibility_exports: dict[str, object]
     compatibility_helpers: dict[str, object]
+    task_exports: dict[str, object]
     namespace: MutableMapping[str, Any]
 
 
@@ -32,6 +34,8 @@ def build_api_runtime(
     runtime_namespace: MutableMapping[str, Any] = namespace if namespace is not None else {}
     compatibility_exports = compatibility_export_namespace()
     runtime_namespace.update(compatibility_exports)
+    task_exports = task_export_namespace()
+    runtime_namespace.update(task_exports)
     compatibility_helpers = compatibility_helper_namespace(
         lambda: runtime_namespace["_api_compatibility"],
         globals_provider=lambda: runtime_namespace,
@@ -56,6 +60,7 @@ def build_api_runtime(
         api_compatibility=api_compatibility,
         compatibility_exports=compatibility_exports,
         compatibility_helpers=compatibility_helpers,
+        task_exports=task_exports,
         namespace=runtime_namespace,
     )
 

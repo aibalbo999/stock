@@ -140,13 +140,6 @@ from app.services.workflow_checkpoint import (
     WorkflowCheckpointRecorder,
 )
 from app.services.workflow_orchestration import WorkflowOrchestrationError, WorkflowOrchestrationRunner
-from app.tasks.celery_app import celery_app
-from app.tasks.tasks import (
-    data_operation_task,
-    discovered_report_task,
-    generate_report_task,
-    report_follow_up_task,
-)
 
 
 LEGACY_HELPER_EXPORT_NAMES = (
@@ -280,11 +273,6 @@ COMPATIBILITY_EXPORT_NAMES = tuple(
             "WorkflowCheckpointRecorder",
             "WorkflowOrchestrationError",
             "WorkflowOrchestrationRunner",
-            "celery_app",
-            "data_operation_task",
-            "discovered_report_task",
-            "generate_report_task",
-            "report_follow_up_task",
             *LEGACY_HELPER_EXPORT_NAMES,
         )
     )

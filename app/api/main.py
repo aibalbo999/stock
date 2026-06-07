@@ -12,6 +12,7 @@ from app.api.compatibility_exports import (
     LEGACY_HELPER_EXPORT_NAMES,
 )
 from app.api.runtime import build_api_runtime
+from app.api.task_exports import TASK_EXPORT_NAMES
 
 
 LOGGER = logging.getLogger(__name__)
@@ -54,4 +55,4 @@ app = create_app(
 
 
 def __dir__() -> list[str]:
-    return sorted({*globals(), *COMPATIBILITY_EXPORT_NAMES})
+    return sorted({*globals(), *COMPATIBILITY_EXPORT_NAMES, *TASK_EXPORT_NAMES})

@@ -72,4 +72,74 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert summary["routing_policy"]["exhausted_before_recommendation"] == ["gemini-3.5-flash"]
     assert summary["routing_policy"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert summary["totals"]["request_count"] == 2
+    assert summary["totals"]["completion_count"] == 2
     assert summary["window"]["timezone"] == "America/Los_Angeles"
+
+
+def test_llm_quota_service_counts_attempted_models_for_hard_routing() -> None:
+    settings = SimpleNamespace(
+        primary_llm_model="gemini-3.5-flash",
+        llm_fallback_models="gemini-2.5-flash,gemma-4-31b-it",
+        local_llm_model="",
+        llm_quota_window_timezone="America/Los_Angeles",
+        llm_model_daily_request_budgets="gemini-3.5-flash=1,gemini-2.5-flash=250,gemma-4-31b-it=14400",
+        llm_model_daily_token_budgets="",
+    )
+
+    class FakeUsageRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def since(self, created_at: datetime):
+            return [SimpleNamespace(id=1)]
+
+        @staticmethod
+        def to_dict(record):
+            return {
+                "id": record.id,
+                "model": "gemini-2.5-flash",
+                "models_tried": ["gemini-3.5-flash", "gemini-2.5-flash"],
+                "attempts": [
+                    {
+                        "model": "gemini-3.5-flash",
+                        "outcome": "http_error",
+                        "status": 429,
+                        "retryable": True,
+                    },
+                    {
+                        "model": "gemini-2.5-flash",
+                        "outcome": "success",
+                    },
+                ],
+                "fallback": False,
+                "total_token_estimate": 400,
+                "estimated_cost_usd": 0.0,
+                "retryable_failure_count": 1,
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = LLMQuotaGovernanceService(
+        settings_provider=lambda: settings,
+        session_scope_factory=fake_session_scope,
+        llm_usage_repository_cls=FakeUsageRepository,
+        clock=lambda: datetime(2026, 6, 7, 12, 0, 0),
+    )
+
+    summary = service.summary()
+    primary, fallback = summary["models"][:2]
+
+    assert summary["recommended_model"] == "gemini-2.5-flash"
+    assert primary["model"] == "gemini-3.5-flash"
+    assert primary["requests_used"] == 1
+    assert primary["completion_count"] == 0
+    assert primary["retryable_failure_count"] == 1
+    assert primary["status"] == "exhausted"
+    assert fallback["model"] == "gemini-2.5-flash"
+    assert fallback["requests_used"] == 1
+    assert fallback["completion_count"] == 1
+    assert fallback["status"] == "available"
+    assert summary["totals"]["request_count"] == 2
+    assert summary["totals"]["completion_count"] == 1

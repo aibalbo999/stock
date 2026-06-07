@@ -10,6 +10,15 @@ from app.core.time import utc_now_naive
 from app.db.session import session_scope
 from app.services.persistence import LLMUsageRepository
 
+NON_REQUEST_ATTEMPT_OUTCOMES = {
+    "dependency_unavailable",
+    "missing_api_key",
+    "missing_model",
+    "quota_cooldown",
+    "quota_daily_exhausted",
+    "timeout",
+}
+
 
 class LLMQuotaGovernanceService:
     def __init__(
@@ -61,6 +70,7 @@ class LLMQuotaGovernanceService:
                     "model_key": model_key,
                     "configured": model_key in {normalize_model_name(model) for model in model_order},
                     "rank": _rank_for_model(model_order, display_model),
+                    "completion_count": int(usage.get("completion_count") or 0),
                     "requests_used": requests_used,
                     "request_budget": request_budget,
                     "requests_remaining": request_remaining,
@@ -95,6 +105,7 @@ class LLMQuotaGovernanceService:
         ]
         totals = {
             "request_count": sum(int(item.get("requests_used") or 0) for item in rows),
+            "completion_count": sum(int(item.get("completion_count") or 0) for item in rows),
             "total_token_estimate": sum(int(item.get("tokens_used") or 0) for item in rows),
             "estimated_cost_usd": round(sum(float(item.get("estimated_cost_usd") or 0.0) for item in rows), 6),
         }
@@ -126,7 +137,8 @@ class LLMQuotaGovernanceService:
                 },
                 "note": (
                     "Gemini API free-tier limits are project-level and can vary by model/version; "
-                    "update these settings to match the limits shown in Google AI Studio."
+                    "request counts are attributed from persisted attempts/models_tried when available, "
+                    "and settings should match the limits shown in Google AI Studio."
                 ),
             },
         }
@@ -150,22 +162,22 @@ class LLMQuotaGovernanceService:
         for record in records:
             model = str(record.get("model") or "unknown")
             model_key = normalize_model_name(model)
-            bucket = usage.setdefault(
-                model_key,
-                {
-                    "model": model,
-                    "request_count": 0,
-                    "total_token_estimate": 0,
-                    "estimated_cost_usd": 0.0,
-                    "fallback_count": 0,
-                    "retryable_failure_count": 0,
-                },
-            )
-            bucket["request_count"] += 1
-            bucket["total_token_estimate"] += int(record.get("total_token_estimate") or 0)
-            bucket["estimated_cost_usd"] += float(record.get("estimated_cost_usd") or 0.0)
-            bucket["fallback_count"] += 1 if record.get("fallback") else 0
-            bucket["retryable_failure_count"] += int(record.get("retryable_failure_count") or 0)
+            request_counts = _model_request_counts(record)
+            if not request_counts:
+                request_counts = {model_key: 1}
+            retryable_failures = _retryable_failures_by_model(record)
+            for attempted_model_key, request_count in request_counts.items():
+                bucket = _usage_bucket(usage, attempted_model_key, _display_model_for_key(attempted_model_key, record))
+                bucket["request_count"] += int(request_count)
+                bucket["retryable_failure_count"] += int(retryable_failures.get(attempted_model_key, 0))
+
+            final_bucket = _usage_bucket(usage, model_key, model)
+            final_bucket["completion_count"] += 1
+            final_bucket["total_token_estimate"] += int(record.get("total_token_estimate") or 0)
+            final_bucket["estimated_cost_usd"] += float(record.get("estimated_cost_usd") or 0.0)
+            final_bucket["fallback_count"] += 1 if record.get("fallback") else 0
+            if not retryable_failures:
+                final_bucket["retryable_failure_count"] += int(record.get("retryable_failure_count") or 0)
         return usage
 
     @staticmethod
@@ -224,6 +236,88 @@ def normalize_model_name(model: str) -> str:
         if normalized.startswith(prefix):
             normalized = normalized.removeprefix(prefix)
     return normalized
+
+
+def _usage_bucket(usage: dict[str, dict], model_key: str, display_model: str) -> dict:
+    return usage.setdefault(
+        model_key,
+        {
+            "model": display_model or model_key,
+            "completion_count": 0,
+            "request_count": 0,
+            "total_token_estimate": 0,
+            "estimated_cost_usd": 0.0,
+            "fallback_count": 0,
+            "retryable_failure_count": 0,
+        },
+    )
+
+
+def _model_request_counts(record: dict) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    attempts = record.get("attempts")
+    if isinstance(attempts, list):
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            outcome = str(attempt.get("outcome") or "")
+            if outcome in NON_REQUEST_ATTEMPT_OUTCOMES:
+                continue
+            model_key = normalize_model_name(str(attempt.get("model") or ""))
+            if model_key:
+                counts[model_key] = counts.get(model_key, 0) + 1
+    if counts:
+        return counts
+
+    models_tried = record.get("models_tried")
+    if isinstance(models_tried, list):
+        for model in models_tried:
+            model_key = normalize_model_name(str(model or ""))
+            if model_key and model_key not in counts:
+                counts[model_key] = 1
+    return counts
+
+
+def _retryable_failures_by_model(record: dict) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    attempts = record.get("attempts")
+    if not isinstance(attempts, list):
+        return counts
+    for attempt in attempts:
+        if not isinstance(attempt, dict) or attempt.get("retryable") is not True:
+            continue
+        outcome = str(attempt.get("outcome") or "")
+        if outcome in {"quota_cooldown", "quota_daily_exhausted"}:
+            continue
+        model_key = normalize_model_name(str(attempt.get("model") or ""))
+        if model_key:
+            counts[model_key] = counts.get(model_key, 0) + 1
+    return counts
+
+
+def _display_model_for_key(model_key: str, record: dict) -> str:
+    for value in _record_model_values(record):
+        if normalize_model_name(value) == model_key:
+            return value
+    return model_key
+
+
+def _record_model_values(record: dict) -> list[str]:
+    values: list[str] = []
+    model = str(record.get("model") or "").strip()
+    if model:
+        values.append(model)
+    models_tried = record.get("models_tried")
+    if isinstance(models_tried, list):
+        values.extend(str(item or "").strip() for item in models_tried if str(item or "").strip())
+    attempts = record.get("attempts")
+    if isinstance(attempts, list):
+        values.extend(
+            str(attempt.get("model") or "").strip()
+            for attempt in attempts
+            if isinstance(attempt, dict) and str(attempt.get("model") or "").strip()
+        )
+    return list(dict.fromkeys(values))
 
 
 def _remaining(budget: int | None, used: int) -> int | None:

@@ -37,7 +37,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - LLM 補充分析來源歸屬：送入模型的證據摘要會標示來源日期、發布者、標題與公司對應；模型回傳的 claim 會再比對 source_id、claim 中公司與該來源實際對應公司，避免把 A 公司新聞寫成 B 公司結論。
 - 風險控制：資料不足時報告自動降級為研究草稿，並限制可投入資金上限。
 - 個股分析：包含商業模式、護城河、產業趨勢、財務健康、估值、情境分析、12-24 個月展望。
-- 前端介面：Streamlit 提供分析、報告、資料、設定頁；各 page 使用明確 import，API client、背景任務狀態面板、報告狀態 hydration、報告 markdown parsing、報告格式化 helper、候選審計 renderer、報告 HTML renderer、報告查核 panels、補強狀態與維護稽核摘要都拆成獨立 UI helper。
+- 前端介面：Streamlit 提供分析、報告、資料、設定頁；各 page 使用明確 import，API client、背景任務狀態面板、報告狀態 hydration、報告 markdown parsing、報告格式化 helper、報告內容區塊 renderer、候選審計 renderer、報告 HTML renderer、報告查核 panels、補強狀態與維護稽核摘要都拆成獨立 UI helper。
 - 排程與背景任務：Celery + Redis 支援背景產報與定時排程。
 - 時區：系統顯示時間以 Asia/Taipei 為準。
 - LLM 韌性：Gemini 遇到 429/500/502/503/504 會依 `.env` 重試策略短暫重試，再輪調下一把 key；全部失敗才降級為規則引擎草稿。

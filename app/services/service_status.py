@@ -25,24 +25,19 @@ from app.services.candidate_confidence import confidence_thresholds
 from app.services.company_filing_cache import RedisCompanyFilingCache
 from app.services.llm_client import RETRYABLE_HTTP_STATUSES
 from app.services.llm_observability import llm_observability_status
-from app.services.llm_quota import normalize_model_name, parse_model_budget_map
 from app.services.source_quality import SOURCE_CREDIBILITY_LABELS, SOURCE_CREDIBILITY_WEIGHTS
 from app.services.status_frontend import frontend_status as collect_frontend_status
+from app.services.status_llm import (
+    _llm_effective_fallback_models,
+    _llm_fallback_readiness,
+    _llm_model_provider,
+    _llm_quota_routing_status,
+)
 from app.services.supply_chain_graph_cypher import GraphCypherPlannerService
 from app.services.supply_chain_graph_neo4j import Neo4jGraphImportService
 from app.services.visual_rag import visual_rag_status
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_orchestration import workflow_orchestration_status
-
-
-SMART_FIRST_FLASH_MODELS = (
-    "gemini-3.5-flash",
-    "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
-)
-HIGH_QUOTA_TEXT_FALLBACK_MODEL = "gemma-4-31b-it"
-REPORT_ROUTE_MEDIA_MODEL_MARKERS = ("imagen", "live")
 
 
 def service_status() -> dict:
@@ -1326,147 +1321,6 @@ def _neo4j_import_capability_status(status: dict) -> str:
     if not status.get("configured"):
         return "not_configured"
     return "degraded"
-
-
-def _llm_fallback_readiness(fallback_models: list[str], provider_keys: dict) -> list[dict]:
-    rows = []
-    for model in fallback_models:
-        provider = _llm_model_provider(model)
-        key_configured = bool(provider_keys.get(provider)) if provider in provider_keys else None
-        rows.append(
-            {
-                "model": model,
-                "provider": provider,
-                "key_configured": key_configured,
-            }
-        )
-    return rows
-
-
-def _llm_model_provider(model: str) -> str:
-    normalized = str(model or "").strip().lower()
-    if normalized.startswith(("gemini", "gemma")) or normalized.startswith("google/"):
-        return "gemini"
-    if normalized.startswith("anthropic/") or normalized.startswith("claude"):
-        return "anthropic"
-    if normalized.startswith("openai/") or normalized.startswith("gpt-"):
-        return "openai"
-    if normalized.startswith(("ollama/", "lm_studio/", "local/")):
-        return "local"
-    return "unknown"
-
-
-def _llm_effective_fallback_models(settings) -> list[str]:
-    models = [
-        model.strip()
-        for model in str(settings.llm_fallback_models or "").split(",")
-        if model.strip()
-    ]
-    provider = str(getattr(settings, "llm_provider", "") or "").lower().replace("-", "_")
-    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-    if provider == "litellm" and local_model:
-        models.append(local_model)
-    primary = str(getattr(settings, "primary_llm_model", "") or "").strip()
-    return list(dict.fromkeys(model for model in models if model and model != primary))
-
-
-def _llm_quota_routing_status(settings) -> dict:
-    primary_model = str(getattr(settings, "primary_llm_model", "") or "").strip()
-    fallback_models = _split_config_values(str(getattr(settings, "llm_fallback_models", "") or ""))
-    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-    model_order = list(
-        dict.fromkeys(
-            model
-            for model in [primary_model, *fallback_models, local_model]
-            if str(model or "").strip()
-        )
-    )
-    normalized_order = [normalize_model_name(model) for model in model_order]
-    smart_order = [normalize_model_name(model) for model in SMART_FIRST_FLASH_MODELS]
-    high_quota_model_key = normalize_model_name(HIGH_QUOTA_TEXT_FALLBACK_MODEL)
-    request_budgets = parse_model_budget_map(
-        getattr(settings, "llm_model_daily_request_budgets", "")
-    )
-    smart_request_budgets = {model: request_budgets.get(model) for model in smart_order}
-    smart_budget_values = [budget for budget in smart_request_budgets.values() if budget is not None]
-    flash_equal_request_budgets = (
-        len(smart_budget_values) == len(smart_order)
-        and len(set(smart_budget_values)) == 1
-        and smart_budget_values[0] > 0
-    )
-    smart_budget = smart_budget_values[0] if flash_equal_request_budgets else None
-    high_quota_budget = request_budgets.get(high_quota_model_key)
-    smart_model_order_ready = normalized_order[: len(smart_order)] == smart_order
-    high_quota_fallback_present = high_quota_model_key in normalized_order
-    if high_quota_fallback_present:
-        high_quota_rank = normalized_order.index(high_quota_model_key) + 1
-        high_quota_after_smart_models = all(
-            model in normalized_order and normalized_order.index(high_quota_model_key) > normalized_order.index(model)
-            for model in smart_order
-        )
-    else:
-        high_quota_rank = None
-        high_quota_after_smart_models = False
-    high_quota_budget_ready = bool(
-        high_quota_budget is not None
-        and smart_budget is not None
-        and high_quota_budget > smart_budget
-        and high_quota_budget >= 1000
-    )
-    hard_routing_enabled = bool(getattr(settings, "llm_quota_hard_routing_enabled", True))
-    cooldown_seconds = max(0.0, float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)))
-    quota_timezone = str(getattr(settings, "llm_quota_window_timezone", "") or "").strip()
-    media_or_live_models = [
-        model
-        for model in model_order
-        if any(marker in normalize_model_name(model) for marker in REPORT_ROUTE_MEDIA_MODEL_MARKERS)
-    ]
-    embedding_model_key = normalize_model_name(getattr(settings, "rag_embedding_model", ""))
-    checks = {
-        "primary_model_preserved": normalized_order[:1] == smart_order[:1],
-        "smart_model_order": smart_model_order_ready,
-        "required_text_models_configured": all(
-            model in normalized_order for model in [*smart_order, high_quota_model_key]
-        ),
-        "flash_models_share_request_budget": flash_equal_request_budgets,
-        "high_quota_fallback_after_smart_models": high_quota_after_smart_models,
-        "high_quota_fallback_budget_ready": high_quota_budget_ready,
-        "hard_routing_enabled": hard_routing_enabled,
-        "quota_cooldown_enabled": cooldown_seconds > 0,
-        "quota_window_timezone_configured": bool(quota_timezone),
-        "embedding_model_kept_separate": embedding_model_key == "gemini-embedding-2",
-        "media_live_models_excluded_from_report_route": not media_or_live_models,
-    }
-    failed_checks = [name for name, ok in checks.items() if not ok]
-    return {
-        "ready": not failed_checks,
-        "strategy": "smartest_first_then_budget_degrade",
-        "selection_rule": "Use the first configured model that is not exhausted in the current quota window.",
-        "quota_endpoint": "GET /llm/quota",
-        "primary_model": primary_model,
-        "fallback_models": fallback_models,
-        "local_llm_model": local_model,
-        "model_order": model_order,
-        "normalized_model_order": normalized_order,
-        "expected_smart_order": list(SMART_FIRST_FLASH_MODELS),
-        "high_quota_text_fallback_model": HIGH_QUOTA_TEXT_FALLBACK_MODEL,
-        "high_quota_text_fallback_rank": high_quota_rank,
-        "hard_routing_enabled": hard_routing_enabled,
-        "quota_cooldown_seconds": cooldown_seconds,
-        "quota_window_timezone": quota_timezone,
-        "same_tier_flash_request_budgets": smart_request_budgets,
-        "high_quota_fallback_request_budget": high_quota_budget,
-        "configured_request_budget_models": sorted(request_budgets),
-        "budget_source": "LLM_MODEL_DAILY_REQUEST_BUDGETS",
-        "budget_scope_note": (
-            "Budgets are project-configured daily request limits; update them to match the "
-            "current Google AI Studio project limits for the deployed key/project."
-        ),
-        "embedding_model": getattr(settings, "rag_embedding_model", ""),
-        "excluded_media_live_models": media_or_live_models,
-        "readiness_checks": checks,
-        "failed_checks": failed_checks,
-    }
 
 
 def _company_filing_user_agent_status(configured_value: str) -> dict:

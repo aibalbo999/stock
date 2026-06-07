@@ -28,6 +28,7 @@ def test_service_status_shape() -> None:
     status = service_status()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
+    status_llm_source = Path("app/services/status_llm.py").read_text()
 
     assert "database" in status
     assert "redis" in status
@@ -286,6 +287,10 @@ def test_service_status_shape() -> None:
     assert status["gemini"]["max_retry_delay_seconds"] == 5.0
     assert status["gemini"]["provider_keys_configured"]["anthropic"] is False
     assert status["llm_quota_routing"]["ready"] is True
+    assert status["llm_quota_routing"]["collector_path"] == "app/services/status_llm.py"
+    assert "from app.services.status_llm import (" in service_status_source
+    assert "def _llm_quota_routing_status(" not in service_status_source
+    assert "def _llm_quota_routing_status(" in status_llm_source
     assert status["llm_quota_routing"]["strategy"] == "smartest_first_then_budget_degrade"
     assert status["llm_quota_routing"]["model_order"][:4] == [
         "gemini-3.5-flash",
@@ -662,6 +667,7 @@ def test_llm_quota_routing_status_requires_smart_first_order_and_equal_budgets()
     ready = _llm_quota_routing_status(Settings(_env_file=None))
 
     assert ready["ready"] is True
+    assert ready["collector_path"] == "app/services/status_llm.py"
     assert ready["failed_checks"] == []
     assert ready["readiness_checks"]["smart_model_order"] is True
     assert ready["readiness_checks"]["flash_models_share_request_budget"] is True

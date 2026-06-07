@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 from app.core.config import Settings, get_settings
 from app.data_sources.company_filings import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
@@ -16,6 +17,7 @@ from app.services.service_status import (
     _redact_url,
     service_status,
 )
+from app.services.status_frontend import frontend_status
 
 
 def test_redact_url_with_password() -> None:
@@ -24,6 +26,8 @@ def test_redact_url_with_password() -> None:
 
 def test_service_status_shape() -> None:
     status = service_status()
+    service_status_source = Path("app/services/service_status.py").read_text()
+    status_frontend_source = Path("app/services/status_frontend.py").read_text()
 
     assert "database" in status
     assert "redis" in status
@@ -311,6 +315,11 @@ def test_service_status_shape() -> None:
         "local_regex",
     }
     assert status["frontend"]["streamlit_entry_uses_navigation"] is True
+    assert status["frontend"]["collector_path"] == "app/services/status_frontend.py"
+    assert frontend_status()["collector_path"] == "app/services/status_frontend.py"
+    assert "from app.services.status_frontend import frontend_status as collect_frontend_status" in service_status_source
+    assert "def _frontend_status(" not in service_status_source
+    assert "def frontend_status(" in status_frontend_source
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
     assert status["frontend"]["report_html_renderer_extracted"] is True

@@ -2,11 +2,12 @@ import sys
 from pathlib import Path
 
 from app.core.config import Settings
-from app.services.service_status import service_status
 
 
-def test_backend_status_collectors_for_database_workflow_and_security() -> None:
-    status = service_status()
+def test_backend_status_collectors_for_database_workflow_and_security(
+    service_status_snapshot,
+) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_security_source = Path("app/services/status_security.py").read_text()
 
@@ -39,8 +40,8 @@ def test_backend_status_collectors_for_database_workflow_and_security() -> None:
     }
 
 
-def test_task_queue_status_contract_and_compatibility_alias() -> None:
-    status = service_status()
+def test_task_queue_status_contract_and_compatibility_alias(service_status_snapshot) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_task_queue_source = Path("app/services/status_task_queue.py").read_text()
 
@@ -78,8 +79,8 @@ def test_task_queue_status_contract_and_compatibility_alias() -> None:
     assert "def task_queue_status(" in status_task_queue_source
 
 
-def test_thin_api_controller_architecture_capability_evidence() -> None:
-    status = service_status()
+def test_thin_api_controller_architecture_capability_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     thin_api = status["upgrade_capability_matrix"]["architecture"]["thin_api_controller"]
     evidence = thin_api["evidence"]
 
@@ -124,8 +125,8 @@ def test_thin_api_controller_architecture_capability_evidence() -> None:
     assert evidence["legacy_facade_alias_only"] is True
 
 
-def test_background_task_queue_architecture_capability_evidence() -> None:
-    status = service_status()
+def test_background_task_queue_architecture_capability_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     task_queue_arch = status["upgrade_capability_matrix"]["architecture"]["background_task_queue"]
 
     assert task_queue_arch["status"] == ("ready" if status["task_queue"]["ready"] else "degraded")
@@ -140,8 +141,10 @@ def test_background_task_queue_architecture_capability_evidence() -> None:
     assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]
 
 
-def test_runtime_migration_and_secret_scanning_architecture_capabilities() -> None:
-    status = service_status()
+def test_runtime_migration_and_secret_scanning_architecture_capabilities(
+    service_status_snapshot,
+) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_python_runtime_source = Path("app/services/status_python_runtime.py").read_text()
     architecture = status["upgrade_capability_matrix"]["architecture"]

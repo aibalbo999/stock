@@ -1,16 +1,13 @@
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
-from app.services.service_status import (
-    _redact_url,
-    service_status,
-)
+from app.services.service_status import _redact_url
 
 
 def test_redact_url_with_password() -> None:
     assert _redact_url("redis://user:secret@localhost:6379/0") == "redis://user:***@localhost:6379/0"
 
 
-def test_service_status_shape() -> None:
-    status = service_status()
+def test_service_status_shape(service_status_snapshot) -> None:
+    status = service_status_snapshot
 
     assert "database" in status
     assert "redis" in status

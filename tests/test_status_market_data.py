@@ -2,12 +2,11 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.data_sources.market import FUGLE_RETRYABLE_HTTP_STATUSES, FINMIND_RETRYABLE_HTTP_STATUSES
-from app.services.service_status import service_status
 from app.services.status_market_data import _market_data_provider_readiness
 
 
-def test_market_data_status_cache_provider_and_collector_evidence() -> None:
-    status = service_status()
+def test_market_data_status_cache_provider_and_collector_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     settings = Settings()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_market_data_source = Path("app/services/status_market_data.py").read_text()

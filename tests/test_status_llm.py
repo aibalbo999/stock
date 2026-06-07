@@ -2,7 +2,6 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
-from app.services.service_status import service_status
 from app.services.status_llm import (
     _llm_fallback_readiness,
     _llm_model_provider,
@@ -10,8 +9,8 @@ from app.services.status_llm import (
 )
 
 
-def test_llm_status_retry_quota_and_observability_shape() -> None:
-    status = service_status()
+def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
 
@@ -47,8 +46,8 @@ def test_llm_status_retry_quota_and_observability_shape() -> None:
     assert "total_token_estimate" in status["llm_observability"]["captured_fields"]
 
 
-def test_ai_rag_llm_capability_matrix_evidence() -> None:
-    status = service_status()
+def test_ai_rag_llm_capability_matrix_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     matrix = status["upgrade_capability_matrix"]
 
     llm_matrix = matrix["ai_rag"]["llm_sdk_and_fallback"]

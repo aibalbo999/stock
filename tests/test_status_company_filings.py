@@ -2,15 +2,16 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.data_sources.company_filings import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
-from app.services.service_status import service_status
 from app.services.status_company_filings import (
     _company_filing_pdf_parser_status,
     _company_filing_user_agent_status,
 )
 
 
-def test_company_filing_status_parser_cache_render_and_identity_evidence() -> None:
-    status = service_status()
+def test_company_filing_status_parser_cache_render_and_identity_evidence(
+    service_status_snapshot,
+) -> None:
+    status = service_status_snapshot
     settings = Settings()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()

@@ -1,11 +1,10 @@
 from pathlib import Path
 
-from app.services.service_status import service_status
 from app.services.status_frontend import frontend_status
 
 
-def test_frontend_status_mpa_background_task_and_css_evidence() -> None:
-    status = service_status()
+def test_frontend_status_mpa_background_task_and_css_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
 
@@ -75,8 +74,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence() -> None:
     assert status["frontend"]["api_task_queue_timeout_seconds"] == 20
 
 
-def test_streamlit_architecture_capability_evidence() -> None:
-    status = service_status()
+def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     frontend_arch = status["upgrade_capability_matrix"]["architecture"][
         "streamlit_mpa_background_tasks"
     ]

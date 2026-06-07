@@ -1,12 +1,11 @@
 from pathlib import Path
 
 from app.core.config import Settings
-from app.services.service_status import service_status
 from app.services.status_graphrag import _neo4j_import_capability_status
 
 
-def test_vector_store_and_graphrag_status_shape_and_evidence() -> None:
-    status = service_status()
+def test_vector_store_and_graphrag_status_shape_and_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_graphrag_source = Path("app/services/status_graphrag.py").read_text()
     status_vector_store_source = Path("app/services/status_vector_store.py").read_text()
@@ -122,8 +121,8 @@ def test_vector_store_and_graphrag_status_shape_and_evidence() -> None:
     assert "shortestPath" in status["supply_chain_graph"]["neo4j_shortest_path_template"]
 
 
-def test_visual_rag_status_shape_and_capability_evidence() -> None:
-    status = service_status()
+def test_visual_rag_status_shape_and_capability_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     matrix = status["upgrade_capability_matrix"]
 
     assert status["company_filings"]["visual_rag_enabled"] is Settings().company_filing_visual_rag_enabled
@@ -151,8 +150,8 @@ def test_visual_rag_status_shape_and_capability_evidence() -> None:
     assert "fallback_reason" in matrix["ai_rag"]["visual_rag"]["evidence"]["runtime"]
 
 
-def test_ai_rag_capability_matrix_evidence() -> None:
-    status = service_status()
+def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     matrix = status["upgrade_capability_matrix"]
 
     assert matrix["ai_rag"]["hybrid_search"]["status"] == "ready"

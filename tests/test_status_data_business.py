@@ -4,8 +4,8 @@ from app.core.config import get_settings
 from app.services.service_status import service_status
 
 
-def test_data_business_capability_matrix_shape_and_evidence() -> None:
-    status = service_status()
+def test_data_business_capability_matrix_shape_and_evidence(service_status_snapshot) -> None:
+    status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     report_retention_source = Path("app/services/status_report_retention.py").read_text()
     matrix = status["upgrade_capability_matrix"]

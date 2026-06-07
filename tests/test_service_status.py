@@ -10,7 +10,6 @@ from app.services.service_status import (
     _llm_fallback_readiness,
     _llm_model_provider,
     _llm_quota_routing_status,
-    _market_data_provider_readiness,
     _neo4j_import_capability_status,
     _redact_url,
     service_status,
@@ -20,6 +19,7 @@ from app.services.status_company_filings import (
     _company_filing_user_agent_status,
 )
 from app.services.status_frontend import frontend_status
+from app.services.status_market_data import _market_data_provider_readiness
 
 
 def test_redact_url_with_password() -> None:
@@ -31,6 +31,7 @@ def test_service_status_shape() -> None:
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
+    status_market_data_source = Path("app/services/status_market_data.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
     assert "database" in status
@@ -82,6 +83,12 @@ def test_service_status_shape() -> None:
     assert status["market_data_cache"]["valuation_metrics_ttl_seconds"] == Settings().valuation_metrics_cache_ttl_seconds
     assert status["market_data_cache"]["official_openapi_fallback_enabled"] is True
     assert status["market_data_cache"]["official_openapi_timeout_seconds"] == 15.0
+    assert status["finmind"]["collector_path"] == "app/services/status_market_data.py"
+    assert status["fugle"]["collector_path"] == "app/services/status_market_data.py"
+    assert status["market_data_cache"]["collector_path"] == "app/services/status_market_data.py"
+    assert "from app.services.status_market_data import (" in service_status_source
+    assert "def _market_data_provider_matrix(" not in service_status_source
+    assert "def market_data_status(" in status_market_data_source
     assert status["company_filings"]["http_retries"] == Settings().company_filing_http_retries
     assert status["company_filings"]["collector_path"] == "app/services/status_company_filings.py"
     assert "from app.services.status_company_filings import (" in service_status_source

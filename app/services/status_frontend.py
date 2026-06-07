@@ -173,6 +173,9 @@ def frontend_status() -> dict:
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
         and "external_deployment_smoke_commands(upgrade_audit)" in ui_source
+        and "def local_neo4j_operation_rows(" in maintenance_status_source
+        and "local_neo4j_operation_rows(upgrade_audit)" in ui_source
+        and "本機 Neo4j / GraphRAG 操作提示" in ui_source
         and "def local_unlocker_operation_rows(" in maintenance_status_source
         and "local_unlocker_operation_rows(upgrade_audit)" in ui_source
         and "本機 unlocker 操作提示" in ui_source

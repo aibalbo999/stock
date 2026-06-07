@@ -157,6 +157,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_warning_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def external_deployment_smoke_commands(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def high_risk_filing_unlocker_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def local_neo4j_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def local_unlocker_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
@@ -240,8 +241,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "external_deployment_warning_rows(upgrade_audit)" in source
     assert "external_deployment_smoke_commands(upgrade_audit)" in source
     assert "high_risk_filing_unlocker_rows(upgrade_audit)" in source
+    assert "local_neo4j_operation_rows(upgrade_audit)" in source
     assert "local_unlocker_operation_rows(upgrade_audit)" in source
     assert "高風險文件 unlocker" in source
+    assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
     assert "單項診斷指令" in source
     assert "task_failure_drilldown_rows(task_summary)" in source
@@ -1345,6 +1348,86 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
     assert rows[2]["指令"] == "-"
     assert "docker compose logs flaresolverr" in rows[3]["指令"]
     assert "https://mops.twse.com.tw/" in rows[4]["指令"]
+
+
+def test_local_neo4j_operation_rows_include_actionable_commands() -> None:
+    helpers = load_report_helpers()
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "missing Neo4j",
+                "evidence": {
+                    "ready": False,
+                    "connection_ok": False,
+                    "fallback_reason": "missing_settings:neo4j_uri",
+                    "payload_export_ready": True,
+                    "payload_node_count": 27,
+                    "payload_structural_edge_count": 135,
+                    "payload_peer_edge_count": 36,
+                    "payload_statement_count": 5,
+                    "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+                    "smoke_cli": (
+                        ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                        "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+                    ),
+                    "import_smoke_cli": (
+                        ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                        "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
+                    ),
+                    "local_docker_defaults": {
+                        "cli_start": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                    },
+                },
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "label": "GraphRAG guarded live Cypher query",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "Neo4j not configured",
+                "evidence": {
+                    "neo4j_ready": False,
+                    "local_dry_run_status": "executed_dry_run",
+                    "plan_validation": {"valid": True, "read_only": True},
+                    "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+                    "smoke_cli": (
+                        ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                        "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+                    ),
+                },
+            },
+        ]
+    }
+
+    rows = helpers["local_neo4j_operation_rows"](audit)
+
+    assert [row["項目"] for row in rows] == [
+        "一鍵啟動",
+        "本機稽核",
+        "Payload dry-run",
+        "Live query smoke",
+        "Import-first smoke",
+        "容器診斷",
+    ]
+    assert rows[0]["狀態"] == "待啟動"
+    assert "scripts/start_system.py --start-dependencies" in rows[0]["指令"]
+    assert "--local-neo4j-defaults --wait-local-neo4j 20" in rows[1]["指令"]
+    assert "scripts.import_supply_chain_graph_neo4j --dry-run" in rows[2]["指令"]
+    assert "nodes=27" in rows[2]["說明"]
+    assert "neo4j_graphrag_smoke.py" in rows[3]["指令"]
+    assert "--import-first" in rows[4]["指令"]
+    assert "docker compose logs neo4j" in rows[5]["指令"]
+    assert "missing_settings:neo4j_uri" in rows[5]["說明"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from time import monotonic
 from typing import Any
 
 import requests
@@ -15,6 +16,9 @@ from app.ui.api_client import (
 
 
 TaskSubmitter = Callable[[], dict]
+TASK_QUEUE_PREFLIGHT_CACHE_KEY = "_task_queue_preflight_status_cache"
+TASK_QUEUE_PREFLIGHT_READY_TTL_SECONDS = 10.0
+TASK_QUEUE_PREFLIGHT_UNREADY_TTL_SECONDS = 3.0
 
 
 def submit_background_task(
@@ -96,7 +100,7 @@ def submit_data_operation_task(
 
 def task_queue_preflight_ready(*, error_message: str) -> bool:
     try:
-        task_queue = api_task_queue_status()
+        task_queue = cached_task_queue_status()
     except requests.RequestException as exc:
         st.warning(f"無法預先確認背景任務狀態：{request_error_message(exc)}；仍會嘗試送出。")
         return True
@@ -107,6 +111,35 @@ def task_queue_preflight_ready(*, error_message: str) -> bool:
         return True
     st.error(f"{error_message}：{task_queue_unready_message(task_queue)}")
     return False
+
+
+def cached_task_queue_status() -> dict:
+    now = monotonic()
+    cached = st.session_state.get(TASK_QUEUE_PREFLIGHT_CACHE_KEY)
+    if isinstance(cached, dict):
+        snapshot = cached.get("snapshot")
+        checked_at = cached.get("checked_at")
+        ttl_seconds = cached.get("ttl_seconds")
+        if (
+            isinstance(snapshot, dict)
+            and isinstance(checked_at, (int, float))
+            and isinstance(ttl_seconds, (int, float))
+            and now - float(checked_at) < float(ttl_seconds)
+        ):
+            return snapshot
+
+    snapshot = api_task_queue_status()
+    ttl_seconds = (
+        TASK_QUEUE_PREFLIGHT_READY_TTL_SECONDS
+        if snapshot.get("ready")
+        else TASK_QUEUE_PREFLIGHT_UNREADY_TTL_SECONDS
+    )
+    st.session_state[TASK_QUEUE_PREFLIGHT_CACHE_KEY] = {
+        "checked_at": now,
+        "ttl_seconds": ttl_seconds,
+        "snapshot": snapshot,
+    }
+    return snapshot
 
 
 def task_queue_unready_message(task_queue: dict) -> str:

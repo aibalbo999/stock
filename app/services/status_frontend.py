@@ -153,6 +153,11 @@ def frontend_status() -> dict:
         and "api_task_queue_status" in background_tasks_source
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in api_client_source
         and "preflight: bool = True" in background_tasks_source,
+        "ui_task_queue_preflight_cache_enabled": "def cached_task_queue_status("
+        in background_tasks_source
+        and "TASK_QUEUE_PREFLIGHT_CACHE_KEY" in background_tasks_source
+        and "TASK_QUEUE_PREFLIGHT_READY_TTL_SECONDS" in background_tasks_source
+        and "TASK_QUEUE_PREFLIGHT_UNREADY_TTL_SECONDS" in background_tasks_source,
         "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
         "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning(" in background_tasks_source
         and "Celery worker 未回應" in background_tasks_source,
@@ -192,6 +197,11 @@ def frontend_status() -> dict:
         and "def render_task_status_panel(" not in dashboard_core_source
         and "run_every" in task_status_panel_source
         and "from app.ui.task_status_panel import" in ui_source,
+        "ui_task_status_poll_backoff_enabled": "def task_status_poll_interval_seconds("
+        in task_status_panel_source
+        and "TASK_STATUS_QUEUED_POLL_SECONDS" in task_status_panel_source
+        and "TASK_STATUS_RETRY_POLL_SECONDS" in task_status_panel_source
+        and "task_status_poll_interval_seconds(" in task_status_panel_source,
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows(" in task_status_panel_source
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source

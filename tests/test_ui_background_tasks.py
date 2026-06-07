@@ -224,3 +224,44 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
         "可用指令：.venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
     ]
     assert fake_st.successes == ["已送出股價刷新背景任務：task-queued-without-worker"]
+
+
+def test_task_queue_preflight_reuses_ready_status_cache(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    calls = {"status": 0}
+    clock = {"now": 100.0}
+    monkeypatch.setattr(background_tasks, "st", fake_st)
+    monkeypatch.setattr(background_tasks, "monotonic", lambda: clock["now"])
+
+    def fake_status() -> dict:
+        calls["status"] += 1
+        return {"ready": True, "worker_ping_checked": False}
+
+    monkeypatch.setattr(background_tasks, "api_task_queue_status", fake_status)
+
+    assert background_tasks.task_queue_preflight_ready(error_message="任務送出失敗") is True
+    assert background_tasks.task_queue_preflight_ready(error_message="任務送出失敗") is True
+
+    assert calls["status"] == 1
+    assert fake_st.errors == []
+    assert fake_st.warnings == []
+
+
+def test_task_queue_preflight_refreshes_after_cache_ttl(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    calls = {"status": 0}
+    clock = {"now": 100.0}
+    monkeypatch.setattr(background_tasks, "st", fake_st)
+    monkeypatch.setattr(background_tasks, "monotonic", lambda: clock["now"])
+
+    def fake_status() -> dict:
+        calls["status"] += 1
+        return {"ready": True, "worker_ping_checked": False}
+
+    monkeypatch.setattr(background_tasks, "api_task_queue_status", fake_status)
+
+    assert background_tasks.task_queue_preflight_ready(error_message="任務送出失敗") is True
+    clock["now"] += background_tasks.TASK_QUEUE_PREFLIGHT_READY_TTL_SECONDS + 0.1
+    assert background_tasks.task_queue_preflight_ready(error_message="任務送出失敗") is True
+
+    assert calls["status"] == 2

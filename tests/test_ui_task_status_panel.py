@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.ui.task_status_panel import company_filing_gap_rows, task_status_diagnostic_rows
+from app.ui.task_status_panel import (
+    company_filing_gap_rows,
+    task_status_diagnostic_rows,
+    task_status_poll_interval_seconds,
+)
 
 
 def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> None:
@@ -137,3 +141,37 @@ def test_company_filing_gap_rows_fall_back_to_gap_summary() -> None:
             "原因": "PDF 沒有可抽取文字或解析失敗",
         },
     ]
+
+
+def test_task_status_poll_interval_backs_off_for_queued_tasks() -> None:
+    assert (
+        task_status_poll_interval_seconds(
+            {"status": "PENDING", "ready": False},
+            default_seconds=5,
+        )
+        == 8
+    )
+
+
+def test_task_status_poll_interval_backs_off_more_for_retry_tasks() -> None:
+    assert (
+        task_status_poll_interval_seconds(
+            {"status": "RETRY", "ready": False},
+            default_seconds=5,
+        )
+        == 15
+    )
+
+
+def test_task_status_poll_interval_keeps_fast_polling_for_active_progress() -> None:
+    assert (
+        task_status_poll_interval_seconds(
+            {
+                "status": "STARTED",
+                "ready": False,
+                "progress": {"progress_pct": 0.4},
+            },
+            default_seconds=5,
+        )
+        == 5
+    )

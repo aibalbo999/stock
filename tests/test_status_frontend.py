@@ -31,6 +31,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_background_task_client_extracted"] is True
     assert status["frontend"]["ui_background_task_client_path"] == "app/ui/background_tasks.py"
     assert status["frontend"]["ui_task_queue_preflight_enabled"] is True
+    assert status["frontend"]["ui_task_queue_preflight_cache_enabled"] is True
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
@@ -40,6 +41,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_failure_trend_enabled"] is True
     assert status["frontend"]["ui_task_failure_alerts_enabled"] is True
     assert status["frontend"]["ui_task_status_panel_extracted"] is True
+    assert status["frontend"]["ui_task_status_poll_backoff_enabled"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_company_filing_runtime_panel_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_tabs_extracted"] is True
@@ -97,6 +99,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_queue_preflight_cache_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_worker_warning_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_health_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_enabled"] is True
@@ -105,6 +108,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_failure_trend_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_alerts_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True
+    assert frontend_arch["evidence"]["ui_task_status_poll_backoff_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_data_enrichment_tabs_extracted"] is True

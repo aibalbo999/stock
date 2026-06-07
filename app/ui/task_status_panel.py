@@ -7,6 +7,10 @@ from app.ui.api_client import api_get, api_task_post, request_error_message
 from app.ui.follow_up_status import company_filing_action_label
 
 
+TASK_STATUS_QUEUED_POLL_SECONDS = 8
+TASK_STATUS_RETRY_POLL_SECONDS = 15
+
+
 def render_task_status(task_status: dict) -> None:
     cols = st.columns(4)
     cols[0].metric("Task", task_status.get("status", "UNKNOWN"))
@@ -183,6 +187,26 @@ def _task_status_ready(task_status: dict | None) -> bool:
     }
 
 
+def task_status_poll_interval_seconds(
+    task_status: dict | None,
+    *,
+    default_seconds: int,
+) -> int:
+    interval = max(1, int(default_seconds or 5))
+    if _task_status_ready(task_status):
+        return interval
+    status = str((task_status or {}).get("status") or "").upper()
+    progress = (task_status or {}).get("progress")
+    progress_pct = progress.get("progress_pct") if isinstance(progress, dict) else None
+    if isinstance(progress_pct, (int, float)) and progress_pct > 0:
+        return interval
+    if status in {"PENDING", "QUEUED", "RECEIVED"}:
+        return max(interval, TASK_STATUS_QUEUED_POLL_SECONDS)
+    if status == "RETRY":
+        return max(interval, TASK_STATUS_RETRY_POLL_SECONDS)
+    return interval
+
+
 def _fetch_task_status(task_id: str, status_state_key: str) -> dict | None:
     try:
         task_status = api_get(f"/tasks/{task_id}")
@@ -271,7 +295,10 @@ def render_task_status_panel(
         task_status = _fetch_task_status(task_id, status_state_key)
     fragment_factory = getattr(st, "fragment", None)
     if auto_refresh and not _task_status_ready(task_status) and callable(fragment_factory):
-        interval = max(1, int(auto_refresh_seconds or 5))
+        interval = task_status_poll_interval_seconds(
+            task_status,
+            default_seconds=auto_refresh_seconds,
+        )
 
         @fragment_factory(run_every=f"{interval}s")
         def _auto_task_status_panel() -> dict | None:

@@ -663,6 +663,8 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 and int(frontend_status.get("page_count") or 0) >= 4
                 and frontend_status.get("expected_pages_present")
                 and frontend_status.get("external_css_loaded")
+                and frontend_status.get("external_report_css_loaded")
+                and frontend_status.get("report_html_renderer_extracted")
                 and frontend_status.get("uses_task_enqueue_helper")
                 and frontend_status.get("uses_task_status_panel")
                 and frontend_status.get("asyncio_run_count") == 0
@@ -671,8 +673,9 @@ def _upgrade_capability_matrix(status: dict) -> dict:
                 else "degraded",
                 evidence=frontend_status,
                 detail=(
-                    "Streamlit uses a multi-page shell, external CSS, and FastAPI/Celery task "
-                    "enqueue/status polling instead of running long ingestion/report calls inline."
+                    "Streamlit uses a multi-page shell, external CSS, an extracted report HTML "
+                    "renderer, and FastAPI/Celery task enqueue/status polling instead of running "
+                    "long ingestion/report calls inline."
                 ),
             ),
             "python_runtime": _capability(
@@ -1052,6 +1055,7 @@ def _frontend_status() -> dict:
     streamlit_source = _read_text(streamlit_path)
     ui_paths = [
         ui_dir / "dashboard_core.py",
+        ui_dir / "report_html.py",
         ui_dir / "analysis_workspace.py",
         ui_dir / "report_center.py",
         ui_dir / "data_enrichment.py",
@@ -1060,6 +1064,8 @@ def _frontend_status() -> dict:
         ui_dir / "streamlit_dashboard.py",
     ]
     ui_source = "\n".join(_read_text(path) for path in ui_paths)
+    dashboard_core_source = _read_text(ui_dir / "dashboard_core.py")
+    report_html_source = _read_text(ui_dir / "report_html.py")
     pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
@@ -1092,6 +1098,13 @@ def _frontend_status() -> dict:
             ]
         ),
         "ui_modules_present": [path.name for path in ui_paths if path.exists()],
+        "dashboard_core_lines": len(dashboard_core_source.splitlines()) if dashboard_core_source else None,
+        "report_html_renderer_path": "app/ui/report_html.py",
+        "report_html_renderer_lines": len(report_html_source.splitlines()) if report_html_source else None,
+        "report_html_renderer_extracted": (ui_dir / "report_html.py").exists()
+        and "def report_html(" in report_html_source
+        and "def report_html(" not in dashboard_core_source
+        and "from app.ui.report_html import (" in dashboard_core_source,
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

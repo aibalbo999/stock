@@ -313,6 +313,9 @@ def test_service_status_shape() -> None:
     assert status["frontend"]["streamlit_entry_uses_navigation"] is True
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
+    assert status["frontend"]["report_html_renderer_extracted"] is True
+    assert status["frontend"]["report_html_renderer_path"] == "app/ui/report_html.py"
+    assert status["frontend"]["dashboard_core_lines"] < 1500
     assert status["frontend"]["external_css_loaded"] is True
     assert status["frontend"]["external_report_css_loaded"] is True
     assert status["frontend"]["external_report_css_path"] == "app/ui/styles/report_html.css"
@@ -449,6 +452,7 @@ def test_service_status_shape() -> None:
     assert frontend_arch["status"] == "ready"
     assert frontend_arch["evidence"]["streamlit_entry_uses_navigation"] is True
     assert frontend_arch["evidence"]["expected_pages_present"] is True
+    assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["external_report_css_loaded"] is True
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0
     assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False

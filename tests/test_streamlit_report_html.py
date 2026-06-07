@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from html import escape
 from pathlib import Path
-from typing import Optional
-
-import re
-
-from app.services.candidate_confidence import format_confidence_score
-from app.services.source_quality import is_low_quality_investor_forum_source
 
 DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
 DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
+REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
+    REPORT_HTML_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
@@ -29,19 +24,15 @@ def read_ui_source() -> str:
 
 
 def load_report_helpers() -> dict:
-    source = DASHBOARD_CORE_SOURCE.read_text()
-    start = source.index("REPORT_HTML_STYLE_PATH")
-    end = source.index("def render_reader_report(")
+    report_source = REPORT_HTML_SOURCE.read_text()
+    dashboard_source = DASHBOARD_CORE_SOURCE.read_text()
+    dashboard_start = dashboard_source.index("def candidate_revalidation_summary")
+    dashboard_end = dashboard_source.index("def render_reader_report(")
     namespace = {
-        "escape": escape,
-        "Optional": Optional,
-        "Path": Path,
-        "__file__": str(DASHBOARD_CORE_SOURCE),
-        "re": re,
-        "format_confidence_score": format_confidence_score,
-        "is_low_quality_investor_forum_source": is_low_quality_investor_forum_source,
+        "__file__": str(REPORT_HTML_SOURCE),
     }
-    exec(source[start:end], namespace)
+    exec(report_source, namespace)
+    exec(dashboard_source[dashboard_start:dashboard_end], namespace)
     return namespace
 
 
@@ -91,6 +82,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "<style>\n  :root" not in source
     assert "<style>{report_css}</style>" in source
     assert "REPORT_HTML_STYLE_PATH" in source
+    assert "from app.ui.report_html import (" in source
+    assert "def report_html(" not in DASHBOARD_CORE_SOURCE.read_text()
+    assert "def report_html(" in REPORT_HTML_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
     assert 'api_get("/reports?limit=20")' in source

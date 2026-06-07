@@ -5,6 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from app.core.config import get_settings
 from scripts.start_system import (
     apply_local_dependency_env_defaults,
     dependency_wait_status_lines,
@@ -19,6 +22,31 @@ from scripts.start_system import (
     upgrade_dependency_advice,
     wait_for_local_dependency_ports,
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache_around_start_system_tests():
+    env_keys = (
+        "NEO4J_URI",
+        "NEO4J_USER",
+        "NEO4J_PASSWORD",
+        "NEO4J_DATABASE",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    )
+    original_env = {key: os.environ.get(key) for key in env_keys}
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        for key, value in original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()
 
 
 def _ready_upgrade_matrix(overrides: dict | None = None) -> dict:

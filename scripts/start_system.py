@@ -952,7 +952,9 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
                 "action": (
                     "若法說會簡報或重大訊息常被擋，設定 "
                     "COMPANY_FILING_STRUCTURED_API_PROVIDER、COMPANY_FILING_STRUCTURED_API_URL "
-                    "與 COMPANY_FILING_STRUCTURED_API_TOKEN 串接 TEJ 或專業資料 API"
+                    "與 COMPANY_FILING_STRUCTURED_API_TOKEN 串接 TEJ 或專業資料 API；"
+                    "設定後執行 .venv/bin/python scripts/structured_company_filing_smoke.py "
+                    "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
                 ),
             }
         )

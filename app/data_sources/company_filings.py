@@ -414,6 +414,10 @@ def company_filing_structured_api_status() -> dict:
         "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
         "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
         "contract": "GET JSON with documents/data rows: title, text, url, publisher, published_at, document_type",
+        "smoke_cli": (
+            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+        ),
         "fallback_reason": None
         if configured and parsed.scheme in {"http", "https"} and parsed.hostname
         else "missing_structured_api_provider_or_url"

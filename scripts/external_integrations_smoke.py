@@ -7,6 +7,11 @@ from typing import Any
 from app.services.service_status import service_status
 
 
+STRUCTURED_COMPANY_FILING_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/structured_company_filing_smoke.py "
+    "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+)
+
 EXTERNAL_CHECKS = (
     (
         "ai_rag",
@@ -58,6 +63,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "check_count": len(checks),
         "checks": checks,
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
     }
 
@@ -73,6 +79,7 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         if not check.get("ready"):
             lines.append(f"  fix: {check['remediation']}")
     lines.append(f"Local start: {report['local_start_command']}")
+    lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)
 
 

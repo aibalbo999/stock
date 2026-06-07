@@ -29,3 +29,6 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "company_filing_structured_api_fallback",
     }
     assert "start_system.py --start-dependencies" in report["local_start_command"]
+    assert "structured_company_filing_smoke.py" in report[
+        "structured_company_filing_smoke_command"
+    ]

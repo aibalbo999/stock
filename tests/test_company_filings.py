@@ -173,6 +173,9 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["provider"] == "tej"
     assert status["url_configured"] is True
     assert status["token_configured"] is True
+    assert status["smoke_cli"].endswith(
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+    )
     assert status["fallback_reason"] is None
 
 

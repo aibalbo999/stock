@@ -40,6 +40,7 @@ def test_service_status_shape() -> None:
     status_python_runtime_source = Path("app/services/status_python_runtime.py").read_text()
     status_report_retention_source = Path("app/services/status_report_retention.py").read_text()
     status_security_source = Path("app/services/status_security.py").read_text()
+    status_task_queue_source = Path("app/services/status_task_queue.py").read_text()
     status_company_filings_source = Path("app/services/status_company_filings.py").read_text()
 
     assert "database" in status
@@ -53,6 +54,7 @@ def test_service_status_shape() -> None:
     assert "supply_chain_graph" in status
     assert "workflow_orchestration" in status
     assert "python_runtime" in status
+    assert "task_queue" in status
     assert status["market_data_cache"]["enabled"] is True
     assert status["market_data_cache"]["available"] == bool(status["redis"]["ok"])
     assert status["market_data_cache"]["stale_rescue_enabled"] is True
@@ -357,6 +359,29 @@ def test_service_status_shape() -> None:
         "gitleaks",
         "local_regex",
     }
+    assert status["task_queue"]["collector_path"] == "app/services/status_task_queue.py"
+    assert status["task_queue"]["broker_ok"] == status["redis"]["ok"]
+    assert status["task_queue"]["backend_ok"] == status["redis"]["ok"]
+    assert status["task_queue"]["submission_contract_ready"] is True
+    assert status["task_queue"]["task_export_namespace_available"] is True
+    assert status["task_queue"]["celery_app_available"] is True
+    assert status["task_queue"]["required_task_exports"] == [
+        "celery_app",
+        "generate_report_task",
+        "discovered_report_task",
+        "data_operation_task",
+        "report_follow_up_task",
+    ]
+    assert status["task_queue"]["missing_task_exports"] == []
+    assert status["task_queue"]["task_names_match_expected"] is True
+    assert "POST /tasks/data-operation" in status["task_queue"]["submission_endpoints"]
+    assert "GET /tasks/summary" in status["task_queue"]["status_endpoints"]
+    assert status["celery"]["ready"] == status["task_queue"]["ready"]
+    assert status["celery"]["submission_contract_ready"] is True
+    assert "from app.services.status_task_queue import task_queue_status as collect_task_queue_status" in (
+        service_status_source
+    )
+    assert "def task_queue_status(" in status_task_queue_source
     assert status["frontend"]["streamlit_entry_uses_navigation"] is True
     assert status["frontend"]["collector_path"] == "app/services/status_frontend.py"
     assert frontend_status()["collector_path"] == "app/services/status_frontend.py"
@@ -543,6 +568,12 @@ def test_service_status_shape() -> None:
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["main_imports_legacy_facade"] is False
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_present"] is True
     assert matrix["architecture"]["thin_api_controller"]["evidence"]["legacy_facade_alias_only"] is True
+    task_queue_arch = matrix["architecture"]["background_task_queue"]
+    assert task_queue_arch["status"] == ("ready" if status["task_queue"]["ready"] else "degraded")
+    assert task_queue_arch["evidence"]["submission_contract_ready"] is True
+    assert task_queue_arch["evidence"]["broker_ok"] == status["redis"]["ok"]
+    assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
+    assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]
     assert matrix["architecture"]["workflow_orchestration"]["status"] == "ready"
     frontend_arch = matrix["architecture"]["streamlit_mpa_background_tasks"]
     assert frontend_arch["status"] == "ready"

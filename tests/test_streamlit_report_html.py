@@ -876,6 +876,7 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
         {"integrity": {"ok": True}},
         {
             "redis": {"ok": True},
+            "task_queue": {"ready": True},
             "gemini": {"key_count": 5},
             "finmind": {"mode": "public_or_limited"},
             "candidate_confidence": {"high_threshold": 75},
@@ -884,6 +885,7 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
 
     assert metrics["資料庫"] == "正常"
     assert metrics["Redis"] == "正常"
+    assert metrics["背景任務"] == "可送出"
     assert metrics["AI Key"] == 5
     assert metrics["市場資料"] == "可用"
     assert metrics["升格門檻"] == "高 75"

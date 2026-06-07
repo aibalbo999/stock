@@ -148,6 +148,16 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "architecture",
+        "background_task_queue",
+        "背景任務 queue readiness",
+        ("upgrade_capability_matrix", "architecture", "background_task_queue"),
+        remediation=(
+            "啟動 Redis/Celery，確認 app.api.task_exports 匯出 celery_app 與必要 task，"
+            "並保持背景任務提交 endpoint 的 structured error boundary。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "architecture",
         "python_runtime",
         "Python 3.11+ runtime",
         ("upgrade_capability_matrix", "architecture", "python_runtime"),

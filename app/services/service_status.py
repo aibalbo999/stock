@@ -42,6 +42,7 @@ from app.services.status_report_retention import (
     report_retention_status as collect_report_retention_status,
 )
 from app.services.status_security import security_scan_status as collect_security_scan_status
+from app.services.status_task_queue import task_queue_status as collect_task_queue_status
 from app.services.status_vector_store import vector_store_status as collect_vector_store_status
 from app.services.visual_rag import visual_rag_status
 from app.services.workflow_orchestration import workflow_orchestration_status
@@ -76,6 +77,11 @@ def service_status() -> dict:
     frontend_status = collect_frontend_status()
     python_runtime_status = collect_python_runtime_status()
     report_retention_status = collect_report_retention_status()
+    task_queue_status = collect_task_queue_status(
+        settings,
+        redis_status=redis_status,
+        redact_url=_redact_url,
+    )
     status = {
         "database": {
             "init_mode": settings.database_init_mode,
@@ -112,9 +118,12 @@ def service_status() -> dict:
         "vector_store": vector_store_status,
         "supply_chain_graph": supply_chain_graph_status,
         "celery": {
-            "broker_url": _redact_url(settings.redis_url),
-            "backend_url": _redact_url(settings.redis_url),
+            "broker_url": task_queue_status["broker_url"],
+            "backend_url": task_queue_status["backend_url"],
+            "ready": task_queue_status["ready"],
+            "submission_contract_ready": task_queue_status["submission_contract_ready"],
         },
+        "task_queue": task_queue_status,
         "workflow_orchestration": workflow_orchestration_status(settings),
         "security_scanning": collect_security_scan_status(
             module_available=_module_available,

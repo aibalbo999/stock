@@ -24,6 +24,7 @@ def upgrade_capability_matrix(status: dict) -> dict:
     company_filing_status = status.get("company_filings") or {}
     api_status = _api_controller_status()
     frontend_status = status.get("frontend") or {}
+    task_queue_status = status.get("task_queue") or {}
     python_runtime_status = status.get("python_runtime") or {}
     report_retention_status = status.get("report_retention") or {}
     security_scan_status = status.get("security_scanning") or {}
@@ -346,6 +347,33 @@ def upgrade_capability_matrix(status: dict) -> dict:
                     "local_fallback_enabled": workflow_status.get("local_fallback_enabled"),
                     "fallback_reason": workflow_status.get("fallback_reason"),
                 },
+            ),
+            "background_task_queue": _capability(
+                "ready"
+                if task_queue_status.get("ready")
+                and task_queue_status.get("submission_contract_ready")
+                and api_status.get("structured_task_submission_errors")
+                else "degraded",
+                evidence={
+                    "ready": task_queue_status.get("ready"),
+                    "submission_contract_ready": task_queue_status.get("submission_contract_ready"),
+                    "broker_configured": task_queue_status.get("broker_configured"),
+                    "broker_ok": task_queue_status.get("broker_ok"),
+                    "backend_ok": task_queue_status.get("backend_ok"),
+                    "celery_app_available": task_queue_status.get("celery_app_available"),
+                    "required_task_exports": task_queue_status.get("required_task_exports"),
+                    "exported_tasks_present": task_queue_status.get("exported_tasks_present"),
+                    "missing_task_exports": task_queue_status.get("missing_task_exports"),
+                    "task_names_match_expected": task_queue_status.get("task_names_match_expected"),
+                    "submission_endpoints": task_queue_status.get("submission_endpoints"),
+                    "status_endpoints": task_queue_status.get("status_endpoints"),
+                    "structured_task_submission_errors": api_status.get("structured_task_submission_errors"),
+                    "smoke_commands": task_queue_status.get("smoke_commands"),
+                },
+                detail=(
+                    "Background task submission requires live Redis broker/backend, Celery app "
+                    "exports, named task wiring, status endpoints, and structured task submission errors."
+                ),
             ),
             "streamlit_mpa_background_tasks": _capability(
                 "ready"

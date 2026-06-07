@@ -24,6 +24,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "thin_api_controller": {"status": "ready", "evidence": {}},
             "workflow_orchestration": {"status": "ready", "evidence": {}},
             "streamlit_mpa_background_tasks": {"status": "ready", "evidence": {}},
+            "background_task_queue": {"status": "ready", "evidence": {}},
             "python_runtime": {"status": "ready", "evidence": {}},
             "database_migrations": {"status": "ready", "evidence": {}},
             "secret_scanning": {"status": "ready", "evidence": {}},
@@ -313,6 +314,29 @@ def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
     assert audit["overall_status"] == "failed"
     assert audit["implementation"]["status"] == "failed"
     assert any(check["capability"] == "streamlit_mpa_background_tasks" for check in audit["failures"])
+    assert audit["areas"]["architecture"]["failures"] == 1
+
+
+def test_upgrade_audit_fails_background_task_queue_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "architecture.background_task_queue": {
+                    "status": "degraded",
+                    "evidence": {
+                        "broker_ok": False,
+                        "submission_contract_ready": True,
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    failure = next(item for item in audit["failures"] if item["capability"] == "background_task_queue")
+    assert failure["optional"] is False
+    assert failure["evidence"]["broker_ok"] is False
     assert audit["areas"]["architecture"]["failures"] == 1
 
 

@@ -8,9 +8,11 @@ from app.services.candidate_confidence import format_confidence_score
 def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
     confidence = service_snapshot.get("candidate_confidence") or {}
     high_threshold = confidence.get("high_threshold")
+    task_queue = service_snapshot.get("task_queue") or {}
     return {
         "資料庫": "正常" if status.get("integrity", {}).get("ok", True) else "異常",
         "Redis": "正常" if service_snapshot.get("redis", {}).get("ok") else "未連線",
+        "背景任務": "可送出" if task_queue.get("ready") else "檢查",
         "AI Key": service_snapshot.get("gemini", {}).get("key_count", 0),
         "市場資料": "可用" if service_snapshot.get("finmind", {}).get("mode") else "檢查",
         "升格門檻": format_confidence_score(float(high_threshold)) if high_threshold is not None else "未評估",

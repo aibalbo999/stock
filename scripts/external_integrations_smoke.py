@@ -22,6 +22,11 @@ STRUCTURED_COMPANY_FILING_SMOKE_COMMAND = (
     ".venv/bin/python scripts/structured_company_filing_smoke.py "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
 )
+STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND = (
+    ".venv/bin/python scripts/structured_company_filing_smoke.py "
+    "--sample-json examples/structured_company_filing_sample.json "
+    "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+)
 COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--url https://example.com/ --json"
@@ -58,6 +63,7 @@ SMOKE_COMMAND_KEYS = frozenset(
         "smoke_cli",
         "smoke_command",
         "smoke_commands",
+        "sample_contract_cli",
         "payload_dry_run_cli",
         "import_smoke_cli",
         "neo4j_graphrag_smoke_command",
@@ -77,7 +83,10 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
         NEO4J_IMPORT_SMOKE_COMMAND,
     ],
     "company_filing_browser_or_proxy_fallback": [COMPANY_FILING_RENDER_SMOKE_COMMAND],
-    "company_filing_structured_api_fallback": [STRUCTURED_COMPANY_FILING_SMOKE_COMMAND],
+    "company_filing_structured_api_fallback": [
+        STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
+        STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
+    ],
 }
 
 
@@ -112,6 +121,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
+        "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
     }
 
@@ -204,6 +214,7 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Local start: {report['local_start_command']}")
     lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
+    lines.append(f"Structured filing sample: {report['structured_company_filing_sample_command']}")
     lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)
 

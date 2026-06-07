@@ -60,6 +60,9 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "structured_company_filing_smoke.py" in report[
         "structured_company_filing_smoke_command"
     ]
+    assert "structured_company_filing_sample.json" in report[
+        "structured_company_filing_sample_command"
+    ]
     checks = {check["capability"]: check for check in report["checks"]}
     assert checks["neo4j_import"]["smoke_commands"] == [
         ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
@@ -73,7 +76,11 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     ]
     assert checks["company_filing_structured_api_fallback"]["smoke_commands"] == [
-        ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--sample-json examples/structured_company_filing_sample.json "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
 
     output = format_external_integration_report(report)
@@ -81,3 +88,4 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "smoke:" in output
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in output
     assert "structured_company_filing_smoke.py" in output
+    assert "structured_company_filing_sample.json" in output

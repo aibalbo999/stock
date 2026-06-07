@@ -70,6 +70,9 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["structured_api_provider"] is None
     assert status["company_filings"]["structured_api_url_configured"] is False
     assert status["company_filings"]["structured_api_token_configured"] is False
+    assert "structured_company_filing_sample.json" in status["company_filings"][
+        "structured_api_runtime"
+    ]["sample_contract_cli"]
     assert status["company_filings"]["playwright_render_enabled"] is True
     assert status["company_filings"]["playwright_render_configured"] is bool(
         status["company_filings"]["playwright_render_browser_available"]

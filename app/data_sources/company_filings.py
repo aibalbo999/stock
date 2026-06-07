@@ -423,6 +423,11 @@ def company_filing_structured_api_status() -> dict:
             ".venv/bin/python scripts/structured_company_filing_smoke.py "
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
         ),
+        "sample_contract_cli": (
+            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+            "--sample-json examples/structured_company_filing_sample.json "
+            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+        ),
         "fallback_reason": None
         if configured and parsed.scheme in {"http", "https"} and parsed.hostname
         else "missing_structured_api_provider_or_url"

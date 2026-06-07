@@ -168,7 +168,13 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
                     "evidence": {
                         "configured": False,
                         "runtime": {
-                            "smoke_cli": ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                            "sample_contract_cli": (
+                                ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                                "--sample-json examples/structured_company_filing_sample.json --json"
+                            ),
+                            "smoke_cli": (
+                                ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                            ),
                         },
                     },
                 }
@@ -185,6 +191,7 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert "structured_company_filing_sample.json" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]
 
 

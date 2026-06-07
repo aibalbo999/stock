@@ -397,9 +397,12 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
             ),
         )
     if requirement.capability == "company_filing_structured_api_fallback":
-        return _append_smoke_command(
+        return _append_smoke_commands(
             requirement.remediation,
-            _first_nested_value(evidence, ("runtime", "smoke_cli")),
+            [
+                _first_nested_value(evidence, ("runtime", "sample_contract_cli")),
+                _first_nested_value(evidence, ("runtime", "smoke_cli")),
+            ],
         )
     return requirement.remediation
 
@@ -445,6 +448,11 @@ def _neo4j_import_remediation(evidence: dict, default: str) -> str:
 
 def _append_smoke_command(message: str, command: object) -> str:
     command_text = str(command or "").strip()
+    return f"{message} 驗證指令：{command_text}" if command_text else message
+
+
+def _append_smoke_commands(message: str, commands: list[object]) -> str:
+    command_text = "；".join(str(command).strip() for command in commands if str(command or "").strip())
     return f"{message} 驗證指令：{command_text}" if command_text else message
 
 

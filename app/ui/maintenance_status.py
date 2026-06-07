@@ -9,6 +9,7 @@ _EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(
         "smoke_cli",
         "smoke_command",
         "smoke_commands",
+        "sample_contract_cli",
         "payload_dry_run_cli",
         "import_smoke_cli",
         "neo4j_graphrag_smoke_command",

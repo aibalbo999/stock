@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+import json
 
 from app.models.schemas import CompanyFilingDocument, Source
 from scripts import structured_company_filing_smoke as smoke
@@ -49,6 +50,90 @@ def test_structured_company_filing_smoke_reports_not_configured(monkeypatch) -> 
     assert "structured_company_filing_smoke.py" in report["smoke_command"]
     assert smoke.smoke_exit_code(report, strict=False) == 0
     assert smoke.smoke_exit_code(report, strict=True) == 1
+
+
+def test_structured_company_filing_smoke_validates_sample_json_without_live_config(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        smoke,
+        "company_filing_structured_api_status",
+        lambda: _runtime(configured=False, fallback_reason="missing_structured_api_provider_or_url"),
+    )
+    sample_path = tmp_path / "structured_api_sample.json"
+    sample_path.write_text(
+        json.dumps(
+            {
+                "documents": [
+                    {
+                        "title": "2330 台積電 2026 法說會簡報",
+                        "text": "2330 台積電 法說會 investor presentation 揭露 AI/HPC 需求與資本支出。",
+                        "url": "https://api.tej.example/documents/2330-presentation.pdf",
+                        "publisher": "TEJ",
+                        "published_at": "2026-05-01",
+                        "document_type": "investor_presentation",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = asyncio.run(
+        smoke.structured_company_filing_smoke_report(
+            ticker="2330",
+            company_name="台積電",
+            document_types=["investor_presentation"],
+            sample_json_path=sample_path,
+        )
+    )
+
+    assert report["status"] == "ready"
+    assert report["ready"] is True
+    assert report["mode"] == "sample_json_contract"
+    assert report["runtime"]["configured"] is False
+    assert report["sample_path"] == str(sample_path)
+    assert report["raw_row_count"] == 1
+    assert report["document_count"] == 1
+    assert report["documents"][0]["publisher"] == "TEJ"
+    assert report["documents"][0]["published_at"] == "2026-05-01"
+    assert f"--sample-json {sample_path}" in report["smoke_command"]
+    formatted = smoke.format_structured_company_filing_smoke(report)
+    assert "sample_json_contract" in formatted
+    assert "raw rows: 1" in formatted
+    assert smoke.smoke_exit_code(report, strict=True) == 0
+
+
+def test_structured_company_filing_smoke_reports_degraded_for_bad_sample_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(smoke, "company_filing_structured_api_status", lambda: _runtime())
+    sample_path = tmp_path / "bad_structured_api_sample.json"
+    sample_path.write_text(
+        json.dumps({"documents": [{"title": "2330 台積電 法說會"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = asyncio.run(
+        smoke.structured_company_filing_smoke_report(
+            ticker="2330",
+            company_name="台積電",
+            document_types=["investor_presentation"],
+            sample_json_path=sample_path,
+        )
+    )
+
+    assert report["status"] == "degraded"
+    assert report["ready"] is False
+    assert report["raw_row_count"] == 1
+    assert report["document_count"] == 0
+    assert report["errors"][0]["category"] == "row_not_convertible"
+    assert "none converted" in report["remediation"]
+    assert f"--sample-json {sample_path}" in report["smoke_command"]
+    assert smoke.smoke_exit_code(report, strict=False) == 1
 
 
 def test_structured_company_filing_smoke_reports_ready(monkeypatch) -> None:

@@ -32,6 +32,12 @@ def test_service_status_shape() -> None:
     status = service_status()
     service_status_source = Path("app/services/service_status.py").read_text()
     status_capability_matrix_source = Path("app/services/status_capability_matrix.py").read_text()
+    status_capability_architecture_source = Path(
+        "app/services/status_capability_architecture.py"
+    ).read_text()
+    status_capability_helpers_source = Path(
+        "app/services/status_capability_helpers.py"
+    ).read_text()
     status_api_architecture_source = Path("app/services/status_api_architecture.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
@@ -462,7 +468,21 @@ def test_service_status_shape() -> None:
     assert "def upgrade_capability_matrix(" in status_capability_matrix_source
     assert "def _api_controller_status(" not in status_capability_matrix_source
     assert "from app.services.status_api_architecture import api_controller_status" in status_capability_matrix_source
+    assert (
+        "from app.services.status_capability_architecture import architecture_capabilities"
+        in status_capability_matrix_source
+    )
+    assert (
+        "from app.services.status_capability_helpers import capability as _capability"
+        in status_capability_matrix_source
+    )
+    assert '"architecture": architecture_capabilities(' in status_capability_matrix_source
+    assert '"streamlit_mpa_background_tasks": _capability(' not in status_capability_matrix_source
+    assert "def _capability(" not in status_capability_matrix_source
     assert "def api_controller_status(" in status_api_architecture_source
+    assert "def architecture_capabilities(" in status_capability_architecture_source
+    assert '"streamlit_mpa_background_tasks": _capability(' in status_capability_architecture_source
+    assert "def capability(" in status_capability_helpers_source
     llm_matrix = matrix["ai_rag"]["llm_sdk_and_fallback"]
     llm_evidence = llm_matrix["evidence"]
     assert "sdk_ready" in llm_evidence

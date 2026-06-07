@@ -6,6 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now_naive
 from app.db.models import (
     AnalysisRun,
     CompanyFiling,
@@ -649,7 +650,7 @@ class RiskClassificationRepository:
             "confidence": confidence,
             "keywords_json": json.dumps(keywords, ensure_ascii=False),
             "model": model,
-            "updated_at": datetime.utcnow(),
+            "updated_at": utc_now_naive(),
         }
         if row is None:
             row = RiskClassificationCache(document_id=document_id, topic_hash=topic_hash, **values)
@@ -670,7 +671,7 @@ class AnalysisRunRepository:
             source=source,
             status="running",
             payload_json=json.dumps(payload, ensure_ascii=False),
-            started_at=datetime.utcnow(),
+            started_at=utc_now_naive(),
         )
         self.session.add(run)
         self.session.flush()
@@ -688,7 +689,7 @@ class AnalysisRunRepository:
         run.status = "success"
         run.report_id = report_id
         run.output_path = output_path
-        run.finished_at = datetime.utcnow()
+        run.finished_at = utc_now_naive()
         self.session.flush()
         return run
 
@@ -716,7 +717,7 @@ class AnalysisRunRepository:
             raise ValueError(f"analysis run not found: {run_id}")
         run.status = "failed"
         run.error = error
-        run.finished_at = datetime.utcnow()
+        run.finished_at = utc_now_naive()
         self.session.flush()
         return run
 
@@ -726,7 +727,7 @@ class AnalysisRunRepository:
             raise ValueError(f"analysis run not found: {run_id}")
         run.status = "cancelled"
         run.error = reason
-        run.finished_at = datetime.utcnow()
+        run.finished_at = utc_now_naive()
         self.session.flush()
         return run
 
@@ -785,7 +786,7 @@ class AnalysisRunRepository:
             AnalysisRun.started_at < before,
         )
         stale_runs = list(self.session.scalars(statement))
-        finished_at = datetime.utcnow()
+        finished_at = utc_now_naive()
         for run in stale_runs:
             run.status = "failed"
             run.error = error

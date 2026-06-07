@@ -4,12 +4,13 @@ import asyncio
 from calendar import monthrange
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 import time
 
 import httpx
 
 from app.core.config import get_settings
+from app.core.time import utc_now_naive
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
 from app.services.task_cancellation import TaskCancelledError
@@ -1050,7 +1051,7 @@ class MarketDataClient:
             trading_volume=MarketDataClient._int_or_none(row.get("Trading_Volume")),
             trading_money=MarketDataClient._int_or_none(row.get("Trading_money")),
             trading_turnover=MarketDataClient._float_or_none(row.get("Trading_turnover")),
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1066,7 +1067,7 @@ class MarketDataClient:
             trading_volume=MarketDataClient._int_or_none(row.get("TradeVolume")),
             trading_money=MarketDataClient._int_or_none(row.get("TradeValue")),
             source=source,
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1082,7 +1083,7 @@ class MarketDataClient:
             trading_volume=MarketDataClient._int_or_none(row.get("TradingShares")),
             trading_money=MarketDataClient._int_or_none(row.get("TransactionAmount")),
             source=source,
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1098,7 +1099,7 @@ class MarketDataClient:
             trading_volume=MarketDataClient._int_or_none(row.get("volume")),
             trading_money=MarketDataClient._int_or_none(row.get("turnover")),
             source="Fugle historical candles",
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1114,7 +1115,7 @@ class MarketDataClient:
             trading_volume=MarketDataClient._int_or_none(row.get("tradeVolume")),
             trading_money=MarketDataClient._int_or_none(row.get("tradeValue")),
             source="Fugle historical stats",
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1126,7 +1127,7 @@ class MarketDataClient:
             revenue=MarketDataClient._int_or_none(row.get("revenue")) or 0,
             revenue_year=int(row.get("revenue_year") or revenue_date.year),
             revenue_month=int(row.get("revenue_month") or revenue_date.month),
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1152,7 +1153,7 @@ class MarketDataClient:
             revenue_month=revenue_month,
             yoy_pct=MarketDataClient._float_or_none(row.get("營業收入-去年同月增減(%)")),
             source=source,
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1165,7 +1166,7 @@ class MarketDataClient:
             value=float(row.get("value")),
             origin_name=row.get("origin_name"),
             source=f"FinMind {source}",
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1192,7 +1193,7 @@ class MarketDataClient:
                     value=value,
                     origin_name=metric_name,
                     source=source,
-                    fetched_at=datetime.utcnow(),
+                    fetched_at=utc_now_naive(),
                 )
             )
         return metrics
@@ -1211,7 +1212,7 @@ class MarketDataClient:
             dividend_yield=MarketDataClient._float_or_none(
                 row.get("dividend_yield") or row.get("DividendYield")
             ),
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1223,7 +1224,7 @@ class MarketDataClient:
             pb_ratio=MarketDataClient._float_or_none(row.get("PBratio")),
             dividend_yield=MarketDataClient._float_or_none(row.get("DividendYield")),
             source=source,
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod
@@ -1235,7 +1236,7 @@ class MarketDataClient:
             pb_ratio=MarketDataClient._float_or_none(row.get("PriceBookRatio")),
             dividend_yield=MarketDataClient._float_or_none(row.get("YieldRatio")),
             source=source,
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
 
     @staticmethod

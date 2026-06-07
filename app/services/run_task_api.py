@@ -6,6 +6,7 @@ from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
 from typing import Any
 
+from app.core.time import utc_now_naive
 from app.models.schemas import ReportRequest
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import AnalysisRunRepository
@@ -75,7 +76,7 @@ class RunTaskApiService:
             settings = self.settings_provider()
             stale_minutes = int(getattr(settings, "task_observability_stale_minutes", 60) or 60)
         stale_after = max(5, int(stale_minutes or 60))
-        end = datetime.utcnow()
+        end = utc_now_naive()
         start = end - timedelta(days=safe_days)
         with self.session_scope_factory() as session:
             repository = self.analysis_run_repository_cls(session)

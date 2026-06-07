@@ -4,11 +4,12 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+from app.core.time import utc_now_naive
 from app.services.run_task_api import RunTaskApiService
 
 
 def test_run_task_api_summarizes_recent_task_health() -> None:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     runs = [
         SimpleNamespace(
             id=1,

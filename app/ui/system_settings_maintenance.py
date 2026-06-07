@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # ruff: noqa: F403,F405
 from app.ui.dashboard_core import *
+from app.core.time import utc_now_naive
 
 
 def render_maintenance_tab() -> None:
@@ -240,7 +241,7 @@ def render_maintenance_tab() -> None:
                 st.error(f"清理失敗：{request_error_message(exc)}")
         stale_minutes = st.number_input("執行逾時分鐘", min_value=5, max_value=1440, value=60)
         if st.button("標記逾時任務", disabled=not cleanup_confirmed):
-            stale_before = datetime.utcnow() - timedelta(minutes=int(stale_minutes))
+            stale_before = utc_now_naive() - timedelta(minutes=int(stale_minutes))
             try:
                 result = api_post(
                     "/maintenance/cleanup",

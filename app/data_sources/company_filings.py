@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date
 from hashlib import sha1
 import importlib
 from ipaddress import ip_address
@@ -15,6 +15,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.config import get_settings
+from app.core.time import utc_now_naive
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 from app.services.company_filing_cache import RedisCompanyFilingCache
@@ -789,7 +790,7 @@ class CompanyFilingFetcher:
                 url=url,
                 publisher=publisher,
                 published_at=published_at,
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 
@@ -941,7 +942,7 @@ class CompanyFilingFetcher:
                 url=url,
                 publisher=publisher,
                 published_at=NewsFetcher._published_date(soup),
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 
@@ -1004,7 +1005,7 @@ class CompanyFilingFetcher:
                 url=final_url,
                 publisher=publisher,
                 published_at=NewsFetcher._published_date(soup),
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 
@@ -1060,7 +1061,7 @@ class CompanyFilingFetcher:
                 url=final_url,
                 publisher=publisher,
                 published_at=NewsFetcher._published_date(soup),
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 
@@ -1080,7 +1081,7 @@ class CompanyFilingFetcher:
                 title=title,
                 url=url,
                 publisher=publisher,
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 
@@ -1190,7 +1191,7 @@ class CompanyFilingFetcher:
             url=url,
             publisher=publisher,
             published_at=parse_structured_api_date(row.get("published_at") or row.get("date")),
-            fetched_at=datetime.utcnow(),
+            fetched_at=utc_now_naive(),
         )
         news_document = NewsDocument(
             id=sha1(f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")).hexdigest(),
@@ -1360,7 +1361,7 @@ class CompanyFilingFetcher:
                         url=final_page_url,
                         publisher="TWSE company profile website",
                         published_at=NewsFetcher._published_date(soup),
-                        fetched_at=datetime.utcnow(),
+                        fetched_at=utc_now_naive(),
                     ),
                 )
             except Exception as exc:

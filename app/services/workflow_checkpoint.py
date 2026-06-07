@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
+from app.core.time import utc_now_naive
 from app.db.session import session_scope
 from app.services.persistence import AnalysisRunRepository
 
@@ -36,7 +37,7 @@ class WorkflowCheckpointRecorder:
         self,
         session_scope_factory: Callable = session_scope,
         analysis_run_repository_cls=AnalysisRunRepository,
-        clock: Callable[[], datetime] = datetime.utcnow,
+        clock: Callable[[], datetime] = utc_now_naive,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls

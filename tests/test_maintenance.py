@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.time import utc_now_naive
 from app.db.models import Base, GeneratedReport
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.persistence import AnalysisRunRepository, ReportRepository
@@ -24,11 +25,11 @@ def test_cleanup_failed_runs_and_old_reports() -> None:
             ReportRequest(topic="AI 產業鏈"),
             ReportResponse(title="old", markdown="# old"),
         )
-        report.generated_at = datetime.utcnow() - timedelta(days=10)
+        report.generated_at = utc_now_naive() - timedelta(days=10)
         session.commit()
 
         assert runs.delete_failed() == 1
-        assert reports.delete_before(datetime.utcnow() - timedelta(days=1)) == 1
+        assert reports.delete_before(utc_now_naive() - timedelta(days=1)) == 1
         assert session.get(GeneratedReport, report.id) is None
         assert runs.latest(10)[0].status == "success"
     finally:

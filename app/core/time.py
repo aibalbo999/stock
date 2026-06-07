@@ -10,6 +10,10 @@ def now_taipei() -> datetime:
     return datetime.now(TAIPEI_TZ)
 
 
+def utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def today_taipei() -> date:
     return now_taipei().date()
 

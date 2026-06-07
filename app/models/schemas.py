@@ -6,13 +6,15 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+from app.core.time import utc_now_naive
+
 
 class Source(BaseModel):
     title: str
     url: Optional[str] = None
     publisher: Optional[str] = None
     published_at: Optional[date] = None
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class NewsDocument(BaseModel):
@@ -90,7 +92,7 @@ class MarketSnapshot(BaseModel):
     trading_money: Optional[int] = None
     trading_turnover: Optional[float] = None
     source: str = "FinMind TaiwanStockPrice"
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class MonthlyRevenue(BaseModel):
@@ -101,7 +103,7 @@ class MonthlyRevenue(BaseModel):
     revenue_month: int
     yoy_pct: Optional[float] = None
     source: str = "FinMind TaiwanStockMonthRevenue"
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class FinancialMetric(BaseModel):
@@ -112,7 +114,7 @@ class FinancialMetric(BaseModel):
     value: float
     origin_name: Optional[str] = None
     source: str
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class ValuationMetric(BaseModel):
@@ -122,7 +124,7 @@ class ValuationMetric(BaseModel):
     pb_ratio: Optional[float] = None
     dividend_yield: Optional[float] = None
     source: str = "FinMind TaiwanStockPER"
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class ReportRequest(BaseModel):
@@ -139,7 +141,7 @@ class ReportRequest(BaseModel):
 
 class ReportResponse(BaseModel):
     title: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=utc_now_naive)
     markdown: str
     findings: list[RiskFinding] = Field(default_factory=list)
     quality_gate: Optional[dict] = None

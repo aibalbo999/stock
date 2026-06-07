@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.time import utc_now_naive
 from app.db.models import Base
 from app.services.persistence import AnalysisRunRepository
 
@@ -117,14 +118,14 @@ def test_mark_stale_running_failed_only_updates_old_running_runs() -> None:
     try:
         repository = AnalysisRunRepository(session)
         stale = repository.start("celery", {"topic": "old"})
-        stale.started_at = datetime.utcnow() - timedelta(hours=2)
+        stale.started_at = utc_now_naive() - timedelta(hours=2)
         fresh = repository.start("celery", {"topic": "fresh"})
         successful = repository.start("celery", {"topic": "success"})
-        successful.started_at = datetime.utcnow() - timedelta(hours=2)
+        successful.started_at = utc_now_naive() - timedelta(hours=2)
         repository.mark_success(successful.id, report_id=123)
         session.commit()
 
-        marked = repository.mark_stale_running_failed(datetime.utcnow() - timedelta(hours=1), "timeout")
+        marked = repository.mark_stale_running_failed(utc_now_naive() - timedelta(hours=1), "timeout")
         session.commit()
 
         assert marked == 1

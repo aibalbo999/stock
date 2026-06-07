@@ -6,6 +6,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import get_settings
+from app.core.time import utc_now_naive
 from app.db.session import session_scope
 from app.services.persistence import LLMUsageRepository
 
@@ -17,7 +18,7 @@ class LLMQuotaGovernanceService:
         settings_provider: Callable[[], Any] = get_settings,
         session_scope_factory: Callable = session_scope,
         llm_usage_repository_cls: type[LLMUsageRepository] = LLMUsageRepository,
-        clock: Callable[[], datetime] = datetime.utcnow,
+        clock: Callable[[], datetime] = utc_now_naive,
     ) -> None:
         self.settings_provider = settings_provider
         self.session_scope_factory = session_scope_factory

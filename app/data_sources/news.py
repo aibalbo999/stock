@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+from app.core.time import utc_now_naive
 from app.models.schemas import NewsDocument, Source
 
 
@@ -125,7 +126,7 @@ class NewsFetcher:
                 url=url,
                 publisher=publisher,
                 published_at=self._published_date(soup),
-                fetched_at=datetime.utcnow(),
+                fetched_at=utc_now_naive(),
             ),
         )
 

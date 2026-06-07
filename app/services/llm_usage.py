@@ -6,6 +6,7 @@ from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
 from typing import Any
 
+from app.core.time import utc_now_naive
 from app.db.session import session_scope
 from app.services.llm_observability import llm_cost_budget_status, llm_observability_status
 from app.services.persistence import LLMUsageRepository
@@ -56,7 +57,7 @@ def summarize_llm_usage_records(
     settings: Any | None = None,
     session_scope_factory: Callable[[], AbstractContextManager] = session_scope,
     llm_usage_repository_cls: type[LLMUsageRepository] = LLMUsageRepository,
-    clock: Callable[[], datetime] = datetime.utcnow,
+    clock: Callable[[], datetime] = utc_now_naive,
 ) -> dict[str, Any]:
     safe_days = max(1, min(int(days or 7), 90))
     end = clock()

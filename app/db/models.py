@@ -6,6 +6,8 @@ from typing import Optional
 from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.core.time import utc_now_naive
+
 
 class Base(DeclarativeBase):
     pass
@@ -20,9 +22,9 @@ class NewsArticle(Base):
     publisher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     published_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
     entity_matches_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class CompanyFiling(Base):
@@ -37,8 +39,8 @@ class CompanyFiling(Base):
     publisher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     published_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class GeneratedReport(Base):
@@ -51,8 +53,8 @@ class GeneratedReport(Base):
     findings_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     markdown: Mapped[str] = mapped_column(Text, nullable=False)
     quality_gate_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class StockPriceSnapshot(Base):
@@ -71,7 +73,7 @@ class StockPriceSnapshot(Base):
     trading_money: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     trading_turnover: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="FinMind TaiwanStockPrice")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class MonthlyRevenueSnapshot(Base):
@@ -85,7 +87,7 @@ class MonthlyRevenueSnapshot(Base):
     revenue_year: Mapped[int] = mapped_column(Integer, nullable=False)
     revenue_month: Mapped[int] = mapped_column(Integer, nullable=False)
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="FinMind TaiwanStockMonthRevenue")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class FinancialMetricSnapshot(Base):
@@ -108,7 +110,7 @@ class FinancialMetricSnapshot(Base):
     value: Mapped[float] = mapped_column(Float, nullable=False)
     origin_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class ValuationMetricSnapshot(Base):
@@ -122,7 +124,7 @@ class ValuationMetricSnapshot(Base):
     pb_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     dividend_yield: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False, default="FinMind TaiwanStockPER")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class RiskClassificationCache(Base):
@@ -136,8 +138,8 @@ class RiskClassificationCache(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     keywords_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class AnalysisRun(Base):
@@ -150,7 +152,7 @@ class AnalysisRun(Base):
     report_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     output_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -177,4 +179,4 @@ class LLMUsageRecord(Base):
     models_tried_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     attempts_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     observability_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)

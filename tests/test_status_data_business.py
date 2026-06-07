@@ -101,6 +101,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert high_risk_unlocker["status"] == expected_high_risk_unlocker_status
     assert "mops.twse.com.tw" in high_risk_unlocker["evidence"]["domains"]
     assert "flaresolverr" in high_risk_unlocker["evidence"]["recommended_unlocker_providers"]
+    assert high_risk_unlocker["evidence"]["compose_env_override_ready"] is True
+    assert "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1" in high_risk_unlocker[
+        "evidence"
+    ]["compose_recommended_env"]
     assert (
         high_risk_unlocker["evidence"]["fallback_reason"]
         == status["company_filings"]["high_risk_source_policy"]["fallback_reason"]

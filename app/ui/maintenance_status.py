@@ -161,6 +161,10 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
     provider = str(evidence.get("configured_provider") or provider_capability.get("provider") or "-")
     provider_tier = str(evidence.get("provider_tier") or provider_capability.get("tier") or "-")
     recommended_env = _string_list(evidence.get("recommended_env"))
+    compose_recommended_env = _string_list(evidence.get("compose_recommended_env"))
+    env_lines = [*recommended_env]
+    if compose_recommended_env:
+        env_lines.extend(["# compose", *compose_recommended_env])
     domains = _string_list(evidence.get("domains"))
     smoke_cli = str(evidence.get("smoke_cli") or "").strip()
     next_action = item.get("remediation") or _high_risk_unlocker_next_action(evidence)
@@ -191,9 +195,9 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
         },
         {
             "項目": "建議 env",
-            "狀態": "待設定" if recommended_env and not evidence.get("unlocker_provider_ready") else "參考",
-            "目前": "\n".join(recommended_env) if recommended_env else "-",
-            "細節": "不改寫 .env；可作為本機或部署環境設定。",
+            "狀態": "待設定" if env_lines and not evidence.get("unlocker_provider_ready") else "參考",
+            "目前": "\n".join(env_lines) if env_lines else "-",
+            "細節": "不改寫 .env；host-only 用 127.0.0.1，compose 服務內用 service DNS。",
             "下一步": "設定後重跑 high-risk filing unlocker smoke。",
         },
         {

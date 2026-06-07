@@ -36,6 +36,18 @@ def test_docker_compose_defines_dependencies_and_celery_services() -> None:
     assert worker["environment"]["DATABASE_URL"].startswith("postgresql+psycopg://stock_ai:")
     assert worker["environment"]["REDIS_URL"] == "redis://redis:6379/0"
     assert worker["environment"]["CHROMA_API_URL"] == "http://chroma:8000"
+    assert (
+        worker["environment"]["COMPANY_FILING_BROWSER_RENDER_PROVIDER"]
+        == "${COMPANY_FILING_BROWSER_RENDER_PROVIDER:-browserless}"
+    )
+    assert (
+        worker["environment"]["COMPANY_FILING_BROWSER_RENDER_URL"]
+        == "${COMPANY_FILING_BROWSER_RENDER_URL:-http://browserless:3000/content?token=stock_ai_browserless_token}"
+    )
+    assert (
+        worker["environment"]["COMPANY_FILING_BROWSER_RENDER_TOKEN"]
+        == "${COMPANY_FILING_BROWSER_RENDER_TOKEN:-stock_ai_browserless_token}"
+    )
     assert worker["environment"]["COMPANY_FILING_BROWSER_RENDER_CONCURRENCY"] == "4"
     assert worker["command"][:4] == [
         "celery",

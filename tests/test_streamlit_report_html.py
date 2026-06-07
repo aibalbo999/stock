@@ -1267,6 +1267,7 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     helpers = load_report_helpers()
     provider_env = "COMPANY_FILING_BROWSER_RENDER_PROVIDER" + "=flaresolverr"
     render_url_env = "COMPANY_FILING_BROWSER_RENDER_URL" + "=http://127.0.0.1:8191/v1"
+    compose_render_url_env = "COMPANY_FILING_BROWSER_RENDER_URL" + "=http://flaresolverr:8191/v1"
     audit = {
         "optional_warnings": [
             {
@@ -1292,6 +1293,7 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
                     "fallback_reason": "browser_or_playwright_render_lacks_captcha_unlocker",
                     "domains": ["mops.twse.com.tw", "doc.twse.com.tw"],
                     "recommended_env": [provider_env, render_url_env],
+                    "compose_recommended_env": [provider_env, compose_render_url_env],
                     "smoke_cli": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
                         "--url https://mops.twse.com.tw/ --json"
@@ -1318,6 +1320,9 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     assert rows[1]["細節"] == "browser_or_playwright_render_lacks_captcha_unlocker"
     assert "mops.twse.com.tw" in rows[2]["目前"]
     assert provider_env in rows[3]["目前"]
+    assert "# compose" in rows[3]["目前"]
+    assert compose_render_url_env in rows[3]["目前"]
+    assert "service DNS" in rows[3]["細節"]
     assert "https://mops.twse.com.tw/" in rows[4]["目前"]
 
 

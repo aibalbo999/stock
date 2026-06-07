@@ -215,6 +215,14 @@ def _company_filing_high_risk_source_policy(
                 ("COMPANY_FILING_PROXY_URLS", "<rotating-proxy-list>"),
             )
         ],
+        "compose_env_override_ready": True,
+        "compose_recommended_env": [
+            f"{key}={value}"
+            for key, value in (
+                ("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "flaresolverr"),
+                ("COMPANY_FILING_BROWSER_RENDER_URL", "http://flaresolverr:8191/v1"),
+            )
+        ],
         "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
     }
 

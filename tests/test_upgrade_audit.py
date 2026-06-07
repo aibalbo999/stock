@@ -47,7 +47,21 @@ def _fake_status(overrides: dict | None = None) -> dict:
 
 
 def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None:
-    audit = audit_upgrade_capabilities(_fake_status())
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "ai_rag.neo4j_import": {
+                    "status": "degraded",
+                    "evidence": {
+                        "fallback_reason": "missing_settings:neo4j_uri",
+                        "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+                        "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
+                        "import_smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
+                    },
+                }
+            }
+        )
+    )
 
     assert audit["overall_status"] == "caution"
     assert audit["implementation"]["status"] == "ready"
@@ -60,6 +74,9 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
     assert warning["capability"] == "neo4j_import"
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert "scripts.import_supply_chain_graph_neo4j --dry-run" in warning["remediation"]
+    assert "neo4j_graphrag_smoke.py --json" in warning["remediation"]
+    assert "--import-first" in warning["remediation"]
 
 
 def test_upgrade_audit_can_require_external_integrations_in_strict_mode() -> None:
@@ -80,7 +97,11 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
             {
                 "ai_rag.graphrag_live_cypher_query": {
                     "status": "degraded",
-                    "evidence": {"neo4j_ready": False, "planner_enabled": True},
+                    "evidence": {
+                        "neo4j_ready": False,
+                        "planner_enabled": True,
+                        "endpoint": "GET /supply-chain/graph/cypher-query",
+                    },
                 }
             }
         )
@@ -94,6 +115,7 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
     assert warning["optional"] is True
     assert warning["external_integration"] is True
     assert warning["deployment_check"] is True
+    assert "GET /supply-chain/graph/cypher-query" in warning["remediation"]
 
 
 def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_hardening() -> None:
@@ -102,7 +124,12 @@ def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_harde
             {
                 "data_business_logic.company_filing_browser_or_proxy_fallback": {
                     "status": "not_configured",
-                    "evidence": {"browser_or_proxy_fallback_configured": False},
+                    "evidence": {
+                        "browser_or_proxy_fallback_configured": False,
+                        "browser_render_runtime": {
+                            "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --json"
+                        },
+                    },
                 }
             }
         )
@@ -119,6 +146,7 @@ def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_harde
     assert warning["capability"] == "company_filing_browser_or_proxy_fallback"
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert "company_filing_render_smoke.py --json" in warning["remediation"]
 
 
 def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() -> None:
@@ -127,7 +155,12 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
             {
                 "data_business_logic.company_filing_structured_api_fallback": {
                     "status": "not_configured",
-                    "evidence": {"configured": False},
+                    "evidence": {
+                        "configured": False,
+                        "runtime": {
+                            "smoke_cli": ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                        },
+                    },
                 }
             }
         )
@@ -142,6 +175,7 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert "structured_company_filing_smoke.py --json" in warning["remediation"]
 
 
 def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:
@@ -198,6 +232,15 @@ def test_upgrade_audit_treats_python_runtime_as_deployment_preflight() -> None:
                         "current_version": "3.9.6",
                         "minimum_supported": "3.11",
                         "current_runtime_supported": False,
+                        "bootstrap_dry_run_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --json",
+                        "bootstrap_cli": ".venv/bin/python scripts/bootstrap_python_runtime.py --apply --replace-existing",
+                        "interpreter_install_hints": [
+                            {
+                                "tool": "homebrew",
+                                "command": "brew install python@3.11",
+                                "venv_command": "python3.11 -m venv .venv",
+                            }
+                        ],
                     },
                 }
             }
@@ -211,6 +254,8 @@ def test_upgrade_audit_treats_python_runtime_as_deployment_preflight() -> None:
     assert warning["optional"] is True
     assert warning["deployment_check"] is True
     assert warning["external_integration"] is False
+    assert "brew install python@3.11" in warning["remediation"]
+    assert "scripts/bootstrap_python_runtime.py --json" in warning["remediation"]
 
 
 def test_upgrade_audit_fails_required_capability_regression() -> None:

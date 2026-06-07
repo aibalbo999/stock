@@ -331,6 +331,7 @@ def _requirement_result(
     severity = "pass" if passed else "warn" if is_optional else "fail"
     external_integration = (requirement.area, requirement.capability) in EXTERNAL_INTEGRATION_CAPABILITIES
     deployment_check = (requirement.area, requirement.capability) in DEPLOYMENT_CHECK_CAPABILITIES
+    evidence = capability.get("evidence") or {}
     return {
         "area": requirement.area,
         "capability": requirement.capability,
@@ -342,9 +343,76 @@ def _requirement_result(
         "deployment_check": deployment_check,
         "severity": severity,
         "detail": capability.get("detail"),
-        "evidence": capability.get("evidence") or {},
-        "remediation": None if passed else requirement.remediation,
+        "evidence": evidence,
+        "remediation": None if passed else _remediation_for_requirement(requirement, evidence),
     }
+
+
+def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence: dict) -> str:
+    if (requirement.area, requirement.capability) == ("architecture", "python_runtime"):
+        return _python_runtime_remediation(evidence, requirement.remediation)
+    if (requirement.area, requirement.capability) == ("ai_rag", "neo4j_import"):
+        return _neo4j_import_remediation(evidence, requirement.remediation)
+    if (requirement.area, requirement.capability) == ("ai_rag", "graphrag_live_cypher_query"):
+        endpoint = evidence.get("endpoint") or "/supply-chain/graph/cypher-query"
+        return f"{requirement.remediation} 可先以 {endpoint} 或 Neo4j GraphRAG smoke 指令驗證 read-only plan。"
+    if requirement.capability == "company_filing_browser_or_proxy_fallback":
+        return _append_smoke_command(
+            requirement.remediation,
+            _first_nested_value(
+                evidence,
+                ("browser_render_runtime", "smoke_cli"),
+                ("playwright_render_runtime", "smoke_cli"),
+            ),
+        )
+    if requirement.capability == "company_filing_structured_api_fallback":
+        return _append_smoke_command(
+            requirement.remediation,
+            _first_nested_value(evidence, ("runtime", "smoke_cli")),
+        )
+    return requirement.remediation
+
+
+def _python_runtime_remediation(evidence: dict, default: str) -> str:
+    parts = []
+    install_hints = evidence.get("interpreter_install_hints") or []
+    install_commands = [
+        str(hint.get("command"))
+        for hint in install_hints
+        if isinstance(hint, dict) and str(hint.get("command") or "").strip()
+    ]
+    if install_commands:
+        parts.append("先確認有支援 interpreter：" + " 或 ".join(install_commands[:3]))
+    if evidence.get("bootstrap_dry_run_cli"):
+        parts.append(f"預覽：{evidence['bootstrap_dry_run_cli']}")
+    if evidence.get("bootstrap_cli"):
+        parts.append(f"重建：{evidence['bootstrap_cli']}")
+    if evidence.get("recommended_action"):
+        parts.append(str(evidence["recommended_action"]))
+    return "；".join(parts) if parts else default
+
+
+def _neo4j_import_remediation(evidence: dict, default: str) -> str:
+    commands = [
+        evidence.get("payload_dry_run_cli"),
+        evidence.get("smoke_cli"),
+        evidence.get("import_smoke_cli"),
+    ]
+    command_text = "；".join(str(command) for command in commands if command)
+    return f"{default} 驗證指令：{command_text}" if command_text else default
+
+
+def _append_smoke_command(message: str, command: object) -> str:
+    command_text = str(command or "").strip()
+    return f"{message} 驗證指令：{command_text}" if command_text else message
+
+
+def _first_nested_value(payload: dict, *paths: tuple[str, ...]) -> object:
+    for path in paths:
+        value = _path_get(payload, path)
+        if value:
+            return value
+    return None
 
 
 def _summarize_checks(checks: list[dict]) -> dict:

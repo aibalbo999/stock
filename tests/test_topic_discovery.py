@@ -7,6 +7,7 @@ from app.services import (
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
     topic_discovery_models,
+    topic_discovery_news_queries,
     topic_discovery_prompts,
     topic_discovery_quality,
     topic_discovery_queries,
@@ -154,6 +155,56 @@ def test_topic_discovery_queries_live_outside_service_module() -> None:
     assert "NVIDIA AI server supply chain Taiwan ODM" not in service_source
     assert "NVIDIA AI server supply chain Taiwan ODM" in queries_source
     assert "def google_news_urls(" in queries_source
+
+
+def test_topic_discovery_news_query_builders_live_outside_query_planner() -> None:
+    queries_source = Path("app/services/topic_discovery_queries.py").read_text()
+    news_queries_source = Path("app/services/topic_discovery_news_queries.py").read_text()
+    queries = ["AI 伺服器 液冷", "AI 伺服器 液冷", "North American cloud AI capex"]
+    item = topic_discovery_queries.query_item(
+        "AI 伺服器 液冷",
+        "subtopic",
+        "確認液冷需求",
+        "需求/成長",
+        "industry_news",
+    )
+
+    assert topic_discovery_queries.query_item(
+        "AI 伺服器 液冷",
+        "subtopic",
+        "確認液冷需求",
+        "需求/成長",
+        "industry_news",
+    ) == topic_discovery_news_queries.query_item(
+        "AI 伺服器 液冷",
+        "subtopic",
+        "確認液冷需求",
+        "需求/成長",
+        "industry_news",
+    )
+    assert topic_discovery_queries.query_language("AI 伺服器 liquid cooling") == "mixed"
+    assert topic_discovery_queries.dedupe_query_metadata([item, item], max_urls=1) == (
+        topic_discovery_news_queries.dedupe_query_metadata([item, item], max_urls=1)
+    )
+    assert topic_discovery_queries.google_news_metadata_from_queries(
+        queries,
+        source_type="supplemental",
+        hypothesis="補強資料來源。",
+        evidence_type="補抓資料源",
+    ) == topic_discovery_news_queries.google_news_metadata_from_queries(
+        queries,
+        source_type="supplemental",
+        hypothesis="補強資料來源。",
+        evidence_type="補抓資料源",
+    )
+    assert TopicDiscoveryService._google_news_urls_from_queries(
+        queries,
+        max_urls=2,
+    ) == topic_discovery_news_queries.google_news_urls_from_queries(queries, max_urls=2)
+    assert "quote_plus" not in queries_source
+    assert "news.google.com/rss/search" not in queries_source
+    assert "news.google.com/rss/search" in news_queries_source
+    assert "def google_news_metadata_from_queries(" in news_queries_source
 
 
 def test_topic_discovery_quality_lives_outside_service_module() -> None:

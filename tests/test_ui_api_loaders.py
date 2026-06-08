@@ -10,9 +10,13 @@ from app.ui import api_loaders
 class FakeStreamlit:
     def __init__(self) -> None:
         self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def error(self, message: str) -> None:
         self.errors.append(message)
+
+    def warning(self, message: str) -> None:
+        self.warnings.append(message)
 
 
 def test_load_api_json_or_default_returns_api_payload(monkeypatch) -> None:
@@ -61,3 +65,45 @@ def test_load_api_json_or_default_reports_error_and_copies_fallback(monkeypatch)
     result["items"].append("mutated")
     assert fallback == {"items": []}
     assert fake_st.errors == ["讀取服務狀態失敗：status endpoint down"]
+    assert fake_st.warnings == []
+
+
+def test_load_api_json_or_default_can_report_warning(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(api_loaders, "st", fake_st)
+    monkeypatch.setattr(
+        api_loaders,
+        "api_get",
+        lambda path: (_ for _ in ()).throw(requests.ConnectionError("offline")),
+    )
+
+    assert (
+        api_loaders.load_api_json_or_default(
+            "/reports/7/company-data-audit",
+            {},
+            error_message="個股資料足夠性檢查失敗",
+            notify="warning",
+        )
+        == {}
+    )
+    assert fake_st.errors == []
+    assert fake_st.warnings == ["個股資料足夠性檢查失敗：offline"]
+
+
+def test_load_api_json_or_default_can_suppress_notification(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(api_loaders, "st", fake_st)
+    monkeypatch.setattr(
+        api_loaders,
+        "api_get",
+        lambda path: (_ for _ in ()).throw(requests.ConnectionError("offline")),
+    )
+
+    assert api_loaders.load_api_json_or_default(
+        "/reports/7/follow-up/plan",
+        {"_load_error": True},
+        error_message="讀取補強任務預覽失敗",
+        notify="none",
+    ) == {"_load_error": True}
+    assert fake_st.errors == []
+    assert fake_st.warnings == []

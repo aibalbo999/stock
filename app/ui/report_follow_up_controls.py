@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
-from app.ui.api_client import api_get, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.follow_up_status import (
     candidate_revalidation_summary,
@@ -20,13 +19,21 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
     planned_actions = []
     plan_next_actions = []
     plan_error = None
-    try:
-        plan = api_get(f"/reports/{report_id}/follow-up/plan")
+    plan = load_api_json_or_default(
+        f"/reports/{report_id}/follow-up/plan",
+        {"_load_error": True},
+        error_message="讀取補強任務預覽失敗",
+        notify="none",
+    )
+    if isinstance(plan, dict) and plan.get("_load_error"):
+        plan_error = "load_failed"
+        freshness = {}
+    elif isinstance(plan, dict):
         planned_actions = plan.get("actions") or []
         plan_next_actions = plan.get("next_actions") or []
         freshness = plan.get("freshness") or {}
-    except requests.RequestException as exc:
-        plan_error = request_error_message(exc)
+    else:
+        plan_error = "invalid_response"
         freshness = {}
     st.markdown("**自動補強**")
     if planned_actions:
@@ -95,7 +102,9 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                             "股票": "、".join(action.get("tickers") or []) or "全主題",
                             "最新日期": "、".join(
                                 f"{ticker}:{date_value}"
-                                for ticker, date_value in ((action.get("freshness") or {}).get("latest_dates") or {}).items()
+                                for ticker, date_value in (
+                                    (action.get("freshness") or {}).get("latest_dates") or {}
+                                ).items()
                             )
                             or "-",
                             "新鮮門檻": f"{(action.get('freshness') or {}).get('max_age_days')} 天"
@@ -110,7 +119,9 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                 )
         if plan_error:
             st.caption("暫時無法讀取後端任務預覽。")
-    skipped_actions = (freshness.get("skipped_actions") or []) if isinstance(freshness, dict) else []
+    skipped_actions = (
+        (freshness.get("skipped_actions") or []) if isinstance(freshness, dict) else []
+    )
     force_refresh = False
     if skipped_actions:
         force_refresh = st.checkbox(
@@ -123,9 +134,12 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         "只補資料缺口": "required",
         "只做追蹤更新": "tracking",
     }
-    default_purpose = "只補資料缺口" if planned_actions and any(
-        action.get("purpose") == "required" for action in planned_actions
-    ) else "只做追蹤更新"
+    default_purpose = (
+        "只補資料缺口"
+        if planned_actions
+        and any(action.get("purpose") == "required" for action in planned_actions)
+        else "只做追蹤更新"
+    )
     selected_purpose_label = st.radio(
         "執行範圍",
         options=list(purpose_options.keys()),
@@ -139,9 +153,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         executable_actions = action_pool
     else:
         executable_actions = [
-            action
-            for action in action_pool
-            if action.get("purpose") == selected_purpose
+            action for action in action_pool if action.get("purpose") == selected_purpose
         ]
     manual_tracking_available = not planned_actions and not rows and plan_error is None
     manual_tracking_selected = manual_tracking_available and selected_purpose in {"all", "tracking"}
@@ -153,11 +165,19 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
     elif manual_tracking_available:
         st.caption("目前沒有資料缺口任務；可切換到追蹤更新後手動補抓資料。")
     elif executable_actions:
-        selected_required = sum(1 for action in executable_actions if action.get("purpose") == "required")
-        selected_tracking = sum(1 for action in executable_actions if action.get("purpose") == "tracking")
-        st.caption(f"本次將執行：資料缺口補強 {selected_required} 項，追蹤更新 {selected_tracking} 項。")
+        selected_required = sum(
+            1 for action in executable_actions if action.get("purpose") == "required"
+        )
+        selected_tracking = sum(
+            1 for action in executable_actions if action.get("purpose") == "tracking"
+        )
+        st.caption(
+            f"本次將執行：資料缺口補強 {selected_required} 項，追蹤更新 {selected_tracking} 項。"
+        )
     cols = st.columns([0.62, 0.38])
-    rerun_report = cols[0].checkbox("完成後重新產生一份報告", value=True, key=f"followup_rerun_{key_suffix}")
+    rerun_report = cols[0].checkbox(
+        "完成後重新產生一份報告", value=True, key=f"followup_rerun_{key_suffix}"
+    )
     news_limit = cols[1].number_input(
         "補抓資料量",
         min_value=10,
@@ -207,7 +227,9 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                 task_state_key="last_follow_up_task_id",
             )
             result = (task_status or {}).get("result") if isinstance(task_status, dict) else None
-            if isinstance(result, dict) and st.button("套用背景補強結果", key=f"apply_followup_task_{key_suffix}"):
+            if isinstance(result, dict) and st.button(
+                "套用背景補強結果", key=f"apply_followup_task_{key_suffix}"
+            ):
                 st.session_state["last_follow_up_result"] = result
                 selected_summary = (result.get("summary") or {}).get("selected") or {}
                 execution_summary = (result.get("summary") or {}).get("execution") or {}
@@ -247,7 +269,7 @@ def render_follow_up_flash() -> None:
     if blocker_rows:
         with st.expander("查看重跑前需要處理的項目", expanded=True):
             st.dataframe(blocker_rows, width="stretch", hide_index=True)
-    execution = ((result.get("summary") or {}).get("execution") or {})
+    execution = (result.get("summary") or {}).get("execution") or {}
     items = execution.get("items") or []
     if items:
         with st.expander("查看本次補強結果"):
@@ -257,7 +279,9 @@ def render_follow_up_flash() -> None:
                         "任務": item.get("task"),
                         "更新筆數": item.get("stored_count", 0),
                         "錯誤數": item.get("error_count", 0),
-                        "完成狀態": "達標" if (item.get("completion") or {}).get("completed") else "未達標",
+                        "完成狀態": "達標"
+                        if (item.get("completion") or {}).get("completed")
+                        else "未達標",
                         "來源": item.get("source") or "-",
                     }
                     for item in items

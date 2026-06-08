@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-from app.ui.api_client import api_get
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.report_html import (
     report_html,
 )
@@ -41,8 +40,7 @@ def candidate_rows(candidates: list[dict]) -> list[dict]:
                     f"{candidate.get('evidence_confidence_score', '-')}"
                 ),
                 "主要來源": "；".join(
-                    source.get("title", "")
-                    for source in candidate.get("evidence_sources", [])[:2]
+                    source.get("title", "") for source in candidate.get("evidence_sources", [])[:2]
                 )
                 or "；".join(candidate.get("evidence_titles", [])[:2]),
             }
@@ -289,10 +287,13 @@ def render_quality_gate(result: dict) -> None:
 
 
 def render_company_data_audit(report_id: int) -> None:
-    try:
-        audit = api_get(f"/reports/{report_id}/company-data-audit")
-    except requests.RequestException as exc:
-        st.warning(f"個股資料足夠性檢查失敗：{exc}")
+    audit = load_api_json_or_default(
+        f"/reports/{report_id}/company-data-audit",
+        {},
+        error_message="個股資料足夠性檢查失敗",
+        notify="warning",
+    )
+    if not isinstance(audit, dict) or not audit:
         return
     summary = audit.get("summary") or {}
     cols = st.columns(4)

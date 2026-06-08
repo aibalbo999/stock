@@ -1998,12 +1998,19 @@ def test_company_filing_check_logic_lives_outside_generator() -> None:
 
 def test_report_formatting_helpers_live_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    formatting_mixin_source = Path("app/services/report_generator_formatting.py").read_text()
     formatting_source = Path("app/services/report_formatting.py").read_text()
 
-    assert "report_formatting" in generator_source
+    assert "report_formatting" not in generator_source
+    assert "ReportGeneratorFormattingMixin" in generator_source
+    assert "report_formatting" in formatting_mixin_source
+    assert "def _compact_text(" in formatting_mixin_source
+    assert "def _table_row(" in formatting_mixin_source
     assert "def compact_text(" in formatting_source
     assert "def table_row(" in formatting_source
     assert "replace(\"|\", \"\\\\|\")" not in generator_source
+    assert "def _compact_text(" not in generator_source
+    assert "def _table_row(" not in generator_source
     assert ReportGenerator._table_row(["2330 | 台積電", "  可研究  "]) == report_formatting.table_row(
         ["2330 | 台積電", "  可研究  "]
     )

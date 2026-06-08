@@ -24,6 +24,7 @@ from app.services.report_generator_allocation import ReportGeneratorAllocationMi
 from app.services.report_generator_company import ReportGeneratorCompanyNarrativeMixin
 from app.services.report_generator_document import ReportGeneratorDocumentMixin
 from app.services.report_generator_financial import ReportGeneratorFinancialMixin
+from app.services.report_generator_formatting import ReportGeneratorFormattingMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
     report_action_checklist,
@@ -40,7 +41,6 @@ from app.services import (
     report_evidence_retrieval,
     report_executive_snapshot,
     report_final_potential,
-    report_formatting,
     report_generation_flow,
     report_leading_signal,
     report_investment_thesis,
@@ -81,6 +81,7 @@ class ReportGenerator(
     ReportGeneratorDocumentMixin,
     ReportGeneratorCompanyNarrativeMixin,
     ReportGeneratorFinancialMixin,
+    ReportGeneratorFormattingMixin,
 ):
     def __init__(
         self,
@@ -1086,18 +1087,6 @@ class ReportGenerator(
     @staticmethod
     def _structural_bottleneck_reason(related_findings) -> str:
         return report_decision_narrative.structural_bottleneck_reason(related_findings)
-
-    @staticmethod
-    def _compact_text(value: object, max_chars: int = 80) -> str:
-        return report_formatting.compact_text(value, max_chars=max_chars)
-
-    @staticmethod
-    def _table_cell(value: object) -> str:
-        return report_formatting.table_cell(value)
-
-    @staticmethod
-    def _table_row(cells: list[object]) -> str:
-        return report_formatting.table_row(cells)
 
     @staticmethod
     def _estimate_potential(

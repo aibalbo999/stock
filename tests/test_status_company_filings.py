@@ -37,12 +37,14 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["pdf_extract_tables"] is True
     assert "pdfplumber_available" in status["company_filings"]["pdf_parser_dependencies"]
     assert "unstructured_pdf_available" in status["company_filings"]["pdf_parser_dependencies"]
-    assert status["company_filings"]["pdf_parser_available"] is status["company_filings"][
-        "pdf_parser_dependencies"
-    ]["configured_parser_available"]
-    assert status["company_filings"]["pdf_table_parser_available"] is status["company_filings"][
-        "pdf_parser_dependencies"
-    ]["table_parser_available"]
+    assert (
+        status["company_filings"]["pdf_parser_available"]
+        is status["company_filings"]["pdf_parser_dependencies"]["configured_parser_available"]
+    )
+    assert (
+        status["company_filings"]["pdf_table_parser_available"]
+        is status["company_filings"]["pdf_parser_dependencies"]["table_parser_available"]
+    )
     assert status["company_filings"]["html_extract_tables"] is True
     assert status["company_filings"]["cache_enabled"] is True
     assert status["company_filings"]["cache_available"] == bool(status["redis"]["ok"])
@@ -56,7 +58,9 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         "extract_tables",
         "html_extract_tables",
     ]
-    assert status["company_filings"]["cache_ttl_seconds"] == settings.company_filing_cache_ttl_seconds
+    assert (
+        status["company_filings"]["cache_ttl_seconds"] == settings.company_filing_cache_ttl_seconds
+    )
     assert status["company_filings"]["browser_render_enabled"] is False
     assert status["company_filings"]["browser_render_provider"] == "browserless"
     assert "flaresolverr" in status["company_filings"]["browser_render_supported_providers"]
@@ -64,46 +68,66 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         "browser_render"
     )
     assert (
-        status["company_filings"]["browser_render_provider_capability"]["captcha_unlocker"]
-        is False
+        status["company_filings"]["browser_render_provider_capability"]["captcha_unlocker"] is False
     )
     assert status["company_filings"]["browser_render_configured"] is False
     assert status["company_filings"]["browser_render_endpoint_reachable"] is False
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
     assert "mops.twse.com.tw" in status["company_filings"]["high_risk_source_domains"]
-    assert status["company_filings"]["high_risk_source_policy"]["configured_provider"] == "browserless"
-    assert "flaresolverr" in status["company_filings"]["high_risk_source_policy"][
-        "recommended_unlocker_providers"
-    ]
+    assert (
+        status["company_filings"]["high_risk_source_policy"]["configured_provider"] == "browserless"
+    )
+    assert (
+        "flaresolverr"
+        in status["company_filings"]["high_risk_source_policy"]["recommended_unlocker_providers"]
+    )
     assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is False
     assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
         "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     )
     assert status["company_filings"]["browser_render_provider_contract_ready"] is True
-    assert status["company_filings"]["browser_render_provider_contract"][
-        "provider_count"
-    ] == 5
+    assert status["company_filings"]["browser_render_provider_contract"]["provider_count"] == 5
     assert "flaresolverr" in {
         row["provider"]
         for row in status["company_filings"]["browser_render_provider_contract"]["providers"]
     }
-    assert status["company_filings"][
-        "browser_render_provider_contract_smoke_cli"
-    ].endswith("scripts/company_filing_render_smoke.py --provider-contract --json")
+    assert status["company_filings"]["browser_render_provider_contract_smoke_cli"].endswith(
+        "scripts/company_filing_render_smoke.py --provider-contract --json"
+    )
     assert status["company_filings"]["browser_render_timeout_seconds"] == 30.0
     assert status["company_filings"]["structured_api_configured"] is False
+    assert status["company_filings"]["structured_api_configuration_ready"] is False
     assert status["company_filings"]["structured_api_provider"] is None
     assert status["company_filings"]["structured_api_url_configured"] is False
     assert status["company_filings"]["structured_api_token_configured"] is False
+    assert status["company_filings"]["structured_api_configuration_check"]["status"] == (
+        "missing_required_env"
+    )
+    assert status["company_filings"]["structured_api_configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+    ]
     assert status["company_filings"]["structured_api_runtime"]["provider_profile_key"] == "custom"
-    assert status["company_filings"]["structured_api_runtime"]["request_contract"]["method"] == "GET"
-    assert "tej" in status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"]
-    assert status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"][
-        "scrapingbee_dataset"
-    ]["token_location"] == "query_param"
-    assert "structured_company_filing_sample.json" in status["company_filings"][
-        "structured_api_runtime"
-    ]["sample_contract_cli"]
+    assert (
+        status["company_filings"]["structured_api_runtime"]["configuration_check"]
+        == status["company_filings"]["structured_api_configuration_check"]
+    )
+    assert (
+        status["company_filings"]["structured_api_runtime"]["request_contract"]["method"] == "GET"
+    )
+    assert (
+        "tej" in status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"]
+    )
+    assert (
+        status["company_filings"]["structured_api_runtime"]["supported_provider_profiles"][
+            "scrapingbee_dataset"
+        ]["token_location"]
+        == "query_param"
+    )
+    assert (
+        "structured_company_filing_sample.json"
+        in status["company_filings"]["structured_api_runtime"]["sample_contract_cli"]
+    )
     assert status["company_filings"]["playwright_render_enabled"] is True
     assert status["company_filings"]["playwright_render_configured"] is bool(
         status["company_filings"]["playwright_render_browser_available"]
@@ -156,7 +180,10 @@ def test_company_filing_pdf_parser_status_requires_table_capable_dependency() ->
     assert status["resolved_parser_candidates"] == ["pypdf"]
     assert status["table_parser_available"] is False
     assert status["table_extraction_runtime_available"] is False
-    assert status["fallback_reason"] == "missing_table_pdf_parser_dependency:pdfplumber_or_unstructured"
+    assert (
+        status["fallback_reason"]
+        == "missing_table_pdf_parser_dependency:pdfplumber_or_unstructured"
+    )
 
 
 def test_company_filing_pdf_parser_status_accepts_pdfplumber_for_tables() -> None:
@@ -207,7 +234,10 @@ def test_company_filing_high_risk_source_policy_requires_unlocker_for_captcha() 
 
     assert browserless_policy["browser_only_render_ready"] is True
     assert browserless_policy["captcha_challenge_ready"] is False
-    assert browserless_policy["fallback_reason"] == "browser_or_playwright_render_lacks_captcha_unlocker"
+    assert (
+        browserless_policy["fallback_reason"]
+        == "browser_or_playwright_render_lacks_captcha_unlocker"
+    )
     assert unlocker_policy["captcha_challenge_ready"] is True
     assert unlocker_policy["high_risk_mitigation_ready"] is True
     assert unlocker_policy["fallback_reason"] is None

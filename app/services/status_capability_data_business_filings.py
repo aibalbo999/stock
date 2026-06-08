@@ -37,9 +37,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "browser_or_proxy_fallback_configured": company_filing_status.get(
                     "browser_or_proxy_fallback_configured"
                 ),
-                "structured_api_configured": company_filing_status.get(
-                    "structured_api_configured"
-                ),
+                "structured_api_configured": company_filing_status.get("structured_api_configured"),
                 "structured_api_provider": company_filing_status.get("structured_api_provider"),
                 "http_retries": company_filing_status.get("http_retries"),
                 "retryable_http_statuses": company_filing_status.get("retryable_http_statuses"),
@@ -48,9 +46,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "pdf_parser_available": company_filing_status.get("pdf_parser_available"),
                 "pdf_parser_dependencies": company_filing_status.get("pdf_parser_dependencies"),
                 "html_extract_tables": company_filing_status.get("html_extract_tables"),
-                "browser_render_configured": company_filing_status.get(
-                    "browser_render_configured"
-                ),
+                "browser_render_configured": company_filing_status.get("browser_render_configured"),
                 "browser_render_provider": company_filing_status.get("browser_render_provider"),
                 "browser_render_supported_providers": company_filing_status.get(
                     "browser_render_supported_providers"
@@ -58,9 +54,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "browser_render_provider_capability": company_filing_status.get(
                     "browser_render_provider_capability"
                 ),
-                "high_risk_source_policy": company_filing_status.get(
-                    "high_risk_source_policy"
-                ),
+                "high_risk_source_policy": company_filing_status.get("high_risk_source_policy"),
                 "high_risk_source_mitigation_ready": company_filing_status.get(
                     "high_risk_source_mitigation_ready"
                 ),
@@ -74,18 +68,14 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                     "browser_render_endpoint_reachable"
                 ),
                 "browser_render_runtime": company_filing_status.get("browser_render_runtime"),
-                "playwright_render_enabled": company_filing_status.get(
-                    "playwright_render_enabled"
-                ),
+                "playwright_render_enabled": company_filing_status.get("playwright_render_enabled"),
                 "playwright_render_dependency_available": company_filing_status.get(
                     "playwright_render_dependency_available"
                 ),
                 "playwright_render_browser_available": company_filing_status.get(
                     "playwright_render_browser_available"
                 ),
-                "playwright_render_runtime": company_filing_status.get(
-                    "playwright_render_runtime"
-                ),
+                "playwright_render_runtime": company_filing_status.get("playwright_render_runtime"),
                 "playwright_render_configured": company_filing_status.get(
                     "playwright_render_configured"
                 ),
@@ -152,9 +142,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 ),
                 "proxy_count": company_filing_status.get("proxy_count"),
                 "browser_render_enabled": company_filing_status.get("browser_render_enabled"),
-                "browser_render_configured": company_filing_status.get(
-                    "browser_render_configured"
-                ),
+                "browser_render_configured": company_filing_status.get("browser_render_configured"),
                 "browser_render_provider": company_filing_status.get("browser_render_provider"),
                 "browser_render_supported_providers": company_filing_status.get(
                     "browser_render_supported_providers"
@@ -162,9 +150,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "browser_render_provider_capability": company_filing_status.get(
                     "browser_render_provider_capability"
                 ),
-                "high_risk_source_policy": company_filing_status.get(
-                    "high_risk_source_policy"
-                ),
+                "high_risk_source_policy": company_filing_status.get("high_risk_source_policy"),
                 "high_risk_source_mitigation_ready": company_filing_status.get(
                     "high_risk_source_mitigation_ready"
                 ),
@@ -181,24 +167,18 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "browser_render_timeout_seconds": company_filing_status.get(
                     "browser_render_timeout_seconds"
                 ),
-                "playwright_render_enabled": company_filing_status.get(
-                    "playwright_render_enabled"
-                ),
+                "playwright_render_enabled": company_filing_status.get("playwright_render_enabled"),
                 "playwright_render_dependency_available": company_filing_status.get(
                     "playwright_render_dependency_available"
                 ),
                 "playwright_render_browser_available": company_filing_status.get(
                     "playwright_render_browser_available"
                 ),
-                "playwright_render_runtime": company_filing_status.get(
-                    "playwright_render_runtime"
-                ),
+                "playwright_render_runtime": company_filing_status.get("playwright_render_runtime"),
                 "playwright_render_configured": company_filing_status.get(
                     "playwright_render_configured"
                 ),
-                "playwright_render_browser": company_filing_status.get(
-                    "playwright_render_browser"
-                ),
+                "playwright_render_browser": company_filing_status.get("playwright_render_browser"),
                 "playwright_render_wait_until": company_filing_status.get(
                     "playwright_render_wait_until"
                 ),
@@ -213,22 +193,28 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
         ),
         "company_filing_structured_api_fallback": _capability(
             "ready"
-            if company_filing_status.get("structured_api_configured")
+            if company_filing_status.get("structured_api_configuration_ready")
             else "not_configured",
             evidence={
                 "configured": company_filing_status.get("structured_api_configured"),
+                "configuration_ready": company_filing_status.get(
+                    "structured_api_configuration_ready"
+                ),
+                "configuration_check": company_filing_status.get(
+                    "structured_api_configuration_check"
+                ),
                 "provider": company_filing_status.get("structured_api_provider"),
                 "url_configured": company_filing_status.get("structured_api_url_configured"),
                 "token_configured": company_filing_status.get("structured_api_token_configured"),
                 "provider_profile_key": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("provider_profile_key"),
-                "request_contract": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("request_contract"),
-                "retry_policy": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("retry_policy"),
+                "request_contract": (company_filing_status.get("structured_api_runtime") or {}).get(
+                    "request_contract"
+                ),
+                "retry_policy": (company_filing_status.get("structured_api_runtime") or {}).get(
+                    "retry_policy"
+                ),
                 "response_row_aliases": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("response_row_aliases"),

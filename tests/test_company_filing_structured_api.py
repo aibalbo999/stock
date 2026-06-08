@@ -27,9 +27,36 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
         get_settings.cache_clear()
 
     assert status["configured"] is True
+    assert status["configuration_ready"] is True
     assert status["provider"] == "tej"
     assert status["url_configured"] is True
     assert status["token_configured"] is True
+    assert status["token_required"] is True
+    assert status["configuration_check"] == {
+        "ready": True,
+        "status": "ready",
+        "fallback_reason": None,
+        "required_env_keys": [
+            "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+            "COMPANY_FILING_STRUCTURED_API_URL",
+            "COMPANY_FILING_STRUCTURED_API_TOKEN",
+        ],
+        "configured_env_keys": [
+            "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+            "COMPANY_FILING_STRUCTURED_API_URL",
+            "COMPANY_FILING_STRUCTURED_API_TOKEN",
+        ],
+        "missing_env_keys": [],
+        "token_required": True,
+        "token_configured": True,
+        "endpoint_configured": True,
+        "endpoint_valid": True,
+        "endpoint_scheme": "https",
+        "endpoint_host_configured": True,
+        "provider_profile_key": "tej",
+        "auth_mode": "bearer",
+        "token_location": "authorization_header",
+    }
     assert status["provider_profile_key"] == "tej"
     assert status["provider_profile"]["auth_mode"] == "bearer"
     assert status["request_contract"]["token_location"] == "authorization_header"
@@ -47,15 +74,16 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["retry_policy"]["attempts"] == 2
     assert status["retry_policy"]["retryable_http_statuses"] == [403, 429, 500, 502, 503, 504]
     assert "tej" in status["supported_provider_profiles"]
-    assert status["supported_provider_profiles"]["scrapingbee_dataset"]["token_location"] == "query_param"
+    assert (
+        status["supported_provider_profiles"]["scrapingbee_dataset"]["token_location"]
+        == "query_param"
+    )
     assert status["smoke_cli"].endswith(
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
-    assert (
-        status["sample_contract_cli"].endswith(
-            "--sample-json examples/structured_company_filing_sample.json "
-            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
-        )
+    assert status["sample_contract_cli"].endswith(
+        "--sample-json examples/structured_company_filing_sample.json "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
     assert status["sample_contract_ready"] is True
     assert status["sample_contract"]["status"] == "ready"
@@ -63,6 +91,30 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["sample_contract"]["document_count"] >= 1
     assert status["sample_contract"]["mode"] == "sample_json_contract"
     assert status["fallback_reason"] is None
+
+
+def test_company_filing_structured_api_status_flags_missing_required_token(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.delenv("COMPANY_FILING_STRUCTURED_API_TOKEN", raising=False)
+    get_settings.cache_clear()
+    try:
+        assert company_filing_structured_api_configured() is True
+        status = company_filing_structured_api_status()
+    finally:
+        get_settings.cache_clear()
+
+    assert status["configured"] is True
+    assert status["configuration_ready"] is False
+    assert status["token_required"] is True
+    assert status["token_configured"] is False
+    assert status["fallback_reason"] == "missing_structured_api_token"
+    assert status["configuration_check"]["status"] == "missing_required_env"
+    assert status["configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_STRUCTURED_API_TOKEN"
+    ]
 
 
 def test_structured_api_provider_profiles_and_request_contracts() -> None:
@@ -291,7 +343,8 @@ def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> N
                     "documents": [
                         {
                             "title": "台積電 2026 法說會簡報",
-                            "text": "2330 台積電 法說會 investor presentation 揭露 AI/HPC 需求與資本支出。" * 4,
+                            "text": "2330 台積電 法說會 investor presentation 揭露 AI/HPC 需求與資本支出。"
+                            * 4,
                             "url": "https://api.tej.example/documents/2330-presentation",
                             "publisher": "TEJ",
                             "published_at": "2026-05-01",
@@ -305,7 +358,9 @@ def test_company_filing_discovery_uses_structured_api_fallback(monkeypatch) -> N
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
     monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
-    monkeypatch.setattr(CompanyFilingFetcher, "google_news_urls", classmethod(lambda cls, *args, **kwargs: []))
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "google_news_urls", classmethod(lambda cls, *args, **kwargs: [])
+    )
     get_settings.cache_clear()
     try:
         documents, errors = asyncio.run(

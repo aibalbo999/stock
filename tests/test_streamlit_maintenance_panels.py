@@ -992,6 +992,18 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                     "response_row_aliases": ["documents", "data", "results"],
                     "runtime": {
                         "configured": False,
+                        "configuration_ready": False,
+                        "configuration_check": {
+                            "ready": False,
+                            "status": "missing_required_env",
+                            "missing_env_keys": [
+                                "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+                                "COMPANY_FILING_STRUCTURED_API_URL",
+                            ],
+                            "configured_env_keys": [],
+                            "token_required": False,
+                            "endpoint_valid": False,
+                        },
                         "fallback_reason": "missing_structured_api_provider_or_url",
                         "provider": None,
                         "provider_profile_key": "custom",
@@ -1045,6 +1057,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     rows = helpers["structured_filing_api_operation_rows"](audit)
 
     assert [row["項目"] for row in rows] == [
+        "Configuration check",
         "Provider profile",
         "Sample contract",
         "Live smoke",
@@ -1052,20 +1065,23 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
         "Required fields",
         "Fallback 判斷",
     ]
-    assert rows[0]["狀態"] == "待設定"
+    assert rows[0]["狀態"] == "missing_required_env"
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[0]["指令"]
-    assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[0]["說明"]
-    assert rows[1]["狀態"] == "ready"
-    assert "--sample-json examples/structured_company_filing_sample.json" in rows[1]["指令"]
-    assert "raw_rows=1；documents=1；errors=0" in rows[1]["說明"]
-    assert rows[2]["狀態"] == "待設定"
-    assert "structured_company_filing_smoke.py" in rows[2]["指令"]
-    assert rows[3]["狀態"] == "GET"
-    assert "auth=bearer_optional" in rows[3]["說明"]
-    assert "ticker,company_name,limit,document_types" in rows[3]["說明"]
-    assert "title/name/headline/doc_title" in rows[4]["說明"]
-    assert rows[5]["狀態"] == "not_configured"
-    assert "missing_structured_api_provider_or_url" in rows[5]["說明"]
+    assert "missing=COMPANY_FILING_STRUCTURED_API_PROVIDER" in rows[0]["說明"]
+    assert "endpoint=missing/invalid" in rows[0]["說明"]
+    assert rows[1]["狀態"] == "待設定"
+    assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[1]["說明"]
+    assert rows[2]["狀態"] == "ready"
+    assert "--sample-json examples/structured_company_filing_sample.json" in rows[2]["指令"]
+    assert "raw_rows=1；documents=1；errors=0" in rows[2]["說明"]
+    assert rows[3]["狀態"] == "待設定"
+    assert "structured_company_filing_smoke.py" in rows[3]["指令"]
+    assert rows[4]["狀態"] == "GET"
+    assert "auth=bearer_optional" in rows[4]["說明"]
+    assert "ticker,company_name,limit,document_types" in rows[4]["說明"]
+    assert "title/name/headline/doc_title" in rows[5]["說明"]
+    assert rows[6]["狀態"] == "not_configured"
+    assert "missing_structured_api_provider_or_url" in rows[6]["說明"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

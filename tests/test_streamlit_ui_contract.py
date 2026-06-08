@@ -312,6 +312,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
     assert "結構化文件 API 操作提示" in source
+    assert "Configuration check" in source
+    assert "configuration_check" in source
     assert "Visual RAG 模型鏈" in source
     assert "Visual RAG / PDF 圖片解析模型鏈" in source
     assert "單項診斷指令" in source

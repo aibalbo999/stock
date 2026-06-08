@@ -73,11 +73,19 @@ def company_filing_structured_api_status_payload(
 ) -> dict:
     provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
     endpoint = str(settings.company_filing_structured_api_url or "").strip()
+    token = str(settings.company_filing_structured_api_token or "").strip()
     configured = bool(provider and endpoint)
-    parsed = urlparse(endpoint)
     profile = structured_api_provider_profile(provider)
+    configuration_check = structured_api_configuration_check(
+        provider=provider,
+        endpoint=endpoint,
+        token=token,
+        profile=profile,
+    )
     return {
         "configured": configured,
+        "configuration_ready": bool(configuration_check["ready"]),
+        "configuration_check": configuration_check,
         "provider": provider or None,
         "provider_profile": profile,
         "provider_profile_key": profile["profile_key"],
@@ -93,7 +101,8 @@ def company_filing_structured_api_status_payload(
             for key, value in STRUCTURED_API_PROVIDER_PROFILES.items()
         },
         "url_configured": bool(endpoint),
-        "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
+        "token_configured": bool(token),
+        "token_required": bool(configuration_check["token_required"]),
         "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
         "retry_policy": retry_policy,
         "response_row_aliases": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
@@ -123,11 +132,72 @@ def company_filing_structured_api_status_payload(
         ),
         "sample_contract": sample_contract,
         "sample_contract_ready": bool(sample_contract.get("ready")),
-        "fallback_reason": None
-        if configured and parsed.scheme in {"http", "https"} and parsed.hostname
-        else "missing_structured_api_provider_or_url"
-        if not configured
-        else "invalid_structured_api_url",
+        "fallback_reason": configuration_check["fallback_reason"],
+    }
+
+
+def structured_api_configuration_check(
+    *,
+    provider: str,
+    endpoint: str,
+    token: str,
+    profile: dict,
+) -> dict:
+    normalized_provider = str(provider or "").strip().lower()
+    normalized_endpoint = str(endpoint or "").strip()
+    token_configured = bool(str(token or "").strip())
+    token_required = _structured_api_token_required(profile)
+    required_env_keys = [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+    ]
+    if token_required:
+        required_env_keys.append("COMPANY_FILING_STRUCTURED_API_TOKEN")
+    configured_env_keys = []
+    if normalized_provider:
+        configured_env_keys.append("COMPANY_FILING_STRUCTURED_API_PROVIDER")
+    if normalized_endpoint:
+        configured_env_keys.append("COMPANY_FILING_STRUCTURED_API_URL")
+    if token_configured:
+        configured_env_keys.append("COMPANY_FILING_STRUCTURED_API_TOKEN")
+    missing_env_keys = [key for key in required_env_keys if key not in set(configured_env_keys)]
+    parsed = urlparse(normalized_endpoint)
+    endpoint_valid = bool(parsed.scheme in {"http", "https"} and parsed.hostname)
+    if missing_env_keys:
+        fallback_reason = "missing_structured_api_provider_or_url"
+        if missing_env_keys == ["COMPANY_FILING_STRUCTURED_API_TOKEN"]:
+            fallback_reason = "missing_structured_api_token"
+        status = "missing_required_env"
+    elif not endpoint_valid:
+        fallback_reason = "invalid_structured_api_url"
+        status = "invalid_url"
+    else:
+        fallback_reason = None
+        status = "ready"
+    return {
+        "ready": status == "ready",
+        "status": status,
+        "fallback_reason": fallback_reason,
+        "required_env_keys": required_env_keys,
+        "configured_env_keys": configured_env_keys,
+        "missing_env_keys": missing_env_keys,
+        "token_required": token_required,
+        "token_configured": token_configured,
+        "endpoint_configured": bool(normalized_endpoint),
+        "endpoint_valid": endpoint_valid,
+        "endpoint_scheme": parsed.scheme or None,
+        "endpoint_host_configured": bool(parsed.hostname),
+        "provider_profile_key": str(profile.get("profile_key") or "custom"),
+        "auth_mode": str(profile.get("auth_mode") or "bearer_optional"),
+        "token_location": str(profile.get("token_location") or "authorization_header"),
+    }
+
+
+def _structured_api_token_required(profile: dict) -> bool:
+    return str(profile.get("auth_mode") or "").strip().lower() not in {
+        "",
+        "bearer_optional",
+        "none",
     }
 
 
@@ -137,7 +207,9 @@ def structured_api_provider_profile(provider: str) -> dict:
     profile = dict(STRUCTURED_API_PROVIDER_PROFILES[profile_key])
     profile["provider"] = provider_key
     profile["profile_key"] = profile_key
-    profile["profile_supported"] = provider_key in STRUCTURED_API_PROVIDER_PROFILES or profile_key == "custom"
+    profile["profile_supported"] = (
+        provider_key in STRUCTURED_API_PROVIDER_PROFILES or profile_key == "custom"
+    )
     return profile
 
 
@@ -239,7 +311,9 @@ def structured_api_enriched_text(
             "category",
             "type",
         ),
-        structured_api_row_text(row, "ticker", "stock_id", "stockId", "stock_no", "stockNo", "company_id"),
+        structured_api_row_text(
+            row, "ticker", "stock_id", "stockId", "stock_no", "stockNo", "company_id"
+        ),
         structured_api_row_text(row, "company", "company_name", "companyName", "company_full_name"),
     ]
     metadata = " ".join(term for term in metadata_terms if term)
@@ -290,19 +364,22 @@ def structured_api_row_to_news_document(
         "plain_text",
         "ocr_text",
     )
-    url = structured_api_row_text(
-        row,
-        "url",
-        "source_url",
-        "file_url",
-        "download_url",
-        "document_url",
-        "documentUrl",
-        "pdf_url",
-        "source.url",
-        "file.url",
-        "document.url",
-    ) or None
+    url = (
+        structured_api_row_text(
+            row,
+            "url",
+            "source_url",
+            "file_url",
+            "download_url",
+            "document_url",
+            "documentUrl",
+            "pdf_url",
+            "source.url",
+            "file.url",
+            "document.url",
+        )
+        or None
+    )
     document_type = structured_api_document_type(row, title=title, text=text, url=url)
     if document_types and document_type not in set(document_types):
         return None
@@ -347,7 +424,9 @@ def structured_api_row_to_news_document(
         fetched_at=utc_now_naive(),
     )
     document = NewsDocument(
-        id=sha1(f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")).hexdigest(),
+        id=sha1(
+            f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")
+        ).hexdigest(),
         title=title,
         text=text,
         source=source,
@@ -375,7 +454,9 @@ def structured_api_row_to_company_filing_document(
     if not parsed:
         return None
     news_document, document_type = parsed
-    digest = sha1(f"{ticker}:{document_type}:{news_document.source.url or news_document.id}".encode("utf-8")).hexdigest()
+    digest = sha1(
+        f"{ticker}:{document_type}:{news_document.source.url or news_document.id}".encode("utf-8")
+    ).hexdigest()
     return CompanyFilingDocument(
         id=digest,
         ticker=ticker,

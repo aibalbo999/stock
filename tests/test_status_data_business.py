@@ -12,9 +12,7 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
 
     assert matrix["data_business_logic"]["market_data_cache"]["evidence"]["enabled"] is True
     assert (
-        matrix["data_business_logic"]["market_data_cache"]["evidence"][
-            "latest_only_source_marker"
-        ]
+        matrix["data_business_logic"]["market_data_cache"]["evidence"]["latest_only_source_marker"]
         == "latest-only"
     )
     market_fallback = matrix["data_business_logic"]["market_data_provider_fallback"]
@@ -98,9 +96,7 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "playwright_render_runtime" in filing_hardening
     assert "pdf_parser_dependencies" in filing_hardening
 
-    render_contract = matrix["data_business_logic"][
-        "company_filing_render_provider_contract"
-    ]
+    render_contract = matrix["data_business_logic"]["company_filing_render_provider_contract"]
     assert render_contract["status"] == "ready"
     assert render_contract["evidence"]["ready"] is True
     assert render_contract["evidence"]["contract"]["provider_count"] == 5
@@ -118,9 +114,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "mops.twse.com.tw" in high_risk_unlocker["evidence"]["domains"]
     assert "flaresolverr" in high_risk_unlocker["evidence"]["recommended_unlocker_providers"]
     assert high_risk_unlocker["evidence"]["compose_env_override_ready"] is True
-    assert "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1" in high_risk_unlocker[
-        "evidence"
-    ]["compose_recommended_env"]
+    assert (
+        "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1"
+        in high_risk_unlocker["evidence"]["compose_recommended_env"]
+    )
     assert (
         high_risk_unlocker["evidence"]["fallback_reason"]
         == status["company_filings"]["high_risk_source_policy"]["fallback_reason"]
@@ -136,9 +133,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         else "not_configured"
     )
     assert pdf_parser_runtime["status"] == expected_pdf_runtime_status
-    assert pdf_parser_runtime["evidence"]["pdf_table_parser_available"] is status[
-        "company_filings"
-    ]["pdf_table_parser_available"]
+    assert (
+        pdf_parser_runtime["evidence"]["pdf_table_parser_available"]
+        is status["company_filings"]["pdf_table_parser_available"]
+    )
 
     filing_fallback = matrix["data_business_logic"]["company_filing_browser_or_proxy_fallback"]
     expected_filing_fallback_status = (
@@ -154,9 +152,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert filing_fallback["evidence"]["proxy_count"] == 0
     assert filing_fallback["evidence"]["browser_render_configured"] is False
     assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
-    assert filing_fallback["evidence"]["high_risk_captcha_unlocker_ready"] is status[
-        "company_filings"
-    ]["high_risk_captcha_unlocker_ready"]
+    assert (
+        filing_fallback["evidence"]["high_risk_captcha_unlocker_ready"]
+        is status["company_filings"]["high_risk_captcha_unlocker_ready"]
+    )
     assert "browser_render_runtime" in filing_fallback["evidence"]
     assert (
         filing_fallback["evidence"]["playwright_render_configured"]
@@ -167,6 +166,12 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     structured_api = matrix["data_business_logic"]["company_filing_structured_api_fallback"]
     assert structured_api["status"] == "not_configured"
     assert structured_api["evidence"]["configured"] is False
+    assert structured_api["evidence"]["configuration_ready"] is False
+    assert structured_api["evidence"]["configuration_check"]["status"] == "missing_required_env"
+    assert structured_api["evidence"]["configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+    ]
     assert structured_api["evidence"]["provider_profile_key"] == "custom"
     assert structured_api["evidence"]["request_contract"]["method"] == "GET"
     assert structured_api["evidence"]["retry_policy"]["attempts"] >= 1
@@ -177,9 +182,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         structured_api["evidence"]["runtime"]["fallback_reason"]
         == "missing_structured_api_provider_or_url"
     )
-    assert "structured_company_filing_sample.json" in structured_api["evidence"]["runtime"][
-        "sample_contract_cli"
-    ]
+    assert (
+        "structured_company_filing_sample.json"
+        in structured_api["evidence"]["runtime"]["sample_contract_cli"]
+    )
     assert structured_api["evidence"]["runtime"]["sample_contract_ready"] is True
     assert structured_api["evidence"]["runtime"]["sample_contract"]["status"] == "ready"
     assert structured_api["evidence"]["runtime"]["sample_contract"]["document_count"] >= 1
@@ -189,9 +195,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     ]
     assert structured_sample_contract["status"] == "ready"
     assert structured_sample_contract["evidence"]["ready"] is True
-    assert "structured_company_filing_sample.json" in structured_sample_contract["evidence"][
-        "smoke_cli"
-    ]
+    assert (
+        "structured_company_filing_sample.json"
+        in structured_sample_contract["evidence"]["smoke_cli"]
+    )
     assert structured_sample_contract["evidence"]["contract"]["status"] == "ready"
     assert structured_sample_contract["evidence"]["contract"]["document_count"] >= 1
     assert matrix["data_business_logic"]["source_quality_weighting"]["status"] == "ready"
@@ -223,6 +230,31 @@ def test_company_filing_playwright_fallback_requires_available_dependency(monkey
         "company_filing_browser_or_proxy_fallback"
     ]
     assert fallback["status"] == "not_configured"
+
+
+def test_structured_api_capability_requires_token_for_paid_provider(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.delenv("COMPANY_FILING_STRUCTURED_API_TOKEN", raising=False)
+    get_settings.cache_clear()
+    try:
+        status = service_status()
+    finally:
+        get_settings.cache_clear()
+
+    assert status["company_filings"]["structured_api_configured"] is True
+    assert status["company_filings"]["structured_api_configuration_ready"] is False
+    assert status["company_filings"]["structured_api_configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_STRUCTURED_API_TOKEN"
+    ]
+    structured_api = status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_structured_api_fallback"
+    ]
+    assert structured_api["status"] == "not_configured"
+    assert structured_api["evidence"]["configuration_ready"] is False
+    assert structured_api["evidence"]["configuration_check"]["fallback_reason"] == (
+        "missing_structured_api_token"
+    )
 
 
 def test_company_filing_playwright_fallback_ready_when_browser_available(monkeypatch) -> None:
@@ -390,6 +422,7 @@ def test_company_filing_playwright_fallback_requires_browser_binary(monkeypatch)
         "company_filing_browser_or_proxy_fallback"
     ]
     assert fallback["status"] == "not_configured"
-    assert "missing_browser_binary:chromium" in fallback["evidence"]["playwright_render_runtime"][
-        "fallback_reason"
-    ]
+    assert (
+        "missing_browser_binary:chromium"
+        in fallback["evidence"]["playwright_render_runtime"]["fallback_reason"]
+    )

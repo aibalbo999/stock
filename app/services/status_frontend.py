@@ -277,6 +277,8 @@ def frontend_status() -> dict:
         and "def structured_filing_api_operation_rows(" in external_deployment_source
         and "structured_filing_api_operation_rows(upgrade_audit)" in ui_source
         and "結構化文件 API 操作提示" in ui_source
+        and "Configuration check" in external_deployment_structured_api_source
+        and "configuration_check" in external_deployment_structured_api_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
         "ui_external_deployment_readiness_checklist_enabled": (

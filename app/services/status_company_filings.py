@@ -28,13 +28,13 @@ def company_filing_status(
     browser_render_provider_contract_status_func: Callable[
         [], dict
     ] = company_filing_browser_render_provider_contract_status,
-    playwright_browser_status_func: Callable[[str | None], dict] = company_filing_playwright_browser_status,
+    playwright_browser_status_func: Callable[
+        [str | None], dict
+    ] = company_filing_playwright_browser_status,
     structured_api_status_func: Callable[[], dict] = company_filing_structured_api_status,
 ) -> dict:
     module_available = module_available or _module_available
-    user_agent_status = _company_filing_user_agent_status(
-        settings.company_filing_user_agents
-    )
+    user_agent_status = _company_filing_user_agent_status(settings.company_filing_user_agents)
     proxy_count = len(_split_config_values(settings.company_filing_proxy_urls))
     pdf_parser_status = _company_filing_pdf_parser_status(
         settings.company_filing_pdf_parser,
@@ -44,21 +44,12 @@ def company_filing_status(
     user_agent_count = int(user_agent_status.get("effective_user_agent_count") or 0)
     browser_render_runtime = browser_render_status_func()
     browser_render_provider_contract = browser_render_provider_contract_status_func()
-    browser_render_configured = bool(
-        browser_render_runtime.get("runtime_available")
-    )
-    playwright_runtime = playwright_browser_status_func(
-        settings.company_filing_playwright_browser
-    )
-    playwright_dependency_available = bool(
-        playwright_runtime.get("dependency_available")
-    )
-    playwright_browser_available = bool(
-        playwright_runtime.get("browser_available")
-    )
+    browser_render_configured = bool(browser_render_runtime.get("runtime_available"))
+    playwright_runtime = playwright_browser_status_func(settings.company_filing_playwright_browser)
+    playwright_dependency_available = bool(playwright_runtime.get("dependency_available"))
+    playwright_browser_available = bool(playwright_runtime.get("browser_available"))
     playwright_configured = bool(
-        settings.company_filing_playwright_render_enabled
-        and playwright_browser_available
+        settings.company_filing_playwright_render_enabled and playwright_browser_available
     )
     structured_api_runtime = structured_api_status_func()
     high_risk_source_policy = _company_filing_high_risk_source_policy(
@@ -72,12 +63,12 @@ def company_filing_status(
         "proxy_count": proxy_count,
         "user_agent_retry_rotation_enabled": user_agent_count > 1,
         "proxy_retry_rotation_enabled": proxy_count > 1,
-        "identity_retry_rotation_enabled": (
-            user_agent_count > 1 or proxy_count > 1
-        ),
+        "identity_retry_rotation_enabled": (user_agent_count > 1 or proxy_count > 1),
         "http_retries": max(0, int(settings.company_filing_http_retries)),
         "retryable_http_statuses": sorted(COMPANY_FILING_RETRYABLE_HTTP_STATUSES),
-        "base_retry_delay_seconds": max(0.0, float(settings.company_filing_base_retry_delay_seconds)),
+        "base_retry_delay_seconds": max(
+            0.0, float(settings.company_filing_base_retry_delay_seconds)
+        ),
         "max_retry_delay_seconds": max(0.0, float(settings.company_filing_max_retry_delay_seconds)),
         "pdf_parser": settings.company_filing_pdf_parser,
         "pdf_extract_tables": settings.company_filing_pdf_extract_tables,
@@ -96,27 +87,17 @@ def company_filing_status(
         "cache_ttl_seconds": settings.company_filing_cache_ttl_seconds,
         "browser_render_enabled": settings.company_filing_browser_render_enabled,
         "browser_render_provider": browser_render_runtime.get("provider"),
-        "browser_render_supported_providers": browser_render_runtime.get(
-            "supported_providers"
-        ),
-        "browser_render_provider_capability": browser_render_runtime.get(
-            "provider_capability"
-        ),
-        "browser_render_provider_capabilities": browser_render_runtime.get(
-            "provider_capabilities"
-        ),
+        "browser_render_supported_providers": browser_render_runtime.get("supported_providers"),
+        "browser_render_provider_capability": browser_render_runtime.get("provider_capability"),
+        "browser_render_provider_capabilities": browser_render_runtime.get("provider_capabilities"),
         "browser_render_captcha_unlocker_provider": browser_render_runtime.get(
             "captcha_unlocker_provider"
         ),
         "browser_render_url_configured": browser_render_runtime.get("url_configured"),
-        "browser_render_endpoint_reachable": browser_render_runtime.get(
-            "endpoint_reachable"
-        ),
+        "browser_render_endpoint_reachable": browser_render_runtime.get("endpoint_reachable"),
         "browser_render_runtime": browser_render_runtime,
         "browser_render_provider_contract": browser_render_provider_contract,
-        "browser_render_provider_contract_ready": browser_render_provider_contract.get(
-            "ready"
-        ),
+        "browser_render_provider_contract_ready": browser_render_provider_contract.get("ready"),
         "browser_render_provider_contract_smoke_cli": browser_render_provider_contract.get(
             "smoke_cli"
         ),
@@ -143,26 +124,20 @@ def company_filing_status(
         "high_risk_source_mitigation_ready": high_risk_source_policy.get(
             "high_risk_mitigation_ready"
         ),
-        "high_risk_captcha_unlocker_ready": high_risk_source_policy.get(
-            "captcha_challenge_ready"
-        ),
+        "high_risk_captcha_unlocker_ready": high_risk_source_policy.get("captcha_challenge_ready"),
         "browser_render_timeout_seconds": settings.company_filing_browser_render_timeout_seconds,
         "structured_api_configured": structured_api_runtime.get("configured"),
+        "structured_api_configuration_ready": structured_api_runtime.get("configuration_ready"),
+        "structured_api_configuration_check": structured_api_runtime.get("configuration_check"),
         "structured_api_provider": structured_api_runtime.get("provider"),
-        "structured_api_url_configured": structured_api_runtime.get(
-            "url_configured"
-        ),
-        "structured_api_token_configured": structured_api_runtime.get(
-            "token_configured"
-        ),
+        "structured_api_url_configured": structured_api_runtime.get("url_configured"),
+        "structured_api_token_configured": structured_api_runtime.get("token_configured"),
         "structured_api_runtime": structured_api_runtime,
         "visual_rag_enabled": visual_rag_runtime.get("enabled"),
         "visual_rag_mode": visual_rag_runtime.get("mode"),
         "visual_rag_mode_supported": visual_rag_runtime.get("mode_supported"),
         "visual_rag_augment_policy": visual_rag_runtime.get("augment_policy"),
-        "visual_rag_augment_policy_supported": visual_rag_runtime.get(
-            "augment_policy_supported"
-        ),
+        "visual_rag_augment_policy_supported": visual_rag_runtime.get("augment_policy_supported"),
         "visual_rag_routing_policy": visual_rag_runtime.get("routing_policy"),
         "visual_rag_model_chain": visual_rag_runtime.get("model_chain"),
         "visual_rag_quota_governed": visual_rag_runtime.get("quota_governed"),

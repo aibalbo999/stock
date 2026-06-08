@@ -16,9 +16,7 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
     evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
     runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else evidence
     provider_profile = (
-        runtime.get("provider_profile")
-        if isinstance(runtime.get("provider_profile"), dict)
-        else {}
+        runtime.get("provider_profile") if isinstance(runtime.get("provider_profile"), dict) else {}
     )
     contract = (
         runtime.get("request_contract")
@@ -28,14 +26,23 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
         else {}
     )
     sample_contract = (
-        runtime.get("sample_contract")
-        if isinstance(runtime.get("sample_contract"), dict)
+        runtime.get("sample_contract") if isinstance(runtime.get("sample_contract"), dict) else {}
+    )
+    configuration_check = (
+        runtime.get("configuration_check")
+        if isinstance(runtime.get("configuration_check"), dict)
         else {}
     )
     return [
         {
+            "項目": "Configuration check",
+            "狀態": _structured_filing_configuration_status(configuration_check),
+            "指令": structured_filing_env_hint(runtime),
+            "說明": _structured_filing_configuration_detail(configuration_check),
+        },
+        {
             "項目": "Provider profile",
-            "狀態": "已設定" if runtime.get("configured") else "待設定",
+            "狀態": "已完整" if runtime.get("configuration_ready") else "待設定",
             "指令": structured_filing_env_hint(runtime),
             "說明": _structured_filing_provider_detail(
                 evidence,
@@ -78,13 +85,18 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
 
 def structured_filing_env_hint(runtime: dict) -> str:
     provider = str(runtime.get("provider") or runtime.get("provider_profile_key") or "tej")
-    return "\n".join(
-        [
-            f"COMPANY_FILING_STRUCTURED_API_PROVIDER={provider}",
-            "COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>",
-            "COMPANY_FILING_STRUCTURED_API_TOKEN=<token>",
-        ]
+    configuration_check = (
+        runtime.get("configuration_check")
+        if isinstance(runtime.get("configuration_check"), dict)
+        else {}
     )
+    lines = [
+        f"COMPANY_FILING_STRUCTURED_API_PROVIDER={provider}",
+        "COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>",
+    ]
+    if configuration_check.get("token_required") or runtime.get("token_configured"):
+        lines.append("COMPANY_FILING_STRUCTURED_API_TOKEN=<token>")
+    return "\n".join(lines)
 
 
 def structured_filing_sample_command(runtime: dict) -> str:
@@ -130,6 +142,26 @@ def _structured_filing_sample_contract_detail(sample_contract: dict) -> str:
     errors = int(sample_contract.get("error_count") or 0)
     mode = str(sample_contract.get("mode") or "sample_json_contract")
     return f"{mode}；raw_rows={raw_rows}；documents={documents}；errors={errors}。"
+
+
+def _structured_filing_configuration_status(configuration_check: dict) -> str:
+    if configuration_check.get("ready"):
+        return "ready"
+    return str(configuration_check.get("status") or "missing_required_env")
+
+
+def _structured_filing_configuration_detail(configuration_check: dict) -> str:
+    if not configuration_check:
+        return "缺少 configuration_check；請重跑 /services/status 或 upgrade audit。"
+    missing = string_list(configuration_check.get("missing_env_keys"))
+    configured = string_list(configuration_check.get("configured_env_keys"))
+    token_state = "required" if configuration_check.get("token_required") else "optional"
+    endpoint_state = "valid" if configuration_check.get("endpoint_valid") else "missing/invalid"
+    return (
+        f"missing={','.join(missing) or '-'}；"
+        f"configured={','.join(configured) or '-'}；"
+        f"token={token_state}；endpoint={endpoint_state}。"
+    )
 
 
 def _structured_filing_request_contract_detail(contract: dict) -> str:

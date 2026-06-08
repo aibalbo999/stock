@@ -14,6 +14,8 @@ def system_router_client(
     upgrade_audit_func=None,
     maintenance_diagnostic_catalog: dict | None = None,
     maintenance_diagnostic_run_func=None,
+    maintenance_operation_catalog: dict | None = None,
+    maintenance_operation_run_func=None,
 ) -> TestClient:
     router = create_system_router(
         db_status_func=lambda: db_status or {},
@@ -22,6 +24,9 @@ def system_router_client(
         maintenance_diagnostic_catalog_func=lambda: maintenance_diagnostic_catalog or {},
         maintenance_diagnostic_run_func=maintenance_diagnostic_run_func
         or (lambda action_id: {"action_id": action_id}),
+        maintenance_operation_catalog_func=lambda: maintenance_operation_catalog or {},
+        maintenance_operation_run_func=maintenance_operation_run_func
+        or (lambda action_id, **kwargs: {"action_id": action_id, **kwargs}),
     )
 
     app = FastAPI()
@@ -132,3 +137,64 @@ def test_system_router_maintenance_diagnostic_run_endpoint_rejects_unknown_actio
 
     assert response.status_code == 404
     assert "Unknown maintenance diagnostic action" in response.json()["detail"]
+
+
+def test_system_router_maintenance_operations_catalog_endpoint() -> None:
+    response = system_router_client(
+        maintenance_operation_catalog={
+            "execution_policy": "allowlisted_local_dependency_operations",
+            "operations": [{"id": "start_local_dependencies", "requires_confirmation": True}],
+        }
+    ).get("/maintenance/operations")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution_policy"] == "allowlisted_local_dependency_operations"
+    assert body["operations"] == [{"id": "start_local_dependencies", "requires_confirmation": True}]
+
+
+def test_system_router_maintenance_operation_run_endpoint_delegates_confirmation() -> None:
+    captured = {}
+
+    def fake_run(action_id: str, **kwargs) -> dict:
+        captured["action_id"] = action_id
+        captured["kwargs"] = kwargs
+        return {"id": action_id, "status": "success"}
+
+    response = system_router_client(maintenance_operation_run_func=fake_run).post(
+        "/maintenance/operations/start_local_dependencies/run",
+        json={"confirmed": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert captured == {
+        "action_id": "start_local_dependencies",
+        "kwargs": {"confirmed": True},
+    }
+
+
+def test_system_router_maintenance_operation_run_endpoint_requires_confirmation() -> None:
+    def fake_run(action_id: str, **kwargs) -> dict:
+        raise PermissionError(f"Maintenance operation requires confirmation: {action_id}")
+
+    response = system_router_client(maintenance_operation_run_func=fake_run).post(
+        "/maintenance/operations/start_local_dependencies/run",
+        json={"confirmed": False},
+    )
+
+    assert response.status_code == 400
+    assert "requires confirmation" in response.json()["detail"]
+
+
+def test_system_router_maintenance_operation_run_endpoint_rejects_unknown_action() -> None:
+    def fake_run(action_id: str, **kwargs) -> dict:
+        raise ValueError(f"Unknown maintenance operation: {action_id}")
+
+    response = system_router_client(maintenance_operation_run_func=fake_run).post(
+        "/maintenance/operations/rm-rf/run",
+        json={"confirmed": True},
+    )
+
+    assert response.status_code == 404
+    assert "Unknown maintenance operation" in response.json()["detail"]

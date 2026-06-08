@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui.maintenance_deployment_panel import maintenance_operation_rows
 from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from streamlit_ui_test_helpers import load_report_helpers
 
@@ -232,6 +233,54 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
         {
             "動作": "Unsafe action",
             "狀態": "停用",
+            "說明": "-",
+            "指令": "-",
+            "Timeout": 0,
+        },
+    ]
+
+
+def test_maintenance_operation_rows_surface_confirmed_local_dependency_operations() -> None:
+    rows = maintenance_operation_rows(
+        {
+            "operations": [
+                {
+                    "id": "start_local_dependencies",
+                    "label": "啟動本機核心依賴",
+                    "description": "啟動 Redis、Postgres、Neo4j、Browserless 與 Chroma。",
+                    "display_command": "docker compose up -d redis postgres neo4j browserless chroma",
+                    "timeout_seconds": 240,
+                    "requires_confirmation": True,
+                    "mutates_local_state": True,
+                    "scope": "Docker services and current API process env defaults",
+                },
+                {
+                    "id": "inspect_only",
+                    "label": "Inspect only",
+                    "description": "",
+                    "display_command": "",
+                    "timeout_seconds": 0,
+                    "requires_confirmation": False,
+                    "mutates_local_state": False,
+                    "scope": "",
+                },
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "操作": "啟動本機核心依賴",
+            "狀態": "需確認",
+            "作用範圍": "Docker services and current API process env defaults",
+            "說明": "啟動 Redis、Postgres、Neo4j、Browserless 與 Chroma。",
+            "指令": "docker compose up -d redis postgres neo4j browserless chroma",
+            "Timeout": 240,
+        },
+        {
+            "操作": "Inspect only",
+            "狀態": "可執行",
+            "作用範圍": "-",
             "說明": "-",
             "指令": "-",
             "Timeout": 0,

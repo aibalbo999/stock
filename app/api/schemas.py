@@ -57,6 +57,10 @@ class MaintenanceCleanupRequest(BaseModel):
     reports_before: Optional[datetime] = None
 
 
+class MaintenanceOperationRunRequest(BaseModel):
+    confirmed: bool = False
+
+
 class DataOperationTaskRequest(BaseModel):
     operation: Literal[
         "market_refresh",

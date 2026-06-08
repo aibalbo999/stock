@@ -149,8 +149,11 @@ def frontend_status() -> dict:
         and "def render_report_quality_panel(" in maintenance_panels_source
         and "def render_maintenance_cleanup_panel(" in maintenance_cleanup_panel_source
         and "from app.ui.maintenance_panels import (" in system_settings_maintenance_source
-        and "render_external_deployment_panel(upgrade_audit, service_snapshot)"
+        and "render_external_deployment_panel(\n        upgrade_audit,"
         in system_settings_maintenance_source
+        and 'maintenance_operations = load_api_json_or_default(\n        "/maintenance/operations"'
+        in system_settings_maintenance_source
+        and "maintenance_operations,\n    )" in system_settings_maintenance_source
         and "render_background_task_observability_panel(\n        service_snapshot,"
         in system_settings_maintenance_source
         and 'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'
@@ -330,6 +333,21 @@ def frontend_status() -> dict:
             and "local_dependency_repair_rows(service_snapshot)" in ui_source
             and "本機依賴修復指引" in ui_source
         ),
+        "ui_maintenance_operations_enabled": (
+            'maintenance_operations = load_api_json_or_default(\n        "/maintenance/operations"'
+            in system_settings_maintenance_source
+            and "maintenance_operations,\n    )" in system_settings_maintenance_source
+            and "def maintenance_operation_rows(" in maintenance_deployment_panel_source
+            and "本機依賴操作" in maintenance_deployment_panel_source
+            and "選擇維護操作" in maintenance_deployment_panel_source
+            and "confirm_maintenance_operation" in maintenance_deployment_panel_source
+            and "maintenance_run_operation" in maintenance_deployment_panel_source
+            and 'f"/maintenance/operations/{selected_operation_id}/run"'
+            in maintenance_deployment_panel_source
+            and '"confirmed": True' in maintenance_deployment_panel_source
+            and "timeout=300" in maintenance_deployment_panel_source
+        ),
+        "ui_maintenance_operations_path": "app/ui/maintenance_deployment_panel.py",
         "ui_external_deployment_domain_helpers_extracted": (
             ui_dir / "external_deployment_common.py"
         ).exists()

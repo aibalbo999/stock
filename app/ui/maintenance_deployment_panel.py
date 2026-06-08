@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_post
 from app.ui.external_deployment_diagnostics import (
     external_deployment_readiness_rows,
     external_deployment_smoke_commands,
@@ -19,6 +21,7 @@ from app.ui.external_deployment_diagnostics import (
 def render_external_deployment_panel(
     upgrade_audit: dict,
     service_snapshot: dict | None = None,
+    maintenance_operations: dict | None = None,
 ) -> None:
     service_snapshot = service_snapshot or {}
     local_dependency_status = (
@@ -61,6 +64,7 @@ def render_external_deployment_panel(
         if local_dependency_repair_plan_rows:
             st.caption("本機依賴修復指引")
             st.dataframe(local_dependency_repair_plan_rows, width="stretch", hide_index=True)
+        _render_maintenance_operations(maintenance_operations or {})
         if local_dependency_rows:
             st.caption("本機依賴狀態")
             st.dataframe(local_dependency_rows, width="stretch", hide_index=True)
@@ -88,3 +92,87 @@ def render_external_deployment_panel(
             )
         else:
             st.success("外部部署選配目前沒有警示。")
+
+
+def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
+    operations = (
+        maintenance_operations.get("operations")
+        if isinstance(maintenance_operations.get("operations"), list)
+        else []
+    )
+    return [
+        {
+            "操作": operation.get("label") or operation.get("id") or "-",
+            "狀態": "需確認" if operation.get("requires_confirmation") else "可執行",
+            "作用範圍": operation.get("scope") or "-",
+            "說明": operation.get("description") or "-",
+            "指令": operation.get("display_command") or "-",
+            "Timeout": int(operation.get("timeout_seconds") or 0),
+        }
+        for operation in operations
+        if isinstance(operation, dict)
+    ]
+
+
+def _render_maintenance_operations(maintenance_operations: dict) -> None:
+    operation_rows = maintenance_operation_rows(maintenance_operations)
+    operations = [
+        operation
+        for operation in maintenance_operations.get("operations") or []
+        if isinstance(operation, dict)
+        and operation.get("id")
+        and operation.get("mutates_local_state")
+    ]
+    if not operation_rows or not operations:
+        return
+    st.caption("本機依賴操作")
+    st.dataframe(operation_rows, width="stretch", hide_index=True)
+    operation_by_id = {str(operation["id"]): operation for operation in operations}
+    selected_operation_id = st.selectbox(
+        "選擇維護操作",
+        options=list(operation_by_id),
+        format_func=lambda operation_id: str(
+            operation_by_id[operation_id].get("label") or operation_id
+        ),
+        key="maintenance_operation_select",
+    )
+    operation_confirmed = st.checkbox(
+        "我了解此操作會啟動本機 Docker 依賴，且只套用目前 API 程序的環境預設。",
+        key="confirm_maintenance_operation",
+    )
+    if st.button(
+        "執行維護操作",
+        key="maintenance_run_operation",
+        disabled=not operation_confirmed,
+    ):
+        result = run_api_action_or_none(
+            lambda: api_post(
+                f"/maintenance/operations/{selected_operation_id}/run",
+                {"confirmed": True},
+                timeout=300,
+            ),
+            error_message="維護操作執行失敗",
+        )
+        if isinstance(result, dict):
+            _render_maintenance_operation_result(result)
+
+
+def _render_maintenance_operation_result(result: dict) -> None:
+    status = str(result.get("status") or "")
+    message = str(result.get("message") or status or "維護操作完成")
+    if status == "success":
+        st.success(message)
+    elif status in {"partial", "needs_download", "skipped"}:
+        st.warning(message)
+    elif status == "failed":
+        st.error(message)
+    else:
+        st.info(message)
+    wait_lines = [str(line) for line in result.get("wait_lines") or [] if str(line).strip()]
+    if wait_lines:
+        st.code("\n".join(wait_lines), language="text")
+    start_record = (
+        result.get("start_record") if isinstance(result.get("start_record"), dict) else {}
+    )
+    if start_record.get("path"):
+        st.caption(f"啟動紀錄：{start_record['path']}")

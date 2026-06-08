@@ -50,6 +50,11 @@ def render_maintenance_tab() -> None:
         {"actions": []},
         error_message="讀取維護診斷動作失敗",
     )
+    maintenance_operations = load_api_json_or_default(
+        "/maintenance/operations",
+        {"operations": []},
+        error_message="讀取維護操作失敗",
+    )
     report_observability_summary = load_api_json_or_default(
         "/reports/observability/summary?limit=20",
         {"status": "unknown", "totals": {}, "reports": [], "alerts": []},
@@ -75,7 +80,11 @@ def render_maintenance_tab() -> None:
 
     render_upgrade_audit_panel(upgrade_audit)
     render_service_metrics_panel(status, service_snapshot)
-    render_external_deployment_panel(upgrade_audit, service_snapshot)
+    render_external_deployment_panel(
+        upgrade_audit,
+        service_snapshot,
+        maintenance_operations,
+    )
     render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)
     render_report_generation_observability_panel(report_observability_summary)

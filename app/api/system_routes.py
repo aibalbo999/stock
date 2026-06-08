@@ -4,9 +4,14 @@ from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException
 
+from app.api.schemas import MaintenanceOperationRunRequest
 from app.services.maintenance_diagnostics import (
     maintenance_diagnostic_action_catalog,
     run_maintenance_diagnostic_action,
+)
+from app.services.maintenance_operations import (
+    maintenance_operation_catalog,
+    run_maintenance_operation,
 )
 
 
@@ -17,6 +22,8 @@ def create_system_router(
     upgrade_audit_func: Callable[..., dict],
     maintenance_diagnostic_catalog_func: Callable[[], dict] = maintenance_diagnostic_action_catalog,
     maintenance_diagnostic_run_func: Callable[[str], dict] = run_maintenance_diagnostic_action,
+    maintenance_operation_catalog_func: Callable[[], dict] = maintenance_operation_catalog,
+    maintenance_operation_run_func: Callable[..., dict] = run_maintenance_operation,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -44,6 +51,22 @@ def create_system_router(
     def run_maintenance_diagnostic(action_id: str) -> dict:
         try:
             return maintenance_diagnostic_run_func(action_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.get("/maintenance/operations")
+    def maintenance_operations() -> dict:
+        return maintenance_operation_catalog_func()
+
+    @router.post("/maintenance/operations/{action_id}/run")
+    def run_maintenance_operation_route(
+        action_id: str,
+        payload: MaintenanceOperationRunRequest,
+    ) -> dict:
+        try:
+            return maintenance_operation_run_func(action_id, confirmed=payload.confirmed)
+        except PermissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

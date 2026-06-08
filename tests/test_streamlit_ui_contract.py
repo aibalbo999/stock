@@ -334,6 +334,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "最近本機依賴啟動" in source
     assert "本機依賴修復指引" in source
     assert "本機依賴狀態" in source
+    assert 'load_api_json_or_default(\n        "/maintenance/operations"' in source
+    assert "def maintenance_operation_rows(" in source
+    assert "本機依賴操作" in source
+    assert "選擇維護操作" in source
+    assert "confirm_maintenance_operation" in source
+    assert "maintenance_run_operation" in source
+    assert 'f"/maintenance/operations/{selected_operation_id}/run"' in source
+    assert '"confirmed": True' in source
+    assert "timeout=300" in source
     assert "def external_deployment_readiness_rows(" in source
     assert "def local_dependency_status_rows(" in source
     assert "def local_dependency_last_start_rows(" in source
@@ -343,7 +352,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"本機指令"' in source
     assert "local_dependency_wait" in source
     assert '"驗證指令"' in source
-    assert "render_external_deployment_panel(upgrade_audit, service_snapshot)" in source
+    assert "render_external_deployment_panel(\n        upgrade_audit," in source
+    assert "maintenance_operations,\n    )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source
     assert "render_background_task_observability_panel(\n        service_snapshot," in source
     assert "maintenance_diagnostics,\n    )" in source

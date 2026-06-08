@@ -73,6 +73,14 @@ include = ["app*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+filterwarnings = [
+  # FastAPI's TestClient still imports Starlette's httpx-backed compatibility layer.
+  'ignore:Using `httpx` with `starlette\.testclient` is deprecated; install `httpx2` instead\.:Warning',
+  # PyMuPDF 1.27 emits SWIG import deprecations on Python 3.13; Visual RAG behavior is tested separately.
+  'ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning',
+  'ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning',
+  'ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning',
+]
 
 [tool.security_scan]
 command = "python scripts/security_scan.py"

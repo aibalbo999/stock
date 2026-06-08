@@ -51,8 +51,15 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_task_queue_source = Path("app/services/status_task_queue.py").read_text()
+    status_task_queue_sources_source = Path(
+        "app/services/status_task_queue_sources.py"
+    ).read_text()
 
     assert status["task_queue"]["collector_path"] == "app/services/status_task_queue.py"
+    assert status["task_queue"]["task_queue_source_diagnostics_extracted"] is True
+    assert status["task_queue"]["task_queue_source_diagnostics_path"] == (
+        "app/services/status_task_queue_sources.py"
+    )
     assert status["task_queue"]["broker_ok"] == status["redis"]["ok"]
     assert status["task_queue"]["backend_ok"] == status["redis"]["ok"]
     assert status["task_queue"]["submission_contract_ready"] is True
@@ -149,6 +156,8 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         in service_status_source
     )
     assert "def task_queue_status(" in status_task_queue_source
+    assert "def _asyncio_run_call_locations(" not in status_task_queue_source
+    assert "def task_queue_source_diagnostics(" in status_task_queue_sources_source
 
 
 def test_thin_api_controller_architecture_capability_evidence(service_status_snapshot) -> None:
@@ -239,6 +248,7 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert task_queue_arch["evidence"]["processing_ready"] == status["task_queue"]["processing_ready"]
     assert task_queue_arch["evidence"]["worker_online"] == status["task_queue"]["worker_online"]
     assert "worker_nodes" in task_queue_arch["evidence"]
+    assert task_queue_arch["evidence"]["task_queue_source_diagnostics_extracted"] is True
     assert task_queue_arch["evidence"]["task_async_bridge_guard_present"] is True
     assert task_queue_arch["evidence"]["task_async_bridge"]["direct_asyncio_run_count"] == 0
     assert task_queue_arch["evidence"]["app_asyncio_run_policy_ready"] is True

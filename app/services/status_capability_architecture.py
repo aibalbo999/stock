@@ -66,6 +66,7 @@ def architecture_capabilities(
             "ready"
             if task_queue_status.get("ready")
             and task_queue_status.get("submission_contract_ready")
+            and task_queue_status.get("task_queue_source_diagnostics_extracted")
             and task_queue_status.get("task_async_bridge_guard_present")
             and task_queue_status.get("app_asyncio_run_policy_ready")
             and task_queue_status.get("compose_runtime_env_passthrough_ready")
@@ -91,6 +92,12 @@ def architecture_capabilities(
                 "exported_tasks_present": task_queue_status.get("exported_tasks_present"),
                 "missing_task_exports": task_queue_status.get("missing_task_exports"),
                 "task_names_match_expected": task_queue_status.get("task_names_match_expected"),
+                "task_queue_source_diagnostics_extracted": task_queue_status.get(
+                    "task_queue_source_diagnostics_extracted"
+                ),
+                "task_queue_source_diagnostics_path": task_queue_status.get(
+                    "task_queue_source_diagnostics_path"
+                ),
                 "task_async_bridge_guard_present": task_queue_status.get(
                     "task_async_bridge_guard_present"
                 ),

@@ -28,7 +28,12 @@ from app.services.report_financial_assessment import (
     valuation_position_label,
 )
 from app.services.report_financial_narrative import financial_statement_summary
-from app.services import report_allocation, report_company_narrative, report_formatting
+from app.services import (
+    report_allocation,
+    report_company_narrative,
+    report_formatting,
+    report_scope_sections,
+)
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_decision_rules import (
     current_price_label,
@@ -1678,6 +1683,29 @@ def test_report_allocation_logic_lives_outside_generator() -> None:
     )
     assert ReportGenerator._profile_label(request) == report_allocation.profile_label(request)
     assert ReportGenerator._downside_gate(request) == report_allocation.downside_gate(request)
+
+
+def test_scope_section_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    scope_source = Path("app/services/report_scope_sections.py").read_text()
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 10),
+        revenue=349567000000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=18.5,
+        source="FinMind TaiwanStockMonthRevenue",
+    )
+
+    assert "report_scope_sections" in generator_source
+    assert "def render_scope(" in scope_source
+    assert "def render_revenue_check(" in scope_source
+    assert "可先呼叫 /market/refresh" not in generator_source
+    assert ReportGenerator._render_revenue_check(["2330"], [revenue]) == report_scope_sections.render_revenue_check(
+        ["2330"],
+        [revenue],
+    )
 
 
 def test_valuation_position_and_financial_confidence_labels() -> None:

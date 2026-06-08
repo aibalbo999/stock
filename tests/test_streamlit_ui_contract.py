@@ -357,6 +357,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_smoke_commands(" in source
     assert "def external_deployment_warning_rows(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in source
+    assert "def task_failure_action_route_rows(" in source
+    assert "失敗處理路徑" in source
+    assert "外部配置缺失" in source
     assert "def task_retry_options(" in source
     assert "def task_status_diagnostic_rows(" in source
     assert '"category": row.get("error_category")' in source

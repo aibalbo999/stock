@@ -273,8 +273,10 @@ def frontend_status() -> dict:
         "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows("
         in task_failure_diagnostics_source
         and "def task_retry_options(" in task_failure_diagnostics_source
+        and "def task_failure_action_route_rows(" in task_failure_diagnostics_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source
         and "task_retry_options(task_summary)" in ui_source
+        and "task_failure_action_route_rows(task_summary)" in ui_source
         and 'f"/tasks/{selected_retry_task_id}/retry"' in ui_source
         and "render_task_status_panel(" in ui_source,
         "ui_task_failure_diagnostics_extracted": (ui_dir / "task_failure_diagnostics.py").exists()
@@ -291,6 +293,12 @@ def frontend_status() -> dict:
         and '"next_steps": _task_next_steps_text(row)' in task_failure_diagnostics_source
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
+        "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
+        in task_failure_diagnostics_source
+        and "一鍵重試" in task_failure_diagnostics_source
+        and "外部配置缺失" in task_failure_diagnostics_source
+        and "需人工處理" in task_failure_diagnostics_source
+        and "失敗處理路徑" in ui_source,
         "ui_task_failure_trend_enabled": 'task_summary.get("error_category_daily")' in ui_source
         and "失敗原因趨勢" in ui_source,
         "ui_task_failure_alerts_enabled": 'task_summary.get("alerts")' in ui_source

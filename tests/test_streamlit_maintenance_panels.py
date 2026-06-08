@@ -177,10 +177,28 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error": "missing target",
                 "started_at": "2026-06-07T11:00:00",
             },
+            {
+                "id": 24,
+                "operation": "data_operation",
+                "status": "failed",
+                "task_id": "task-queue",
+                "retryable": False,
+                "retry_kind": None,
+                "error_category": "task_queue",
+                "error_severity": "error",
+                "error_summary": "Redis/Celery queue 或 worker 異常",
+                "next_steps": [
+                    "確認 /services/status 的 task_queue.ready 與 worker_online。",
+                    "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
+                ],
+                "error": "worker offline",
+                "started_at": "2026-06-07T12:00:00",
+            },
         ]
     }
 
     rows = helpers["task_failure_drilldown_rows"](task_summary)
+    action_rows = helpers["task_failure_action_route_rows"](task_summary)
     options = helpers["task_retry_options"](task_summary)
 
     assert rows[0]["run_id"] == 22
@@ -193,10 +211,35 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     )
     assert rows[0]["retry"] == "可重試"
     assert rows[0]["retry_kind"] == "report_generation"
+    assert rows[0]["action_route"] == "一鍵重試"
+    assert "維護頁直接重試" in rows[0]["action_route_detail"]
     assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
     assert rows[1]["retry"] == "需人工"
     assert rows[1]["retry_kind"] == "-"
+    assert rows[1]["action_route"] == "需人工處理"
     assert rows[1]["next_steps"] == "-"
+    assert rows[2]["action_route"] == "外部配置缺失"
+    assert "Redis/Celery" in rows[2]["action_route_detail"]
+    assert action_rows == [
+        {
+            "處理路徑": "一鍵重試",
+            "數量": 1,
+            "說明": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
+            "代表任務": "report_generation｜task-failed",
+        },
+        {
+            "處理路徑": "外部配置缺失",
+            "數量": 1,
+            "說明": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+            "代表任務": "data_operation｜task-queue",
+        },
+        {
+            "處理路徑": "需人工處理",
+            "數量": 1,
+            "說明": "payload、輸入範圍或取消狀態需人工檢查，修正後從原工作流程重送。",
+            "代表任務": "after_close_report_update｜task-after-close",
+        },
+    ]
     assert options == [
         {
             "task_id": "task-failed",

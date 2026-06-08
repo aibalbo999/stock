@@ -180,6 +180,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_action_routes_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_trend_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_alerts_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_panel_extracted"] is True

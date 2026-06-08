@@ -5,6 +5,7 @@ import streamlit as st
 from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_task_post
 from app.ui.task_failure_diagnostics import (
+    task_failure_action_route_rows,
     task_failure_drilldown_rows,
     task_retry_options,
 )
@@ -86,6 +87,10 @@ def _render_task_failure_drilldown(task_summary: dict) -> None:
     failure_rows = task_failure_drilldown_rows(task_summary)
     if failure_rows:
         st.caption("近期失敗 / 取消")
+        action_route_rows = task_failure_action_route_rows(task_summary)
+        if action_route_rows:
+            st.caption("失敗處理路徑")
+            st.dataframe(action_route_rows, width="stretch", hide_index=True)
         st.dataframe(failure_rows, width="stretch", hide_index=True)
         retry_options = task_retry_options(task_summary)
         if retry_options:

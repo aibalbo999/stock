@@ -70,3 +70,18 @@ def submit_data_operation_task(
             operation=operation,
             context=error_context,
         )
+
+
+def submit_report_follow_up_task(
+    services: Any,
+    report_id: int,
+    payload: dict,
+    *,
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    try:
+        return services.run_task_api().queue_report_follow_up(report_id, payload)
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation="report_follow_up")
+    except Exception as exc:
+        raise_task_submission_failed(exc, operation="report_follow_up")

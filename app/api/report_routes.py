@@ -6,11 +6,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
+from app.api.operation_task_submission import submit_report_follow_up_task
 from app.api.schemas import FollowUpRunRequest, ReportFollowUpTaskRequest
-from app.api.task_submission_errors import (
-    raise_task_queue_unavailable,
-    raise_task_submission_failed,
-)
 from app.models.schemas import ReportRequest, ReportResponse
 
 
@@ -106,15 +103,12 @@ def create_report_router(
         payload: Optional[ReportFollowUpTaskRequest] = None,
         services: Any = Depends(services_dependency),
     ) -> dict:
-        try:
-            return services.run_task_api().queue_report_follow_up(
-                report_id,
-                (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
-            )
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="report_follow_up")
-        except Exception as exc:
-            raise_task_submission_failed(exc, operation="report_follow_up")
+        return submit_report_follow_up_task(
+            services,
+            report_id,
+            (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.delete("/reports/{report_id}")
     def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:

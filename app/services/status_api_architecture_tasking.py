@@ -70,8 +70,7 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
             and "def raise_task_queue_unavailable(" in task_submission_errors_source
             and task_submission_errors_source.count("task_submission_failed_detail(") >= 1
             and task_submission_errors_source.count("task_queue_unavailable_detail(") >= 1
-            and operation_task_submission_source.count("raise_task_submission_failed(") >= 3
-            and report_routes_source.count("raise_task_submission_failed(") >= 1
+            and operation_task_submission_source.count("raise_task_submission_failed(") >= 4
             and "background_task_submission_failed" in error_details_source
         ),
         "operation_task_submission_handlers_extracted": (
@@ -79,11 +78,14 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
             and "def submit_generate_report_task(" in operation_task_submission_source
             and "def submit_discovered_report_task(" in operation_task_submission_source
             and "def submit_data_operation_task(" in operation_task_submission_source
+            and "def submit_report_follow_up_task(" in operation_task_submission_source
             and "data_operation_error_context(" in operation_task_submission_source
             and "submit_generate_report_task(" in operations_routes_source
             and "submit_discovered_report_task(" in operations_routes_source
             and "submit_data_operation_task(" in operations_routes_source
+            and "submit_report_follow_up_task(" in report_routes_source
             and "raise_task_submission_failed(" not in operations_routes_source
+            and "raise_task_submission_failed(" not in report_routes_source
         ),
         "operation_task_submission_helper_path": "app/api/operation_task_submission.py",
         "task_submission_error_detail_path": "app/api/error_details.py",
@@ -108,8 +110,9 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
             and "submit_discovered_report_task(" in operations_routes_source,
             "data_operation": "payload.operation" in operations_routes_source
             and "submit_data_operation_task(" in operations_routes_source,
-            "report_follow_up": 'operation="report_follow_up"' in report_routes_source
-            and "raise_task_submission_failed" in report_routes_source,
+            "report_follow_up": 'operation="report_follow_up"'
+            in operation_task_submission_source
+            and "submit_report_follow_up_task(" in report_routes_source,
         },
     }
 

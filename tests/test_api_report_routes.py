@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -177,6 +179,17 @@ def test_report_router_queues_follow_up_task() -> None:
     assert captured["payload"]["rerun_report"] is True
     assert captured["payload"]["purpose"] == "required"
     assert captured["payload"]["news_limit"] == 20
+
+
+def test_report_router_uses_task_submission_helper_for_follow_up() -> None:
+    report_routes_source = Path("app/api/report_routes.py").read_text()
+    helper_source = Path("app/api/operation_task_submission.py").read_text()
+
+    assert "submit_report_follow_up_task(" in report_routes_source
+    assert "raise_task_submission_failed(" not in report_routes_source
+    assert "raise_task_queue_unavailable(" not in report_routes_source
+    assert "def submit_report_follow_up_task(" in helper_source
+    assert 'operation="report_follow_up"' in helper_source
 
 
 def test_report_router_maps_follow_up_queue_errors_to_503() -> None:

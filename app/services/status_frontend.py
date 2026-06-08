@@ -27,6 +27,7 @@ def frontend_status() -> dict:
         ui_dir / "follow_up_status.py",
         ui_dir / "llm_quota_panel.py",
         ui_dir / "report_observability_panel.py",
+        ui_dir / "external_deployment_diagnostics.py",
         ui_dir / "maintenance_status.py",
         ui_dir / "analysis_workspace.py",
         ui_dir / "report_center.py",
@@ -72,6 +73,7 @@ def frontend_status() -> dict:
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     llm_quota_panel_source = _read_text(ui_dir / "llm_quota_panel.py")
     report_observability_panel_source = _read_text(ui_dir / "report_observability_panel.py")
+    external_deployment_source = _read_text(ui_dir / "external_deployment_diagnostics.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
     data_enrichment_source = "\n".join(
         _read_text(path)
@@ -200,22 +202,34 @@ def frontend_status() -> dict:
         and "task_queue_health_alert(service_snapshot)" in ui_source
         and "task_queue_smoke_command(service_snapshot)" in ui_source,
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
-        in maintenance_status_source
-        and "def external_deployment_smoke_commands(" in maintenance_status_source
+        in external_deployment_source
+        and "def external_deployment_smoke_commands(" in external_deployment_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
         and "external_deployment_smoke_commands(upgrade_audit)" in ui_source
-        and "def local_neo4j_operation_rows(" in maintenance_status_source
+        and "def local_neo4j_operation_rows(" in external_deployment_source
         and "local_neo4j_operation_rows(upgrade_audit)" in ui_source
         and "本機 Neo4j / GraphRAG 操作提示" in ui_source
-        and "def local_unlocker_operation_rows(" in maintenance_status_source
+        and "def local_unlocker_operation_rows(" in external_deployment_source
         and "local_unlocker_operation_rows(upgrade_audit)" in ui_source
         and "本機 unlocker 操作提示" in ui_source
-        and "def structured_filing_api_operation_rows(" in maintenance_status_source
+        and "def structured_filing_api_operation_rows(" in external_deployment_source
         and "structured_filing_api_operation_rows(upgrade_audit)" in ui_source
         and "結構化文件 API 操作提示" in ui_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
+        "ui_external_deployment_diagnostics_extracted": (
+            ui_dir / "external_deployment_diagnostics.py"
+        ).exists()
+        and "from app.ui.external_deployment_diagnostics import (" in ui_source
+        and "def external_deployment_warning_rows(" in external_deployment_source
+        and "def high_risk_filing_unlocker_rows(" in external_deployment_source
+        and "def local_neo4j_operation_rows(" in external_deployment_source
+        and "def structured_filing_api_operation_rows(" in external_deployment_source
+        and "def external_deployment_warning_rows(" not in maintenance_status_source
+        and "def local_neo4j_operation_rows(" not in maintenance_status_source
+        and "def structured_filing_api_operation_rows(" not in maintenance_status_source,
+        "ui_external_deployment_diagnostics_path": "app/ui/external_deployment_diagnostics.py",
         "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in maintenance_status_source
         and "def task_retry_options(" in maintenance_status_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source

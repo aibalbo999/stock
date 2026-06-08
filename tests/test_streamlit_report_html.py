@@ -18,6 +18,7 @@ REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
+EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE = Path("app/ui/external_deployment_diagnostics.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
@@ -35,6 +36,7 @@ UI_SOURCE_FILES = [
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
     REPORT_OBSERVABILITY_PANEL_SOURCE,
+    EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
@@ -59,6 +61,7 @@ def load_report_helpers() -> dict:
     report_source = REPORT_HTML_SOURCE.read_text()
     follow_up_source = FOLLOW_UP_STATUS_SOURCE.read_text()
     maintenance_source = MAINTENANCE_STATUS_SOURCE.read_text()
+    external_deployment_source = EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     namespace = {
         "__file__": str(REPORT_CANDIDATE_AUDIT_SOURCE),
     }
@@ -67,6 +70,7 @@ def load_report_helpers() -> dict:
     exec(report_source, namespace)
     exec(follow_up_source, namespace)
     exec(maintenance_source, namespace)
+    exec(external_deployment_source, namespace)
     return namespace
 
 
@@ -102,6 +106,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_status import (" in source
+    assert "from app.ui.external_deployment_diagnostics import (" in source
     assert "from app.ui.report_observability_panel import render_report_observability_panel" in source
     assert "from app.ui.follow_up_status import (" in source
     assert "from app.ui.api_client import (" in source
@@ -169,12 +174,17 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_health_alert(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_queue_smoke_command(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def external_deployment_warning_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def external_deployment_smoke_commands(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def high_risk_filing_unlocker_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def local_neo4j_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def local_unlocker_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def structured_filing_api_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def external_deployment_warning_rows(" not in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def external_deployment_smoke_commands(" not in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def high_risk_filing_unlocker_rows(" in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert "def external_deployment_warning_rows(" in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert "def external_deployment_smoke_commands(" in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert "def local_neo4j_operation_rows(" in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert "def local_unlocker_operation_rows(" in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert (
+        "def structured_filing_api_operation_rows("
+        in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def render_report_observability_panel(" in REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
@@ -313,6 +323,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_alert(" in source
     assert "def external_deployment_warning_rows(" in source
     assert "def external_deployment_smoke_commands(" in source
+    assert "def external_deployment_warning_rows(" not in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in source
     assert "def task_retry_options(" in source
     assert "def task_status_diagnostic_rows(" in source

@@ -140,6 +140,40 @@ def exception_status_code(exc: Exception) -> int | None:
     return int(status) if status is not None else None
 
 
+def llm_error_retryable(status: int | None) -> bool:
+    return True if status is None else int(status) in RETRYABLE_HTTP_STATUSES
+
+
+def llm_should_stop_after_status(
+    status: int | None,
+    *,
+    use_model_fallback: bool,
+) -> bool:
+    if status is not None and int(status) not in ROTATABLE_HTTP_STATUSES:
+        return True
+    return status == 429 and use_model_fallback
+
+
+def llm_should_retry_after_error(
+    status: int | None,
+    *,
+    attempt: int,
+    max_retries: int,
+    deadline: float,
+    use_model_fallback: bool,
+    require_retryable_status: bool,
+    now: float | None = None,
+) -> bool:
+    if llm_should_stop_after_status(status, use_model_fallback=use_model_fallback):
+        return False
+    if attempt >= max(0, int(max_retries)):
+        return False
+    if require_retryable_status and not llm_error_retryable(status):
+        return False
+    now_value = monotonic() if now is None else float(now)
+    return now_value < deadline
+
+
 def model_quota_cooldown_remaining(model: str, *, now: float | None = None) -> float:
     key = model_quota_cooldown_key(model)
     now_value = monotonic() if now is None else float(now)
@@ -193,8 +227,11 @@ __all__ = [
     "daily_quota_exhausted_model_keys",
     "exception_status_code",
     "llm_attempt_record",
+    "llm_error_retryable",
     "llm_failure_result",
     "llm_retry_delay_seconds",
+    "llm_should_retry_after_error",
+    "llm_should_stop_after_status",
     "model_daily_quota_exhausted",
     "model_quota_cooldown_remaining",
     "start_model_quota_cooldown",

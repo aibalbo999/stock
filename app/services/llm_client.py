@@ -37,15 +37,18 @@ from app.services.llm_runtime import (
     DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS,
     DEFAULT_TOTAL_TIMEOUT_SECONDS,
     LLMResult,
-    RETRYABLE_HTTP_STATUSES,
-    ROTATABLE_HTTP_STATUSES,
+    RETRYABLE_HTTP_STATUSES as RETRYABLE_HTTP_STATUSES,
+    ROTATABLE_HTTP_STATUSES as ROTATABLE_HTTP_STATUSES,
     _model_quota_cooldowns as _model_quota_cooldowns,
     _model_quota_cooldowns_lock as _model_quota_cooldowns_lock,
     daily_quota_exhausted_model_keys as _runtime_daily_quota_exhausted_model_keys,
     exception_status_code as _exception_status_code,
     llm_attempt_record as _llm_attempt_record,
+    llm_error_retryable as _llm_error_retryable,
     llm_failure_result as _llm_failure_result,
     llm_retry_delay_seconds as _llm_retry_delay_seconds,
+    llm_should_retry_after_error as _llm_should_retry_after_error,
+    llm_should_stop_after_status as _llm_should_stop_after_status,
     model_daily_quota_exhausted as _runtime_model_daily_quota_exhausted,
     model_quota_cooldown_remaining as _runtime_model_quota_cooldown_remaining,
     start_model_quota_cooldown as _runtime_start_model_quota_cooldown,
@@ -313,19 +316,22 @@ class LLMClient:
                                 attempt=attempt + 1,
                                 outcome="http_error",
                                 status=status,
-                                retryable=status in RETRYABLE_HTTP_STATUSES,
+                                retryable=_llm_error_retryable(status),
                             )
                         )
-                        if status not in ROTATABLE_HTTP_STATUSES:
+                        if _llm_should_stop_after_status(
+                            status,
+                            use_model_fallback=use_model_fallback,
+                        ):
                             should_stop = True
                             break
-                        if status == 429 and use_model_fallback:
-                            should_stop = True
-                            break
-                        if (
-                            status in RETRYABLE_HTTP_STATUSES
-                            and attempt < max_retries
-                            and monotonic() < deadline
+                        if _llm_should_retry_after_error(
+                            status,
+                            attempt=attempt,
+                            max_retries=max_retries,
+                            deadline=deadline,
+                            use_model_fallback=use_model_fallback,
+                            require_retryable_status=True,
                         ):
                             self._sleep_before_retry(exc.response, attempt)
                             continue
@@ -345,7 +351,14 @@ class LLMClient:
                                 retryable=True,
                             )
                         )
-                        if attempt < max_retries and monotonic() < deadline:
+                        if _llm_should_retry_after_error(
+                            None,
+                            attempt=attempt,
+                            max_retries=max_retries,
+                            deadline=deadline,
+                            use_model_fallback=False,
+                            require_retryable_status=False,
+                        ):
                             self._sleep_before_retry(None, attempt)
                             continue
                         break
@@ -474,18 +487,23 @@ class LLMClient:
                                 outcome="http_error" if status is not None else "sdk_error",
                                 status=status,
                                 error=None if status is not None else exc.__class__.__name__,
-                                retryable=(status in RETRYABLE_HTTP_STATUSES)
-                                if status is not None
-                                else True,
+                                retryable=_llm_error_retryable(status),
                             )
                         )
-                        if status is not None and status not in ROTATABLE_HTTP_STATUSES:
+                        if _llm_should_stop_after_status(
+                            status,
+                            use_model_fallback=use_model_fallback,
+                        ):
                             should_stop = True
                             break
-                        if status == 429 and use_model_fallback:
-                            should_stop = True
-                            break
-                        if attempt < max_retries and monotonic() < deadline:
+                        if _llm_should_retry_after_error(
+                            status,
+                            attempt=attempt,
+                            max_retries=max_retries,
+                            deadline=deadline,
+                            use_model_fallback=use_model_fallback,
+                            require_retryable_status=False,
+                        ):
                             self._sleep_before_retry(getattr(exc, "response", None), attempt)
                             continue
                         break
@@ -632,17 +650,25 @@ class LLMClient:
                                 outcome="http_error" if status is not None else "provider_error",
                                 status=status,
                                 error=None if status is not None else exc.__class__.__name__,
-                                retryable=(status in RETRYABLE_HTTP_STATUSES)
-                                if status is not None
-                                else True,
+                                retryable=_llm_error_retryable(status),
                             )
                         )
-                        if status is not None and status not in ROTATABLE_HTTP_STATUSES:
+                        if _llm_should_stop_after_status(
+                            status,
+                            use_model_fallback=False,
+                        ):
                             break
                         if status == 429 and use_fast_model_chain_fallback:
                             stop_model_after_quota = True
                             break
-                        if attempt < max_retries and monotonic() < deadline:
+                        if _llm_should_retry_after_error(
+                            status,
+                            attempt=attempt,
+                            max_retries=max_retries,
+                            deadline=deadline,
+                            use_model_fallback=use_fast_model_chain_fallback,
+                            require_retryable_status=False,
+                        ):
                             self._sleep_before_retry(getattr(exc, "response", None), attempt)
                             continue
                         break
@@ -786,9 +812,7 @@ class LLMClient:
                             outcome="http_error" if status is not None else "provider_error",
                             status=status,
                             error=None if status is not None else exc.__class__.__name__,
-                            retryable=(status in RETRYABLE_HTTP_STATUSES)
-                            if status is not None
-                            else True,
+                            retryable=_llm_error_retryable(status),
                         )
                     )
 
@@ -880,13 +904,14 @@ class LLMClient:
                             attempt=1,
                             outcome="http_error",
                             status=status,
-                            retryable=status in RETRYABLE_HTTP_STATUSES,
+                            retryable=_llm_error_retryable(status),
                         )
                     )
                     errors.append(f"{model_name} key[{key_index}] vision HTTP {status}")
-                    if status is not None and status not in ROTATABLE_HTTP_STATUSES:
-                        break
-                    if status == 429 and use_model_fallback:
+                    if _llm_should_stop_after_status(
+                        status,
+                        use_model_fallback=use_model_fallback,
+                    ):
                         break
                 except httpx.HTTPError as exc:
                     attempts.append(

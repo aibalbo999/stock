@@ -107,7 +107,78 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert "def exception_status_code(" in runtime_source
     assert "def model_quota_cooldown_remaining(" in runtime_source
     assert "def llm_failure_result(" in runtime_source
+    assert "def llm_should_retry_after_error(" in runtime_source
+    assert "def llm_should_stop_after_status(" in runtime_source
     assert "fallback=True" not in client_source
+
+
+def test_llm_runtime_error_retry_helpers_capture_provider_retry_policy() -> None:
+    assert llm_runtime.llm_error_retryable(None) is True
+    assert llm_runtime.llm_error_retryable(429) is True
+    assert llm_runtime.llm_error_retryable(401) is False
+    assert llm_runtime.llm_should_stop_after_status(400, use_model_fallback=False) is True
+    assert llm_runtime.llm_should_stop_after_status(429, use_model_fallback=True) is True
+    assert llm_runtime.llm_should_stop_after_status(429, use_model_fallback=False) is False
+    assert (
+        llm_runtime.llm_should_retry_after_error(
+            503,
+            attempt=0,
+            max_retries=1,
+            deadline=20.0,
+            now=10.0,
+            use_model_fallback=False,
+            require_retryable_status=True,
+        )
+        is True
+    )
+    assert (
+        llm_runtime.llm_should_retry_after_error(
+            401,
+            attempt=0,
+            max_retries=1,
+            deadline=20.0,
+            now=10.0,
+            use_model_fallback=False,
+            require_retryable_status=True,
+        )
+        is False
+    )
+    assert (
+        llm_runtime.llm_should_retry_after_error(
+            401,
+            attempt=0,
+            max_retries=1,
+            deadline=20.0,
+            now=10.0,
+            use_model_fallback=False,
+            require_retryable_status=False,
+        )
+        is True
+    )
+    assert (
+        llm_runtime.llm_should_retry_after_error(
+            503,
+            attempt=1,
+            max_retries=1,
+            deadline=20.0,
+            now=10.0,
+            use_model_fallback=False,
+            require_retryable_status=True,
+        )
+        is False
+    )
+    assert (
+        llm_runtime.llm_should_retry_after_error(
+            503,
+            attempt=0,
+            max_retries=1,
+            deadline=10.0,
+            now=10.0,
+            use_model_fallback=False,
+            require_retryable_status=True,
+        )
+        is False
+    )
 
 
 def test_llm_runtime_failure_result_preserves_prior_attempts() -> None:

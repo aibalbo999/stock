@@ -199,6 +199,35 @@ def test_detect_secrets_hook_can_update_baseline_when_requested(monkeypatch, tmp
     ]
 
 
+def test_detect_secrets_hook_allows_temp_baseline_line_updates(monkeypatch, tmp_path) -> None:
+    baseline = tmp_path / ".secrets.baseline"
+    baseline.write_text('{"results":{}}', encoding="utf-8")
+    path = tmp_path / "sample.py"
+    path.write_text("token = 'example'", encoding="utf-8")
+    captured = {}
+
+    def fake_engine_command(engine: str):
+        return "/bin/detect-secrets-hook" if engine == "detect-secrets-hook" else None
+
+    def fake_runner(command, **kwargs):
+        captured["baseline_arg"] = command[command.index("--baseline") + 1]
+        return subprocess.CompletedProcess(
+            command,
+            2,
+            stdout="",
+            stderr=(
+                "The baseline file was updated.\n"
+                f"Please `git add {captured['baseline_arg']}`, thank you.\n"
+            ),
+        )
+
+    monkeypatch.setattr("scripts.security_scan.external_engine_command", fake_engine_command)
+
+    assert run_detect_secrets([baseline, path], tmp_path, runner=fake_runner, baseline=baseline) == []
+    assert captured["baseline_arg"] != ".secrets.baseline"
+    assert baseline.read_text(encoding="utf-8") == '{"results":{}}'
+
+
 def test_detect_secrets_hook_preserves_actionable_non_json_errors(monkeypatch, tmp_path) -> None:
     baseline = tmp_path / ".secrets.baseline"
     baseline.write_text('{"results":{}}', encoding="utf-8")

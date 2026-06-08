@@ -345,6 +345,11 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
         if isinstance(evidence.get("request_contract"), dict)
         else {}
     )
+    sample_contract = (
+        runtime.get("sample_contract")
+        if isinstance(runtime.get("sample_contract"), dict)
+        else {}
+    )
     return [
         {
             "項目": "Provider profile",
@@ -354,9 +359,9 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
         },
         {
             "項目": "Sample contract",
-            "狀態": "可執行",
+            "狀態": str(sample_contract.get("status") or "可執行"),
             "指令": _structured_filing_sample_command(runtime),
-            "說明": "先用本機樣本 JSON 驗證 provider payload 是否可轉成 CompanyFilingDocument。",
+            "說明": _structured_filing_sample_contract_detail(sample_contract),
         },
         {
             "項目": "Live smoke",
@@ -737,6 +742,16 @@ def _structured_filing_sample_command(runtime: dict) -> str:
         runtime.get("sample_contract_cli")
         or ".venv/bin/python scripts/structured_company_filing_smoke.py --sample-json examples/structured_company_filing_sample.json --ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
+
+
+def _structured_filing_sample_contract_detail(sample_contract: dict) -> str:
+    if not sample_contract:
+        return "先用本機樣本 JSON 驗證 provider payload 是否可轉成 CompanyFilingDocument。"
+    raw_rows = int(sample_contract.get("raw_row_count") or 0)
+    documents = int(sample_contract.get("document_count") or 0)
+    errors = int(sample_contract.get("error_count") or 0)
+    mode = str(sample_contract.get("mode") or "sample_json_contract")
+    return f"{mode}；raw_rows={raw_rows}；documents={documents}；errors={errors}。"
 
 
 def _structured_filing_live_smoke_command(runtime: dict) -> str:

@@ -6,6 +6,7 @@ from hashlib import sha1
 import importlib
 from ipaddress import ip_address
 from io import BytesIO
+import json
 from pathlib import Path
 import re
 import socket
@@ -64,6 +65,7 @@ MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
+STRUCTURED_API_SAMPLE_CONTRACT_PATH = Path("examples/structured_company_filing_sample.json")
 BROWSER_RENDER_PROVIDERS = {"browserless", "generic", "flaresolverr", "scrapingbee", "brightdata"}
 HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS = (
     "mops.twse.com.tw",
@@ -515,6 +517,7 @@ def company_filing_structured_api_status() -> dict:
     configured = bool(provider and endpoint)
     parsed = urlparse(endpoint)
     profile = structured_api_provider_profile(provider)
+    sample_contract = structured_api_sample_contract_status()
     return {
         "configured": configured,
         "provider": provider or None,
@@ -571,11 +574,88 @@ def company_filing_structured_api_status() -> dict:
             "--sample-json examples/structured_company_filing_sample.json "
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
         ),
+        "sample_contract": sample_contract,
+        "sample_contract_ready": bool(sample_contract.get("ready")),
         "fallback_reason": None
         if configured and parsed.scheme in {"http", "https"} and parsed.hostname
         else "missing_structured_api_provider_or_url"
         if not configured
         else "invalid_structured_api_url",
+    }
+
+
+def structured_api_sample_contract_status(sample_path: Path | None = None) -> dict:
+    path = sample_path or Path(__file__).resolve().parents[2] / STRUCTURED_API_SAMPLE_CONTRACT_PATH
+    smoke_cli = (
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--sample-json examples/structured_company_filing_sample.json "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+    )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "ready": False,
+            "mode": "sample_json_contract",
+            "sample_path": str(path),
+            "raw_row_count": 0,
+            "document_count": 0,
+            "error_count": 1,
+            "errors": [{"category": "sample_json_unreadable", "message": str(exc)}],
+            "smoke_cli": smoke_cli,
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "status": "failed",
+            "ready": False,
+            "mode": "sample_json_contract",
+            "sample_path": str(path),
+            "raw_row_count": 0,
+            "document_count": 0,
+            "error_count": 1,
+            "errors": [{"category": "sample_json_invalid", "message": str(exc)}],
+            "smoke_cli": smoke_cli,
+        }
+
+    rows = structured_api_document_rows(payload)
+    parser = CompanyFilingFetcher()
+    documents: list[CompanyFilingDocument] = []
+    errors: list[dict] = []
+    for index, row in enumerate(rows):
+        document = parser._structured_api_row_to_document(
+            row,
+            ticker="2330",
+            company_name="台積電",
+            provider="sample",
+            document_types=("investor_presentation",),
+        )
+        if document:
+            documents.append(document)
+        else:
+            errors.append(
+                {
+                    "row_index": index,
+                    "category": "row_not_convertible",
+                    "required_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
+                }
+            )
+    if documents:
+        status = "ready"
+    elif rows:
+        status = "degraded"
+    else:
+        status = "failed"
+    return {
+        "status": status,
+        "ready": status == "ready",
+        "mode": "sample_json_contract",
+        "sample_path": str(path),
+        "raw_row_count": len(rows),
+        "document_count": len(documents),
+        "error_count": len(errors),
+        "errors": errors[:10],
+        "smoke_cli": smoke_cli,
     }
 
 

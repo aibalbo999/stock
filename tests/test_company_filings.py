@@ -218,6 +218,11 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
         )
     )
+    assert status["sample_contract_ready"] is True
+    assert status["sample_contract"]["status"] == "ready"
+    assert status["sample_contract"]["raw_row_count"] >= 1
+    assert status["sample_contract"]["document_count"] >= 1
+    assert status["sample_contract"]["mode"] == "sample_json_contract"
     assert status["fallback_reason"] is None
 
 

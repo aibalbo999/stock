@@ -167,6 +167,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "structured_company_filing_sample.json" in structured_api["evidence"]["runtime"][
         "sample_contract_cli"
     ]
+    assert structured_api["evidence"]["runtime"]["sample_contract_ready"] is True
+    assert structured_api["evidence"]["runtime"]["sample_contract"]["status"] == "ready"
+    assert structured_api["evidence"]["runtime"]["sample_contract"]["document_count"] >= 1
     assert matrix["data_business_logic"]["source_quality_weighting"]["status"] == "ready"
 
 

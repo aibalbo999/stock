@@ -170,6 +170,7 @@ def run_detect_secrets(
                 hook_baseline_path,
                 relative_paths,
                 root,
+                allow_baseline_update_notice=True,
                 runner=runner,
             )
     command = external_engine_command("detect-secrets")
@@ -197,6 +198,7 @@ def _run_detect_secrets_hook(
     relative_paths: list[str],
     root: Path,
     *,
+    allow_baseline_update_notice: bool = False,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> list[dict]:
     completed = runner(
@@ -215,15 +217,24 @@ def _run_detect_secrets_hook(
     if completed.returncode == 0:
         return []
     if completed.returncode != 1:
-        raise RuntimeError((completed.stderr or completed.stdout or "detect-secrets-hook failed").strip())
+        detail = (completed.stderr or completed.stdout or "detect-secrets-hook failed").strip()
+        if allow_baseline_update_notice and _detect_secrets_baseline_update_notice(detail):
+            return []
+        raise RuntimeError(detail)
     try:
         payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError as exc:
         detail = (completed.stdout or completed.stderr or "").strip()
+        if allow_baseline_update_notice and _detect_secrets_baseline_update_notice(detail):
+            return []
         if detail:
             raise RuntimeError(detail) from exc
         raise RuntimeError("detect-secrets-hook returned invalid JSON") from exc
     return detect_secrets_hook_findings(payload)
+
+
+def _detect_secrets_baseline_update_notice(detail: str) -> bool:
+    return "baseline file" in detail.lower() and "updated" in detail.lower()
 
 
 def _hook_baseline_arg(baseline_path: Path, root: Path) -> str:

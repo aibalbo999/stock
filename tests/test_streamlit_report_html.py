@@ -1523,6 +1523,14 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "--sample-json examples/structured_company_filing_sample.json "
                             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
                         ),
+                        "sample_contract": {
+                            "status": "ready",
+                            "ready": True,
+                            "mode": "sample_json_contract",
+                            "raw_row_count": 1,
+                            "document_count": 1,
+                            "error_count": 0,
+                        },
                         "smoke_cli": (
                             ".venv/bin/python scripts/structured_company_filing_smoke.py "
                             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
@@ -1547,7 +1555,9 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert rows[0]["狀態"] == "待設定"
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[0]["指令"]
     assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[0]["說明"]
+    assert rows[1]["狀態"] == "ready"
     assert "--sample-json examples/structured_company_filing_sample.json" in rows[1]["指令"]
+    assert "raw_rows=1；documents=1；errors=0" in rows[1]["說明"]
     assert rows[2]["狀態"] == "待設定"
     assert "structured_company_filing_smoke.py" in rows[2]["指令"]
     assert rows[3]["狀態"] == "GET"

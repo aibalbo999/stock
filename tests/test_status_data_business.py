@@ -72,6 +72,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
 
     assert matrix["data_business_logic"]["company_filing_fetch_hardening"]["status"] == "ready"
     filing_hardening = matrix["data_business_logic"]["company_filing_fetch_hardening"]["evidence"]
+    assert filing_hardening["capability_builder_path"] == (
+        "app/services/status_capability_data_business_filings.py"
+    )
     assert filing_hardening["effective_user_agent_count"] >= 1
     assert filing_hardening["anti_crawl_identity_enabled"] is True
     assert filing_hardening["user_agent_retry_rotation_enabled"] is True

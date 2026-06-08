@@ -50,6 +50,9 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
     ).read_text()
     architecture_source = Path("app/services/status_capability_architecture.py").read_text()
     data_business_source = Path("app/services/status_capability_data_business.py").read_text()
+    data_business_filings_source = Path(
+        "app/services/status_capability_data_business_filings.py"
+    ).read_text()
     helpers_source = Path("app/services/status_capability_helpers.py").read_text()
 
     assert "def api_controller_status(" in api_architecture_source
@@ -72,6 +75,10 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
 
     assert "def data_business_capabilities(" in data_business_source
     assert '"market_data_provider_fallback": _capability(' in data_business_source
+    assert "company_filing_capabilities(" in data_business_source
+    assert '"company_filing_fetch_hardening": _capability(' not in data_business_source
+    assert "def company_filing_capabilities(" in data_business_filings_source
+    assert '"company_filing_fetch_hardening": _capability(' in data_business_filings_source
     assert (
         "from app.services.status_market_data import _market_data_provider_readiness"
         in data_business_source

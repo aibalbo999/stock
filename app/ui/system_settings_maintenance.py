@@ -30,6 +30,7 @@ from app.ui.maintenance_status import (
     upgrade_audit_html,
     upgrade_audit_rows,
 )
+from app.ui.report_observability_panel import render_report_observability_panel
 from app.ui.task_status_panel import render_task_status_panel
 
 
@@ -193,38 +194,7 @@ def render_maintenance_tab() -> None:
             )
 
     with st.expander("報告生成觀測", expanded=False):
-        report_obs_totals = (
-            report_observability_summary.get("totals")
-            if isinstance(report_observability_summary.get("totals"), dict)
-            else {}
-        )
-        report_obs_cols = st.columns(5)
-        report_obs_cols[0].metric("狀態", report_observability_summary.get("status") or "-")
-        report_obs_cols[1].metric("最新版報告", int(report_obs_totals.get("report_count") or 0))
-        report_obs_cols[2].metric("Trace 覆蓋", int(report_obs_totals.get("trace_captured_count") or 0))
-        report_obs_cols[3].metric("平均 LLM ms", report_obs_totals.get("avg_llm_latency_ms") or "-")
-        report_obs_cols[4].metric("Keyword fallback", int(report_obs_totals.get("keyword_fallback_count") or 0))
-        report_obs_alerts = [
-            alert for alert in report_observability_summary.get("alerts") or [] if isinstance(alert, dict)
-        ]
-        for alert in report_obs_alerts:
-            message = str(alert.get("message") or alert.get("code") or "")
-            if alert.get("severity") == "warning":
-                st.warning(message)
-            elif alert.get("severity") == "error":
-                st.error(message)
-            else:
-                st.info(message)
-        report_bottleneck_rows = [
-            row for row in report_observability_summary.get("bottlenecks") or [] if isinstance(row, dict)
-        ]
-        if report_bottleneck_rows:
-            st.caption("優先優化清單")
-            st.dataframe(report_bottleneck_rows, width="stretch", hide_index=True)
-        if report_observability_summary.get("reports"):
-            st.dataframe(report_observability_summary["reports"], width="stretch", hide_index=True)
-        else:
-            st.info("尚未有可彙總的報告生成觀測資料。")
+        render_report_observability_panel(report_observability_summary)
 
     with st.expander("背景任務觀測", expanded=False):
         st.caption("Queue / Worker readiness")

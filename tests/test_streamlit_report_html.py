@@ -17,6 +17,7 @@ REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
+REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
@@ -33,6 +34,7 @@ UI_SOURCE_FILES = [
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
+    REPORT_OBSERVABILITY_PANEL_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),
@@ -100,6 +102,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_status import (" in source
+    assert "from app.ui.report_observability_panel import render_report_observability_panel" in source
     assert "from app.ui.follow_up_status import (" in source
     assert "from app.ui.api_client import (" in source
     assert "from app.ui.background_tasks import" in source
@@ -174,6 +177,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def structured_filing_api_operation_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" in MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def render_report_observability_panel(" in REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "def report_observability_metric_values(" in REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "def report_observability_bottleneck_rows(" in REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "report_obs_cols" not in source
     assert "def render_task_status_panel(" not in DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in TASK_STATUS_PANEL_SOURCE.read_text()
     report_center_source = Path("app/ui/report_center.py").read_text()
@@ -253,7 +260,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "報告生成觀測" in source
     assert "trace_captured_count" in source
     assert "keyword_fallback_count" in source
-    assert 'report_observability_summary.get("bottlenecks")' in source
+    assert 'summary.get("bottlenecks")' in source
+    assert "render_report_observability_panel(report_observability_summary)" in source
     assert "優先優化清單" in source
     assert "Queue / Worker readiness" in source
     assert "task_queue_health_rows(service_snapshot)" in source

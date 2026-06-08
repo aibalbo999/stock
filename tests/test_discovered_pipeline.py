@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models import Base
 from app.models.schemas import MarketSnapshot, NewsDocument, ReportResponse, Source
 from app.services.topic_discovery import TopicDiscoveryService
+from app.services import discovered_candidate_filings
 from app.services.discovered_pipeline import (
     DiscoveredTopicPipelineService,
     candidate_filing_revalidation_tickers,
@@ -39,7 +40,7 @@ class GenericTopicPayload(FakePayload):
     topic = "量子運算"
 
 
-def test_candidate_filing_revalidation_helpers_live_in_pipeline_service_layer() -> None:
+def test_candidate_filing_revalidation_helpers_live_outside_pipeline_orchestrator() -> None:
     candidates = [
         {"ticker": "2330", "status": "evidence_supported"},
         {"ticker": "1504", "status": "weak_evidence"},
@@ -47,6 +48,9 @@ def test_candidate_filing_revalidation_helpers_live_in_pipeline_service_layer() 
     ]
     payload = SimpleNamespace(analysis_mode="standard", deep_analysis=False)
 
+    assert should_revalidate_candidate_filings is discovered_candidate_filings.should_revalidate_candidate_filings
+    assert candidate_filing_revalidation_tickers is discovered_candidate_filings.candidate_filing_revalidation_tickers
+    assert company_filing_timeout_result is discovered_candidate_filings.company_filing_timeout_result
     assert should_revalidate_candidate_filings(candidates, min_supported_ratio=0.6) is True
     assert candidate_filing_revalidation_tickers(candidates, payload) == ["1504", "2308", "2330"]
 

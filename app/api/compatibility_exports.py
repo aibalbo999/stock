@@ -61,12 +61,12 @@ from app.services.discovered_market_data import (
     merge_financial_metric_history,
     merge_latest_by_ticker,
 )
-from app.services.discovered_pipeline import (
-    DiscoveredTopicPipelineService,
+from app.services.discovered_candidate_filings import (
     candidate_filing_revalidation_tickers,
     company_filing_timeout_result,
     should_revalidate_candidate_filings,
 )
+from app.services.discovered_pipeline import DiscoveredTopicPipelineService
 from app.services.discovered_report_builder import DiscoveredReportBuilderService
 from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import (

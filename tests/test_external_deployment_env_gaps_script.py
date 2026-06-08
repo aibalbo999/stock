@@ -108,6 +108,14 @@ def test_external_deployment_env_gap_script_uses_service_layer() -> None:
     assert "app.ui.external_deployment_env_keys" not in source
 
 
+def test_external_deployment_env_gap_service_reuses_readiness_service() -> None:
+    source = Path("app/services/external_deployment_env_gaps.py").read_text()
+
+    assert "from app.services.external_deployment_readiness import (" in source
+    assert "EXTERNAL_READINESS_METADATA = {" not in source
+    assert "def external_deployment_readiness_items(" not in source
+
+
 def test_external_deployment_env_gap_script_json_and_strict(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         external_deployment_env_gaps,

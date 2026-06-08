@@ -2,46 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-
-EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(
-    {
-        "smoke_cli",
-        "smoke_command",
-        "smoke_commands",
-        "sample_contract_cli",
-        "payload_dry_run_cli",
-        "import_smoke_cli",
-        "neo4j_graphrag_smoke_command",
-        "company_filing_render_smoke_command",
-        "structured_company_filing_smoke_command",
-    }
+from app.services.external_deployment_readiness import (
+    external_deployment_command_summary,
+    external_deployment_item_ready,
+    external_deployment_readiness_items,
+    external_deployment_readiness_metadata,
+    external_smoke_commands_from_payload,
+    string_list,
 )
-EXTERNAL_READINESS_METADATA = {
-    ("ai_rag", "neo4j_import"): {
-        "priority": "P1",
-        "impact": "GraphRAG payload 匯入與 live graph context。",
-    },
-    ("ai_rag", "graphrag_live_cypher_query"): {
-        "priority": "P1",
-        "impact": "LLM guarded Cypher、shortest-path 與上下游衝擊推理。",
-    },
-    ("ai_rag", "visual_rag"): {
-        "priority": "P2",
-        "impact": "掃描型 PDF、圖表與複雜財報頁面解析。",
-    },
-    ("data_business_logic", "company_filing_browser_or_proxy_fallback"): {
-        "priority": "P1",
-        "impact": "動態頁、被擋頁與一般公司文件 render fallback。",
-    },
-    ("data_business_logic", "company_filing_high_risk_unlocker"): {
-        "priority": "P0",
-        "impact": "MOPS、doc.twse、TWSE/TPEx 高風險文件入口。",
-    },
-    ("data_business_logic", "company_filing_structured_api_fallback"): {
-        "priority": "P1",
-        "impact": "法說會簡報、重大訊息與專業財經資料備援。",
-    },
-}
 EXTERNAL_ENV_KEY_HINTS = {
     "NEO4J_URI": {
         "default": "neo4j://localhost:7687",
@@ -258,98 +226,6 @@ def external_deployment_env_key_rows(
     return sorted(rows, key=_external_env_key_row_sort_key)
 
 
-def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
-    if not isinstance(upgrade_audit, dict):
-        return []
-    items_with_index: list[tuple[int, dict]] = []
-    seen: set[tuple[str, str]] = set()
-    index = 0
-    for source_key in ("checks", "failures", "warnings", "optional_warnings", "all_warnings"):
-        source_items = upgrade_audit.get(source_key)
-        if not isinstance(source_items, list):
-            continue
-        for raw_item in source_items:
-            if not isinstance(raw_item, dict) or not _is_external_readiness_item(raw_item):
-                continue
-            key = (str(raw_item.get("area") or ""), str(raw_item.get("capability") or ""))
-            if key in seen:
-                continue
-            seen.add(key)
-            item = dict(raw_item)
-            item["_warning_source"] = source_key
-            items_with_index.append((index, item))
-            index += 1
-    return [
-        item
-        for _, item in sorted(
-            items_with_index,
-            key=lambda indexed_item: _external_readiness_sort_key(
-                indexed_item[1],
-                indexed_item[0],
-            ),
-        )
-    ]
-
-
-def external_deployment_readiness_metadata(item: dict) -> dict:
-    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
-    metadata = EXTERNAL_READINESS_METADATA.get(key, {})
-    return {
-        "priority": str(metadata.get("priority") or "P2"),
-        "impact": str(metadata.get("impact") or item.get("detail") or "-"),
-    }
-
-
-def external_deployment_item_ready(item: dict) -> bool:
-    if item.get("severity") == "pass" or item.get("status") == "ready":
-        return True
-    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
-    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
-    if key == ("data_business_logic", "company_filing_high_risk_unlocker"):
-        return bool(
-            evidence.get("high_risk_mitigation_ready")
-            or evidence.get("unlocker_provider_ready")
-            or evidence.get("captcha_challenge_ready")
-        )
-    if key == ("data_business_logic", "company_filing_browser_or_proxy_fallback"):
-        return bool(
-            evidence.get("ready")
-            or evidence.get("browser_or_proxy_fallback_configured")
-            or evidence.get("browser_render_configured")
-            or evidence.get("playwright_render_configured")
-        )
-    return bool(
-        evidence.get("ready")
-        or evidence.get("connection_ok")
-        or evidence.get("neo4j_ready")
-        or evidence.get("unlocker_provider_ready")
-        or evidence.get("captcha_challenge_ready")
-        or evidence.get("browser_or_proxy_fallback_configured")
-        or evidence.get("playwright_render_configured")
-    )
-
-
-def external_deployment_command_summary(commands: list[str]) -> str:
-    if not commands:
-        return "-"
-    if len(commands) == 1:
-        return commands[0]
-    return f"{commands[0]}\n另有 {len(commands) - 1} 個 smoke 指令，見下方單項診斷指令。"
-
-
-def external_smoke_commands_from_payload(payload: object) -> list[str]:
-    commands: list[str] = []
-    _collect_external_smoke_commands(payload, commands)
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for command in commands:
-        if command in seen:
-            continue
-        seen.add(command)
-        deduped.append(command)
-    return deduped
-
-
 def _service_snapshot_external_env_items(service_snapshot: dict) -> list[dict]:
     if not isinstance(service_snapshot, dict):
         return []
@@ -481,24 +357,6 @@ def _service_env_item(
     }
 
 
-def _is_external_readiness_item(item: dict) -> bool:
-    if not item.get("external_integration"):
-        return False
-    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
-    return bool(item.get("deployment_check") or key in EXTERNAL_READINESS_METADATA)
-
-
-def _external_readiness_sort_key(item: dict, index: int) -> tuple[int, int, int]:
-    severity_order = {"fail": 0, "warn": 1, "pass": 2}
-    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-    metadata = external_deployment_readiness_metadata(item)
-    return (
-        severity_order.get(str(item.get("severity") or ""), 3),
-        priority_order.get(metadata["priority"], 4),
-        index,
-    )
-
-
 def _external_env_key_row_sort_key(row: dict) -> tuple[int, int, str, str]:
     priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     status_order = {"缺少": 0, "建議": 1}
@@ -625,37 +483,6 @@ def _external_env_maintenance_action(
     return "手動補 .env 或部署 secret 後重跑外部設定缺口診斷。"
 
 
-def _collect_external_smoke_commands(payload: object, commands: list[str]) -> None:
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            key_text = str(key)
-            if (
-                key_text in EXTERNAL_SMOKE_COMMAND_KEYS
-                or key_text.endswith("_smoke_cli")
-                or key_text.endswith("_smoke_command")
-            ):
-                _append_external_command(value, commands)
-            else:
-                _collect_external_smoke_commands(value, commands)
-    elif isinstance(payload, list):
-        for value in payload:
-            _collect_external_smoke_commands(value, commands)
-
-
-def _append_external_command(value: object, commands: list[str]) -> None:
-    if isinstance(value, str):
-        command = value.strip()
-        if command:
-            commands.append(command)
-        return
-    if isinstance(value, list):
-        for item in value:
-            _append_external_command(item, commands)
-        return
-    if isinstance(value, dict):
-        _collect_external_smoke_commands(value, commands)
-
-
 def _collect_named_string_lists(payload: object, keys: set[str]) -> list[str]:
     values: list[str] = []
     if isinstance(payload, dict):
@@ -699,9 +526,3 @@ def _collect_env_recommendations(payload: object) -> dict[str, str]:
             value.strip() or EXTERNAL_ENV_KEY_HINTS.get(key, {}).get("default") or "-",
         )
     return recommendations
-
-
-def string_list(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]

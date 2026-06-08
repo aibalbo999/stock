@@ -26,6 +26,9 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
 
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
+    external_readiness_service_source = Path(
+        "app/services/external_deployment_readiness.py"
+    ).read_text()
     styles = ui.STYLE_SOURCE.read_text()
     report_styles = ui.REPORT_STYLE_SOURCE.read_text()
     combined = source + "\n" + styles + "\n" + report_styles
@@ -181,6 +184,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert (
         "def external_deployment_warning_items(" in ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
     )
+    assert "from app.services.external_deployment_readiness import (" in (
+        ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
+    )
+    assert '"部署決策"' in external_readiness_service_source
+    assert "EXTERNAL_LOCAL_ACTION_METADATA" in external_readiness_service_source
     assert "def external_deployment_env_key_rows(" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     )
@@ -368,11 +376,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def local_dependency_status_rows(" in source
     assert "def local_dependency_last_start_rows(" in source
     assert "def local_dependency_repair_rows(" in source
-    assert '"部署決策"' in source
-    assert '"本機動作"' in source
-    assert '"本機指令"' in source
-    assert "local_dependency_wait" in source
-    assert '"驗證指令"' in source
+    assert '"部署決策"' in external_readiness_service_source
+    assert '"本機動作"' in external_readiness_service_source
+    assert '"本機指令"' in external_readiness_service_source
+    assert "local_dependency_wait" in external_readiness_service_source
+    assert '"驗證指令"' in external_readiness_service_source
     assert "render_external_deployment_panel(\n        upgrade_audit," in source
     assert "maintenance_operations,\n    )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source

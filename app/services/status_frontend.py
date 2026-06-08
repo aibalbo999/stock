@@ -47,6 +47,14 @@ def frontend_status() -> dict:
         if external_deployment_env_gap_service_path.exists()
         else ""
     )
+    external_deployment_readiness_service_path = (
+        root / "app" / "services" / "external_deployment_readiness.py"
+    )
+    external_deployment_readiness_service_source = (
+        external_deployment_readiness_service_path.read_text()
+        if external_deployment_readiness_service_path.exists()
+        else ""
+    )
     external_deployment_unlocker_source = ui_sources["external_deployment_unlocker.py"]
     external_deployment_neo4j_source = ui_sources["external_deployment_neo4j.py"]
     external_deployment_structured_api_source = ui_sources["external_deployment_structured_api.py"]
@@ -299,16 +307,20 @@ def frontend_status() -> dict:
         "ui_external_deployment_readiness_checklist_enabled": (
             "def external_deployment_readiness_rows(" in external_deployment_source
             and "def external_deployment_readiness_rows(" in external_deployment_common_source
-            and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
-            and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
-            and "def external_deployment_local_action(" in external_deployment_common_source
+            and "from app.services.external_deployment_readiness import"
+            in external_deployment_common_source
+            and "EXTERNAL_READINESS_METADATA" in external_deployment_readiness_service_source
+            and "EXTERNAL_LOCAL_ACTION_METADATA"
+            in external_deployment_readiness_service_source
+            and "def external_deployment_local_action("
+            in external_deployment_readiness_service_source
             and "def local_dependency_status_rows(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_source
             and "def local_dependency_last_start_rows(" in external_deployment_common_source
             and "def local_dependency_last_start_rows(" in external_deployment_source
             and "def local_dependency_repair_rows(" in external_deployment_common_source
             and "def local_dependency_repair_rows(" in external_deployment_source
-            and "local_dependency_wait" in external_deployment_common_source
+            and "local_dependency_wait" in external_deployment_readiness_service_source
             and "local_dependency_status_rows(service_snapshot)" in ui_source
             and "local_dependency_last_start_rows(service_snapshot)" in ui_source
             and "local_dependency_repair_rows(service_snapshot)" in ui_source
@@ -316,10 +328,10 @@ def frontend_status() -> dict:
             and "最近本機依賴啟動" in ui_source
             and "本機依賴修復指引" in ui_source
             and "本機依賴狀態" in ui_source
-            and '"部署決策"' in external_deployment_common_source
-            and '"本機動作"' in external_deployment_common_source
-            and '"本機指令"' in external_deployment_common_source
-            and '"驗證指令"' in external_deployment_common_source
+            and '"部署決策"' in external_deployment_readiness_service_source
+            and '"本機動作"' in external_deployment_readiness_service_source
+            and '"本機指令"' in external_deployment_readiness_service_source
+            and '"驗證指令"' in external_deployment_readiness_service_source
         ),
         "ui_external_deployment_diagnostics_extracted": (
             ui_dir / "external_deployment_diagnostics.py"
@@ -349,14 +361,18 @@ def frontend_status() -> dict:
         "ui_external_deployment_diagnostics_path": "app/ui/external_deployment_diagnostics.py",
         "ui_local_dependency_start_history_enabled": (
             "def local_dependency_last_start_rows(" in external_deployment_common_source
+            and "def local_dependency_last_start_rows("
+            in external_deployment_readiness_service_source
             and "def local_dependency_last_start_rows(" in external_deployment_source
             and "local_dependency_last_start_rows(service_snapshot)" in ui_source
             and "最近本機依賴啟動" in ui_source
         ),
         "ui_local_dependency_repair_guidance_enabled": (
             "def local_dependency_repair_rows(" in external_deployment_common_source
+            and "def local_dependency_repair_rows("
+            in external_deployment_readiness_service_source
             and "def local_dependency_repair_rows(" in external_deployment_source
-            and '"repair_plan"' in external_deployment_common_source
+            and '"repair_plan"' in external_deployment_readiness_service_source
             and "local_dependency_repair_rows(service_snapshot)" in ui_source
             and "本機依賴修復指引" in ui_source
         ),
@@ -378,20 +394,24 @@ def frontend_status() -> dict:
         "ui_external_deployment_domain_helpers_extracted": (
             ui_dir / "external_deployment_common.py"
         ).exists()
+        and external_deployment_readiness_service_path.exists()
         and (ui_dir / "external_deployment_env_keys.py").exists()
         and external_deployment_env_gap_service_path.exists()
         and (ui_dir / "external_deployment_unlocker.py").exists()
         and (ui_dir / "external_deployment_neo4j.py").exists()
         and (ui_dir / "external_deployment_structured_api.py").exists()
         and "def external_deployment_warning_items(" in external_deployment_common_source
+        and "from app.services.external_deployment_readiness import"
+        in external_deployment_common_source
         and "def external_deployment_readiness_rows(" in external_deployment_common_source
         and "def external_deployment_env_key_rows(" in external_deployment_env_keys_source
         and "from app.services.external_deployment_env_gaps import"
         in external_deployment_env_keys_source
         and "def external_deployment_env_gap_report("
         in external_deployment_env_gap_service_source
-        and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
-        and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
+        and "EXTERNAL_READINESS_METADATA" in external_deployment_readiness_service_source
+        and "EXTERNAL_LOCAL_ACTION_METADATA"
+        in external_deployment_readiness_service_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
         and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source
@@ -403,6 +423,7 @@ def frontend_status() -> dict:
         and "from app.ui.external_deployment_structured_api import" in external_deployment_source,
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",
+            "app/services/external_deployment_readiness.py",
             "app/ui/external_deployment_env_keys.py",
             "app/services/external_deployment_env_gaps.py",
             "app/ui/external_deployment_unlocker.py",

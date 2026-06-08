@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.data_operation_error_context import data_operation_error_context
 from app.api.operations_routes import create_operations_router
 
 
@@ -14,6 +15,40 @@ class FakeRunTaskNotFound(Exception):
 
 class FakeTaskQueueUnavailableError(Exception):
     pass
+
+
+def test_data_operation_error_context_summarizes_payload_without_echoing_everything() -> None:
+    payload = {
+        "tickers": [str(2300 + index) for index in range(25)],
+        "start_date": "2026-05-01",
+        "end_date": "2026-06-08",
+        "token": "should-not-be-echoed",
+    }
+
+    context = data_operation_error_context("market_refresh", payload)
+
+    assert context["task"] == "data_operation"
+    assert context["failure_stage"] == "task_submission"
+    assert context["operation"] == "market_refresh"
+    assert context["provider_hint"] == "FinMind / Fugle / TWSE fallback"
+    assert context["payload_keys"] == ["end_date", "start_date", "tickers", "token"]
+    assert context["tickers"] == [str(2300 + index) for index in range(20)]
+    assert context["ticker_count"] == 25
+    assert context["start_date"] == "2026-05-01"
+    assert context["end_date"] == "2026-06-08"
+    assert "token" not in context
+
+
+def test_data_operation_error_context_handles_single_ticker_and_unknown_operation() -> None:
+    context = data_operation_error_context(
+        "custom_refresh",
+        {"ticker": " 2330 ", "published_at": "2026-06-08"},
+    )
+
+    assert context["provider_hint"] == "configured data operation provider"
+    assert context["tickers"] == ["2330"]
+    assert context["ticker_count"] == 1
+    assert context["published_at"] == "2026-06-08"
 
 
 def test_operations_router_delegates_manual_news_and_market_refresh() -> None:

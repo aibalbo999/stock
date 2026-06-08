@@ -5,6 +5,7 @@ from app.data_sources.news import NewsFetcher
 from app.services import (
     topic_discovery_candidates,
     topic_discovery_enrichment,
+    topic_discovery_fallbacks,
     topic_discovery_models,
     topic_discovery_prompts,
     topic_discovery_quality,
@@ -299,6 +300,30 @@ def test_topic_discovery_enrichment_lives_outside_service_module() -> None:
     assert "補查矽晶圓、電子級化學品" not in service_source
     assert "補查矽晶圓、電子級化學品" in enrichment_source
     assert "def enrich_plan(" in enrichment_source
+
+
+def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    fallback_source = Path("app/services/topic_discovery_fallbacks.py").read_text()
+
+    for topic in ["AI 產業鏈", "機器人 產業鏈", "記憶體產業鏈", "量子運算"]:
+        assert TopicDiscoveryService._fallback_plan(
+            topic
+        ) == topic_discovery_fallbacks.fallback_plan(topic)
+
+    assert TopicDiscoveryService._generic_anchor_candidates(
+        "量子運算"
+    ) == topic_discovery_fallbacks.generic_anchor_candidates("量子運算")
+    assert TopicDiscoveryService._is_robotics_topic(
+        "humanoid robot"
+    ) is topic_discovery_fallbacks.is_robotics_topic("humanoid robot")
+    assert TopicDiscoveryService._is_memory_topic(
+        "DRAM memory"
+    ) is topic_discovery_fallbacks.is_memory_topic("DRAM memory")
+    assert "AI 伺服器需求" not in service_source
+    assert "AI 伺服器需求" in fallback_source
+    assert "協作與人形機器人需求" in fallback_source
+    assert "def fallback_plan(" in fallback_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

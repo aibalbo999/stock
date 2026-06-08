@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from bs4 import BeautifulSoup
-
 from app.core.config import get_settings
 from app.core.time import utc_now_naive
 from app.data_sources.company_filing_discovery import (
@@ -55,6 +53,12 @@ from app.data_sources.company_filing_http import (
     company_filing_retry_delay_seconds as company_filing_retry_delay_seconds,
     company_filing_sleep_before_retry as company_filing_sleep_before_retry,
     is_retryable_company_filing_error_category as is_retryable_company_filing_error_category,
+)
+from app.data_sources.company_filing_loaders import (
+    fetch_browser_rendered_company_filing_document as fetch_browser_rendered_company_filing_document,
+    fetch_playwright_rendered_company_filing_document as fetch_playwright_rendered_company_filing_document,
+    fetch_url_as_company_filing_document as fetch_url_as_company_filing_document,
+    pdf_response_to_company_filing_document as pdf_response_to_company_filing_document,
 )
 from app.data_sources.company_filing_parsers import (
     MAX_HTML_TABLES_PER_DOCUMENT as MAX_HTML_TABLES_PER_DOCUMENT,
@@ -468,32 +472,11 @@ class CompanyFilingFetcher:
         )
 
     async def _fetch_url_as_document(self, url: str, publisher: str | None = None) -> NewsDocument:
-        response = await company_filing_fetch_response_with_retries(
-            "GET",
+        return await fetch_url_as_company_filing_document(
             url,
-            timeout=20,
-            follow_redirects=True,
-        )
-        content_length = int(response.headers.get("content-length") or 0)
-        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-            raise ValueError("company filing content is too large to import")
-        content_type = response.headers.get("content-type", "").lower()
-        if is_pdf_response(url, content_type):
-            return self._pdf_response_to_document(url, response.content, publisher)
-        soup = BeautifulSoup(response.text, "html.parser")
-        title = NewsFetcher._title(soup) or url
-        text = extract_company_filing_html_text(soup)
-        return NewsDocument(
-            id=sha1(url.encode("utf-8")).hexdigest(),
-            title=title,
-            text=text,
-            source=Source(
-                title=title,
-                url=url,
-                publisher=publisher,
-                published_at=NewsFetcher._published_date(soup),
-                fetched_at=utc_now_naive(),
-            ),
+            publisher=publisher,
+            fetch_response_func=company_filing_fetch_response_with_retries,
+            pdf_response_to_document_func=self._pdf_response_to_document,
         )
 
     async def _fetch_browser_rendered_url_as_document(
@@ -501,62 +484,16 @@ class CompanyFilingFetcher:
         url: str,
         publisher: str | None = None,
     ) -> NewsDocument:
-        settings = get_settings()
-        endpoint = settings.company_filing_browser_render_url.strip()
-        if not endpoint:
-            raise ValueError("company filing browser render URL is not configured")
-        validate_public_document_url(url)
-        provider = company_filing_browser_render_provider()
-        if provider not in BROWSER_RENDER_PROVIDERS:
-            raise ValueError(f"unsupported company filing browser render provider: {provider}")
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "User-Agent": company_filing_user_agent_for_url(url),
-        }
-        token = settings.company_filing_browser_render_token.strip()
-        timeout = max(1.0, float(settings.company_filing_browser_render_timeout_seconds))
-        rendered_url, method, request_kwargs = company_filing_browser_render_request(
-            provider=provider,
-            endpoint=endpoint,
-            target_url=url,
-            headers=headers,
-            token=token,
-            timeout_seconds=timeout,
-        )
-        async with company_filing_browser_render_limiter():
-            response = await company_filing_fetch_response_with_retries(
-                method,
-                rendered_url,
-                timeout=timeout,
-                follow_redirects=True,
-                identity_url=url,
-                **request_kwargs,
-            )
-        content_length = int(response.headers.get("content-length") or 0)
-        if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-            raise ValueError("company filing browser-rendered content is too large to import")
-        content_type = response.headers.get("content-type", "").lower()
-        if "application/pdf" in content_type:
-            return self._pdf_response_to_document(url, response.content, publisher)
-        html, final_url = company_filing_browser_render_response_text(
-            response,
-            provider=provider,
-            target_url=url,
-        )
-        soup = BeautifulSoup(html, "html.parser")
-        title = NewsFetcher._title(soup) or final_url
-        text = extract_company_filing_html_text(soup)
-        return NewsDocument(
-            id=sha1(f"browser-rendered:{url}".encode("utf-8")).hexdigest(),
-            title=title,
-            text=text,
-            source=Source(
-                title=title,
-                url=final_url,
-                publisher=publisher,
-                published_at=NewsFetcher._published_date(soup),
-                fetched_at=utc_now_naive(),
-            ),
+        return await fetch_browser_rendered_company_filing_document(
+            url,
+            publisher=publisher,
+            fetch_response_func=company_filing_fetch_response_with_retries,
+            pdf_response_to_document_func=self._pdf_response_to_document,
+            browser_render_provider_func=company_filing_browser_render_provider,
+            browser_render_request_func=company_filing_browser_render_request,
+            browser_render_response_text_func=company_filing_browser_render_response_text,
+            browser_render_limiter_func=company_filing_browser_render_limiter,
+            user_agent_func=company_filing_user_agent_for_url,
         )
 
     async def _fetch_playwright_rendered_url_as_document(
@@ -564,55 +501,11 @@ class CompanyFilingFetcher:
         url: str,
         publisher: str | None = None,
     ) -> NewsDocument:
-        settings = get_settings()
-        validate_public_document_url(url)
-        try:
-            playwright_api = importlib.import_module("playwright.async_api")
-        except Exception as exc:
-            raise ValueError("company filing Playwright render dependency is not installed") from exc
-
-        async_playwright = getattr(playwright_api, "async_playwright", None)
-        if async_playwright is None:
-            raise ValueError("company filing Playwright render dependency is not installed")
-
-        browser_name = str(settings.company_filing_playwright_browser or "chromium").strip().lower()
-        wait_until = str(settings.company_filing_playwright_wait_until or "networkidle").strip()
-        timeout_ms = int(max(1.0, float(settings.company_filing_playwright_timeout_seconds)) * 1000)
-        html = ""
-        final_url = url
-
-        async with async_playwright() as playwright:
-            launcher = getattr(playwright, browser_name, None)
-            if launcher is None:
-                raise ValueError(f"unsupported company filing Playwright browser: {browser_name}")
-            browser = await launcher.launch(headless=True)
-            try:
-                page = await browser.new_page(
-                    user_agent=company_filing_user_agent_for_url(url),
-                    locale="zh-TW",
-                )
-                await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
-                html = await page.content()
-                final_url = str(getattr(page, "url", "") or url)
-            finally:
-                await browser.close()
-
-        if len(html.encode("utf-8")) > MAX_FETCHED_DOCUMENT_BYTES:
-            raise ValueError("company filing Playwright-rendered content is too large to import")
-        soup = BeautifulSoup(html, "html.parser")
-        title = NewsFetcher._title(soup) or final_url
-        text = extract_company_filing_html_text(soup)
-        return NewsDocument(
-            id=sha1(f"playwright-rendered:{url}".encode("utf-8")).hexdigest(),
-            title=title,
-            text=text,
-            source=Source(
-                title=title,
-                url=final_url,
-                publisher=publisher,
-                published_at=NewsFetcher._published_date(soup),
-                fetched_at=utc_now_naive(),
-            ),
+        return await fetch_playwright_rendered_company_filing_document(
+            url,
+            publisher=publisher,
+            import_module_func=importlib.import_module,
+            user_agent_func=company_filing_user_agent_for_url,
         )
 
     @staticmethod
@@ -621,19 +514,7 @@ class CompanyFilingFetcher:
         content: bytes,
         publisher: str | None = None,
     ) -> NewsDocument:
-        text = extract_pdf_text(content)
-        title = pdf_title_from_url(url)
-        return NewsDocument(
-            id=sha1(url.encode("utf-8")).hexdigest(),
-            title=title,
-            text=text,
-            source=Source(
-                title=title,
-                url=url,
-                publisher=publisher,
-                fetched_at=utc_now_naive(),
-            ),
-        )
+        return pdf_response_to_company_filing_document(url, content, publisher)
 
     async def fetch_discovery_documents(
         self,

@@ -12,7 +12,11 @@ from app.data_sources.market import MarketFetchError
 from app.db.models import Base
 from app.models.schemas import MarketSnapshot, NewsDocument, ReportResponse, Source
 from app.services.topic_discovery import TopicDiscoveryService
-from app.services import discovered_candidate_filings, discovered_market_payload
+from app.services import (
+    discovered_candidate_filings,
+    discovered_market_payload,
+    discovered_pipeline_checkpoints,
+)
 from app.services.discovered_pipeline import (
     DiscoveredTopicPipelineService,
     candidate_filing_revalidation_tickers,
@@ -50,9 +54,17 @@ def test_candidate_filing_revalidation_helpers_live_outside_pipeline_orchestrato
     ]
     payload = SimpleNamespace(analysis_mode="standard", deep_analysis=False)
 
-    assert should_revalidate_candidate_filings is discovered_candidate_filings.should_revalidate_candidate_filings
-    assert candidate_filing_revalidation_tickers is discovered_candidate_filings.candidate_filing_revalidation_tickers
-    assert company_filing_timeout_result is discovered_candidate_filings.company_filing_timeout_result
+    assert (
+        should_revalidate_candidate_filings
+        is discovered_candidate_filings.should_revalidate_candidate_filings
+    )
+    assert (
+        candidate_filing_revalidation_tickers
+        is discovered_candidate_filings.candidate_filing_revalidation_tickers
+    )
+    assert (
+        company_filing_timeout_result is discovered_candidate_filings.company_filing_timeout_result
+    )
     assert should_revalidate_candidate_filings(candidates, min_supported_ratio=0.6) is True
     assert candidate_filing_revalidation_tickers(candidates, payload) == ["1504", "2308", "2330"]
 
@@ -87,14 +99,48 @@ def test_discovered_market_payload_logic_lives_outside_pipeline_orchestrator() -
     )
     restored = discovered_market_payload.market_data_from_payload(payload)
 
-    assert DiscoveredTopicPipelineService._market_data_payload({"snapshots": [snapshot]})["snapshots"][0] == (
-        payload["snapshots"][0]
+    assert (
+        DiscoveredTopicPipelineService._market_data_payload({"snapshots": [snapshot]})["snapshots"][
+            0
+        ]
+        == (payload["snapshots"][0])
     )
     assert isinstance(restored["snapshots"][0], MarketSnapshot)
     assert restored["snapshots"][0].trade_date == date(2026, 5, 29)
     assert restored["market_errors"][0] == error
     assert "MarketSnapshot.model_validate(" not in pipeline_source
     assert "MarketSnapshot.model_validate(" in payload_source
+
+
+def test_discovered_checkpoint_payload_logic_lives_outside_pipeline_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    checkpoint_source = Path("app/services/discovered_pipeline_checkpoints.py").read_text()
+    document = NewsDocument(
+        id="doc-1",
+        title="台積電 AI 供應鏈",
+        text="台積電 CoWoS 產能。",
+        source=Source(title="台積電 AI 供應鏈", published_at=date(2026, 5, 31)),
+    )
+
+    assert (
+        DiscoveredTopicPipelineService._payload_model_dump(FakePayload())
+        == discovered_pipeline_checkpoints.payload_model_dump(FakePayload())
+        == {"topic": "AI 產業鏈"}
+    )
+    restored = discovered_pipeline_checkpoints.documents_from_payload(
+        [document.model_dump(mode="json")]
+    )
+
+    assert DiscoveredTopicPipelineService._parse_payload('{"topic":"AI"}') == {"topic": "AI"}
+    assert DiscoveredTopicPipelineService._json_safe({"date": date(2026, 5, 31)}) == {
+        "date": "2026-05-31"
+    }
+    assert isinstance(restored[0], NewsDocument)
+    assert restored[0].source.published_at == date(2026, 5, 31)
+    assert "json.loads(" not in pipeline_source
+    assert "NewsDocument.model_validate(" not in pipeline_source
+    assert "json.loads(" in checkpoint_source
+    assert "NewsDocument.model_validate(" in checkpoint_source
 
 
 class FakeRun:
@@ -187,10 +233,16 @@ class FakeWorkflowRecorder:
         self.events.append(("fail", step, error))
 
     def complete_workflow_payload(self, run_id, payload):
-        return {**payload, "workflow": {"name": "ai_discovered_topic_pipeline", "status": "success"}}
+        return {
+            **payload,
+            "workflow": {"name": "ai_discovered_topic_pipeline", "status": "success"},
+        }
 
     def payload_with_current_workflow(self, run_id, payload):
-        return {**payload, "workflow": {"name": "ai_discovered_topic_pipeline", "status": "running"}}
+        return {
+            **payload,
+            "workflow": {"name": "ai_discovered_topic_pipeline", "status": "running"},
+        }
 
 
 class FakeMarketDataService:
@@ -238,7 +290,9 @@ def test_discovered_pipeline_service_runs_full_flow() -> None:
     async def discover_topic(service, topic):
         return {"plan": {"candidate_companies": []}, "plan_quality": {"status": "ready"}}
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         return {
             "urls": ["https://example.com/rss"],
             "end_date": date(2026, 5, 31),
@@ -260,7 +314,10 @@ def test_discovered_pipeline_service_runs_full_flow() -> None:
             "source_report_id": report_id,
             "source_report_topic": "AI 產業鏈",
             "source_report_tickers": ["2330"],
-            "rerun_report": {"report_id": 99, "request": {"topic": "AI 產業鏈", "tickers": ["2330"]}},
+            "rerun_report": {
+                "report_id": 99,
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+            },
         }
 
     result = run_async(
@@ -280,7 +337,11 @@ def test_discovered_pipeline_service_runs_full_flow() -> None:
     assert result["run_record_updated"] is True
     assert captured["safe_update"]["payload"]["workflow"]["status"] == "success"
     assert captured["safe_update"]["payload"]["report_id"] == 88
-    assert ("complete", "auto_follow_up", {"status": "started", "rerun_report_id": 99}) in workflow.events
+    assert (
+        "complete",
+        "auto_follow_up",
+        {"status": "started", "rerun_report_id": 99},
+    ) in workflow.events
 
 
 def test_discovered_pipeline_service_runs_unknown_topic_to_report() -> None:
@@ -292,7 +353,9 @@ def test_discovered_pipeline_service_runs_unknown_topic_to_report() -> None:
         assert quality.status == "ready"
         return {"plan": plan.model_dump(), "plan_quality": quality.model_dump()}
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         return {
             "urls": ["https://example.com/rss"],
             "end_date": date(2026, 5, 31),
@@ -329,7 +392,9 @@ def test_discovered_pipeline_service_marks_failed_step() -> None:
     async def discover_topic(service, topic):
         return {"plan": {"candidate_companies": []}, "plan_quality": {"status": "ready"}}
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         return {
             "urls": [],
             "end_date": date(2026, 5, 31),
@@ -390,7 +455,9 @@ def test_discovered_pipeline_checkpoints_serializable_stage_artifacts() -> None:
         def update_payload(self, run_id, payload):
             captured["updates"].append(payload)
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         return {
             "urls": ["https://example.com/rss"],
             "end_date": date(2026, 5, 31),
@@ -404,7 +471,9 @@ def test_discovered_pipeline_checkpoints_serializable_stage_artifacts() -> None:
 
     class SnapshotMarketDataService(FakeMarketDataService):
         async def fetch_and_persist_for_discovery(self, payload, promoted_tickers, end_date):
-            data = await super().fetch_and_persist_for_discovery(payload, promoted_tickers, end_date)
+            data = await super().fetch_and_persist_for_discovery(
+                payload, promoted_tickers, end_date
+            )
             data["snapshots"] = [snapshot]
             data["price_history_snapshots"] = [snapshot]
             return data
@@ -419,8 +488,15 @@ def test_discovered_pipeline_checkpoints_serializable_stage_artifacts() -> None:
     )
 
     assert result["report_id"] == 88
-    assert any(update.get("pipeline_request", {}).get("topic") == "AI 產業鏈" for update in captured["updates"])
-    assert any(update.get("source_documents", [{}])[0].get("id") == "doc-1" for update in captured["updates"] if update.get("source_documents"))
+    assert any(
+        update.get("pipeline_request", {}).get("topic") == "AI 產業鏈"
+        for update in captured["updates"]
+    )
+    assert any(
+        update.get("source_documents", [{}])[0].get("id") == "doc-1"
+        for update in captured["updates"]
+        if update.get("source_documents")
+    )
     market_updates = [update for update in captured["updates"] if update.get("market_data")]
     assert market_updates[-1]["market_data"]["snapshots"][0]["ticker"] == "2330"
     assert market_updates[-1]["market_data"]["snapshots"][0]["trade_date"] == "2026-05-29"
@@ -503,7 +579,10 @@ def test_discovered_pipeline_service_resumes_auto_follow_up_from_checkpoint() ->
             "source_report_id": report_id,
             "source_report_topic": "AI 產業鏈",
             "source_report_tickers": ["2330"],
-            "rerun_report": {"report_id": 99, "request": {"topic": "AI 產業鏈", "tickers": ["2330"]}},
+            "rerun_report": {
+                "report_id": 99,
+                "request": {"topic": "AI 產業鏈", "tickers": ["2330"]},
+            },
         }
 
     def safe_update(run_id, payload, report_id):
@@ -590,7 +669,12 @@ def test_discovered_pipeline_service_resumes_report_build_from_checkpoint() -> N
         ],
         "2026-05-31T09:00:00",
     )
-    for step in ["topic_discovery", "source_ingestion", "candidate_revalidation", "market_data_refresh"]:
+    for step in [
+        "topic_discovery",
+        "source_ingestion",
+        "candidate_revalidation",
+        "market_data_refresh",
+    ]:
         workflow_payload = WorkflowCheckpointRecorder.complete_step_payload(
             workflow_payload,
             step,
@@ -605,7 +689,9 @@ def test_discovered_pipeline_service_resumes_report_build_from_checkpoint() -> N
 
     class ExistingRunRepository(FakeRunRepository):
         def get(self, run_id):
-            return SimpleNamespace(id=run_id, payload_json=json.dumps(workflow_payload), report_id=None)
+            return SimpleNamespace(
+                id=run_id, payload_json=json.dumps(workflow_payload), report_id=None
+            )
 
         def mark_running(self, run_id):
             captured["mark_running"] = run_id
@@ -696,7 +782,9 @@ def test_discovered_pipeline_service_resumes_source_ingestion_from_checkpoint() 
 
     class ExistingRunRepository(FakeRunRepository):
         def get(self, run_id):
-            return SimpleNamespace(id=run_id, payload_json=json.dumps(workflow_payload), report_id=None)
+            return SimpleNamespace(
+                id=run_id, payload_json=json.dumps(workflow_payload), report_id=None
+            )
 
         def mark_running(self, run_id):
             captured["mark_running"] = run_id
@@ -704,7 +792,9 @@ def test_discovered_pipeline_service_resumes_source_ingestion_from_checkpoint() 
         def update_payload(self, run_id, payload):
             captured.setdefault("checkpoints", []).append(payload)
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         captured["ingestion_args"] = {
             "topic": payload.topic,
             "limit_per_query": limit_per_query,
@@ -729,7 +819,9 @@ def test_discovered_pipeline_service_resumes_source_ingestion_from_checkpoint() 
                 "promoted_tickers": promoted_tickers,
                 "end_date": end_date,
             }
-            data = await super().fetch_and_persist_for_discovery(payload, promoted_tickers, end_date)
+            data = await super().fetch_and_persist_for_discovery(
+                payload, promoted_tickers, end_date
+            )
             data["snapshots"] = [snapshot]
             data["price_history_snapshots"] = [snapshot]
             return data
@@ -755,12 +847,16 @@ def test_discovered_pipeline_service_resumes_source_ingestion_from_checkpoint() 
     assert captured["market"] == {"promoted_tickers": ["2330"], "end_date": date(2026, 5, 31)}
     assert result["report_id"] == 88
     assert result["resumed_from_step"] == "source_ingestion"
-    assert ("start", "source_ingestion", {
-        "limit_per_query": 7,
-        "evidence_limit": 33,
-        "max_queries": 11,
-        "resumed": True,
-    }) in workflow.events
+    assert (
+        "start",
+        "source_ingestion",
+        {
+            "limit_per_query": 7,
+            "evidence_limit": 33,
+            "max_queries": 11,
+            "resumed": True,
+        },
+    ) in workflow.events
     assert ("start", "report_build", {"promoted_count": 1, "resumed": True}) in workflow.events
 
 
@@ -790,7 +886,9 @@ def test_discovered_pipeline_service_resumes_topic_discovery_from_original_paylo
 
     class ExistingRunRepository(FakeRunRepository):
         def get(self, run_id):
-            return SimpleNamespace(id=run_id, payload_json=json.dumps(workflow_payload), report_id=None)
+            return SimpleNamespace(
+                id=run_id, payload_json=json.dumps(workflow_payload), report_id=None
+            )
 
         def mark_running(self, run_id):
             captured["mark_running"] = run_id
@@ -802,7 +900,9 @@ def test_discovered_pipeline_service_resumes_topic_discovery_from_original_paylo
         captured["discover_topic"] = topic
         return {"plan": {"candidate_companies": []}, "plan_quality": {"status": "ready"}}
 
-    async def run_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def run_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         captured["ingestion_topic"] = payload.topic
         return {
             "urls": ["https://example.com/robot"],
@@ -817,7 +917,9 @@ def test_discovered_pipeline_service_resumes_topic_discovery_from_original_paylo
 
     class SnapshotMarketDataService(FakeMarketDataService):
         async def fetch_and_persist_for_discovery(self, payload, promoted_tickers, end_date):
-            data = await super().fetch_and_persist_for_discovery(payload, promoted_tickers, end_date)
+            data = await super().fetch_and_persist_for_discovery(
+                payload, promoted_tickers, end_date
+            )
             data["snapshots"] = [snapshot]
             data["price_history_snapshots"] = [snapshot]
             return data
@@ -841,13 +943,21 @@ def test_discovered_pipeline_service_resumes_topic_discovery_from_original_paylo
         checkpoint.get("pipeline_request", {}).get("topic") == "機器人產業鏈"
         for checkpoint in captured["checkpoints"]
     )
-    assert ("start", "topic_discovery", {"topic": "機器人產業鏈", "resumed": True}) in workflow.events
-    assert ("start", "source_ingestion", {
-        "limit_per_query": 5,
-        "evidence_limit": 40,
-        "max_queries": 12,
-        "resumed": True,
-    }) in workflow.events
+    assert (
+        "start",
+        "topic_discovery",
+        {"topic": "機器人產業鏈", "resumed": True},
+    ) in workflow.events
+    assert (
+        "start",
+        "source_ingestion",
+        {
+            "limit_per_query": 5,
+            "evidence_limit": 40,
+            "max_queries": 12,
+            "resumed": True,
+        },
+    ) in workflow.events
 
 
 def test_discovered_pipeline_service_resumes_candidate_revalidation_from_checkpoint() -> None:
@@ -901,7 +1011,9 @@ def test_discovered_pipeline_service_resumes_candidate_revalidation_from_checkpo
 
     class ExistingRunRepository(FakeRunRepository):
         def get(self, run_id):
-            return SimpleNamespace(id=run_id, payload_json=json.dumps(workflow_payload), report_id=None)
+            return SimpleNamespace(
+                id=run_id, payload_json=json.dumps(workflow_payload), report_id=None
+            )
 
         def mark_running(self, run_id):
             captured["mark_running"] = run_id
@@ -915,7 +1027,9 @@ def test_discovered_pipeline_service_resumes_candidate_revalidation_from_checkpo
                 "promoted_tickers": promoted_tickers,
                 "end_date": end_date,
             }
-            data = await super().fetch_and_persist_for_discovery(payload, promoted_tickers, end_date)
+            data = await super().fetch_and_persist_for_discovery(
+                payload, promoted_tickers, end_date
+            )
             data["snapshots"] = [snapshot]
             data["price_history_snapshots"] = [snapshot]
             return data
@@ -954,8 +1068,16 @@ def test_discovered_pipeline_service_resumes_candidate_revalidation_from_checkpo
     assert isinstance(captured["builder"]["documents"][0], NewsDocument)
     assert result["report_id"] == 88
     assert result["resumed_from_step"] == "candidate_revalidation"
-    assert ("start", "candidate_revalidation", {"candidate_count": 1, "resumed": True}) in workflow.events
-    assert ("start", "market_data_refresh", {"promoted_count": 1, "resumed": True}) in workflow.events
+    assert (
+        "start",
+        "candidate_revalidation",
+        {"candidate_count": 1, "resumed": True},
+    ) in workflow.events
+    assert (
+        "start",
+        "market_data_refresh",
+        {"promoted_count": 1, "resumed": True},
+    ) in workflow.events
     assert ("start", "report_build", {"promoted_count": 1, "resumed": True}) in workflow.events
 
 
@@ -1013,7 +1135,9 @@ def test_discovered_pipeline_service_resumes_market_data_refresh_from_checkpoint
 
     class ExistingRunRepository(FakeRunRepository):
         def get(self, run_id):
-            return SimpleNamespace(id=run_id, payload_json=json.dumps(workflow_payload), report_id=None)
+            return SimpleNamespace(
+                id=run_id, payload_json=json.dumps(workflow_payload), report_id=None
+            )
 
         def mark_running(self, run_id):
             captured["mark_running"] = run_id
@@ -1027,7 +1151,9 @@ def test_discovered_pipeline_service_resumes_market_data_refresh_from_checkpoint
                 "promoted_tickers": promoted_tickers,
                 "end_date": end_date,
             }
-            data = await super().fetch_and_persist_for_discovery(payload, promoted_tickers, end_date)
+            data = await super().fetch_and_persist_for_discovery(
+                payload, promoted_tickers, end_date
+            )
             data["snapshots"] = [snapshot]
             data["price_history_snapshots"] = [snapshot]
             return data
@@ -1048,12 +1174,18 @@ def test_discovered_pipeline_service_resumes_market_data_refresh_from_checkpoint
 
     assert captured["mark_running"] == 77
     assert captured["market"] == {"promoted_tickers": ["2330"], "end_date": date(2026, 5, 31)}
-    market_checkpoints = [payload for payload in captured["checkpoints"] if payload.get("market_data")]
+    market_checkpoints = [
+        payload for payload in captured["checkpoints"] if payload.get("market_data")
+    ]
     assert market_checkpoints[-1]["market_data"]["snapshots"][0]["ticker"] == "2330"
     assert captured["builder"]["promoted_tickers"] == ["2330"]
     assert result["report_id"] == 88
     assert result["resumed_from_step"] == "market_data_refresh"
-    assert ("start", "market_data_refresh", {"promoted_count": 1, "resumed": True}) in workflow.events
+    assert (
+        "start",
+        "market_data_refresh",
+        {"promoted_count": 1, "resumed": True},
+    ) in workflow.events
     assert ("start", "report_build", {"promoted_count": 1, "resumed": True}) in workflow.events
 
 
@@ -1134,7 +1266,9 @@ def test_discovered_pipeline_resume_updates_existing_run_state_with_real_checkpo
         session_scope_factory=session_scope,
         analysis_run_repository_cls=AnalysisRunRepository,
         report_repository_cls=FakeSqlReportRepository,
-        workflow_recorder_factory=lambda: WorkflowCheckpointRecorder(session_scope_factory=session_scope),
+        workflow_recorder_factory=lambda: WorkflowCheckpointRecorder(
+            session_scope_factory=session_scope
+        ),
         safe_update_run_success_func=safe_update,
         auto_follow_up_func=auto_follow_up,
     )
@@ -1182,7 +1316,9 @@ def _service(**overrides) -> DiscoveredTopicPipelineService:
     async def default_discover_topic(service, topic):
         return {"plan": {"candidate_companies": []}, "plan_quality": {"status": "ready"}}
 
-    async def default_ingestion(payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit):
+    async def default_ingestion(
+        payload, service, plan, limit_per_query, evidence_limit, max_queries, document_limit
+    ):
         return {
             "urls": [],
             "end_date": date(2026, 5, 31),

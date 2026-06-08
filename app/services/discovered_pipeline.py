@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
 from typing import Any
 
-from app.models.schemas import (
-    NewsDocument,
-    ReportResponse,
-)
+from app.models.schemas import ReportResponse
 from app.services.discovered_candidate_filings import (
     candidate_filing_revalidation_tickers as candidate_filing_revalidation_tickers,
     company_filing_timeout_result as company_filing_timeout_result,
     should_revalidate_candidate_filings as should_revalidate_candidate_filings,
 )
 from app.services import discovered_market_payload
+from app.services.discovered_pipeline_checkpoints import (
+    date_from_checkpoint,
+    documents_from_payload,
+    documents_payload,
+    json_safe,
+    parse_checkpoint_payload_json,
+    payload_from_checkpoint,
+    payload_model_dump,
+    resume_report_id,
+)
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
 from app.services.task_cancellation import TaskCancelledError, raise_if_task_cancelled
@@ -93,7 +98,9 @@ class DiscoveredTopicPipelineService:
             discovery = await self.discover_topic_with_timeout_func(service, payload.topic)
             self._check_cancelled(run_id)
             plan = self.topic_discovery_plan_cls.model_validate(discovery["plan"])
-            limit_per_query, evidence_limit, max_queries = self.discovery_fetch_settings_func(payload)
+            limit_per_query, evidence_limit, max_queries = self.discovery_fetch_settings_func(
+                payload
+            )
             document_limit = self.discovery_document_limit_func(payload, evidence_limit)
             workflow.complete_step(
                 run_id,
@@ -187,13 +194,17 @@ class DiscoveredTopicPipelineService:
             )
             self._check_cancelled(run_id)
             candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
-            source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(candidate_payload)
+            source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(
+                candidate_payload
+            )
             promoted_tickers = [
                 candidate["ticker"]
                 for candidate in candidate_payload
                 if candidate["status"] == "evidence_supported"
             ]
-            dynamic_whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(candidate_payload)
+            dynamic_whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(
+                candidate_payload
+            )
             workflow.complete_step(
                 run_id,
                 current_step,
@@ -205,7 +216,12 @@ class DiscoveredTopicPipelineService:
             )
             company_filing_ingestion = self._promoted_company_filing_ingestion(promoted_tickers)
             documents = self.dedupe_documents_func(
-                [*documents, *self._latest_company_filing_news_documents(promoted_tickers, limit_per_ticker=4)]
+                [
+                    *documents,
+                    *self._latest_company_filing_news_documents(
+                        promoted_tickers, limit_per_ticker=4
+                    ),
+                ]
             )
             self._checkpoint_stage_payload(
                 run_id,
@@ -223,7 +239,9 @@ class DiscoveredTopicPipelineService:
             current_step = "market_data_refresh"
             self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"promoted_count": len(promoted_tickers)})
-            market_data = await self._discovered_market_data_service(run_id).fetch_and_persist_for_discovery(
+            market_data = await self._discovered_market_data_service(
+                run_id
+            ).fetch_and_persist_for_discovery(
                 payload,
                 promoted_tickers,
                 end_date,
@@ -359,7 +377,9 @@ class DiscoveredTopicPipelineService:
             self._mark_run_running(run_id)
             workflow_recorder = self.workflow_recorder_factory()
             try:
-                payload = await self._resume_topic_discovery_stage(run_id, workflow_recorder, payload)
+                payload = await self._resume_topic_discovery_stage(
+                    run_id, workflow_recorder, payload
+                )
             except Exception as exc:
                 workflow_recorder.fail_step(run_id, "topic_discovery", str(exc))
                 self.safe_mark_run_failed_func(run_id, str(exc))
@@ -383,13 +403,17 @@ class DiscoveredTopicPipelineService:
             self._mark_run_running(run_id)
             workflow_recorder = self.workflow_recorder_factory()
             try:
-                payload = self._resume_candidate_revalidation_stage(run_id, workflow_recorder, payload)
+                payload = self._resume_candidate_revalidation_stage(
+                    run_id, workflow_recorder, payload
+                )
             except Exception as exc:
                 workflow_recorder.fail_step(run_id, "candidate_revalidation", str(exc))
                 self.safe_mark_run_failed_func(run_id, str(exc))
                 raise
             try:
-                payload = await self._resume_market_data_refresh_stage(run_id, workflow_recorder, payload)
+                payload = await self._resume_market_data_refresh_stage(
+                    run_id, workflow_recorder, payload
+                )
             except Exception as exc:
                 workflow_recorder.fail_step(run_id, "market_data_refresh", str(exc))
                 self.safe_mark_run_failed_func(run_id, str(exc))
@@ -409,7 +433,9 @@ class DiscoveredTopicPipelineService:
             self._mark_run_running(run_id)
             workflow_recorder = self.workflow_recorder_factory()
             try:
-                payload = await self._resume_market_data_refresh_stage(run_id, workflow_recorder, payload)
+                payload = await self._resume_market_data_refresh_stage(
+                    run_id, workflow_recorder, payload
+                )
             except Exception as exc:
                 workflow_recorder.fail_step(run_id, "market_data_refresh", str(exc))
                 self.safe_mark_run_failed_func(run_id, str(exc))
@@ -451,9 +477,17 @@ class DiscoveredTopicPipelineService:
                 {"report_id": report_id, "resumed": True},
             )
             run_payload = {**payload, "report_id": report_id}
-            request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else {}
-            candidate_payload = payload.get("candidate_whitelist") if isinstance(payload.get("candidate_whitelist"), list) else []
-            promoted_tickers = request_payload.get("tickers") or self._promoted_tickers_from_candidates(candidate_payload)
+            request_payload = (
+                payload.get("request") if isinstance(payload.get("request"), dict) else {}
+            )
+            candidate_payload = (
+                payload.get("candidate_whitelist")
+                if isinstance(payload.get("candidate_whitelist"), list)
+                else []
+            )
+            promoted_tickers = request_payload.get(
+                "tickers"
+            ) or self._promoted_tickers_from_candidates(candidate_payload)
             run_record_updated = self.safe_update_run_success_func(
                 run_id,
                 workflow_recorder.complete_workflow_payload(run_id, run_payload),
@@ -537,7 +571,9 @@ class DiscoveredTopicPipelineService:
             self.safe_mark_run_failed_func(run_id, str(exc))
             raise
         try:
-            payload = await self._resume_market_data_refresh_stage(run_id, workflow_recorder, payload)
+            payload = await self._resume_market_data_refresh_stage(
+                run_id, workflow_recorder, payload
+            )
         except Exception as exc:
             workflow_recorder.fail_step(run_id, "market_data_refresh", str(exc))
             self.safe_mark_run_failed_func(run_id, str(exc))
@@ -554,7 +590,9 @@ class DiscoveredTopicPipelineService:
             self.safe_mark_run_failed_func(run_id, str(exc))
             raise
 
-    async def _resume_topic_discovery_stage(self, run_id: int, workflow: Any, checkpoint: dict) -> dict:
+    async def _resume_topic_discovery_stage(
+        self, run_id: int, workflow: Any, checkpoint: dict
+    ) -> dict:
         payload = self._payload_from_checkpoint(checkpoint)
         service = self.topic_discovery_service_cls()
         current_step = "topic_discovery"
@@ -587,12 +625,18 @@ class DiscoveredTopicPipelineService:
         self._checkpoint_stage_payload(run_id, workflow, updates)
         return {**checkpoint, **self._json_safe(updates)}
 
-    async def _resume_source_ingestion_stage(self, run_id: int, workflow: Any, checkpoint: dict) -> dict:
+    async def _resume_source_ingestion_stage(
+        self, run_id: int, workflow: Any, checkpoint: dict
+    ) -> dict:
         payload = self._payload_from_checkpoint(checkpoint)
         service = self.topic_discovery_service_cls()
-        discovery = checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        discovery = (
+            checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        )
         if not isinstance(discovery.get("plan"), dict):
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires discovery.plan")
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires discovery.plan"
+            )
         plan = self.topic_discovery_plan_cls.model_validate(discovery["plan"])
         settings = self._discovery_fetch_settings_from_checkpoint(payload, checkpoint)
         limit_per_query = settings["limit_per_query"]
@@ -654,22 +698,34 @@ class DiscoveredTopicPipelineService:
         self._checkpoint_stage_payload(run_id, workflow, updates)
         return {**checkpoint, **self._json_safe(updates)}
 
-    def _resume_candidate_revalidation_stage(self, run_id: int, workflow: Any, checkpoint: dict) -> dict:
+    def _resume_candidate_revalidation_stage(
+        self, run_id: int, workflow: Any, checkpoint: dict
+    ) -> dict:
         payload = self._payload_from_checkpoint(checkpoint)
         service = self.topic_discovery_service_cls()
-        discovery = checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        discovery = (
+            checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        )
         if not isinstance(discovery.get("plan"), dict):
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires discovery.plan")
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires discovery.plan"
+            )
         plan = self.topic_discovery_plan_cls.model_validate(discovery["plan"])
         documents = self._documents_from_payload(checkpoint.get("source_documents") or [])
-        source_audit = checkpoint.get("source_audit") if isinstance(checkpoint.get("source_audit"), dict) else {}
+        source_audit = (
+            checkpoint.get("source_audit")
+            if isinstance(checkpoint.get("source_audit"), dict)
+            else {}
+        )
         candidate_payload = (
             checkpoint.get("candidate_whitelist")
             if isinstance(checkpoint.get("candidate_whitelist"), list)
             else []
         )
         if not candidate_payload:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires candidate_whitelist")
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires candidate_whitelist"
+            )
         current_step = "candidate_revalidation"
         workflow.start_step(
             run_id,
@@ -685,13 +741,20 @@ class DiscoveredTopicPipelineService:
             documents,
         )
         candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
-        source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(candidate_payload)
+        source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(
+            candidate_payload
+        )
         promoted_tickers = self._promoted_tickers_from_candidates(candidate_payload)
         if not promoted_tickers:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume produced no promoted_tickers")
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume produced no promoted_tickers"
+            )
         company_filing_ingestion = self._promoted_company_filing_ingestion(promoted_tickers)
         documents = self.dedupe_documents_func(
-            [*documents, *self._latest_company_filing_news_documents(promoted_tickers, limit_per_ticker=4)]
+            [
+                *documents,
+                *self._latest_company_filing_news_documents(promoted_tickers, limit_per_ticker=4),
+            ]
         )
         workflow.complete_step(
             run_id,
@@ -714,7 +777,9 @@ class DiscoveredTopicPipelineService:
         self._checkpoint_stage_payload(run_id, workflow, updates)
         return {**checkpoint, **self._json_safe(updates)}
 
-    async def _resume_market_data_refresh_stage(self, run_id: int, workflow: Any, checkpoint: dict) -> dict:
+    async def _resume_market_data_refresh_stage(
+        self, run_id: int, workflow: Any, checkpoint: dict
+    ) -> dict:
         payload = self._payload_from_checkpoint(checkpoint)
         promoted_tickers = (
             checkpoint.get("promoted_tickers")
@@ -723,10 +788,14 @@ class DiscoveredTopicPipelineService:
         )
         if not promoted_tickers:
             promoted_tickers = self._promoted_tickers_from_candidates(
-                checkpoint.get("candidate_whitelist") if isinstance(checkpoint.get("candidate_whitelist"), list) else []
+                checkpoint.get("candidate_whitelist")
+                if isinstance(checkpoint.get("candidate_whitelist"), list)
+                else []
             )
         if not promoted_tickers:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires promoted_tickers")
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires promoted_tickers"
+            )
         end_date = self._date_from_checkpoint(checkpoint.get("discovery_end_date"))
         current_step = "market_data_refresh"
         workflow.start_step(
@@ -734,7 +803,9 @@ class DiscoveredTopicPipelineService:
             current_step,
             {"promoted_count": len(promoted_tickers), "resumed": True},
         )
-        market_data = await self._discovered_market_data_service(run_id).fetch_and_persist_for_discovery(
+        market_data = await self._discovered_market_data_service(
+            run_id
+        ).fetch_and_persist_for_discovery(
             payload,
             promoted_tickers,
             end_date,
@@ -763,16 +834,24 @@ class DiscoveredTopicPipelineService:
         resume_origin: str = "report_build",
     ) -> dict:
         payload = self._payload_from_checkpoint(checkpoint)
-        discovery = checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        discovery = (
+            checkpoint.get("discovery") if isinstance(checkpoint.get("discovery"), dict) else {}
+        )
         settings = (
             checkpoint.get("discovery_fetch_settings")
             if isinstance(checkpoint.get("discovery_fetch_settings"), dict)
             else {}
         )
-        evidence_limit = int(settings.get("evidence_limit") or getattr(payload, "evidence_limit", 40))
+        evidence_limit = int(
+            settings.get("evidence_limit") or getattr(payload, "evidence_limit", 40)
+        )
         urls = checkpoint.get("queries") if isinstance(checkpoint.get("queries"), list) else []
         documents = self._documents_from_payload(checkpoint.get("source_documents") or [])
-        source_audit = checkpoint.get("source_audit") if isinstance(checkpoint.get("source_audit"), dict) else {}
+        source_audit = (
+            checkpoint.get("source_audit")
+            if isinstance(checkpoint.get("source_audit"), dict)
+            else {}
+        )
         candidate_payload = (
             checkpoint.get("candidate_whitelist")
             if isinstance(checkpoint.get("candidate_whitelist"), list)
@@ -786,12 +865,20 @@ class DiscoveredTopicPipelineService:
         if not promoted_tickers:
             promoted_tickers = self._promoted_tickers_from_candidates(candidate_payload)
         if not promoted_tickers:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires promoted_tickers")
-        market_payload = checkpoint.get("market_data") if isinstance(checkpoint.get("market_data"), dict) else {}
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires promoted_tickers"
+            )
+        market_payload = (
+            checkpoint.get("market_data") if isinstance(checkpoint.get("market_data"), dict) else {}
+        )
         market_data = self._market_data_from_payload(market_payload)
         if not market_data.get("snapshots") and not market_data.get("latest_monthly_revenues"):
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires checkpointed market_data")
-        dynamic_whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(candidate_payload)
+            raise ReportExecutionError(
+                "ai_discovered_topic_pipeline resume requires checkpointed market_data"
+            )
+        dynamic_whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(
+            candidate_payload
+        )
 
         current_step = "report_build"
         workflow.start_step(
@@ -915,13 +1002,17 @@ class DiscoveredTopicPipelineService:
             workflow.payload_with_current_workflow(run_id, payload),
         )
 
-    def _checkpoint_report_build_payload(self, run_id: int, workflow: Any, run_payload: dict) -> bool:
+    def _checkpoint_report_build_payload(
+        self, run_id: int, workflow: Any, run_payload: dict
+    ) -> bool:
         payload = workflow.payload_with_current_workflow(run_id, run_payload)
         return self._update_run_payload(run_id, payload)
 
     def _attach_celery_task_id(self, run_id: int, celery_task_id: str) -> bool:
         current_payload = self._current_run_payload(run_id)
-        return self._update_run_payload(run_id, {**current_payload, "celery_task_id": celery_task_id})
+        return self._update_run_payload(
+            run_id, {**current_payload, "celery_task_id": celery_task_id}
+        )
 
     def _update_run_payload(self, run_id: int, payload: dict) -> bool:
         try:
@@ -938,7 +1029,9 @@ class DiscoveredTopicPipelineService:
         try:
             with self.session_scope_factory() as session:
                 run = self.analysis_run_repository_cls(session).get(run_id)
-            return self._parse_payload(getattr(run, "payload_json", None)) if run is not None else {}
+            return (
+                self._parse_payload(getattr(run, "payload_json", None)) if run is not None else {}
+            )
         except Exception:
             return {}
 
@@ -986,7 +1079,9 @@ class DiscoveredTopicPipelineService:
         payload = self._parse_payload(getattr(run, "payload_json", None))
         workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else None
         if not workflow or workflow.get("name") != "ai_discovered_topic_pipeline":
-            raise ReportExecutionError("run is not a resumable ai_discovered_topic_pipeline workflow")
+            raise ReportExecutionError(
+                "run is not a resumable ai_discovered_topic_pipeline workflow"
+            )
         resume = (
             workflow.get("resume")
             if isinstance(workflow.get("resume"), dict)
@@ -995,27 +1090,6 @@ class DiscoveredTopicPipelineService:
         if not resume.get("resumable"):
             raise ReportExecutionError("ai_discovered_topic_pipeline workflow is not resumable")
         return run, payload, workflow
-
-    @staticmethod
-    def _parse_payload(payload_json: str | None) -> dict:
-        if not payload_json:
-            return {}
-        try:
-            payload = json.loads(payload_json)
-        except (TypeError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
-
-    @staticmethod
-    def _resume_report_id(run: Any, payload: dict) -> int:
-        value = getattr(run, "report_id", None) or payload.get("report_id")
-        try:
-            report_id = int(value)
-        except (TypeError, ValueError) as exc:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires an existing report_id") from exc
-        if report_id <= 0:
-            raise ReportExecutionError("ai_discovered_topic_pipeline resume requires an existing report_id")
-        return report_id
 
     @staticmethod
     def _promoted_tickers_from_candidates(candidates: list[dict]) -> list[str]:
@@ -1032,67 +1106,14 @@ class DiscoveredTopicPipelineService:
             raise ReportExecutionError(f"report not found for resume: {report_id}")
         return ReportResponse(title=report.title, markdown=report.markdown)
 
-    @staticmethod
-    def _payload_model_dump(payload: Any) -> dict:
-        dump = getattr(payload, "model_dump", None)
-        if callable(dump):
-            try:
-                return dump(mode="json")
-            except TypeError:
-                return dump()
-        if isinstance(payload, dict):
-            return dict(payload)
-        return {
-            key: value
-            for key, value in vars(payload).items()
-            if not key.startswith("_") and not callable(value)
-        }
-
-    @classmethod
-    def _payload_from_checkpoint(cls, checkpoint: dict) -> Any:
-        raw = checkpoint.get("pipeline_request")
-        if not isinstance(raw, dict):
-            raw = checkpoint.get("request") if isinstance(checkpoint.get("request"), dict) else {}
-        if not raw:
-            request_keys = {
-                "topic",
-                "limit_per_query",
-                "lookback_days",
-                "evidence_limit",
-                "analysis_mode",
-                "deep_analysis",
-                "include_international",
-                "investor_capital",
-                "beginner_mode",
-                "investor_profile",
-                "max_position_pct",
-                "cash_reserve_pct",
-            }
-            raw = {key: checkpoint[key] for key in request_keys if key in checkpoint}
-        defaults = {
-            "topic": "AI 產業鏈",
-            "limit_per_query": 5,
-            "lookback_days": 14,
-            "evidence_limit": 40,
-            "analysis_mode": "standard",
-            "deep_analysis": False,
-            "include_international": True,
-            "investor_capital": 1_000_000,
-            "beginner_mode": True,
-            "investor_profile": "beginner",
-            "max_position_pct": 0.10,
-            "cash_reserve_pct": 0.30,
-        }
-        values = {**defaults, **raw}
-
-        class PayloadAdapter:
-            def __init__(self, data: dict) -> None:
-                self.__dict__.update(data)
-
-            def model_dump(self, mode=None):
-                return dict(self.__dict__)
-
-        return PayloadAdapter(values)
+    _parse_payload = staticmethod(parse_checkpoint_payload_json)
+    _resume_report_id = staticmethod(resume_report_id)
+    _payload_model_dump = staticmethod(payload_model_dump)
+    _payload_from_checkpoint = staticmethod(payload_from_checkpoint)
+    _json_safe = staticmethod(json_safe)
+    _date_from_checkpoint = staticmethod(date_from_checkpoint)
+    _documents_payload = staticmethod(documents_payload)
+    _documents_from_payload = staticmethod(documents_from_payload)
 
     def _discovery_fetch_settings_from_checkpoint(self, payload: Any, checkpoint: dict) -> dict:
         settings = (
@@ -1105,7 +1126,8 @@ class DiscoveredTopicPipelineService:
         )
         evidence_limit = int(settings.get("evidence_limit") or fallback_evidence_limit)
         document_limit = int(
-            settings.get("document_limit") or self.discovery_document_limit_func(payload, evidence_limit)
+            settings.get("document_limit")
+            or self.discovery_document_limit_func(payload, evidence_limit)
         )
         return {
             "limit_per_query": int(settings.get("limit_per_query") or fallback_limit_per_query),
@@ -1113,49 +1135,6 @@ class DiscoveredTopicPipelineService:
             "max_queries": int(settings.get("max_queries") or fallback_max_queries),
             "document_limit": document_limit,
         }
-
-    @classmethod
-    def _json_safe(cls, value: Any) -> Any:
-        dump = getattr(value, "model_dump", None)
-        if callable(dump):
-            try:
-                return dump(mode="json")
-            except TypeError:
-                return dump()
-        if isinstance(value, dict):
-            return {str(key): cls._json_safe(item) for key, item in value.items()}
-        if isinstance(value, (list, tuple, set)):
-            return [cls._json_safe(item) for item in value]
-        if isinstance(value, (date, datetime)):
-            return value.isoformat()
-        return value
-
-    @staticmethod
-    def _date_from_checkpoint(value: Any) -> date:
-        if isinstance(value, date):
-            return value
-        if isinstance(value, str):
-            try:
-                return date.fromisoformat(value)
-            except ValueError as exc:
-                raise ReportExecutionError(
-                    "ai_discovered_topic_pipeline resume requires valid discovery_end_date"
-                ) from exc
-        raise ReportExecutionError("ai_discovered_topic_pipeline resume requires discovery_end_date")
-
-    @classmethod
-    def _documents_payload(cls, documents: list) -> list:
-        return [cls._json_safe(document) for document in documents]
-
-    @staticmethod
-    def _documents_from_payload(documents: list) -> list:
-        restored = []
-        for document in documents:
-            if isinstance(document, dict) and {"id", "title", "text", "source"}.issubset(document):
-                restored.append(NewsDocument.model_validate(document))
-            else:
-                restored.append(document)
-        return restored
 
     @staticmethod
     def _market_data_payload(market_data: dict) -> dict:
@@ -1177,7 +1156,9 @@ class DiscoveredTopicPipelineService:
         candidate_filing_ingestion = None
         if not self.should_revalidate_candidate_filings_func(candidate_payload):
             return candidate_filing_ingestion, candidate_payload, documents
-        candidate_tickers = self.candidate_filing_revalidation_tickers_func(candidate_payload, payload)
+        candidate_tickers = self.candidate_filing_revalidation_tickers_func(
+            candidate_payload, payload
+        )
         candidate_filing_ingestion = self.company_filing_timeout_result_func(
             candidate_tickers,
             RuntimeError("skipped during synchronous deep analysis; queued as follow-up"),
@@ -1193,7 +1174,9 @@ class DiscoveredTopicPipelineService:
         documents = self.dedupe_documents_func([*documents, *candidate_filing_documents])
         revalidated_candidates = service.validate_candidates(plan, documents)
         candidate_payload = [candidate.model_dump() for candidate in revalidated_candidates]
-        source_audit["candidate_support"] = self.summarize_candidate_support_func(revalidated_candidates)
+        source_audit["candidate_support"] = self.summarize_candidate_support_func(
+            revalidated_candidates
+        )
         source_audit["candidate_filing_revalidation"] = {
             "attempted": True,
             "stored_count": candidate_filing_ingestion.get("stored_count", 0),

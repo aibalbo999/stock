@@ -29,6 +29,12 @@ from app.services.report_financial_assessment import (
 )
 from app.services.report_financial_narrative import financial_statement_summary
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
+from app.services.report_decision_rules import (
+    current_price_label,
+    recheck_trigger_text,
+    risk_warning_reason,
+    sort_decision_contexts,
+)
 from app.services.report_potential import data_quality_grade, estimate_potential
 from app.services.report_prompt_builder import build_report_prompt, format_llm_evidence
 from app.services.report_source_references import representative_sources
@@ -751,8 +757,10 @@ def test_report_reading_order_groups_by_decision_then_current_price() -> None:
     ]
 
     ordered = ReportGenerator._sort_decision_contexts(contexts)
+    helper_ordered = sort_decision_contexts(contexts)
 
     assert [context["ticker"] for context in ordered] == ["2330", "2382", "2308", "9999"]
+    assert helper_ordered == ordered
 
 
 def test_company_analysis_orders_rows_and_details_for_readability() -> None:
@@ -1720,17 +1728,37 @@ def test_potential_scoring_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
     potential_source = Path("app/services/report_potential.py").read_text()
 
-    assert "from app.services import report_potential" in generator_source
+    assert "report_potential" in generator_source
     assert "def estimate_potential(" in potential_source
     assert "def data_quality_grade(" in potential_source
     assert "PotentialScoringEngine" not in generator_source
 
 
+def test_decision_rule_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    decision_rule_source = Path("app/services/report_decision_rules.py").read_text()
+
+    assert "report_decision_rules" in generator_source
+    assert "def sort_decision_contexts(" in decision_rule_source
+    assert "def recheck_trigger_text(" in decision_rule_source
+    assert "def current_price_label(" in decision_rule_source
+    assert "def risk_warning_reason(" in decision_rule_source
+
+
 def test_current_price_label_summarizes_immediate_entry_condition() -> None:
     snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)
     quality = {"missing": [], "grade": "supported"}
+    research_label = ReportGenerator._current_price_label(
+        snapshot,
+        {"upside_pct": 18, "downside_pct": 4},
+        quality,
+        "目前估值接近同業",
+        None,
+        "可小額分批研究",
+        5,
+    )
     assert (
-        ReportGenerator._current_price_label(
+        current_price_label(
             snapshot,
             {"upside_pct": 18, "downside_pct": 4},
             quality,
@@ -1741,6 +1769,7 @@ def test_current_price_label_summarizes_immediate_entry_condition() -> None:
         )
         == "可小額分批"
     )
+    assert research_label == "可小額分批"
     assert (
         ReportGenerator._current_price_label(
             snapshot,
@@ -3740,10 +3769,15 @@ def test_rank_evidence_excludes_unmapped_wrong_company_when_requested_ticker_is_
 
 
 def test_risk_warning_reason_distinguishes_threshold_from_relative_risk() -> None:
-    assert ReportGenerator._risk_warning_reason({"upside_pct": 16, "downside_pct": 13}) == (
+    balanced_case = {"upside_pct": 16, "downside_pct": 13}
+    risk_heavy_case = {"upside_pct": 8, "downside_pct": 13}
+
+    assert risk_warning_reason(balanced_case) == ReportGenerator._risk_warning_reason(balanced_case)
+    assert ReportGenerator._risk_warning_reason(balanced_case) == (
         "財務或估值紅旗偏重，需先等基本面修復或補充來源驗證。"
     )
-    assert ReportGenerator._risk_warning_reason({"upside_pct": 8, "downside_pct": 13}) == (
+    assert risk_warning_reason(risk_heavy_case) == ReportGenerator._risk_warning_reason(risk_heavy_case)
+    assert ReportGenerator._risk_warning_reason(risk_heavy_case) == (
         "目前情境降值分高於升值分，風險權重已壓過投資理由，不適合追價。"
     )
 
@@ -4078,7 +4112,15 @@ def test_recheck_trigger_text_uses_signal_risk_and_missing_data() -> None:
             "leading_signal": signal,
         }
     )
+    helper_trigger = recheck_trigger_text(
+        {
+            "estimate": {"upside_pct": 18, "downside_pct": 9},
+            "quality": {"missing": ["缺估值"]},
+            "leading_signal": signal,
+        }
+    )
 
+    assert helper_trigger == trigger
     assert "補齊缺估值" in trigger
     assert "近況訊號由偏空轉為中性以上" in trigger
     assert "目前情境降值分降至 5 分以下" in trigger

@@ -86,6 +86,21 @@ def frontend_status() -> dict:
     streamlit_pages_source = "\n".join(
         _read_text(pages_dir / page_name) for page_name in pages
     )
+    frontend_blocking_call_scan_paths = [
+        streamlit_path,
+        *[pages_dir / page_name for page_name in pages],
+        *ui_paths,
+    ]
+    asyncio_run_locations = _literal_occurrence_locations(
+        frontend_blocking_call_scan_paths,
+        "asyncio.run",
+        root=root,
+    )
+    long_blocking_post_locations = _literal_occurrence_locations(
+        frontend_blocking_call_scan_paths,
+        "timeout=900",
+        root=root,
+    )
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
         "/reports/generate_async",
@@ -349,8 +364,13 @@ def frontend_status() -> dict:
         and "REPORT_HTML_STYLE_PATH.read_text" in ui_source
         and "<style>{report_css}</style>" in ui_source
         and "<style>\n  :root" not in ui_source,
-        "asyncio_run_count": ui_source.count("asyncio.run") + streamlit_source.count("asyncio.run"),
-        "long_blocking_post_timeout_present": "timeout=900" in ui_source,
+        "frontend_blocking_call_scan_paths": [
+            str(path.relative_to(root)) for path in frontend_blocking_call_scan_paths
+        ],
+        "asyncio_run_count": sum(item["count"] for item in asyncio_run_locations),
+        "asyncio_run_locations": asyncio_run_locations,
+        "long_blocking_post_timeout_present": bool(long_blocking_post_locations),
+        "long_blocking_post_timeout_locations": long_blocking_post_locations,
         "api_write_timeout_seconds": _frontend_constant_value(ui_source, "API_WRITE_TIMEOUT_SECONDS"),
         "api_task_queue_timeout_seconds": _frontend_constant_value(
             ui_source,
@@ -371,6 +391,26 @@ def frontend_status() -> dict:
         "sync_report_generate_used": sync_report_generate_used,
         "data_operation_endpoint_used": "/tasks/data-operation" in ui_source,
     }
+
+
+def _literal_occurrence_locations(
+    paths: list[Path],
+    literal: str,
+    *,
+    root: Path,
+) -> list[dict[str, int | str]]:
+    locations: list[dict[str, int | str]] = []
+    for path in paths:
+        source = _read_text(path)
+        count = source.count(literal)
+        if count:
+            locations.append(
+                {
+                    "path": str(path.relative_to(root)),
+                    "count": count,
+                }
+            )
+    return locations
 
 
 def _frontend_constant_value(source: str, name: str) -> int | None:

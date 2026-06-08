@@ -85,8 +85,14 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["uses_background_task_submit_helper"] is True
     assert status["frontend"]["uses_task_queue_preflight"] is True
     assert status["frontend"]["uses_task_status_panel"] is True
+    assert "streamlit_app.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
+    assert "pages/01_分析工作區.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
+    assert "pages/04_系統設定.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
+    assert "app/ui/background_tasks.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
     assert status["frontend"]["asyncio_run_count"] == 0
+    assert status["frontend"]["asyncio_run_locations"] == []
     assert status["frontend"]["long_blocking_post_timeout_present"] is False
+    assert status["frontend"]["long_blocking_post_timeout_locations"] == []
     assert status["frontend"]["sync_report_generate_used"] is False
     assert status["frontend"]["api_task_queue_timeout_seconds"] == 20
 
@@ -132,9 +138,14 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_sections_extracted"] is True
     assert frontend_arch["evidence"]["ui_wildcard_imports_removed"] is True
     assert frontend_arch["evidence"]["external_report_css_loaded"] is True
+    assert "pages/03_資料補強.py" in frontend_arch["evidence"][
+        "frontend_blocking_call_scan_paths"
+    ]
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0
+    assert frontend_arch["evidence"]["asyncio_run_locations"] == []
     assert frontend_arch["evidence"]["uses_background_task_submit_helper"] is True
     assert frontend_arch["evidence"]["uses_task_queue_preflight"] is True
     assert frontend_arch["evidence"]["long_blocking_post_timeout_present"] is False
+    assert frontend_arch["evidence"]["long_blocking_post_timeout_locations"] == []
     assert frontend_arch["evidence"]["sync_report_generate_used"] is False
     assert all(frontend_arch["evidence"]["async_task_endpoint_coverage"].values())

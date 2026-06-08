@@ -18,10 +18,7 @@ from app.services.llm_models import (
     litellm_model_candidates,
     litellm_model_requires_api_key,
 )
-from app.services.llm_observability import (
-    build_llm_observability_trace,
-    dispatch_llm_observability_trace,
-)
+from app.services.llm_observability import attach_llm_observability as _attach_llm_observability
 from app.services.llm_provider_calls import (
     call_gemini as _call_gemini_provider,
     call_gemini_vision as _call_gemini_vision_provider,
@@ -1102,27 +1099,12 @@ class LLMClient:
         started_at: float,
         operation: str,
     ) -> LLMResult:
-        observability = build_llm_observability_trace(
+        return _attach_llm_observability(
             prompt=prompt,
             result=result,
-            latency_ms=(monotonic() - started_at) * 1000,
+            started_at=started_at,
             operation=operation,
             settings=self.settings,
-        )
-        observability["external_trace_dispatch"] = dispatch_llm_observability_trace(
-            observability,
-            prompt=prompt,
-            output=result.text,
-            settings=self.settings,
-        )
-        return LLMResult(
-            text=result.text,
-            key_index=result.key_index,
-            model=result.model,
-            provider=result.provider,
-            fallback=result.fallback,
-            attempts=result.attempts,
-            observability=observability,
         )
 
     @staticmethod

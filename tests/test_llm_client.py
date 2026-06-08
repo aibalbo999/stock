@@ -108,6 +108,16 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert "def model_quota_cooldown_remaining(" in runtime_source
 
 
+def test_llm_observability_attachment_is_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    observability_source = Path("app/services/llm_observability.py").read_text()
+
+    assert "def attach_llm_observability(" in observability_source
+    assert "build_llm_observability_trace(" not in client_source
+    assert "dispatch_llm_observability_trace(" not in client_source
+    assert '"external_trace_dispatch"' not in client_source
+
+
 def test_llm_quota_cooldown_runtime_tracks_shared_model_state() -> None:
     with llm_runtime._model_quota_cooldowns_lock:
         llm_runtime._model_quota_cooldowns.clear()

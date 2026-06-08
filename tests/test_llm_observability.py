@@ -6,12 +6,14 @@ from types import SimpleNamespace
 
 from app.services import llm_observability as llm_observability_module
 from app.services.llm_observability import (
+    attach_llm_observability,
     build_llm_observability_trace,
     dispatch_llm_observability_trace,
     export_llm_observability_trace,
     llm_observability_status,
     llm_observability_trace_sink_status,
 )
+from app.services.llm_runtime import LLMResult
 
 
 def _settings(**overrides) -> SimpleNamespace:
@@ -50,7 +52,9 @@ def test_langsmith_observability_sink_reports_ready_and_marks_trace_export(monke
             provider="google_genai",
             model="gemini-3.5-flash",
             fallback=False,
-            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+            attempts=(
+                {"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},
+            ),
         ),
         latency_ms=123.45,
         operation="report_generation",
@@ -114,6 +118,32 @@ def test_local_observability_sink_can_be_disabled_explicitly() -> None:
     assert status["trace_export_target"] is None
 
 
+def test_attach_llm_observability_returns_result_with_dispatch_metadata() -> None:
+    result = LLMResult(
+        text="answer",
+        provider="google_genai",
+        model="gemini-3.5-flash",
+        attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+    )
+
+    traced = attach_llm_observability(
+        prompt="question",
+        result=result,
+        started_at=10.0,
+        now=10.123,
+        operation="chat_completion",
+        settings=_settings(llm_input_cost_per_1k_tokens_usd=0.01),
+    )
+
+    assert traced.text == "answer"
+    assert traced.model == "gemini-3.5-flash"
+    assert traced.observability["operation"] == "chat_completion"
+    assert traced.observability["latency_ms"] == 123.0
+    assert traced.observability["input_token_estimate"] >= 1
+    assert traced.observability["estimated_cost_usd"] is not None
+    assert traced.observability["external_trace_dispatch"]["reason"] == "local_sink"
+
+
 def test_export_langsmith_trace_uses_client_payload(monkeypatch) -> None:
     monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
     captured = {}
@@ -138,7 +168,9 @@ def test_export_langsmith_trace_uses_client_payload(monkeypatch) -> None:
             provider="google_genai",
             model="gemini-3.5-flash",
             fallback=False,
-            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+            attempts=(
+                {"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},
+            ),
         ),
         latency_ms=42.0,
         operation="report_generation",
@@ -226,7 +258,9 @@ def test_export_phoenix_trace_registers_span_attributes(monkeypatch) -> None:
             provider="google_genai",
             model="gemini-3.5-flash",
             fallback=False,
-            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+            attempts=(
+                {"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},
+            ),
         ),
         latency_ms=5.0,
         operation="rerank",
@@ -269,7 +303,9 @@ def test_dispatch_external_trace_times_out_without_raising(monkeypatch) -> None:
             provider="google_genai",
             model="gemini-3.5-flash",
             fallback=False,
-            attempts=({"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},),
+            attempts=(
+                {"provider": "google_genai", "model": "gemini-3.5-flash", "outcome": "success"},
+            ),
         ),
         latency_ms=5.0,
         operation="report_generation",

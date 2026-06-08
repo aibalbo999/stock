@@ -8,9 +8,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from importlib import import_module
 from importlib.util import find_spec
+from time import monotonic
 from typing import Any
 
 from app.services.llm_quota import normalize_model_name
+from app.services.llm_runtime import LLMResult
 
 LOGGER = logging.getLogger(__name__)
 SUPPORTED_OBSERVABILITY_PROVIDERS = ("local", "langsmith", "phoenix")
@@ -74,7 +76,9 @@ def llm_observability_status(settings: Any) -> dict:
     enabled = bool(getattr(settings, "llm_observability_enabled", True))
     trace_sink = llm_observability_trace_sink_status(settings, provider=provider, enabled=enabled)
     input_rate = max(0.0, float(getattr(settings, "llm_input_cost_per_1k_tokens_usd", 0.0) or 0.0))
-    output_rate = max(0.0, float(getattr(settings, "llm_output_cost_per_1k_tokens_usd", 0.0) or 0.0))
+    output_rate = max(
+        0.0, float(getattr(settings, "llm_output_cost_per_1k_tokens_usd", 0.0) or 0.0)
+    )
     model_rate_card = parse_model_cost_rate_card(
         getattr(settings, "llm_model_cost_rate_card_usd", "")
     )
@@ -139,9 +143,13 @@ def llm_observability_trace_sink_status(
     enabled: bool | None = None,
 ) -> dict:
     provider = _normalized_provider(
-        provider if provider is not None else getattr(settings, "llm_observability_provider", "local")
+        provider
+        if provider is not None
+        else getattr(settings, "llm_observability_provider", "local")
     )
-    enabled = bool(getattr(settings, "llm_observability_enabled", True) if enabled is None else enabled)
+    enabled = bool(
+        getattr(settings, "llm_observability_enabled", True) if enabled is None else enabled
+    )
     dispatch_enabled = bool(getattr(settings, "llm_observability_external_dispatch_enabled", True))
     profile = OBSERVABILITY_PROVIDER_PROFILES[provider]
     missing_settings = [
@@ -227,7 +235,9 @@ def build_llm_observability_trace(
     input_rate, output_rate = llm_cost_rates_for_model(settings, getattr(result, "model", None))
     estimated_cost = None
     if input_rate or output_rate:
-        estimated_cost = round((input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate), 8)
+        estimated_cost = round(
+            (input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate), 8
+        )
     attempts = tuple(getattr(result, "attempts", ()) or ())
     attempt_summary = _attempt_summary_for_trace(attempts)
     return {
@@ -246,7 +256,9 @@ def build_llm_observability_trace(
         "output_token_estimate": output_tokens,
         "total_token_estimate": input_tokens + output_tokens,
         "estimated_cost_usd": estimated_cost,
-        "cost_tracking_mode": "configured_rate_card" if estimated_cost is not None else "token_estimate_only",
+        "cost_tracking_mode": "configured_rate_card"
+        if estimated_cost is not None
+        else "token_estimate_only",
         "external_trace_provider": status["provider"] if status["external_trace_ready"] else None,
         "external_trace_configured": status["external_trace_configured"],
         "external_trace_ready": status["external_trace_ready"],
@@ -282,9 +294,13 @@ def export_llm_observability_trace(
         }
     try:
         if sink["provider"] == "langsmith":
-            return _export_langsmith_trace(trace, prompt=prompt, output=output, settings=settings, importer=importer)
+            return _export_langsmith_trace(
+                trace, prompt=prompt, output=output, settings=settings, importer=importer
+            )
         if sink["provider"] == "phoenix":
-            return _export_phoenix_trace(trace, prompt=prompt, output=output, settings=settings, importer=importer)
+            return _export_phoenix_trace(
+                trace, prompt=prompt, output=output, settings=settings, importer=importer
+            )
     except Exception as exc:  # pragma: no cover - defensive path still unit-tested by class
         (logger or LOGGER).debug("failed to export LLM observability trace: %s", exc, exc_info=True)
         return {
@@ -357,6 +373,40 @@ def dispatch_llm_observability_trace(
     return {**result, "timeout_seconds": timeout_seconds}
 
 
+def attach_llm_observability(
+    *,
+    prompt: str,
+    result: LLMResult,
+    started_at: float,
+    operation: str,
+    settings: Any,
+    now: float | None = None,
+) -> LLMResult:
+    timestamp = monotonic() if now is None else float(now)
+    observability = build_llm_observability_trace(
+        prompt=prompt,
+        result=result,
+        latency_ms=(timestamp - started_at) * 1000,
+        operation=operation,
+        settings=settings,
+    )
+    observability["external_trace_dispatch"] = dispatch_llm_observability_trace(
+        observability,
+        prompt=prompt,
+        output=result.text,
+        settings=settings,
+    )
+    return LLMResult(
+        text=result.text,
+        key_index=result.key_index,
+        model=result.model,
+        provider=result.provider,
+        fallback=result.fallback,
+        attempts=result.attempts,
+        observability=observability,
+    )
+
+
 def parse_model_cost_rate_card(raw: str | None) -> dict[str, dict[str, float]]:
     """Parse model=input_per_1k:output_per_1k entries for per-model cost tracking."""
 
@@ -383,9 +433,7 @@ def parse_model_cost_rate_card(raw: str | None) -> dict[str, dict[str, float]]:
 
 
 def llm_cost_rates_for_model(settings: Any, model: object) -> tuple[float, float]:
-    model_rates = parse_model_cost_rate_card(
-        getattr(settings, "llm_model_cost_rate_card_usd", "")
-    )
+    model_rates = parse_model_cost_rate_card(getattr(settings, "llm_model_cost_rate_card_usd", ""))
     model_key = normalize_model_name(str(model or ""))
     if model_key in model_rates:
         rates = model_rates[model_key]
@@ -407,7 +455,9 @@ def _external_export_skip_reason(status: dict[str, object]) -> str | None:
         return "local_sink"
     if not sink.get("dispatch_enabled"):
         return "external_dispatch_disabled"
-    missing_settings = sink.get("missing_settings") if isinstance(sink.get("missing_settings"), list) else []
+    missing_settings = (
+        sink.get("missing_settings") if isinstance(sink.get("missing_settings"), list) else []
+    )
     if missing_settings:
         return "missing_settings:" + ",".join(str(item) for item in missing_settings)
     missing_dependencies = (
@@ -657,9 +707,7 @@ def _attempt_summary_for_trace(attempts: tuple[dict[str, object], ...]) -> dict:
 def _ordered_attempt_values(attempts: list[dict[str, object]], key: str) -> list[str]:
     return list(
         dict.fromkeys(
-            str(attempt.get(key))
-            for attempt in attempts
-            if attempt.get(key) not in {None, ""}
+            str(attempt.get(key)) for attempt in attempts if attempt.get(key) not in {None, ""}
         )
     )
 

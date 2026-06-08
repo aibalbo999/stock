@@ -662,6 +662,7 @@ def test_document_matches_prefer_persisted_entity_metadata_over_text_guessing() 
 
 def test_document_matching_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    document_mixin_source = Path("app/services/report_generator_document.py").read_text()
     matching_source = Path("app/services/report_document_matching.py").read_text()
     whitelist = SupplyChainWhitelist.from_candidate_whitelist(
         [
@@ -682,7 +683,11 @@ def test_document_matching_logic_lives_outside_generator() -> None:
     generator = object.__new__(ReportGenerator)
     generator.whitelist = whitelist
 
-    assert "report_document_matching" in generator_source
+    assert "ReportGeneratorDocumentMixin" in generator_source
+    assert "report_document_matching" not in generator_source
+    assert "from app.services import" in document_mixin_source
+    assert "report_document_matching" in document_mixin_source
+    assert "def _document_matches(" in document_mixin_source
     assert "def document_matches(" in matching_source
     assert "def document_metadata_matches(" in matching_source
     assert 'matched_alias="metadata"' not in generator_source
@@ -1975,9 +1980,13 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
 
 def test_company_filing_check_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    document_mixin_source = Path("app/services/report_generator_document.py").read_text()
     filing_source = Path("app/services/report_company_filing_checks.py").read_text()
 
-    assert "report_company_filing_checks" in generator_source
+    assert "ReportGeneratorDocumentMixin" in generator_source
+    assert "report_company_filing_checks" not in generator_source
+    assert "report_company_filing_checks" in document_mixin_source
+    assert "def _company_filing_missing(" in document_mixin_source
     assert "def company_filing_missing(" in filing_source
     assert "HIGH_QUALITY_FILING_SCORE" in filing_source
     assert "REQUIRED_CORE_DOCUMENT_TYPES" not in generator_source

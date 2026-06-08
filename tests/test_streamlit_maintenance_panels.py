@@ -732,6 +732,145 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     ]
 
 
+def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
+    helpers = load_report_helpers()
+    managed_provider = "scraping" + "bee"
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "ready": False,
+                    "fallback_reason": "missing_settings:neo4j_uri",
+                    "local_docker_defaults": {
+                        "env_keys": [
+                            "NEO4J_URI",
+                            "NEO4J_USER",
+                            "NEO4J_PASSWORD",
+                            "NEO4J_DATABASE",
+                        ],
+                        "default_uri": "neo4j://localhost:7687",
+                    },
+                    "payload_dry_run_cli": (
+                        ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run"
+                    ),
+                },
+                "remediation": "設定 Neo4j。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "playwright_render_configured": True,
+                    "browser_only_render_ready": True,
+                    "high_risk_mitigation_ready": False,
+                    "configuration_check": {
+                        "ready": False,
+                        "status": "missing_required_env",
+                        "missing_env_keys": ["COMPANY_FILING_BROWSER_RENDER_TOKEN"],
+                        "configured_env_keys": [
+                            "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+                            "COMPANY_FILING_BROWSER_RENDER_URL",
+                        ],
+                        "token_required": True,
+                    },
+                    "recommended_env": [
+                        f"COMPANY_FILING_BROWSER_RENDER_PROVIDER={managed_provider}",
+                        "COMPANY_FILING_BROWSER_RENDER_URL=https://app.scrapingbee.com/api/v1",
+                        "COMPANY_FILING_BROWSER_RENDER_TOKEN=<token>",
+                    ],
+                    "smoke_cli": (
+                        ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--url https://mops.twse.com.tw/ --json"
+                    ),
+                },
+                "remediation": "設定 managed unlocker token。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "runtime": {
+                        "configuration_ready": False,
+                        "configuration_check": {
+                            "ready": False,
+                            "status": "missing_required_env",
+                            "missing_env_keys": [
+                                "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+                                "COMPANY_FILING_STRUCTURED_API_URL",
+                            ],
+                            "configured_env_keys": [],
+                        },
+                        "provider_profile_key": "custom",
+                        "smoke_cli": (
+                            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                            "--ticker 2330 --company-name 台積電 "
+                            "--document-type investor_presentation --json"
+                        ),
+                    },
+                },
+                "remediation": "設定 TEJ 或專業資料 API。",
+            },
+        ]
+    }
+    service_snapshot = {
+        "company_filings": {
+            "visual_rag_runtime": {
+                "runtime_available": False,
+                "fallback_reason": "missing_vision_llm_key_or_gateway",
+            }
+        }
+    }
+
+    rows = helpers["external_deployment_env_key_rows"](audit, service_snapshot)
+    rows_by_key = {
+        (row["能力"], row["設定鍵"]): row
+        for row in rows
+    }
+
+    assert rows_by_key[("外部 Neo4j 匯入連線", "NEO4J_URI")]["狀態"] == "缺少"
+    assert rows_by_key[("外部 Neo4j 匯入連線", "NEO4J_URI")]["建議值"] == (
+        "neo4j://localhost:7687"
+    )
+    assert rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    ]["狀態"] == "缺少"
+    assert rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    ]["建議值"] == "<token>"
+    assert rows_by_key[
+        ("公司文件結構化 API 備援", "COMPANY_FILING_STRUCTURED_API_PROVIDER")
+    ]["狀態"] == "缺少"
+    assert rows_by_key[
+        ("公司文件結構化 API 備援", "COMPANY_FILING_STRUCTURED_API_URL")
+    ]["建議值"] == "<provider-json-endpoint>"
+    assert rows_by_key[("Visual RAG / VLM 財報解析", "GOOGLE_API_KEY")]["來源"] == (
+        "/services/status"
+    )
+    assert "structured_company_filing_smoke.py" in rows_by_key[
+        ("公司文件結構化 API 備援", "COMPANY_FILING_STRUCTURED_API_PROVIDER")
+    ]["驗證指令"]
+
+
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:
     helpers = load_report_helpers()
     unlocker_provider = "flare" + "solverr"

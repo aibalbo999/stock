@@ -8,6 +8,9 @@ from app.ui.external_deployment_common import (
     local_dependency_repair_rows as _local_dependency_repair_rows,
     local_dependency_status_rows as _local_dependency_status_rows,
 )
+from app.ui.external_deployment_env_keys import (
+    external_deployment_env_key_rows as _external_deployment_env_key_rows,
+)
 from app.ui.external_deployment_neo4j import (
     local_neo4j_operation_rows as _local_neo4j_operation_rows,
 )
@@ -29,6 +32,13 @@ def external_deployment_readiness_rows(
     local_dependency_status: dict | None = None,
 ) -> list[dict]:
     return _external_deployment_readiness_rows(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_env_key_rows(
+    upgrade_audit: dict,
+    service_snapshot: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_env_key_rows(upgrade_audit, service_snapshot)
 
 
 def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:

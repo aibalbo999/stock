@@ -160,6 +160,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
     assert (
+        "def external_deployment_env_key_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
         "def external_deployment_smoke_commands("
         in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
@@ -177,6 +181,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert (
         "def external_deployment_warning_items(" in ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
     )
+    assert "def external_deployment_env_key_rows(" in (
+        ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
+    )
+    assert "from app.ui.external_deployment_env_keys import (" in (
+        ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert "外部設定缺口" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert (
         "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
     )

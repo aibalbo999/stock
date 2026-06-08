@@ -27,6 +27,7 @@ MAINTENANCE_CLEANUP_PANEL_SOURCE = Path("app/ui/maintenance_cleanup_panel.py")
 REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
 EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE = Path("app/ui/external_deployment_diagnostics.py")
 EXTERNAL_DEPLOYMENT_COMMON_SOURCE = Path("app/ui/external_deployment_common.py")
+EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE = Path("app/ui/external_deployment_env_keys.py")
 EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE = Path("app/ui/external_deployment_unlocker.py")
 EXTERNAL_DEPLOYMENT_NEO4J_SOURCE = Path("app/ui/external_deployment_neo4j.py")
 EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path("app/ui/external_deployment_structured_api.py")
@@ -60,6 +61,7 @@ UI_SOURCE_FILES = [
     REPORT_OBSERVABILITY_PANEL_SOURCE,
     EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE,
     EXTERNAL_DEPLOYMENT_COMMON_SOURCE,
+    EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE,
     EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE,
     EXTERNAL_DEPLOYMENT_NEO4J_SOURCE,
     EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE,

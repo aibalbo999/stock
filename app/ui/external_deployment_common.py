@@ -416,6 +416,20 @@ def _external_readiness_item_ready(item: dict) -> bool:
     if item.get("severity") == "pass" or item.get("status") == "ready":
         return True
     evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    if key == ("data_business_logic", "company_filing_high_risk_unlocker"):
+        return bool(
+            evidence.get("high_risk_mitigation_ready")
+            or evidence.get("unlocker_provider_ready")
+            or evidence.get("captcha_challenge_ready")
+        )
+    if key == ("data_business_logic", "company_filing_browser_or_proxy_fallback"):
+        return bool(
+            evidence.get("ready")
+            or evidence.get("browser_or_proxy_fallback_configured")
+            or evidence.get("browser_render_configured")
+            or evidence.get("playwright_render_configured")
+        )
     return bool(
         evidence.get("ready")
         or evidence.get("connection_ok")
@@ -425,6 +439,10 @@ def _external_readiness_item_ready(item: dict) -> bool:
         or evidence.get("browser_or_proxy_fallback_configured")
         or evidence.get("playwright_render_configured")
     )
+
+
+def external_deployment_item_ready(item: dict) -> bool:
+    return _external_readiness_item_ready(item)
 
 
 def _local_dependency_port_state(local_dependency_status: dict | None, service: str) -> bool | None:

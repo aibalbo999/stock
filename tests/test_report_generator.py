@@ -32,6 +32,7 @@ from app.services import (
     report_action_checklist,
     report_appendix,
     report_allocation,
+    report_beginner_portfolio,
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
@@ -3629,6 +3630,25 @@ def test_balanced_profile_allows_variable_capital_and_wider_downside_gate() -> N
     assert "首筆配置草案" in plan
     assert "本輪首筆配置合計約" in plan
     assert plan.count("### 可小額分批研究") == 1
+
+
+def test_beginner_portfolio_plan_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    request = ReportRequest(tickers=[])
+    generator_source = Path("app/services/report_generator.py").read_text()
+    portfolio_source = Path("app/services/report_beginner_portfolio.py").read_text()
+
+    assert "report_beginner_portfolio" in generator_source
+    assert "def render_beginner_portfolio_plan(" in portfolio_source
+    assert "def source_label(" in portfolio_source
+    assert "資金設定：總資金" not in generator_source
+    assert generator._render_beginner_portfolio_plan(request, [], [], [], []) == (
+        report_beginner_portfolio.render_beginner_portfolio_plan(
+            [],
+            request,
+            generator._decision_reason,
+        )
+    )
 
 
 def test_portfolio_plan_does_not_allocate_observation_decision() -> None:

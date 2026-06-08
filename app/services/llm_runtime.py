@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from threading import Lock
 from time import monotonic
@@ -32,6 +33,9 @@ class LLMResult:
 
 _model_quota_cooldowns: dict[str, float] = {}
 _model_quota_cooldowns_lock = Lock()
+_UNSET = object()
+
+AttemptRecordFunc = Callable[..., dict[str, object]]
 
 
 def llm_attempt_record(
@@ -65,6 +69,48 @@ def llm_attempt_record(
     if cooldown_seconds is not None:
         record["cooldown_seconds"] = round(max(0.0, float(cooldown_seconds)), 3)
     return record
+
+
+def llm_failure_result(
+    *,
+    text: str,
+    provider: str | None = None,
+    model: str | None = None,
+    prior_attempts: Sequence[dict[str, object]] = (),
+    attempt_record_func: AttemptRecordFunc | None = None,
+    attempt_provider: str | None = None,
+    attempt_model: str | None | object = _UNSET,
+    outcome: str | None = None,
+    key_index: int | None = None,
+    attempt: int | None = None,
+    status: int | None = None,
+    error: str | None = None,
+    retryable: bool | None = None,
+    cooldown_seconds: float | None = None,
+) -> LLMResult:
+    attempts = list(prior_attempts)
+    if attempt_record_func is not None and outcome:
+        record_model = model if attempt_model is _UNSET else attempt_model
+        attempts.append(
+            attempt_record_func(
+                provider=attempt_provider or provider or "unknown",
+                model=record_model,
+                outcome=outcome,
+                key_index=key_index,
+                attempt=attempt,
+                status=status,
+                error=error,
+                retryable=retryable,
+                cooldown_seconds=cooldown_seconds,
+            )
+        )
+    return LLMResult(
+        text=text,
+        provider=provider,
+        model=model,
+        fallback=True,
+        attempts=tuple(attempts),
+    )
 
 
 def llm_retry_delay_seconds(
@@ -147,6 +193,7 @@ __all__ = [
     "daily_quota_exhausted_model_keys",
     "exception_status_code",
     "llm_attempt_record",
+    "llm_failure_result",
     "llm_retry_delay_seconds",
     "model_daily_quota_exhausted",
     "model_quota_cooldown_remaining",

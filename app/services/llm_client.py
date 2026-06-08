@@ -44,6 +44,7 @@ from app.services.llm_runtime import (
     daily_quota_exhausted_model_keys as _runtime_daily_quota_exhausted_model_keys,
     exception_status_code as _exception_status_code,
     llm_attempt_record as _llm_attempt_record,
+    llm_failure_result as _llm_failure_result,
     llm_retry_delay_seconds as _llm_retry_delay_seconds,
     model_daily_quota_exhausted as _runtime_model_daily_quota_exhausted,
     model_quota_cooldown_remaining as _runtime_model_quota_cooldown_remaining,
@@ -107,22 +108,16 @@ class LLMClient:
             prior_attempts.extend(genai_result.attempts)
 
         if len(self.rotator) == 0:
-            return LLMResult(
+            return _llm_failure_result(
                 text=(
                     "目前未設定 LLM API key；已改用規則引擎產生報告草稿。"
                     "接上供應商 SDK 後，仍需保留白名單與來源檢查。"
                 ),
-                fallback=True,
-                attempts=tuple(
-                    [
-                        *prior_attempts,
-                        self._attempt_record(
-                            provider="gemini_http",
-                            model=self.settings.primary_llm_model,
-                            outcome="missing_api_key",
-                        ),
-                    ]
-                ),
+                prior_attempts=prior_attempts,
+                attempt_record_func=self._attempt_record,
+                attempt_provider="gemini_http",
+                attempt_model=self.settings.primary_llm_model,
+                outcome="missing_api_key",
             )
 
         return self._generate_with_gemini_http(prompt, prior_attempts=tuple(prior_attempts))
@@ -182,16 +177,12 @@ class LLMClient:
     ) -> LLMResult:
         normalized_images = self._normalize_vision_images(images)
         if not normalized_images:
-            return LLMResult(
+            return _llm_failure_result(
                 text="Vision completion requires at least one image payload.",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider=self.provider,
-                        model=model or self.settings.primary_llm_model,
-                        outcome="empty_response",
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider=self.provider,
+                attempt_model=model or self.settings.primary_llm_model,
+                outcome="empty_response",
             )
 
         prior_attempts: list[dict[str, object]] = []
@@ -206,19 +197,13 @@ class LLMClient:
             prior_attempts.extend(litellm_result.attempts)
 
         if len(self.rotator) == 0:
-            return LLMResult(
+            return _llm_failure_result(
                 text="Vision LLM API key is not configured; Visual RAG extraction was skipped.",
-                fallback=True,
-                attempts=tuple(
-                    [
-                        *prior_attempts,
-                        self._attempt_record(
-                            provider="gemini_http",
-                            model=model or self.settings.primary_llm_model,
-                            outcome="missing_api_key",
-                        ),
-                    ]
-                ),
+                prior_attempts=prior_attempts,
+                attempt_record_func=self._attempt_record,
+                attempt_provider="gemini_http",
+                attempt_model=model or self.settings.primary_llm_model,
+                outcome="missing_api_key",
             )
 
         return self._generate_vision_with_gemini_http(
@@ -367,45 +352,36 @@ class LLMClient:
                 if should_stop:
                     break
 
-        return LLMResult(
+        return _llm_failure_result(
             text=(
                 "LLM 呼叫失敗，已改用規則引擎產生報告草稿。"
                 f"輪調嘗試：{'; '.join(errors) if errors else '無'}"
             ),
-            fallback=True,
-            attempts=tuple(attempts),
+            prior_attempts=attempts,
         )
 
     def _generate_with_google_genai(self, prompt: str) -> LLMResult:
         try:
             import_module("google.genai")
         except Exception as exc:
-            return LLMResult(
+            return _llm_failure_result(
                 text=f"Google GenAI SDK unavailable: {exc.__class__.__name__}",
                 provider="google_genai",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="google_genai",
-                        model=self.settings.primary_llm_model,
-                        outcome="dependency_unavailable",
-                        error=exc.__class__.__name__,
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="google_genai",
+                attempt_model=self.settings.primary_llm_model,
+                outcome="dependency_unavailable",
+                error=exc.__class__.__name__,
             )
 
         if len(self.rotator) == 0:
-            return LLMResult(
+            return _llm_failure_result(
                 text="Google GenAI SDK has no configured API key",
                 provider="google_genai",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="google_genai",
-                        model=self.settings.primary_llm_model,
-                        outcome="missing_api_key",
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="google_genai",
+                attempt_model=self.settings.primary_llm_model,
+                outcome="missing_api_key",
             )
 
         errors: list[str] = []
@@ -516,12 +492,11 @@ class LLMClient:
                 if should_stop:
                     break
 
-        return LLMResult(
+        return _llm_failure_result(
             text="Google GenAI SDK 呼叫失敗，將改走既有 Gemini HTTP 或規則引擎。"
             + ("；".join(errors) if errors else ""),
             provider="google_genai",
-            fallback=True,
-            attempts=tuple(attempts),
+            prior_attempts=attempts,
         )
 
     def _generate_with_litellm(
@@ -534,33 +509,25 @@ class LLMClient:
         try:
             import_module("litellm")
         except Exception as exc:
-            return LLMResult(
+            return _llm_failure_result(
                 text=f"LiteLLM unavailable: {exc.__class__.__name__}",
                 provider="litellm",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=None,
-                        outcome="dependency_unavailable",
-                        error=exc.__class__.__name__,
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="litellm",
+                attempt_model=None,
+                outcome="dependency_unavailable",
+                error=exc.__class__.__name__,
             )
 
         models = litellm_model_candidates(self.settings)
         if not models:
-            return LLMResult(
+            return _llm_failure_result(
                 text="LiteLLM has no configured model candidates",
                 provider="litellm",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=None,
-                        outcome="missing_model",
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="litellm",
+                attempt_model=None,
+                outcome="missing_model",
             )
 
         errors: list[str] = []
@@ -680,12 +647,11 @@ class LLMClient:
                             continue
                         break
 
-        return LLMResult(
+        return _llm_failure_result(
             text="LiteLLM 呼叫失敗，將改走既有 Gemini HTTP 或規則引擎。"
             + ("；".join(errors) if errors else ""),
             provider="litellm",
-            fallback=True,
-            attempts=tuple(attempts),
+            prior_attempts=attempts,
         )
 
     def _generate_vision_with_litellm(
@@ -698,18 +664,14 @@ class LLMClient:
         try:
             import_module("litellm")
         except Exception as exc:
-            return LLMResult(
+            return _llm_failure_result(
                 text=f"LiteLLM vision unavailable: {exc.__class__.__name__}",
                 provider="litellm",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=model,
-                        outcome="dependency_unavailable",
-                        error=exc.__class__.__name__,
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="litellm",
+                attempt_model=model,
+                outcome="dependency_unavailable",
+                error=exc.__class__.__name__,
             )
 
         models = [
@@ -718,17 +680,13 @@ class LLMClient:
             if is_vision_model_candidate(candidate)
         ]
         if not models:
-            return LLMResult(
+            return _llm_failure_result(
                 text="LiteLLM vision has no configured model candidates",
                 provider="litellm",
-                fallback=True,
-                attempts=(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=None,
-                        outcome="missing_model",
-                    ),
-                ),
+                attempt_record_func=self._attempt_record,
+                attempt_provider="litellm",
+                attempt_model=None,
+                outcome="missing_model",
             )
 
         errors: list[str] = []
@@ -834,12 +792,11 @@ class LLMClient:
                         )
                     )
 
-        return LLMResult(
+        return _llm_failure_result(
             text="LiteLLM vision 呼叫失敗，將改走既有 Gemini HTTP 或略過 Visual RAG。"
             + ("；".join(errors) if errors else ""),
             provider="litellm",
-            fallback=True,
-            attempts=tuple(attempts),
+            prior_attempts=attempts,
         )
 
     def _generate_vision_with_gemini_http(
@@ -945,11 +902,10 @@ class LLMClient:
                     )
                     errors.append(f"{model_name} key[{key_index}] vision {exc.__class__.__name__}")
 
-        return LLMResult(
+        return _llm_failure_result(
             text="Gemini vision 呼叫失敗，Visual RAG 未產生可用文字。"
             + ("；".join(errors) if errors else ""),
-            fallback=True,
-            attempts=tuple(attempts),
+            prior_attempts=attempts,
         )
 
     @staticmethod

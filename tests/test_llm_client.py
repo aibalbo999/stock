@@ -106,6 +106,30 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert "def llm_retry_delay_seconds(" in runtime_source
     assert "def exception_status_code(" in runtime_source
     assert "def model_quota_cooldown_remaining(" in runtime_source
+    assert "def llm_failure_result(" in runtime_source
+    assert "fallback=True" not in client_source
+
+
+def test_llm_runtime_failure_result_preserves_prior_attempts() -> None:
+    result = llm_runtime.llm_failure_result(
+        text="fallback",
+        provider="litellm",
+        prior_attempts=(
+            {"provider": "litellm", "model": "gemini-primary", "outcome": "http_error"},
+        ),
+        attempt_record_func=llm_runtime.llm_attempt_record,
+        attempt_provider="litellm",
+        attempt_model=None,
+        outcome="missing_model",
+        retryable=True,
+    )
+
+    assert result.fallback is True
+    assert result.provider == "litellm"
+    assert result.attempts == (
+        {"provider": "litellm", "model": "gemini-primary", "outcome": "http_error"},
+        {"provider": "litellm", "outcome": "missing_model", "retryable": True},
+    )
 
 
 def test_llm_observability_attachment_is_split_from_client() -> None:

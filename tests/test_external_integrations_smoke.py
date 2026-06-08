@@ -57,15 +57,16 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     )
 
     assert report["status"] == "caution"
-    assert report["ready_count"] == 1
-    assert report["check_count"] == 5
-    assert report["actionable_check_count"] == 5
+    assert report["ready_count"] == 2
+    assert report["check_count"] == 6
+    assert report["actionable_check_count"] == 6
     assert {check["capability"] for check in report["checks"]} == {
         "neo4j_import",
         "graphrag_live_cypher_query",
         "company_filing_browser_or_proxy_fallback",
         "company_filing_high_risk_unlocker",
         "company_filing_structured_api_fallback",
+        "company_filing_structured_api_sample_contract",
     }
     assert "start_system.py --start-dependencies" in report["local_start_command"]
     assert "neo4j_graphrag_smoke.py" in report["neo4j_graphrag_smoke_command"]
@@ -83,6 +84,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "structured_company_filing_sample.json" in report[
         "structured_company_filing_sample_command"
     ]
+    assert report["structured_company_filing_sample_status"] == "ready"
     checks = {check["capability"]: check for check in report["checks"]}
     assert checks["neo4j_import"]["smoke_commands"] == [
         ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
@@ -109,12 +111,23 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
+    assert checks["company_filing_structured_api_sample_contract"]["ready"] is True
+    assert checks["company_filing_structured_api_sample_contract"]["evidence"]["mode"] == (
+        "sample_json_contract"
+    )
+    assert checks["company_filing_structured_api_sample_contract"]["smoke_commands"] == [
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--sample-json examples/structured_company_filing_sample.json "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+    ]
 
     output = format_external_integration_report(report)
 
     assert "smoke:" in output
+    assert "External integrations: caution (2/6 ready)" in output
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in output
     assert "High-risk filing unlocker smoke" in output
     assert "https://mops.twse.com.tw/" in output
     assert "structured_company_filing_smoke.py" in output
     assert "structured_company_filing_sample.json" in output
+    assert "Structured company filing sample contract: ready" in output

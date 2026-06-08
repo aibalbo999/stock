@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from app.services.service_status import service_status
+
+try:
+    from scripts.structured_company_filing_smoke import (
+        structured_company_filing_sample_report,
+    )
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    from structured_company_filing_smoke import structured_company_filing_sample_report
 
 
 NEO4J_GRAPHRAG_SMOKE_COMMAND = (
@@ -27,6 +35,7 @@ STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND = (
     "--sample-json examples/structured_company_filing_sample.json "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
 )
+STRUCTURED_COMPANY_FILING_SAMPLE_PATH = Path("examples/structured_company_filing_sample.json")
 COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--url https://example.com/ --json"
@@ -120,6 +129,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
                 "remediation": item.get("remediation") or remediation,
             }
         )
+    checks.append(structured_company_filing_sample_contract_check())
     return {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
         "ready_count": sum(1 for check in checks if check["ready"]),
@@ -134,8 +144,33 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "high_risk_company_filing_render_smoke_command": HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
+        "structured_company_filing_sample_status": checks[-1]["status"],
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
     }
+
+
+def structured_company_filing_sample_contract_check() -> dict[str, Any]:
+    report = structured_company_filing_sample_report(
+        sample_json_path=_project_root() / STRUCTURED_COMPANY_FILING_SAMPLE_PATH,
+        ticker="2330",
+        company_name="台積電",
+        document_types=("investor_presentation",),
+    )
+    return {
+        "area": "data_business_logic",
+        "capability": "company_filing_structured_api_sample_contract",
+        "label": "Structured company filing sample contract",
+        "status": report.get("status") or "unknown",
+        "ready": bool(report.get("ready")),
+        "evidence": report,
+        "smoke_commands": [STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND],
+        "remediation": report.get("remediation")
+        or "Keep examples/structured_company_filing_sample.json convertible to CompanyFilingDocument rows.",
+    }
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
 
 def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> list[str]:

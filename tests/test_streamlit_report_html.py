@@ -17,6 +17,7 @@ REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
+MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
 REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
 EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE = Path("app/ui/external_deployment_diagnostics.py")
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
@@ -37,6 +38,7 @@ UI_SOURCE_FILES = [
     REPORT_HTML_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
+    MAINTENANCE_PANELS_SOURCE,
     REPORT_OBSERVABILITY_PANEL_SOURCE,
     EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE,
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
@@ -113,6 +115,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility_html" in source
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
+    assert "from app.ui.maintenance_panels import (" in source
     assert "from app.ui.maintenance_status import (" in source
     assert "from app.ui.external_deployment_diagnostics import (" in source
     assert "from app.ui.task_queue_diagnostics import (" in source
@@ -144,6 +147,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_data_enrichment() -> None:' in source
     assert 'def render_system_settings() -> None:' in source
     assert 'def render_maintenance_tab() -> None:' in source
+    assert 'def render_external_deployment_panel(upgrade_audit: dict) -> None:' in source
+    assert 'def render_background_task_observability_panel(' in source
+    assert 'def render_report_quality_panel(report_quality_summary: dict) -> None:' in source
+    assert 'def render_maintenance_cleanup_panel() -> None:' in source
     assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
     assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
     assert 'def render_rss_ingest_tab() -> None:' in source
@@ -320,6 +327,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/reports/quality/summary?limit=20" in source
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
+    assert "render_external_deployment_panel(upgrade_audit)" in source
+    assert "render_background_task_observability_panel(service_snapshot, task_summary)" in source
+    assert "external_deployment_warning_rows(upgrade_audit)" not in Path(
+        "app/ui/system_settings_maintenance.py"
+    ).read_text()
+    assert 'st.expander("背景任務觀測"' not in Path("app/ui/system_settings_maintenance.py").read_text()
     assert "正式分析不等於買進" in source
     assert "letter-spacing: -" not in combined
     assert "stock-hero" not in combined

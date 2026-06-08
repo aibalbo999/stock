@@ -27,6 +27,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/follow_up_status.py",
         "app/ui/maintenance_status.py",
     ]
+    assert status["frontend"]["ui_maintenance_panels_extracted"] is True
+    assert status["frontend"]["ui_maintenance_panels_path"] == "app/ui/maintenance_panels.py"
     assert status["frontend"]["ui_api_client_extracted"] is True
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
     assert status["frontend"]["ui_background_task_client_extracted"] is True
@@ -131,6 +133,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
+    assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True

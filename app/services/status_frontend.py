@@ -41,6 +41,7 @@ def frontend_status() -> dict:
         ui_dir / "data_enrichment_runtime.py",
         ui_dir / "system_settings.py",
         ui_dir / "system_settings_maintenance.py",
+        ui_dir / "maintenance_panels.py",
         ui_dir / "streamlit_dashboard.py",
     ]
     ui_source = "\n".join(_read_text(path) for path in ui_paths)
@@ -57,6 +58,7 @@ def frontend_status() -> dict:
             ui_dir / "data_enrichment_runtime.py",
             ui_dir / "system_settings.py",
             ui_dir / "system_settings_maintenance.py",
+            ui_dir / "maintenance_panels.py",
             ui_dir / "streamlit_dashboard.py",
         ]
     )
@@ -72,6 +74,8 @@ def frontend_status() -> dict:
     report_formatters_source = _read_text(ui_dir / "report_formatters.py")
     report_sections_source = _read_text(ui_dir / "report_sections.py")
     report_html_source = _read_text(ui_dir / "report_html.py")
+    system_settings_maintenance_source = _read_text(ui_dir / "system_settings_maintenance.py")
+    maintenance_panels_source = _read_text(ui_dir / "maintenance_panels.py")
     follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
     llm_quota_panel_source = _read_text(ui_dir / "llm_quota_panel.py")
     report_observability_panel_source = _read_text(ui_dir / "report_observability_panel.py")
@@ -173,6 +177,19 @@ def frontend_status() -> dict:
             "app/ui/follow_up_status.py",
             "app/ui/maintenance_status.py",
         ],
+        "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
+        and "def render_external_deployment_panel(" in maintenance_panels_source
+        and "def render_ai_usage_panel(" in maintenance_panels_source
+        and "def render_background_task_observability_panel(" in maintenance_panels_source
+        and "def render_report_quality_panel(" in maintenance_panels_source
+        and "def render_maintenance_cleanup_panel(" in maintenance_panels_source
+        and "from app.ui.maintenance_panels import (" in system_settings_maintenance_source
+        and "render_external_deployment_panel(upgrade_audit)" in system_settings_maintenance_source
+        and "render_background_task_observability_panel(service_snapshot, task_summary)"
+        in system_settings_maintenance_source
+        and "external_deployment_warning_rows(upgrade_audit)" not in system_settings_maintenance_source
+        and 'st.expander("背景任務觀測"' not in system_settings_maintenance_source,
+        "ui_maintenance_panels_path": "app/ui/maintenance_panels.py",
         "ui_api_client_extracted": (ui_dir / "api_client.py").exists()
         and "def api_task_post(" in api_client_source
         and "def request_error_message(" in api_client_source
@@ -241,7 +258,7 @@ def frontend_status() -> dict:
         and "def task_retry_options(" in task_failure_diagnostics_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source
         and "task_retry_options(task_summary)" in ui_source
-        and 'api_task_post(\n                                f"/tasks/{selected_retry_task_id}/retry"' in ui_source
+        and 'f"/tasks/{selected_retry_task_id}/retry"' in ui_source
         and "render_task_status_panel(" in ui_source,
         "ui_task_failure_diagnostics_extracted": (
             ui_dir / "task_failure_diagnostics.py"

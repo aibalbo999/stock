@@ -265,12 +265,28 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     status = service_status_snapshot
     thin_api = status["upgrade_capability_matrix"]["architecture"]["thin_api_controller"]
     evidence = thin_api["evidence"]
+    status_api_source = Path("app/services/status_api_architecture.py").read_text()
+    status_api_compatibility_source = Path(
+        "app/services/status_api_architecture_compatibility.py"
+    ).read_text()
 
     assert thin_api["status"] == "ready"
     assert evidence["collector_path"] == "app/services/status_api_architecture.py"
     assert evidence["api_source_context_extracted"] is True
     assert evidence["api_source_context_path"] == (
         "app/services/status_api_architecture_sources.py"
+    )
+    assert "def api_compatibility_architecture_status(" in (
+        status_api_compatibility_source
+    )
+    assert "api_compatibility_architecture_status(source_context)" in status_api_source
+    assert '"compatibility_export_domain_builders_extracted"' not in status_api_source
+    assert '"compatibility_helper_domain_builders_extracted"' not in status_api_source
+    assert '"compatibility_service_domain_mixins_extracted"' not in status_api_source
+    assert '"legacy_facade_alias_only"' not in status_api_source
+    assert evidence["api_compatibility_architecture_status_extracted"] is True
+    assert evidence["api_compatibility_architecture_status_path"] == (
+        "app/services/status_api_architecture_compatibility.py"
     )
     assert evidence["main_py_lines"] <= 120
     assert "report_routes.py" in evidence["route_modules"]

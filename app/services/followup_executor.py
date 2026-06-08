@@ -8,11 +8,11 @@ from typing import Any, Protocol
 from app.core.time import today_taipei
 from app.models.schemas import ReportRequest
 from app.services.followup_completion import summarize_follow_up_execution
-from app.services.followup_evidence import (
+from app.services.followup_evidence import ingest_follow_up_news
+from app.services.followup_evidence_queries import (
     company_filing_document_types_from_reason,
     company_name_from_follow_up_reason,
     follow_up_target_terms,
-    ingest_follow_up_news,
 )
 from app.services.ingestion import IngestionPipeline
 

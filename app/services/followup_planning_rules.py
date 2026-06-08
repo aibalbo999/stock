@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from app.services.followup_evidence import needs_company_filing_sources
+from app.services.followup_evidence_queries import needs_company_filing_sources
 
 
 ActionFactory = Callable[..., object]

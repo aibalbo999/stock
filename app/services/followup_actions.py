@@ -15,12 +15,12 @@ from app.services.followup_completion import (
     summarize_follow_up_completion as summarize_follow_up_completion,
     summarize_follow_up_execution as summarize_follow_up_execution,
 )
-from app.services.followup_evidence import (
+from app.services.followup_evidence import ingest_follow_up_news as ingest_follow_up_news
+from app.services.followup_evidence_queries import (
     company_filing_document_types_from_reason as company_filing_document_types_from_reason,
     company_name_from_follow_up_reason as company_name_from_follow_up_reason,
     follow_up_news_queries as follow_up_news_queries,
     follow_up_target_terms as follow_up_target_terms,
-    ingest_follow_up_news as ingest_follow_up_news,
     needs_company_filing_sources as needs_company_filing_sources,
 )
 from app.services.followup_freshness import TRACKING_FRESHNESS_THRESHOLDS as TRACKING_FRESHNESS_THRESHOLDS

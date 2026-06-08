@@ -47,6 +47,7 @@ from app.services import (
     report_investment_recommendations,
     report_investment_thesis,
     report_leading_signal,
+    report_markdown_sections,
     report_monitoring_checklist,
     report_risk_overview,
     report_scope_sections,
@@ -534,6 +535,20 @@ def test_report_prompt_logic_lives_outside_generator() -> None:
     assert "REPORT_PROMPT_TEMPLATE.format(" not in generator_source
     assert "def build_report_prompt(" in prompt_builder_source
     assert "def format_llm_evidence(" in prompt_builder_source
+
+
+def test_report_markdown_section_orchestration_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    section_source = Path("app/services/report_markdown_sections.py").read_text()
+
+    assert "report_markdown_sections" in generator_source
+    assert "def render_markdown(" in section_source
+    assert "def build_sections(" in section_source
+    assert "ReportSection(" in section_source
+    assert "ReportMarkdownRenderer" in section_source
+    assert "ReportSection(" not in generator_source
+    assert "ReportMarkdownRenderer" not in generator_source
+    assert report_markdown_sections.build_sections
 
 
 def test_document_matches_prefer_persisted_entity_metadata_over_text_guessing() -> None:

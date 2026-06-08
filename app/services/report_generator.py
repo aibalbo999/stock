@@ -52,7 +52,6 @@ from app.services.report_financial_assessment import (
     valuation_position_label,
 )
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
-from app.services.report_models import ReportContext, ReportSection
 from app.services.report_prompt_builder import (
     build_report_prompt,
     format_llm_evidence,
@@ -79,6 +78,7 @@ from app.services import (
     report_leading_signal,
     report_investment_thesis,
     report_investment_recommendations,
+    report_markdown_sections,
     report_monitoring_checklist,
     report_potential,
     report_risk_overview,
@@ -86,7 +86,6 @@ from app.services import (
     report_score_breakdown,
     report_source_coverage,
 )
-from app.services.report_renderer import ReportMarkdownRenderer
 from app.services.report_source_references import (
     downside_source_references,
     ordered_source_documents,
@@ -380,252 +379,19 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        leading_signals = leading_signals or {}
-        if financial_metrics:
-            metrics_by_ticker = self._group_financial_metrics(financial_metrics)
-            leading_signals = {
-                ticker: self._sanitize_leading_signal_for_profitability(
-                    signal,
-                    self._has_negative_profitability(metrics_by_ticker.get(ticker, [])),
-                )
-                for ticker, signal in leading_signals.items()
-            }
-        ordered_tickers = self._ordered_tickers_for_reading(
+        return report_markdown_sections.render_markdown(
+            self,
             request,
-            tickers,
             documents,
             findings,
+            tickers,
+            llm_result,
             market_snapshots,
             monthly_revenues,
             financial_metrics,
             valuation_metrics,
             leading_signals,
         )
-        sections = [
-            ReportSection(
-                title="一頁摘要",
-                body=self._render_executive_snapshot(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="可信度檢查",
-                body=self._render_credibility_check(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="時間口徑說明",
-                body=self._render_time_scope_note(
-                    request,
-                    market_snapshots,
-                    monthly_revenues,
-                    valuation_metrics,
-                ),
-            ),
-            ReportSection(title="判斷準則說明", body=self._render_decision_criteria_note(request)),
-            ReportSection(
-                title="下一步行動",
-                body=self._render_action_checklist(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="監控清單",
-                body=self._render_monitoring_checklist(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="自動補強任務",
-                body=self._render_follow_up_actions(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(title="先看結論", body=self._summary(findings)),
-            ReportSection(title="候選公司審計", body=self._render_candidate_audit(ordered_tickers)),
-            ReportSection(
-                title="資料完整度",
-                body=self._render_data_quality(
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                    request=request,
-                ),
-            ),
-            ReportSection(title="來源覆蓋", body=self._render_source_coverage(request, ordered_tickers, documents)),
-            ReportSection(title="近況訊號檢查", body=self._render_leading_signal_check(ordered_tickers, leading_signals)),
-            ReportSection(
-                title="早期潛力雷達",
-                body=self._render_early_potential_radar(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    leading_signals,
-                    financial_metrics,
-                    valuation_metrics,
-                ),
-            ),
-            ReportSection(
-                title="資金控管建議",
-                body=self._render_beginner_portfolio_plan(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="投資建議",
-                body=self._render_investment_recommendations(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="個股比較矩陣",
-                body=self._render_company_comparison_matrix(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="投資理由地圖",
-                body=self._render_investment_thesis_map(
-                    request,
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(
-                title="二次綜合篩選",
-                body=self._render_final_potential_screen(
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                    request=request,
-                ),
-            ),
-            ReportSection(
-                title="評分明細",
-                body=self._render_score_breakdown(
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    leading_signals,
-                ),
-            ),
-            ReportSection(title="基本面月營收檢查", body=self._render_revenue_check(ordered_tickers, monthly_revenues)),
-            ReportSection(
-                title="個別公司分析",
-                body=self._render_company_analysis(
-                    ordered_tickers,
-                    documents,
-                    findings,
-                    market_snapshots,
-                    monthly_revenues,
-                    financial_metrics,
-                    valuation_metrics,
-                    request=request,
-                    leading_signals=leading_signals,
-                ),
-            ),
-            ReportSection(title="主要風險與瓶頸", body=self._render_risk_overview(findings, ordered_tickers)),
-            ReportSection(title="分析範圍", body=self._render_scope(ordered_tickers, market_snapshots, monthly_revenues)),
-            ReportSection(
-                title="附錄：AI 補充與資料來源",
-                body=self._render_appendix(llm_result, documents, market_snapshots, tickers=ordered_tickers),
-            ),
-        ]
-        context = ReportContext(
-            title=f"{request.topic} 自動分析報告",
-            topic=request.topic,
-            generated_at=now_taipei(),
-            sections=sections,
-        )
-        return ReportMarkdownRenderer().render(context)
 
     def _render_credibility_check(
         self,

@@ -1,17 +1,42 @@
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
-from app.services.persistence import (
+from app.services import market_repositories, persistence
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
-    RiskClassificationRepository,
     ValuationMetricRepository,
 )
+from app.services.persistence import (
+    RiskClassificationRepository,
+)
+
+
+def test_market_repositories_are_reexported_from_persistence_for_compatibility() -> None:
+    assert persistence.MarketRepository is market_repositories.MarketRepository
+    assert persistence.MonthlyRevenueRepository is market_repositories.MonthlyRevenueRepository
+    assert persistence.FinancialMetricRepository is market_repositories.FinancialMetricRepository
+    assert persistence.ValuationMetricRepository is market_repositories.ValuationMetricRepository
+
+
+def test_market_repositories_live_outside_persistence_module() -> None:
+    persistence_source = Path("app/services/persistence.py").read_text()
+    market_repository_source = Path("app/services/market_repositories.py").read_text()
+
+    assert "class MarketRepository" not in persistence_source
+    assert "class MonthlyRevenueRepository" not in persistence_source
+    assert "class FinancialMetricRepository" not in persistence_source
+    assert "class ValuationMetricRepository" not in persistence_source
+    assert "class MarketRepository" in market_repository_source
+    assert "class MonthlyRevenueRepository" in market_repository_source
+    assert "class FinancialMetricRepository" in market_repository_source
+    assert "class ValuationMetricRepository" in market_repository_source
 
 
 def test_market_repository_upsert_and_latest() -> None:

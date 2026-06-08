@@ -48,13 +48,15 @@ from app.services.company_filing_results import (
     should_broaden_company_filing_search,
     should_retry_company_filing_fetch,
 )
-from app.services.persistence import (
-    CompanyFilingRepository,
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
-    NewsRepository,
     ValuationMetricRepository,
+)
+from app.services.persistence import (
+    CompanyFilingRepository,
+    NewsRepository,
 )
 from app.services.report_quality import is_stale_market_data_source
 from app.services.source_quality import is_low_quality_investor_forum_document

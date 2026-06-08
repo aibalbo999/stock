@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -10,29 +10,30 @@ from app.core.time import utc_now_naive
 from app.db.models import (
     AnalysisRun,
     CompanyFiling,
-    FinancialMetricSnapshot,
     GeneratedReport,
     LLMUsageRecord,
-    MonthlyRevenueSnapshot,
     NewsArticle,
     RiskClassificationCache,
-    StockPriceSnapshot,
-    ValuationMetricSnapshot,
 )
 from app.models.schemas import (
     CompanyFilingDocument,
-    FinancialMetric,
-    MarketSnapshot,
-    MonthlyRevenue,
     NewsDocument,
     ReportRequest,
     ReportResponse,
     RiskFinding,
     Source,
-    ValuationMetric,
+)
+from app.services.market_repositories import (
+    FinancialMetricRepository as FinancialMetricRepository,
+    MarketRepository as MarketRepository,
+    MonthlyRevenueRepository as MonthlyRevenueRepository,
+    ValuationMetricRepository as ValuationMetricRepository,
 )
 from app.services.report_integrity import assert_report_integrity
-from app.services.source_quality import is_formal_evidence_source, remove_low_quality_investor_forum_lines
+from app.services.source_quality import (
+    is_formal_evidence_source,
+    remove_low_quality_investor_forum_lines,
+)
 from app.services.task_failure_diagnostics import (
     parse_payload as parse_task_payload,
     task_failure_diagnostic_payload,
@@ -55,7 +56,9 @@ class NewsRepository:
         }
         return self.session.merge(NewsArticle(id=document.id, **values))
 
-    def upsert_document_merging_matches(self, document: NewsDocument, entity_matches: list[dict]) -> NewsArticle:
+    def upsert_document_merging_matches(
+        self, document: NewsDocument, entity_matches: list[dict]
+    ) -> NewsArticle:
         existing = self.session.get(NewsArticle, document.id)
         merged_matches = self._merge_entity_matches(
             json.loads(existing.entity_matches_json) if existing else [],
@@ -135,19 +138,25 @@ class CompanyFilingRepository:
                 setattr(row, key, value)
         return row
 
-    def latest_by_tickers(self, tickers: list[str], limit_per_ticker: int = 5) -> list[CompanyFilingDocument]:
+    def latest_by_tickers(
+        self, tickers: list[str], limit_per_ticker: int = 5
+    ) -> list[CompanyFilingDocument]:
         documents: list[CompanyFilingDocument] = []
         for ticker in tickers:
             statement = (
                 select(CompanyFiling)
                 .where(CompanyFiling.ticker == ticker)
-                .order_by(CompanyFiling.published_at.desc().nullslast(), CompanyFiling.created_at.desc())
+                .order_by(
+                    CompanyFiling.published_at.desc().nullslast(), CompanyFiling.created_at.desc()
+                )
                 .limit(limit_per_ticker)
             )
             documents.extend(self._to_document(row) for row in self.session.scalars(statement))
         return documents
 
-    def search_documents(self, query: str, tickers: list[str] | None = None, limit: int = 20) -> list[CompanyFilingDocument]:
+    def search_documents(
+        self, query: str, tickers: list[str] | None = None, limit: int = 20
+    ) -> list[CompanyFilingDocument]:
         terms = [term for term in query.split() if term]
         statement = select(CompanyFiling).order_by(
             CompanyFiling.published_at.desc().nullslast(),
@@ -160,15 +169,15 @@ class CompanyFilingRepository:
             rows = [
                 row
                 for row in rows
-                if any(term in row.title or term in row.text or term == row.ticker for term in terms)
+                if any(
+                    term in row.title or term in row.text or term == row.ticker for term in terms
+                )
             ]
         return [self._to_document(row) for row in rows[:limit]]
 
     def stats_by_ticker(self, ticker: str) -> dict:
         rows = list(
-            self.session.scalars(
-                select(CompanyFiling).where(CompanyFiling.ticker == ticker)
-            )
+            self.session.scalars(select(CompanyFiling).where(CompanyFiling.ticker == ticker))
         )
         latest = max((row.published_at for row in rows if row.published_at), default=None)
         return {
@@ -296,18 +305,15 @@ class ReportRepository:
         return list(self.session.scalars(statement))
 
     def latest_by_topic(self, limit: int = 20) -> list[GeneratedReport]:
-        ranked_reports = (
-            select(
-                GeneratedReport.id.label("report_id"),
-                func.row_number()
-                .over(
-                    partition_by=GeneratedReport.topic,
-                    order_by=(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc()),
-                )
-                .label("topic_rank"),
+        ranked_reports = select(
+            GeneratedReport.id.label("report_id"),
+            func.row_number()
+            .over(
+                partition_by=GeneratedReport.topic,
+                order_by=(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc()),
             )
-            .subquery()
-        )
+            .label("topic_rank"),
+        ).subquery()
         statement = (
             select(GeneratedReport)
             .join(ranked_reports, GeneratedReport.id == ranked_reports.c.report_id)
@@ -334,7 +340,9 @@ class ReportRepository:
         return True
 
     def delete_before(self, before: datetime) -> int:
-        result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.generated_at < before))
+        result = self.session.execute(
+            delete(GeneratedReport).where(GeneratedReport.generated_at < before)
+        )
         self.session.flush()
         return result.rowcount or 0
 
@@ -361,7 +369,9 @@ class ReportRepository:
             .where(AnalysisRun.report_id.in_(old_report_ids))
             .values(report_id=None)
         )
-        result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids)))
+        result = self.session.execute(
+            delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
+        )
         self.session.flush()
         return result.rowcount or 0
 
@@ -378,258 +388,11 @@ class ReportRepository:
             .where(AnalysisRun.report_id.in_(old_report_ids))
             .values(report_id=None)
         )
-        result = self.session.execute(delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids)))
+        result = self.session.execute(
+            delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
+        )
         self.session.flush()
         return result.rowcount or 0
-
-
-class MarketRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def upsert_snapshots(self, snapshots: list[MarketSnapshot]) -> list[StockPriceSnapshot]:
-        rows: list[StockPriceSnapshot] = []
-        for snapshot in snapshots:
-            statement = select(StockPriceSnapshot).where(
-                StockPriceSnapshot.ticker == snapshot.ticker,
-                StockPriceSnapshot.trade_date == snapshot.trade_date,
-            )
-            row = self.session.scalars(statement).first()
-            values = snapshot.model_dump()
-            if row is None:
-                row = StockPriceSnapshot(**values)
-                self.session.add(row)
-            else:
-                for key, value in values.items():
-                    setattr(row, key, value)
-            rows.append(row)
-        self.session.flush()
-        return rows
-
-    def latest_by_tickers(self, tickers: list[str]) -> list[MarketSnapshot]:
-        snapshots: list[MarketSnapshot] = []
-        for ticker in tickers:
-            statement = (
-                select(StockPriceSnapshot)
-                .where(StockPriceSnapshot.ticker == ticker)
-                .order_by(StockPriceSnapshot.trade_date.desc())
-                .limit(1)
-            )
-            row = self.session.scalars(statement).first()
-            if row:
-                snapshots.append(self._to_snapshot(row))
-        return snapshots
-
-    def latest_trade_date(self) -> date | None:
-        statement = select(StockPriceSnapshot.trade_date).order_by(StockPriceSnapshot.trade_date.desc()).limit(1)
-        return self.session.scalars(statement).first()
-
-    def history_by_tickers(self, tickers: list[str], limit: int = 80) -> dict[str, list[MarketSnapshot]]:
-        histories: dict[str, list[MarketSnapshot]] = {}
-        for ticker in tickers:
-            statement = (
-                select(StockPriceSnapshot)
-                .where(StockPriceSnapshot.ticker == ticker)
-                .order_by(StockPriceSnapshot.trade_date.desc())
-                .limit(limit)
-            )
-            rows = list(self.session.scalars(statement))
-            histories[ticker] = [self._to_snapshot(row) for row in reversed(rows)]
-        return histories
-
-    @staticmethod
-    def _to_snapshot(row: StockPriceSnapshot) -> MarketSnapshot:
-        return MarketSnapshot(
-            ticker=row.ticker,
-            trade_date=row.trade_date,
-            open=row.open,
-            high=row.high,
-            low=row.low,
-            close=row.close,
-            spread=row.spread,
-            trading_volume=row.trading_volume,
-            trading_money=row.trading_money,
-            trading_turnover=row.trading_turnover,
-            source=row.source,
-            fetched_at=row.fetched_at,
-        )
-
-
-class MonthlyRevenueRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def upsert_revenues(self, revenues: list[MonthlyRevenue]) -> list[MonthlyRevenueSnapshot]:
-        rows: list[MonthlyRevenueSnapshot] = []
-        for revenue in revenues:
-            statement = select(MonthlyRevenueSnapshot).where(
-                MonthlyRevenueSnapshot.ticker == revenue.ticker,
-                MonthlyRevenueSnapshot.revenue_date == revenue.revenue_date,
-            )
-            row = self.session.scalars(statement).first()
-            values = revenue.model_dump(exclude={"yoy_pct"})
-            if row is None:
-                row = MonthlyRevenueSnapshot(**values)
-                self.session.add(row)
-            else:
-                for key, value in values.items():
-                    setattr(row, key, value)
-            rows.append(row)
-        self.session.flush()
-        return rows
-
-    def latest_by_tickers(self, tickers: list[str]) -> list[MonthlyRevenue]:
-        latest: list[MonthlyRevenue] = []
-        for ticker in tickers:
-            statement = (
-                select(MonthlyRevenueSnapshot)
-                .where(MonthlyRevenueSnapshot.ticker == ticker)
-                .order_by(MonthlyRevenueSnapshot.revenue_date.desc())
-                .limit(1)
-            )
-            row = self.session.scalars(statement).first()
-            if row:
-                latest.append(self._to_revenue(row, self._yoy_pct(row)))
-        return latest
-
-    def history_by_tickers(self, tickers: list[str], limit: int = 18) -> dict[str, list[MonthlyRevenue]]:
-        histories: dict[str, list[MonthlyRevenue]] = {}
-        for ticker in tickers:
-            statement = (
-                select(MonthlyRevenueSnapshot)
-                .where(MonthlyRevenueSnapshot.ticker == ticker)
-                .order_by(MonthlyRevenueSnapshot.revenue_date.desc())
-                .limit(limit)
-            )
-            rows = list(self.session.scalars(statement))
-            histories[ticker] = [self._to_revenue(row, self._yoy_pct(row)) for row in reversed(rows)]
-        return histories
-
-    def _yoy_pct(self, row: MonthlyRevenueSnapshot) -> float | None:
-        previous = self.session.scalars(
-            select(MonthlyRevenueSnapshot)
-            .where(
-                MonthlyRevenueSnapshot.ticker == row.ticker,
-                MonthlyRevenueSnapshot.revenue_year == row.revenue_year - 1,
-                MonthlyRevenueSnapshot.revenue_month == row.revenue_month,
-            )
-            .limit(1)
-        ).first()
-        if previous is None or previous.revenue <= 0:
-            return None
-        return round((row.revenue - previous.revenue) / previous.revenue * 100, 2)
-
-    @staticmethod
-    def _to_revenue(row: MonthlyRevenueSnapshot, yoy_pct: float | None = None) -> MonthlyRevenue:
-        return MonthlyRevenue(
-            ticker=row.ticker,
-            revenue_date=row.revenue_date,
-            revenue=row.revenue,
-            revenue_year=row.revenue_year,
-            revenue_month=row.revenue_month,
-            yoy_pct=yoy_pct,
-            source=row.source,
-            fetched_at=row.fetched_at,
-        )
-
-
-class FinancialMetricRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def upsert_metrics(self, metrics: list[FinancialMetric]) -> list[FinancialMetricSnapshot]:
-        rows: list[FinancialMetricSnapshot] = []
-        for metric in metrics:
-            statement = select(FinancialMetricSnapshot).where(
-                FinancialMetricSnapshot.ticker == metric.ticker,
-                FinancialMetricSnapshot.report_date == metric.report_date,
-                FinancialMetricSnapshot.statement_type == metric.statement_type,
-                FinancialMetricSnapshot.metric == metric.metric,
-            )
-            row = self.session.scalars(statement).first()
-            values = metric.model_dump()
-            if row is None:
-                row = FinancialMetricSnapshot(**values)
-                self.session.add(row)
-            else:
-                for key, value in values.items():
-                    setattr(row, key, value)
-            rows.append(row)
-        self.session.flush()
-        return rows
-
-    def by_tickers(self, tickers: list[str]) -> list[FinancialMetric]:
-        if not tickers:
-            return []
-        statement = (
-            select(FinancialMetricSnapshot)
-            .where(FinancialMetricSnapshot.ticker.in_(tickers))
-            .order_by(FinancialMetricSnapshot.report_date.desc())
-        )
-        return [self._to_metric(row) for row in self.session.scalars(statement)]
-
-    @staticmethod
-    def _to_metric(row: FinancialMetricSnapshot) -> FinancialMetric:
-        return FinancialMetric(
-            ticker=row.ticker,
-            report_date=row.report_date,
-            statement_type=row.statement_type,
-            metric=row.metric,
-            value=row.value,
-            origin_name=row.origin_name,
-            source=row.source,
-            fetched_at=row.fetched_at,
-        )
-
-
-class ValuationMetricRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def upsert_valuations(self, valuations: list[ValuationMetric]) -> list[ValuationMetricSnapshot]:
-        rows: list[ValuationMetricSnapshot] = []
-        for valuation in valuations:
-            statement = select(ValuationMetricSnapshot).where(
-                ValuationMetricSnapshot.ticker == valuation.ticker,
-                ValuationMetricSnapshot.trade_date == valuation.trade_date,
-            )
-            row = self.session.scalars(statement).first()
-            values = valuation.model_dump()
-            if row is None:
-                row = ValuationMetricSnapshot(**values)
-                self.session.add(row)
-            else:
-                for key, value in values.items():
-                    setattr(row, key, value)
-            rows.append(row)
-        self.session.flush()
-        return rows
-
-    def latest_by_tickers(self, tickers: list[str]) -> list[ValuationMetric]:
-        latest: list[ValuationMetric] = []
-        for ticker in tickers:
-            statement = (
-                select(ValuationMetricSnapshot)
-                .where(ValuationMetricSnapshot.ticker == ticker)
-                .order_by(ValuationMetricSnapshot.trade_date.desc())
-                .limit(1)
-            )
-            row = self.session.scalars(statement).first()
-            if row:
-                latest.append(self._to_valuation(row))
-        return latest
-
-    @staticmethod
-    def _to_valuation(row: ValuationMetricSnapshot) -> ValuationMetric:
-        return ValuationMetric(
-            ticker=row.ticker,
-            trade_date=row.trade_date,
-            pe_ratio=row.pe_ratio,
-            pb_ratio=row.pb_ratio,
-            dividend_yield=row.dividend_yield,
-            source=row.source,
-            fetched_at=row.fetched_at,
-        )
 
 
 class RiskClassificationRepository:
@@ -637,7 +400,9 @@ class RiskClassificationRepository:
         self.session = session
 
     def get(self, document_id: str, topic_hash: str) -> dict | None:
-        row = self.session.get(RiskClassificationCache, {"document_id": document_id, "topic_hash": topic_hash})
+        row = self.session.get(
+            RiskClassificationCache, {"document_id": document_id, "topic_hash": topic_hash}
+        )
         if row is None:
             return None
         return {
@@ -662,7 +427,9 @@ class RiskClassificationRepository:
         keywords: list[str],
         model: str | None,
     ) -> RiskClassificationCache:
-        row = self.session.get(RiskClassificationCache, {"document_id": document_id, "topic_hash": topic_hash})
+        row = self.session.get(
+            RiskClassificationCache, {"document_id": document_id, "topic_hash": topic_hash}
+        )
         values = {
             "classification": classification,
             "topic": topic,
@@ -744,7 +511,9 @@ class AnalysisRunRepository:
         self.session.flush()
         return run
 
-    def mark_cancelled(self, run_id: int, reason: str = "task cancellation requested") -> AnalysisRun:
+    def mark_cancelled(
+        self, run_id: int, reason: str = "task cancellation requested"
+    ) -> AnalysisRun:
         run = self.session.get(AnalysisRun, run_id)
         if run is None:
             raise ValueError(f"analysis run not found: {run_id}")
@@ -866,9 +635,7 @@ class AnalysisRunRepository:
         if not orphan_ids:
             return 0
         result = self.session.execute(
-            update(AnalysisRun)
-            .where(AnalysisRun.id.in_(orphan_ids))
-            .values(report_id=None)
+            update(AnalysisRun).where(AnalysisRun.id.in_(orphan_ids)).values(report_id=None)
         )
         self.session.flush()
         return result.rowcount or 0
@@ -889,10 +656,16 @@ class LLMUsageRepository:
         llm = (report_execution or {}).get("llm") if isinstance(report_execution, dict) else None
         if not isinstance(llm, dict):
             return None
-        observability = llm.get("observability") if isinstance(llm.get("observability"), dict) else {}
-        attempt_summary = llm.get("attempt_summary") if isinstance(llm.get("attempt_summary"), dict) else {}
+        observability = (
+            llm.get("observability") if isinstance(llm.get("observability"), dict) else {}
+        )
+        attempt_summary = (
+            llm.get("attempt_summary") if isinstance(llm.get("attempt_summary"), dict) else {}
+        )
         attempts = llm.get("attempts") if isinstance(llm.get("attempts"), list) else []
-        models_tried = attempt_summary.get("models_tried") if isinstance(attempt_summary, dict) else []
+        models_tried = (
+            attempt_summary.get("models_tried") if isinstance(attempt_summary, dict) else []
+        )
         if not isinstance(models_tried, list):
             models_tried = []
         row = LLMUsageRecord(
@@ -907,7 +680,9 @@ class LLMUsageRepository:
             output_token_estimate=_int_or_none(observability.get("output_token_estimate")),
             total_token_estimate=_int_or_none(observability.get("total_token_estimate")),
             estimated_cost_usd=_float_or_none(observability.get("estimated_cost_usd")),
-            cost_tracking_mode=_string_or_none(observability.get("cost_tracking_mode"), max_length=80),
+            cost_tracking_mode=_string_or_none(
+                observability.get("cost_tracking_mode"), max_length=80
+            ),
             attempt_count=_int_or_none(attempt_summary.get("attempt_count")),
             retryable_failure_count=_int_or_none(attempt_summary.get("retryable_failure_count")),
             fallback_path_used=bool(attempt_summary.get("fallback_path_used")),

@@ -28,7 +28,10 @@ from app.services.candidate_audit import (
 )
 from app.services.candidate_revalidation import CandidateRevalidationService
 from app.services.company_data_audit import audit_company_data, audit_report_company_data
-from app.services.company_data_audit_api import CompanyDataAuditApiNotFound, CompanyDataAuditApiService
+from app.services.company_data_audit_api import (
+    CompanyDataAuditApiNotFound,
+    CompanyDataAuditApiService,
+)
 from app.services.company_filing_api import CompanyFilingApiService
 from app.services.data_operations_api import DataOperationsApiService
 from app.services.discovery_api import DiscoveryApiService
@@ -80,16 +83,18 @@ from app.services.followup_actions import (
 from app.services.ingestion import IngestionPipeline
 from app.services.llm_api import LLMApiService
 from app.services.llm_client import LLMClient
+from app.services.market_repositories import (
+    FinancialMetricRepository,
+    MarketRepository,
+    MonthlyRevenueRepository,
+    ValuationMetricRepository,
+)
 from app.services.persistence import (
     AnalysisRunRepository,
     CompanyFilingRepository,
-    FinancialMetricRepository,
     LLMUsageRepository,
-    MarketRepository,
-    MonthlyRevenueRepository,
     NewsRepository,
     ReportRepository,
-    ValuationMetricRepository,
 )
 from app.services.pipeline_api import PipelineApiService
 from app.services.report_build import ReportBuildService
@@ -128,7 +133,10 @@ from app.services.run_task_api import (
     TaskQueueUnavailableError,
 )
 from app.services.schedule_config import ScheduleConfigStore
-from app.services.source_quality import filter_formal_evidence_documents, remove_low_quality_investor_forum_lines
+from app.services.source_quality import (
+    filter_formal_evidence_documents,
+    remove_low_quality_investor_forum_lines,
+)
 from app.services.source_relevance import SourceRelevanceAnalyzer
 from app.services.standard_pipeline import StandardReportPipelineService
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
@@ -141,7 +149,10 @@ from app.services.workflow_checkpoint import (
     STANDARD_PIPELINE_STEPS,
     WorkflowCheckpointRecorder,
 )
-from app.services.workflow_orchestration import WorkflowOrchestrationError, WorkflowOrchestrationRunner
+from app.services.workflow_orchestration import (
+    WorkflowOrchestrationError,
+    WorkflowOrchestrationRunner,
+)
 
 
 LEGACY_HELPER_EXPORT_NAMES = (

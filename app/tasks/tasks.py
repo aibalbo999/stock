@@ -16,13 +16,15 @@ from app.services.company_data_audit import audit_company_data
 from app.services.followup_actions import FollowUpActionPlanner, execute_follow_up_actions_sync
 from app.services.ingestion import IngestionPipeline
 from app.services.llm_usage import record_llm_usage_from_report_execution
-from app.services.persistence import (
-    AnalysisRunRepository,
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
-    ReportRepository,
     ValuationMetricRepository,
+)
+from app.services.persistence import (
+    AnalysisRunRepository,
+    ReportRepository,
 )
 from app.services.report_build import ReportBuildService
 from app.services.report_followup import (
@@ -33,13 +35,19 @@ from app.services.report_followup import (
 )
 from app.services.report_followup_context import ReportFollowUpContextService
 from app.services.report_files import write_report_file
-from app.services.task_cancellation import TaskCancelledError, mark_run_cancelled, raise_if_task_cancelled
+from app.services.task_cancellation import (
+    TaskCancelledError,
+    mark_run_cancelled,
+    raise_if_task_cancelled,
+)
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
 from app.tasks.celery_app import celery_app
 
 
-def build_run_payload(payload: dict, task_id: str | None = None, ingestion: dict | None = None) -> dict:
+def build_run_payload(
+    payload: dict, task_id: str | None = None, ingestion: dict | None = None
+) -> dict:
     run_payload = {"request": payload}
     if task_id:
         run_payload["celery_task_id"] = task_id
@@ -114,7 +122,9 @@ def _cancellable_ingestion_pipeline(run_id: int | None = None) -> IngestionPipel
         return IngestionPipeline()
 
 
-async def _run_data_operation_payload(operation: str, payload: dict, *, run_id: int | None = None) -> dict:
+async def _run_data_operation_payload(
+    operation: str, payload: dict, *, run_id: int | None = None
+) -> dict:
     services = _api_services_for_tasks()
     pipeline = _cancellable_ingestion_pipeline(run_id)
     tickers = _normalize_tickers(payload.get("tickers") or [])
@@ -181,7 +191,9 @@ async def _run_data_operation_payload(operation: str, payload: dict, *, run_id: 
 async def _run_report_follow_up_payload(payload: dict, *, task_id: str | None = None) -> dict:
     services = _api_services_for_tasks()
     request = FollowUpRunRequest.model_validate(payload.get("payload") or {})
-    return await services.report_follow_up_run().run(int(payload["report_id"]), request, celery_task_id=task_id)
+    return await services.report_follow_up_run().run(
+        int(payload["report_id"]), request, celery_task_id=task_id
+    )
 
 
 def _latest_report_update_target(schedule_payload: dict) -> dict:
@@ -197,7 +209,9 @@ def _latest_report_update_target(schedule_payload: dict) -> dict:
     request = context["request"]
     candidate_tickers = _normalize_tickers(
         item.get("ticker")
-        for item in (context.get("candidate_whitelist") or candidate_audit_from_run_payload(run_payload))
+        for item in (
+            context.get("candidate_whitelist") or candidate_audit_from_run_payload(run_payload)
+        )
         if isinstance(item, dict)
     )
     configured_tickers = _normalize_tickers(schedule_payload.get("tickers") or [])
@@ -211,9 +225,7 @@ def _latest_report_update_target(schedule_payload: dict) -> dict:
     if not tickers:
         raise RuntimeError(f"after-close update could not resolve tickers for report {report.id}")
     lookback_days = int(
-        schedule_payload.get("lookback_days")
-        or getattr(request, "lookback_days", None)
-        or 120
+        schedule_payload.get("lookback_days") or getattr(request, "lookback_days", None) or 120
     )
     return {
         "report_id": report.id,
@@ -226,7 +238,9 @@ def _latest_report_update_target(schedule_payload: dict) -> dict:
     }
 
 
-async def _refresh_after_close_data(target: dict, schedule_payload: dict, *, run_id: int | None = None) -> dict:
+async def _refresh_after_close_data(
+    target: dict, schedule_payload: dict, *, run_id: int | None = None
+) -> dict:
     today = today_taipei()
     request = target["request"]
     tickers = target["tickers"]
@@ -463,7 +477,9 @@ def generate_report_task(self, payload: dict) -> dict:
             current_step,
             {
                 "news_count": (ingestion_summary.get("news") or {}).get("count", 0),
-                "company_filing_count": (ingestion_summary.get("company_filings") or {}).get("stored_count", 0),
+                "company_filing_count": (ingestion_summary.get("company_filings") or {}).get(
+                    "stored_count", 0
+                ),
             },
         )
         with session_scope() as session:
@@ -496,7 +512,9 @@ def generate_report_task(self, payload: dict) -> dict:
         if quality_gate.get("status") != "ready":
             current_step = "follow_up_actions"
             _raise_if_cancelled(run_id)
-            workflow.start_step(run_id, current_step, {"quality_gate_status": quality_gate.get("status")})
+            workflow.start_step(
+                run_id, current_step, {"quality_gate_status": quality_gate.get("status")}
+            )
             follow_up_actions = FollowUpActionPlanner().plan(request, quality_gate=quality_gate)
             if follow_up_actions:
                 follow_up_summary = execute_follow_up_actions_sync(follow_up_actions, request)
@@ -517,13 +535,17 @@ def generate_report_task(self, payload: dict) -> dict:
                 current_step,
                 {
                     "action_count": len(follow_up_actions),
-                    "stored_count": (follow_up_summary or {}).get("execution_summary", {}).get("stored_count"),
+                    "stored_count": (follow_up_summary or {})
+                    .get("execution_summary", {})
+                    .get("stored_count"),
                     "quality_gate_status_after": quality_gate.get("status"),
                 },
             )
         current_step = "report_persist"
         _raise_if_cancelled(run_id)
-        workflow.start_step(run_id, current_step, {"quality_gate_status": quality_gate.get("status")})
+        workflow.start_step(
+            run_id, current_step, {"quality_gate_status": quality_gate.get("status")}
+        )
         with session_scope() as session:
             AnalysisRunRepository(session).update_payload(
                 run_id,

@@ -12,7 +12,7 @@ from app.services.discovery_workflow import (
     discovery_market_history_days,
     discovery_valuation_history_days,
 )
-from app.services.persistence import (
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -21,7 +21,9 @@ from app.services.persistence import (
 from app.services.task_cancellation import TaskCancelledError
 
 
-def merge_latest_by_ticker(tickers: list[str], fetched_items: list, cached_items: list, date_attr: str) -> list:
+def merge_latest_by_ticker(
+    tickers: list[str], fetched_items: list, cached_items: list, date_attr: str
+) -> list:
     merged = {getattr(item, "ticker", ""): item for item in cached_items}
     for item in fetched_items:
         ticker = getattr(item, "ticker", "")
@@ -48,7 +50,9 @@ def merge_financial_metric_history(fetched_metrics: list, cached_metrics: list) 
     return list(merged.values())
 
 
-def market_timeout_errors(tickers: list[str], dataset: str, exc: Exception) -> list[MarketFetchError]:
+def market_timeout_errors(
+    tickers: list[str], dataset: str, exc: Exception
+) -> list[MarketFetchError]:
     message = f"{dataset} fetch timed out or failed: {str(exc) or exc.__class__.__name__}"
     return [MarketFetchError(ticker=ticker, dataset=dataset, error=message) for ticker in tickers]
 
@@ -113,7 +117,9 @@ class DiscoveredMarketDataService:
             for history in price_histories.values()
             if history
         ]
-        price_history_snapshots = [snapshot for history in price_histories.values() for snapshot in history]
+        price_history_snapshots = [
+            snapshot for history in price_histories.values() for snapshot in history
+        ]
         try:
             monthly_revenues, monthly_revenue_errors = await asyncio.wait_for(
                 market_client.get_monthly_revenue_histories_with_errors(

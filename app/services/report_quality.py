@@ -11,7 +11,7 @@ from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignalAnalyzer
 from app.services.llm_attempts import summarize_llm_attempts
-from app.services.persistence import (
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,

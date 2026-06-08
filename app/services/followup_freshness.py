@@ -8,12 +8,14 @@ from typing import Protocol
 from app.core.time import today_taipei
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
-from app.services.persistence import (
-    CompanyFilingRepository,
+from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
     ValuationMetricRepository,
+)
+from app.services.persistence import (
+    CompanyFilingRepository,
 )
 from app.services.report_quality import is_stale_market_data_source
 
@@ -40,14 +42,19 @@ class FollowUpFreshnessAction(Protocol):
 
 SessionScopeFactory = Callable[[], AbstractContextManager]
 TodayProvider = Callable[[], date]
-FreshnessDetailsFunc = Callable[[list[FollowUpFreshnessAction], ReportRequest], dict[tuple[str, tuple[str, ...]], dict]]
+FreshnessDetailsFunc = Callable[
+    [list[FollowUpFreshnessAction], ReportRequest], dict[tuple[str, tuple[str, ...]], dict]
+]
 
 
 def filter_fresh_tracking_actions(
     actions: list[FollowUpFreshnessAction],
     request: ReportRequest,
     *,
-    split_func: Callable[[list[FollowUpFreshnessAction], ReportRequest], tuple[list[FollowUpFreshnessAction], list[dict]]]
+    split_func: Callable[
+        [list[FollowUpFreshnessAction], ReportRequest],
+        tuple[list[FollowUpFreshnessAction], list[dict]],
+    ]
     | None = None,
 ) -> list[FollowUpFreshnessAction]:
     if not actions:
@@ -104,7 +111,13 @@ def tracking_freshness_details_by_action(
     ]
     if not tracking_actions:
         return {}
-    tickers = sorted({ticker for action in tracking_actions for ticker in (action.tickers or tuple(request.tickers))})
+    tickers = sorted(
+        {
+            ticker
+            for action in tracking_actions
+            for ticker in (action.tickers or tuple(request.tickers))
+        }
+    )
     if not tickers:
         return {}
     try:
@@ -117,18 +130,14 @@ def tracking_freshness_details_by_action(
                 if is_stale_market_data_source(item.source)
             }
             revenue_items = MonthlyRevenueRepository(session).latest_by_tickers(tickers)
-            latest_revenue = {
-                item.ticker: item.revenue_date for item in revenue_items
-            }
+            latest_revenue = {item.ticker: item.revenue_date for item in revenue_items}
             stale_revenue = {
                 item.ticker: item.source
                 for item in revenue_items
                 if is_stale_market_data_source(item.source)
             }
             valuation_items = ValuationMetricRepository(session).latest_by_tickers(tickers)
-            latest_valuation = {
-                item.ticker: item.trade_date for item in valuation_items
-            }
+            latest_valuation = {item.ticker: item.trade_date for item in valuation_items}
             stale_valuation = {
                 item.ticker: item.source
                 for item in valuation_items
@@ -192,10 +201,13 @@ def tracking_freshness_details_by_action(
             if ticker in stale_by_ticker
         }
         freshness[action.key()] = {
-            "is_fresh": bool(action_tickers) and all(
-                ticker in latest_by_ticker and latest_by_ticker[ticker] >= today - timedelta(days=max_age_days)
+            "is_fresh": bool(action_tickers)
+            and all(
+                ticker in latest_by_ticker
+                and latest_by_ticker[ticker] >= today - timedelta(days=max_age_days)
                 for ticker in action_tickers
-            ) and not stale_sources,
+            )
+            and not stale_sources,
             "max_age_days": max_age_days,
             "latest_dates": latest_dates,
             "has_stale_sources": bool(stale_sources),
@@ -204,7 +216,9 @@ def tracking_freshness_details_by_action(
     return freshness
 
 
-def skipped_fresh_tracking_details(actions: list[FollowUpFreshnessAction], request: ReportRequest) -> list[dict]:
+def skipped_fresh_tracking_details(
+    actions: list[FollowUpFreshnessAction], request: ReportRequest
+) -> list[dict]:
     _, rows = split_fresh_tracking_actions(actions, request)
     return rows
 
@@ -221,12 +235,22 @@ def split_fresh_tracking_actions(
     filtered = []
     for action in actions:
         details = freshness.get(action.key()) or {}
-        if action.purpose == "tracking" and action.action_type != "rerun_analysis" and details.get("is_fresh"):
+        if (
+            action.purpose == "tracking"
+            and action.action_type != "rerun_analysis"
+            and details.get("is_fresh")
+        ):
             rows.append({**action.to_dict(), "freshness": details})
             continue
         filtered.append(action)
-    has_tracking_work = any(action.purpose == "tracking" and action.action_type != "rerun_analysis" for action in filtered)
-    has_required_work = any(action.purpose == "required" and action.action_type != "rerun_analysis" for action in filtered)
+    has_tracking_work = any(
+        action.purpose == "tracking" and action.action_type != "rerun_analysis"
+        for action in filtered
+    )
+    has_required_work = any(
+        action.purpose == "required" and action.action_type != "rerun_analysis"
+        for action in filtered
+    )
     filtered = [
         action
         for action in filtered

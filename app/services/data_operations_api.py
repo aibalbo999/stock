@@ -11,14 +11,16 @@ from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
+from app.services.market_repositories import (
+    FinancialMetricRepository,
+    MarketRepository,
+    ValuationMetricRepository,
+)
 from app.services.persistence import (
     AnalysisRunRepository,
     CompanyFilingRepository,
-    FinancialMetricRepository,
-    MarketRepository,
     NewsRepository,
     ReportRepository,
-    ValuationMetricRepository,
 )
 from app.services.report_files import prune_older_report_files_by_topic
 from app.services.schedule_config import ScheduleConfigStore
@@ -31,9 +33,13 @@ class DataOperationsApiService:
         session_scope_factory: Callable[[], AbstractContextManager],
         news_repository_cls: type[NewsRepository] = NewsRepository,
         market_repository_cls: type[MarketRepository] = MarketRepository,
-        valuation_metric_repository_cls: type[ValuationMetricRepository] = ValuationMetricRepository,
+        valuation_metric_repository_cls: type[
+            ValuationMetricRepository
+        ] = ValuationMetricRepository,
         company_filing_repository_cls: type[CompanyFilingRepository] = CompanyFilingRepository,
-        financial_metric_repository_cls: type[FinancialMetricRepository] = FinancialMetricRepository,
+        financial_metric_repository_cls: type[
+            FinancialMetricRepository
+        ] = FinancialMetricRepository,
         analysis_run_repository_cls: type[AnalysisRunRepository] = AnalysisRunRepository,
         report_repository_cls: type[ReportRepository] = ReportRepository,
         ingestion_pipeline_cls: type[IngestionPipeline] = IngestionPipeline,
@@ -158,7 +164,9 @@ class DataOperationsApiService:
     def market_snapshots(self, tickers: str = "") -> list[dict]:
         mapper = self.entity_mapper_cls()
         requested = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
-        allowed = mapper.filter_allowed_tickers(requested or sorted(mapper.whitelist.allowed_tickers()))
+        allowed = mapper.filter_allowed_tickers(
+            requested or sorted(mapper.whitelist.allowed_tickers())
+        )
         with self.session_scope_factory() as session:
             snapshots = self.market_repository_cls(session).latest_by_tickers(allowed)
         return [snapshot.model_dump(mode="json") for snapshot in snapshots]
@@ -166,7 +174,9 @@ class DataOperationsApiService:
     def market_cache_summary(self, tickers: str = "", limit_per_ticker: int = 2) -> dict:
         mapper = self.entity_mapper_cls()
         requested = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
-        allowed = mapper.filter_allowed_tickers(requested or sorted(mapper.whitelist.allowed_tickers()))
+        allowed = mapper.filter_allowed_tickers(
+            requested or sorted(mapper.whitelist.allowed_tickers())
+        )
         with self.session_scope_factory() as session:
             snapshots = self.market_repository_cls(session).latest_by_tickers(allowed)
             valuations = self.valuation_metric_repository_cls(session).latest_by_tickers(allowed)

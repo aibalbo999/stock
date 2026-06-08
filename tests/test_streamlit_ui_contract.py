@@ -409,6 +409,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
     assert "外部部署 readiness checklist" in source
+    assert "外部部署啟用摘要" in source
+    assert "本機免費可補" in source
+    assert "需付費 API" in source
     assert "最近本機依賴啟動" in source
     assert "本機依賴修復指引" in source
     assert "本機依賴狀態" in source
@@ -431,6 +434,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"建議路徑"' in external_readiness_service_source
     assert "EXTERNAL_ENABLEMENT_METADATA" in external_readiness_service_source
     assert "def external_deployment_enablement_profile(" in external_readiness_service_source
+    assert "def external_deployment_enablement_summary(" in external_readiness_service_source
+    assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source
     assert '"本機動作"' in external_readiness_service_source
     assert '"本機指令"' in external_readiness_service_source
     assert "local_dependency_wait" in external_readiness_service_source

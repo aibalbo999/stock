@@ -10,6 +10,8 @@ from app.services.external_deployment_readiness import (
     collect_external_smoke_commands as _collect_external_smoke_commands,
     external_deployment_command_summary as _external_deployment_command_summary,
     external_deployment_enablement_profile as _external_deployment_enablement_profile,
+    external_deployment_enablement_summary as _external_deployment_enablement_summary,
+    external_deployment_enablement_summary_rows as _external_deployment_enablement_summary_rows,
     external_deployment_item_by_capability as _external_deployment_item_by_capability,
     external_deployment_item_ready as _external_deployment_item_ready,
     external_deployment_local_action as _external_deployment_local_action,
@@ -48,6 +50,20 @@ def external_deployment_readiness_metadata(item: dict) -> dict:
 
 def external_deployment_enablement_profile(item: dict) -> dict:
     return _external_deployment_enablement_profile(item)
+
+
+def external_deployment_enablement_summary(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> dict:
+    return _external_deployment_enablement_summary(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_enablement_summary_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_enablement_summary_rows(upgrade_audit, local_dependency_status)
 
 
 def external_deployment_local_action(

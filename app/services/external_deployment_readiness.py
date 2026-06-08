@@ -188,6 +188,87 @@ def external_deployment_readiness_rows(
     return rows
 
 
+def external_deployment_enablement_summary(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> dict:
+    items = external_deployment_readiness_items(upgrade_audit)
+    groups: dict[str, dict] = {}
+    summary = {
+        "total": len(items),
+        "ready": 0,
+        "pending": 0,
+        "free_local_pending": 0,
+        "local_action_available": 0,
+        "quota_or_external_pending": 0,
+        "paid_external_pending": 0,
+        "manual_or_paid_pending": 0,
+        "groups": [],
+        "primary_next_action": "",
+    }
+    for item in items:
+        ready = external_deployment_item_ready(item)
+        enablement = external_deployment_enablement_profile(item)
+        local_action = external_deployment_local_action(
+            item,
+            upgrade_audit,
+            local_dependency_status=local_dependency_status,
+        )
+        group = _external_enablement_group_entry(groups, enablement)
+        group["total"] += 1
+        if ready:
+            summary["ready"] += 1
+            group["ready"] += 1
+            continue
+
+        summary["pending"] += 1
+        group["pending"] += 1
+        item_label = str(item.get("label") or item.get("capability") or "-")
+        group["pending_items"].append(item_label)
+        deployment_profile = str(enablement.get("deployment_profile") or "")
+        if deployment_profile == "free_local":
+            summary["free_local_pending"] += 1
+        elif deployment_profile == "paid_external":
+            summary["paid_external_pending"] += 1
+        else:
+            summary["quota_or_external_pending"] += 1
+        if local_action.get("state") in {"可啟動", "已啟動", "驗證失敗"} and (
+            local_action.get("command") != "-"
+        ):
+            summary["local_action_available"] += 1
+
+    summary["manual_or_paid_pending"] = (
+        summary["quota_or_external_pending"] + summary["paid_external_pending"]
+    )
+    summary["groups"] = _external_enablement_summary_groups(groups)
+    summary["primary_next_action"] = _external_enablement_primary_next_action(summary)
+    return summary
+
+
+def external_deployment_enablement_summary_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    summary = external_deployment_enablement_summary(
+        upgrade_audit,
+        local_dependency_status=local_dependency_status,
+    )
+    rows = []
+    for group in summary.get("groups") or []:
+        pending_items = [str(item) for item in group.get("pending_items") or []]
+        rows.append(
+            {
+                "分類": group.get("label") or group.get("group") or "-",
+                "待處理": int(group.get("pending") or 0),
+                "已就緒": int(group.get("ready") or 0),
+                "成本/額度": group.get("cost_label") or "-",
+                "建議路徑": group.get("recommended_path") or "-",
+                "待處理項目": "、".join(pending_items[:4]) if pending_items else "-",
+            }
+        )
+    return rows
+
+
 def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
     if not isinstance(upgrade_audit, dict):
         return []
@@ -542,6 +623,57 @@ def _external_readiness_item_ready(item: dict) -> bool:
 
 def external_deployment_item_ready(item: dict) -> bool:
     return _external_readiness_item_ready(item)
+
+
+def _external_enablement_group_entry(groups: dict[str, dict], enablement: dict) -> dict:
+    group_key = str(enablement.get("group") or "external_configuration")
+    if group_key not in groups:
+        groups[group_key] = {
+            "group": group_key,
+            "label": str(enablement.get("group_label") or "需外部設定"),
+            "cost_profile": str(enablement.get("cost_profile") or "unknown"),
+            "cost_label": str(enablement.get("cost_label") or "依外部服務設定而定"),
+            "recommended_path": str(enablement.get("recommended_path") or "-"),
+            "free_local_available": bool(enablement.get("free_local_available")),
+            "paid_service_required": bool(enablement.get("paid_service_required")),
+            "deployment_profile": str(enablement.get("deployment_profile") or ""),
+            "total": 0,
+            "ready": 0,
+            "pending": 0,
+            "pending_items": [],
+        }
+    return groups[group_key]
+
+
+def _external_enablement_summary_groups(groups: dict[str, dict]) -> list[dict]:
+    return [
+        groups[key]
+        for key in sorted(
+            groups,
+            key=lambda group_key: _external_enablement_group_sort_key(groups[group_key]),
+        )
+    ]
+
+
+def _external_enablement_group_sort_key(group: dict) -> tuple[int, str]:
+    profile_order = {"free_local": 0, "quota_or_external": 1, "paid_external": 2}
+    deployment_profile = str(group.get("deployment_profile") or "")
+    return (
+        profile_order.get(deployment_profile, 3),
+        str(group.get("label") or group.get("group") or ""),
+    )
+
+
+def _external_enablement_primary_next_action(summary: dict) -> str:
+    if int(summary.get("pending") or 0) <= 0:
+        return "外部部署選配皆已就緒。"
+    if int(summary.get("local_action_available") or 0) > 0:
+        return "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
+    if int(summary.get("paid_external_pending") or 0) > 0:
+        return "剩餘項目需要外部資料 API 或服務合約，免費版可先保留 sample contract。"
+    if int(summary.get("quota_or_external_pending") or 0) > 0:
+        return "剩餘項目主要取決於模型/API 額度，建議只在高價值文件啟用。"
+    return "依 readiness checklist 逐項補齊設定。"
 
 
 def _local_dependency_port_state(local_dependency_status: dict | None, service: str) -> bool | None:

@@ -117,6 +117,14 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
     assert audit["summary"]["optional_warnings"] == 1
     assert audit["summary"]["total_warnings"] == 1
     assert audit["warnings"] == []
+    assert audit["external_deployment_enablement"]["total"] == 7
+    assert audit["external_deployment_enablement"]["pending"] == 1
+    assert audit["external_deployment_enablement"]["free_local_pending"] == 1
+    assert audit["external_deployment_enablement"]["local_action_available"] == 1
+    assert audit["external_deployment_enablement"]["paid_external_pending"] == 0
+    assert audit["external_deployment_enablement"]["primary_next_action"] == (
+        "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
+    )
     warning = audit["optional_warnings"][0]
     assert warning["capability"] == "neo4j_import"
     assert warning["optional"] is True

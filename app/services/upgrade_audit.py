@@ -4,7 +4,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.external_deployment_readiness import external_deployment_enablement_profile
+from app.services.external_deployment_readiness import (
+    external_deployment_enablement_profile,
+    external_deployment_enablement_summary,
+)
 from app.services.service_status import service_status
 
 
@@ -368,7 +371,7 @@ def audit_upgrade_capabilities(
         else:
             area["ready"] += 1
 
-    return {
+    audit = {
         "overall_status": "failed" if failures else "caution" if warnings else "ready",
         "strict_external": strict_external,
         "summary": {
@@ -391,6 +394,11 @@ def audit_upgrade_capabilities(
         "optional_warnings": optional_warnings,
         "all_warnings": all_warnings,
     }
+    audit["external_deployment_enablement"] = external_deployment_enablement_summary(
+        audit,
+        local_dependency_status=local_dependencies,
+    )
+    return audit
 
 
 def _requirement_result(

@@ -79,6 +79,16 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert report["ready_count"] == 5
     assert report["check_count"] == 9
     assert report["actionable_check_count"] == 9
+    assert report["enablement_summary"]["total"] == 5
+    assert report["enablement_summary"]["ready"] == 1
+    assert report["enablement_summary"]["pending"] == 4
+    assert report["enablement_summary"]["free_local_pending"] == 3
+    assert report["enablement_summary"]["local_action_available"] == 3
+    assert report["enablement_summary"]["quota_or_external_pending"] == 0
+    assert report["enablement_summary"]["paid_external_pending"] == 1
+    assert report["enablement_summary"]["primary_next_action"] == (
+        "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
+    )
     assert {check["capability"] for check in report["checks"]} == {
         "neo4j_payload_export_contract",
         "graphrag_local_cypher_dry_run",
@@ -181,6 +191,11 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
 
     assert "smoke:" in output
     assert "External integrations: caution (5/9 ready)" in output
+    assert (
+        "Enablement summary: pending=4; free_local=3; local_action=3; "
+        "quota_or_external=0; paid_external=1"
+    ) in output
+    assert "Next action: 先處理本機免費可補強項目" in output
     assert "enablement: 可本機免費啟用" in output
     assert "enablement: 需外部資料 API" in output
     assert "Neo4j payload local contract: ready" in output

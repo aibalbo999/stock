@@ -196,6 +196,24 @@ def _format_text(audit: dict) -> str:
             f"{summary.get('failures', 0)} failures"
         ),
     ]
+    enablement_summary = (
+        audit.get("external_deployment_enablement")
+        if isinstance(audit.get("external_deployment_enablement"), dict)
+        else {}
+    )
+    if enablement_summary.get("total"):
+        lines.append(
+            "External enablement: "
+            f"pending={int(enablement_summary.get('pending') or 0)}; "
+            f"free_local={int(enablement_summary.get('free_local_pending') or 0)}; "
+            f"local_action={int(enablement_summary.get('local_action_available') or 0)}; "
+            f"quota_or_external={int(enablement_summary.get('quota_or_external_pending') or 0)}; "
+            f"paid_external={int(enablement_summary.get('paid_external_pending') or 0)}"
+        )
+        if enablement_summary.get("primary_next_action"):
+            lines.append(
+                "External next action: " + str(enablement_summary["primary_next_action"])
+            )
     local_defaults = audit.get("local_dependency_defaults")
     if local_defaults:
         lines.append(

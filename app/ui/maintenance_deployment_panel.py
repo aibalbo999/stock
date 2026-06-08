@@ -5,6 +5,8 @@ import streamlit as st
 from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_post
 from app.ui.external_deployment_diagnostics import (
+    external_deployment_enablement_summary,
+    external_deployment_enablement_summary_rows,
     external_deployment_env_check_detail_rows,
     external_deployment_env_check_summary_rows,
     external_deployment_env_key_rows,
@@ -38,6 +40,14 @@ def render_external_deployment_panel(
         upgrade_audit,
         local_dependency_status,
     )
+    external_enablement_summary = external_deployment_enablement_summary(
+        upgrade_audit,
+        local_dependency_status,
+    )
+    external_enablement_summary_rows = external_deployment_enablement_summary_rows(
+        upgrade_audit,
+        local_dependency_status,
+    )
     external_warning_rows = external_deployment_warning_rows(upgrade_audit)
     external_smoke_commands = external_deployment_smoke_commands(upgrade_audit)
     external_env_key_rows = external_deployment_env_key_rows(upgrade_audit, service_snapshot)
@@ -68,6 +78,30 @@ def render_external_deployment_panel(
         deploy_cols[1].metric("Ready", int(deploy.get("ready") or 0))
         deploy_cols[2].metric("Warnings", int(deploy.get("warnings") or 0))
         deploy_cols[3].metric("Failures", int(deploy.get("failures") or 0))
+        if external_enablement_summary.get("total"):
+            enablement_cols = st.columns(4)
+            enablement_cols[0].metric(
+                "本機免費可補",
+                int(external_enablement_summary.get("free_local_pending") or 0),
+            )
+            enablement_cols[1].metric(
+                "本機可操作",
+                int(external_enablement_summary.get("local_action_available") or 0),
+            )
+            enablement_cols[2].metric(
+                "額度/外部選配",
+                int(external_enablement_summary.get("quota_or_external_pending") or 0),
+            )
+            enablement_cols[3].metric(
+                "需付費 API",
+                int(external_enablement_summary.get("paid_external_pending") or 0),
+            )
+            next_action = str(external_enablement_summary.get("primary_next_action") or "")
+            if next_action:
+                st.caption(next_action)
+        if external_enablement_summary_rows:
+            st.caption("外部部署啟用摘要")
+            st.dataframe(external_enablement_summary_rows, width="stretch", hide_index=True)
         if external_readiness_rows:
             st.caption("外部部署 readiness checklist")
             st.dataframe(external_readiness_rows, width="stretch", hide_index=True)

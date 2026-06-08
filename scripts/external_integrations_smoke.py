@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.services.external_deployment_readiness import (
+    external_deployment_enablement_profile,
+    external_deployment_enablement_summary,
+)
 from app.services.service_status import service_status
-from app.services.external_deployment_readiness import external_deployment_enablement_profile
 
 try:
     from scripts.company_filing_render_smoke import (
@@ -145,6 +148,10 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
             "label": label,
             "status": item.get("status") or "unknown",
             "ready": item.get("status") == "ready",
+            "severity": "pass" if item.get("status") == "ready" else "warn",
+            "optional": True,
+            "external_integration": True,
+            "deployment_check": True,
             "evidence": evidence,
             "smoke_commands": external_check_smoke_commands(capability, evidence),
             "remediation": item.get("remediation") or remediation,
@@ -159,6 +166,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "ready_count": sum(1 for check in checks if check["ready"]),
         "check_count": len(checks),
         "checks": checks,
+        "enablement_summary": external_deployment_enablement_summary({"checks": checks}),
         "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
@@ -374,6 +382,24 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         f"External integrations: {report['status']} "
         f"({report['ready_count']}/{report['check_count']} ready)"
     ]
+    enablement_summary = (
+        report.get("enablement_summary")
+        if isinstance(report.get("enablement_summary"), dict)
+        else {}
+    )
+    if enablement_summary.get("total"):
+        lines.append(
+            "Enablement summary: "
+            f"pending={int(enablement_summary.get('pending') or 0)}; "
+            f"free_local={int(enablement_summary.get('free_local_pending') or 0)}; "
+            f"local_action={int(enablement_summary.get('local_action_available') or 0)}; "
+            f"quota_or_external={int(enablement_summary.get('quota_or_external_pending') or 0)}; "
+            f"paid_external={int(enablement_summary.get('paid_external_pending') or 0)}"
+        )
+        if enablement_summary.get("primary_next_action"):
+            lines.append(
+                "Next action: " + str(enablement_summary["primary_next_action"])
+            )
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
         lines.append(f"- [{marker}] {check['label']}: {check['status']}")

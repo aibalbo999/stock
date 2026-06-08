@@ -632,6 +632,8 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
 
     rows = helpers["external_deployment_warning_rows"](audit)
     readiness_rows = helpers["external_deployment_readiness_rows"](audit)
+    enablement_summary = helpers["external_deployment_enablement_summary"](audit)
+    enablement_summary_rows = helpers["external_deployment_enablement_summary_rows"](audit)
     commands = helpers["external_deployment_smoke_commands"](audit)
 
     assert [row["能力"] for row in rows] == [
@@ -657,6 +659,24 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert "missing_browser_render_url" in rows[1]["說明"]
     assert "structured_company_filing_smoke.py" in rows[3]["診斷指令"]
     assert len(rows) == 4
+    assert enablement_summary["total"] == 4
+    assert enablement_summary["pending"] == 4
+    assert enablement_summary["free_local_pending"] == 3
+    assert enablement_summary["local_action_available"] == 3
+    assert enablement_summary["quota_or_external_pending"] == 0
+    assert enablement_summary["paid_external_pending"] == 1
+    assert enablement_summary["primary_next_action"] == (
+        "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
+    )
+    assert [row["分類"] for row in enablement_summary_rows] == [
+        "可本機免費啟用",
+        "需外部資料 API",
+    ]
+    assert enablement_summary_rows[0]["待處理"] == 3
+    assert enablement_summary_rows[0]["已就緒"] == 0
+    assert "外部 Neo4j 匯入連線" in enablement_summary_rows[0]["待處理項目"]
+    assert enablement_summary_rows[1]["待處理"] == 1
+    assert "TEJ" in enablement_summary_rows[1]["成本/額度"]
     assert [row["項目"] for row in readiness_rows] == [
         "外部 Neo4j 匯入連線",
         "公司文件 Proxy / Browser render / Playwright 後援",
@@ -1190,6 +1210,7 @@ def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> N
     rows_by_item = {
         row["項目"]: row for row in helpers["external_deployment_readiness_rows"](audit)
     }
+    enablement_summary = helpers["external_deployment_enablement_summary"](audit)
 
     assert rows_by_item["外部 Neo4j 匯入連線"]["本機動作"] == "驗證失敗"
     assert "--wait-local-neo4j 20" in rows_by_item["外部 Neo4j 匯入連線"]["本機指令"]
@@ -1205,6 +1226,8 @@ def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> N
     assert rows_by_item["公司文件結構化 API 備援"]["本機動作"] == "需外部設定"
     assert rows_by_item["公司文件結構化 API 備援"]["本機指令"] == "-"
     assert rows_by_item["公司文件結構化 API 備援"]["啟用分類"] == "需外部資料 API"
+    assert enablement_summary["pending"] == 3
+    assert enablement_summary["local_action_available"] == 2
 
 
 def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:

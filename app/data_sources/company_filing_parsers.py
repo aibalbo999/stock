@@ -15,6 +15,7 @@ PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
 PDF_IMPORT_MISSING_PYPDF_MESSAGE = "PDF 匯入需要安裝 pypdf，請先完成系統相依套件安裝後再重試。"
 PDF_IMPORT_MISSING_PDFPLUMBER_MESSAGE = "PDF 匯入設定為 pdfplumber，但尚未安裝 pdfplumber；請安裝 PDF 額外相依套件後再重試。"
 PDF_IMPORT_MISSING_UNSTRUCTURED_MESSAGE = "PDF 匯入設定為 unstructured，但尚未安裝 unstructured[pdf]；請安裝 PDF 額外相依套件後再重試。"
+PDF_IMPORT_MISSING_PYMUPDF_MESSAGE = "PDF 匯入設定為 pymupdf，但尚未安裝 PyMuPDF；請安裝 PDF/Visual RAG 額外相依套件後再重試。"
 PDF_IMPORT_PARSE_ERROR_MESSAGE = "PDF 公司文件無法解析，可能是檔案加密、損毀或格式不支援；請改用官方 HTML 頁面，或人工貼上文字版內容。"
 PDF_IMPORT_NO_TEXT_MESSAGE = "PDF 公司文件沒有可抽取文字，可能是掃描圖檔；請先 OCR 成文字後再貼上，或改用官方 HTML/文字版文件。"
 MAX_PDF_TABLES_PER_DOCUMENT = 80
@@ -63,6 +64,12 @@ def extract_pdf_text(content: bytes) -> str:
                 parser="unstructured",
             )
             return _maybe_augment_pdf_text_with_visual_rag(content, text)
+        if parser == "pymupdf":
+            text = _with_pdf_parser_provenance(
+                _extract_pdf_text_with_pymupdf(content),
+                parser="pymupdf",
+            )
+            return _maybe_augment_pdf_text_with_visual_rag(content, text)
         if parser == "pypdf":
             text = _with_pdf_parser_provenance(
                 _extract_pdf_text_with_pypdf(content),
@@ -84,6 +91,7 @@ def _extract_pdf_text_auto(content: bytes) -> str:
     for parser_name, extractor in (
         ("pdfplumber", _extract_pdf_text_with_pdfplumber),
         ("unstructured", _extract_pdf_text_with_unstructured),
+        ("pymupdf", _extract_pdf_text_with_pymupdf),
         ("pypdf", _extract_pdf_text_with_pypdf),
     ):
         try:
@@ -242,6 +250,36 @@ def _extract_pdf_text_with_unstructured(content: bytes) -> str:
             "僅保留前段可檢索表格文字。"
         )
     return _validated_pdf_text("\n\n".join(parts))
+
+
+def _extract_pdf_text_with_pymupdf(content: bytes) -> str:
+    try:
+        fitz = _import_pymupdf()
+    except ImportError as exc:
+        raise ImportError(PDF_IMPORT_MISSING_PYMUPDF_MESSAGE) from exc
+
+    document = None
+    try:
+        document = fitz.open(stream=content, filetype="pdf")
+        pages = []
+        for page in document:
+            page_text = (page.get_text("text") or "").strip()
+            if page_text:
+                pages.append(page_text)
+    except Exception as exc:
+        raise ValueError(PDF_IMPORT_PARSE_ERROR_MESSAGE) from exc
+    finally:
+        close = getattr(document, "close", None)
+        if callable(close):
+            close()
+    return _validated_pdf_text("\n\n".join(pages))
+
+
+def _import_pymupdf():
+    try:
+        return importlib.import_module("fitz")
+    except ImportError:
+        return importlib.import_module("pymupdf")
 
 
 def _validated_pdf_text(text: str) -> str:

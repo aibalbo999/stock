@@ -147,6 +147,52 @@ def test_company_filing_pdf_parser_unstructured_respects_table_toggle(monkeypatc
     assert "年度 營收 2026 成長" in text
 
 
+def test_company_filing_pdf_parser_extracts_text_with_pymupdf(monkeypatch) -> None:
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def get_text(self, mode: str) -> str:
+            assert mode == "text"
+            return self.text
+
+    class FakeDocument:
+        def __init__(self) -> None:
+            self.closed = False
+            self.pages = [
+                FakePage("台積電 2026 法說會"),
+                FakePage("AI 伺服器與 CoWoS 需求"),
+            ]
+
+        def __iter__(self):
+            return iter(self.pages)
+
+        def close(self) -> None:
+            self.closed = True
+
+    captured = {}
+
+    def fake_open(**kwargs):
+        captured["kwargs"] = kwargs
+        captured["document"] = FakeDocument()
+        return captured["document"]
+
+    monkeypatch.setitem(sys.modules, "fitz", SimpleNamespace(open=fake_open))
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "pymupdf")
+    get_settings.cache_clear()
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+        sys.modules.pop("fitz", None)
+
+    assert captured["kwargs"] == {"stream": b"%PDF fake", "filetype": "pdf"}
+    assert captured["document"].closed is True
+    assert "[PDF 解析資訊] parser=pymupdf; mode=configured; extract_tables=true" in text
+    assert "台積電 2026 法說會" in text
+    assert "AI 伺服器與 CoWoS 需求" in text
+
+
 def test_company_filing_pdf_without_text_has_actionable_error(monkeypatch) -> None:
     import pypdf
 

@@ -20,7 +20,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 自動升級策略：快速/標準模式若遇到拆題不足、缺多個子題來源或候選證據嚴重偏低，會自動提高補強輪數與查詢批次，並在 audit 記錄停止原因。
 - 公司公開文件：可手動匯入或依股票自動搜尋年報、法說會、公開說明書與重大訊息線索，並寫入 RAG 與個股資料審計；官方/MOPS/交易所/公司 IR 來源會優先於第三方摘要。
 - 公司文件補抓會回傳每檔股票的官方搜尋計畫，包含 MOPS、交易所、櫃買中心與 PDF/IR 查詢，方便追蹤「系統實際往哪裡找原始文件」。
-- 公司文件抓取支援設定化 User-Agent、Proxy、403/429/5xx 重試、重試時 User-Agent/proxy 身份輪換，以及可選的瀏覽器渲染後援，降低公開文件入口被擋或動態頁面空殼被誤判為公司缺資料的機率；PDF 解析可設定 `auto`、`pdfplumber`、`unstructured` 或 `pypdf`，PDF 與 HTML/IR 網頁都會盡量把財報表格轉成可檢索文字。
+- 公司文件抓取支援設定化 User-Agent、Proxy、403/429/5xx 重試、重試時 User-Agent/proxy 身份輪換，以及可選的瀏覽器渲染後援，降低公開文件入口被擋或動態頁面空殼被誤判為公司缺資料的機率；PDF 解析可設定 `auto`、`pdfplumber`、`unstructured`、`pymupdf` 或 `pypdf`，PDF 與 HTML/IR 網頁都會盡量把財報表格轉成可檢索文字。
 - 個股資料審計會區分必要與建議公司文件；目前必要文件為高品質年報，建議文件為高品質法說/投資人簡報。
 - 前端補充資料頁可直接匯入公司公開文件，也可貼 URL 自動抓取 HTML 或 PDF 文字；匯入後會顯示來源分級與品質分數，並同步寫入 RAG 與公司文件審計。URL 匯入會阻擋 localhost、內網 IP 與非 HTTP(S) 位址，降低 SSRF 風險。
 - URL 匯入還會檢查抓回內容的長度、公司識別與文件類型線索，避免把登入頁、空白頁或一般新聞誤存成公司原始文件。
@@ -298,7 +298,7 @@ COMPANY_FILING_VISUAL_RAG_TIMEOUT_SECONDS=60
 
 `COMPANY_FILING_USER_AGENTS` 與 `COMPANY_FILING_PROXY_URLS` 可用逗號或換行設定多組值；系統會依 URL 穩定選用身份與代理，並在 403/429/5xx 重試時往下一組 User-Agent/proxy 偏移，避免同一個被擋身份反覆撞同一入口。若沒有自訂 `COMPANY_FILING_USER_AGENTS`，系統會使用內建 browser-like User-Agent 池，避免公開文件請求以空白或 Python 預設身份送出；`GET /services/status` 會列出 `effective_user_agent_count`、`user_agent_mode`、`user_agent_retry_rotation_enabled`、`proxy_retry_rotation_enabled`、`browser_render_provider` 與 `browser_or_proxy_fallback_configured`，方便分辨目前是只有 UA 偽裝，還是已配置 proxy / Browserless / FlareSolverr / ScrapingBee / BrightData / Playwright 後援。公司文件抓取遇到 403/429/5xx 會依 `COMPANY_FILING_HTTP_RETRIES` 與 `Retry-After` / 指數退避重試。
 公司文件抓取錯誤會保留原始 `error`，並額外附上 `category`、`retryable` 與 `stage`。例如 `rate_limited`、`timeout`、`blocked_or_placeholder`、`pdf_no_text`、`visual_rag_not_configured`、`visual_rag_quota`、`company_mismatch`、`document_type_mismatch`、`website_not_found`。自動補強會把這些欄位彙整到每檔公司的 `error_category_counts`、`retryable_error_count` 與 `next_actions`，用來分辨要重試、改走 Proxy 或 Browser render/unlocker、安裝 PDF parser、設定 Visual RAG、等待 VLM 免費額度/切換 fallback、要求 OCR/人工匯入，或只是公司/文件類型不匹配，避免把爬蟲或 PDF 解析失敗誤寫成公司沒有公開文件。資料補強頁會從 `GET /services/status` 顯示公司文件補抓能力表，列出 PDF parser、PDF 表格抽取、Visual RAG、Playwright render、Browser/unlocker 與結構化文件 API 的 ready/optional 狀態與下一步。
-`COMPANY_FILING_PDF_PARSER=auto` 會優先嘗試表格解析能力較好的 `pdfplumber` / `unstructured`，若未安裝或解析失敗再回到 `pypdf`；其中 `pdfplumber` 已列入基礎依賴，讓一般安裝就具備 PDF 表格抽取能力。解析後文字會加入 `[PDF 解析資訊]` 標記，記錄實際 parser、auto/configured 模式與是否抽取表格。HTML/IR 網頁若含財務表格，`COMPANY_FILING_HTML_EXTRACT_TABLES=true` 會額外加入 `[HTML 表格抽取]` 區塊，把表格列欄保留下來供 RAG 檢索。若要再啟用 `unstructured[pdf]` 進階 parser，可安裝：
+`COMPANY_FILING_PDF_PARSER=auto` 會優先嘗試表格解析能力較好的 `pdfplumber` / `unstructured`，若未安裝或解析失敗再回到快速文字 fallback `pymupdf`，最後才使用 `pypdf`；其中 `pdfplumber` 已列入基礎依賴，讓一般安裝就具備 PDF 表格抽取能力。`pymupdf` 可用 `COMPANY_FILING_PDF_PARSER=pymupdf` 明確指定，適合文字可抽取但版面讓 pypdf 容易漏字的 PDF；它不會被視為表格 parser，因此啟用 `COMPANY_FILING_PDF_EXTRACT_TABLES=true` 時仍需 `pdfplumber` 或 `unstructured[pdf]` 才會標成表格 runtime ready。解析後文字會加入 `[PDF 解析資訊]` 標記，記錄實際 parser、auto/configured 模式與是否抽取表格。HTML/IR 網頁若含財務表格，`COMPANY_FILING_HTML_EXTRACT_TABLES=true` 會額外加入 `[HTML 表格抽取]` 區塊，把表格列欄保留下來供 RAG 檢索。若要再啟用 `unstructured[pdf]` 進階 parser 與 PyMuPDF 文字 fallback，可安裝：
 
 ```bash
 pip install -e ".[dev,pdf]"

@@ -42,7 +42,8 @@ rag = [
   "cohere>=5.0.0"
 ]
 pdf = [
-  "unstructured[pdf]>=0.15.0"
+  "unstructured[pdf]>=0.15.0",
+  "pymupdf>=1.24.0"
 ]
 visual = [
   "pymupdf>=1.24.0"

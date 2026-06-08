@@ -262,16 +262,20 @@ def _company_filing_pdf_parser_status(
     normalized_parser = str(parser or "auto").strip().lower() or "auto"
     pdfplumber_available = module_available("pdfplumber")
     unstructured_pdf_available = module_available("unstructured.partition.pdf")
+    pymupdf_available = module_available("fitz") or module_available("pymupdf")
     pypdf_available = module_available("pypdf")
     parser_availability = {
         "pdfplumber": pdfplumber_available,
         "unstructured": unstructured_pdf_available,
+        "pymupdf": pymupdf_available,
         "pypdf": pypdf_available,
     }
     if normalized_parser == "auto":
         configured_parser_available = any(parser_availability.values())
         resolved_parser_candidates = [
-            name for name in ("pdfplumber", "unstructured", "pypdf") if parser_availability[name]
+            name
+            for name in ("pdfplumber", "unstructured", "pymupdf", "pypdf")
+            if parser_availability[name]
         ]
     else:
         configured_parser_available = bool(parser_availability.get(normalized_parser))
@@ -289,6 +293,7 @@ def _company_filing_pdf_parser_status(
         "resolved_parser_candidates": resolved_parser_candidates,
         "pdfplumber_available": pdfplumber_available,
         "unstructured_pdf_available": unstructured_pdf_available,
+        "pymupdf_available": pymupdf_available,
         "pypdf_available": pypdf_available,
         "table_parser_available": table_parser_available,
         "table_extraction_requested": bool(extract_tables),

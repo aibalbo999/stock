@@ -37,6 +37,7 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["pdf_extract_tables"] is True
     assert "pdfplumber_available" in status["company_filings"]["pdf_parser_dependencies"]
     assert "unstructured_pdf_available" in status["company_filings"]["pdf_parser_dependencies"]
+    assert "pymupdf_available" in status["company_filings"]["pdf_parser_dependencies"]
     assert (
         status["company_filings"]["pdf_parser_available"]
         is status["company_filings"]["pdf_parser_dependencies"]["configured_parser_available"]
@@ -213,6 +214,35 @@ def test_company_filing_pdf_parser_status_accepts_pdfplumber_for_tables() -> Non
     assert status["table_parser_available"] is True
     assert status["table_extraction_runtime_available"] is True
     assert status["fallback_reason"] is None
+
+
+def test_company_filing_pdf_parser_status_accepts_pymupdf_as_text_fallback() -> None:
+    def fake_module_available(name: str) -> bool:
+        return name == "fitz"
+
+    no_table_status = _company_filing_pdf_parser_status(
+        "auto",
+        extract_tables=False,
+        module_available=fake_module_available,
+    )
+    table_status = _company_filing_pdf_parser_status(
+        "pymupdf",
+        extract_tables=True,
+        module_available=fake_module_available,
+    )
+
+    assert no_table_status["configured_parser_available"] is True
+    assert no_table_status["resolved_parser_candidates"] == ["pymupdf"]
+    assert no_table_status["pymupdf_available"] is True
+    assert no_table_status["table_parser_available"] is False
+    assert no_table_status["fallback_reason"] is None
+    assert table_status["configured_parser_available"] is True
+    assert table_status["resolved_parser_candidates"] == ["pymupdf"]
+    assert table_status["table_extraction_runtime_available"] is False
+    assert (
+        table_status["fallback_reason"]
+        == "missing_table_pdf_parser_dependency:pdfplumber_or_unstructured"
+    )
 
 
 def test_company_filing_user_agent_status_counts_custom_agents() -> None:

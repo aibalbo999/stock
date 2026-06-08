@@ -127,6 +127,7 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     )
     assert "playwright_render_runtime" in filing_hardening
     assert "pdf_parser_dependencies" in filing_hardening
+    assert "pymupdf_available" in filing_hardening["pdf_parser_dependencies"]
 
     render_contract = matrix["data_business_logic"]["company_filing_render_provider_contract"]
     assert render_contract["status"] == "ready"
@@ -173,6 +174,7 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         pdf_parser_runtime["evidence"]["pdf_table_parser_available"]
         is status["company_filings"]["pdf_table_parser_available"]
     )
+    assert "pymupdf_available" in pdf_parser_runtime["evidence"]["pdf_parser_dependencies"]
 
     filing_fallback = matrix["data_business_logic"]["company_filing_browser_or_proxy_fallback"]
     expected_filing_fallback_status = (

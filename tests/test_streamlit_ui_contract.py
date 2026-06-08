@@ -418,10 +418,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'load_api_json_or_default(\n        "/maintenance/operations"' in source
     assert "def maintenance_operation_rows(" in source
     assert "def maintenance_operation_post_run_check_rows(" in source
+    assert "def maintenance_operation_post_run_diagnostic_action_ids(" in source
     assert "本機依賴操作" in source
     assert "選擇維護操作" in source
     assert "後續驗證" in source
     assert '"可執行診斷"' in source
+    assert "可直接執行的後續診斷" in source
+    assert "maintenance_post_run_diagnostic_" in source
+    assert 'f"/maintenance/diagnostics/{action_id}/run"' in source
     assert "confirm_maintenance_operation" in source
     assert "maintenance_run_operation" in source
     assert 'f"/maintenance/operations/{selected_operation_id}/run"' in source

@@ -202,6 +202,18 @@ def maintenance_operation_post_run_check_rows(result: dict) -> list[dict]:
     ]
 
 
+def maintenance_operation_post_run_diagnostic_action_ids(rows: list[dict]) -> list[str]:
+    action_ids: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        action_id = str(row.get("可執行診斷") or "").strip()
+        if not action_id or action_id == "-" or action_id in seen:
+            continue
+        seen.add(action_id)
+        action_ids.append(action_id)
+    return action_ids
+
+
 def recommended_maintenance_operation_id(
     maintenance_operations: dict,
     resolution_rows: list[dict],
@@ -341,3 +353,47 @@ def _render_maintenance_operation_result(result: dict) -> None:
         commands = [row["指令"] for row in post_run_rows if row.get("指令") and row["指令"] != "-"]
         if commands:
             st.code("\n".join(commands), language="bash")
+        _render_post_run_diagnostic_actions(post_run_rows)
+
+
+def _render_post_run_diagnostic_actions(post_run_rows: list[dict]) -> None:
+    action_ids = maintenance_operation_post_run_diagnostic_action_ids(post_run_rows)
+    if not action_ids:
+        return
+    st.caption("可直接執行的後續診斷")
+    for action_id in action_ids:
+        if st.button(
+            f"執行 {action_id}",
+            key=f"maintenance_post_run_diagnostic_{action_id}",
+        ):
+            result = run_api_action_or_none(
+                lambda action_id=action_id: api_post(
+                    f"/maintenance/diagnostics/{action_id}/run",
+                    {},
+                    timeout=120,
+                ),
+                error_message="後續診斷執行失敗",
+            )
+            if isinstance(result, dict):
+                _render_post_run_diagnostic_result(result)
+
+
+def _render_post_run_diagnostic_result(result: dict) -> None:
+    status = str(result.get("status") or "")
+    message = str(result.get("message") or status or "診斷完成")
+    if status == "success":
+        st.success(message)
+    elif status in {"failed", "timeout"}:
+        st.warning(message)
+    else:
+        st.info(message)
+    output = "\n".join(
+        part
+        for part in (
+            str(result.get("stdout_tail") or "").strip(),
+            str(result.get("stderr_tail") or "").strip(),
+        )
+        if part
+    )
+    if output:
+        st.code(output, language="text")

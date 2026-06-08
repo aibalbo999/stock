@@ -5,6 +5,7 @@ from app.services.external_deployment_env_gaps import (
 )
 from app.ui.maintenance_deployment_panel import (
     maintenance_operation_recommendation_caption,
+    maintenance_operation_post_run_diagnostic_action_ids,
     maintenance_operation_post_run_check_rows,
     maintenance_operation_rows,
     recommended_maintenance_operation_id,
@@ -146,6 +147,15 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
             ),
         },
     ]
+    assert maintenance_operation_post_run_diagnostic_action_ids(
+        [
+            rows[0],
+            {**rows[0]},
+            {"可執行診斷": "-"},
+            rows[1],
+            {"可執行診斷": ""},
+        ]
+    ) == ["graphrag_live_query_smoke", "high_risk_unlocker_smoke"]
 
 
 def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:

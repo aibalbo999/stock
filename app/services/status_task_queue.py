@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
@@ -27,6 +28,10 @@ TASK_ASYNC_BRIDGE_OPERATIONS = (
     "celery.generate_report.pre_report_refresh",
     "celery.after_close.refresh_data",
 )
+
+ALLOWED_APP_ASYNCIO_RUN_PATHS = {
+    "app/core/async_bridge.py",
+}
 
 COMPOSE_RUNTIME_ENV_GROUPS = {
     "llm": (
@@ -113,6 +118,7 @@ def task_queue_status(
     broker_url = str(getattr(settings, "redis_url", "") or "")
     export_status = _task_export_status()
     async_bridge_status = _task_async_bridge_status()
+    app_asyncio_run_policy_status = _app_asyncio_run_policy_status()
     compose_runtime_env_status = _compose_runtime_env_status()
     broker_ok = bool(redis_status.get("ok"))
     broker_configured = bool(broker_url.strip())
@@ -156,6 +162,8 @@ def task_queue_status(
         "task_export_error": export_status["task_export_error"],
         "task_async_bridge_guard_present": async_bridge_status["ready"],
         "task_async_bridge": async_bridge_status,
+        "app_asyncio_run_policy_ready": app_asyncio_run_policy_status["ready"],
+        "app_asyncio_run_policy": app_asyncio_run_policy_status,
         "compose_runtime_env_passthrough_ready": compose_runtime_env_status["ready"],
         "compose_runtime_env": compose_runtime_env_status,
         "worker_ping_checked": worker_ping_status["worker_ping_checked"],
@@ -258,6 +266,82 @@ def _task_async_bridge_status() -> dict:
         if helper_imported and direct_asyncio_run_count == 0 and all(operation_markers.values())
         else "missing_task_async_bridge_guard",
     }
+
+
+def _app_asyncio_run_policy_status() -> dict:
+    repo_root = Path(__file__).resolve().parents[2]
+    app_dir = repo_root / "app"
+    paths = sorted(app_dir.rglob("*.py"))
+    locations, parse_errors = _asyncio_run_call_locations(paths, root=repo_root)
+    forbidden_locations = [
+        location
+        for location in locations
+        if location["path"] not in ALLOWED_APP_ASYNCIO_RUN_PATHS
+    ]
+    ready = bool(not parse_errors and not forbidden_locations)
+    return {
+        "ready": ready,
+        "scan_root": "app",
+        "scan_file_count": len(paths),
+        "allowed_paths": sorted(ALLOWED_APP_ASYNCIO_RUN_PATHS),
+        "locations": locations,
+        "forbidden_locations": forbidden_locations,
+        "parse_errors": parse_errors,
+        "fallback_reason": None if ready else "app_asyncio_run_policy_violation",
+    }
+
+
+def _asyncio_run_call_locations(paths: list[Path], *, root: Path) -> tuple[list[dict], list[dict]]:
+    locations: list[dict] = []
+    parse_errors: list[dict] = []
+    for path in paths:
+        relative_path = _relative_path(path, root)
+        try:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError as exc:
+            parse_errors.append(
+                {
+                    "path": relative_path,
+                    "line": exc.lineno,
+                    "error": exc.__class__.__name__,
+                }
+            )
+            continue
+        except OSError as exc:
+            parse_errors.append(
+                {
+                    "path": relative_path,
+                    "line": None,
+                    "error": exc.__class__.__name__,
+                }
+            )
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _is_asyncio_run_call(node.func):
+                locations.append(
+                    {
+                        "path": relative_path,
+                        "line": int(getattr(node, "lineno", 0) or 0),
+                    }
+                )
+    return locations, parse_errors
+
+
+def _is_asyncio_run_call(func: ast.AST) -> bool:
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "run"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "asyncio"
+    )
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _task_export_status() -> dict:

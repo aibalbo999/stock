@@ -79,6 +79,19 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     assert status["task_queue"]["task_async_bridge"]["direct_asyncio_run_count"] == 0
     assert status["task_queue"]["task_async_bridge"]["helper_imported"] is True
     assert all(status["task_queue"]["task_async_bridge"]["operation_markers"].values())
+    assert status["task_queue"]["app_asyncio_run_policy_ready"] is True
+    assert status["task_queue"]["app_asyncio_run_policy"]["scan_root"] == "app"
+    assert status["task_queue"]["app_asyncio_run_policy"]["scan_file_count"] >= 100
+    assert status["task_queue"]["app_asyncio_run_policy"]["allowed_paths"] == [
+        "app/core/async_bridge.py"
+    ]
+    app_asyncio_run_locations = status["task_queue"]["app_asyncio_run_policy"]["locations"]
+    assert [location["path"] for location in app_asyncio_run_locations] == [
+        "app/core/async_bridge.py"
+    ]
+    assert app_asyncio_run_locations[0]["line"] >= 1
+    assert status["task_queue"]["app_asyncio_run_policy"]["forbidden_locations"] == []
+    assert status["task_queue"]["app_asyncio_run_policy"]["parse_errors"] == []
     assert status["task_queue"]["compose_runtime_env_passthrough_ready"] is True
     assert status["task_queue"]["compose_runtime_env"]["celery_services_use_anchor"] is True
     assert status["task_queue"]["compose_runtime_env"]["missing_by_group"] == {}
@@ -224,6 +237,11 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert "worker_nodes" in task_queue_arch["evidence"]
     assert task_queue_arch["evidence"]["task_async_bridge_guard_present"] is True
     assert task_queue_arch["evidence"]["task_async_bridge"]["direct_asyncio_run_count"] == 0
+    assert task_queue_arch["evidence"]["app_asyncio_run_policy_ready"] is True
+    assert task_queue_arch["evidence"]["app_asyncio_run_policy"]["forbidden_locations"] == []
+    assert task_queue_arch["evidence"]["app_asyncio_run_policy"]["allowed_paths"] == [
+        "app/core/async_bridge.py"
+    ]
     assert task_queue_arch["evidence"]["compose_runtime_env_passthrough_ready"] is True
     assert task_queue_arch["evidence"]["compose_runtime_env"]["missing_by_group"] == {}
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True

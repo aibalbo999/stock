@@ -86,10 +86,11 @@ def frontend_status() -> dict:
     streamlit_pages_source = "\n".join(
         _read_text(pages_dir / page_name) for page_name in pages
     )
+    all_ui_python_paths = sorted(ui_dir.glob("*.py")) if ui_dir.exists() else []
     frontend_blocking_call_scan_paths = [
         streamlit_path,
         *[pages_dir / page_name for page_name in pages],
-        *ui_paths,
+        *all_ui_python_paths,
     ]
     asyncio_run_locations = _literal_occurrence_locations(
         frontend_blocking_call_scan_paths,
@@ -367,6 +368,7 @@ def frontend_status() -> dict:
         "frontend_blocking_call_scan_paths": [
             str(path.relative_to(root)) for path in frontend_blocking_call_scan_paths
         ],
+        "frontend_blocking_call_scan_file_count": len(frontend_blocking_call_scan_paths),
         "asyncio_run_count": sum(item["count"] for item in asyncio_run_locations),
         "asyncio_run_locations": asyncio_run_locations,
         "long_blocking_post_timeout_present": bool(long_blocking_post_locations),

@@ -85,10 +85,19 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["uses_background_task_submit_helper"] is True
     assert status["frontend"]["uses_task_queue_preflight"] is True
     assert status["frontend"]["uses_task_status_panel"] is True
+    blocking_scan_paths = set(status["frontend"]["frontend_blocking_call_scan_paths"])
+    expected_ui_scan_paths = {
+        path.as_posix() for path in sorted(Path("app/ui").glob("*.py"))
+    }
+    assert expected_ui_scan_paths <= blocking_scan_paths
     assert "streamlit_app.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
     assert "pages/01_分析工作區.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
     assert "pages/04_系統設定.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
+    assert "app/ui/__init__.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
     assert "app/ui/background_tasks.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
+    assert status["frontend"]["frontend_blocking_call_scan_file_count"] == len(
+        status["frontend"]["frontend_blocking_call_scan_paths"]
+    )
     assert status["frontend"]["asyncio_run_count"] == 0
     assert status["frontend"]["asyncio_run_locations"] == []
     assert status["frontend"]["long_blocking_post_timeout_present"] is False
@@ -141,6 +150,12 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert "pages/03_資料補強.py" in frontend_arch["evidence"][
         "frontend_blocking_call_scan_paths"
     ]
+    assert "app/ui/__init__.py" in frontend_arch["evidence"][
+        "frontend_blocking_call_scan_paths"
+    ]
+    assert frontend_arch["evidence"]["frontend_blocking_call_scan_file_count"] == len(
+        frontend_arch["evidence"]["frontend_blocking_call_scan_paths"]
+    )
     assert frontend_arch["evidence"]["asyncio_run_count"] == 0
     assert frontend_arch["evidence"]["asyncio_run_locations"] == []
     assert frontend_arch["evidence"]["uses_background_task_submit_helper"] is True

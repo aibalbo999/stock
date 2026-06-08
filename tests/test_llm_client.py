@@ -82,6 +82,8 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert LLMResult is llm_runtime.LLMResult
     assert llm_module.RETRYABLE_HTTP_STATUSES is llm_runtime.RETRYABLE_HTTP_STATUSES
     assert llm_module.DEFAULT_MAX_RETRIES_PER_KEY == llm_runtime.DEFAULT_MAX_RETRIES_PER_KEY
+    assert llm_module._model_quota_cooldowns is llm_runtime._model_quota_cooldowns
+    assert llm_module._model_quota_cooldowns_lock is llm_runtime._model_quota_cooldowns_lock
     assert (
         llm_runtime.llm_retry_delay_seconds(
             response,
@@ -103,6 +105,24 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert "@dataclass(frozen=True)\nclass LLMResult" not in client_source
     assert "def llm_retry_delay_seconds(" in runtime_source
     assert "def exception_status_code(" in runtime_source
+    assert "def model_quota_cooldown_remaining(" in runtime_source
+
+
+def test_llm_quota_cooldown_runtime_tracks_shared_model_state() -> None:
+    with llm_runtime._model_quota_cooldowns_lock:
+        llm_runtime._model_quota_cooldowns.clear()
+
+    llm_runtime.start_model_quota_cooldown("gemini/gemini-3.5-flash", 30.0, now=100.0)
+
+    assert llm_runtime.model_quota_cooldown_remaining("gemini-3.5-flash", now=110.0) == 20.0
+    assert llm_runtime.model_quota_cooldown_remaining("models/gemini-3.5-flash", now=130.0) == 0.0
+    assert llm_runtime.model_daily_quota_exhausted("gemini/gemini-3.5-flash", {"gemini-3.5-flash"})
+    assert (
+        llm_runtime.daily_quota_exhausted_model_keys(
+            fake_settings(llm_quota_hard_routing_enabled=False)
+        )
+        == set()
+    )
 
 
 def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:

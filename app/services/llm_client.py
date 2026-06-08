@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from importlib import import_module
-from threading import Lock
 from time import monotonic, sleep
 from typing import Any, Optional
 
@@ -18,9 +17,7 @@ from app.services.llm_models import (
     litellm_key_candidates,
     litellm_model_candidates,
     litellm_model_requires_api_key,
-    model_quota_cooldown_key,
 )
-from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 from app.services.llm_observability import (
     build_llm_observability_trace,
     dispatch_llm_observability_trace,
@@ -45,9 +42,15 @@ from app.services.llm_runtime import (
     LLMResult,
     RETRYABLE_HTTP_STATUSES,
     ROTATABLE_HTTP_STATUSES,
+    _model_quota_cooldowns as _model_quota_cooldowns,
+    _model_quota_cooldowns_lock as _model_quota_cooldowns_lock,
+    daily_quota_exhausted_model_keys as _runtime_daily_quota_exhausted_model_keys,
     exception_status_code as _exception_status_code,
     llm_attempt_record as _llm_attempt_record,
     llm_retry_delay_seconds as _llm_retry_delay_seconds,
+    model_daily_quota_exhausted as _runtime_model_daily_quota_exhausted,
+    model_quota_cooldown_remaining as _runtime_model_quota_cooldown_remaining,
+    start_model_quota_cooldown as _runtime_start_model_quota_cooldown,
 )
 
 __all__ = [
@@ -58,9 +61,6 @@ __all__ = [
     "llm_attempt_failure_category",
     "summarize_llm_attempts",
 ]
-
-_model_quota_cooldowns: dict[str, float] = {}
-_model_quota_cooldowns_lock = Lock()
 
 
 class LLMClient:
@@ -1050,14 +1050,7 @@ class LLMClient:
         )
 
     def _model_quota_cooldown_remaining(self, model: str) -> float:
-        key = model_quota_cooldown_key(model)
-        now = monotonic()
-        with _model_quota_cooldowns_lock:
-            until = _model_quota_cooldowns.get(key, 0.0)
-            if until <= now:
-                _model_quota_cooldowns.pop(key, None)
-                return 0.0
-            return until - now
+        return _runtime_model_quota_cooldown_remaining(model)
 
     def _start_model_quota_cooldown(
         self,
@@ -1069,24 +1062,14 @@ class LLMClient:
             cooldown_seconds = self.model_quota_cooldown_seconds
         if cooldown_seconds <= 0:
             return
-        key = model_quota_cooldown_key(model)
-        until = monotonic() + cooldown_seconds
-        with _model_quota_cooldowns_lock:
-            _model_quota_cooldowns[key] = max(_model_quota_cooldowns.get(key, 0.0), until)
+        _runtime_start_model_quota_cooldown(model, cooldown_seconds)
 
     def _daily_quota_exhausted_model_keys(self) -> set[str]:
-        if not bool(getattr(self.settings, "llm_quota_hard_routing_enabled", True)):
-            return set()
-        try:
-            return LLMQuotaGovernanceService(
-                settings_provider=lambda: self.settings
-            ).exhausted_model_keys()
-        except Exception:
-            return set()
+        return _runtime_daily_quota_exhausted_model_keys(self.settings)
 
     @staticmethod
     def _model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
-        return normalize_model_name(model) in exhausted_model_keys
+        return _runtime_model_daily_quota_exhausted(model, exhausted_model_keys)
 
     def _iter_model_attempt_plans(
         self,

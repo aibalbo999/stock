@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import Lock
+from time import monotonic
 
 import httpx
+
+from app.services.llm_models import model_quota_cooldown_key
+from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 
 
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
@@ -23,6 +28,10 @@ class LLMResult:
     fallback: bool = False
     attempts: tuple[dict[str, object], ...] = field(default_factory=tuple)
     observability: dict[str, object] = field(default_factory=dict)
+
+
+_model_quota_cooldowns: dict[str, float] = {}
+_model_quota_cooldowns_lock = Lock()
 
 
 def llm_attempt_record(
@@ -85,6 +94,45 @@ def exception_status_code(exc: Exception) -> int | None:
     return int(status) if status is not None else None
 
 
+def model_quota_cooldown_remaining(model: str, *, now: float | None = None) -> float:
+    key = model_quota_cooldown_key(model)
+    now_value = monotonic() if now is None else float(now)
+    with _model_quota_cooldowns_lock:
+        until = _model_quota_cooldowns.get(key, 0.0)
+        if until <= now_value:
+            _model_quota_cooldowns.pop(key, None)
+            return 0.0
+        return until - now_value
+
+
+def start_model_quota_cooldown(
+    model: str,
+    cooldown_seconds: float,
+    *,
+    now: float | None = None,
+) -> None:
+    if cooldown_seconds <= 0:
+        return
+    key = model_quota_cooldown_key(model)
+    now_value = monotonic() if now is None else float(now)
+    until = now_value + cooldown_seconds
+    with _model_quota_cooldowns_lock:
+        _model_quota_cooldowns[key] = max(_model_quota_cooldowns.get(key, 0.0), until)
+
+
+def daily_quota_exhausted_model_keys(settings: object) -> set[str]:
+    if not bool(getattr(settings, "llm_quota_hard_routing_enabled", True)):
+        return set()
+    try:
+        return LLMQuotaGovernanceService(settings_provider=lambda: settings).exhausted_model_keys()
+    except Exception:
+        return set()
+
+
+def model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
+    return normalize_model_name(model) in exhausted_model_keys
+
+
 __all__ = [
     "DEFAULT_BASE_RETRY_DELAY_SECONDS",
     "DEFAULT_MAX_RETRIES_PER_KEY",
@@ -94,7 +142,13 @@ __all__ = [
     "LLMResult",
     "RETRYABLE_HTTP_STATUSES",
     "ROTATABLE_HTTP_STATUSES",
+    "_model_quota_cooldowns",
+    "_model_quota_cooldowns_lock",
+    "daily_quota_exhausted_model_keys",
     "exception_status_code",
     "llm_attempt_record",
     "llm_retry_delay_seconds",
+    "model_daily_quota_exhausted",
+    "model_quota_cooldown_remaining",
+    "start_model_quota_cooldown",
 ]

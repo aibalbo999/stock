@@ -70,6 +70,7 @@ from app.services import (
     report_formatting,
     report_potential,
     report_scope_sections,
+    report_source_coverage,
 )
 from app.services.report_renderer import ReportMarkdownRenderer
 from app.services.report_source_references import (
@@ -1598,59 +1599,13 @@ class ReportGenerator:
         tickers: list[str],
         documents: list[NewsDocument],
     ) -> str:
-        documents = filter_formal_evidence_documents(documents)
-        if not documents:
-            return "目前無足夠數據判斷。"
-
-        publisher_counts = Counter(document.source.publisher or "來源不明" for document in documents)
-        international_count = sum(1 for document in documents if self._is_international_source(document))
-        taiwan_count = len(documents) - international_count
-        lines = [
-            "本段說明本次可追溯證據池的來源覆蓋；來源多不代表一定可買，仍需看公司層級歸因與財務資料是否同時成立。",
-            "",
-            "| 項目 | 結果 |",
-            "|---|---|",
-            f"| 摘要使用證據上限 | {request.evidence_limit} 筆 |",
-            f"| 可追溯證據池總量 | {len(documents)} 筆 |",
-            f"| 台灣來源 | {taiwan_count} 筆 |",
-            f"| 國際來源 | {international_count} 筆 |",
-            self._table_row(
-                [
-                    "主要來源",
-                    "、".join(f"{publisher}({count})" for publisher, count in publisher_counts.most_common(6)),
-                ]
-            ),
-            "",
-            "### 個股來源覆蓋",
-            "| 股票 | 公司相關文本 | 國際文本 | 最近來源日期 | 代表來源 |",
-            "|---|---:|---:|---|---|",
-        ]
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        for ticker in tickers:
-            related_documents = self._related_documents(ticker, documents)
-            related_international = sum(1 for document in related_documents if self._is_international_source(document))
-            latest_dates = [
-                document.source.published_at
-                for document in related_documents
-                if document.source.published_at is not None
-            ]
-            latest = max(latest_dates).isoformat() if latest_dates else "日期不明"
-            company = companies.get(ticker)
-            label = f"{ticker} {company.name if company else ticker}"
-            lines.append(
-                self._table_row(
-                    [
-                        label,
-                        len(related_documents),
-                        related_international,
-                        latest,
-                        self._representative_sources(related_documents, limit=4),
-                    ]
-                )
-            )
-        if international_count == 0:
-            lines.extend(["", "提醒：本次沒有國際來源進入證據池；若要擴大國際覆蓋，請開啟深度分析與國際資料源。"])
-        return "\n".join(lines)
+        return report_source_coverage.render_source_coverage(
+            evidence_limit=request.evidence_limit,
+            tickers=tickers,
+            documents=documents,
+            companies=self.whitelist.companies(),
+            related_documents_resolver=self._related_documents,
+        )
 
     def _render_candidate_audit(self, promoted_tickers: list[str]) -> str:
         return render_candidate_audit_markdown(self.whitelist.candidate_audit(), promoted_tickers)
@@ -3148,45 +3103,7 @@ class ReportGenerator:
 
     @staticmethod
     def _is_international_source(document: NewsDocument) -> bool:
-        publisher = (document.source.publisher or "").lower()
-        title = document.title.lower()
-        url = (document.source.url or "").lower()
-        international_markers = [
-            "nvidia",
-            "amd",
-            "samsung",
-            "arm newsroom",
-            "cloudflare",
-            "venturebeat",
-            "the decoder",
-            "siliconangle",
-            "microsoft azure",
-            "trendforce",
-            "semiconductor today",
-            "electronics weekly",
-            "embedded",
-            "eejournal",
-            "electronic design",
-            "robotics tomorrow",
-            "manufacturing tomorrow",
-            "power & beyond",
-            "reuters",
-            "bloomberg",
-            "cnbc",
-            "the information",
-            "semianalysis",
-            "center for a new american",
-            "bessemer",
-            "astute",
-            "designnews",
-            "wsj",
-            "financial times",
-            "ft.com",
-        ]
-        haystack = f"{publisher} {title} {url}"
-        if any(marker in haystack for marker in international_markers):
-            return True
-        return "hl=en" in url or "ceid=us:en" in url
+        return report_source_coverage.is_international_source(document)
 
     def _document_matches(self, document: NewsDocument) -> list:
         cache = getattr(self, "_document_match_cache", None)

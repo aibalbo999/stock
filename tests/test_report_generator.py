@@ -34,6 +34,7 @@ from app.services import (
     report_company_narrative,
     report_formatting,
     report_scope_sections,
+    report_source_coverage,
 )
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_decision_rules import (
@@ -2469,6 +2470,26 @@ def test_source_coverage_summarizes_international_sources() -> None:
     assert "實際納入證據" not in section
     assert "### 個股來源覆蓋" in section
     assert "| 2382 廣達 | 2 | 1 | 2026-05-24 | 2026-05-24 NVIDIA Blog" in section
+
+
+def test_source_coverage_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    coverage_source = Path("app/services/report_source_coverage.py").read_text()
+    document = NewsFetcher.from_manual_text(
+        title="NVIDIA AI server supply chain",
+        text="NVIDIA supply chain.",
+        publisher="NVIDIA Blog",
+        published_at=date(2026, 5, 24),
+    )
+
+    assert "report_source_coverage" in generator_source
+    assert "def render_source_coverage(" in coverage_source
+    assert "def is_international_source(" in coverage_source
+    assert "def latest_source_date_label(" in coverage_source
+    assert "本段說明本次可追溯證據池" not in generator_source
+    assert ReportGenerator._is_international_source(document) == report_source_coverage.is_international_source(
+        document
+    )
 
 
 def test_appendix_lists_more_source_references_with_urls() -> None:

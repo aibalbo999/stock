@@ -375,6 +375,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     }
 
     rows = helpers["external_deployment_warning_rows"](audit)
+    readiness_rows = helpers["external_deployment_readiness_rows"](audit)
     commands = helpers["external_deployment_smoke_commands"](audit)
 
     assert [row["能力"] for row in rows] == [
@@ -391,6 +392,29 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert "missing_browser_render_url" in rows[1]["說明"]
     assert "structured_company_filing_smoke.py" in rows[3]["診斷指令"]
     assert len(rows) == 4
+    assert [row["項目"] for row in readiness_rows] == [
+        "外部 Neo4j 匯入連線",
+        "公司文件 Proxy / Browser render / Playwright 後援",
+        "GraphRAG guarded live Cypher query",
+        "公司文件結構化 API 備援",
+    ]
+    assert [row["狀態"] for row in readiness_rows] == [
+        "阻塞",
+        "待配置",
+        "外部選配",
+        "外部選配",
+    ]
+    assert [row["部署決策"] for row in readiness_rows] == [
+        "正式部署前必修",
+        "建議優先處理",
+        "需要該能力時配置",
+        "需要該能力時配置",
+    ]
+    assert readiness_rows[0]["優先級"] == "P1"
+    assert "GraphRAG payload" in readiness_rows[0]["影響範圍"]
+    assert "另有 2 個 smoke 指令" in readiness_rows[0]["驗證指令"]
+    assert "company_filing_render_smoke.py" in readiness_rows[1]["驗證指令"]
+    assert "structured_company_filing_smoke.py" in readiness_rows[3]["驗證指令"]
     assert commands == [
         ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",

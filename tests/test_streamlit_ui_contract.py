@@ -324,6 +324,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/reports/quality/summary?limit=20" in source
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
+    assert "外部部署 readiness checklist" in source
+    assert "def external_deployment_readiness_rows(" in source
+    assert '"部署決策"' in source
+    assert '"驗證指令"' in source
     assert "render_external_deployment_panel(upgrade_audit)" in source
     assert "render_background_task_observability_panel(service_snapshot, task_summary)" in source
     assert (

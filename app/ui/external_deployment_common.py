@@ -22,6 +22,129 @@ EXTERNAL_DETAIL_KEYS = frozenset(
         "reason",
     }
 )
+EXTERNAL_READINESS_METADATA = {
+    ("ai_rag", "neo4j_import"): {
+        "priority": "P1",
+        "impact": "GraphRAG payload 匯入與 live graph context。",
+    },
+    ("ai_rag", "graphrag_live_cypher_query"): {
+        "priority": "P1",
+        "impact": "LLM guarded Cypher、shortest-path 與上下游衝擊推理。",
+    },
+    ("ai_rag", "visual_rag"): {
+        "priority": "P2",
+        "impact": "掃描型 PDF、圖表與複雜財報頁面解析。",
+    },
+    ("data_business_logic", "company_filing_pdf_table_parser_runtime"): {
+        "priority": "P2",
+        "impact": "PDF 財報與法說會表格抽取品質。",
+    },
+    ("data_business_logic", "company_filing_browser_or_proxy_fallback"): {
+        "priority": "P1",
+        "impact": "動態頁、被擋頁與一般公司文件 render fallback。",
+    },
+    ("data_business_logic", "company_filing_high_risk_unlocker"): {
+        "priority": "P0",
+        "impact": "MOPS、doc.twse、TWSE/TPEx 高風險文件入口。",
+    },
+    ("data_business_logic", "company_filing_structured_api_fallback"): {
+        "priority": "P1",
+        "impact": "法說會簡報、重大訊息與專業財經資料備援。",
+    },
+}
+
+
+def external_deployment_readiness_rows(upgrade_audit: dict) -> list[dict]:
+    rows: list[dict] = []
+    for item in external_deployment_readiness_items(upgrade_audit):
+        metadata = external_deployment_readiness_metadata(item)
+        rows.append(
+            {
+                "優先級": metadata["priority"],
+                "項目": item.get("label") or item.get("capability") or "-",
+                "狀態": external_deployment_readiness_state(item),
+                "部署決策": external_deployment_readiness_decision(item),
+                "影響範圍": metadata["impact"],
+                "下一步": item.get("remediation") or "-",
+                "驗證指令": external_deployment_command_summary(
+                    external_smoke_commands_from_payload(item)
+                ),
+            }
+        )
+    return rows
+
+
+def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
+    if not isinstance(upgrade_audit, dict):
+        return []
+    items_with_index: list[tuple[int, dict]] = []
+    seen: set[tuple[str, str]] = set()
+    index = 0
+    for source_key in ("checks", "failures", "warnings", "optional_warnings", "all_warnings"):
+        source_items = upgrade_audit.get(source_key)
+        if not isinstance(source_items, list):
+            continue
+        for raw_item in source_items:
+            if not isinstance(raw_item, dict) or not _is_external_readiness_item(raw_item):
+                continue
+            key = (str(raw_item.get("area") or ""), str(raw_item.get("capability") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            item = dict(raw_item)
+            item["_warning_source"] = source_key
+            items_with_index.append((index, item))
+            index += 1
+    return [
+        item
+        for _, item in sorted(
+            items_with_index,
+            key=lambda indexed_item: _external_readiness_sort_key(indexed_item[1], indexed_item[0]),
+        )
+    ]
+
+
+def external_deployment_readiness_metadata(item: dict) -> dict:
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    metadata = EXTERNAL_READINESS_METADATA.get(key, {})
+    return {
+        "priority": str(metadata.get("priority") or "P2"),
+        "impact": str(metadata.get("impact") or item.get("detail") or "-"),
+    }
+
+
+def external_deployment_readiness_state(item: dict) -> str:
+    severity = str(item.get("severity") or "")
+    if severity == "pass":
+        return "Ready"
+    if severity == "fail":
+        return "阻塞"
+    if item.get("optional") or item.get("_warning_source") == "optional_warnings":
+        return "外部選配"
+    if severity == "warn":
+        return "待配置"
+    return str(item.get("status") or "-")
+
+
+def external_deployment_readiness_decision(item: dict) -> str:
+    severity = str(item.get("severity") or "")
+    if severity == "pass":
+        return "已就緒"
+    if severity == "fail":
+        return "正式部署前必修"
+    if item.get("optional") or item.get("_warning_source") == "optional_warnings":
+        return "需要該能力時配置"
+    if severity == "warn":
+        return "建議優先處理"
+    return "檢查"
+
+
+def external_deployment_command_summary(commands: list[str]) -> str:
+    if not commands:
+        return "-"
+    if len(commands) == 1:
+        return commands[0]
+    return f"{commands[0]}\n另有 {len(commands) - 1} 個 smoke 指令，見下方單項診斷指令。"
 
 
 def external_deployment_warning_rows(upgrade_audit: dict) -> list[dict]:
@@ -95,6 +218,24 @@ def external_deployment_item_by_capability(upgrade_audit: dict, capability: str)
             item["_warning_source"] = source_key
             return item
     return {}
+
+
+def _is_external_readiness_item(item: dict) -> bool:
+    if not item.get("external_integration"):
+        return False
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    return bool(item.get("deployment_check") or key in EXTERNAL_READINESS_METADATA)
+
+
+def _external_readiness_sort_key(item: dict, index: int) -> tuple[int, int, int]:
+    severity_order = {"fail": 0, "warn": 1, "pass": 2}
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    metadata = external_deployment_readiness_metadata(item)
+    return (
+        severity_order.get(str(item.get("severity") or ""), 3),
+        priority_order.get(metadata["priority"], 4),
+        index,
+    )
 
 
 def external_smoke_commands_from_payload(payload: object) -> list[str]:

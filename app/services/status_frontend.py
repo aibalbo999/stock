@@ -222,6 +222,9 @@ def frontend_status() -> dict:
         "ui_task_queue_diagnostics_path": "app/ui/task_queue_diagnostics.py",
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
         in external_deployment_source
+        and "def external_deployment_readiness_rows(" in external_deployment_source
+        and "external_deployment_readiness_rows(upgrade_audit)" in ui_source
+        and "外部部署 readiness checklist" in ui_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
@@ -237,10 +240,20 @@ def frontend_status() -> dict:
         and "結構化文件 API 操作提示" in ui_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
+        "ui_external_deployment_readiness_checklist_enabled": (
+            "def external_deployment_readiness_rows(" in external_deployment_source
+            and "def external_deployment_readiness_rows(" in external_deployment_common_source
+            and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
+            and "external_deployment_readiness_rows(upgrade_audit)" in ui_source
+            and "外部部署 readiness checklist" in ui_source
+            and '"部署決策"' in external_deployment_common_source
+            and '"驗證指令"' in external_deployment_common_source
+        ),
         "ui_external_deployment_diagnostics_extracted": (
             ui_dir / "external_deployment_diagnostics.py"
         ).exists()
         and "from app.ui.external_deployment_diagnostics import (" in ui_source
+        and "def external_deployment_readiness_rows(" in external_deployment_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source
         and "def local_neo4j_operation_rows(" in external_deployment_source
@@ -256,6 +269,8 @@ def frontend_status() -> dict:
         and (ui_dir / "external_deployment_neo4j.py").exists()
         and (ui_dir / "external_deployment_structured_api.py").exists()
         and "def external_deployment_warning_items(" in external_deployment_common_source
+        and "def external_deployment_readiness_rows(" in external_deployment_common_source
+        and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
         and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source

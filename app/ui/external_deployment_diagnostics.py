@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ui.external_deployment_common import (
+    external_deployment_readiness_rows as _external_deployment_readiness_rows,
     external_deployment_smoke_commands as _external_deployment_smoke_commands,
     external_deployment_warning_rows as _external_deployment_warning_rows,
 )
@@ -18,6 +19,10 @@ from app.ui.external_deployment_unlocker import (
 
 def external_deployment_warning_rows(upgrade_audit: dict) -> list[dict]:
     return _external_deployment_warning_rows(upgrade_audit)
+
+
+def external_deployment_readiness_rows(upgrade_audit: dict) -> list[dict]:
+    return _external_deployment_readiness_rows(upgrade_audit)
 
 
 def external_deployment_smoke_commands(upgrade_audit: dict) -> list[str]:

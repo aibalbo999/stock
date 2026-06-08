@@ -796,6 +796,23 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
                     "browser_only_render_ready": True,
                     "unlocker_provider_ready": False,
                     "captcha_challenge_ready": False,
+                    "configuration_ready": True,
+                    "configuration_check": {
+                        "ready": True,
+                        "status": "ready",
+                        "provider": "browserless",
+                        "provider_supported": True,
+                        "missing_env_keys": [],
+                        "configured_env_keys": [
+                            "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+                            "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+                            "COMPANY_FILING_BROWSER_RENDER_URL",
+                        ],
+                        "token_required": False,
+                        "token_configured": False,
+                        "endpoint_configured": True,
+                        "endpoint_valid": True,
+                    },
                     "fallback_reason": "browser_or_playwright_render_lacks_captcha_unlocker",
                     "domains": ["mops.twse.com.tw", "doc.twse.com.tw"],
                     "recommended_env": [provider_env, render_url_env],
@@ -814,6 +831,7 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
 
     assert [row["項目"] for row in rows] == [
         "Provider",
+        "Configuration check",
         "高風險防護",
         "高風險網域",
         "建議 env",
@@ -822,14 +840,83 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     assert rows[0]["狀態"] == "待配置"
     assert rows[0]["目前"] == "browserless"
     assert "captcha_unlocker=否" in rows[0]["細節"]
-    assert "browser render fallback" in rows[1]["目前"]
-    assert rows[1]["細節"] == "browser_or_playwright_render_lacks_captcha_unlocker"
-    assert "mops.twse.com.tw" in rows[2]["目前"]
-    assert provider_env in rows[3]["目前"]
-    assert "# compose" in rows[3]["目前"]
-    assert compose_render_url_env in rows[3]["目前"]
-    assert "service DNS" in rows[3]["細節"]
-    assert "https://mops.twse.com.tw/" in rows[4]["目前"]
+    assert rows[1]["狀態"] == "ready"
+    assert "provider=browserless" in rows[1]["目前"]
+    assert "token=optional" in rows[1]["細節"]
+    assert "browser render fallback" in rows[2]["目前"]
+    assert rows[2]["細節"] == "browser_or_playwright_render_lacks_captcha_unlocker"
+    assert "mops.twse.com.tw" in rows[3]["目前"]
+    assert provider_env in rows[4]["目前"]
+    assert "# compose" in rows[4]["目前"]
+    assert compose_render_url_env in rows[4]["目前"]
+    assert "service DNS" in rows[4]["細節"]
+    assert "https://mops.twse.com.tw/" in rows[5]["目前"]
+
+
+def test_high_risk_filing_unlocker_rows_surface_missing_managed_token() -> None:
+    helpers = load_report_helpers()
+    provider_env = "COMPANY_FILING_BROWSER_RENDER_PROVIDER" + "=scrapingbee"
+    render_url_env = "COMPANY_FILING_BROWSER_RENDER_URL" + "=https://app.scrapingbee.com/api/v1"
+    token_env = "COMPANY_FILING_BROWSER_RENDER_TOKEN" + "=<token>"
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "detail": "missing token",
+                "evidence": {
+                    "configured_provider": "scrapingbee",
+                    "provider_tier": "managed_unlocker",
+                    "provider_capability": {
+                        "provider": "scrapingbee",
+                        "tier": "managed_unlocker",
+                        "captcha_unlocker": True,
+                    },
+                    "unlocker_provider_ready": False,
+                    "captcha_challenge_ready": False,
+                    "configuration_ready": False,
+                    "configuration_check": {
+                        "ready": False,
+                        "status": "missing_required_env",
+                        "fallback_reason": "missing_browser_render_token",
+                        "provider": "scrapingbee",
+                        "provider_supported": True,
+                        "missing_env_keys": ["COMPANY_FILING_BROWSER_RENDER_TOKEN"],
+                        "configured_env_keys": [
+                            "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+                            "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+                            "COMPANY_FILING_BROWSER_RENDER_URL",
+                        ],
+                        "token_required": True,
+                        "token_configured": False,
+                        "endpoint_configured": True,
+                        "endpoint_valid": True,
+                    },
+                    "fallback_reason": "missing_browser_render_token",
+                    "recommended_env": [
+                        provider_env,
+                        render_url_env,
+                        token_env,
+                    ],
+                },
+                "remediation": "設定 managed unlocker token。",
+            }
+        ]
+    }
+
+    rows = helpers["high_risk_filing_unlocker_rows"](audit)
+
+    assert rows[1]["項目"] == "Configuration check"
+    assert rows[1]["狀態"] == "missing_required_env"
+    assert "missing=COMPANY_FILING_BROWSER_RENDER_TOKEN" in rows[1]["目前"]
+    assert "token=required" in rows[1]["細節"]
+    assert "token_configured=否" in rows[1]["細節"]
+    assert "COMPANY_FILING_BROWSER_RENDER_TOKEN" in rows[1]["下一步"]
 
 
 def test_local_unlocker_operation_rows_include_actionable_commands() -> None:

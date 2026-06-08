@@ -279,6 +279,8 @@ def frontend_status() -> dict:
         and "結構化文件 API 操作提示" in ui_source
         and "Configuration check" in external_deployment_structured_api_source
         and "configuration_check" in external_deployment_structured_api_source
+        and "Configuration check" in external_deployment_unlocker_source
+        and "configuration_check" in external_deployment_unlocker_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
         "ui_external_deployment_readiness_checklist_enabled": (

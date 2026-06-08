@@ -14,6 +14,7 @@ from app.core.config import get_settings
 
 
 BROWSER_RENDER_PROVIDERS = {"browserless", "generic", "flaresolverr", "scrapingbee", "brightdata"}
+BROWSER_RENDER_TOKEN_REQUIRED_PROVIDERS = {"brightdata", "scrapingbee"}
 HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS = (
     "mops.twse.com.tw",
     "mopsov.twse.com.tw",
@@ -112,9 +113,12 @@ def company_filing_proxy_for_url(url: str, attempt: int = 0) -> str | None:
 def company_filing_browser_render_configured() -> bool:
     settings = get_settings()
     return bool(
-        settings.company_filing_browser_render_enabled
-        and settings.company_filing_browser_render_url.strip()
-        and company_filing_browser_render_provider() in BROWSER_RENDER_PROVIDERS
+        company_filing_browser_render_configuration_check(
+            enabled=settings.company_filing_browser_render_enabled,
+            provider=company_filing_browser_render_provider(),
+            endpoint=settings.company_filing_browser_render_url,
+            token=settings.company_filing_browser_render_token,
+        )["ready"]
     )
 
 
@@ -155,6 +159,15 @@ def company_filing_browser_render_status(
     render_endpoint = str(
         settings.company_filing_browser_render_url if endpoint is None else endpoint
     ).strip()
+    render_provider = company_filing_browser_render_provider()
+    render_token = str(settings.company_filing_browser_render_token or "").strip()
+    provider_capability = company_filing_browser_render_provider_capability(render_provider)
+    configuration_check = company_filing_browser_render_configuration_check(
+        enabled=render_enabled,
+        provider=render_provider,
+        endpoint=render_endpoint,
+        token=render_token,
+    )
     configured_timeout = (
         settings.company_filing_browser_render_timeout_seconds
         if timeout_seconds is None
@@ -166,14 +179,18 @@ def company_filing_browser_render_status(
     )
     status = {
         "enabled": bool(render_enabled),
-        "provider": company_filing_browser_render_provider(),
+        "provider": render_provider,
         "supported_providers": sorted(BROWSER_RENDER_PROVIDERS),
         "provider_capabilities": {
             provider: company_filing_browser_render_provider_capability(provider)
             for provider in sorted(BROWSER_RENDER_PROVIDERS)
         },
+        "configuration_ready": bool(configuration_check["ready"]),
+        "configuration_check": configuration_check,
         "url_configured": bool(render_endpoint),
         "endpoint": render_endpoint,
+        "token_configured": bool(render_token),
+        "token_required": bool(configuration_check["token_required"]),
         "connection_checked": False,
         "endpoint_reachable": False,
         "runtime_available": False,
@@ -183,26 +200,19 @@ def company_filing_browser_render_status(
         "high_risk_runtime_available": False,
         "fallback_reason": None,
     }
-    status["provider_capability"] = company_filing_browser_render_provider_capability(
-        str(status["provider"])
-    )
+    status["provider_capability"] = provider_capability
     status["captcha_unlocker_provider"] = bool(
         status["provider_capability"].get("captcha_unlocker")
     )
     if not render_enabled:
         status["fallback_reason"] = "browser_render_disabled"
         return status
-    if status["provider"] not in BROWSER_RENDER_PROVIDERS:
-        status["fallback_reason"] = "unsupported_browser_render_provider"
+    if not configuration_check["ready"]:
+        status["fallback_reason"] = str(
+            configuration_check.get("fallback_reason") or "invalid_browser_render_configuration"
+        )
         return status
-    if not render_endpoint:
-        status["fallback_reason"] = "missing_browser_render_url"
-        return status
-
     parsed = urlparse(render_endpoint)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        status["fallback_reason"] = "invalid_browser_render_url"
-        return status
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
         with socket.create_connection((parsed.hostname, port), timeout=timeout):
@@ -217,6 +227,72 @@ def company_filing_browser_render_status(
     status["runtime_available"] = True
     status["high_risk_runtime_available"] = bool(status["captcha_unlocker_provider"])
     return status
+
+
+def company_filing_browser_render_configuration_check(
+    *,
+    enabled: bool,
+    provider: str,
+    endpoint: str,
+    token: str,
+) -> dict:
+    provider_key = str(provider or "").strip().lower().replace("-", "_") or "browserless"
+    endpoint_text = str(endpoint or "").strip()
+    token_configured = bool(str(token or "").strip())
+    token_required = provider_key in BROWSER_RENDER_TOKEN_REQUIRED_PROVIDERS
+    required_env_keys = [
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+    ]
+    if token_required:
+        required_env_keys.append("COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    configured_env_keys = []
+    if enabled:
+        configured_env_keys.append("COMPANY_FILING_BROWSER_RENDER_ENABLED")
+    if provider_key:
+        configured_env_keys.append("COMPANY_FILING_BROWSER_RENDER_PROVIDER")
+    if endpoint_text:
+        configured_env_keys.append("COMPANY_FILING_BROWSER_RENDER_URL")
+    if token_configured:
+        configured_env_keys.append("COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    missing_env_keys = [key for key in required_env_keys if key not in set(configured_env_keys)]
+    parsed = urlparse(endpoint_text)
+    endpoint_valid = bool(parsed.scheme in {"http", "https"} and parsed.hostname)
+    provider_supported = provider_key in BROWSER_RENDER_PROVIDERS
+    if not enabled:
+        status = "disabled"
+        fallback_reason = "browser_render_disabled"
+    elif not provider_supported:
+        status = "unsupported_provider"
+        fallback_reason = "unsupported_browser_render_provider"
+    elif missing_env_keys:
+        status = "missing_required_env"
+        fallback_reason = "missing_browser_render_url"
+        if missing_env_keys == ["COMPANY_FILING_BROWSER_RENDER_TOKEN"]:
+            fallback_reason = "missing_browser_render_token"
+    elif not endpoint_valid:
+        status = "invalid_url"
+        fallback_reason = "invalid_browser_render_url"
+    else:
+        status = "ready"
+        fallback_reason = None
+    return {
+        "ready": status == "ready",
+        "status": status,
+        "fallback_reason": fallback_reason,
+        "provider": provider_key,
+        "provider_supported": provider_supported,
+        "required_env_keys": required_env_keys,
+        "configured_env_keys": configured_env_keys,
+        "missing_env_keys": missing_env_keys,
+        "token_required": token_required,
+        "token_configured": token_configured,
+        "endpoint_configured": bool(endpoint_text),
+        "endpoint_valid": endpoint_valid,
+        "endpoint_scheme": parsed.scheme or None,
+        "endpoint_host_configured": bool(parsed.hostname),
+    }
 
 
 def company_filing_browser_render_concurrency() -> int:

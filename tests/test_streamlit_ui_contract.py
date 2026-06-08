@@ -180,6 +180,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert (
         "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
     )
+    assert (
+        "def _high_risk_unlocker_configuration_detail("
+        in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
+    )
     assert "def local_neo4j_operation_rows(" in ui.EXTERNAL_DEPLOYMENT_NEO4J_SOURCE.read_text()
     assert (
         "def structured_filing_api_operation_rows("

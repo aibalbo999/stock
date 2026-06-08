@@ -71,6 +71,14 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         status["company_filings"]["browser_render_provider_capability"]["captcha_unlocker"] is False
     )
     assert status["company_filings"]["browser_render_configured"] is False
+    assert status["company_filings"]["browser_render_configuration_ready"] is False
+    assert status["company_filings"]["browser_render_configuration_check"]["status"] == "disabled"
+    assert status["company_filings"]["browser_render_configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+    ]
+    assert status["company_filings"]["browser_render_token_required"] is False
+    assert status["company_filings"]["browser_render_token_configured"] is False
     assert status["company_filings"]["browser_render_endpoint_reachable"] is False
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
     assert "mops.twse.com.tw" in status["company_filings"]["high_risk_source_domains"]
@@ -80,6 +88,10 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert (
         "flaresolverr"
         in status["company_filings"]["high_risk_source_policy"]["recommended_unlocker_providers"]
+    )
+    assert (
+        status["company_filings"]["high_risk_source_policy"]["configuration_check"]
+        == status["company_filings"]["browser_render_configuration_check"]
     )
     assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is False
     assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
@@ -241,3 +253,33 @@ def test_company_filing_high_risk_source_policy_requires_unlocker_for_captcha() 
     assert unlocker_policy["captcha_challenge_ready"] is True
     assert unlocker_policy["high_risk_mitigation_ready"] is True
     assert unlocker_policy["fallback_reason"] is None
+
+
+def test_company_filing_high_risk_source_policy_surfaces_unlocker_configuration_gap() -> None:
+    policy = _company_filing_high_risk_source_policy(
+        browser_render_runtime={
+            "provider": "scrapingbee",
+            "runtime_available": False,
+            "configuration_ready": False,
+            "configuration_check": {
+                "ready": False,
+                "status": "missing_required_env",
+                "fallback_reason": "missing_browser_render_token",
+                "missing_env_keys": ["COMPANY_FILING_BROWSER_RENDER_TOKEN"],
+            },
+            "provider_capability": {
+                "tier": "managed_unlocker",
+                "captcha_unlocker": True,
+            },
+        },
+        playwright_configured=False,
+        proxy_count=0,
+    )
+
+    assert policy["unlocker_provider_ready"] is False
+    assert policy["captcha_challenge_ready"] is False
+    assert policy["configuration_ready"] is False
+    assert policy["configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_TOKEN"
+    ]
+    assert policy["fallback_reason"] == "missing_browser_render_token"

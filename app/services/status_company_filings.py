@@ -93,6 +93,10 @@ def company_filing_status(
         "browser_render_captcha_unlocker_provider": browser_render_runtime.get(
             "captcha_unlocker_provider"
         ),
+        "browser_render_configuration_ready": browser_render_runtime.get("configuration_ready"),
+        "browser_render_configuration_check": browser_render_runtime.get("configuration_check"),
+        "browser_render_token_required": browser_render_runtime.get("token_required"),
+        "browser_render_token_configured": browser_render_runtime.get("token_configured"),
         "browser_render_url_configured": browser_render_runtime.get("url_configured"),
         "browser_render_endpoint_reachable": browser_render_runtime.get("endpoint_reachable"),
         "browser_render_runtime": browser_render_runtime,
@@ -166,16 +170,33 @@ def _company_filing_high_risk_source_policy(
 ) -> dict:
     provider = str(browser_render_runtime.get("provider") or "browserless")
     provider_capability = browser_render_runtime.get("provider_capability") or {}
+    configuration_check = (
+        browser_render_runtime.get("configuration_check")
+        if isinstance(browser_render_runtime.get("configuration_check"), dict)
+        else {}
+    )
     browser_render_ready = bool(browser_render_runtime.get("runtime_available"))
+    browser_render_configuration_ready = bool(
+        browser_render_runtime.get("configuration_ready", True)
+    )
     unlocker_provider_ready = bool(
-        browser_render_ready and provider_capability.get("captcha_unlocker")
+        browser_render_ready
+        and browser_render_configuration_ready
+        and provider_capability.get("captcha_unlocker")
     )
     ip_rotation_ready = proxy_count > 0
     browser_only_render_ready = bool(browser_render_ready or playwright_configured)
     high_risk_mitigation_ready = bool(unlocker_provider_ready or ip_rotation_ready)
     fallback_reason = None
     if not unlocker_provider_ready:
-        if ip_rotation_ready:
+        configuration_fallback_reason = configuration_check.get("fallback_reason")
+        if (
+            provider_capability.get("captcha_unlocker")
+            and not browser_render_configuration_ready
+            and configuration_fallback_reason
+        ):
+            fallback_reason = configuration_fallback_reason
+        elif ip_rotation_ready:
             fallback_reason = "proxy_configured_without_captcha_unlocker"
         elif browser_only_render_ready:
             fallback_reason = "browser_or_playwright_render_lacks_captcha_unlocker"
@@ -187,6 +208,8 @@ def _company_filing_high_risk_source_policy(
         "configured_provider": provider,
         "provider_tier": provider_capability.get("tier"),
         "provider_capability": provider_capability,
+        "configuration_ready": browser_render_configuration_ready,
+        "configuration_check": configuration_check,
         "browser_render_runtime_available": browser_render_ready,
         "playwright_render_configured": bool(playwright_configured),
         "proxy_count": int(proxy_count),

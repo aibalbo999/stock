@@ -54,6 +54,18 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "browser_render_provider_capability": company_filing_status.get(
                     "browser_render_provider_capability"
                 ),
+                "browser_render_configuration_ready": company_filing_status.get(
+                    "browser_render_configuration_ready"
+                ),
+                "browser_render_configuration_check": company_filing_status.get(
+                    "browser_render_configuration_check"
+                ),
+                "browser_render_token_required": company_filing_status.get(
+                    "browser_render_token_required"
+                ),
+                "browser_render_token_configured": company_filing_status.get(
+                    "browser_render_token_configured"
+                ),
                 "high_risk_source_policy": company_filing_status.get("high_risk_source_policy"),
                 "high_risk_source_mitigation_ready": company_filing_status.get(
                     "high_risk_source_mitigation_ready"
@@ -149,6 +161,18 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 ),
                 "browser_render_provider_capability": company_filing_status.get(
                     "browser_render_provider_capability"
+                ),
+                "browser_render_configuration_ready": company_filing_status.get(
+                    "browser_render_configuration_ready"
+                ),
+                "browser_render_configuration_check": company_filing_status.get(
+                    "browser_render_configuration_check"
+                ),
+                "browser_render_token_required": company_filing_status.get(
+                    "browser_render_token_required"
+                ),
+                "browser_render_token_configured": company_filing_status.get(
+                    "browser_render_token_configured"
                 ),
                 "high_risk_source_policy": company_filing_status.get("high_risk_source_policy"),
                 "high_risk_source_mitigation_ready": company_filing_status.get(

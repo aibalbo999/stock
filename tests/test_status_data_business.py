@@ -84,6 +84,16 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     )
     assert filing_hardening["browser_render_provider"] == "browserless"
     assert filing_hardening["browser_render_provider_capability"]["tier"] == "browser_render"
+    assert (
+        filing_hardening["browser_render_configuration_ready"]
+        is status["company_filings"]["browser_render_configuration_ready"]
+    )
+    assert (
+        filing_hardening["browser_render_configuration_check"]
+        == status["company_filings"]["browser_render_configuration_check"]
+    )
+    assert filing_hardening["browser_render_token_required"] is False
+    assert filing_hardening["browser_render_token_configured"] is False
     assert filing_hardening["high_risk_source_policy"]["configured_provider"] == "browserless"
     assert filing_hardening["high_risk_captcha_unlocker_ready"] is False
     assert filing_hardening["structured_api_configured"] is False
@@ -113,6 +123,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert high_risk_unlocker["status"] == expected_high_risk_unlocker_status
     assert "mops.twse.com.tw" in high_risk_unlocker["evidence"]["domains"]
     assert "flaresolverr" in high_risk_unlocker["evidence"]["recommended_unlocker_providers"]
+    assert (
+        high_risk_unlocker["evidence"]["configuration_check"]
+        == status["company_filings"]["browser_render_configuration_check"]
+    )
     assert high_risk_unlocker["evidence"]["compose_env_override_ready"] is True
     assert (
         "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1"
@@ -152,6 +166,11 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert filing_fallback["evidence"]["proxy_count"] == 0
     assert filing_fallback["evidence"]["browser_render_configured"] is False
     assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
+    assert (
+        filing_fallback["evidence"]["browser_render_configuration_check"]
+        == status["company_filings"]["browser_render_configuration_check"]
+    )
+    assert filing_fallback["evidence"]["browser_render_token_required"] is False
     assert (
         filing_fallback["evidence"]["high_risk_captcha_unlocker_ready"]
         is status["company_filings"]["high_risk_captcha_unlocker_ready"]
@@ -255,6 +274,42 @@ def test_structured_api_capability_requires_token_for_paid_provider(monkeypatch)
     assert structured_api["evidence"]["configuration_check"]["fallback_reason"] == (
         "missing_structured_api_token"
     )
+
+
+def test_company_filing_high_risk_unlocker_requires_managed_provider_token(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "scrapingbee")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://app.scrapingbee.com/api/v1")
+    monkeypatch.delenv("COMPANY_FILING_BROWSER_RENDER_TOKEN", raising=False)
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "")
+    get_settings.cache_clear()
+    try:
+        status = service_status()
+    finally:
+        get_settings.cache_clear()
+
+    company_filings = status["company_filings"]
+    assert company_filings["browser_render_provider"] == "scrapingbee"
+    assert company_filings["browser_render_configuration_ready"] is False
+    assert company_filings["browser_render_token_required"] is True
+    assert company_filings["browser_render_token_configured"] is False
+    assert company_filings["browser_render_runtime"]["connection_checked"] is False
+    assert company_filings["browser_render_runtime"]["fallback_reason"] == (
+        "missing_browser_render_token"
+    )
+    assert company_filings["high_risk_captcha_unlocker_ready"] is False
+    assert company_filings["high_risk_source_policy"]["fallback_reason"] == (
+        "missing_browser_render_token"
+    )
+    high_risk_unlocker = status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_high_risk_unlocker"
+    ]
+    assert high_risk_unlocker["status"] == "not_configured"
+    assert high_risk_unlocker["evidence"]["configuration_ready"] is False
+    assert high_risk_unlocker["evidence"]["configuration_check"]["missing_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_TOKEN"
+    ]
 
 
 def test_company_filing_playwright_fallback_ready_when_browser_available(monkeypatch) -> None:

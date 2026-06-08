@@ -88,6 +88,7 @@ from app.data_sources.company_filing_render import (
     HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS as HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS,
     UNLOCKER_BROWSER_RENDER_PROVIDERS as UNLOCKER_BROWSER_RENDER_PROVIDERS,
     company_filing_browser_render_configured as company_filing_browser_render_configured,
+    company_filing_browser_render_configuration_check as company_filing_browser_render_configuration_check,
     company_filing_browser_render_limiter as company_filing_browser_render_limiter,
     company_filing_browser_render_provider as company_filing_browser_render_provider,
     company_filing_browser_render_provider_capability as company_filing_browser_render_provider_capability,

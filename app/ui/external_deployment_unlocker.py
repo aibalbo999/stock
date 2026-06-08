@@ -21,8 +21,15 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
         if isinstance(evidence.get("provider_capability"), dict)
         else {}
     )
-    provider = str(evidence.get("configured_provider") or provider_capability.get("provider") or "-")
+    provider = str(
+        evidence.get("configured_provider") or provider_capability.get("provider") or "-"
+    )
     provider_tier = str(evidence.get("provider_tier") or provider_capability.get("tier") or "-")
+    configuration_check = (
+        evidence.get("configuration_check")
+        if isinstance(evidence.get("configuration_check"), dict)
+        else {}
+    )
     recommended_env = string_list(evidence.get("recommended_env"))
     compose_recommended_env = string_list(evidence.get("compose_recommended_env"))
     env_lines = [*recommended_env]
@@ -43,6 +50,13 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
             "下一步": next_action,
         },
         {
+            "項目": "Configuration check",
+            "狀態": _high_risk_unlocker_configuration_status(configuration_check),
+            "目前": _high_risk_unlocker_configuration_current(configuration_check),
+            "細節": _high_risk_unlocker_configuration_detail(configuration_check),
+            "下一步": _high_risk_unlocker_configuration_next_action(configuration_check),
+        },
+        {
             "項目": "高風險防護",
             "狀態": ready_label(evidence.get("captcha_challenge_ready")),
             "目前": _high_risk_unlocker_strategy(evidence),
@@ -58,7 +72,9 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
         },
         {
             "項目": "建議 env",
-            "狀態": "待設定" if env_lines and not evidence.get("unlocker_provider_ready") else "參考",
+            "狀態": "待設定"
+            if env_lines and not evidence.get("unlocker_provider_ready")
+            else "參考",
             "目前": "\n".join(env_lines) if env_lines else "-",
             "細節": "不改寫 .env；host-only 用 127.0.0.1，compose 服務內用 service DNS。",
             "下一步": "設定後重跑 high-risk filing unlocker smoke。",
@@ -135,6 +151,66 @@ def _high_risk_unlocker_strategy(evidence: dict) -> str:
     if evidence.get("browser_only_render_ready"):
         parts.append("browser render fallback")
     return "；".join(parts) if parts else "尚未配置"
+
+
+def _high_risk_unlocker_configuration_status(configuration_check: dict) -> str:
+    if not configuration_check:
+        return "未提供"
+    if configuration_check.get("ready"):
+        return "ready"
+    return str(configuration_check.get("status") or "missing_required_env")
+
+
+def _high_risk_unlocker_configuration_current(configuration_check: dict) -> str:
+    if not configuration_check:
+        return "-"
+    missing = string_list(configuration_check.get("missing_env_keys"))
+    configured = string_list(configuration_check.get("configured_env_keys"))
+    return (
+        f"provider={configuration_check.get('provider') or '-'}；"
+        f"missing={','.join(missing) or '-'}；"
+        f"configured={','.join(configured) or '-'}"
+    )
+
+
+def _high_risk_unlocker_configuration_detail(configuration_check: dict) -> str:
+    if not configuration_check:
+        return "缺少 configuration_check；請重跑 /services/status 或 upgrade audit。"
+    token_state = "required" if configuration_check.get("token_required") else "optional"
+    endpoint_configured = bool(configuration_check.get("endpoint_configured"))
+    endpoint_valid = bool(configuration_check.get("endpoint_valid"))
+    endpoint_state = (
+        "valid" if endpoint_valid else "configured_invalid" if endpoint_configured else "missing"
+    )
+    return (
+        f"provider_supported={yes_no(configuration_check.get('provider_supported'))}；"
+        f"token={token_state}；"
+        f"token_configured={yes_no(configuration_check.get('token_configured'))}；"
+        f"endpoint={endpoint_state}。"
+    )
+
+
+def _high_risk_unlocker_configuration_next_action(configuration_check: dict) -> str:
+    if not configuration_check:
+        return "重跑 /services/status 或 upgrade audit，確認 unlocker 配置檢查結果。"
+    if configuration_check.get("ready"):
+        return "配置完整；重跑 high-risk filing unlocker smoke 驗證入口頁。"
+    missing = string_list(configuration_check.get("missing_env_keys"))
+    fallback_reason = str(configuration_check.get("fallback_reason") or "")
+    if "COMPANY_FILING_BROWSER_RENDER_TOKEN" in missing:
+        return "設定 COMPANY_FILING_BROWSER_RENDER_TOKEN 後重跑 MOPS smoke。"
+    if "COMPANY_FILING_BROWSER_RENDER_ENABLED" in missing:
+        return "設定 COMPANY_FILING_BROWSER_RENDER_ENABLED=true 並補齊 render URL。"
+    if (
+        "COMPANY_FILING_BROWSER_RENDER_URL" in missing
+        or fallback_reason == "missing_browser_render_url"
+    ):
+        return "設定 COMPANY_FILING_BROWSER_RENDER_URL 後重跑 high-risk filing unlocker smoke。"
+    if fallback_reason == "invalid_browser_render_url":
+        return "修正 COMPANY_FILING_BROWSER_RENDER_URL，需為 http/https 且包含 host。"
+    if fallback_reason == "unsupported_browser_render_provider":
+        return "改用 FlareSolverr、ScrapingBee 或 BrightData 等支援的 render/unlocker provider。"
+    return "補齊缺少的 unlocker env 後重跑 high-risk filing unlocker smoke。"
 
 
 def _high_risk_unlocker_next_action(evidence: dict) -> str:

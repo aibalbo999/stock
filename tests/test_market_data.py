@@ -595,11 +595,17 @@ def test_fugle_provider_logic_lives_outside_client() -> None:
         == "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/{ticker}"
     )
     assert "market_fugle.fetch_fugle_json" in client_source
+    assert "market_fugle.fetch_price_history" in client_source
+    assert "def fetch_historical_candle_rows(" in fugle_source
     assert "FUGLE_HISTORICAL_CANDLES_URL" in fugle_source
     assert "client.get(" not in client_source.split("async def _fetch_fugle_json(", maxsplit=1)[1].split(
         "async def _fetch_official_openapi_price_snapshot(",
         maxsplit=1,
     )[0]
+    assert "candle_error" not in client_source.split(
+        "async def _fetch_fugle_price_history(",
+        maxsplit=1,
+    )[1].split("async def _fetch_fugle_historical_candle_rows(", maxsplit=1)[0]
 
 
 def test_fugle_retry_delay_uses_retry_after_header() -> None:

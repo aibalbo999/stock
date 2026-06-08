@@ -562,29 +562,13 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[MarketSnapshot]:
-        candle_error: Exception | None = None
-        try:
-            rows = await self._fetch_fugle_historical_candle_rows(ticker, start_date, end_date)
-            snapshots = [self._fugle_row_to_snapshot(row, ticker) for row in rows]
-            if snapshots:
-                return snapshots
-        except Exception as exc:
-            candle_error = exc
-
-        try:
-            row = await self._fetch_fugle_historical_stats_row(ticker)
-            if row:
-                snapshot = self._fugle_stats_row_to_snapshot(row, ticker)
-                if start_date <= snapshot.trade_date <= end_date:
-                    return [snapshot]
-        except Exception as stats_error:
-            if candle_error is not None:
-                raise candle_error from stats_error
-            raise
-
-        if candle_error is not None:
-            raise candle_error
-        return []
+        return await market_fugle.fetch_price_history(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            api_key=self.fugle_api_key,
+            fetch_json=lambda url, params: self._fetch_fugle_json(url, params=params),
+        )
 
     async def _fetch_fugle_historical_candle_rows(
         self,
@@ -592,32 +576,20 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[dict]:
-        if not self.fugle_api_key:
-            raise MarketDataProviderUnavailable("Fugle API key is not configured")
-
-        params = {
-            "from": start_date.isoformat(),
-            "to": end_date.isoformat(),
-            "timeframe": "D",
-            "fields": "open,high,low,close,volume,turnover,change",
-            "sort": "asc",
-        }
-        url = self.FUGLE_HISTORICAL_CANDLES_URL.format(ticker=ticker)
-        payload = await self._fetch_fugle_json(url, params=params)
-        data = payload.get("data", []) if isinstance(payload, dict) else []
-        if isinstance(data, dict):
-            data = data.get("candles", [])
-        return data if isinstance(data, list) else []
+        return await market_fugle.fetch_historical_candle_rows(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            api_key=self.fugle_api_key,
+            fetch_json=lambda url, params: self._fetch_fugle_json(url, params=params),
+        )
 
     async def _fetch_fugle_historical_stats_row(self, ticker: str) -> dict:
-        if not self.fugle_api_key:
-            raise MarketDataProviderUnavailable("Fugle API key is not configured")
-
-        payload = await self._fetch_fugle_json(
-            self.FUGLE_HISTORICAL_STATS_URL.format(ticker=ticker),
-            params={},
+        return await market_fugle.fetch_historical_stats_row(
+            ticker=ticker,
+            api_key=self.fugle_api_key,
+            fetch_json=lambda url, params: self._fetch_fugle_json(url, params=params),
         )
-        return payload if isinstance(payload, dict) else {}
 
     async def _fetch_fugle_json(self, url: str, *, params: dict) -> dict:
         return await market_fugle.fetch_fugle_json(

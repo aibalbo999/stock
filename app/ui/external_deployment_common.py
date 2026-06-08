@@ -89,11 +89,18 @@ EXTERNAL_LOCAL_ACTION_METADATA = {
 }
 
 
-def external_deployment_readiness_rows(upgrade_audit: dict) -> list[dict]:
+def external_deployment_readiness_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
     rows: list[dict] = []
     for item in external_deployment_readiness_items(upgrade_audit):
         metadata = external_deployment_readiness_metadata(item)
-        local_action = external_deployment_local_action(item, upgrade_audit)
+        local_action = external_deployment_local_action(
+            item,
+            upgrade_audit,
+            local_dependency_status=local_dependency_status,
+        )
         rows.append(
             {
                 "優先級": metadata["priority"],
@@ -151,7 +158,12 @@ def external_deployment_readiness_metadata(item: dict) -> dict:
     }
 
 
-def external_deployment_local_action(item: dict, upgrade_audit: dict) -> dict:
+def external_deployment_local_action(
+    item: dict,
+    upgrade_audit: dict,
+    *,
+    local_dependency_status: dict | None = None,
+) -> dict:
     key = (str(item.get("area") or ""), str(item.get("capability") or ""))
     metadata = EXTERNAL_LOCAL_ACTION_METADATA.get(key)
     if not metadata:
@@ -170,12 +182,34 @@ def external_deployment_local_action(item: dict, upgrade_audit: dict) -> dict:
             "state": "已啟動" if wait_status.get(wait_key) is True else "驗證失敗",
             "command": verify_command,
         }
+    port_state = _local_dependency_port_state(local_dependency_status, wait_key)
+    if port_state is True:
+        return {"state": "已啟動", "command": verify_command}
     if _external_readiness_item_ready(item):
         return {"state": "已啟動", "command": verify_command}
     return {
         "state": "可啟動",
         "command": str(metadata.get("start_command") or verify_command or "-"),
     }
+
+
+def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:
+    status = (
+        service_snapshot.get("local_dependencies")
+        if isinstance(service_snapshot.get("local_dependencies"), dict)
+        else {}
+    )
+    ports = status.get("ports") if isinstance(status.get("ports"), list) else []
+    return [
+        {
+            "服務": row.get("label") or row.get("service") or "-",
+            "狀態": "已啟動" if row.get("open") else "未偵測",
+            "本機端口": f"{row.get('host') or '127.0.0.1'}:{row.get('port') or '-'}",
+            "用途": row.get("role") or "-",
+        }
+        for row in ports
+        if isinstance(row, dict)
+    ]
 
 
 def external_deployment_readiness_state(item: dict) -> str:
@@ -305,6 +339,18 @@ def _external_readiness_item_ready(item: dict) -> bool:
         or evidence.get("browser_or_proxy_fallback_configured")
         or evidence.get("playwright_render_configured")
     )
+
+
+def _local_dependency_port_state(local_dependency_status: dict | None, service: str) -> bool | None:
+    if not service or not isinstance(local_dependency_status, dict):
+        return None
+    ports = local_dependency_status.get("ports")
+    if not isinstance(ports, list):
+        return None
+    for row in ports:
+        if isinstance(row, dict) and row.get("service") == service:
+            return bool(row.get("open"))
+    return None
 
 
 def _external_readiness_sort_key(item: dict, index: int) -> tuple[int, int, int]:

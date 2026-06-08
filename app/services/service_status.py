@@ -18,6 +18,7 @@ from app.db.session import engine
 from app.services.candidate_confidence import confidence_thresholds
 from app.services.llm_client import RETRYABLE_HTTP_STATUSES
 from app.services.llm_observability import llm_observability_status
+from app.services.local_dependency_diagnostics import local_dependency_runtime_status
 from app.services.source_quality import SOURCE_CREDIBILITY_LABELS, SOURCE_CREDIBILITY_WEIGHTS
 from app.services.status_company_filings import (
     company_filing_status as collect_company_filing_status,
@@ -77,6 +78,7 @@ def service_status() -> dict:
         structured_api_status_func=company_filing_structured_api_status,
     )
     frontend_status = collect_frontend_status()
+    local_dependencies_status = local_dependency_runtime_status()
     python_runtime_status = collect_python_runtime_status()
     report_retention_status = collect_report_retention_status()
     task_queue_status = collect_task_queue_status(
@@ -109,6 +111,7 @@ def service_status() -> dict:
             "max_retry_delay_seconds": max(0.0, float(settings.llm_max_retry_delay_seconds)),
         },
         "frontend": frontend_status,
+        "local_dependencies": local_dependencies_status,
         "python_runtime": python_runtime_status,
         "report_retention": report_retention_status,
         "llm_quota_routing": llm_quota_routing,

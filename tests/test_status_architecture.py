@@ -10,11 +10,30 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_security_source = Path("app/services/status_security.py").read_text()
+    local_dependency_source = Path("app/services/local_dependency_diagnostics.py").read_text()
 
     assert "database" in status
     assert "workflow_orchestration" in status
     assert "python_runtime" in status
     assert "task_queue" in status
+    assert "local_dependencies" in status
+    assert status["local_dependencies"]["collector_path"] == (
+        "app/services/local_dependency_diagnostics.py"
+    )
+    assert status["local_dependencies"]["compose_path"] == "docker-compose.yml"
+    assert isinstance(status["local_dependencies"]["compose_file_present"], bool)
+    assert status["local_dependencies"]["status"] in {"ready", "partial", "not_running"}
+    assert {row["service"] for row in status["local_dependencies"]["ports"]} == {
+        "redis",
+        "postgres",
+        "neo4j",
+        "browserless",
+        "chroma",
+        "flaresolverr",
+    }
+    assert all(isinstance(row["open"], bool) for row in status["local_dependencies"]["ports"])
+    assert "start_core" in status["local_dependencies"]["commands"]
+    assert "verify_flaresolverr" in status["local_dependencies"]["commands"]
     assert status["database"]["init_mode"] == Settings().database_init_mode
     assert status["database"]["create_all_non_sqlite_allowed"] is False
     assert "migration" in status["database"]
@@ -38,6 +57,12 @@ def test_backend_status_collectors_for_database_workflow_and_security(
         "from app.services.status_security import security_scan_status as collect_security_scan_status"
         in service_status_source
     )
+    assert (
+        "from app.services.local_dependency_diagnostics import local_dependency_runtime_status"
+        in service_status_source
+    )
+    assert "def local_dependency_runtime_status(" in local_dependency_source
+    assert "def is_local_port_open(" in local_dependency_source
     assert "def _security_scan_status(" not in service_status_source
     assert "def security_scan_status(" in status_security_source
     assert status["security_scanning"]["default_engine"] in {

@@ -70,7 +70,7 @@ def render_maintenance_tab() -> None:
 
     render_upgrade_audit_panel(upgrade_audit)
     render_service_metrics_panel(status, service_snapshot)
-    render_external_deployment_panel(upgrade_audit)
+    render_external_deployment_panel(upgrade_audit, service_snapshot)
     render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)
     render_report_generation_observability_panel(report_observability_summary)

@@ -139,12 +139,15 @@ def frontend_status() -> dict:
         and "from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel"
         in maintenance_panels_source
         and "def render_external_deployment_panel(" in maintenance_deployment_panel_source
+        and "service_snapshot: dict | None = None" in maintenance_deployment_panel_source
+        and "local_dependency_status_rows(service_snapshot)" in maintenance_deployment_panel_source
         and "def render_ai_usage_panel(" in maintenance_ai_panels_source
         and "def render_background_task_observability_panel(" in maintenance_task_panels_source
         and "def render_report_quality_panel(" in maintenance_panels_source
         and "def render_maintenance_cleanup_panel(" in maintenance_cleanup_panel_source
         and "from app.ui.maintenance_panels import (" in system_settings_maintenance_source
-        and "render_external_deployment_panel(upgrade_audit)" in system_settings_maintenance_source
+        and "render_external_deployment_panel(upgrade_audit, service_snapshot)"
+        in system_settings_maintenance_source
         and "render_background_task_observability_panel(service_snapshot, task_summary)"
         in system_settings_maintenance_source
         and "external_deployment_warning_rows(upgrade_audit)"
@@ -223,8 +226,9 @@ def frontend_status() -> dict:
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
         in external_deployment_source
         and "def external_deployment_readiness_rows(" in external_deployment_source
-        and "external_deployment_readiness_rows(upgrade_audit)" in ui_source
+        and "external_deployment_readiness_rows(\n        upgrade_audit," in ui_source
         and "外部部署 readiness checklist" in ui_source
+        and "本機依賴狀態" in ui_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
@@ -246,9 +250,12 @@ def frontend_status() -> dict:
             and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
             and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
             and "def external_deployment_local_action(" in external_deployment_common_source
+            and "def local_dependency_status_rows(" in external_deployment_common_source
+            and "def local_dependency_status_rows(" in external_deployment_source
             and "local_dependency_wait" in external_deployment_common_source
-            and "external_deployment_readiness_rows(upgrade_audit)" in ui_source
+            and "local_dependency_status_rows(service_snapshot)" in ui_source
             and "外部部署 readiness checklist" in ui_source
+            and "本機依賴狀態" in ui_source
             and '"部署決策"' in external_deployment_common_source
             and '"本機動作"' in external_deployment_common_source
             and '"本機指令"' in external_deployment_common_source
@@ -259,6 +266,7 @@ def frontend_status() -> dict:
         ).exists()
         and "from app.ui.external_deployment_diagnostics import (" in ui_source
         and "def external_deployment_readiness_rows(" in external_deployment_source
+        and "def local_dependency_status_rows(" in external_deployment_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source
         and "def local_neo4j_operation_rows(" in external_deployment_source

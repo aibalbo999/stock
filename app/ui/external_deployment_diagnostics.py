@@ -4,6 +4,7 @@ from app.ui.external_deployment_common import (
     external_deployment_readiness_rows as _external_deployment_readiness_rows,
     external_deployment_smoke_commands as _external_deployment_smoke_commands,
     external_deployment_warning_rows as _external_deployment_warning_rows,
+    local_dependency_status_rows as _local_dependency_status_rows,
 )
 from app.ui.external_deployment_neo4j import (
     local_neo4j_operation_rows as _local_neo4j_operation_rows,
@@ -21,8 +22,15 @@ def external_deployment_warning_rows(upgrade_audit: dict) -> list[dict]:
     return _external_deployment_warning_rows(upgrade_audit)
 
 
-def external_deployment_readiness_rows(upgrade_audit: dict) -> list[dict]:
-    return _external_deployment_readiness_rows(upgrade_audit)
+def external_deployment_readiness_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_readiness_rows(upgrade_audit, local_dependency_status)
+
+
+def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:
+    return _local_dependency_status_rows(service_snapshot)
 
 
 def external_deployment_smoke_commands(upgrade_audit: dict) -> list[str]:

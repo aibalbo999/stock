@@ -431,6 +431,51 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
         ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
+    service_snapshot = {
+        "local_dependencies": {
+            "ports": [
+                {
+                    "service": "neo4j",
+                    "label": "Neo4j",
+                    "host": "127.0.0.1",
+                    "port": 7687,
+                    "open": True,
+                    "role": "GraphRAG live graph",
+                },
+                {
+                    "service": "flaresolverr",
+                    "label": "FlareSolverr",
+                    "host": "127.0.0.1",
+                    "port": 8191,
+                    "open": False,
+                    "role": "MOPS unlocker",
+                },
+            ]
+        }
+    }
+    readiness_with_local_status = helpers["external_deployment_readiness_rows"](
+        audit,
+        service_snapshot["local_dependencies"],
+    )
+    local_rows = helpers["local_dependency_status_rows"](service_snapshot)
+
+    assert readiness_with_local_status[0]["項目"] == "外部 Neo4j 匯入連線"
+    assert readiness_with_local_status[0]["本機動作"] == "已啟動"
+    assert "--wait-local-neo4j 20" in readiness_with_local_status[0]["本機指令"]
+    assert local_rows == [
+        {
+            "服務": "Neo4j",
+            "狀態": "已啟動",
+            "本機端口": "127.0.0.1:7687",
+            "用途": "GraphRAG live graph",
+        },
+        {
+            "服務": "FlareSolverr",
+            "狀態": "未偵測",
+            "本機端口": "127.0.0.1:8191",
+            "用途": "MOPS unlocker",
+        },
+    ]
 
 
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:

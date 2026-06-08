@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
-from app.services import topic_discovery_models, topic_discovery_prompts
+from app.services import topic_discovery_models, topic_discovery_prompts, topic_discovery_queries
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
 from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
@@ -91,6 +91,55 @@ def test_topic_discovery_prompts_live_outside_service_module() -> None:
     assert "自動拆解研究子題" not in service_source
     assert "自動拆解研究子題" in prompts_source
     assert "目前品質狀態" in prompts_source
+
+
+def test_topic_discovery_queries_live_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    queries_source = Path("app/services/topic_discovery_queries.py").read_text()
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "objective": "確認液冷訂單是否支撐散熱成長",
+              "required_evidence": ["水冷訂單"],
+              "risk_focus": ["認證延遲"],
+              "search_queries": ["AI 伺服器 液冷"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "3017",
+              "name": "奇鋐",
+              "segment": "散熱模組",
+              "rationale": "液冷散熱升級",
+              "evidence_keywords": ["液冷", "CDU"]
+            }
+          ]
+        }
+        """
+    )
+
+    assert service.google_news_urls(
+        plan,
+        include_international=True,
+        max_urls=6,
+        topic="AI 產業鏈",
+        include_metadata=True,
+    ) == topic_discovery_queries.google_news_urls(
+        plan,
+        include_international=True,
+        max_urls=6,
+        topic="AI 產業鏈",
+        include_metadata=True,
+        evaluate_plan_quality=service.evaluate_plan_quality,
+        infer_source_intents=service.infer_source_intents,
+    )
+    assert "NVIDIA AI server supply chain Taiwan ODM" not in service_source
+    assert "NVIDIA AI server supply chain Taiwan ODM" in queries_source
+    assert "def google_news_urls(" in queries_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

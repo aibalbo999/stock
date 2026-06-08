@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from app.api.dependencies import (
+    SERVICE_FACTORY_DEPENDENCY_GROUPS,
+    SERVICE_FACTORY_DEPENDENCY_NAMES,
+    build_service_factory_dependencies,
+)
 from app.api.service_factory import ApiServiceFactory
 from app.api.service_factory_ai import AiGraphServiceFactoryMixin
 from app.api.service_factory_data import DataServiceFactoryMixin
@@ -35,6 +42,35 @@ def test_api_service_factory_uses_domain_mixins() -> None:
     assert ApiServiceFactory.sync_report_generation_api is ReportServiceFactoryMixin.sync_report_generation_api
     assert ApiServiceFactory.run_task_api is WorkflowServiceFactoryMixin.run_task_api
     assert ApiServiceFactory.pipeline_api is WorkflowServiceFactoryMixin.pipeline_api
+
+
+def test_service_factory_dependency_names_are_grouped_by_domain() -> None:
+    flattened = [
+        name
+        for dependency_group in SERVICE_FACTORY_DEPENDENCY_GROUPS.values()
+        for name in dependency_group
+    ]
+    namespace = {name: object() for name in SERVICE_FACTORY_DEPENDENCY_NAMES}
+
+    dependencies = build_service_factory_dependencies(namespace)
+
+    assert tuple(flattened) == SERVICE_FACTORY_DEPENDENCY_NAMES
+    assert len(flattened) == len(set(flattened))
+    assert "core_runtime" in SERVICE_FACTORY_DEPENDENCY_GROUPS
+    assert "report_services" in SERVICE_FACTORY_DEPENDENCY_GROUPS
+    assert "compatibility_delegates" in SERVICE_FACTORY_DEPENDENCY_GROUPS
+    assert "run_topic_discovery_ingestion" in SERVICE_FACTORY_DEPENDENCY_GROUPS["compatibility_delegates"]
+    assert list(dependencies) == flattened
+
+
+def test_service_factory_dependency_namespace_reports_missing_grouped_dependency() -> None:
+    namespace = {name: object() for name in SERVICE_FACTORY_DEPENDENCY_NAMES}
+    del namespace["ReportGenerator"]
+
+    with pytest.raises(RuntimeError) as exc:
+        build_service_factory_dependencies(namespace)
+
+    assert "ReportGenerator" in str(exc.value)
 
 
 def test_sync_report_generation_factory_disables_network_recovery_by_default() -> None:

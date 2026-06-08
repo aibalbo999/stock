@@ -6,39 +6,54 @@ from typing import Any
 from fastapi import Request
 
 
-SERVICE_FACTORY_DEPENDENCY_NAMES = (
+CORE_RUNTIME_DEPENDENCY_NAMES = (
     "asyncio",
     "get_settings",
     "today_taipei",
     "session_scope",
+    "FollowUpRunRequest",
+)
+
+DATA_SOURCE_DEPENDENCY_NAMES = (
     "CompanyFilingFetcher",
     "filing_quality_score",
     "filing_source_tier",
-    "FollowUpRunRequest",
     "MarketDataClient",
     "NewsFetcher",
     "NewsSourceStore",
     "VectorStore",
+)
+
+AUDIT_AND_CANDIDATE_DEPENDENCY_NAMES = (
     "candidate_audit_summary",
     "render_candidate_audit_markdown",
     "audit_company_data",
     "audit_report_company_data",
+    "CandidateRevalidationService",
+)
+
+API_SERVICE_DEPENDENCY_NAMES = (
     "CompanyDataAuditApiService",
     "CompanyFilingApiService",
     "DataOperationsApiService",
-    "CandidateRevalidationService",
     "DiscoveryApiService",
     "DiscoveredMarketDataService",
     "DiscoveredTopicPipelineService",
     "DiscoveredReportBuilderService",
     "DiscoveryWorkflowService",
     "EntityMapper",
+)
+
+FOLLOW_UP_ACTION_DEPENDENCY_NAMES = (
     "FollowUpActionPlanner",
     "TRACKING_FRESHNESS_THRESHOLDS",
     "execute_follow_up_actions",
     "render_follow_up_actions_markdown",
     "split_fresh_tracking_actions",
     "summarize_follow_up_execution",
+)
+
+REPOSITORY_DEPENDENCY_NAMES = (
     "IngestionPipeline",
     "AnalysisRunRepository",
     "CompanyFilingRepository",
@@ -49,6 +64,9 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "NewsRepository",
     "ReportRepository",
     "ValuationMetricRepository",
+)
+
+REPORT_BUILD_DEPENDENCY_NAMES = (
     "ReportBuildService",
     "ReportRequest",
     "append_candidate_audit_if_missing",
@@ -60,10 +78,16 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "serialize_run",
     "should_require_candidate_audit_follow_up",
     "summarize_candidate_support_payload",
+)
+
+FOLLOW_UP_SERVICE_DEPENDENCY_NAMES = (
     "ReportFollowUpContextService",
     "AutoFollowUpStartService",
     "ReportFollowUpPlanService",
     "ReportFollowUpRunService",
+)
+
+REPORT_SERVICE_DEPENDENCY_NAMES = (
     "SyncReportGenerationApiService",
     "ReportGenerator",
     "report_execution_summary",
@@ -75,6 +99,9 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "summarize_document_source_quality",
     "summarize_llm_status",
     "ReportQueryService",
+)
+
+AI_AND_PIPELINE_DEPENDENCY_NAMES = (
     "RunTaskApiService",
     "RunStateService",
     "LLMApiService",
@@ -87,6 +114,9 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "StandardReportPipelineService",
     "SupplyChainGraphApiService",
     "Neo4jGraphImportService",
+)
+
+DISCOVERY_WORKFLOW_DEPENDENCY_NAMES = (
     "TopicDiscoveryPlan",
     "TopicDiscoveryRequest",
     "TopicDiscoveryService",
@@ -96,11 +126,17 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "WorkflowCheckpointRecorder",
     "WorkflowOrchestrationError",
     "WorkflowOrchestrationRunner",
+)
+
+CELERY_TASK_DEPENDENCY_NAMES = (
     "celery_app",
     "data_operation_task",
     "discovered_report_task",
     "generate_report_task",
     "report_follow_up_task",
+)
+
+COMPATIBILITY_DELEGATE_DEPENDENCY_NAMES = (
     "count_sufficient_company_filings",
     "load_report_follow_up_context",
     "prepare_follow_up_report_context",
@@ -122,6 +158,29 @@ SERVICE_FACTORY_DEPENDENCY_NAMES = (
     "dedupe_documents",
     "apply_company_filing_gate_to_candidate_payload",
     "summarize_candidate_support",
+)
+
+
+SERVICE_FACTORY_DEPENDENCY_GROUPS = {
+    "core_runtime": CORE_RUNTIME_DEPENDENCY_NAMES,
+    "data_sources": DATA_SOURCE_DEPENDENCY_NAMES,
+    "audit_and_candidate": AUDIT_AND_CANDIDATE_DEPENDENCY_NAMES,
+    "api_services": API_SERVICE_DEPENDENCY_NAMES,
+    "follow_up_actions": FOLLOW_UP_ACTION_DEPENDENCY_NAMES,
+    "repositories": REPOSITORY_DEPENDENCY_NAMES,
+    "report_build": REPORT_BUILD_DEPENDENCY_NAMES,
+    "follow_up_services": FOLLOW_UP_SERVICE_DEPENDENCY_NAMES,
+    "report_services": REPORT_SERVICE_DEPENDENCY_NAMES,
+    "ai_and_pipeline": AI_AND_PIPELINE_DEPENDENCY_NAMES,
+    "discovery_workflow": DISCOVERY_WORKFLOW_DEPENDENCY_NAMES,
+    "celery_tasks": CELERY_TASK_DEPENDENCY_NAMES,
+    "compatibility_delegates": COMPATIBILITY_DELEGATE_DEPENDENCY_NAMES,
+}
+
+SERVICE_FACTORY_DEPENDENCY_NAMES = tuple(
+    name
+    for dependency_group in SERVICE_FACTORY_DEPENDENCY_GROUPS.values()
+    for name in dependency_group
 )
 
 

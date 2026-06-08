@@ -32,6 +32,7 @@ def architecture_capabilities(
             and api_status.get("compatibility_service_present")
             and api_status.get("api_runtime_present")
             and api_status.get("main_uses_api_runtime")
+            and api_status.get("api_tasking_architecture_status_extracted")
             and api_status.get("task_uses_api_runtime")
             and api_status.get("task_exports_present")
             and api_status.get("api_runtime_uses_task_exports")

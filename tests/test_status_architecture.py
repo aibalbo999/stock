@@ -269,6 +269,9 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     status_api_compatibility_source = Path(
         "app/services/status_api_architecture_compatibility.py"
     ).read_text()
+    status_api_tasking_source = Path(
+        "app/services/status_api_architecture_tasking.py"
+    ).read_text()
 
     assert thin_api["status"] == "ready"
     assert evidence["collector_path"] == "app/services/status_api_architecture.py"
@@ -280,13 +283,22 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
         status_api_compatibility_source
     )
     assert "api_compatibility_architecture_status(source_context)" in status_api_source
+    assert "def api_tasking_architecture_status(" in status_api_tasking_source
+    assert "api_tasking_architecture_status(source_context)" in status_api_source
     assert '"compatibility_export_domain_builders_extracted"' not in status_api_source
     assert '"compatibility_helper_domain_builders_extracted"' not in status_api_source
     assert '"compatibility_service_domain_mixins_extracted"' not in status_api_source
     assert '"legacy_facade_alias_only"' not in status_api_source
+    assert '"structured_task_submission_errors"' not in status_api_source
+    assert '"task_failure_diagnostics_shared_service"' not in status_api_source
+    assert '"sync_report_network_refresh_opt_in"' not in status_api_source
     assert evidence["api_compatibility_architecture_status_extracted"] is True
     assert evidence["api_compatibility_architecture_status_path"] == (
         "app/services/status_api_architecture_compatibility.py"
+    )
+    assert evidence["api_tasking_architecture_status_extracted"] is True
+    assert evidence["api_tasking_architecture_status_path"] == (
+        "app/services/status_api_architecture_tasking.py"
     )
     assert evidence["main_py_lines"] <= 120
     assert "report_routes.py" in evidence["route_modules"]

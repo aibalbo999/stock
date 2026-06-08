@@ -45,6 +45,9 @@ def frontend_status() -> dict:
     task_queue_diagnostics_source = ui_sources["task_queue_diagnostics.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
+    system_settings_source = ui_sources["system_settings.py"]
+    system_settings_scope_source = ui_sources["system_settings_scope.py"]
+    system_settings_schedule_source = ui_sources["system_settings_schedule.py"]
     data_enrichment_source = source_context.data_enrichment_source
     pages = source_context.pages
     streamlit_pages_source = source_context.streamlit_pages_source
@@ -148,6 +151,23 @@ def frontend_status() -> dict:
             "app/ui/maintenance_ai_panels.py",
             "app/ui/maintenance_task_panels.py",
             "app/ui/maintenance_cleanup_panel.py",
+        ],
+        "ui_system_settings_tabs_extracted": (
+            ui_dir / "system_settings_scope.py"
+        ).exists()
+        and (ui_dir / "system_settings_schedule.py").exists()
+        and "render_scope_tab(settings_whitelist)" in system_settings_source
+        and "render_schedule_tab(sorted(settings_whitelist.allowed_tickers()))"
+        in system_settings_source
+        and "def render_scope_tab(" in system_settings_scope_source
+        and "def render_schedule_tab(" in system_settings_schedule_source
+        and "api_put(\"/schedule\"" in system_settings_schedule_source
+        and "SupplyChainWhitelist" not in system_settings_schedule_source
+        and "api_put(\"/schedule\"" not in system_settings_source
+        and "st.dataframe(segment_rows" not in system_settings_source,
+        "ui_system_settings_tab_paths": [
+            "app/ui/system_settings_scope.py",
+            "app/ui/system_settings_schedule.py",
         ],
         "ui_api_client_extracted": (ui_dir / "api_client.py").exists()
         and "def api_task_post(" in api_client_source

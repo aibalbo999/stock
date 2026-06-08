@@ -139,6 +139,7 @@ def architecture_capabilities(
             and frontend_status.get("report_html_renderer_extracted")
             and frontend_status.get("ui_status_helpers_extracted")
             and frontend_status.get("ui_maintenance_panels_extracted")
+            and frontend_status.get("ui_system_settings_tabs_extracted")
             and frontend_status.get("ui_api_client_extracted")
             and frontend_status.get("ui_background_task_client_extracted")
             and frontend_status.get("ui_task_queue_preflight_enabled")

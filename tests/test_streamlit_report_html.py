@@ -32,6 +32,9 @@ EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path(
 )
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
 TASK_FAILURE_DIAGNOSTICS_SOURCE = Path("app/ui/task_failure_diagnostics.py")
+SYSTEM_SETTINGS_SOURCE = Path("app/ui/system_settings.py")
+SYSTEM_SETTINGS_SCOPE_SOURCE = Path("app/ui/system_settings_scope.py")
+SYSTEM_SETTINGS_SCHEDULE_SOURCE = Path("app/ui/system_settings_schedule.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
@@ -69,7 +72,9 @@ UI_SOURCE_FILES = [
     Path("app/ui/data_enrichment_market.py"),
     Path("app/ui/data_enrichment_rss.py"),
     Path("app/ui/data_enrichment_runtime.py"),
-    Path("app/ui/system_settings.py"),
+    SYSTEM_SETTINGS_SOURCE,
+    SYSTEM_SETTINGS_SCOPE_SOURCE,
+    SYSTEM_SETTINGS_SCHEDULE_SOURCE,
     Path("app/ui/system_settings_maintenance.py"),
 ]
 STYLE_SOURCE = Path("app/ui/styles/stock_dashboard.css")
@@ -180,6 +185,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
     assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
     assert 'def render_rss_ingest_tab() -> None:' in source
+    assert 'def render_scope_tab(settings_whitelist: SupplyChainWhitelist) -> None:' in source
+    assert 'def render_schedule_tab(settings_tickers: list[str]) -> None:' in source
+    assert "render_scope_tab(settings_whitelist)" in SYSTEM_SETTINGS_SOURCE.read_text()
+    assert "render_schedule_tab(sorted(settings_whitelist.allowed_tickers()))" in (
+        SYSTEM_SETTINGS_SOURCE.read_text()
+    )
+    assert 'api_put("/schedule"' not in SYSTEM_SETTINGS_SOURCE.read_text()
+    assert "st.dataframe(segment_rows" not in SYSTEM_SETTINGS_SOURCE.read_text()
+    assert 'api_put("/schedule"' in SYSTEM_SETTINGS_SCHEDULE_SOURCE.read_text()
+    assert "st.dataframe(segment_rows" in SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "def company_filing_visual_rag_model_chain_rows(" in source
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()

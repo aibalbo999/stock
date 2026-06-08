@@ -24,6 +24,12 @@ MAINTENANCE_TASK_PANELS_SOURCE = Path("app/ui/maintenance_task_panels.py")
 MAINTENANCE_CLEANUP_PANEL_SOURCE = Path("app/ui/maintenance_cleanup_panel.py")
 REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
 EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE = Path("app/ui/external_deployment_diagnostics.py")
+EXTERNAL_DEPLOYMENT_COMMON_SOURCE = Path("app/ui/external_deployment_common.py")
+EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE = Path("app/ui/external_deployment_unlocker.py")
+EXTERNAL_DEPLOYMENT_NEO4J_SOURCE = Path("app/ui/external_deployment_neo4j.py")
+EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path(
+    "app/ui/external_deployment_structured_api.py"
+)
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
 TASK_FAILURE_DIAGNOSTICS_SOURCE = Path("app/ui/task_failure_diagnostics.py")
 UI_SOURCE_FILES = [
@@ -49,6 +55,10 @@ UI_SOURCE_FILES = [
     MAINTENANCE_CLEANUP_PANEL_SOURCE,
     REPORT_OBSERVABILITY_PANEL_SOURCE,
     EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE,
+    EXTERNAL_DEPLOYMENT_COMMON_SOURCE,
+    EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE,
+    EXTERNAL_DEPLOYMENT_NEO4J_SOURCE,
+    EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE,
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
     TASK_FAILURE_DIAGNOSTICS_SOURCE,
     Path("app/ui/analysis_workspace.py"),
@@ -221,6 +231,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         "def structured_filing_api_operation_rows("
         in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
+    assert "def external_deployment_warning_items(" in EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
+    assert "def high_risk_filing_unlocker_rows(" in EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
+    assert "def local_neo4j_operation_rows(" in EXTERNAL_DEPLOYMENT_NEO4J_SOURCE.read_text()
+    assert (
+        "def structured_filing_api_operation_rows("
+        in EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE.read_text()
+    )
+    assert "def _high_risk_unlocker_strategy(" not in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert "def _neo4j_payload_summary(" not in EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" not in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" not in MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in TASK_FAILURE_DIAGNOSTICS_SOURCE.read_text()

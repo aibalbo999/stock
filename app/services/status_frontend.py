@@ -36,6 +36,12 @@ def frontend_status() -> dict:
     llm_quota_panel_source = ui_sources["llm_quota_panel.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     external_deployment_source = ui_sources["external_deployment_diagnostics.py"]
+    external_deployment_common_source = ui_sources["external_deployment_common.py"]
+    external_deployment_unlocker_source = ui_sources["external_deployment_unlocker.py"]
+    external_deployment_neo4j_source = ui_sources["external_deployment_neo4j.py"]
+    external_deployment_structured_api_source = ui_sources[
+        "external_deployment_structured_api.py"
+    ]
     task_queue_diagnostics_source = ui_sources["task_queue_diagnostics.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
@@ -207,6 +213,28 @@ def frontend_status() -> dict:
         and "def local_neo4j_operation_rows(" not in maintenance_status_source
         and "def structured_filing_api_operation_rows(" not in maintenance_status_source,
         "ui_external_deployment_diagnostics_path": "app/ui/external_deployment_diagnostics.py",
+        "ui_external_deployment_domain_helpers_extracted": (
+            ui_dir / "external_deployment_common.py"
+        ).exists()
+        and (ui_dir / "external_deployment_unlocker.py").exists()
+        and (ui_dir / "external_deployment_neo4j.py").exists()
+        and (ui_dir / "external_deployment_structured_api.py").exists()
+        and "def external_deployment_warning_items(" in external_deployment_common_source
+        and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
+        and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
+        and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source
+        and "def structured_filing_api_operation_rows("
+        in external_deployment_structured_api_source
+        and "from app.ui.external_deployment_common import" in external_deployment_source
+        and "from app.ui.external_deployment_unlocker import" in external_deployment_source
+        and "from app.ui.external_deployment_neo4j import" in external_deployment_source
+        and "from app.ui.external_deployment_structured_api import" in external_deployment_source,
+        "ui_external_deployment_domain_helper_paths": [
+            "app/ui/external_deployment_common.py",
+            "app/ui/external_deployment_unlocker.py",
+            "app/ui/external_deployment_neo4j.py",
+            "app/ui/external_deployment_structured_api.py",
+        ],
         "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in task_failure_diagnostics_source
         and "def task_retry_options(" in task_failure_diagnostics_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source

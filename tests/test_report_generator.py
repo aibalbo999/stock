@@ -46,6 +46,7 @@ from app.services import (
     report_executive_snapshot,
     report_final_potential,
     report_formatting,
+    report_generation_flow,
     report_investment_recommendations,
     report_investment_thesis,
     report_leading_signal,
@@ -538,14 +539,29 @@ def test_report_prompt_builder_keeps_graphrag_and_source_contract() -> None:
 
 def test_report_prompt_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    generation_flow_source = Path("app/services/report_generation_flow.py").read_text()
     prompt_builder_source = Path("app/services/report_prompt_builder.py").read_text()
 
-    assert "report_prompt_builder.build_report_prompt(" in generator_source
+    assert "report_generation_flow.generate_report(" in generator_source
+    assert "report_prompt_builder.build_report_prompt(" in generation_flow_source
     assert "REPORT_PROMPT_TEMPLATE.format(" not in generator_source
     assert "def build_report_prompt(" in prompt_builder_source
     assert "def format_evidence_digest(" in prompt_builder_source
     assert "def format_llm_evidence(" in prompt_builder_source
     assert "doc.text[:500]" not in generator_source
+
+
+def test_report_generation_flow_orchestrates_generate_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    generation_flow_source = Path("app/services/report_generation_flow.py").read_text()
+
+    assert report_generation_flow.generate_report
+    assert "def generate_report(" in generation_flow_source
+    assert "filter_formal_evidence_documents(" in generation_flow_source
+    assert "remove_low_quality_investor_forum_lines(" in generation_flow_source
+    assert "generator.last_dropped_tickers" in generation_flow_source
+    assert "generator.last_dropped_tickers" not in generator_source
+    assert "filter_formal_evidence_documents(" not in generator_source
 
 
 def test_evidence_digest_logic_lives_outside_generator() -> None:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.core.time import now_taipei
 from app.db.session import session_scope
 from app.models.schemas import (
     FinancialMetric,
@@ -63,6 +62,7 @@ from app.services import (
     report_executive_snapshot,
     report_final_potential,
     report_formatting,
+    report_generation_flow,
     report_leading_signal,
     report_investment_thesis,
     report_investment_recommendations,
@@ -84,11 +84,6 @@ from app.services.report_source_references import (
     source_reference_line,
 )
 from app.services.risk_analyzer import RiskAnalyzer
-from app.services.source_quality import (
-    filter_formal_evidence_documents,
-    is_formal_evidence_document,
-    remove_low_quality_investor_forum_lines,
-)
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -151,61 +146,11 @@ class ReportGenerator:
         self._document_match_cache: dict[tuple[str, str, str, int], list] = {}
 
     def generate(self, request: ReportRequest, documents: list[NewsDocument] | None = None) -> ReportResponse:
-        raw_evidence_docs = documents or self._retrieve_evidence(request)
-        evidence_docs = filter_formal_evidence_documents(raw_evidence_docs)
-        self.last_excluded_low_quality_documents = [
-            document
-            for document in raw_evidence_docs
-            if not is_formal_evidence_document(document)
-        ]
-        self.last_evidence_documents = list(evidence_docs)
-        findings = self.risk_analyzer.analyze_documents(evidence_docs)
-        tickers = self.mapper.filter_allowed_tickers(request.tickers)
-        self.last_filtered_tickers = tickers
-        self.last_dropped_tickers = [ticker for ticker in request.tickers if ticker not in set(tickers)]
-        if self.last_dropped_tickers:
-            dropped_tickers = "、".join(self.last_dropped_tickers)
-            raise ReportExecutionError(
-                f"報告產生中止：以下指定股票未進入目前白名單：{dropped_tickers}。"
-                "若這是 AI 主題探索或補強重跑，必須套用候選公司動態白名單，"
-                "避免產出缺漏個股分析卻顯示成功的報告。"
-            )
-        market_snapshots = self._latest_market_snapshots(tickers)
-        monthly_revenues = self._latest_monthly_revenues(tickers)
-        financial_metrics = self._financial_metrics(tickers)
-        valuation_metrics = self._latest_valuations(tickers)
-        leading_signals = self._leading_signals(tickers, valuation_metrics)
-
-        graph_reasoning_context = self._graph_reasoning_context(request, tickers)
-        prompt = report_prompt_builder.build_report_prompt(
-            whitelist_context=self.whitelist.as_prompt_context(),
-            graph_context=graph_reasoning_context,
-            evidence_documents=evidence_docs,
-            market_snapshots=market_snapshots,
-            monthly_revenues=monthly_revenues,
-            ticker_label_resolver=self._document_company_labels,
-        )
-        llm_result = self._generate_llm_supplement(prompt)
-        self.last_llm_result = llm_result
-        markdown = self._render_markdown(
+        return report_generation_flow.generate_report(
+            self,
             request,
-            evidence_docs,
-            findings,
-            tickers,
-            llm_result,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
-        )
-        markdown = remove_low_quality_investor_forum_lines(markdown)
-        self._assert_report_integrity(markdown, self.whitelist)
-        return ReportResponse(
-            title=f"{request.topic} 自動分析報告",
-            generated_at=now_taipei(),
-            markdown=markdown,
-            findings=findings,
+            documents,
+            execution_error_cls=ReportExecutionError,
         )
 
     @staticmethod

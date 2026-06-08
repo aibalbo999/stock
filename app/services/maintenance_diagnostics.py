@@ -94,6 +94,31 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "local_unlocker_upgrade_audit": {
+        "id": "local_unlocker_upgrade_audit",
+        "label": "Local Neo4j + unlocker upgrade audit",
+        "description": "套用本機 Neo4j 與 FlareSolverr 預設值後檢查外部選配狀態。",
+        "display_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-neo4j-defaults --prefer-unlocker "
+            "--wait-local-neo4j 20 --wait-local-flaresolverr 20 "
+            "--local-browser-render-defaults --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/upgrade_audit.py",
+            "--local-neo4j-defaults",
+            "--prefer-unlocker",
+            "--wait-local-neo4j",
+            "20",
+            "--wait-local-flaresolverr",
+            "20",
+            "--local-browser-render-defaults",
+            "--json",
+        ],
+        "timeout_seconds": 120,
+        "read_only": True,
+    },
     "neo4j_payload_dry_run": {
         "id": "neo4j_payload_dry_run",
         "label": "Neo4j payload dry-run",

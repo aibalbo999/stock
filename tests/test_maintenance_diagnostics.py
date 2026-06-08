@@ -23,6 +23,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "graphrag_local_contract_smoke",
         "high_risk_unlocker_smoke",
         "local_neo4j_upgrade_audit",
+        "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
         "upgrade_audit",
     }
@@ -46,6 +47,14 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     }["local_neo4j_upgrade_audit"]
     assert "--local-neo4j-defaults --wait-local-neo4j 20 --json" in (
         neo4j_action["display_command"]
+    )
+    unlocker_audit_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["local_unlocker_upgrade_audit"]
+    assert "--prefer-unlocker" in unlocker_audit_action["display_command"]
+    assert "--wait-local-flaresolverr 20" in unlocker_audit_action["display_command"]
+    assert "--local-browser-render-defaults --json" in (
+        unlocker_audit_action["display_command"]
     )
     live_query_action = {
         action["id"]: action for action in catalog["actions"]

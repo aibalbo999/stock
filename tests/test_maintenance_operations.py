@@ -40,6 +40,10 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
         "https://mops.twse.com.tw/" in check["command"]
         for check in checks_by_id["start_local_dependencies_with_unlocker"]
     )
+    assert any(
+        check["diagnostic_action_id"] == "local_unlocker_upgrade_audit"
+        for check in checks_by_id["start_local_dependencies_with_unlocker"]
+    )
 
 
 def test_run_maintenance_operation_requires_confirmation() -> None:

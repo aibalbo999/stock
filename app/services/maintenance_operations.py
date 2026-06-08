@@ -91,7 +91,7 @@ POST_RUN_CHECKS = {
         {
             "item": "Neo4j / GraphRAG / FlareSolverr 本機設定稽核",
             "purpose": "確認本機 Neo4j 與 FlareSolverr env 套用後的外部選配狀態。",
-            "diagnostic_action_id": "",
+            "diagnostic_action_id": "local_unlocker_upgrade_audit",
             "command": (
                 ".venv/bin/python scripts/upgrade_audit.py "
                 "--local-neo4j-defaults --prefer-unlocker "

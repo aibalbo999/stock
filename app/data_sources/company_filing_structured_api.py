@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from hashlib import sha1
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,7 +13,7 @@ from app.data_sources.company_filing_discovery import (
     infer_document_type,
     is_document_text_relevant,
 )
-from app.models.schemas import NewsDocument, Source
+from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 
 
 STRUCTURED_API_SAMPLE_CONTRACT_PATH = Path("examples/structured_company_filing_sample.json")
@@ -354,6 +355,110 @@ def structured_api_row_to_news_document(
     if not is_document_text_relevant(document, ticker, company_name, document_types):
         return None
     return document, document_type
+
+
+def structured_api_row_to_company_filing_document(
+    row: dict,
+    *,
+    ticker: str,
+    company_name: str,
+    provider: str,
+    document_types: list[str] | tuple[str, ...] | None = None,
+) -> CompanyFilingDocument | None:
+    parsed = structured_api_row_to_news_document(
+        row,
+        ticker=ticker,
+        company_name=company_name,
+        provider=provider,
+        document_types=document_types,
+    )
+    if not parsed:
+        return None
+    news_document, document_type = parsed
+    digest = sha1(f"{ticker}:{document_type}:{news_document.source.url or news_document.id}".encode("utf-8")).hexdigest()
+    return CompanyFilingDocument(
+        id=digest,
+        ticker=ticker,
+        company_name=company_name or None,
+        document_type=document_type,
+        title=news_document.title,
+        text=news_document.text,
+        source=news_document.source,
+    )
+
+
+def structured_api_sample_contract_status(sample_path: Path | None = None) -> dict:
+    path = sample_path or Path(__file__).resolve().parents[2] / STRUCTURED_API_SAMPLE_CONTRACT_PATH
+    smoke_cli = (
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--sample-json examples/structured_company_filing_sample.json "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+    )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "ready": False,
+            "mode": "sample_json_contract",
+            "sample_path": str(path),
+            "raw_row_count": 0,
+            "document_count": 0,
+            "error_count": 1,
+            "errors": [{"category": "sample_json_unreadable", "message": str(exc)}],
+            "smoke_cli": smoke_cli,
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "status": "failed",
+            "ready": False,
+            "mode": "sample_json_contract",
+            "sample_path": str(path),
+            "raw_row_count": 0,
+            "document_count": 0,
+            "error_count": 1,
+            "errors": [{"category": "sample_json_invalid", "message": str(exc)}],
+            "smoke_cli": smoke_cli,
+        }
+
+    rows = structured_api_document_rows(payload)
+    documents: list[CompanyFilingDocument] = []
+    errors: list[dict] = []
+    for index, row in enumerate(rows):
+        document = structured_api_row_to_company_filing_document(
+            row,
+            ticker="2330",
+            company_name="台積電",
+            provider="sample",
+            document_types=("investor_presentation",),
+        )
+        if document:
+            documents.append(document)
+        else:
+            errors.append(
+                {
+                    "row_index": index,
+                    "category": "row_not_convertible",
+                    "required_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
+                }
+            )
+    if documents:
+        status = "ready"
+    elif rows:
+        status = "degraded"
+    else:
+        status = "failed"
+    return {
+        "status": status,
+        "ready": status == "ready",
+        "mode": "sample_json_contract",
+        "sample_path": str(path),
+        "raw_row_count": len(rows),
+        "document_count": len(documents),
+        "error_count": len(errors),
+        "errors": errors[:10],
+        "smoke_cli": smoke_cli,
+    }
 
 
 def parse_structured_api_date(value: object) -> date | None:

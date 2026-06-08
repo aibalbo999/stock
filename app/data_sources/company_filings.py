@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date
 from hashlib import sha1
 import importlib
-import json
-from pathlib import Path
 from urllib.parse import quote_plus
 
 from app.core.config import get_settings
@@ -131,7 +129,9 @@ from app.data_sources.company_filing_structured_api import (
     structured_api_enriched_text as structured_api_enriched_text,
     structured_api_provider_profile as structured_api_provider_profile,
     structured_api_request_contract as structured_api_request_contract,
+    structured_api_row_to_company_filing_document as structured_api_row_to_company_filing_document,
     structured_api_row_to_news_document as structured_api_row_to_news_document,
+    structured_api_sample_contract_status as structured_api_sample_contract_status,
     structured_api_row_text as structured_api_row_text,
     structured_api_row_value as structured_api_row_value,
 )
@@ -158,81 +158,6 @@ def company_filing_structured_api_status() -> dict:
         },
         sample_contract=structured_api_sample_contract_status(),
     )
-
-
-def structured_api_sample_contract_status(sample_path: Path | None = None) -> dict:
-    path = sample_path or Path(__file__).resolve().parents[2] / STRUCTURED_API_SAMPLE_CONTRACT_PATH
-    smoke_cli = (
-        ".venv/bin/python scripts/structured_company_filing_smoke.py "
-        "--sample-json examples/structured_company_filing_sample.json "
-        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
-    )
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        return {
-            "status": "failed",
-            "ready": False,
-            "mode": "sample_json_contract",
-            "sample_path": str(path),
-            "raw_row_count": 0,
-            "document_count": 0,
-            "error_count": 1,
-            "errors": [{"category": "sample_json_unreadable", "message": str(exc)}],
-            "smoke_cli": smoke_cli,
-        }
-    except json.JSONDecodeError as exc:
-        return {
-            "status": "failed",
-            "ready": False,
-            "mode": "sample_json_contract",
-            "sample_path": str(path),
-            "raw_row_count": 0,
-            "document_count": 0,
-            "error_count": 1,
-            "errors": [{"category": "sample_json_invalid", "message": str(exc)}],
-            "smoke_cli": smoke_cli,
-        }
-
-    rows = structured_api_document_rows(payload)
-    parser = CompanyFilingFetcher()
-    documents: list[CompanyFilingDocument] = []
-    errors: list[dict] = []
-    for index, row in enumerate(rows):
-        document = parser._structured_api_row_to_document(
-            row,
-            ticker="2330",
-            company_name="台積電",
-            provider="sample",
-            document_types=("investor_presentation",),
-        )
-        if document:
-            documents.append(document)
-        else:
-            errors.append(
-                {
-                    "row_index": index,
-                    "category": "row_not_convertible",
-                    "required_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
-                }
-            )
-    if documents:
-        status = "ready"
-    elif rows:
-        status = "degraded"
-    else:
-        status = "failed"
-    return {
-        "status": status,
-        "ready": status == "ready",
-        "mode": "sample_json_contract",
-        "sample_path": str(path),
-        "raw_row_count": len(rows),
-        "document_count": len(documents),
-        "error_count": len(errors),
-        "errors": errors[:10],
-        "smoke_cli": smoke_cli,
-    }
 
 
 class CompanyFilingFetcher:
@@ -629,17 +554,13 @@ class CompanyFilingFetcher:
         provider: str,
         document_types: list[str] | tuple[str, ...] | None = None,
     ) -> CompanyFilingDocument | None:
-        parsed = structured_api_row_to_news_document(
+        return structured_api_row_to_company_filing_document(
             row,
             ticker=ticker,
             company_name=company_name,
             provider=provider,
             document_types=document_types,
         )
-        if not parsed:
-            return None
-        news_document, document_type = parsed
-        return self.from_news_document(news_document, ticker, company_name, document_type=document_type)
 
     async def fetch_web_search_documents(
         self,

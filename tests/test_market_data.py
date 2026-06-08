@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.data_sources import market_finmind, market_fugle, market_parsers, market_provider_runtime
+from app.data_sources import market_official_openapi
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
@@ -451,6 +452,21 @@ def test_price_history_uses_official_openapi_snapshot_fallback(monkeypatch) -> N
     assert snapshots[0].trade_date == date(2026, 5, 29)
     assert snapshots[0].source == "TWSE OpenAPI STOCK_DAY_ALL; latest-only"
     assert cache.stored_price_history["snapshots"] == snapshots
+
+
+def test_official_openapi_provider_logic_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    official_source = Path("app/data_sources/market_official_openapi.py").read_text()
+
+    assert market_official_openapi.TWSE_PRICE_ENDPOINT == "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+    assert market_official_openapi.TPEX_PRICE_ENDPOINT == "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
+    assert "market_official_openapi.fetch_official_openapi_rows" in client_source
+    assert "market_official_openapi.find_first_statement_row" in client_source
+    assert "OFFICIAL_OPENAPI_USER_AGENT" in official_source
+    assert "client.get(" not in client_source.split(
+        "async def _fetch_official_openapi_rows(",
+        maxsplit=1,
+    )[1].split("@staticmethod", maxsplit=1)[0]
 
 
 def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> None:

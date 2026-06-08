@@ -8,7 +8,13 @@ from datetime import date
 import httpx
 
 from app.core.config import get_settings
-from app.data_sources import market_finmind, market_fugle, market_parsers, market_provider_runtime
+from app.data_sources import (
+    market_finmind,
+    market_fugle,
+    market_official_openapi,
+    market_parsers,
+    market_provider_runtime,
+)
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
 from app.services.task_cancellation import TaskCancelledError
@@ -35,46 +41,18 @@ class MarketFetchError:
 class MarketDataClient:
     STALE_CACHE_SOURCE_MARKER = "cached-stale"
     LATEST_ONLY_SOURCE_MARKER = "latest-only"
-    TWSE_OPENAPI_BASE_URL = "https://openapi.twse.com.tw/v1"
-    TPEX_OPENAPI_BASE_URL = "https://www.tpex.org.tw/openapi/v1"
-    TWSE_PRICE_ENDPOINT = f"{TWSE_OPENAPI_BASE_URL}/exchangeReport/STOCK_DAY_ALL"
-    TWSE_VALUATION_ENDPOINT = f"{TWSE_OPENAPI_BASE_URL}/exchangeReport/BWIBBU_ALL"
-    TWSE_MONTHLY_REVENUE_ENDPOINT = f"{TWSE_OPENAPI_BASE_URL}/opendata/t187ap05_L"
-    TPEX_PRICE_ENDPOINT = f"{TPEX_OPENAPI_BASE_URL}/tpex_mainboard_quotes"
-    TPEX_VALUATION_ENDPOINT = f"{TPEX_OPENAPI_BASE_URL}/tpex_mainboard_peratio_analysis"
-    TPEX_MONTHLY_REVENUE_ENDPOINT = f"{TPEX_OPENAPI_BASE_URL}/mopsfin_t187ap05_O"
-    TWSE_INCOME_STATEMENT_ENDPOINTS = (
-        "opendata/t187ap06_L_ci",
-        "opendata/t187ap06_L_basi",
-        "opendata/t187ap06_L_bd",
-        "opendata/t187ap06_L_fh",
-        "opendata/t187ap06_L_ins",
-        "opendata/t187ap06_L_mim",
-    )
-    TWSE_BALANCE_SHEET_ENDPOINTS = (
-        "opendata/t187ap07_L_ci",
-        "opendata/t187ap07_L_basi",
-        "opendata/t187ap07_L_bd",
-        "opendata/t187ap07_L_fh",
-        "opendata/t187ap07_L_ins",
-        "opendata/t187ap07_L_mim",
-    )
-    TPEX_INCOME_STATEMENT_ENDPOINTS = (
-        "mopsfin_t187ap06_O_ci",
-        "mopsfin_t187ap06_O_basi",
-        "mopsfin_t187ap06_O_bd",
-        "mopsfin_t187ap06_O_fh",
-        "mopsfin_t187ap06_O_ins",
-        "mopsfin_t187ap06_O_mim",
-    )
-    TPEX_BALANCE_SHEET_ENDPOINTS = (
-        "mopsfin_t187ap07_O_ci",
-        "mopsfin_t187ap07_O_basi",
-        "mopsfin_t187ap07_O_bd",
-        "mopsfin_t187ap07_O_fh",
-        "mopsfin_t187ap07_O_ins",
-        "mopsfin_t187ap07_O_mim",
-    )
+    TWSE_OPENAPI_BASE_URL = market_official_openapi.TWSE_OPENAPI_BASE_URL
+    TPEX_OPENAPI_BASE_URL = market_official_openapi.TPEX_OPENAPI_BASE_URL
+    TWSE_PRICE_ENDPOINT = market_official_openapi.TWSE_PRICE_ENDPOINT
+    TWSE_VALUATION_ENDPOINT = market_official_openapi.TWSE_VALUATION_ENDPOINT
+    TWSE_MONTHLY_REVENUE_ENDPOINT = market_official_openapi.TWSE_MONTHLY_REVENUE_ENDPOINT
+    TPEX_PRICE_ENDPOINT = market_official_openapi.TPEX_PRICE_ENDPOINT
+    TPEX_VALUATION_ENDPOINT = market_official_openapi.TPEX_VALUATION_ENDPOINT
+    TPEX_MONTHLY_REVENUE_ENDPOINT = market_official_openapi.TPEX_MONTHLY_REVENUE_ENDPOINT
+    TWSE_INCOME_STATEMENT_ENDPOINTS = market_official_openapi.TWSE_INCOME_STATEMENT_ENDPOINTS
+    TWSE_BALANCE_SHEET_ENDPOINTS = market_official_openapi.TWSE_BALANCE_SHEET_ENDPOINTS
+    TPEX_INCOME_STATEMENT_ENDPOINTS = market_official_openapi.TPEX_INCOME_STATEMENT_ENDPOINTS
+    TPEX_BALANCE_SHEET_ENDPOINTS = market_official_openapi.TPEX_BALANCE_SHEET_ENDPOINTS
     FUGLE_HISTORICAL_CANDLES_URL = market_fugle.FUGLE_HISTORICAL_CANDLES_URL
     FUGLE_HISTORICAL_STATS_URL = market_fugle.FUGLE_HISTORICAL_STATS_URL
 
@@ -790,32 +768,21 @@ class MarketDataClient:
         ticker: str,
         endpoints: list[tuple[str, str]],
     ) -> tuple[dict | None, str]:
-        for base_url, endpoint in endpoints:
-            rows = await self._fetch_official_openapi_rows(f"{base_url}/{endpoint}")
-            row = self._find_official_row(rows, ticker)
-            if row:
-                source_prefix = "TWSE" if "twse.com.tw" in base_url else "TPEx"
-                return row, f"{source_prefix} OpenAPI {endpoint.split('/')[-1]}"
-        return None, ""
+        return await market_official_openapi.find_first_statement_row(
+            ticker=ticker,
+            endpoints=endpoints,
+            fetch_rows=self._fetch_official_openapi_rows,
+        )
 
     async def _fetch_official_openapi_rows(self, url: str) -> list[dict]:
-        try:
-            async with httpx.AsyncClient(timeout=self.official_openapi_timeout, follow_redirects=True) as client:
-                response = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-                response.raise_for_status()
-            payload = response.json()
-        except Exception:
-            return []
-        return payload if isinstance(payload, list) else []
+        return await market_official_openapi.fetch_official_openapi_rows(
+            url,
+            timeout=self.official_openapi_timeout,
+        )
 
     @staticmethod
     def _find_official_row(rows: list[dict], ticker: str) -> dict | None:
-        ticker = str(ticker)
-        for row in rows:
-            code = row.get("Code") or row.get("公司代號") or row.get("SecuritiesCompanyCode")
-            if str(code or "").strip() == ticker:
-                return row
-        return None
+        return market_official_openapi.find_official_row(rows, ticker)
 
     def _provider_circuit_setting(self, provider: str, suffix: str, default):
         return market_provider_runtime.provider_circuit_setting(

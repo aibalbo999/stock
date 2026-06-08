@@ -2365,6 +2365,7 @@ def test_time_scope_note_distinguishes_current_history_and_scenario_scores() -> 
 
 def test_report_note_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    report_sections_mixin_source = Path("app/services/report_generator_report_sections.py").read_text()
     notes_source = Path("app/services/report_notes.py").read_text()
     request = ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=21)
     market_snapshots = [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)]
@@ -2379,7 +2380,12 @@ def test_report_note_logic_lives_outside_generator() -> None:
     ]
     valuation_metrics = [ValuationMetric(ticker="2330", trade_date=date(2026, 5, 20), pe_ratio=20)]
 
-    assert "report_notes" in generator_source
+    assert "report_notes" not in generator_source
+    assert "ReportGeneratorReportSectionsMixin" in generator_source
+    assert "report_notes" in report_sections_mixin_source
+    assert "def _render_time_scope_note(" in report_sections_mixin_source
+    assert "def _render_decision_criteria_note(" in report_sections_mixin_source
+    assert "def _render_time_scope_note(" not in generator_source
     assert "def render_time_scope_note(" in notes_source
     assert "def render_decision_criteria_note(" in notes_source
     assert "「目前」指本報告生成時間" not in generator_source
@@ -2889,12 +2895,17 @@ def test_score_breakdown_explains_factors_and_data_quality() -> None:
 
 def test_score_breakdown_render_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    report_sections_mixin_source = Path("app/services/report_generator_report_sections.py").read_text()
     score_source = Path("app/services/report_score_breakdown.py").read_text()
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
     generator.mapper = EntityMapper(generator.whitelist)
 
-    assert "report_score_breakdown" in generator_source
+    assert "report_score_breakdown" not in generator_source
+    assert "ReportGeneratorReportSectionsMixin" in generator_source
+    assert "report_score_breakdown" in report_sections_mixin_source
+    assert "def _render_score_breakdown(" in report_sections_mixin_source
+    assert "def _render_score_breakdown(" not in generator_source
     assert "def render_score_breakdown(" in score_source
     assert "estimate_potential(" in score_source
     assert "此段拆解研究分級來源" not in generator_source
@@ -2972,12 +2983,17 @@ def test_data_quality_section_explains_complete_and_missing_layers() -> None:
 
 def test_data_quality_render_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    report_sections_mixin_source = Path("app/services/report_generator_report_sections.py").read_text()
     data_quality_source = Path("app/services/report_data_quality.py").read_text()
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
     generator.mapper = EntityMapper(generator.whitelist)
 
-    assert "report_data_quality" in generator_source
+    assert "report_data_quality" not in generator_source
+    assert "ReportGeneratorReportSectionsMixin" in generator_source
+    assert "report_data_quality" in report_sections_mixin_source
+    assert "def _render_data_quality(" in report_sections_mixin_source
+    assert "def _render_data_quality(" not in generator_source
     assert "def render_data_quality(" in data_quality_source
     assert "data_quality_grade(" in data_quality_source
     assert "本段檢查每檔股票是否同時具備" not in generator_source
@@ -3029,6 +3045,8 @@ def test_source_coverage_summarizes_international_sources() -> None:
 
 def test_source_coverage_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    report_sections_mixin_source = Path("app/services/report_generator_report_sections.py").read_text()
+    document_mixin_source = Path("app/services/report_generator_document.py").read_text()
     coverage_source = Path("app/services/report_source_coverage.py").read_text()
     document = NewsFetcher.from_manual_text(
         title="NVIDIA AI server supply chain",
@@ -3037,7 +3055,12 @@ def test_source_coverage_logic_lives_outside_generator() -> None:
         published_at=date(2026, 5, 24),
     )
 
-    assert "report_source_coverage" in generator_source
+    assert "report_source_coverage" not in generator_source
+    assert "ReportGeneratorReportSectionsMixin" in generator_source
+    assert "report_source_coverage" in report_sections_mixin_source
+    assert "def _render_source_coverage(" in report_sections_mixin_source
+    assert "def _render_source_coverage(" not in generator_source
+    assert "def _is_international_source(" in document_mixin_source
     assert "def render_source_coverage(" in coverage_source
     assert "def is_international_source(" in coverage_source
     assert "def latest_source_date_label(" in coverage_source

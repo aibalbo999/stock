@@ -28,12 +28,12 @@ from app.services.report_generator_formatting import ReportGeneratorFormattingMi
 from app.services.report_generator_market_scope import ReportGeneratorMarketScopeMixin
 from app.services.report_generator_potential import ReportGeneratorPotentialMixin
 from app.services.report_generator_prompt_appendix import ReportGeneratorPromptAppendixMixin
+from app.services.report_generator_report_sections import ReportGeneratorReportSectionsMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
     report_action_checklist,
     report_beginner_portfolio,
     report_company_analysis,
-    report_data_quality,
     report_credibility_check,
     report_decision_contexts,
     report_early_potential,
@@ -44,9 +44,6 @@ from app.services import (
     report_investment_thesis,
     report_markdown_sections,
     report_monitoring_checklist,
-    report_notes,
-    report_score_breakdown,
-    report_source_coverage,
 )
 from app.services.report_reading import REPORT_READING_SORT_NOTE
 from app.services.report_source_references import (
@@ -74,6 +71,7 @@ class ReportGenerator(
     ReportGeneratorPromptAppendixMixin,
     ReportGeneratorMarketScopeMixin,
     ReportGeneratorDecisionViewsMixin,
+    ReportGeneratorReportSectionsMixin,
 ):
     def __init__(
         self,
@@ -403,91 +401,6 @@ class ReportGenerator(
             context["avoid_trigger"] = self._avoid_trigger_text(context, downside_gate)
         actions = FollowUpActionPlanner().plan(request, contexts=contexts)
         return render_follow_up_actions_markdown(actions)
-
-    @staticmethod
-    def _render_time_scope_note(
-        request: ReportRequest,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-    ) -> str:
-        return report_notes.render_time_scope_note(
-            request,
-            market_snapshots,
-            monthly_revenues,
-            valuation_metrics,
-        )
-
-    @staticmethod
-    def _render_decision_criteria_note(request: ReportRequest) -> str:
-        return report_notes.render_decision_criteria_note(request)
-
-    def _render_data_quality(
-        self,
-        tickers: list[str],
-        documents: list[NewsDocument],
-        findings,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-        leading_signals: dict[str, LeadingSignal] | None = None,
-        request: ReportRequest | None = None,
-    ) -> str:
-        return report_data_quality.render_data_quality(
-            tickers=tickers,
-            documents=documents,
-            findings=findings,
-            market_snapshots=market_snapshots,
-            monthly_revenues=monthly_revenues,
-            financial_metrics=financial_metrics,
-            valuation_metrics=valuation_metrics,
-            leading_signals=leading_signals,
-            companies=self.whitelist.companies(),
-            related_documents_resolver=self._related_documents,
-            related_findings_resolver=self._related_findings,
-            company_filing_missing_resolver=self._company_filing_missing,
-            recent_source_days=request.lookback_days if request else None,
-        )
-
-    def _render_score_breakdown(
-        self,
-        tickers: list[str],
-        documents: list[NewsDocument],
-        findings,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-        leading_signals: dict[str, LeadingSignal] | None = None,
-    ) -> str:
-        return report_score_breakdown.render_score_breakdown(
-            tickers=tickers,
-            documents=documents,
-            findings=findings,
-            market_snapshots=market_snapshots,
-            monthly_revenues=monthly_revenues,
-            financial_metrics=financial_metrics,
-            valuation_metrics=valuation_metrics,
-            leading_signals=leading_signals,
-            companies=self.whitelist.companies(),
-            related_documents_resolver=self._related_documents,
-            related_findings_resolver=self._related_findings,
-        )
-
-    def _render_source_coverage(
-        self,
-        request: ReportRequest,
-        tickers: list[str],
-        documents: list[NewsDocument],
-    ) -> str:
-        return report_source_coverage.render_source_coverage(
-            evidence_limit=request.evidence_limit,
-            tickers=tickers,
-            documents=documents,
-            companies=self.whitelist.companies(),
-            related_documents_resolver=self._related_documents,
-        )
 
     def _render_candidate_audit(self, promoted_tickers: list[str]) -> str:
         return render_candidate_audit_markdown(self.whitelist.candidate_audit(), promoted_tickers)

@@ -2,10 +2,10 @@ from datetime import date
 from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
+from app.services import topic_discovery_models, topic_discovery_prompts
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
 from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
-from app.services import topic_discovery_models
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -66,6 +66,31 @@ def test_topic_discovery_models_live_outside_service_module() -> None:
     assert "class TopicDiscoveryPlan(" not in service_source
     assert "class TopicDiscoveryPlan(" in models_source
     assert "class ValidatedCandidate(" in models_source
+
+
+def test_topic_discovery_prompts_live_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    prompts_source = Path("app/services/topic_discovery_prompts.py").read_text()
+    plan = TopicDiscoveryPlan()
+    quality = DiscoveryPlanQuality(
+        status="insufficient",
+        score=0,
+        missing=["候選不足"],
+        coverage={},
+        subtopic_count=0,
+        candidate_count=0,
+        recommendation="補候選",
+    )
+
+    assert TopicDiscoveryService._prompt("AI 產業鏈") == topic_discovery_prompts.topic_discovery_prompt(
+        "AI 產業鏈"
+    )
+    assert TopicDiscoveryService._repair_prompt(
+        "AI 產業鏈", plan, quality
+    ) == topic_discovery_prompts.topic_discovery_repair_prompt("AI 產業鏈", plan, quality)
+    assert "自動拆解研究子題" not in service_source
+    assert "自動拆解研究子題" in prompts_source
+    assert "目前品質狀態" in prompts_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

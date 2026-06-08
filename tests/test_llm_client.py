@@ -9,7 +9,8 @@ import pytest
 from app.services import llm_client as llm_module
 from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
 from app.services.llm_attempts import summarize_llm_attempts
-from app.services.llm_client import LLMClient
+from app.services.llm_client import LLMClient, LLMResult
+from app.services import llm_runtime
 
 
 @pytest.fixture(autouse=True)
@@ -66,6 +67,42 @@ def test_llm_provider_payload_helpers_are_split_from_client() -> None:
     assert "litellm.completion" not in client_source
     assert "client.models.generate_content" not in client_source
     assert "inlineData" not in client_source
+
+
+def test_llm_runtime_helpers_are_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    runtime_source = Path("app/services/llm_runtime.py").read_text()
+
+    response = httpx.Response(
+        503,
+        headers={"Retry-After": "3.5"},
+        request=httpx.Request("POST", "https://example.test"),
+    )
+
+    assert LLMResult is llm_runtime.LLMResult
+    assert llm_module.RETRYABLE_HTTP_STATUSES is llm_runtime.RETRYABLE_HTTP_STATUSES
+    assert llm_module.DEFAULT_MAX_RETRIES_PER_KEY == llm_runtime.DEFAULT_MAX_RETRIES_PER_KEY
+    assert (
+        llm_runtime.llm_retry_delay_seconds(
+            response,
+            attempt=0,
+            base_retry_delay_seconds=0.5,
+            max_retry_delay_seconds=5.0,
+        )
+        == 3.5
+    )
+    assert (
+        llm_runtime.llm_attempt_record(
+            provider="google_genai",
+            model="gemini-3.5-flash",
+            outcome="quota_cooldown",
+            cooldown_seconds=2.3456,
+        )["cooldown_seconds"]
+        == 2.346
+    )
+    assert "@dataclass(frozen=True)\nclass LLMResult" not in client_source
+    assert "def llm_retry_delay_seconds(" in runtime_source
+    assert "def exception_status_code(" in runtime_source
 
 
 def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:

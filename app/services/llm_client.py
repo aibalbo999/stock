@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from importlib import import_module
 from threading import Lock
 from time import monotonic, sleep
@@ -37,6 +36,19 @@ from app.services.llm_provider_calls import (
     normalize_vision_images as _normalize_vision_images_provider,
     tool_call_arguments as _tool_call_arguments_provider,
 )
+from app.services.llm_runtime import (
+    DEFAULT_BASE_RETRY_DELAY_SECONDS,
+    DEFAULT_MAX_RETRIES_PER_KEY,
+    DEFAULT_MAX_RETRY_DELAY_SECONDS,
+    DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS,
+    DEFAULT_TOTAL_TIMEOUT_SECONDS,
+    LLMResult,
+    RETRYABLE_HTTP_STATUSES,
+    ROTATABLE_HTTP_STATUSES,
+    exception_status_code as _exception_status_code,
+    llm_attempt_record as _llm_attempt_record,
+    llm_retry_delay_seconds as _llm_retry_delay_seconds,
+)
 
 __all__ = [
     "APIKeyRotator",
@@ -46,26 +58,6 @@ __all__ = [
     "llm_attempt_failure_category",
     "summarize_llm_attempts",
 ]
-
-RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
-ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
-DEFAULT_MAX_RETRIES_PER_KEY = 1
-DEFAULT_BASE_RETRY_DELAY_SECONDS = 0.5
-DEFAULT_MAX_RETRY_DELAY_SECONDS = 5.0
-DEFAULT_TOTAL_TIMEOUT_SECONDS = 60.0
-DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS = 60 * 60
-
-
-@dataclass(frozen=True)
-class LLMResult:
-    text: str
-    key_index: int | None = None
-    model: str | None = None
-    provider: str | None = None
-    fallback: bool = False
-    attempts: tuple[dict[str, object], ...] = field(default_factory=tuple)
-    observability: dict[str, object] = field(default_factory=dict)
-
 
 _model_quota_cooldowns: dict[str, float] = {}
 _model_quota_cooldowns_lock = Lock()
@@ -976,38 +968,28 @@ class LLMClient:
         retryable: bool | None = None,
         cooldown_seconds: float | None = None,
     ) -> dict[str, object]:
-        record: dict[str, object] = {
-            "provider": provider,
-            "outcome": outcome,
-        }
-        if model:
-            record["model"] = model
-        if key_index is not None:
-            record["key_index"] = key_index
-        if attempt is not None:
-            record["attempt"] = attempt
-        if status is not None:
-            record["status"] = int(status)
-        if error:
-            record["error"] = error
-        if retryable is not None:
-            record["retryable"] = bool(retryable)
-        if cooldown_seconds is not None:
-            record["cooldown_seconds"] = round(max(0.0, float(cooldown_seconds)), 3)
-        return record
+        return _llm_attempt_record(
+            provider=provider,
+            model=model,
+            outcome=outcome,
+            key_index=key_index,
+            attempt=attempt,
+            status=status,
+            error=error,
+            retryable=retryable,
+            cooldown_seconds=cooldown_seconds,
+        )
 
     def _sleep_before_retry(self, response: Optional[httpx.Response], attempt: int) -> None:
         sleep(self._retry_delay_seconds(response, attempt))
 
     def _retry_delay_seconds(self, response: Optional[httpx.Response], attempt: int) -> float:
-        if response is not None:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    return min(self.max_retry_delay_seconds, max(0.0, float(retry_after)))
-                except ValueError:
-                    pass
-        return min(self.max_retry_delay_seconds, self.base_retry_delay_seconds * (2**attempt))
+        return _llm_retry_delay_seconds(
+            response,
+            attempt,
+            base_retry_delay_seconds=self.base_retry_delay_seconds,
+            max_retry_delay_seconds=self.max_retry_delay_seconds,
+        )
 
     @property
     def provider(self) -> str:
@@ -1162,12 +1144,7 @@ class LLMClient:
 
     @staticmethod
     def _exception_status_code(exc: Exception) -> int | None:
-        response = getattr(exc, "response", None)
-        status = getattr(response, "status_code", None)
-        if status is not None:
-            return int(status)
-        status = getattr(exc, "status_code", None)
-        return int(status) if status is not None else None
+        return _exception_status_code(exc)
 
     def _call_litellm(
         self,

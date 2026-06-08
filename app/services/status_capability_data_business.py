@@ -303,6 +303,28 @@ def data_business_capabilities(
                 "material information, and hard-to-scrape MOPS disclosures."
             ),
         ),
+        "company_filing_structured_api_sample_contract": _capability(
+            "ready"
+            if (company_filing_status.get("structured_api_runtime") or {}).get(
+                "sample_contract_ready"
+            )
+            else "degraded",
+            evidence={
+                "ready": (company_filing_status.get("structured_api_runtime") or {}).get(
+                    "sample_contract_ready"
+                ),
+                "smoke_cli": (company_filing_status.get("structured_api_runtime") or {}).get(
+                    "sample_contract_cli"
+                ),
+                "contract": (company_filing_status.get("structured_api_runtime") or {}).get(
+                    "sample_contract"
+                ),
+            },
+            detail=(
+                "Offline sample contract check that keeps structured filing JSON "
+                "payloads convertible to CompanyFilingDocument rows before a paid/live API is configured."
+            ),
+        ),
         "company_filing_cache": _capability(
             "ready" if company_filing_status.get("cache_available") else "degraded",
             evidence={

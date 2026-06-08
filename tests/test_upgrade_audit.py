@@ -39,6 +39,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
             "company_filing_high_risk_unlocker": {"status": "ready", "evidence": {}},
             "company_filing_structured_api_fallback": {"status": "ready", "evidence": {}},
+            "company_filing_structured_api_sample_contract": {"status": "ready", "evidence": {}},
             "company_filing_cache": {"status": "ready", "evidence": {}},
             "source_quality_weighting": {"status": "ready", "evidence": {}},
         },
@@ -379,6 +380,33 @@ def test_upgrade_audit_fails_render_provider_contract_regression() -> None:
     assert failure["optional"] is False
     assert failure["external_integration"] is False
     assert failure["deployment_check"] is False
+
+
+def test_upgrade_audit_fails_structured_api_sample_contract_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "data_business_logic.company_filing_structured_api_sample_contract": {
+                    "status": "degraded",
+                    "evidence": {
+                        "smoke_cli": "structured sample contract smoke",
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    failure = next(
+        item
+        for item in audit["failures"]
+        if item["capability"] == "company_filing_structured_api_sample_contract"
+    )
+    assert failure["optional"] is False
+    assert failure["external_integration"] is False
+    assert failure["deployment_check"] is False
+    assert "structured_company_filing_sample.json" in failure["remediation"]
 
 
 def test_upgrade_audit_fails_frontend_blocking_regression() -> None:

@@ -281,6 +281,22 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
+        "company_filing_structured_api_sample_contract",
+        "公司文件結構化 API sample contract",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_structured_api_sample_contract",
+        ),
+        remediation=(
+            "執行 .venv/bin/python scripts/structured_company_filing_smoke.py "
+            "--sample-json examples/structured_company_filing_sample.json "
+            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json，"
+            "確認樣本 payload 可轉成 CompanyFilingDocument。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
         "company_filing_cache",
         "公司文件 URL 解析快取",
         ("upgrade_capability_matrix", "data_business_logic", "company_filing_cache"),

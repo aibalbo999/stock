@@ -217,7 +217,7 @@ def test_finmind_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> N
 def test_fugle_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> None:
     client = MarketDataClient()
     client.settings = SimpleNamespace(
-        fugle_api_key="fugle-key",
+        fugle_api_key="fugle-key",  # pragma: allowlist secret
         fugle_max_retries=0,
         fugle_base_retry_delay_seconds=0,
         fugle_max_retry_delay_seconds=0,

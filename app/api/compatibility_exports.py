@@ -108,7 +108,8 @@ from app.services.report_followup_context import ReportFollowUpContextService
 from app.services.report_followup_plan import AutoFollowUpStartService, ReportFollowUpPlanService
 from app.services.report_followup_runner import ReportFollowUpRunService
 from app.services.report_generation_api import SyncReportGenerationApiService
-from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
+from app.services.report_execution import report_execution_summary
+from app.services.report_generator import ReportExecutionError, ReportGenerator
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_quality_gate_for_request,

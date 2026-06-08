@@ -4,7 +4,8 @@ from collections.abc import Callable
 from typing import Any
 
 from app.models.schemas import ReportRequest
-from app.services.report_generator import ReportGenerator, report_execution_summary
+from app.services.report_execution import report_execution_summary
+from app.services.report_generator import ReportGenerator
 from app.services.report_quality import attach_quality_gate_to_report, build_quality_gate_for_request
 
 

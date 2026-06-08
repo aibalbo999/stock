@@ -44,6 +44,7 @@ from app.services import (
     report_document_matching,
     report_early_potential,
     report_executive_snapshot,
+    report_execution,
     report_final_potential,
     report_formatting,
     report_generation_flow,
@@ -130,6 +131,16 @@ def test_report_execution_summary_includes_retrieval_trace() -> None:
     assert summary["retrieval_trace"]["candidates"][0]["final_score"] == 1.2
     assert summary["llm"]["observability"]["latency_ms"] == 12.5
     assert summary["llm"]["observability"]["total_token_estimate"] == 42
+
+
+def test_report_execution_summary_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    execution_source = Path("app/services/report_execution.py").read_text()
+
+    assert report_execution_summary is report_execution.report_execution_summary
+    assert "def report_execution_summary(" not in generator_source
+    assert "def report_execution_summary(" in execution_source
+    assert "summarize_llm_attempts(" in execution_source
 
 
 def make_financial_metrics(

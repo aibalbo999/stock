@@ -17,7 +17,7 @@ from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import render_candidate_audit_markdown
 from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
-from app.services.llm_client import LLMClient, LLMResult, summarize_llm_attempts
+from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal
 from app.services.report_financial_narrative import (
@@ -41,6 +41,7 @@ from app.services.report_financial_assessment import (
     series_period_text,
     valuation_position_label,
 )
+from app.services.report_execution import report_execution_summary as report_execution_summary
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
     report_action_checklist,
@@ -95,35 +96,6 @@ REPORT_READING_SORT_NOTE = (
 
 class ReportExecutionError(ValueError):
     pass
-
-
-def report_execution_summary(generator: object) -> dict:
-    evidence_documents = getattr(generator, "last_evidence_documents", None) or []
-    excluded_low_quality = getattr(generator, "last_excluded_low_quality_documents", None) or []
-    llm_result = getattr(generator, "last_llm_result", None)
-    vector_store = getattr(generator, "vector_store", None)
-    retrieval_trace = getattr(vector_store, "last_retrieval_trace", None) if vector_store is not None else None
-    graph_reasoning_plan = getattr(generator, "last_graph_reasoning_plan", None)
-    llm_status = None
-    if llm_result is not None:
-        llm_status = {
-            "fallback": bool(getattr(llm_result, "fallback", False)),
-            "model": getattr(llm_result, "model", None),
-            "provider": getattr(llm_result, "provider", None),
-            "key_index": getattr(llm_result, "key_index", None),
-            "observability": getattr(llm_result, "observability", {}) or {},
-            "attempt_summary": summarize_llm_attempts(getattr(llm_result, "attempts", ())),
-            "attempts": list(getattr(llm_result, "attempts", ())[-10:]),
-        }
-    return {
-        "filtered_tickers": list(getattr(generator, "last_filtered_tickers", None) or []),
-        "dropped_tickers": list(getattr(generator, "last_dropped_tickers", None) or []),
-        "evidence_count": len(evidence_documents),
-        "excluded_low_quality_source_count": len(excluded_low_quality),
-        "retrieval_trace": retrieval_trace,
-        "graph_reasoning": graph_reasoning_plan,
-        "llm": llm_status,
-    }
 
 
 class ReportGenerator:

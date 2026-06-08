@@ -13,7 +13,8 @@ from app.services.discovery_workflow import (
 )
 from app.services.persistence import ReportRepository
 from app.services.llm_usage import record_llm_usage_from_report_execution
-from app.services.report_generator import ReportGenerator, report_execution_summary
+from app.services.report_execution import report_execution_summary
+from app.services.report_generator import ReportGenerator
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,

@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from app.models.schemas import (
     FinancialMetric,
@@ -8,6 +9,7 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.services.llm_client import LLMResult
+from app.services import report_quality_recovery
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -19,6 +21,20 @@ from app.services.report_quality import (
     should_recover_market_data_quality,
     summarize_llm_status,
 )
+
+
+def test_quality_recovery_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    recovery_source = Path("app/services/report_quality_recovery.py").read_text()
+
+    assert (
+        should_recover_market_data_quality
+        is report_quality_recovery.should_recover_market_data_quality
+    )
+    assert "def should_recover_market_data_quality" not in report_quality_source
+    assert "def quality_remediation_actions" not in report_quality_source
+    assert "def should_recover_market_data_quality" in recovery_source
+    assert "def quality_remediation_actions" in recovery_source
 
 
 def _quality_gate(

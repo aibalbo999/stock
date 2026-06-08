@@ -9,6 +9,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.data_sources import (
+    market_batch,
     market_cache_rescue,
     market_finmind,
     market_fugle,
@@ -19,7 +20,6 @@ from app.data_sources import (
 )
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
-from app.services.task_cancellation import TaskCancelledError
 
 FINMIND_RETRYABLE_HTTP_STATUSES = market_provider_runtime.FINMIND_RETRYABLE_HTTP_STATUSES
 FUGLE_RETRYABLE_HTTP_STATUSES = market_provider_runtime.FUGLE_RETRYABLE_HTTP_STATUSES
@@ -157,11 +157,7 @@ class MarketDataClient:
             end_date,
             force_refresh=force_refresh,
         )
-        snapshots = [
-            sorted(history, key=lambda item: item.trade_date)[-1]
-            for history in histories.values()
-            if history
-        ]
+        snapshots = market_batch.latest_rows_from_histories(histories, sort_key=lambda item: item.trade_date)
         return snapshots, errors
 
     async def get_price_histories_with_errors(
@@ -172,46 +168,30 @@ class MarketDataClient:
         *,
         force_refresh: bool = False,
     ) -> tuple[dict[str, list[MarketSnapshot]], list[MarketFetchError]]:
-        semaphore = asyncio.Semaphore(self.concurrency)
-
-        async def fetch_one(ticker: str):
-            async with semaphore:
-                self._check_cancelled()
-                try:
-                    return (
-                        ticker,
-                        await self.get_price_history(
-                            ticker,
-                            start_date,
-                            end_date,
-                            force_refresh=force_refresh,
-                        ),
-                        None,
-                    )
-                except TaskCancelledError:
-                    raise
-                except Exception as exc:
-                    return ticker, [], self._fetch_error(ticker, "TaiwanStockPrice", exc)
-
-        results = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-        histories: dict[str, list[MarketSnapshot]] = {}
-        errors: list[MarketFetchError] = []
-        for ticker, history, error in results:
-            if error:
-                errors.append(error)
-                continue
-            if history:
-                histories[ticker] = sorted(history, key=lambda item: item.trade_date)
-            else:
-                errors.append(
-                    MarketFetchError(
-                        ticker=ticker,
-                        dataset="TaiwanStockPrice",
-                        error="Market data providers returned no price rows for requested period",
-                    )
-                )
-                histories[ticker] = []
-        return histories, errors
+        dataset = "TaiwanStockPrice"
+        results = await market_batch.fetch_ticker_rows(
+            tickers=tickers,
+            concurrency=self.concurrency,
+            dataset=dataset,
+            fetch_rows=lambda ticker: self.get_price_history(
+                ticker,
+                start_date,
+                end_date,
+                force_refresh=force_refresh,
+            ),
+            make_error=self._fetch_error,
+            check_cancelled=self._check_cancelled,
+        )
+        return market_batch.collect_history_by_ticker(
+            results,
+            dataset=dataset,
+            empty_error=lambda ticker, dataset: MarketFetchError(
+                ticker=ticker,
+                dataset=dataset,
+                error="Market data providers returned no price rows for requested period",
+            ),
+            sort_key=lambda item: item.trade_date,
+        )
 
     async def get_monthly_revenue_history(
         self,
@@ -257,36 +237,24 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> tuple[list[MonthlyRevenue], list[MarketFetchError]]:
-        semaphore = asyncio.Semaphore(self.concurrency)
-
-        async def fetch_one(ticker: str):
-            async with semaphore:
-                self._check_cancelled()
-                try:
-                    return ticker, await self.get_monthly_revenue_history(ticker, start_date, end_date), None
-                except TaskCancelledError:
-                    raise
-                except Exception as exc:
-                    return ticker, [], self._fetch_error(ticker, "TaiwanStockMonthRevenue", exc)
-
-        results = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-        revenues: list[MonthlyRevenue] = []
-        errors: list[MarketFetchError] = []
-        for ticker, ticker_revenues, error in results:
-            if error:
-                errors.append(error)
-                continue
-            if ticker_revenues:
-                revenues.extend(ticker_revenues)
-            else:
-                errors.append(
-                    MarketFetchError(
-                        ticker=ticker,
-                        dataset="TaiwanStockMonthRevenue",
-                        error="FinMind returned no monthly revenue rows for requested period",
-                    )
-                )
-        return revenues, errors
+        dataset = "TaiwanStockMonthRevenue"
+        results = await market_batch.fetch_ticker_rows(
+            tickers=tickers,
+            concurrency=self.concurrency,
+            dataset=dataset,
+            fetch_rows=lambda ticker: self.get_monthly_revenue_history(ticker, start_date, end_date),
+            make_error=self._fetch_error,
+            check_cancelled=self._check_cancelled,
+        )
+        return market_batch.collect_flat_rows(
+            results,
+            dataset=dataset,
+            empty_error=lambda ticker, dataset: MarketFetchError(
+                ticker=ticker,
+                dataset=dataset,
+                error="FinMind returned no monthly revenue rows for requested period",
+            ),
+        )
 
     async def get_financial_metrics_history(
         self,
@@ -323,36 +291,24 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> tuple[list[FinancialMetric], list[MarketFetchError]]:
-        semaphore = asyncio.Semaphore(self.concurrency)
-
-        async def fetch_one(ticker: str):
-            async with semaphore:
-                self._check_cancelled()
-                try:
-                    return ticker, await self.get_financial_metrics_history(ticker, start_date, end_date), None
-                except TaskCancelledError:
-                    raise
-                except Exception as exc:
-                    return ticker, [], self._fetch_error(ticker, "FinMindFinancialStatements", exc)
-
-        results = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-        metrics: list[FinancialMetric] = []
-        errors: list[MarketFetchError] = []
-        for ticker, ticker_metrics, error in results:
-            if error:
-                errors.append(error)
-                continue
-            if ticker_metrics:
-                metrics.extend(ticker_metrics)
-            else:
-                errors.append(
-                    MarketFetchError(
-                        ticker=ticker,
-                        dataset="FinMindFinancialStatements",
-                        error="FinMind returned no financial statement rows for requested period",
-                    )
-                )
-        return metrics, errors
+        dataset = "FinMindFinancialStatements"
+        results = await market_batch.fetch_ticker_rows(
+            tickers=tickers,
+            concurrency=self.concurrency,
+            dataset=dataset,
+            fetch_rows=lambda ticker: self.get_financial_metrics_history(ticker, start_date, end_date),
+            make_error=self._fetch_error,
+            check_cancelled=self._check_cancelled,
+        )
+        return market_batch.collect_flat_rows(
+            results,
+            dataset=dataset,
+            empty_error=lambda ticker, dataset: MarketFetchError(
+                ticker=ticker,
+                dataset=dataset,
+                error="FinMind returned no financial statement rows for requested period",
+            ),
+        )
 
     async def get_valuation_history(
         self,
@@ -389,36 +345,25 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> tuple[list[ValuationMetric], list[MarketFetchError]]:
-        semaphore = asyncio.Semaphore(self.concurrency)
-
-        async def fetch_one(ticker: str):
-            async with semaphore:
-                self._check_cancelled()
-                try:
-                    return ticker, await self.get_valuation_history(ticker, start_date, end_date), None
-                except TaskCancelledError:
-                    raise
-                except Exception as exc:
-                    return ticker, [], self._fetch_error(ticker, "TaiwanStockPER", exc)
-
-        results = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-        valuations: list[ValuationMetric] = []
-        errors: list[MarketFetchError] = []
-        for ticker, history, error in results:
-            if error:
-                errors.append(error)
-                continue
-            if history:
-                valuations.append(sorted(history, key=lambda item: item.trade_date)[-1])
-            else:
-                errors.append(
-                    MarketFetchError(
-                        ticker=ticker,
-                        dataset="TaiwanStockPER",
-                        error="FinMind returned no valuation rows for requested period",
-                    )
-                )
-        return valuations, errors
+        dataset = "TaiwanStockPER"
+        results = await market_batch.fetch_ticker_rows(
+            tickers=tickers,
+            concurrency=self.concurrency,
+            dataset=dataset,
+            fetch_rows=lambda ticker: self.get_valuation_history(ticker, start_date, end_date),
+            make_error=self._fetch_error,
+            check_cancelled=self._check_cancelled,
+        )
+        return market_batch.collect_latest_rows(
+            results,
+            dataset=dataset,
+            empty_error=lambda ticker, dataset: MarketFetchError(
+                ticker=ticker,
+                dataset=dataset,
+                error="FinMind returned no valuation rows for requested period",
+            ),
+            sort_key=lambda item: item.trade_date,
+        )
 
     @staticmethod
     def _fetch_error(ticker: str, dataset: str, exc: Exception) -> MarketFetchError:

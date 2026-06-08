@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.data_sources import (
+    market_batch,
     market_cache_rescue,
     market_finmind,
     market_fugle,
@@ -511,6 +512,20 @@ def test_market_cache_rescue_logic_lives_outside_client() -> None:
         "async def get_financial_metrics_history(",
         maxsplit=1,
     )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
+
+
+def test_market_batch_orchestration_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    helper_source = Path("app/data_sources/market_batch.py").read_text()
+
+    assert market_batch.TickerRows(ticker="2330", rows=[]).ticker == "2330"
+    assert "market_batch.fetch_ticker_rows" in client_source
+    assert "asyncio.gather" not in client_source
+    assert "asyncio.Semaphore" not in client_source
+    assert "except TaskCancelledError" not in client_source
+    assert "def collect_history_by_ticker(" in helper_source
+    assert "def collect_latest_rows(" in helper_source
+    assert "except TaskCancelledError" in helper_source
 
 
 def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> None:

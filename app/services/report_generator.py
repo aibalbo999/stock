@@ -12,7 +12,6 @@ from app.models.schemas import (
     NewsDocument,
     ReportRequest,
     ReportResponse,
-    RiskType,
     ValuationMetric,
 )
 from app.rag.vector_store import VectorStore
@@ -1329,12 +1328,7 @@ class ReportGenerator:
         return report_company_narrative.company_market_summary(snapshot)
 
     def _company_risk_summary(self, related_findings) -> str:
-        if not related_findings:
-            return "未偵測到可歸因的重大風險；仍需持續追蹤新聞、月營收與官方文件。"
-        topics = []
-        for finding in related_findings[:3]:
-            topics.append(self._sanitized_risk_topic_for_finding(finding))
-        return "、".join(topics)
+        return report_risk_overview.company_risk_summary(related_findings, whitelist=self.whitelist)
 
     @staticmethod
     def _trend_summary(related_documents: list[NewsDocument], related_findings) -> str:
@@ -1634,22 +1628,7 @@ class ReportGenerator:
 
     @staticmethod
     def _related_findings(ticker: str, findings) -> list:
-        related = []
-        seen: set[tuple[str, str, str, str]] = set()
-        for finding in findings:
-            if not any(match.ticker == ticker for match in finding.related_companies):
-                continue
-            key = (
-                str(finding.risk_type),
-                finding.topic,
-                finding.source.title,
-                finding.source.publisher or "",
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            related.append(finding)
-        return related
+        return report_risk_overview.related_findings(ticker, findings)
 
     def _company_filing_missing(self, ticker: str, documents: list[NewsDocument]) -> list[str]:
         return report_company_filing_checks.company_filing_missing(
@@ -1883,12 +1862,7 @@ class ReportGenerator:
 
     @staticmethod
     def _summary(findings) -> str:
-        if not findings:
-            return "目前檢索證據不足，無法判斷 AI 產業鏈主要瓶頸。"
-        structural_count = sum(1 for finding in findings if finding.risk_type == RiskType.structural_bottleneck)
-        volatility_count = sum(1 for finding in findings if finding.risk_type == RiskType.short_term_volatility)
-        opportunity_count = sum(1 for finding in findings if finding.risk_type == RiskType.opportunity_or_growth)
-        return f"本次檢出 {structural_count} 項結構性瓶頸、{volatility_count} 項短期波動、{opportunity_count} 項機會/成長歸因。"
+        return report_risk_overview.findings_summary(findings)
 
     @staticmethod
     def _format_evidence(documents: list[NewsDocument]) -> str:

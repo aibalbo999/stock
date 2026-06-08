@@ -974,6 +974,7 @@ def test_company_analysis_detail_block_helpers_format_market_revenue_and_evidenc
 
 def test_investment_recommendations_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_views_mixin_source = Path("app/services/report_generator_decision_views.py").read_text()
     recommendations_source = Path("app/services/report_investment_recommendations.py").read_text()
     request = ReportRequest(tickers=["2330"])
     context = {
@@ -988,7 +989,11 @@ def test_investment_recommendations_logic_lives_outside_generator() -> None:
         "revenue": None,
     }
 
-    assert "report_investment_recommendations" in generator_source
+    assert "report_investment_recommendations" not in generator_source
+    assert "ReportGeneratorDecisionViewsMixin" in generator_source
+    assert "report_investment_recommendations" in decision_views_mixin_source
+    assert "def _render_investment_recommendations(" in decision_views_mixin_source
+    assert "def _render_investment_recommendations(" not in generator_source
     assert "def render_investment_recommendations(" in recommendations_source
     assert "def recommendation_row(" in recommendations_source
     assert "未納入投資人風險承受度" not in generator_source
@@ -1425,9 +1430,15 @@ def test_company_comparison_matrix_logic_lives_outside_generator() -> None:
     generator = object.__new__(ReportGenerator)
     request = ReportRequest(tickers=[])
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_views_mixin_source = Path("app/services/report_generator_decision_views.py").read_text()
     matrix_source = Path("app/services/report_company_matrix.py").read_text()
 
-    assert "report_company_matrix" in generator_source
+    assert "report_company_matrix" not in generator_source
+    assert "ReportGeneratorDecisionViewsMixin" in generator_source
+    assert "report_company_matrix" in decision_views_mixin_source
+    assert "def _render_company_comparison_matrix(" in decision_views_mixin_source
+    assert "def _company_matrix_reminder(" in decision_views_mixin_source
+    assert "def _render_company_comparison_matrix(" not in generator_source
     assert "def render_company_comparison_matrix(" in matrix_source
     assert "def company_matrix_reminder(" in matrix_source
     assert "這張表用來比較正式分析股票" not in generator_source
@@ -2448,7 +2459,12 @@ def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     assert "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |" in snapshot_text
     assert "| 2330 台積電 | 可小額分批研究 | 2026-05-22 收盤 2255 | 可小額分批 | 完整 |" in snapshot_text
     assert "| 可小額研究 | 1 檔 |" in snapshot_text
-    assert "report_executive_snapshot" in generator_source
+    decision_views_mixin_source = Path("app/services/report_generator_decision_views.py").read_text()
+    assert "report_executive_snapshot" not in generator_source
+    assert "ReportGeneratorDecisionViewsMixin" in generator_source
+    assert "report_executive_snapshot" in decision_views_mixin_source
+    assert "def _render_executive_snapshot(" in decision_views_mixin_source
+    assert "def _render_executive_snapshot(" not in generator_source
     assert "def render_executive_snapshot(" in snapshot_source
     assert "def decision_counts(" in snapshot_source
     assert "決策總覽" not in generator_source

@@ -21,6 +21,9 @@ def test_raise_task_queue_unavailable_preserves_structured_detail() -> None:
     assert raised.value.detail["code"] == "task_queue_unavailable"
     assert raised.value.detail["operation"] == "market_refresh"
     assert raised.value.detail["retryable"] is True
+    assert raised.value.detail["error_type"] == "RuntimeError"
+    assert raised.value.detail["error_category"] == "task_queue"
+    assert raised.value.detail["error_summary"] == "Redis/Celery queue 或 worker 異常"
     assert raised.value.detail["context"] == {"task": "data_operation"}
 
 
@@ -37,4 +40,26 @@ def test_raise_task_submission_failed_preserves_structured_detail() -> None:
     assert raised.value.detail["operation"] == "market_refresh"
     assert raised.value.detail["retryable"] is False
     assert raised.value.detail["error_type"] == "RuntimeError"
+    assert raised.value.detail["error_category"] == "unknown"
+    assert raised.value.detail["error_summary"] == "未分類任務失敗"
     assert raised.value.detail["context"] == {"task": "data_operation"}
+
+
+def test_raise_task_submission_failed_remaps_raw_queue_errors_to_503() -> None:
+    with pytest.raises(HTTPException) as raised:
+        raise_task_submission_failed(
+            ConnectionError("redis connection refused"),
+            operation="market_refresh",
+            context={"task": "data_operation", "failure_stage": "task_submission"},
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail["code"] == "task_queue_unavailable"
+    assert raised.value.detail["operation"] == "market_refresh"
+    assert raised.value.detail["retryable"] is True
+    assert raised.value.detail["error_type"] == "ConnectionError"
+    assert raised.value.detail["error_category"] == "task_queue"
+    assert raised.value.detail["context"] == {
+        "task": "data_operation",
+        "failure_stage": "task_submission",
+    }

@@ -112,3 +112,34 @@ def test_request_error_message_includes_data_operation_context() -> None:
         "資料源：FinMind / Fugle / TWSE fallback；階段：task_submission "
         "建議：查看 API log。"
     )
+
+
+def test_request_error_message_includes_submission_failure_category() -> None:
+    response = FakeResponse(
+        {
+            "detail": {
+                "code": "background_task_submission_failed",
+                "message": "背景任務送出時發生未預期錯誤。",
+                "operation": "market_refresh",
+                "error_category": "task_queue",
+                "error_severity": "error",
+                "error_summary": "Redis/Celery queue 或 worker 異常",
+                "context": {
+                    "failure_stage": "task_submission",
+                    "operation": "market_refresh",
+                    "tickers": ["2330"],
+                    "ticker_count": 1,
+                },
+                "next_steps": ["確認 /services/status 的 task_queue.ready。"],
+            }
+        }
+    )
+    exc = requests.HTTPError("500 Server Error")
+    exc.response = response
+
+    assert api_client.request_error_message(exc) == (
+        "背景任務送出時發生未預期錯誤。 "
+        "分類：Redis/Celery queue 或 worker 異常（task_queue/error） "
+        "診斷：操作：market_refresh；股票：2330（1 檔）；階段：task_submission "
+        "建議：確認 /services/status 的 task_queue.ready。"
+    )

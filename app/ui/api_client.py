@@ -53,8 +53,11 @@ def request_error_message(exc: requests.RequestException) -> str:
     detail = payload.get("detail") if isinstance(payload, dict) else None
     if isinstance(detail, dict):
         message = str(detail.get("message") or detail.get("code") or exc)
+        diagnostic_message = _request_diagnostic_message(detail)
         context_message = _request_context_message(detail.get("context"))
         next_steps = [str(step) for step in detail.get("next_steps") or [] if str(step).strip()]
+        if diagnostic_message:
+            message = f"{message} {diagnostic_message}"
         if context_message:
             message = f"{message} 診斷：{context_message}"
         if next_steps:
@@ -63,6 +66,20 @@ def request_error_message(exc: requests.RequestException) -> str:
     if isinstance(detail, str) and detail:
         return detail
     return str(exc)
+
+
+def _request_diagnostic_message(detail: dict) -> str:
+    summary = str(detail.get("error_summary") or "").strip()
+    category = str(detail.get("error_category") or "").strip()
+    severity = str(detail.get("error_severity") or "").strip()
+    if not (summary or category or severity):
+        return ""
+    if category or severity:
+        suffix = "/".join(item for item in (category, severity) if item)
+        if summary:
+            return f"分類：{summary}（{suffix}）"
+        return f"分類：{suffix}"
+    return f"分類：{summary}"
 
 
 def _request_context_message(context: object) -> str:

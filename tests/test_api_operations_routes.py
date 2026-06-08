@@ -308,6 +308,8 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     assert queue_detail["message"] == "task queue unavailable"
     assert queue_detail["operation"] == "market_refresh"
     assert queue_detail["retryable"] is True
+    assert queue_detail["error_category"] == "task_queue"
+    assert queue_detail["error_summary"] == "Redis/Celery queue 或 worker 異常"
     assert queue_detail["next_steps"]
     assert queue_detail["context"] == {
         "task": "data_operation",
@@ -324,6 +326,35 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     status_detail = status_response.json()["detail"]
     assert status_detail["code"] == "task_queue_unavailable"
     assert status_detail["operation"] == "task_status"
+
+
+def test_operations_router_remaps_raw_queue_submission_errors_to_503() -> None:
+    class FakeRunTaskApi:
+        def queue_data_operation(self, operation: str, payload: dict) -> dict:
+            raise ConnectionError("redis connection refused")
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    response = client.post(
+        "/tasks/data-operation",
+        json={
+            "operation": "market_refresh",
+            "payload": {
+                "tickers": ["2330"],
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-31",
+            },
+        },
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "task_queue_unavailable"
+    assert detail["operation"] == "market_refresh"
+    assert detail["error_type"] == "ConnectionError"
+    assert detail["error_category"] == "task_queue"
+    assert detail["context"]["tickers"] == ["2330"]
+    assert detail["context"]["provider_hint"] == "FinMind / Fugle / TWSE fallback"
 
 
 def test_operations_router_maps_unexpected_task_submission_errors_to_structured_500() -> None:
@@ -372,6 +403,8 @@ def test_operations_router_maps_unexpected_task_submission_errors_to_structured_
     assert data_detail["operation"] == "market_refresh"
     assert data_detail["retryable"] is False
     assert data_detail["error_type"] == "RuntimeError"
+    assert data_detail["error_category"] == "unknown"
+    assert data_detail["error_summary"] == "未分類任務失敗"
     assert data_detail["context"]["task"] == "data_operation"
     assert data_detail["context"]["failure_stage"] == "task_submission"
     assert data_detail["context"]["tickers"] == ["2330", "2382"]

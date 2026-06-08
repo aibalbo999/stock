@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.external_deployment_env_templates import (
+    external_deployment_env_check_report as external_deployment_env_check_report,
     format_external_deployment_env_template as format_external_deployment_env_template,
+    format_external_deployment_env_check_report as format_external_deployment_env_check_report,
 )
 from app.services.external_deployment_readiness import (
     external_deployment_command_summary,

@@ -39,6 +39,7 @@ from app.services import (
     report_credibility_check,
     report_data_quality,
     report_decision_narrative,
+    report_decision_contexts,
     report_document_matching,
     report_early_potential,
     report_executive_snapshot,
@@ -2044,6 +2045,18 @@ def test_decision_rule_logic_lives_outside_generator() -> None:
     assert "def recheck_trigger_text(" in decision_rule_source
     assert "def current_price_label(" in decision_rule_source
     assert "def risk_warning_reason(" in decision_rule_source
+
+
+def test_decision_context_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    context_source = Path("app/services/report_decision_contexts.py").read_text()
+
+    assert "report_decision_contexts" in generator_source
+    assert "def build_decision_contexts(" in context_source
+    assert "def ordered_tickers_for_reading(" in context_source
+    assert "snapshots = {snapshot.ticker" not in generator_source
+    assert "peer_valuation_summary = generator._peer_valuation_summary" in context_source
+    assert report_decision_contexts.build_decision_contexts
 
 
 def test_current_price_label_summarizes_immediate_entry_condition() -> None:

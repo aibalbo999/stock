@@ -34,6 +34,7 @@ from app.services import (
     report_company_narrative,
     report_data_quality,
     report_formatting,
+    report_leading_signal,
     report_scope_sections,
     report_score_breakdown,
     report_source_coverage,
@@ -4419,3 +4420,19 @@ def test_render_leading_signal_check_outputs_table() -> None:
     assert "領先訊號檢查" not in markdown
     assert "| 股票 | 近況方向 | 分數 |" in markdown
     assert "2330" in markdown
+
+
+def test_leading_signal_render_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    leading_source = Path("app/services/report_leading_signal.py").read_text()
+
+    assert "report_leading_signal" in generator_source
+    assert "def render_leading_signal_check(" in leading_source
+    assert "def format_optional_pct(" in leading_source
+    assert "本段使用截至最新資料日" not in generator_source
+    assert ReportGenerator._render_leading_signal_check([], {}) == report_leading_signal.render_leading_signal_check(
+        [],
+        {},
+    )
+    assert ReportGenerator._format_optional_pct(1.23) == report_leading_signal.format_optional_pct(1.23)
+    assert ReportGenerator._format_optional_ratio(2.34) == report_leading_signal.format_optional_ratio(2.34)

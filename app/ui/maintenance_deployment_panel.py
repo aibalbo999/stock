@@ -188,6 +188,19 @@ def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
     ]
 
 
+def maintenance_operation_post_run_check_rows(result: dict) -> list[dict]:
+    checks = result.get("post_run_checks") if isinstance(result.get("post_run_checks"), list) else []
+    return [
+        {
+            "項目": check.get("item") or "-",
+            "用途": check.get("purpose") or "-",
+            "指令": check.get("command") or "-",
+        }
+        for check in checks
+        if isinstance(check, dict)
+    ]
+
+
 def recommended_maintenance_operation_id(
     maintenance_operations: dict,
     resolution_rows: list[dict],
@@ -320,3 +333,10 @@ def _render_maintenance_operation_result(result: dict) -> None:
     )
     if start_record.get("path"):
         st.caption(f"啟動紀錄：{start_record['path']}")
+    post_run_rows = maintenance_operation_post_run_check_rows(result)
+    if post_run_rows:
+        st.caption("後續驗證")
+        st.dataframe(post_run_rows, width="stretch", hide_index=True)
+        commands = [row["指令"] for row in post_run_rows if row.get("指令") and row["指令"] != "-"]
+        if commands:
+            st.code("\n".join(commands), language="bash")

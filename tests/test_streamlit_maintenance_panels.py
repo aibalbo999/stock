@@ -5,6 +5,7 @@ from app.services.external_deployment_env_gaps import (
 )
 from app.ui.maintenance_deployment_panel import (
     maintenance_operation_recommendation_caption,
+    maintenance_operation_post_run_check_rows,
     maintenance_operation_rows,
     recommended_maintenance_operation_id,
 )
@@ -103,6 +104,44 @@ def test_maintenance_operation_recommendation_uses_core_dependencies_for_local_p
         == "start_local_dependencies"
     )
     assert recommended_maintenance_operation_id(catalog, [{"本機可套用": 0}]) == ""
+
+
+def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> None:
+    rows = maintenance_operation_post_run_check_rows(
+        {
+            "post_run_checks": [
+                {
+                    "item": "GraphRAG live Neo4j smoke",
+                    "purpose": "驗證 live query",
+                    "command": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
+                },
+                {
+                    "item": "高風險 MOPS unlocker smoke",
+                    "purpose": "驗證 MOPS unlocker",
+                    "command": (
+                        ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--url https://mops.twse.com.tw/ --json"
+                    ),
+                },
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "項目": "GraphRAG live Neo4j smoke",
+            "用途": "驗證 live query",
+            "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
+        },
+        {
+            "項目": "高風險 MOPS unlocker smoke",
+            "用途": "驗證 MOPS unlocker",
+            "指令": (
+                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--url https://mops.twse.com.tw/ --json"
+            ),
+        },
+    ]
 
 
 def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:

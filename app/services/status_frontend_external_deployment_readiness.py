@@ -78,8 +78,11 @@ def frontend_external_deployment_readiness_status(
             and "maintenance_operations,\n        external_env_check,\n    )"
             in system_settings_maintenance_source
             and "def maintenance_operation_rows(" in maintenance_deployment_panel_source
+            and "def maintenance_operation_post_run_check_rows("
+            in maintenance_deployment_panel_source
             and "本機依賴操作" in maintenance_deployment_panel_source
             and "選擇維護操作" in maintenance_deployment_panel_source
+            and "後續驗證" in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
             and 'f"/maintenance/operations/{selected_operation_id}/run"'

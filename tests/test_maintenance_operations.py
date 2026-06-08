@@ -20,7 +20,17 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
     assert all(operation["requires_confirmation"] is True for operation in catalog["operations"])
     assert all(operation["mutates_local_state"] is True for operation in catalog["operations"])
     assert all("display_command" in operation for operation in catalog["operations"])
+    assert all(operation["post_run_checks"] for operation in catalog["operations"])
     assert all("argv" not in operation for operation in catalog["operations"])
+    checks_by_id = {operation["id"]: operation["post_run_checks"] for operation in catalog["operations"]}
+    assert any(
+        "neo4j_graphrag_smoke.py" in check["command"]
+        for check in checks_by_id["start_local_dependencies"]
+    )
+    assert any(
+        "https://mops.twse.com.tw/" in check["command"]
+        for check in checks_by_id["start_local_dependencies_with_unlocker"]
+    )
 
 
 def test_run_maintenance_operation_requires_confirmation() -> None:
@@ -97,6 +107,14 @@ def test_run_maintenance_operation_starts_core_dependencies(monkeypatch, tmp_pat
     assert "- Postgres 5432：尚未就緒" in result["wait_lines"]
     assert result["start_record"]["path"] == "data/local_dependency_start_status.json"
     assert result["applied_env_keys"] == ["NEO4J_URI"]
+    assert any(
+        "upgrade_audit.py --local-neo4j-defaults" in check["command"]
+        for check in result["post_run_checks"]
+    )
+    assert any(
+        "neo4j_graphrag_smoke.py" in check["command"]
+        for check in result["post_run_checks"]
+    )
     assert captured["root"] == tmp_path
     assert captured["defaults"] == {
         "enable_browser_render": True,
@@ -160,6 +178,10 @@ def test_run_maintenance_operation_can_prefer_unlocker(monkeypatch, tmp_path) ->
     )
 
     assert result["status"] == "success"
+    assert any(
+        "mops.twse.com.tw" in check["command"]
+        for check in result["post_run_checks"]
+    )
     assert captured["defaults"]["prefer_browserless"] is False
     assert captured["defaults"]["prefer_unlocker"] is True
     assert captured["start"]["include_unlocker"] is True

@@ -40,6 +40,71 @@ MAINTENANCE_OPERATIONS = {
 }
 
 
+POST_RUN_CHECKS = {
+    "start_local_dependencies": (
+        {
+            "item": "Neo4j / GraphRAG 本機設定稽核",
+            "purpose": "確認目前程序套用本機 Neo4j env 後，live import 與 guarded Cypher 狀態。",
+            "command": (
+                ".venv/bin/python scripts/upgrade_audit.py "
+                "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+            ),
+        },
+        {
+            "item": "Neo4j payload dry-run",
+            "purpose": "確認 Neo4j 匯入 payload contract 仍可生成。",
+            "command": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+        },
+        {
+            "item": "GraphRAG local Cypher contract",
+            "purpose": "確認 guarded Cypher planner 與本機 dry-run 邏輯。",
+            "command": (
+                ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
+                "--local-contract --json"
+            ),
+        },
+        {
+            "item": "GraphRAG live Neo4j smoke",
+            "purpose": "Neo4j env 套用後，驗證 live query / import-first 路徑。",
+            "command": (
+                ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
+                "--import-first --json"
+            ),
+        },
+        {
+            "item": "公司文件 render fallback smoke",
+            "purpose": "確認 Browserless 或 Playwright 後援可解析一般 HTML。",
+            "command": (
+                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--url https://example.com/ --json"
+            ),
+        },
+    ),
+    "start_local_dependencies_with_unlocker": (
+        {
+            "item": "Neo4j / GraphRAG / FlareSolverr 本機設定稽核",
+            "purpose": "確認本機 Neo4j 與 FlareSolverr env 套用後的外部選配狀態。",
+            "command": (
+                ".venv/bin/python scripts/upgrade_audit.py "
+                "--local-neo4j-defaults --prefer-unlocker "
+                "--wait-local-neo4j 20 --wait-local-flaresolverr 20 "
+                "--local-browser-render-defaults --json"
+            ),
+        },
+        {
+            "item": "高風險 MOPS unlocker smoke",
+            "purpose": "確認 FlareSolverr / unlocker provider 可處理 MOPS 高風險入口。",
+            "command": (
+                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--url https://mops.twse.com.tw/ --json"
+            ),
+        },
+    ),
+}
+
+
 def maintenance_operation_catalog() -> dict:
     return {
         "collector_path": "app/services/maintenance_operations.py",
@@ -89,6 +154,7 @@ def run_maintenance_operation(
     return {
         **_operation_catalog_row(operation),
         **result,
+        "post_run_checks": post_run_checks_for_operation(str(operation["id"])),
         "duration_seconds": round(elapsed, 3),
     }
 
@@ -163,4 +229,22 @@ def _operation_catalog_row(operation: dict) -> dict:
         "requires_confirmation": bool(operation["requires_confirmation"]),
         "mutates_local_state": bool(operation["mutates_local_state"]),
         "scope": str(operation["scope"]),
+        "post_run_checks": post_run_checks_for_operation(str(operation["id"])),
     }
+
+
+def post_run_checks_for_operation(action_id: str) -> list[dict]:
+    checks = list(POST_RUN_CHECKS.get(str(action_id or ""), ()))
+    if action_id == "start_local_dependencies_with_unlocker":
+        checks = [
+            *POST_RUN_CHECKS["start_local_dependencies"],
+            *checks,
+        ]
+    return [
+        {
+            "item": str(check["item"]),
+            "purpose": str(check["purpose"]),
+            "command": str(check["command"]),
+        }
+        for check in checks
+    ]

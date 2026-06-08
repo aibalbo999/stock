@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 
-def task_queue_unavailable_detail(exc: Exception, *, operation: str | None = None) -> dict:
-    return {
+def task_queue_unavailable_detail(
+    exc: Exception,
+    *,
+    operation: str | None = None,
+    context: dict | None = None,
+) -> dict:
+    detail = {
         "code": "task_queue_unavailable",
         "message": str(exc),
         "operation": operation,
@@ -13,10 +18,18 @@ def task_queue_unavailable_detail(exc: Exception, *, operation: str | None = Non
             "服務恢復後重新送出背景任務，或改用同步刷新流程。",
         ],
     }
+    if context:
+        detail["context"] = context
+    return detail
 
 
-def task_submission_failed_detail(exc: Exception, *, operation: str | None = None) -> dict:
-    return {
+def task_submission_failed_detail(
+    exc: Exception,
+    *,
+    operation: str | None = None,
+    context: dict | None = None,
+) -> dict:
+    detail = {
         "code": "background_task_submission_failed",
         "message": "背景任務送出時發生未預期錯誤。",
         "operation": operation,
@@ -28,3 +41,6 @@ def task_submission_failed_detail(exc: Exception, *, operation: str | None = Non
             "若 Redis/Celery 無法連線，應改回 task_queue_unavailable 並依 503 指引修復。",
         ],
     }
+    if context:
+        detail["context"] = context
+    return detail

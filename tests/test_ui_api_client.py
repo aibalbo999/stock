@@ -80,3 +80,35 @@ def test_request_error_message_formats_structured_task_submission_500() -> None:
     assert api_client.request_error_message(exc) == (
         "背景任務送出時發生未預期錯誤。 建議：查看 API log。；確認 Celery task 匯出。"
     )
+
+
+def test_request_error_message_includes_data_operation_context() -> None:
+    response = FakeResponse(
+        {
+            "detail": {
+                "code": "background_task_submission_failed",
+                "message": "背景任務送出時發生未預期錯誤。",
+                "operation": "market_refresh",
+                "context": {
+                    "failure_stage": "task_submission",
+                    "operation": "market_refresh",
+                    "tickers": ["2330", "2382"],
+                    "ticker_count": 2,
+                    "start_date": "2026-05-01",
+                    "end_date": "2026-06-08",
+                    "provider_hint": "FinMind / Fugle / TWSE fallback",
+                },
+                "next_steps": ["查看 API log。"],
+            }
+        }
+    )
+    exc = requests.HTTPError("500 Server Error")
+    exc.response = response
+
+    assert api_client.request_error_message(exc) == (
+        "背景任務送出時發生未預期錯誤。 "
+        "診斷：操作：market_refresh；股票：2330, 2382（2 檔）；"
+        "期間：2026-05-01 至 2026-06-08；"
+        "資料源：FinMind / Fugle / TWSE fallback；階段：task_submission "
+        "建議：查看 API log。"
+    )

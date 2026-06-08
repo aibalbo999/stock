@@ -236,7 +236,14 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
 
     queue_response = client.post(
         "/tasks/data-operation",
-        json={"operation": "market_refresh", "payload": {"tickers": ["2330"]}},
+        json={
+            "operation": "market_refresh",
+            "payload": {
+                "tickers": ["2330"],
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-31",
+            },
+        },
     )
     status_response = client.get("/tasks/task-123")
 
@@ -247,6 +254,17 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     assert queue_detail["operation"] == "market_refresh"
     assert queue_detail["retryable"] is True
     assert queue_detail["next_steps"]
+    assert queue_detail["context"] == {
+        "task": "data_operation",
+        "failure_stage": "task_submission",
+        "operation": "market_refresh",
+        "provider_hint": "FinMind / Fugle / TWSE fallback",
+        "payload_keys": ["end_date", "start_date", "tickers"],
+        "tickers": ["2330"],
+        "ticker_count": 1,
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+    }
     assert status_response.status_code == 503
     status_detail = status_response.json()["detail"]
     assert status_detail["code"] == "task_queue_unavailable"
@@ -276,7 +294,14 @@ def test_operations_router_maps_unexpected_task_submission_errors_to_structured_
     )
     data_response = client.post(
         "/tasks/data-operation",
-        json={"operation": "market_refresh", "payload": {"tickers": ["2330"]}},
+        json={
+            "operation": "market_refresh",
+            "payload": {
+                "tickers": ["2330", "2382"],
+                "start_date": "2026-05-01",
+                "end_date": "2026-06-08",
+            },
+        },
     )
 
     assert report_response.status_code == 500
@@ -292,6 +317,14 @@ def test_operations_router_maps_unexpected_task_submission_errors_to_structured_
     assert data_detail["operation"] == "market_refresh"
     assert data_detail["retryable"] is False
     assert data_detail["error_type"] == "RuntimeError"
+    assert data_detail["context"]["task"] == "data_operation"
+    assert data_detail["context"]["failure_stage"] == "task_submission"
+    assert data_detail["context"]["tickers"] == ["2330", "2382"]
+    assert data_detail["context"]["ticker_count"] == 2
+    assert data_detail["context"]["start_date"] == "2026-05-01"
+    assert data_detail["context"]["end_date"] == "2026-06-08"
+    assert data_detail["context"]["provider_hint"] == "FinMind / Fugle / TWSE fallback"
+    assert data_detail["context"]["payload_keys"] == ["end_date", "start_date", "tickers"]
     assert data_detail["next_steps"]
 
 

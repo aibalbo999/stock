@@ -29,6 +29,7 @@ from app.services.report_financial_assessment import (
 )
 from app.services.report_financial_narrative import financial_statement_summary
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
+from app.services.report_potential import data_quality_grade, estimate_potential
 from app.services.report_prompt_builder import build_report_prompt, format_llm_evidence
 from app.services.report_source_references import representative_sources
 from app.services.whitelist import SupplyChainWhitelist
@@ -1675,6 +1676,16 @@ def test_stale_market_data_downgrades_company_quality_and_valuation_assessment()
         include_fundamentals=True,
         company_filing_missing=[],
     )
+    helper_quality = data_quality_grade(
+        [],
+        [],
+        snapshot,
+        revenue,
+        metrics,
+        valuation,
+        include_fundamentals=True,
+        company_filing_missing=[],
+    )
     assessment = ReportGenerator._financial_valuation_assessment(
         metrics,
         valuation,
@@ -1687,6 +1698,7 @@ def test_stale_market_data_downgrades_company_quality_and_valuation_assessment()
     )
 
     assert helper_assessment == assessment
+    assert helper_quality == quality
     assert quality["grade"] == "partial"
     assert "股價為快取救援" in quality["missing"]
     assert "財報為快取救援" in quality["missing"]
@@ -1702,6 +1714,16 @@ def test_financial_assessment_logic_lives_outside_generator() -> None:
     assert "def financial_valuation_assessment(" in assessment_source
     assert "def valuation_position_label(" in assessment_source
     assert "財務資料為快取救援" not in generator_source
+
+
+def test_potential_scoring_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    potential_source = Path("app/services/report_potential.py").read_text()
+
+    assert "from app.services import report_potential" in generator_source
+    assert "def estimate_potential(" in potential_source
+    assert "def data_quality_grade(" in potential_source
+    assert "PotentialScoringEngine" not in generator_source
 
 
 def test_current_price_label_summarizes_immediate_entry_condition() -> None:
@@ -1997,8 +2019,10 @@ def test_monthly_revenue_check_and_estimate_use_yoy() -> None:
     )
 
     estimate = ReportGenerator._estimate_potential([], [], snapshot, revenue)
+    helper_estimate = estimate_potential([], [], snapshot, revenue)
     check = ReportGenerator._render_revenue_check(["2330"], [revenue])
 
+    assert helper_estimate == estimate
     assert estimate["upside_pct"] > 10
     assert "月營收年增率 18.50%" in estimate["upside_reason"]
     assert ("月營收年增率 18.50%", 2) in estimate["upside_factors"]

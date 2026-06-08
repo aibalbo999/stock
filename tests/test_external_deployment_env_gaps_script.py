@@ -146,6 +146,24 @@ def test_external_deployment_env_gap_report_formats_safe_env_template() -> None:
     assert "Do not commit real secrets" in output
 
 
+def test_external_deployment_env_gap_report_formats_compose_env_template() -> None:
+    report = external_deployment_env_gaps.external_deployment_env_gap_report(
+        upgrade_audit=_audit_with_env_gaps(),
+        service_snapshot={},
+    )
+
+    output = external_deployment_env_gaps.format_external_deployment_env_template(
+        report,
+        target="compose",
+    )
+
+    assert "target=compose" in output
+    assert "COMPOSE_NEO4J_URI=neo4j://neo4j:7687" in output
+    assert "COMPOSE_NEO4J_USER=neo4j" in output
+    assert "# COMPOSE_NEO4J_PASSWORD=<set-manually>" in output
+    assert "NEO4J_URI=neo4j://localhost:7687" not in output
+
+
 def test_external_deployment_env_gap_script_uses_service_layer() -> None:
     source = Path("scripts/external_deployment_env_gaps.py").read_text()
 
@@ -204,6 +222,7 @@ def test_external_deployment_env_gap_script_prints_env_template(monkeypatch, cap
                     "設定鍵": "COMPANY_FILING_STRUCTURED_API_TOKEN",
                     "狀態": "缺少",
                     "建議值": "<token>",
+                    "Compose 建議值": "<token>",
                     "處理類型": "需人工密鑰",
                 }
             ],
@@ -214,3 +233,40 @@ def test_external_deployment_env_gap_script_prints_env_template(monkeypatch, cap
     output = capsys.readouterr().out
     assert "External deployment env template" in output
     assert "# COMPANY_FILING_STRUCTURED_API_TOKEN=<set-manually>" in output
+
+
+def test_external_deployment_env_gap_script_prints_compose_env_template(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        external_deployment_env_gaps,
+        "external_deployment_env_gap_report",
+        lambda **_kwargs: {
+            "status": "action_required",
+            "gap_count": 1,
+            "missing_count": 1,
+            "recommended_count": 0,
+            "manual_secret_count": 0,
+            "local_action_count": 1,
+            "rows": [
+                {
+                    "優先級": "P0",
+                    "能力": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                    "設定鍵": "COMPANY_FILING_BROWSER_RENDER_URL",
+                    "狀態": "缺少",
+                    "建議值": "http://127.0.0.1:8191/v1",
+                    "Compose 建議值": "http://flaresolverr:8191/v1",
+                    "處理類型": "本機可套用",
+                }
+            ],
+        },
+    )
+
+    assert external_deployment_env_gaps.main(
+        ["--env-template", "--env-template-target", "compose"]
+    ) == 0
+    output = capsys.readouterr().out
+    assert "target=compose" in output
+    assert "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1" in output
+    assert "http://127.0.0.1:8191/v1" not in output

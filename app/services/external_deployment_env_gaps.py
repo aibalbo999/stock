@@ -218,6 +218,11 @@ def external_deployment_env_key_rows(
             recommended_value = (
                 env_summary["recommended"].get(env_key) or hint.get("default") or "-"
             )
+            compose_recommended_value = _external_env_compose_recommended_value(
+                env_key,
+                recommended_value,
+                env_summary["compose_recommended"],
+            )
             resolution_type = _external_env_resolution_type(item, env_key, recommended_value)
             rows.append(
                 {
@@ -227,6 +232,7 @@ def external_deployment_env_key_rows(
                     "狀態": status,
                     "目前": "未設定" if status == "缺少" else "建議確認",
                     "建議值": recommended_value,
+                    "Compose 建議值": compose_recommended_value,
                     "用途": hint.get("scope") or metadata["impact"],
                     "來源": source,
                     "處理類型": resolution_type,
@@ -505,7 +511,11 @@ def _external_env_summary(item: dict) -> dict:
         "required": set(
             _collect_named_string_lists(payload, {"required_env_keys", "env_keys"})
         ),
-        "recommended": _collect_env_recommendations(payload),
+        "recommended": _collect_env_recommendations(payload, {"recommended_env"}),
+        "compose_recommended": _collect_env_recommendations(
+            payload,
+            {"compose_recommended_env"},
+        ),
         "fallback_reasons": set(
             _collect_named_strings(
                 payload,
@@ -669,11 +679,14 @@ def _collect_named_strings(payload: object, keys: set[str]) -> list[str]:
     return values
 
 
-def _collect_env_recommendations(payload: object) -> dict[str, str]:
+def _collect_env_recommendations(
+    payload: object,
+    keys: set[str] | None = None,
+) -> dict[str, str]:
     recommendations: dict[str, str] = {}
     for line in _collect_named_string_lists(
         payload,
-        {"recommended_env", "compose_recommended_env"},
+        keys or {"recommended_env", "compose_recommended_env"},
     ):
         key, _, value = line.partition("=")
         key = key.strip()
@@ -684,3 +697,19 @@ def _collect_env_recommendations(payload: object) -> dict[str, str]:
             value.strip() or EXTERNAL_ENV_KEY_HINTS.get(key, {}).get("default") or "-",
         )
     return recommendations
+
+
+def _external_env_compose_recommended_value(
+    env_key: str,
+    recommended_value: str,
+    compose_recommendations: dict[str, str],
+) -> str:
+    if env_key in compose_recommendations:
+        return compose_recommendations[env_key]
+    compose_defaults = {
+        "NEO4J_URI": "neo4j://neo4j:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "<password>",
+        "NEO4J_DATABASE": "neo4j",
+    }
+    return compose_defaults.get(env_key, recommended_value)

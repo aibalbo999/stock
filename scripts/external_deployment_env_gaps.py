@@ -31,13 +31,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print a safe .env template for the missing optional deployment settings.",
     )
+    parser.add_argument(
+        "--env-template-target",
+        choices=("host", "compose"),
+        default="host",
+        help="Choose host-only localhost values or docker-compose service DNS values.",
+    )
     args = parser.parse_args(argv)
 
     report = external_deployment_env_gap_report(strict_external=args.strict_external)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     elif args.env_template:
-        print(format_external_deployment_env_template(report))
+        print(format_external_deployment_env_template(report, target=args.env_template_target))
     else:
         print(format_external_deployment_env_gap_report(report))
     return 1 if args.strict and report["status"] != "ready" else 0

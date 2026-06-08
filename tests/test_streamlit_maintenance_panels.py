@@ -953,6 +953,12 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
     assert rows_by_key[
         ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_PROVIDER")
     ]["處理類型"] == "外部服務選配"
+    assert rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_URL")
+    ]["建議值"] == "https://app.scrapingbee.com/api/v1"
+    assert rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_URL")
+    ]["Compose 建議值"] == "https://app.scrapingbee.com/api/v1"
     assert "不由維護操作寫入" in rows_by_key[
         ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
     ]["維護動作"]

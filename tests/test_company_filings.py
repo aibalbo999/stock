@@ -441,7 +441,7 @@ def test_company_filing_browser_render_status_checks_endpoint_reachability(monke
         captured["timeout"] = timeout
         return FakeSocket()
 
-    monkeypatch.setattr("app.data_sources.company_filings.socket.create_connection", fake_create_connection)
+    monkeypatch.setattr("app.data_sources.company_filing_render.socket.create_connection", fake_create_connection)
 
     status = company_filing_browser_render_status(
         enabled=True,
@@ -462,7 +462,7 @@ def test_company_filing_browser_render_status_reports_unreachable_endpoint(monke
     def fake_create_connection(address, timeout):
         raise TimeoutError("timed out")
 
-    monkeypatch.setattr("app.data_sources.company_filings.socket.create_connection", fake_create_connection)
+    monkeypatch.setattr("app.data_sources.company_filing_render.socket.create_connection", fake_create_connection)
 
     status = company_filing_browser_render_status(
         enabled=True,
@@ -494,7 +494,7 @@ def test_company_filing_playwright_render_can_be_disabled(monkeypatch) -> None:
 
 
 def test_company_filing_render_fallback_ignores_playwright_without_dependency(monkeypatch) -> None:
-    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: False)
+    monkeypatch.setattr("app.data_sources.company_filing_render.company_filing_playwright_available", lambda: False)
     get_settings.cache_clear()
     try:
         assert company_filing_render_fallback_configured() is False
@@ -521,8 +521,8 @@ def test_company_filing_playwright_browser_status_requires_installed_browser(mon
             return SimpleNamespace(sync_playwright=lambda: FakePlaywrightContext())
         raise AssertionError(f"unexpected import: {name}")
 
-    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: True)
-    monkeypatch.setattr("app.data_sources.company_filings.importlib.import_module", fake_import_module)
+    monkeypatch.setattr("app.data_sources.company_filing_render.company_filing_playwright_available", lambda: True)
+    monkeypatch.setattr("app.data_sources.company_filing_render.importlib.import_module", fake_import_module)
 
     status = company_filing_playwright_browser_status("chromium")
 
@@ -545,9 +545,9 @@ def test_company_filing_playwright_browser_status_reports_missing_browser_binary
         def __exit__(self, exc_type, exc, traceback):
             return None
 
-    monkeypatch.setattr("app.data_sources.company_filings.company_filing_playwright_available", lambda: True)
+    monkeypatch.setattr("app.data_sources.company_filing_render.company_filing_playwright_available", lambda: True)
     monkeypatch.setattr(
-        "app.data_sources.company_filings.importlib.import_module",
+        "app.data_sources.company_filing_render.importlib.import_module",
         lambda name: SimpleNamespace(sync_playwright=lambda: FakePlaywrightContext()),
     )
 

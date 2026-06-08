@@ -4,12 +4,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import api_services_provider
-from app.api.operation_task_submission import (
+from app.api.background_task_submission import (
+    cancel_background_task,
+    get_background_task_status,
+    retry_background_task,
     submit_data_operation_task,
     submit_discovered_report_task,
     submit_generate_report_task,
 )
+from app.api.dependencies import api_services_provider
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
@@ -18,7 +21,6 @@ from app.api.schemas import (
     MarketRefreshRequest,
     TopicDiscoveryRequest,
 )
-from app.api.task_submission_errors import raise_task_queue_unavailable
 from app.models.schemas import ReportRequest
 from app.services.schedule_config import ScheduleConfig
 
@@ -194,28 +196,29 @@ def create_operations_router(
 
     @router.get("/tasks/{task_id}")
     def get_task_status(task_id: str, services: Any = Depends(services_dependency)) -> dict:
-        try:
-            return services.run_task_api().get_task_status(task_id)
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="task_status")
+        return get_background_task_status(
+            services,
+            task_id,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.post("/tasks/{task_id}/cancel")
     def cancel_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
-        try:
-            return services.run_task_api().cancel_task(task_id)
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="task_cancel")
+        return cancel_background_task(
+            services,
+            task_id,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.post("/tasks/{task_id}/retry")
     def retry_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
-        try:
-            return services.run_task_api().retry_task(task_id)
-        except run_task_not_found_cls as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except async_report_validation_error_cls as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="task_retry")
+        return retry_background_task(
+            services,
+            task_id,
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            run_task_not_found_cls=run_task_not_found_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.get("/tasks/{task_id}/run")
     def get_run_by_task_id(task_id: str, services: Any = Depends(services_dependency)) -> dict:

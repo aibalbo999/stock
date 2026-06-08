@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.background_task_submission import submit_report_follow_up_task
 from app.api.dependencies import api_services_provider
-from app.api.operation_task_submission import submit_report_follow_up_task
 from app.api.schemas import FollowUpRunRequest, ReportFollowUpTaskRequest
 from app.models.schemas import ReportRequest, ReportResponse
 

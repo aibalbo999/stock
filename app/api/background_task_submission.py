@@ -85,3 +85,45 @@ def submit_report_follow_up_task(
         raise_task_queue_unavailable(exc, operation="report_follow_up")
     except Exception as exc:
         raise_task_submission_failed(exc, operation="report_follow_up")
+
+
+def get_background_task_status(
+    services: Any,
+    task_id: str,
+    *,
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    try:
+        return services.run_task_api().get_task_status(task_id)
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation="task_status")
+
+
+def cancel_background_task(
+    services: Any,
+    task_id: str,
+    *,
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    try:
+        return services.run_task_api().cancel_task(task_id)
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation="task_cancel")
+
+
+def retry_background_task(
+    services: Any,
+    task_id: str,
+    *,
+    async_report_validation_error_cls: type[Exception],
+    run_task_not_found_cls: type[Exception],
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    try:
+        return services.run_task_api().retry_task(task_id)
+    except run_task_not_found_cls as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except async_report_validation_error_cls as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation="task_retry")

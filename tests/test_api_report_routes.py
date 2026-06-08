@@ -183,7 +183,7 @@ def test_report_router_queues_follow_up_task() -> None:
 
 def test_report_router_uses_task_submission_helper_for_follow_up() -> None:
     report_routes_source = Path("app/api/report_routes.py").read_text()
-    helper_source = Path("app/api/operation_task_submission.py").read_text()
+    helper_source = Path("app/api/background_task_submission.py").read_text()
 
     assert "submit_report_follow_up_task(" in report_routes_source
     assert "raise_task_submission_failed(" not in report_routes_source

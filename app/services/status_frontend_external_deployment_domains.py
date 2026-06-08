@@ -43,6 +43,8 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         in ui_source
         and "external_deployment_env_resolution_rows(" in ui_source
         and "外部設定處理計畫" in ui_source
+        and "recommended_maintenance_operation_id(" in ui_source
+        and "index=recommended_operation_index" in ui_source
         and "外部設定缺口" in ui_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
@@ -83,6 +85,8 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "external_deployment_env_key_rows(upgrade_audit, service_snapshot)"
         in ui_source
         and "外部設定處理計畫" in ui_source
+        and "recommended_maintenance_operation_id(" in ui_source
+        and "maintenance_operation_recommendation_caption(" in ui_source
         and "外部設定缺口" in ui_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source

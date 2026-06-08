@@ -77,7 +77,13 @@ def render_external_deployment_panel(
         if local_dependency_repair_plan_rows:
             st.caption("本機依賴修復指引")
             st.dataframe(local_dependency_repair_plan_rows, width="stretch", hide_index=True)
-        _render_maintenance_operations(maintenance_operations or {})
+        _render_maintenance_operations(
+            maintenance_operations or {},
+            recommended_operation_id=recommended_maintenance_operation_id(
+                maintenance_operations or {},
+                external_env_resolution_rows,
+            ),
+        )
         if local_dependency_rows:
             st.caption("本機依賴狀態")
             st.dataframe(local_dependency_rows, width="stretch", hide_index=True)
@@ -127,7 +133,64 @@ def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
     ]
 
 
-def _render_maintenance_operations(maintenance_operations: dict) -> None:
+def recommended_maintenance_operation_id(
+    maintenance_operations: dict,
+    resolution_rows: list[dict],
+) -> str:
+    operation_ids = {
+        str(operation.get("id") or "")
+        for operation in maintenance_operations.get("operations") or []
+        if isinstance(operation, dict)
+        and operation.get("id")
+        and operation.get("mutates_local_state")
+    }
+    local_rows = [
+        row
+        for row in resolution_rows
+        if isinstance(row, dict) and int(row.get("本機可套用") or 0) > 0
+    ]
+    if not local_rows:
+        return ""
+    local_text = "\n".join(
+        str(row.get("本機指令") or row.get("建議動作") or "")
+        for row in local_rows
+    )
+    if (
+        "start_local_dependencies_with_unlocker" in operation_ids
+        and "--prefer-unlocker" in local_text
+    ):
+        return "start_local_dependencies_with_unlocker"
+    if "start_local_dependencies" in operation_ids:
+        return "start_local_dependencies"
+    return ""
+
+
+def maintenance_operation_recommendation_caption(
+    maintenance_operations: dict,
+    recommended_operation_id: str,
+) -> str:
+    if not recommended_operation_id:
+        return ""
+    operation = next(
+        (
+            item
+            for item in maintenance_operations.get("operations") or []
+            if isinstance(item, dict) and item.get("id") == recommended_operation_id
+        ),
+        {},
+    )
+    if not operation:
+        return ""
+    label = str(operation.get("label") or recommended_operation_id)
+    command = str(operation.get("display_command") or "-")
+    return f"建議操作：{label}；會預選此操作，確認後才會執行。指令：{command}"
+
+
+def _render_maintenance_operations(
+    maintenance_operations: dict,
+    *,
+    recommended_operation_id: str = "",
+) -> None:
     operation_rows = maintenance_operation_rows(maintenance_operations)
     operations = [
         operation
@@ -141,9 +204,22 @@ def _render_maintenance_operations(maintenance_operations: dict) -> None:
     st.caption("本機依賴操作")
     st.dataframe(operation_rows, width="stretch", hide_index=True)
     operation_by_id = {str(operation["id"]): operation for operation in operations}
+    recommendation = maintenance_operation_recommendation_caption(
+        maintenance_operations,
+        recommended_operation_id,
+    )
+    if recommendation:
+        st.caption(recommendation)
+    operation_options = list(operation_by_id)
+    recommended_operation_index = (
+        operation_options.index(recommended_operation_id)
+        if recommended_operation_id in operation_by_id
+        else 0
+    )
     selected_operation_id = st.selectbox(
         "選擇維護操作",
-        options=list(operation_by_id),
+        options=operation_options,
+        index=recommended_operation_index,
         format_func=lambda operation_id: str(
             operation_by_id[operation_id].get("label") or operation_id
         ),

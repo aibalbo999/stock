@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.ui.maintenance_deployment_panel import maintenance_operation_rows
+from app.ui.maintenance_deployment_panel import (
+    maintenance_operation_recommendation_caption,
+    maintenance_operation_rows,
+    recommended_maintenance_operation_id,
+)
 from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from streamlit_ui_test_helpers import load_report_helpers
 
@@ -25,6 +29,77 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
     assert metrics["AI Key"] == 5
     assert metrics["市場資料"] == "可用"
     assert metrics["升格門檻"] == "高 75"
+
+
+def test_maintenance_operation_recommendation_prefers_unlocker_when_plan_needs_it() -> None:
+    catalog = {
+        "operations": [
+            {
+                "id": "start_local_dependencies",
+                "label": "啟動本機核心依賴",
+                "display_command": "docker compose up -d redis neo4j browserless",
+                "mutates_local_state": True,
+            },
+            {
+                "id": "start_local_dependencies_with_unlocker",
+                "label": "啟動本機依賴與 unlocker",
+                "display_command": "docker compose --profile unlocker up -d flaresolverr",
+                "mutates_local_state": True,
+            },
+        ]
+    }
+    resolution_rows = [
+        {
+            "能力": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+            "本機可套用": 2,
+            "本機指令": (
+                ".venv/bin/python scripts/start_system.py "
+                "--start-dependencies --prefer-unlocker"
+            ),
+        }
+    ]
+
+    recommended = recommended_maintenance_operation_id(catalog, resolution_rows)
+
+    assert recommended == "start_local_dependencies_with_unlocker"
+    assert maintenance_operation_recommendation_caption(catalog, recommended) == (
+        "建議操作：啟動本機依賴與 unlocker；會預選此操作，確認後才會執行。"
+        "指令：docker compose --profile unlocker up -d flaresolverr"
+    )
+
+
+def test_maintenance_operation_recommendation_uses_core_dependencies_for_local_plan() -> None:
+    catalog = {
+        "operations": [
+            {
+                "id": "start_local_dependencies",
+                "label": "啟動本機核心依賴",
+                "display_command": "docker compose up -d redis neo4j browserless",
+                "mutates_local_state": True,
+            },
+            {
+                "id": "start_local_dependencies_with_unlocker",
+                "label": "啟動本機依賴與 unlocker",
+                "display_command": "docker compose --profile unlocker up -d flaresolverr",
+                "mutates_local_state": True,
+            },
+        ]
+    }
+
+    assert (
+        recommended_maintenance_operation_id(
+            catalog,
+            [
+                {
+                    "能力": "外部 Neo4j 匯入連線",
+                    "本機可套用": 4,
+                    "本機指令": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                }
+            ],
+        )
+        == "start_local_dependencies"
+    )
+    assert recommended_maintenance_operation_id(catalog, [{"本機可套用": 0}]) == ""
 
 
 def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:

@@ -218,6 +218,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     )
     assert "外部設定缺口" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert "外部設定處理計畫" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    assert "def recommended_maintenance_operation_id(" in (
+        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    )
+    assert "index=recommended_operation_index" in (
+        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    )
     assert (
         "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
     )

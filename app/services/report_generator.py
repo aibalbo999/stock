@@ -20,28 +20,8 @@ from app.services.followup_actions import FollowUpActionPlanner, render_follow_u
 from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal
-from app.services.report_financial_narrative import (
-    balance_sheet_total_series,
-    debt_equity_phrase,
-    debt_text,
-    fcf_trend_text,
-    financial_statement_summary,
-    financial_strength_text,
-    margin_text,
-    metric_series,
-    roe_text,
-    series_trend_text,
-)
-from app.services.report_financial_assessment import (
-    decline_risk_points,
-    financial_valuation_assessment,
-    has_negative_profitability,
-    peer_valuation_summary,
-    series_growth_pct,
-    series_period_text,
-    valuation_position_label,
-)
 from app.services.report_execution import report_execution_summary as report_execution_summary
+from app.services.report_generator_financial import ReportGeneratorFinancialMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
     report_action_checklist,
@@ -98,7 +78,7 @@ class ReportExecutionError(ValueError):
     pass
 
 
-class ReportGenerator:
+class ReportGenerator(ReportGeneratorFinancialMixin):
     def __init__(
         self,
         vector_store: VectorStore | None = None,
@@ -117,7 +97,9 @@ class ReportGenerator:
         self.last_dropped_tickers: list[str] = []
         self._document_match_cache: dict[tuple[str, str, str, int], list] = {}
 
-    def generate(self, request: ReportRequest, documents: list[NewsDocument] | None = None) -> ReportResponse:
+    def generate(
+        self, request: ReportRequest, documents: list[NewsDocument] | None = None
+    ) -> ReportResponse:
         return report_generation_flow.generate_report(
             self,
             request,
@@ -126,7 +108,9 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def _assert_report_integrity(markdown: str, whitelist: SupplyChainWhitelist | None = None) -> None:
+    def _assert_report_integrity(
+        markdown: str, whitelist: SupplyChainWhitelist | None = None
+    ) -> None:
         try:
             assert_report_integrity(markdown, whitelist)
         except ReportIntegrityError as exc:
@@ -187,7 +171,9 @@ class ReportGenerator:
         return context
 
     @staticmethod
-    def _graph_neighbor_search_terms(graph, ticker: str, node_by_ticker: dict, max_neighbors: int = 4) -> list[str]:
+    def _graph_neighbor_search_terms(
+        graph, ticker: str, node_by_ticker: dict, max_neighbors: int = 4
+    ) -> list[str]:
         return report_evidence_retrieval.graph_neighbor_search_terms(
             graph,
             ticker,
@@ -404,7 +390,9 @@ class ReportGenerator:
                 leading_signals,
             )
         )
-        return report_action_checklist.render_action_checklist(contexts, self._downside_gate(request))
+        return report_action_checklist.render_action_checklist(
+            contexts, self._downside_gate(request)
+        )
 
     @staticmethod
     def _recheck_trigger_text(context: dict, downside_gate: int | None = None) -> str:
@@ -431,7 +419,9 @@ class ReportGenerator:
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
-            return report_monitoring_checklist.render_monitoring_checklist([], self._downside_gate(request))
+            return report_monitoring_checklist.render_monitoring_checklist(
+                [], self._downside_gate(request)
+            )
         downside_gate = self._downside_gate(request)
         contexts = self._sort_decision_contexts(
             self._decision_contexts(
@@ -688,7 +678,9 @@ class ReportGenerator:
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
-            return report_company_matrix.render_company_comparison_matrix([], {}, {}, REPORT_READING_SORT_NOTE)
+            return report_company_matrix.render_company_comparison_matrix(
+                [], {}, {}, REPORT_READING_SORT_NOTE
+            )
 
         metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
         valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
@@ -763,7 +755,9 @@ class ReportGenerator:
         findings,
         related_documents: list[NewsDocument],
     ) -> str:
-        return report_investment_thesis.thesis_verification_items(quality, findings, related_documents)
+        return report_investment_thesis.thesis_verification_items(
+            quality, findings, related_documents
+        )
 
     @staticmethod
     def _representative_sources(documents: list[NewsDocument], limit: int = 3) -> str:
@@ -881,197 +875,6 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def _company_evidence_summary(related_documents: list[NewsDocument], related_findings) -> str:
-        return report_company_narrative.company_evidence_summary(related_documents, related_findings)
-
-    @staticmethod
-    def _company_filing_evidence_summary(related_documents: list[NewsDocument]) -> str:
-        return report_company_narrative.company_filing_evidence_summary(related_documents)
-
-    @staticmethod
-    def _company_revenue_summary(revenue: MonthlyRevenue | None) -> str:
-        return report_company_narrative.company_revenue_summary(revenue)
-
-    @staticmethod
-    def _company_quick_take(
-        snapshot: MarketSnapshot | None,
-        revenue: MonthlyRevenue | None,
-        financial_metrics: list[FinancialMetric],
-        valuation: ValuationMetric | None,
-        related_documents: list[NewsDocument],
-        related_findings,
-    ) -> str:
-        return report_company_narrative.company_quick_take(
-            snapshot,
-            revenue,
-            financial_metrics,
-            valuation,
-            related_documents,
-            related_findings,
-        )
-
-    @staticmethod
-    def _group_financial_metrics(metrics: list[FinancialMetric]) -> dict[str, list[FinancialMetric]]:
-        return report_company_narrative.group_financial_metrics(metrics)
-
-    @staticmethod
-    def _financial_statement_summary(metrics: list[FinancialMetric]) -> dict[str, str]:
-        return financial_statement_summary(metrics)
-
-    @staticmethod
-    def _metric_series(
-        metrics: list[FinancialMetric],
-        keywords: list[str],
-        statement_types: set[str] | None = None,
-        exclude_keywords: list[str] | None = None,
-        annual_only: bool = False,
-    ) -> dict[int, float]:
-        return metric_series(
-            metrics,
-            keywords,
-            statement_types=statement_types,
-            exclude_keywords=exclude_keywords,
-            annual_only=annual_only,
-        )
-
-    @staticmethod
-    def _balance_sheet_total_series(
-        metrics: list[FinancialMetric],
-        metric_names: set[str],
-        origin_names: set[str],
-    ) -> dict[int, float]:
-        return balance_sheet_total_series(metrics, metric_names, origin_names)
-
-    @staticmethod
-    def _series_trend_text(series: dict[int, float], label: str) -> str:
-        return series_trend_text(series, label)
-
-    @staticmethod
-    def _fcf_trend_text(operating_cash: dict[int, float], capex: dict[int, float]) -> str:
-        return fcf_trend_text(operating_cash, capex)
-
-    @staticmethod
-    def _margin_text(gross_profit: dict[int, float], net_income: dict[int, float], revenue: dict[int, float]) -> str:
-        return margin_text(gross_profit, net_income, revenue)
-
-    @staticmethod
-    def _debt_text(liabilities: dict[int, float], equity: dict[int, float]) -> str:
-        return debt_text(liabilities, equity)
-
-    @staticmethod
-    def _debt_equity_phrase(ratio: float) -> str:
-        return debt_equity_phrase(ratio)
-
-    @staticmethod
-    def _roe_text(net_income: dict[int, float], equity: dict[int, float]) -> str:
-        return roe_text(net_income, equity)
-
-    @staticmethod
-    def _financial_strength_text(
-        revenue: dict[int, float],
-        net_income: dict[int, float],
-        liabilities: dict[int, float],
-        equity: dict[int, float],
-    ) -> str:
-        return financial_strength_text(revenue, net_income, liabilities, equity)
-
-    @staticmethod
-    def _series_growth_pct(series: dict[int, float]) -> float | None:
-        return series_growth_pct(series)
-
-    @staticmethod
-    def _series_period_text(series: dict[int, float]) -> str:
-        return series_period_text(series)
-
-    @staticmethod
-    def _decline_risk_points(growth_pct: float, *, metric: str) -> int:
-        return decline_risk_points(growth_pct, metric=metric)
-
-    @staticmethod
-    def _financial_valuation_assessment(
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation: ValuationMetric | None = None,
-        peer_summary: dict[str, float | None] | None = None,
-    ) -> dict:
-        return financial_valuation_assessment(financial_metrics, valuation, peer_summary)
-
-    @staticmethod
-    def _peer_valuation_summary(valuations: list[ValuationMetric]) -> dict[str, float | None]:
-        return peer_valuation_summary(valuations)
-
-    @staticmethod
-    def _valuation_summary(
-        valuation: ValuationMetric | None,
-        peer_summary: dict[str, float | None] | None = None,
-    ) -> str:
-        return report_company_narrative.valuation_summary(valuation, peer_summary)
-
-    @staticmethod
-    def _valuation_peer_comparison(
-        valuation: ValuationMetric,
-        peer_summary: dict[str, float | None],
-    ) -> str:
-        return report_company_narrative.valuation_peer_comparison(valuation, peer_summary)
-
-    @staticmethod
-    def _valuation_position_label(
-        valuation: ValuationMetric | None,
-        peer_summary: dict[str, float | None] | None = None,
-        has_negative_profitability: bool = False,
-    ) -> str:
-        return valuation_position_label(valuation, peer_summary, has_negative_profitability)
-
-    @staticmethod
-    def _has_negative_profitability(metrics: list[FinancialMetric]) -> bool:
-        return has_negative_profitability(metrics)
-
-    @staticmethod
-    def _sanitize_leading_signal_for_profitability(
-        signal: LeadingSignal,
-        has_negative_profitability: bool,
-    ) -> LeadingSignal:
-        return report_company_narrative.sanitize_leading_signal_for_profitability(
-            signal,
-            has_negative_profitability,
-        )
-
-    @staticmethod
-    def _current_price_text(snapshot: MarketSnapshot | None) -> str:
-        return report_decision_rules.current_price_text(snapshot)
-
-    @staticmethod
-    def _current_price_label(
-        snapshot: MarketSnapshot | None,
-        estimate: dict,
-        quality: dict,
-        valuation_label: str,
-        leading_signal: LeadingSignal | None,
-        decision: str,
-        downside_gate: int,
-    ) -> str:
-        return report_decision_rules.current_price_label(
-            snapshot,
-            estimate,
-            quality,
-            valuation_label,
-            leading_signal,
-            decision,
-            downside_gate,
-        )
-
-    @staticmethod
-    def _financial_confidence_label(
-        financial_metrics: list[FinancialMetric],
-        valuation: ValuationMetric | None,
-        revenue: MonthlyRevenue | None,
-    ) -> str:
-        return report_company_narrative.financial_confidence_label(
-            financial_metrics,
-            valuation,
-            revenue,
-        )
-
-    @staticmethod
     def _company_matrix_reminder(
         estimate: dict,
         quality: dict,
@@ -1111,7 +914,9 @@ class ReportGenerator:
         return report_company_narrative.trend_summary(related_documents, related_findings)
 
     @staticmethod
-    def _near_term_outlook(revenue: MonthlyRevenue | None, related_documents: list[NewsDocument], related_findings) -> str:
+    def _near_term_outlook(
+        revenue: MonthlyRevenue | None, related_documents: list[NewsDocument], related_findings
+    ) -> str:
         return report_company_narrative.near_term_outlook(
             revenue,
             related_documents,
@@ -1143,7 +948,9 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def _dcf_proxy_text(financial_summary: dict[str, str], valuation: ValuationMetric | None) -> str:
+    def _dcf_proxy_text(
+        financial_summary: dict[str, str], valuation: ValuationMetric | None
+    ) -> str:
         return report_company_narrative.dcf_proxy_text(financial_summary, valuation)
 
     @staticmethod
@@ -1242,7 +1049,9 @@ class ReportGenerator:
         return report_risk_overview.risk_findings_for_scope(findings, tickers)
 
     def _render_risk_overview(self, findings, tickers: list[str] | None = None) -> str:
-        return report_risk_overview.render_risk_overview(findings, tickers, whitelist=self.whitelist)
+        return report_risk_overview.render_risk_overview(
+            findings, tickers, whitelist=self.whitelist
+        )
 
     def _render_scope(
         self,
@@ -1310,7 +1119,9 @@ class ReportGenerator:
         )
 
     def _candidate_audit_evidence_counts(self) -> dict[str, dict[str, int]]:
-        return report_document_matching.candidate_audit_evidence_counts(self.whitelist.candidate_audit())
+        return report_document_matching.candidate_audit_evidence_counts(
+            self.whitelist.candidate_audit()
+        )
 
     @staticmethod
     def _publisher_count(documents: list[NewsDocument]) -> int:

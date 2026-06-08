@@ -1909,9 +1909,13 @@ def test_financial_assessment_uses_total_liabilities_not_contract_liabilities() 
 
 def test_financial_narrative_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    financial_mixin_source = Path("app/services/report_generator_financial.py").read_text()
     narrative_source = Path("app/services/report_financial_narrative.py").read_text()
 
-    assert "from app.services.report_financial_narrative import" in generator_source
+    assert "ReportGeneratorFinancialMixin" in generator_source
+    assert "from app.services.report_financial_narrative import" in financial_mixin_source
+    assert "def _financial_statement_summary(" not in generator_source
+    assert "def _financial_statement_summary(" in financial_mixin_source
     assert "def financial_statement_summary(" in narrative_source
     assert "def metric_series(" in narrative_source
     assert "def balance_sheet_total_series(" in narrative_source
@@ -2170,9 +2174,13 @@ def test_stale_market_data_downgrades_company_quality_and_valuation_assessment()
 
 def test_financial_assessment_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    financial_mixin_source = Path("app/services/report_generator_financial.py").read_text()
     assessment_source = Path("app/services/report_financial_assessment.py").read_text()
 
-    assert "from app.services.report_financial_assessment import" in generator_source
+    assert "ReportGeneratorFinancialMixin" in generator_source
+    assert "from app.services.report_financial_assessment import" in financial_mixin_source
+    assert "def _financial_valuation_assessment(" not in generator_source
+    assert "def _financial_valuation_assessment(" in financial_mixin_source
     assert "def financial_valuation_assessment(" in assessment_source
     assert "def valuation_position_label(" in assessment_source
     assert "財務資料為快取救援" not in generator_source

@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Callable
 from datetime import timedelta
 
-from app.data_sources.company_filings import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
+from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
 from app.db.session import session_scope
 from app.models.schemas import (

@@ -9,12 +9,14 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from app.core.time import today_taipei
-from app.data_sources.company_filings import (
+from app.data_sources.company_filing_discovery import (
     RECOMMENDED_DOCUMENT_TYPES,
     REQUIRED_CORE_DOCUMENT_TYPES,
+    is_high_quality_company_filing,
+)
+from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     categorize_company_filing_error,
-    is_high_quality_company_filing,
     is_retryable_company_filing_error_category,
 )
 from app.data_sources.market import MarketDataClient

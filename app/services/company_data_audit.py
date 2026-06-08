@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import now_taipei
-from app.data_sources.company_filings import (
+from app.data_sources.company_filing_discovery import (
     HIGH_QUALITY_FILING_SCORE,
     RECOMMENDED_DOCUMENT_TYPES,
     REQUIRED_CORE_DOCUMENT_TYPES,

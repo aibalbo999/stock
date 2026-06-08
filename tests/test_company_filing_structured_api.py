@@ -117,6 +117,37 @@ def test_company_filing_structured_api_status_flags_missing_required_token(
     ]
 
 
+def test_fetch_structured_api_documents_requires_complete_configuration(monkeypatch) -> None:
+    async def fail_fetch_response(*_args, **_kwargs):
+        raise AssertionError("live structured API fetch should wait for complete configuration")
+
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.delenv("COMPANY_FILING_STRUCTURED_API_TOKEN", raising=False)
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
+        fail_fetch_response,
+    )
+    get_settings.cache_clear()
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_structured_api_documents("2330", "台積電")
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert documents == []
+    assert errors == [
+        {
+            "source": "https://api.tej.example/filings",
+            "error": "missing_structured_api_token",
+            "category": "structured_api_not_configured",
+            "retryable": False,
+            "stage": "structured_api_configuration",
+        }
+    ]
+
+
 def test_structured_api_provider_profiles_and_request_contracts() -> None:
     tej_profile = structured_api_provider_profile("tej")
     scrapingbee_profile = structured_api_provider_profile("scrapingbee_dataset")
@@ -226,6 +257,8 @@ def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypat
 def test_fetch_structured_api_documents_reports_contract_error_when_response_has_no_rows(
     monkeypatch,
 ) -> None:
+    token = "tej-" + "token"
+
     class FakeResponse:
         def json(self):
             return {"meta": {"count": 0}}
@@ -235,6 +268,7 @@ def test_fetch_structured_api_documents_reports_contract_error_when_response_has
 
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
     monkeypatch.setattr(
         "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
         fake_fetch_response,
@@ -257,6 +291,8 @@ def test_fetch_structured_api_documents_reports_contract_error_when_response_has
 def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_convert(
     monkeypatch,
 ) -> None:
+    token = "tej-" + "token"
+
     class FakeResponse:
         def json(self):
             return {"documents": [{"title": "2330 台積電 法說會簡報"}]}
@@ -266,6 +302,7 @@ def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_
 
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_PROVIDER", "tej")
     monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_URL", "https://api.tej.example/filings")
+    monkeypatch.setenv("COMPANY_FILING_STRUCTURED_API_TOKEN", token)
     monkeypatch.setattr(
         "app.data_sources.company_filings.company_filing_fetch_response_with_retries",
         fake_fetch_response,

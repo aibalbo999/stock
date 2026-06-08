@@ -125,6 +125,7 @@ from app.data_sources.company_filing_structured_api import (
     company_filing_structured_api_configured as company_filing_structured_api_configured,
     company_filing_structured_api_status_payload,
     parse_structured_api_date as parse_structured_api_date,
+    structured_api_configuration_check as structured_api_configuration_check,
     structured_api_document_type as structured_api_document_type,
     structured_api_document_rows as structured_api_document_rows,
     structured_api_enriched_text as structured_api_enriched_text,
@@ -488,6 +489,23 @@ class CompanyFilingFetcher:
         endpoint = str(settings.company_filing_structured_api_url or "").strip()
         provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
         token = str(settings.company_filing_structured_api_token or "").strip()
+        configuration_check = structured_api_configuration_check(
+            provider=provider,
+            endpoint=endpoint,
+            token=token,
+            profile=structured_api_provider_profile(provider),
+        )
+        if not configuration_check["ready"]:
+            reason = str(
+                configuration_check.get("fallback_reason") or "invalid_structured_api_configuration"
+            )
+            return [], [
+                company_filing_error(
+                    endpoint or provider or "structured_api_configuration",
+                    reason,
+                    stage="structured_api_configuration",
+                )
+            ]
         request_contract = structured_api_request_contract(
             provider=provider,
             endpoint=endpoint,

@@ -254,6 +254,12 @@ def categorize_company_filing_error(error: Exception | str) -> str:
         return "structured_api_no_rows"
     if "structured api rows were not convertible" in lowered:
         return "structured_api_no_convertible_rows"
+    if (
+        "missing_structured_api_provider_or_url" in lowered
+        or "missing_structured_api_token" in lowered
+        or "invalid_structured_api_url" in lowered
+    ):
+        return "structured_api_not_configured"
     return "unknown"
 
 

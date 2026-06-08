@@ -310,6 +310,10 @@ def test_company_filing_error_classifies_validation_and_pdf_failures() -> None:
         categorize_company_filing_error("Visual RAG LLM extraction failed: empty response")
         == "visual_rag_failed"
     )
+    assert (
+        categorize_company_filing_error("missing_structured_api_token")
+        == "structured_api_not_configured"
+    )
 
 
 def test_search_result_url_normalizes_duckduckgo_redirect() -> None:

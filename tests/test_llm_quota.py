@@ -57,6 +57,10 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     summary = service.summary()
 
     assert summary["recommended_model"] == "gemini-2.5-flash"
+    assert summary["recommended_model_key"] == "gemini-2.5-flash"
+    assert summary["recommended_rank"] == 2
+    assert summary["recommended_routing_tier"] == "fallback"
+    assert summary["recommended_status"] == "available"
     primary = summary["models"][0]
     assert primary["model"] == "gemini-3.5-flash"
     assert primary["requests_used"] == 2
@@ -74,6 +78,8 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert summary["totals"]["request_count"] == 2
     assert summary["totals"]["completion_count"] == 2
     assert summary["window"]["timezone"] == "America/Los_Angeles"
+    assert summary["window"]["now"] == "2026-06-07T05:00:00-07:00"
+    assert summary["window"]["reset_in_seconds"] == 68399
 
 
 def test_llm_quota_service_counts_attempted_models_for_hard_routing() -> None:

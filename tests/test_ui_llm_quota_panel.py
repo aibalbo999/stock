@@ -71,13 +71,18 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
 def test_llm_quota_captions_summarize_recommendation_budget_note_and_gemma_fallback() -> None:
     captions = llm_quota_captions(
         {
+            "recommended_model": "gemini-2.5-flash",
+            "recommended_rank": 2,
+            "recommended_routing_tier": "fallback",
             "recommended_reason": "Earlier model(s) exhausted.",
+            "window": {"reset_in_seconds": 5400},
             "budget_source": {"note": "Limits are project-level."},
             "routing_policy": {"high_quota_fallback_models": ["gemma-4-31b-it"]},
         }
     )
 
     assert captions == [
+        "目前推薦：gemini-2.5-flash｜順位 2｜tier=fallback｜約 1 小時 30 分鐘 後重置",
         "Earlier model(s) exhausted.",
         "Limits are project-level.",
         "高額度保底模型：gemma-4-31b-it",

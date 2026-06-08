@@ -43,6 +43,9 @@ def llm_quota_model_rows(llm_quota: dict) -> list[dict]:
 
 def llm_quota_captions(llm_quota: dict) -> list[str]:
     captions = []
+    recommendation = _recommendation_caption(llm_quota)
+    if recommendation:
+        captions.append(recommendation)
     if llm_quota.get("recommended_reason"):
         captions.append(str(llm_quota["recommended_reason"]))
     budget_source = _dict_value(llm_quota.get("budget_source"))
@@ -59,8 +62,41 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
     return captions
 
 
+def _recommendation_caption(llm_quota: dict) -> str:
+    recommended = str(llm_quota.get("recommended_model") or "").strip()
+    if not recommended:
+        return ""
+    parts = [f"目前推薦：{recommended}"]
+    rank = llm_quota.get("recommended_rank")
+    if rank not in {None, ""}:
+        parts.append(f"順位 {rank}")
+    tier = str(llm_quota.get("recommended_routing_tier") or "").strip()
+    if tier:
+        parts.append(f"tier={tier}")
+    window = _dict_value(llm_quota.get("window"))
+    reset_in_seconds = window.get("reset_in_seconds")
+    reset_text = _format_duration(reset_in_seconds)
+    if reset_text:
+        parts.append(f"約 {reset_text} 後重置")
+    return "｜".join(parts)
+
+
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _format_duration(value: Any) -> str:
+    try:
+        seconds = max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return ""
+    hours, remainder = divmod(seconds, 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours} 小時 {minutes} 分鐘"
+    if minutes:
+        return f"{minutes} 分鐘"
+    return f"{seconds} 秒"
 
 
 def _format_window_end(value: Any) -> str:

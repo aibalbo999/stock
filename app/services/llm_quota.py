@@ -112,11 +112,19 @@ class LLMQuotaGovernanceService:
         return {
             "window": {
                 "timezone": window["timezone"],
+                "now": window["now_local"].isoformat(),
                 "start": window["start_local"].isoformat(),
                 "end": window["end_local"].isoformat(),
+                "reset_in_seconds": window["reset_in_seconds"],
             },
             "model_order": model_order,
             "recommended_model": recommended["model"] if recommended else None,
+            "recommended_model_key": recommended["model_key"] if recommended else None,
+            "recommended_rank": recommended["rank"] if recommended else None,
+            "recommended_routing_tier": (
+                recommended["routing_tier"] if recommended else None
+            ),
+            "recommended_status": recommended["status"] if recommended else None,
             "recommended_reason": _recommended_reason(recommended, exhausted_before_recommendation),
             "models": rows,
             "totals": totals,
@@ -208,8 +216,10 @@ class LLMQuotaGovernanceService:
         end_local = datetime.combine(now_local.date(), time.max, tzinfo=tz)
         return {
             "timezone": timezone_name,
+            "now_local": now_local,
             "start_local": start_local,
             "end_local": end_local,
+            "reset_in_seconds": max(0, int((end_local - now_local).total_seconds())),
             "start_utc_naive": start_local.astimezone(timezone.utc).replace(tzinfo=None),
         }
 

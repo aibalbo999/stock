@@ -159,6 +159,10 @@ class LLMApiService:
             "strategy": routing_policy.get("strategy"),
             "selection_rule": routing_policy.get("selection_rule"),
             "recommended_model": summary.get("recommended_model"),
+            "recommended_model_key": summary.get("recommended_model_key"),
+            "recommended_rank": summary.get("recommended_rank"),
+            "recommended_routing_tier": summary.get("recommended_routing_tier"),
+            "recommended_status": summary.get("recommended_status"),
             "recommended_reason": summary.get("recommended_reason"),
             "model_order": summary.get("model_order") if isinstance(summary.get("model_order"), list) else [],
             "exhausted_models": [

@@ -297,9 +297,16 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
         def summary(self) -> dict:
             return {
                 "recommended_model": "gemini-2.5-flash",
+                "recommended_model_key": "gemini-2.5-flash",
+                "recommended_rank": 2,
+                "recommended_routing_tier": "fallback",
+                "recommended_status": "available",
                 "recommended_reason": "Earlier model(s) exhausted in the current window: gemini-3.5-flash.",
                 "model_order": ["gemini-3.5-flash", "gemini-2.5-flash", "gemma-4-31b-it"],
-                "window": {"timezone": "America/Los_Angeles"},
+                "window": {
+                    "timezone": "America/Los_Angeles",
+                    "reset_in_seconds": 5400,
+                },
                 "totals": {
                     "request_count": 3,
                     "completion_count": 2,
@@ -362,8 +369,13 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
     assert quota["available"] is True
     assert quota["strategy"] == "smartest_first_then_budget_degrade"
     assert quota["recommended_model"] == "gemini-2.5-flash"
+    assert quota["recommended_model_key"] == "gemini-2.5-flash"
+    assert quota["recommended_rank"] == 2
+    assert quota["recommended_routing_tier"] == "fallback"
+    assert quota["recommended_status"] == "available"
     assert quota["exhausted_models"] == ["gemini-3.5-flash"]
     assert quota["high_quota_fallback_models"] == ["gemma-4-31b-it"]
+    assert quota["window"]["reset_in_seconds"] == 5400
     assert quota["totals"] == {
         "request_count": 3,
         "completion_count": 2,

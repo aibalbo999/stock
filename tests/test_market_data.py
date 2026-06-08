@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.data_sources import (
+    market_cache_rescue,
     market_finmind,
     market_fugle,
     market_official_fallbacks,
@@ -496,6 +497,20 @@ def test_official_openapi_fallback_logic_lives_outside_client() -> None:
         "async def _fetch_official_openapi_price_snapshot(",
         maxsplit=1,
     )[1].split("async def _fetch_official_openapi_monthly_revenue(", maxsplit=1)[0]
+
+
+def test_market_cache_rescue_logic_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    helper_source = Path("app/data_sources/market_cache_rescue.py").read_text()
+
+    assert MarketDataClient.STALE_CACHE_SOURCE_MARKER == market_cache_rescue.STALE_CACHE_SOURCE_MARKER
+    assert "market_cache_rescue.get_or_fetch_with_rescue" in client_source
+    assert "def get_or_fetch_with_rescue(" in helper_source
+    assert "def mark_stale_cache_source(" in helper_source
+    assert "except Exception" not in client_source.split(
+        "async def get_financial_metrics_history(",
+        maxsplit=1,
+    )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
 
 
 def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> None:

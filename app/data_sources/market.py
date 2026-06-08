@@ -9,6 +9,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.data_sources import (
+    market_cache_rescue,
     market_finmind,
     market_fugle,
     market_official_fallbacks,
@@ -40,7 +41,7 @@ class MarketFetchError:
         }
 
 class MarketDataClient:
-    STALE_CACHE_SOURCE_MARKER = "cached-stale"
+    STALE_CACHE_SOURCE_MARKER = market_cache_rescue.STALE_CACHE_SOURCE_MARKER
     LATEST_ONLY_SOURCE_MARKER = "latest-only"
     TWSE_OPENAPI_BASE_URL = market_official_openapi.TWSE_OPENAPI_BASE_URL
     TPEX_OPENAPI_BASE_URL = market_official_openapi.TPEX_OPENAPI_BASE_URL
@@ -218,36 +219,28 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[MonthlyRevenue]:
-        cached = self.cache.get_monthly_revenue_history(ticker, start_date, end_date)
-        if cached is not None:
-            return cached
-
-        try:
-            revenues = await market_finmind.fetch_monthly_revenue(
+        return await market_cache_rescue.get_or_fetch_with_rescue(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            cache_get=self.cache.get_monthly_revenue_history,
+            cache_set=self.cache.set_monthly_revenue_history,
+            fetch_primary=lambda: market_finmind.fetch_monthly_revenue(
                 ticker=ticker,
                 start_date=start_date,
                 end_date=end_date,
                 fetch_rows=self._fetch_finmind_rows,
-            )
-        except Exception:
-            revenues = await self._fetch_official_openapi_monthly_revenue(ticker, start_date, end_date)
-            if revenues:
-                self.cache.set_monthly_revenue_history(ticker, start_date, end_date, revenues)
-                return revenues
-            stale = self._get_stale_cache_rows("get_latest_monthly_revenue_history", ticker)
-            if stale is not None:
-                return stale
-            raise
-        if not revenues:
-            revenues = await self._fetch_official_openapi_monthly_revenue(ticker, start_date, end_date)
-            if revenues:
-                self.cache.set_monthly_revenue_history(ticker, start_date, end_date, revenues)
-                return revenues
-            stale = self._get_stale_cache_rows("get_latest_monthly_revenue_history", ticker)
-            if stale is not None:
-                return stale
-        self.cache.set_monthly_revenue_history(ticker, start_date, end_date, revenues)
-        return revenues
+            ),
+            fetch_fallback=lambda: self._fetch_official_openapi_monthly_revenue(
+                ticker,
+                start_date,
+                end_date,
+            ),
+            get_stale_rows=lambda: self._get_stale_cache_rows(
+                "get_latest_monthly_revenue_history",
+                ticker,
+            ),
+        )
 
     async def get_monthly_revenue_histories(
         self,
@@ -301,44 +294,28 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[FinancialMetric]:
-        cached = self.cache.get_financial_metrics(ticker, start_date, end_date)
-        if cached is not None:
-            return cached
-
-        try:
-            metrics = await market_finmind.fetch_financial_metrics(
+        return await market_cache_rescue.get_or_fetch_with_rescue(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            cache_get=self.cache.get_financial_metrics,
+            cache_set=self.cache.set_financial_metrics,
+            fetch_primary=lambda: market_finmind.fetch_financial_metrics(
                 ticker=ticker,
                 start_date=start_date,
                 end_date=end_date,
                 fetch_rows=self._fetch_finmind_rows,
-            )
-        except Exception:
-            metrics = await self._fetch_official_openapi_financial_metrics(
+            ),
+            fetch_fallback=lambda: self._fetch_official_openapi_financial_metrics(
                 ticker,
                 start_date,
                 end_date,
-            )
-            if metrics:
-                self.cache.set_financial_metrics(ticker, start_date, end_date, metrics)
-                return metrics
-            stale = self._get_stale_cache_rows("get_latest_financial_metrics", ticker)
-            if stale is not None:
-                return stale
-            raise
-        if not metrics:
-            metrics = await self._fetch_official_openapi_financial_metrics(
+            ),
+            get_stale_rows=lambda: self._get_stale_cache_rows(
+                "get_latest_financial_metrics",
                 ticker,
-                start_date,
-                end_date,
-            )
-            if metrics:
-                self.cache.set_financial_metrics(ticker, start_date, end_date, metrics)
-                return metrics
-            stale = self._get_stale_cache_rows("get_latest_financial_metrics", ticker)
-            if stale is not None:
-                return stale
-        self.cache.set_financial_metrics(ticker, start_date, end_date, metrics)
-        return metrics
+            ),
+        )
 
     async def get_financial_metrics_histories_with_errors(
         self,
@@ -383,36 +360,28 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[ValuationMetric]:
-        cached = self.cache.get_valuation_history(ticker, start_date, end_date)
-        if cached is not None:
-            return cached
-
-        try:
-            valuations = await market_finmind.fetch_valuation(
+        return await market_cache_rescue.get_or_fetch_with_rescue(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            cache_get=self.cache.get_valuation_history,
+            cache_set=self.cache.set_valuation_history,
+            fetch_primary=lambda: market_finmind.fetch_valuation(
                 ticker=ticker,
                 start_date=start_date,
                 end_date=end_date,
                 fetch_rows=self._fetch_finmind_rows,
-            )
-        except Exception:
-            valuations = await self._fetch_official_openapi_valuation(ticker, start_date, end_date)
-            if valuations:
-                self.cache.set_valuation_history(ticker, start_date, end_date, valuations)
-                return valuations
-            stale = self._get_stale_cache_rows("get_latest_valuation_history", ticker)
-            if stale is not None:
-                return stale
-            raise
-        if not valuations:
-            valuations = await self._fetch_official_openapi_valuation(ticker, start_date, end_date)
-            if valuations:
-                self.cache.set_valuation_history(ticker, start_date, end_date, valuations)
-                return valuations
-            stale = self._get_stale_cache_rows("get_latest_valuation_history", ticker)
-            if stale is not None:
-                return stale
-        self.cache.set_valuation_history(ticker, start_date, end_date, valuations)
-        return valuations
+            ),
+            fetch_fallback=lambda: self._fetch_official_openapi_valuation(
+                ticker,
+                start_date,
+                end_date,
+            ),
+            get_stale_rows=lambda: self._get_stale_cache_rows(
+                "get_latest_valuation_history",
+                ticker,
+            ),
+        )
 
     async def get_latest_valuations_with_errors(
         self,
@@ -457,28 +426,19 @@ class MarketDataClient:
         return MarketFetchError(ticker=ticker, dataset=dataset, error=message)
 
     def _get_stale_cache_rows(self, method_name: str, ticker: str):
-        getter = getattr(self.cache, method_name, None)
-        if not callable(getter):
-            return None
-        try:
-            rows = getter(ticker)
-        except Exception:
-            return None
-        if not rows:
-            return None
-        return [self._mark_stale_cache_source(row) for row in rows]
+        return market_cache_rescue.get_stale_cache_rows(
+            self.cache,
+            method_name=method_name,
+            ticker=ticker,
+            marker=self.STALE_CACHE_SOURCE_MARKER,
+        )
 
     @classmethod
     def _mark_stale_cache_source(cls, row):
-        source = str(getattr(row, "source", "") or "")
-        if cls.STALE_CACHE_SOURCE_MARKER in source:
-            return row
-        if not source:
-            return row.model_copy(update={"source": cls.STALE_CACHE_SOURCE_MARKER})
-        suffix = f"; {cls.STALE_CACHE_SOURCE_MARKER}"
-        max_source_length = 100
-        trimmed_source = source[: max(0, max_source_length - len(suffix))]
-        return row.model_copy(update={"source": f"{trimmed_source}{suffix}"})
+        return market_cache_rescue.mark_stale_cache_source(
+            row,
+            marker=cls.STALE_CACHE_SOURCE_MARKER,
+        )
 
     async def _fetch_finmind_rows(
         self,

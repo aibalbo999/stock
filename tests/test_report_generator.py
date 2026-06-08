@@ -29,6 +29,7 @@ from app.services.report_financial_assessment import (
 )
 from app.services.report_financial_narrative import financial_statement_summary
 from app.services import (
+    report_action_checklist,
     report_appendix,
     report_allocation,
     report_company_narrative,
@@ -2147,6 +2148,20 @@ def test_action_checklist_groups_research_and_watch_items() -> None:
     assert "### 待補資料 / 觀察" in checklist
     assert "2382 廣達：資料不足" in checklist
     assert "重新評估條件" in checklist
+
+
+def test_action_checklist_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    request = ReportRequest(tickers=[])
+    generator_source = Path("app/services/report_generator.py").read_text()
+    checklist_source = Path("app/services/report_action_checklist.py").read_text()
+
+    assert "report_action_checklist" in generator_source
+    assert "def render_action_checklist(" in checklist_source
+    assert "先處理資料缺口" not in generator_source
+    assert generator._render_action_checklist(request, [], [], [], []) == (
+        report_action_checklist.render_action_checklist([], ReportGenerator._downside_gate(request))
+    )
 
 
 def test_final_potential_screen_reports_upside_and_downside_thresholds() -> None:

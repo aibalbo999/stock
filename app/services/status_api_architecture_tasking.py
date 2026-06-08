@@ -56,6 +56,7 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
     paths = source_context.paths
     sources = source_context.sources
     operations_routes_source = sources["operations_routes"]
+    operation_task_submission_source = sources["operation_task_submission"]
     report_routes_source = sources["report_routes"]
     error_details_source = sources["error_details"]
     task_submission_errors_source = sources["task_submission_errors"]
@@ -69,10 +70,22 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
             and "def raise_task_queue_unavailable(" in task_submission_errors_source
             and task_submission_errors_source.count("task_submission_failed_detail(") >= 1
             and task_submission_errors_source.count("task_queue_unavailable_detail(") >= 1
-            and operations_routes_source.count("raise_task_submission_failed(") >= 3
+            and operation_task_submission_source.count("raise_task_submission_failed(") >= 3
             and report_routes_source.count("raise_task_submission_failed(") >= 1
             and "background_task_submission_failed" in error_details_source
         ),
+        "operation_task_submission_handlers_extracted": (
+            paths["operation_task_submission"].exists()
+            and "def submit_generate_report_task(" in operation_task_submission_source
+            and "def submit_discovered_report_task(" in operation_task_submission_source
+            and "def submit_data_operation_task(" in operation_task_submission_source
+            and "data_operation_error_context(" in operation_task_submission_source
+            and "submit_generate_report_task(" in operations_routes_source
+            and "submit_discovered_report_task(" in operations_routes_source
+            and "submit_data_operation_task(" in operations_routes_source
+            and "raise_task_submission_failed(" not in operations_routes_source
+        ),
+        "operation_task_submission_helper_path": "app/api/operation_task_submission.py",
         "task_submission_error_detail_path": "app/api/error_details.py",
         "task_submission_error_helper_path": "app/api/task_submission_errors.py",
         "task_failure_diagnostics_shared_service": paths[
@@ -88,13 +101,13 @@ def _task_submission_error_status(source_context: ApiArchitectureSourceContext) 
         ),
         "task_submission_error_endpoint_coverage": {
             "generate_report_async": 'operation="generate_report"'
-            in operations_routes_source
-            and "raise_task_submission_failed" in operations_routes_source,
+            in operation_task_submission_source
+            and "submit_generate_report_task(" in operations_routes_source,
             "run_discovered_async": 'operation="run_discovered"'
-            in operations_routes_source
-            and "raise_task_submission_failed" in operations_routes_source,
-            "data_operation": "operation=payload.operation" in operations_routes_source
-            and "raise_task_submission_failed" in operations_routes_source,
+            in operation_task_submission_source
+            and "submit_discovered_report_task(" in operations_routes_source,
+            "data_operation": "payload.operation" in operations_routes_source
+            and "submit_data_operation_task(" in operations_routes_source,
             "report_follow_up": 'operation="report_follow_up"' in report_routes_source
             and "raise_task_submission_failed" in report_routes_source,
         },

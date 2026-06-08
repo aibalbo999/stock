@@ -41,6 +41,7 @@ def architecture_capabilities(
             and not api_status.get("compatibility_exports_imports_tasks")
             and api_status.get("main_direct_domain_import_count") == 0
             and api_status.get("structured_task_submission_errors")
+            and api_status.get("operation_task_submission_handlers_extracted")
             and api_status.get("sync_report_network_refresh_opt_in")
             and api_status.get("report_service_factory_extracted")
             and api_status.get("data_service_factory_extracted")
@@ -75,6 +76,7 @@ def architecture_capabilities(
             and task_queue_status.get("app_asyncio_run_policy_ready")
             and task_queue_status.get("compose_runtime_env_passthrough_ready")
             and api_status.get("structured_task_submission_errors")
+            and api_status.get("operation_task_submission_handlers_extracted")
             and api_status.get("task_failure_diagnostics_shared_service")
             and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
             else "degraded",
@@ -118,6 +120,12 @@ def architecture_capabilities(
                 "status_endpoints": task_queue_status.get("status_endpoints"),
                 "structured_task_submission_errors": api_status.get(
                     "structured_task_submission_errors"
+                ),
+                "operation_task_submission_handlers_extracted": api_status.get(
+                    "operation_task_submission_handlers_extracted"
+                ),
+                "operation_task_submission_helper_path": api_status.get(
+                    "operation_task_submission_helper_path"
                 ),
                 "task_failure_diagnostics_shared_service": api_status.get(
                     "task_failure_diagnostics_shared_service"

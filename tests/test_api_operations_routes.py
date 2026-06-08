@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -159,6 +161,20 @@ def test_operations_router_queues_discovered_and_data_tasks() -> None:
         "operation": "market_refresh",
     }
     assert captured["data"] == {"operation": "market_refresh", "payload": {"tickers": ["2330"]}}
+
+
+def test_operations_router_uses_task_submission_helper() -> None:
+    operations_source = Path("app/api/operations_routes.py").read_text()
+    helper_source = Path("app/api/operation_task_submission.py").read_text()
+
+    assert "submit_generate_report_task(" in operations_source
+    assert "submit_discovered_report_task(" in operations_source
+    assert "submit_data_operation_task(" in operations_source
+    assert "raise_task_submission_failed(" not in operations_source
+    assert "def submit_generate_report_task(" in helper_source
+    assert "def submit_discovered_report_task(" in helper_source
+    assert "def submit_data_operation_task(" in helper_source
+    assert "data_operation_error_context(" in helper_source
 
 
 def test_operations_router_maps_run_and_async_task_errors() -> None:

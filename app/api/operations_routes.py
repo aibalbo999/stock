@@ -4,8 +4,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.data_operation_error_context import data_operation_error_context
 from app.api.dependencies import api_services_provider
+from app.api.operation_task_submission import (
+    submit_data_operation_task,
+    submit_discovered_report_task,
+    submit_generate_report_task,
+)
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
@@ -14,10 +18,7 @@ from app.api.schemas import (
     MarketRefreshRequest,
     TopicDiscoveryRequest,
 )
-from app.api.task_submission_errors import (
-    raise_task_queue_unavailable,
-    raise_task_submission_failed,
-)
+from app.api.task_submission_errors import raise_task_queue_unavailable
 from app.models.schemas import ReportRequest
 from app.services.schedule_config import ScheduleConfig
 
@@ -151,54 +152,37 @@ def create_operations_router(
         request: ReportRequest,
         services: Any = Depends(services_dependency),
     ) -> dict:
-        try:
-            return services.run_task_api().generate_report_async(request)
-        except async_report_validation_error_cls as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="generate_report")
-        except Exception as exc:
-            raise_task_submission_failed(exc, operation="generate_report")
+        return submit_generate_report_task(
+            services,
+            request,
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.post("/pipeline/run_discovered_async")
     def generate_discovered_report_async(
         payload: TopicDiscoveryRequest,
         services: Any = Depends(services_dependency),
     ) -> dict:
-        try:
-            return services.run_task_api().generate_discovered_report_async(payload)
-        except async_report_validation_error_cls as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(exc, operation="run_discovered")
-        except Exception as exc:
-            raise_task_submission_failed(exc, operation="run_discovered")
+        return submit_discovered_report_task(
+            services,
+            payload,
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.post("/tasks/data-operation")
     def queue_data_operation(
         payload: DataOperationTaskRequest,
         services: Any = Depends(services_dependency),
     ) -> dict:
-        error_context = data_operation_error_context(payload.operation, payload.payload)
-        try:
-            return services.run_task_api().queue_data_operation(
-                payload.operation,
-                payload.payload,
-            )
-        except async_report_validation_error_cls as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except task_queue_unavailable_error_cls as exc:
-            raise_task_queue_unavailable(
-                exc,
-                operation=payload.operation,
-                context=error_context,
-            )
-        except Exception as exc:
-            raise_task_submission_failed(
-                exc,
-                operation=payload.operation,
-                context=error_context,
-            )
+        return submit_data_operation_task(
+            services,
+            payload.operation,
+            payload.payload,
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
 
     @router.get("/tasks/summary")
     def task_summary(

@@ -356,6 +356,10 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["compatibility_exports_imports_tasks"] is False
     assert evidence["main_direct_domain_import_count"] == 0
     assert evidence["structured_task_submission_errors"] is True
+    assert evidence["operation_task_submission_handlers_extracted"] is True
+    assert evidence["operation_task_submission_helper_path"] == (
+        "app/api/operation_task_submission.py"
+    )
     assert evidence["task_submission_error_detail_path"] == "app/api/error_details.py"
     assert evidence["task_submission_error_helper_path"] == "app/api/task_submission_errors.py"
     assert evidence["task_submission_error_endpoint_coverage"] == {
@@ -412,6 +416,10 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert task_queue_arch["evidence"]["compose_runtime_env_passthrough_ready"] is True
     assert task_queue_arch["evidence"]["compose_runtime_env"]["missing_by_group"] == {}
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
+    assert task_queue_arch["evidence"]["operation_task_submission_handlers_extracted"] is True
+    assert task_queue_arch["evidence"]["operation_task_submission_helper_path"] == (
+        "app/api/operation_task_submission.py"
+    )
     assert task_queue_arch["evidence"]["task_failure_diagnostics_shared_service"] is True
     assert task_queue_arch["evidence"]["task_failure_diagnostics_persisted_to_run_payload"] is True
     assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]

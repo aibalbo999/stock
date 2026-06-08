@@ -45,6 +45,7 @@ POST_RUN_CHECKS = {
         {
             "item": "Neo4j / GraphRAG 本機設定稽核",
             "purpose": "確認目前程序套用本機 Neo4j env 後，live import 與 guarded Cypher 狀態。",
+            "diagnostic_action_id": "local_neo4j_upgrade_audit",
             "command": (
                 ".venv/bin/python scripts/upgrade_audit.py "
                 "--local-neo4j-defaults --wait-local-neo4j 20 --json"
@@ -53,11 +54,13 @@ POST_RUN_CHECKS = {
         {
             "item": "Neo4j payload dry-run",
             "purpose": "確認 Neo4j 匯入 payload contract 仍可生成。",
+            "diagnostic_action_id": "neo4j_payload_dry_run",
             "command": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
         },
         {
             "item": "GraphRAG local Cypher contract",
             "purpose": "確認 guarded Cypher planner 與本機 dry-run 邏輯。",
+            "diagnostic_action_id": "graphrag_local_contract_smoke",
             "command": (
                 ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
                 "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
@@ -67,6 +70,7 @@ POST_RUN_CHECKS = {
         {
             "item": "GraphRAG live Neo4j smoke",
             "purpose": "Neo4j env 套用後，驗證 live query / import-first 路徑。",
+            "diagnostic_action_id": "",
             "command": (
                 ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
                 "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
@@ -76,6 +80,7 @@ POST_RUN_CHECKS = {
         {
             "item": "公司文件 render fallback smoke",
             "purpose": "確認 Browserless 或 Playwright 後援可解析一般 HTML。",
+            "diagnostic_action_id": "company_filing_render_smoke",
             "command": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
                 "--url https://example.com/ --json"
@@ -86,6 +91,7 @@ POST_RUN_CHECKS = {
         {
             "item": "Neo4j / GraphRAG / FlareSolverr 本機設定稽核",
             "purpose": "確認本機 Neo4j 與 FlareSolverr env 套用後的外部選配狀態。",
+            "diagnostic_action_id": "",
             "command": (
                 ".venv/bin/python scripts/upgrade_audit.py "
                 "--local-neo4j-defaults --prefer-unlocker "
@@ -96,6 +102,7 @@ POST_RUN_CHECKS = {
         {
             "item": "高風險 MOPS unlocker smoke",
             "purpose": "確認 FlareSolverr / unlocker provider 可處理 MOPS 高風險入口。",
+            "diagnostic_action_id": "high_risk_unlocker_smoke",
             "command": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
                 "--url https://mops.twse.com.tw/ --json"
@@ -244,6 +251,7 @@ def post_run_checks_for_operation(action_id: str) -> list[dict]:
         {
             "item": str(check["item"]),
             "purpose": str(check["purpose"]),
+            "diagnostic_action_id": str(check.get("diagnostic_action_id") or ""),
             "command": str(check["command"]),
         }
         for check in checks

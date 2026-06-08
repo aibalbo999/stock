@@ -75,6 +75,121 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 20,
         "read_only": True,
     },
+    "local_neo4j_upgrade_audit": {
+        "id": "local_neo4j_upgrade_audit",
+        "label": "Local Neo4j upgrade audit",
+        "description": "套用本機 Neo4j 預設值後檢查 GraphRAG live integration 狀態。",
+        "display_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/upgrade_audit.py",
+            "--local-neo4j-defaults",
+            "--wait-local-neo4j",
+            "20",
+            "--json",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
+    "neo4j_payload_dry_run": {
+        "id": "neo4j_payload_dry_run",
+        "label": "Neo4j payload dry-run",
+        "description": "確認 Neo4j 匯入 payload contract 可生成，不連線寫入 Neo4j。",
+        "display_command": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
+        "argv": [
+            sys.executable,
+            "-m",
+            "scripts.import_supply_chain_graph_neo4j",
+            "--dry-run",
+        ],
+        "timeout_seconds": 60,
+        "read_only": True,
+    },
+    "graphrag_local_contract_smoke": {
+        "id": "graphrag_local_contract_smoke",
+        "label": "GraphRAG local contract smoke",
+        "description": "確認 guarded Cypher planner 與本機 dry-run contract。",
+        "display_command": (
+            ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+            "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
+            "--local-contract --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/neo4j_graphrag_smoke.py",
+            "--tickers",
+            "2330",
+            "--target-ticker",
+            "2382",
+            "--question",
+            "上下游衝擊",
+            "--local-contract",
+            "--json",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
+    "graphrag_live_query_smoke": {
+        "id": "graphrag_live_query_smoke",
+        "label": "GraphRAG live query smoke",
+        "description": "以目前 Neo4j 設定驗證 guarded live Cypher query，不執行 import-first 寫入。",
+        "display_command": (
+            ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+            "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/neo4j_graphrag_smoke.py",
+            "--tickers",
+            "2330",
+            "--target-ticker",
+            "2382",
+            "--question",
+            "上下游衝擊",
+            "--json",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
+    "company_filing_render_smoke": {
+        "id": "company_filing_render_smoke",
+        "label": "Company filing render smoke",
+        "description": "驗證 Browserless / Playwright / proxy fallback 可解析一般 HTML。",
+        "display_command": (
+            ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--url https://example.com/ --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/company_filing_render_smoke.py",
+            "--url",
+            "https://example.com/",
+            "--json",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
+    "high_risk_unlocker_smoke": {
+        "id": "high_risk_unlocker_smoke",
+        "label": "High-risk MOPS unlocker smoke",
+        "description": "驗證 FlareSolverr / unlocker provider 是否可處理 MOPS 高風險入口。",
+        "display_command": (
+            ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--url https://mops.twse.com.tw/ --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/company_filing_render_smoke.py",
+            "--url",
+            "https://mops.twse.com.tw/",
+            "--json",
+        ],
+        "timeout_seconds": 120,
+        "read_only": True,
+    },
 }
 
 

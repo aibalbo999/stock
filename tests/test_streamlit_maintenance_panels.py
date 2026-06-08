@@ -113,11 +113,13 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
                 {
                     "item": "GraphRAG live Neo4j smoke",
                     "purpose": "驗證 live query",
+                    "diagnostic_action_id": "graphrag_live_query_smoke",
                     "command": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
                 },
                 {
                     "item": "高風險 MOPS unlocker smoke",
                     "purpose": "驗證 MOPS unlocker",
+                    "diagnostic_action_id": "high_risk_unlocker_smoke",
                     "command": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
                         "--url https://mops.twse.com.tw/ --json"
@@ -131,11 +133,13 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
         {
             "項目": "GraphRAG live Neo4j smoke",
             "用途": "驗證 live query",
+            "可執行診斷": "graphrag_live_query_smoke",
             "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
         },
         {
             "項目": "高風險 MOPS unlocker smoke",
             "用途": "驗證 MOPS unlocker",
+            "可執行診斷": "high_risk_unlocker_smoke",
             "指令": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
                 "--url https://mops.twse.com.tw/ --json"

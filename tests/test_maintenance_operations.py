@@ -28,6 +28,15 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
         for check in checks_by_id["start_local_dependencies"]
     )
     assert any(
+        check["diagnostic_action_id"] == "graphrag_local_contract_smoke"
+        for check in checks_by_id["start_local_dependencies"]
+    )
+    assert all(
+        check["diagnostic_action_id"] != "graphrag_live_query_smoke"
+        for check in checks_by_id["start_local_dependencies"]
+        if "--import-first" in check["command"]
+    )
+    assert any(
         "https://mops.twse.com.tw/" in check["command"]
         for check in checks_by_id["start_local_dependencies_with_unlocker"]
     )
@@ -109,6 +118,10 @@ def test_run_maintenance_operation_starts_core_dependencies(monkeypatch, tmp_pat
     assert result["applied_env_keys"] == ["NEO4J_URI"]
     assert any(
         "upgrade_audit.py --local-neo4j-defaults" in check["command"]
+        for check in result["post_run_checks"]
+    )
+    assert any(
+        check["diagnostic_action_id"] == "local_neo4j_upgrade_audit"
         for check in result["post_run_checks"]
     )
     assert any(

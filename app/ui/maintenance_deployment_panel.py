@@ -194,6 +194,7 @@ def maintenance_operation_post_run_check_rows(result: dict) -> list[dict]:
         {
             "項目": check.get("item") or "-",
             "用途": check.get("purpose") or "-",
+            "可執行診斷": check.get("diagnostic_action_id") or "-",
             "指令": check.get("command") or "-",
         }
         for check in checks

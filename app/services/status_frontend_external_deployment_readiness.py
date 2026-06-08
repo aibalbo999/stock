@@ -83,6 +83,7 @@ def frontend_external_deployment_readiness_status(
             and "本機依賴操作" in maintenance_deployment_panel_source
             and "選擇維護操作" in maintenance_deployment_panel_source
             and "後續驗證" in maintenance_deployment_panel_source
+            and '"可執行診斷"' in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
             and 'f"/maintenance/operations/{selected_operation_id}/run"'

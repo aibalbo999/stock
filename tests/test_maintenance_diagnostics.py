@@ -15,9 +15,15 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert catalog["execution_policy"] == "allowlisted_read_only_subprocess"
     assert action_ids == {
         "celery_inspect_ping",
+        "company_filing_render_smoke",
         "external_deployment_env_check",
         "external_deployment_env_gaps",
         "external_integrations_smoke",
+        "graphrag_live_query_smoke",
+        "graphrag_local_contract_smoke",
+        "high_risk_unlocker_smoke",
+        "local_neo4j_upgrade_audit",
+        "neo4j_payload_dry_run",
         "upgrade_audit",
     }
     assert all(action["read_only"] is True for action in catalog["actions"])
@@ -35,6 +41,20 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         env_check_action["display_command"]
     )
     assert "遮蔽密鑰" in env_check_action["description"]
+    neo4j_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["local_neo4j_upgrade_audit"]
+    assert "--local-neo4j-defaults --wait-local-neo4j 20 --json" in (
+        neo4j_action["display_command"]
+    )
+    live_query_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["graphrag_live_query_smoke"]
+    assert "--import-first" not in live_query_action["display_command"]
+    mops_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["high_risk_unlocker_smoke"]
+    assert "https://mops.twse.com.tw/" in mops_action["display_command"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(

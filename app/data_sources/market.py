@@ -8,7 +8,7 @@ from datetime import date
 import httpx
 
 from app.core.config import get_settings
-from app.data_sources import market_parsers, market_provider_runtime
+from app.data_sources import market_finmind, market_parsers, market_provider_runtime
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
 from app.services.task_cancellation import TaskCancelledError
@@ -511,49 +511,18 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[dict]:
-        if not self.settings.finmind_token and not self.finmind_public_fallback_enabled:
-            raise MarketDataProviderUnavailable(
-                "FinMind token is not configured and public fallback is disabled"
-            )
-        self._before_provider_request("finmind")
-        params = {
-            "dataset": dataset,
-            "data_id": ticker,
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-        }
-        headers = {}
-        if self.settings.finmind_token:
-            headers["Authorization"] = f"Bearer {self.settings.finmind_token}"
-
-        last_error: Exception | None = None
-        for attempt in range(self.finmind_max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(
-                        "https://api.finmindtrade.com/api/v4/data",
-                        params=params,
-                        headers=headers,
-                    )
-                    response.raise_for_status()
-                self._record_provider_success("finmind")
-                return response.json().get("data", [])
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                if not self._should_retry_status(exc.response.status_code, attempt):
-                    if exc.response.status_code in FINMIND_RETRYABLE_HTTP_STATUSES:
-                        self._record_provider_failure("finmind")
-                    raise
-                await self._sleep_before_retry(exc.response, attempt)
-            except (httpx.TransportError, TimeoutError) as exc:
-                last_error = exc
-                if attempt >= self.finmind_max_retries:
-                    self._record_provider_failure("finmind")
-                    raise
-                await self._sleep_before_retry(None, attempt)
-        if last_error:
-            raise last_error
-        return []
+        return await market_finmind.fetch_finmind_rows(
+            settings=self.settings,
+            timeout=self.timeout,
+            circuit_breakers=self._circuit_breakers,
+            dataset=dataset,
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            max_retries=self.finmind_max_retries,
+            public_fallback_enabled=self.finmind_public_fallback_enabled,
+            sleep_before_retry=self._sleep_before_retry,
+        )
 
     async def _fetch_price_history_uncached(
         self,

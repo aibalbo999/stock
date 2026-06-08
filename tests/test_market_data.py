@@ -1,5 +1,6 @@
 import asyncio
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -7,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.data_sources import market_parsers, market_provider_runtime
+from app.data_sources import market_finmind, market_parsers, market_provider_runtime
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
@@ -160,6 +161,19 @@ def test_finmind_public_fallback_can_be_disabled_without_token() -> None:
 
     with pytest.raises(MarketDataProviderUnavailable, match="public fallback is disabled"):
         asyncio.run(client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)))
+
+
+def test_finmind_provider_logic_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    finmind_source = Path("app/data_sources/market_finmind.py").read_text()
+
+    assert market_finmind.FINMIND_DATA_URL == "https://api.finmindtrade.com/api/v4/data"
+    assert "market_finmind.fetch_finmind_rows" in client_source
+    assert "FINMIND_DATA_URL" in finmind_source
+    assert "client.get(" not in client_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
+        "async def _fetch_price_history_uncached(",
+        maxsplit=1,
+    )[0]
 
 
 def test_price_history_uses_redis_cache_hit(monkeypatch) -> None:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
 from app.services import (
+    topic_discovery_candidates,
     topic_discovery_models,
     topic_discovery_prompts,
     topic_discovery_quality,
@@ -201,6 +202,59 @@ def test_topic_discovery_quality_lives_outside_service_module() -> None:
     assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" not in service_source
     assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" in quality_source
     assert "def plan_query_quality(" in quality_source
+
+
+def test_topic_discovery_candidate_validation_lives_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    candidates_source = Path("app/services/topic_discovery_candidates.py").read_text()
+    service = TopicDiscoveryService()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [],
+          "candidate_companies": [
+            {
+              "ticker": "2330",
+              "name": "台積電",
+              "segment": "晶圓代工",
+              "rationale": "CoWoS",
+              "evidence_keywords": ["CoWoS"]
+            }
+          ]
+        }
+        """
+    )
+    documents = [
+        NewsFetcher.from_manual_text(
+            title="台積電 CoWoS 產能擴張",
+            text="台積電 CoWoS 產能擴張支撐 AI 需求。",
+            publisher="test-a",
+            published_at=date(2026, 5, 24),
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電先進封裝擴產",
+            text="台積電 CoWoS 與先進封裝需求升溫。",
+            publisher="test-b",
+            published_at=date(2026, 5, 24),
+        ),
+    ]
+
+    assert service.validate_candidates(plan, documents) == topic_discovery_candidates.validate_candidates(
+        plan,
+        documents,
+    )
+    assert TopicDiscoveryService._candidate_status(
+        2,
+        2,
+        confidence_score=HIGH_CONFIDENCE_THRESHOLD,
+    ) == topic_discovery_candidates.candidate_status(
+        2,
+        2,
+        confidence_score=HIGH_CONFIDENCE_THRESHOLD,
+    )
+    assert "通過候選入選門檻" not in service_source
+    assert "通過候選入選門檻" in candidates_source
+    assert "def validate_candidates(" in candidates_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

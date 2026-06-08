@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.core.config import Settings
-from app.data_sources.company_filings import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+from app.data_sources.company_filing_http import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
 from app.services.status_company_filings import (
     _company_filing_high_risk_source_policy,
     _company_filing_pdf_parser_status,

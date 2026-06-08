@@ -5,8 +5,8 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from typing import Any
 
+from app.data_sources.company_filing_http import company_filing_error
 from app.data_sources.market import MarketFetchError
-from app.data_sources.company_filings import company_filing_error
 from app.models.schemas import (
     FinancialMetric,
     MarketSnapshot,

@@ -5,11 +5,11 @@ from contextlib import AbstractContextManager
 from datetime import date
 from typing import Any
 
-from app.data_sources.company_filings import (
-    CompanyFilingFetcher,
+from app.data_sources.company_filing_discovery import (
     filing_quality_score,
     filing_source_tier,
 )
+from app.data_sources.company_filings import CompanyFilingFetcher
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import CompanyFilingRepository

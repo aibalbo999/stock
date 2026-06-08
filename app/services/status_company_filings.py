@@ -3,14 +3,16 @@ from __future__ import annotations
 from importlib.util import find_spec
 from typing import Callable
 
-from app.data_sources.company_filings import (
-    COMPANY_FILING_RETRYABLE_HTTP_STATUSES,
+from app.data_sources.company_filing_http import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+from app.data_sources.company_filing_render import (
     DEFAULT_COMPANY_FILING_USER_AGENTS,
     HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS,
     UNLOCKER_BROWSER_RENDER_PROVIDERS,
     company_filing_browser_render_provider_contract_status,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
+)
+from app.data_sources.company_filings import (
     company_filing_structured_api_status,
 )
 from app.services.company_filing_cache import RedisCompanyFilingCache

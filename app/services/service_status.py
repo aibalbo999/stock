@@ -6,9 +6,11 @@ from urllib.parse import urlparse
 import redis
 
 from app.core.config import get_settings
-from app.data_sources.company_filings import (
+from app.data_sources.company_filing_render import (
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
+)
+from app.data_sources.company_filings import (
     company_filing_structured_api_status,
 )
 from app.db.migration_status import db_migration_status

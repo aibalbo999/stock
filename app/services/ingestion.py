@@ -14,10 +14,12 @@ from app.data_sources.company_filing_discovery import (
     REQUIRED_CORE_DOCUMENT_TYPES,
     is_high_quality_company_filing,
 )
-from app.data_sources.company_filings import (
-    CompanyFilingFetcher,
+from app.data_sources.company_filing_http import (
     categorize_company_filing_error,
     is_retryable_company_filing_error_category,
+)
+from app.data_sources.company_filings import (
+    CompanyFilingFetcher,
 )
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore

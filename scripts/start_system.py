@@ -12,7 +12,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-from app.data_sources.company_filings import company_filing_playwright_browser_status
+from app.data_sources.company_filing_render import company_filing_playwright_browser_status
 from app.services.local_dependency_diagnostics import local_docker_image_status
 from app.services.schedule_config import ScheduleConfigStore
 from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS

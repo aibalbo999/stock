@@ -22,6 +22,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
     status_frontend_settings_source = Path("app/services/status_frontend_settings.py").read_text()
+    status_frontend_task_failures_source = Path(
+        "app/services/status_frontend_task_failures.py"
+    ).read_text()
+    status_frontend_task_queue_source = Path(
+        "app/services/status_frontend_task_queue.py"
+    ).read_text()
     status_frontend_tasks_source = Path("app/services/status_frontend_tasks.py").read_text()
 
     assert "frontend" in status
@@ -74,6 +80,15 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert '"ui_llm_quota_panel_extracted"' not in status_frontend_source
     assert "def frontend_task_ui_status(" in status_frontend_tasks_source
     assert "frontend_task_ui_status(source_context)" in status_frontend_source
+    assert "def frontend_task_queue_status(" in status_frontend_task_queue_source
+    assert "frontend_task_queue_status(source_context)" in status_frontend_tasks_source
+    assert "def frontend_task_failure_status(" in status_frontend_task_failures_source
+    assert "frontend_task_failure_status(source_context)" in status_frontend_tasks_source
+    assert '"ui_background_task_client_extracted"' not in status_frontend_tasks_source
+    assert '"ui_task_queue_preflight_enabled"' not in status_frontend_tasks_source
+    assert '"ui_task_failure_drilldown_enabled"' not in status_frontend_tasks_source
+    assert '"ui_task_status_panel_extracted"' not in status_frontend_tasks_source
+    assert '"ui_maintenance_diagnostic_actions_enabled"' not in status_frontend_tasks_source
     assert '"ui_task_failure_drilldown_enabled"' not in status_frontend_source
     assert '"ui_task_queue_preflight_enabled"' not in status_frontend_source
     assert "def _literal_occurrence_locations(" not in status_frontend_source
@@ -108,6 +123,14 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_task_ui_status_extracted"] is True
     assert status["frontend"]["frontend_task_ui_status_path"] == (
         "app/services/status_frontend_tasks.py"
+    )
+    assert status["frontend"]["frontend_task_queue_status_extracted"] is True
+    assert status["frontend"]["frontend_task_queue_status_path"] == (
+        "app/services/status_frontend_task_queue.py"
+    )
+    assert status["frontend"]["frontend_task_failure_status_extracted"] is True
+    assert status["frontend"]["frontend_task_failure_status_path"] == (
+        "app/services/status_frontend_task_failures.py"
     )
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
@@ -267,6 +290,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_task_queue_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
     assert (
         frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"]

@@ -2217,12 +2217,19 @@ def test_financial_assessment_logic_lives_outside_generator() -> None:
 
 def test_potential_scoring_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    potential_mixin_source = Path("app/services/report_generator_potential.py").read_text()
     potential_source = Path("app/services/report_potential.py").read_text()
 
-    assert "report_potential" in generator_source
+    assert "report_potential" not in generator_source
+    assert "ReportGeneratorPotentialMixin" in generator_source
+    assert "report_potential" in potential_mixin_source
+    assert "def _estimate_potential(" in potential_mixin_source
+    assert "def _data_quality_grade(" in potential_mixin_source
     assert "def estimate_potential(" in potential_source
     assert "def data_quality_grade(" in potential_source
     assert "PotentialScoringEngine" not in generator_source
+    assert "def _estimate_potential(" not in generator_source
+    assert "def _data_quality_grade(" not in generator_source
 
 
 def test_decision_rule_logic_lives_outside_generator() -> None:

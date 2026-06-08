@@ -279,6 +279,9 @@ def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
     assert matrix["ai_rag"]["reranking"]["evidence"]["auto_candidates"]
 
     assert matrix["ai_rag"]["graphrag_context"]["status"] == "ready"
+    assert matrix["ai_rag"]["graphrag_context"]["evidence"]["capability_builder_path"] == (
+        "app/services/status_capability_ai_rag_graphrag.py"
+    )
     assert matrix["ai_rag"]["graphrag_context"]["evidence"]["retrieval_query_plan_enabled"] is True
     assert (
         matrix["ai_rag"]["graphrag_context"]["evidence"]["retrieval_query_strategy"]

@@ -45,6 +45,9 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
         "app/services/status_api_architecture_sources.py"
     ).read_text()
     ai_rag_source = Path("app/services/status_capability_ai_rag.py").read_text()
+    ai_rag_graphrag_source = Path(
+        "app/services/status_capability_ai_rag_graphrag.py"
+    ).read_text()
     architecture_source = Path("app/services/status_capability_architecture.py").read_text()
     data_business_source = Path("app/services/status_capability_data_business.py").read_text()
     helpers_source = Path("app/services/status_capability_helpers.py").read_text()
@@ -57,7 +60,10 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
     assert "def _literal_occurrence_locations(" in api_architecture_sources_source
 
     assert "def ai_rag_capabilities(" in ai_rag_source
-    assert '"graphrag_live_cypher_query": _capability(' in ai_rag_source
+    assert "graphrag_capabilities(graph_status=graph_status)" in ai_rag_source
+    assert '"graphrag_live_cypher_query": _capability(' not in ai_rag_source
+    assert "def graphrag_capabilities(" in ai_rag_graphrag_source
+    assert '"graphrag_live_cypher_query": _capability(' in ai_rag_graphrag_source
     assert "from app.services.status_llm import _llm_fallback_readiness" in ai_rag_source
     assert "def _module_available(" in ai_rag_source
 

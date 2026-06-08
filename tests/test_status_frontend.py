@@ -14,6 +14,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     status_frontend_external_source = Path(
         "app/services/status_frontend_external_deployment.py"
     ).read_text()
+    status_frontend_external_domains_source = Path(
+        "app/services/status_frontend_external_deployment_domains.py"
+    ).read_text()
+    status_frontend_external_readiness_source = Path(
+        "app/services/status_frontend_external_deployment_readiness.py"
+    ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
     status_frontend_settings_source = Path("app/services/status_frontend_settings.py").read_text()
     status_frontend_tasks_source = Path("app/services/status_frontend_tasks.py").read_text()
@@ -36,6 +42,25 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def frontend_external_deployment_status(" in status_frontend_external_source
     assert "frontend_external_deployment_status(source_context)" in status_frontend_source
     assert '"ui_external_deployment_diagnostics_enabled"' not in status_frontend_source
+    assert "def frontend_external_deployment_domain_status(" in (
+        status_frontend_external_domains_source
+    )
+    assert "frontend_external_deployment_domain_status(source_context)" in (
+        status_frontend_external_source
+    )
+    assert "def frontend_external_deployment_readiness_status(" in (
+        status_frontend_external_readiness_source
+    )
+    assert "frontend_external_deployment_readiness_status(source_context)" in (
+        status_frontend_external_source
+    )
+    assert '"ui_external_deployment_diagnostics_enabled"' not in (
+        status_frontend_external_source
+    )
+    assert '"ui_external_deployment_readiness_checklist_enabled"' not in (
+        status_frontend_external_source
+    )
+    assert '"ui_maintenance_operations_enabled"' not in status_frontend_external_source
     assert "def frontend_report_ui_status(" in status_frontend_reports_source
     assert "frontend_report_ui_status(source_context)" in status_frontend_source
     assert '"ui_report_observability_summary_enabled"' not in status_frontend_source
@@ -63,6 +88,14 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_external_deployment_status_extracted"] is True
     assert status["frontend"]["frontend_external_deployment_status_path"] == (
         "app/services/status_frontend_external_deployment.py"
+    )
+    assert status["frontend"]["frontend_external_deployment_domain_status_extracted"] is True
+    assert status["frontend"]["frontend_external_deployment_domain_status_path"] == (
+        "app/services/status_frontend_external_deployment_domains.py"
+    )
+    assert status["frontend"]["frontend_external_deployment_readiness_status_extracted"] is True
+    assert status["frontend"]["frontend_external_deployment_readiness_status_path"] == (
+        "app/services/status_frontend_external_deployment_readiness.py"
     )
     assert status["frontend"]["frontend_report_ui_status_extracted"] is True
     assert status["frontend"]["frontend_report_ui_status_path"] == (
@@ -235,6 +268,14 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
+    assert (
+        frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"]["frontend_external_deployment_readiness_status_extracted"]
+        is True
+    )
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True

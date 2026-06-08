@@ -71,7 +71,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         ("upgrade_capability_matrix", "ai_rag", "visual_rag"),
         optional=True,
         remediation=(
-            "若要解析掃描型或複雜表格 PDF，安裝 pip install -e \".[visual]\"，"
+            '若要解析掃描型或複雜表格 PDF，安裝 pip install -e ".[visual]"，'
             "設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true，並配置 vision-capable LLM key/model。"
         ),
     ),
@@ -231,7 +231,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
             "company_filing_pdf_table_parser_runtime",
         ),
         optional=True,
-        remediation="若需要從 PDF 財報抽取表格，安裝 pip install -e \".[pdf]\" 或至少安裝 pdfplumber / unstructured[pdf]。",
+        remediation='若需要從 PDF 財報抽取表格，安裝 pip install -e ".[pdf]" 或至少安裝 pdfplumber / unstructured[pdf]。',
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
@@ -335,6 +335,11 @@ def audit_upgrade_capabilities(
     strict_external: bool = False,
 ) -> dict:
     status = status or service_status()
+    local_dependencies = (
+        status.get("local_dependencies")
+        if isinstance(status.get("local_dependencies"), dict)
+        else {}
+    )
     checks = [
         _requirement_result(requirement, status, strict_external=strict_external)
         for requirement in REQUIREMENTS
@@ -377,6 +382,7 @@ def audit_upgrade_capabilities(
         },
         "implementation": implementation,
         "deployment": deployment,
+        "local_dependencies": local_dependencies,
         "areas": dict(sorted(areas.items())),
         "checks": checks,
         "failures": failures,
@@ -397,7 +403,10 @@ def _requirement_result(
     is_optional = requirement.optional and not strict_external
     passed = actual_status in requirement.required_statuses
     severity = "pass" if passed else "warn" if is_optional else "fail"
-    external_integration = (requirement.area, requirement.capability) in EXTERNAL_INTEGRATION_CAPABILITIES
+    external_integration = (
+        requirement.area,
+        requirement.capability,
+    ) in EXTERNAL_INTEGRATION_CAPABILITIES
     deployment_check = (requirement.area, requirement.capability) in DEPLOYMENT_CHECK_CAPABILITIES
     evidence = capability.get("evidence") or {}
     return {
@@ -447,9 +456,7 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
     if requirement.capability == "company_filing_high_risk_unlocker":
         remediation = requirement.remediation
         recommended_env = [
-            str(item).strip()
-            for item in evidence.get("recommended_env", [])
-            if str(item).strip()
+            str(item).strip() for item in evidence.get("recommended_env", []) if str(item).strip()
         ]
         if recommended_env:
             remediation = f"{remediation} 建議 env：{'；'.join(recommended_env)}。"
@@ -510,7 +517,9 @@ def _append_smoke_command(message: str, command: object) -> str:
 
 
 def _append_smoke_commands(message: str, commands: list[object]) -> str:
-    command_text = "；".join(str(command).strip() for command in commands if str(command or "").strip())
+    command_text = "；".join(
+        str(command).strip() for command in commands if str(command or "").strip()
+    )
     return f"{message} 驗證指令：{command_text}" if command_text else message
 
 

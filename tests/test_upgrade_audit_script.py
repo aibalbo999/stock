@@ -6,7 +6,9 @@ import subprocess
 from scripts import upgrade_audit
 
 
-def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monkeypatch, capsys) -> None:
+def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
+    monkeypatch, capsys
+) -> None:
     monkeypatch.setattr(
         upgrade_audit,
         "audit_upgrade_capabilities",
@@ -21,6 +23,11 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monke
             },
             "implementation": {"status": "ready", "ready": 1, "total_checks": 1},
             "deployment": {"status": "caution", "ready": 0, "total_checks": 1},
+            "local_dependencies": {
+                "status": "partial",
+                "open_services": ["redis"],
+                "missing_core_services": ["neo4j"],
+            },
             "checks": [
                 {
                     "severity": "pass",
@@ -65,6 +72,7 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(monke
     assert "Core implementation: ready (1/1 ready)" in output
     assert "External integrations: caution (0/1 ready)" in output
     assert "Checks: 1 ready, 0 warnings, 1 optional deployment warnings, 0 failures" in output
+    assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
     assert "[WARN optional] ai_rag.neo4j_import" in output
 
 
@@ -228,7 +236,9 @@ def test_upgrade_audit_script_can_apply_local_flaresolverr_defaults(monkeypatch,
 
     def fake_audit(strict_external=False):
         captured["browser_render_enabled"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_ENABLED")
-        captured["browser_render_provider"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_PROVIDER")
+        captured["browser_render_provider"] = os.environ.get(
+            "COMPANY_FILING_BROWSER_RENDER_PROVIDER"
+        )
         captured["browser_render_url"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
         return {
             "overall_status": "ready",
@@ -241,7 +251,9 @@ def test_upgrade_audit_script_can_apply_local_flaresolverr_defaults(monkeypatch,
 
     monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
 
-    exit_code = upgrade_audit.main(["--local-browser-render-defaults", "--prefer-unlocker", "--json"])
+    exit_code = upgrade_audit.main(
+        ["--local-browser-render-defaults", "--prefer-unlocker", "--json"]
+    )
 
     assert exit_code == 0
     assert captured == {
@@ -284,7 +296,9 @@ def test_upgrade_audit_script_can_wait_for_local_neo4j(monkeypatch, capsys) -> N
     assert "Local Neo4j wait: ready within 2s" in output
 
 
-def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(monkeypatch, capsys) -> None:
+def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
+    monkeypatch, capsys
+) -> None:
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
@@ -321,7 +335,9 @@ def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
 
     monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
 
-    exit_code = upgrade_audit.main(["--wait-local-browserless", "3", "--local-browser-render-defaults"])
+    exit_code = upgrade_audit.main(
+        ["--wait-local-browserless", "3", "--local-browser-render-defaults"]
+    )
 
     assert exit_code == 0
     assert captured["browser_render_enabled"] == "true"
@@ -333,7 +349,9 @@ def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
 
 
-def test_upgrade_audit_script_can_wait_for_flaresolverr_before_applying_defaults(monkeypatch, capsys) -> None:
+def test_upgrade_audit_script_can_wait_for_flaresolverr_before_applying_defaults(
+    monkeypatch, capsys
+) -> None:
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
@@ -357,7 +375,9 @@ def test_upgrade_audit_script_can_wait_for_flaresolverr_before_applying_defaults
     captured = {}
 
     def fake_audit(strict_external=False):
-        captured["browser_render_provider"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_PROVIDER")
+        captured["browser_render_provider"] = os.environ.get(
+            "COMPANY_FILING_BROWSER_RENDER_PROVIDER"
+        )
         captured["browser_render_url"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
         return {
             "overall_status": "ready",
@@ -423,7 +443,9 @@ def test_upgrade_audit_script_can_report_local_docker_image_status(monkeypatch, 
     assert "docker compose pull redis postgres browserless chroma" in output
 
 
-def test_upgrade_audit_script_includes_flaresolverr_image_when_unlocker_is_preferred(monkeypatch, capsys) -> None:
+def test_upgrade_audit_script_includes_flaresolverr_image_when_unlocker_is_preferred(
+    monkeypatch, capsys
+) -> None:
     monkeypatch.setattr(
         upgrade_audit,
         "audit_upgrade_capabilities",

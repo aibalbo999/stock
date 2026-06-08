@@ -17,7 +17,10 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "graphrag_path_reasoning": {"status": "ready", "evidence": {}},
             "graphrag_agentic_cypher": {"status": "ready", "evidence": {}},
             "neo4j_payload_export": {"status": "ready", "evidence": {}},
-            "neo4j_import": {"status": "degraded", "evidence": {"fallback_reason": "missing_settings:neo4j_uri"}},
+            "neo4j_import": {
+                "status": "degraded",
+                "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
             "graphrag_live_cypher_query": {"status": "ready", "evidence": {}},
         },
         "architecture": {
@@ -47,7 +50,44 @@ def _fake_status(overrides: dict | None = None) -> dict:
     for path, value in (overrides or {}).items():
         area, capability = path.split(".")
         matrix[area][capability] = value
-    return {"upgrade_capability_matrix": matrix}
+    return {
+        "upgrade_capability_matrix": matrix,
+        "local_dependencies": {
+            "collector_path": "app/services/local_dependency_diagnostics.py",
+            "status": "partial",
+            "open_services": ["redis"],
+            "missing_core_services": ["neo4j"],
+            "ports": [
+                {
+                    "service": "redis",
+                    "label": "Redis",
+                    "host": "127.0.0.1",
+                    "port": 6379,
+                    "open": True,
+                    "role": "Celery broker/backend 與快取",
+                }
+            ],
+            "commands": {
+                "start_core": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                "verify_neo4j": (
+                    ".venv/bin/python scripts/upgrade_audit.py "
+                    "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+                ),
+            },
+        },
+    }
+
+
+def test_upgrade_audit_includes_local_dependency_runtime_status() -> None:
+    audit = audit_upgrade_capabilities(_fake_status())
+
+    assert audit["local_dependencies"]["collector_path"] == (
+        "app/services/local_dependency_diagnostics.py"
+    )
+    assert audit["local_dependencies"]["status"] == "partial"
+    assert audit["local_dependencies"]["open_services"] == ["redis"]
+    assert audit["local_dependencies"]["missing_core_services"] == ["neo4j"]
+    assert "start_core" in audit["local_dependencies"]["commands"]
 
 
 def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None:
@@ -120,7 +160,9 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
     assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     warning = next(
-        item for item in audit["optional_warnings"] if item["capability"] == "graphrag_live_cypher_query"
+        item
+        for item in audit["optional_warnings"]
+        if item["capability"] == "graphrag_live_cypher_query"
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
@@ -255,7 +297,9 @@ def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:
 
     assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
-    warning = next(item for item in audit["optional_warnings"] if item["capability"] == "visual_rag")
+    warning = next(
+        item for item in audit["optional_warnings"] if item["capability"] == "visual_rag"
+    )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
 
@@ -323,7 +367,9 @@ def test_upgrade_audit_treats_python_runtime_as_deployment_preflight() -> None:
 
 def test_upgrade_audit_fails_required_capability_regression() -> None:
     audit = audit_upgrade_capabilities(
-        _fake_status({"ai_rag.reranking": {"status": "degraded", "evidence": {"fallback_reason": "keyword"}}})
+        _fake_status(
+            {"ai_rag.reranking": {"status": "degraded", "evidence": {"fallback_reason": "keyword"}}}
+        )
     )
 
     assert audit["overall_status"] == "failed"
@@ -415,7 +461,10 @@ def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
             {
                 "architecture.streamlit_mpa_background_tasks": {
                     "status": "degraded",
-                    "evidence": {"asyncio_run_count": 1, "long_blocking_post_timeout_present": True},
+                    "evidence": {
+                        "asyncio_run_count": 1,
+                        "long_blocking_post_timeout_present": True,
+                    },
                 }
             }
         )
@@ -423,7 +472,9 @@ def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
 
     assert audit["overall_status"] == "failed"
     assert audit["implementation"]["status"] == "failed"
-    assert any(check["capability"] == "streamlit_mpa_background_tasks" for check in audit["failures"])
+    assert any(
+        check["capability"] == "streamlit_mpa_background_tasks" for check in audit["failures"]
+    )
     assert audit["areas"]["architecture"]["failures"] == 1
 
 
@@ -444,7 +495,9 @@ def test_upgrade_audit_fails_background_task_queue_regression() -> None:
 
     assert audit["overall_status"] == "failed"
     assert audit["implementation"]["status"] == "failed"
-    failure = next(item for item in audit["failures"] if item["capability"] == "background_task_queue")
+    failure = next(
+        item for item in audit["failures"] if item["capability"] == "background_task_queue"
+    )
     assert failure["optional"] is False
     assert failure["evidence"]["broker_ok"] is False
     assert audit["areas"]["architecture"]["failures"] == 1

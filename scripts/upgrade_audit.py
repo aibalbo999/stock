@@ -29,7 +29,9 @@ LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Audit system readiness against the upgrade objective.")
+    parser = argparse.ArgumentParser(
+        description="Audit system readiness against the upgrade objective."
+    )
     parser.add_argument(
         "--strict-external",
         action="store_true",
@@ -115,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
 
     browser_default_status = None
     if args.local_browser_render_defaults:
-        browserless_port_available = bool(browserless_wait_ready) or is_port_open("127.0.0.1", LOCAL_BROWSERLESS_PORT)
+        browserless_port_available = bool(browserless_wait_ready) or is_port_open(
+            "127.0.0.1", LOCAL_BROWSERLESS_PORT
+        )
         flaresolverr_port_available = bool(flaresolverr_wait_ready) or is_port_open(
             "127.0.0.1",
             LOCAL_FLARESOLVERR_PORT,
@@ -229,6 +233,15 @@ def _format_text(audit: dict) -> str:
                 f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
             )
         lines.extend(wait_lines)
+    local_runtime = audit.get("local_dependencies")
+    if isinstance(local_runtime, dict) and local_runtime:
+        open_services = ", ".join(local_runtime.get("open_services") or []) or "-"
+        missing_core = ", ".join(local_runtime.get("missing_core_services") or []) or "-"
+        lines.append(
+            "Local dependency runtime: "
+            f"{local_runtime.get('status', 'unknown')}; "
+            f"open={open_services}; missing_core={missing_core}"
+        )
     local_images = audit.get("local_docker_images")
     if local_images:
         image_lines = [
@@ -239,7 +252,13 @@ def _format_text(audit: dict) -> str:
         if local_images.get("remediation"):
             lines.append("  fix: " + str(local_images["remediation"]))
     for check in audit["checks"]:
-        marker = "OK" if check["severity"] == "pass" else "WARN" if check["severity"] == "warn" else "FAIL"
+        marker = (
+            "OK"
+            if check["severity"] == "pass"
+            else "WARN"
+            if check["severity"] == "warn"
+            else "FAIL"
+        )
         optional = " optional" if check["optional"] else ""
         lines.append(
             f"- [{marker}{optional}] {check['area']}.{check['capability']}: "

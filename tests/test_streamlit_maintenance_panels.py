@@ -792,7 +792,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     repair_rows = helpers["local_dependency_repair_rows"](service_snapshot)
 
     assert readiness_with_local_status[0]["項目"] == "外部 Neo4j 匯入連線"
-    assert readiness_with_local_status[0]["本機動作"] == "已啟動"
+    assert readiness_with_local_status[0]["本機動作"] == "端口已啟動，需驗證"
     assert "--wait-local-neo4j 20" in readiness_with_local_status[0]["本機指令"]
     assert local_rows == [
         {
@@ -1214,7 +1214,9 @@ def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> N
 
     assert rows_by_item["外部 Neo4j 匯入連線"]["本機動作"] == "驗證失敗"
     assert "--wait-local-neo4j 20" in rows_by_item["外部 Neo4j 匯入連線"]["本機指令"]
-    assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機動作"] == "已啟動"
+    assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機動作"] == (
+        "端口已啟動，需驗證"
+    )
     assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["啟用分類"] == (
         "本機免費或付費 unlocker"
     )

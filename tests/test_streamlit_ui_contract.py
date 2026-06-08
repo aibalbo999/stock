@@ -438,6 +438,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source
     assert '"本機動作"' in external_readiness_service_source
     assert '"本機指令"' in external_readiness_service_source
+    assert "端口已啟動，需驗證" in external_readiness_service_source
     assert "local_dependency_wait" in external_readiness_service_source
     assert '"驗證指令"' in external_readiness_service_source
     assert "render_external_deployment_panel(\n        upgrade_audit," in source

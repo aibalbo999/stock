@@ -232,9 +232,12 @@ def external_deployment_enablement_summary(
             summary["paid_external_pending"] += 1
         else:
             summary["quota_or_external_pending"] += 1
-        if local_action.get("state") in {"可啟動", "已啟動", "驗證失敗"} and (
-            local_action.get("command") != "-"
-        ):
+        if local_action.get("state") in {
+            "可啟動",
+            "已啟動",
+            "端口已啟動，需驗證",
+            "驗證失敗",
+        } and (local_action.get("command") != "-"):
             summary["local_action_available"] += 1
 
     summary["manual_or_paid_pending"] = (
@@ -352,20 +355,27 @@ def external_deployment_local_action(
     wait_status = wait_status if isinstance(wait_status, dict) else {}
     wait_key = str(metadata.get("wait_key") or "")
     verify_command = str(metadata.get("verify_command") or "-")
+    item_ready = _external_readiness_item_ready(item)
     if wait_key and wait_key in wait_status:
         return {
-            "state": "已啟動" if wait_status.get(wait_key) is True else "驗證失敗",
+            "state": _external_local_ready_state(item_ready)
+            if wait_status.get(wait_key) is True
+            else "驗證失敗",
             "command": verify_command,
         }
     port_state = _local_dependency_port_state(local_dependency_status, wait_key)
     if port_state is True:
-        return {"state": "已啟動", "command": verify_command}
-    if _external_readiness_item_ready(item):
+        return {"state": _external_local_ready_state(item_ready), "command": verify_command}
+    if item_ready:
         return {"state": "已啟動", "command": verify_command}
     return {
         "state": "可啟動",
         "command": str(metadata.get("start_command") or verify_command or "-"),
     }
+
+
+def _external_local_ready_state(item_ready: bool) -> str:
+    return "已啟動" if item_ready else "端口已啟動，需驗證"
 
 
 def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:

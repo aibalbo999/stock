@@ -1616,10 +1616,22 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
     assert "def company_quick_take(" in narrative_source
     assert "def valuation_summary(" in narrative_source
     assert "def financial_confidence_label(" in narrative_source
+    assert "def moat_factor_text(" in narrative_source
+    assert "def dcf_proxy_text(" in narrative_source
+    assert "def growth_opportunity_text(" in narrative_source
     assert "無法判斷近期營收動能" not in generator_source
+    assert "硬體與供應鏈公司通常不是典型網路效應" not in generator_source
+    assert "系統暫不硬算目標價" not in generator_source
     assert ReportGenerator._company_revenue_summary(revenue) == report_company_narrative.company_revenue_summary(revenue)
     assert ReportGenerator._valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3}) == (
         report_company_narrative.valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3})
+    )
+    assert ReportGenerator._dcf_proxy_text(
+        {"fcf_trend": "自由現金流成長 12.00%。"},
+        valuation,
+    ) == report_company_narrative.dcf_proxy_text(
+        {"fcf_trend": "自由現金流成長 12.00%。"},
+        valuation,
     )
 
 

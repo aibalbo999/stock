@@ -168,6 +168,207 @@ def company_market_summary(snapshot: MarketSnapshot | None) -> str:
     return f"{snapshot.trade_date.isoformat()} 收盤價 {close}。"
 
 
+def valuation_conclusion(
+    snapshot: MarketSnapshot | None,
+    valuation: ValuationMetric | None,
+    peer_summary: dict[str, float | None] | None = None,
+) -> str:
+    market_summary = company_market_summary(snapshot)
+    if not valuation:
+        return f"{market_summary} 但缺 P/E、P/B、DCF 與同業估值資料，因此不能下低估/高估結論。"
+    return (
+        f"{market_summary} 已有單公司估值：{valuation_summary(valuation, peer_summary)}"
+        "仍缺 DCF 與完整同業成長率，因此不能單靠倍數判斷低估/高估。"
+    )
+
+
+def trend_summary(related_documents: list[NewsDocument], related_findings) -> str:
+    text = " ".join([document.title for document in related_documents] + [finding.evidence for finding in related_findings])
+    if not text:
+        return "目前無足夠數據判斷。"
+    if any(term in text for term in ["AI", "伺服器", "CoWoS", "HBM", "液冷", "散熱", "成長", "擴產", "需求"]):
+        return "現有文本顯示公司與本次主題需求有關，但仍需用訂單、營收與毛利率驗證。"
+    return "現有文本不足以判斷明確產業趨勢。"
+
+
+def near_term_outlook(
+    revenue: MonthlyRevenue | None,
+    related_documents: list[NewsDocument],
+    related_findings,
+) -> str:
+    if related_findings:
+        return "短期需優先追蹤風險證據是否擴大，以及月營收是否能支撐題材。"
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 0 and related_documents:
+        return "短期具備觀察價值，但仍需確認成長是否延續到獲利與現金流。"
+    if related_documents:
+        return "短期已有題材文本，但缺少足夠財務驗證。"
+    return "目前無足夠數據判斷。"
+
+
+def growth_opportunity_text(
+    related_documents: list[NewsDocument],
+    related_findings,
+    revenue: MonthlyRevenue | None,
+) -> str:
+    text = " ".join([document.title + " " + document.text[:300] for document in related_documents])
+    signals = []
+    for keyword in ["擴產", "新平台", "AI", "伺服器", "CoWoS", "HBM", "液冷", "訂單", "產能"]:
+        if keyword in text:
+            signals.append(keyword)
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+        signals.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
+    if related_findings:
+        signals.append(f"{len(related_findings)} 筆主題/風險歸因證據")
+    if not signals:
+        return "目前沒有足夠可驗證訊號，需等待法說會、訂單或營收資料補強。"
+    return "可追蹤 " + "、".join(list(dict.fromkeys(signals))[:5]) + " 是否延續到營收、毛利與現金流。"
+
+
+def long_term_growth_text(
+    financial_summary: dict[str, str],
+    revenue: MonthlyRevenue | None,
+    related_documents: list[NewsDocument],
+) -> str:
+    positives = []
+    if "成長" in financial_summary.get("revenue_trend", ""):
+        positives.append(financial_summary["revenue_trend"])
+    if "體質改善" in financial_summary.get("strength", ""):
+        positives.append("財務體質呈改善訊號")
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+        positives.append(f"近期月營收年增 {revenue.yoy_pct:.2f}%")
+    if len(related_documents) >= 2:
+        positives.append(f"{len(related_documents)} 筆公司層級文本支撐主題關聯")
+    if not positives:
+        return "目前缺少長期成長證據，需補產業規模、資本支出與競爭格局資料。"
+    return "；".join(positives[:3]) + "；仍需用 5-10 年產業規模、毛利率與自由現金流假設做二次驗證。"
+
+
+def dcf_proxy_text(financial_summary: dict[str, str], valuation: ValuationMetric | None) -> str:
+    available = []
+    if "自由現金流" in financial_summary.get("fcf_trend", "") and "目前無足夠" not in financial_summary["fcf_trend"]:
+        available.append(financial_summary["fcf_trend"])
+    if valuation and valuation.pe_ratio is not None:
+        available.append(f"目前可用 P/E {valuation.pe_ratio:.2f} 作為相對估值交叉檢查")
+    if not available:
+        return "尚缺可驗證 FCF 序列、折現率與終值假設，不自動給目標價。"
+    return "；".join(available) + "；系統暫不硬算目標價，避免用未驗證假設製造精準幻覺。"
+
+
+def industry_average_text(peer_summary: dict[str, float | None]) -> str:
+    count = int(peer_summary.get("count") or 0)
+    pe_avg = peer_summary.get("pe_avg")
+    pb_avg = peer_summary.get("pb_avg")
+    if count < 2 or (pe_avg is None and pb_avg is None):
+        return "同業樣本不足，需補更多可比公司後再判斷產業平均。"
+    parts = [f"同業樣本 {count} 檔"]
+    if pe_avg is not None:
+        parts.append(f"平均 P/E {pe_avg:.2f}")
+    if pb_avg is not None:
+        parts.append(f"平均 P/B {pb_avg:.2f}")
+    return "、".join(parts) + "。"
+
+
+def bull_case(revenue: MonthlyRevenue | None, related_documents: list[NewsDocument]) -> str:
+    points = []
+    if related_documents:
+        points.append(f"有 {len(related_documents)} 筆公司相關文本支持題材關聯")
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 0:
+        points.append(f"月營收年增率 {revenue.yoy_pct:.2f}%")
+    return "；".join(points) + "。" if points else "目前無足夠數據支持多頭論點。"
+
+
+def bear_case(related_findings) -> str:
+    if not related_findings:
+        return "目前無明確風險證據，但缺少證據不等於沒有風險。"
+    return f"已有 {len(related_findings)} 筆風險/機會歸因，需確認是否影響出貨、毛利或估值。"
+
+
+def moat_score(
+    related_documents: list[NewsDocument],
+    related_findings,
+    revenue: MonthlyRevenue | None,
+    financial_summary: dict[str, str] | None = None,
+) -> int:
+    score = 3
+    if len(related_documents) >= 2:
+        score += 1
+    if related_findings:
+        score += 1
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+        score += 1
+    if financial_summary and "體質改善" in financial_summary.get("strength", ""):
+        score += 1
+    return min(score, 6)
+
+
+def moat_reason(
+    score: int,
+    related_documents: list[NewsDocument],
+    related_findings,
+    revenue: MonthlyRevenue | None,
+    financial_summary: dict[str, str] | None = None,
+) -> str:
+    reasons = []
+    if len(related_documents) >= 2:
+        reasons.append(f"{len(related_documents)} 筆公司層級文本")
+    if related_findings:
+        reasons.append(f"{len(related_findings)} 筆主題/風險歸因證據")
+    if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+        reasons.append(f"月營收年增 {revenue.yoy_pct:.2f}%")
+    if financial_summary and "體質改善" in financial_summary.get("strength", ""):
+        reasons.append("財務趨勢偏改善")
+    if not reasons:
+        reasons.append("目前缺少可量化護城河證據")
+    caveat = "仍需補客戶集中度、市占、長約、認證週期與專利/技術資料。"
+    return f"{'、'.join(reasons)}，因此暫評 {score}/10；{caveat}"
+
+
+def moat_factor_text(
+    factor: str,
+    related_documents: list[NewsDocument],
+    related_findings,
+    revenue: MonthlyRevenue | None,
+    financial_summary: dict[str, str],
+) -> str:
+    text = " ".join([document.title + " " + document.text[:500] for document in related_documents])
+    if factor == "brand":
+        if len(related_documents) >= 5:
+            return f"公司在本主題下有 {len(related_documents)} 筆可追溯文本，顯示市場辨識度高；仍需市占與客戶結構驗證。"
+        if related_documents:
+            return f"已有 {len(related_documents)} 筆公司層級文本，但品牌/市占強度仍需更多來源交叉比對。"
+    if factor == "network":
+        return "硬體與供應鏈公司通常不是典型網路效應，系統不會把題材熱度誤判成網路效應。"
+    if factor == "switching_cost":
+        if any(keyword in text for keyword in ["認證", "導入", "長約", "客戶", "良率", "供應鏈"]):
+            return "文本出現客戶認證、導入或供應鏈關鍵字，可能存在轉換成本；仍需客戶與合約資料確認。"
+        return "尚未看到足夠客戶認證或導入週期證據，暫不加分。"
+    if factor == "cost":
+        if "負債權益比" in financial_summary.get("debt_trend", "") or "利率約" in financial_summary.get("margin_trend", ""):
+            return f"可用財報顯示 {financial_summary.get('margin_trend')} {financial_summary.get('debt_trend')}，可作為成本優勢初步檢查。"
+        if revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 20:
+            return f"月營收年增 {revenue.yoy_pct:.2f}% 顯示規模動能，但仍需毛利率驗證成本優勢。"
+    if factor == "technology":
+        keywords = [keyword for keyword in ["專利", "先進製程", "CoWoS", "HBM", "液冷", "導軌", "ASIC"] if keyword in text]
+        if keywords:
+            return f"文本出現 {', '.join(keywords[:4])} 等技術/產品關鍵字，可列為技術壁壘候選；仍需官方技術或專利來源驗證。"
+    return "目前證據不足，系統保留為待補資料，不自動給護城河加分。"
+
+
+def company_rating(
+    snapshot: MarketSnapshot | None,
+    revenue: MonthlyRevenue | None,
+    related_documents: list[NewsDocument],
+    related_findings,
+) -> str:
+    if not snapshot:
+        return "避免"
+    if related_findings:
+        return "持有/觀察"
+    if len(related_documents) >= 2 and revenue and revenue.yoy_pct is not None and revenue.yoy_pct > 10:
+        return "持有"
+    return "持有/觀察"
+
+
 def filing_type_label(document_type: str) -> str:
     labels = {
         "annual_report": "年報",

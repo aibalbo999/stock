@@ -15,7 +15,8 @@ from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import NewsRepository
 from app.services.source_relevance import SourceRelevanceAnalyzer
-from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery_models import TopicDiscoveryPlan
 
 
 def discovery_analysis_mode(payload: Any) -> str:

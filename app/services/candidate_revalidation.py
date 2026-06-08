@@ -15,7 +15,8 @@ from app.services.source_quality import (
     filter_formal_evidence_documents,
     is_formal_evidence_source,
 )
-from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery_models import TopicDiscoveryPlan
 from app.services.whitelist import SupplyChainWhitelist
 
 

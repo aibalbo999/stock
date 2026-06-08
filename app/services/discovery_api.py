@@ -8,7 +8,8 @@ from typing import Any
 from app.core.time import today_taipei
 from app.services.ingestion import IngestionPipeline
 from app.services.persistence import NewsRepository
-from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery_models import TopicDiscoveryPlan
 
 
 class DiscoveryApiService:

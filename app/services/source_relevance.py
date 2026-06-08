@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import Counter
 
 from app.models.schemas import NewsDocument
-from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery_models import TopicDiscoveryPlan
 
 
 class SourceRelevanceAnalyzer:

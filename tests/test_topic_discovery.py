@@ -1,9 +1,11 @@
 from datetime import date
+from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
 from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
+from app.services import topic_discovery_models
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -53,6 +55,17 @@ def test_parse_topic_discovery_plan() -> None:
     assert plan.subtopics[0].required_evidence == ["產能", "訂單"]
     assert plan.subtopics[0].risk_focus == ["供給瓶頸"]
     assert plan.candidate_companies[0].ticker == "2330"
+
+
+def test_topic_discovery_models_live_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    models_source = Path("app/services/topic_discovery_models.py").read_text()
+
+    assert TopicDiscoveryPlan is topic_discovery_models.TopicDiscoveryPlan
+    assert DiscoveryPlanQuality is topic_discovery_models.DiscoveryPlanQuality
+    assert "class TopicDiscoveryPlan(" not in service_source
+    assert "class TopicDiscoveryPlan(" in models_source
+    assert "class ValidatedCandidate(" in models_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

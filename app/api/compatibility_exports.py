@@ -133,7 +133,8 @@ from app.services.source_relevance import SourceRelevanceAnalyzer
 from app.services.standard_pipeline import StandardReportPipelineService
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
 from app.services.supply_chain_graph_neo4j import Neo4jGraphImportService
-from app.services.topic_discovery import TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import TopicDiscoveryService
+from app.services.topic_discovery_models import TopicDiscoveryPlan
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import (
     DISCOVERED_PIPELINE_STEPS,

@@ -139,6 +139,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_task_ui_status_extracted")
             and frontend_status.get("frontend_data_enrichment_status_extracted")
+            and frontend_status.get("frontend_settings_ui_status_extracted")
             and frontend_status.get("external_css_loaded")
             and frontend_status.get("external_report_css_loaded")
             and frontend_status.get("report_html_renderer_extracted")

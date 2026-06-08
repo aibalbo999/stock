@@ -15,6 +15,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_external_deployment.py"
     ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
+    status_frontend_settings_source = Path("app/services/status_frontend_settings.py").read_text()
     status_frontend_tasks_source = Path("app/services/status_frontend_tasks.py").read_text()
 
     assert "frontend" in status
@@ -39,6 +40,13 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "frontend_report_ui_status(source_context)" in status_frontend_source
     assert '"ui_report_observability_summary_enabled"' not in status_frontend_source
     assert '"ui_report_sections_extracted"' not in status_frontend_source
+    assert "def frontend_settings_ui_status(" in status_frontend_settings_source
+    assert "frontend_settings_ui_status(source_context)" in status_frontend_source
+    assert '"ui_maintenance_panels_extracted"' not in status_frontend_source
+    assert '"ui_system_settings_tabs_extracted"' not in status_frontend_source
+    assert '"ui_api_client_extracted"' not in status_frontend_source
+    assert '"ui_api_loaders_extracted"' not in status_frontend_source
+    assert '"ui_llm_quota_panel_extracted"' not in status_frontend_source
     assert "def frontend_task_ui_status(" in status_frontend_tasks_source
     assert "frontend_task_ui_status(source_context)" in status_frontend_source
     assert '"ui_task_failure_drilldown_enabled"' not in status_frontend_source
@@ -59,6 +67,10 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_report_ui_status_extracted"] is True
     assert status["frontend"]["frontend_report_ui_status_path"] == (
         "app/services/status_frontend_reports.py"
+    )
+    assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
+    assert status["frontend"]["frontend_settings_ui_status_path"] == (
+        "app/services/status_frontend_settings.py"
     )
     assert status["frontend"]["frontend_task_ui_status_extracted"] is True
     assert status["frontend"]["frontend_task_ui_status_path"] == (
@@ -220,6 +232,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True

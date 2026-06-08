@@ -6,9 +6,71 @@ from typing import Any
 
 import httpx
 
-from app.data_sources import market_provider_runtime
+from app.data_sources import market_parsers, market_provider_runtime
+from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 
 FINMIND_DATA_URL = "https://api.finmindtrade.com/api/v4/data"
+PRICE_DATASET = "TaiwanStockPrice"
+MONTHLY_REVENUE_DATASET = "TaiwanStockMonthRevenue"
+VALUATION_DATASET = "TaiwanStockPER"
+FINANCIAL_DATASETS = {
+    "TaiwanStockFinancialStatements": "income_statement",
+    "TaiwanStockBalanceSheet": "balance_sheet",
+    "TaiwanStockCashFlowsStatement": "cash_flow",
+}
+
+FetchFinmindRows = Callable[[str, str, date, date], Awaitable[list[dict]]]
+
+
+async def fetch_price_history(
+    *,
+    ticker: str,
+    start_date: date,
+    end_date: date,
+    fetch_rows: FetchFinmindRows,
+) -> list[MarketSnapshot]:
+    rows = await fetch_rows(PRICE_DATASET, ticker, start_date, end_date)
+    return [market_parsers.row_to_snapshot(row) for row in rows]
+
+
+async def fetch_monthly_revenue(
+    *,
+    ticker: str,
+    start_date: date,
+    end_date: date,
+    fetch_rows: FetchFinmindRows,
+) -> list[MonthlyRevenue]:
+    rows = await fetch_rows(MONTHLY_REVENUE_DATASET, ticker, start_date, end_date)
+    return [market_parsers.row_to_monthly_revenue(row) for row in rows]
+
+
+async def fetch_financial_metrics(
+    *,
+    ticker: str,
+    start_date: date,
+    end_date: date,
+    fetch_rows: FetchFinmindRows,
+) -> list[FinancialMetric]:
+    metrics: list[FinancialMetric] = []
+    for dataset, statement_type in FINANCIAL_DATASETS.items():
+        rows = await fetch_rows(dataset, ticker, start_date, end_date)
+        metrics.extend(
+            market_parsers.row_to_financial_metric(row, statement_type, dataset)
+            for row in rows
+            if market_parsers.float_or_none(row.get("value")) is not None
+        )
+    return metrics
+
+
+async def fetch_valuation(
+    *,
+    ticker: str,
+    start_date: date,
+    end_date: date,
+    fetch_rows: FetchFinmindRows,
+) -> list[ValuationMetric]:
+    rows = await fetch_rows(VALUATION_DATASET, ticker, start_date, end_date)
+    return [market_parsers.row_to_valuation_metric(row) for row in rows]
 
 
 async def fetch_finmind_rows(

@@ -223,8 +223,12 @@ class MarketDataClient:
             return cached
 
         try:
-            rows = await self._fetch_finmind_rows("TaiwanStockMonthRevenue", ticker, start_date, end_date)
-            revenues = [self._row_to_monthly_revenue(row) for row in rows]
+            revenues = await market_finmind.fetch_monthly_revenue(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                fetch_rows=self._fetch_finmind_rows,
+            )
         except Exception:
             revenues = await self._fetch_official_openapi_monthly_revenue(ticker, start_date, end_date)
             if revenues:
@@ -301,20 +305,13 @@ class MarketDataClient:
         if cached is not None:
             return cached
 
-        datasets = {
-            "TaiwanStockFinancialStatements": "income_statement",
-            "TaiwanStockBalanceSheet": "balance_sheet",
-            "TaiwanStockCashFlowsStatement": "cash_flow",
-        }
-        metrics: list[FinancialMetric] = []
         try:
-            for dataset, statement_type in datasets.items():
-                rows = await self._fetch_finmind_rows(dataset, ticker, start_date, end_date)
-                metrics.extend(
-                    self._row_to_financial_metric(row, statement_type, dataset)
-                    for row in rows
-                    if self._float_or_none(row.get("value")) is not None
-                )
+            metrics = await market_finmind.fetch_financial_metrics(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                fetch_rows=self._fetch_finmind_rows,
+            )
         except Exception:
             metrics = await self._fetch_official_openapi_financial_metrics(
                 ticker,
@@ -391,8 +388,12 @@ class MarketDataClient:
             return cached
 
         try:
-            rows = await self._fetch_finmind_rows("TaiwanStockPER", ticker, start_date, end_date)
-            valuations = [self._row_to_valuation_metric(row) for row in rows]
+            valuations = await market_finmind.fetch_valuation(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                fetch_rows=self._fetch_finmind_rows,
+            )
         except Exception:
             valuations = await self._fetch_official_openapi_valuation(ticker, start_date, end_date)
             if valuations:
@@ -516,13 +517,12 @@ class MarketDataClient:
             try:
                 if provider == "finmind":
                     attempted_provider = True
-                    rows = await self._fetch_finmind_rows(
-                        "TaiwanStockPrice",
-                        ticker,
-                        start_date,
-                        end_date,
+                    snapshots = await market_finmind.fetch_price_history(
+                        ticker=ticker,
+                        start_date=start_date,
+                        end_date=end_date,
+                        fetch_rows=self._fetch_finmind_rows,
                     )
-                    snapshots = [self._row_to_snapshot(row) for row in rows]
                 elif provider == "fugle":
                     if not self.fugle_api_key:
                         skipped_provider_error = MarketDataProviderUnavailable(

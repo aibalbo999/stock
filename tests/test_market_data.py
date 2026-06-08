@@ -176,11 +176,18 @@ def test_finmind_provider_logic_lives_outside_client() -> None:
 
     assert market_finmind.FINMIND_DATA_URL == "https://api.finmindtrade.com/api/v4/data"
     assert "market_finmind.fetch_finmind_rows" in client_source
+    assert "market_finmind.fetch_price_history" in client_source
+    assert "market_finmind.fetch_financial_metrics" in client_source
     assert "FINMIND_DATA_URL" in finmind_source
+    assert "FINANCIAL_DATASETS" in finmind_source
     assert "client.get(" not in client_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
         "async def _fetch_price_history_uncached(",
         maxsplit=1,
     )[0]
+    assert "TaiwanStockFinancialStatements" not in client_source.split(
+        "async def get_financial_metrics_history(",
+        maxsplit=1,
+    )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
 
 
 def test_price_history_uses_redis_cache_hit(monkeypatch) -> None:

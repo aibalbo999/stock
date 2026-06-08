@@ -12,11 +12,16 @@ def system_router_client(
     service_status: dict | None = None,
     upgrade_audit: dict | None = None,
     upgrade_audit_func=None,
+    maintenance_diagnostic_catalog: dict | None = None,
+    maintenance_diagnostic_run_func=None,
 ) -> TestClient:
     router = create_system_router(
         db_status_func=lambda: db_status or {},
         service_status_func=lambda: service_status or {},
         upgrade_audit_func=upgrade_audit_func or (lambda **kwargs: upgrade_audit or {}),
+        maintenance_diagnostic_catalog_func=lambda: maintenance_diagnostic_catalog or {},
+        maintenance_diagnostic_run_func=maintenance_diagnostic_run_func
+        or (lambda action_id: {"action_id": action_id}),
     )
 
     app = FastAPI()
@@ -85,3 +90,45 @@ def test_system_router_upgrade_audit_endpoint_passes_strict_external_flag() -> N
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     assert captured["kwargs"] == {"strict_external": True}
+
+
+def test_system_router_maintenance_diagnostics_catalog_endpoint() -> None:
+    response = system_router_client(
+        maintenance_diagnostic_catalog={
+            "execution_policy": "allowlisted_read_only_subprocess",
+            "actions": [{"id": "upgrade_audit", "read_only": True}],
+        }
+    ).get("/maintenance/diagnostics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution_policy"] == "allowlisted_read_only_subprocess"
+    assert body["actions"] == [{"id": "upgrade_audit", "read_only": True}]
+
+
+def test_system_router_maintenance_diagnostic_run_endpoint_delegates_action_id() -> None:
+    captured = {}
+
+    def fake_run(action_id: str) -> dict:
+        captured["action_id"] = action_id
+        return {"id": action_id, "status": "success", "stdout_tail": "ok"}
+
+    response = system_router_client(maintenance_diagnostic_run_func=fake_run).post(
+        "/maintenance/diagnostics/upgrade_audit/run"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert captured["action_id"] == "upgrade_audit"
+
+
+def test_system_router_maintenance_diagnostic_run_endpoint_rejects_unknown_action() -> None:
+    def fake_run(action_id: str) -> dict:
+        raise ValueError(f"Unknown maintenance diagnostic action: {action_id}")
+
+    response = system_router_client(maintenance_diagnostic_run_func=fake_run).post(
+        "/maintenance/diagnostics/rm-rf/run"
+    )
+
+    assert response.status_code == 404
+    assert "Unknown maintenance diagnostic action" in response.json()["detail"]

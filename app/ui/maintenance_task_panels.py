@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.ui.api_actions import run_api_action_or_none
-from app.ui.api_client import api_task_post
+from app.ui.api_client import api_post, api_task_post
 from app.ui.task_failure_diagnostics import (
     task_failure_action_route_rows,
     task_failure_drilldown_rows,
@@ -21,6 +21,7 @@ from app.ui.task_status_panel import render_task_status_panel
 def render_background_task_observability_panel(
     service_snapshot: dict,
     task_summary: dict,
+    maintenance_diagnostics: dict | None = None,
 ) -> None:
     with st.expander("背景任務觀測", expanded=False):
         st.caption("Queue / Worker readiness")
@@ -44,6 +45,7 @@ def render_background_task_observability_panel(
         if smoke_command:
             st.caption("診斷指令")
             st.code(smoke_command, language="bash")
+        _render_maintenance_diagnostic_actions(maintenance_diagnostics or {})
         _render_task_summary_alerts(task_summary)
         _render_task_summary_metrics(task_summary)
         _render_task_failure_drilldown(task_summary)
@@ -147,3 +149,74 @@ def _render_task_retry_controls(retry_options: list[dict]) -> None:
     with retry_cols[1]:
         if st.button("查看選取任務", key="maintenance_inspect_failed_task"):
             st.session_state["maintenance_inspect_task_id"] = selected_retry_task_id
+
+
+def maintenance_diagnostic_action_rows(maintenance_diagnostics: dict) -> list[dict]:
+    actions = (
+        maintenance_diagnostics.get("actions")
+        if isinstance(maintenance_diagnostics.get("actions"), list)
+        else []
+    )
+    return [
+        {
+            "動作": action.get("label") or action.get("id") or "-",
+            "狀態": "可執行" if action.get("read_only") else "停用",
+            "說明": action.get("description") or "-",
+            "指令": action.get("display_command") or "-",
+            "Timeout": int(action.get("timeout_seconds") or 0),
+        }
+        for action in actions
+        if isinstance(action, dict)
+    ]
+
+
+def _render_maintenance_diagnostic_actions(maintenance_diagnostics: dict) -> None:
+    action_rows = maintenance_diagnostic_action_rows(maintenance_diagnostics)
+    actions = [
+        action
+        for action in maintenance_diagnostics.get("actions") or []
+        if isinstance(action, dict) and action.get("id") and action.get("read_only")
+    ]
+    if not action_rows or not actions:
+        return
+    st.caption("維護診斷動作")
+    st.dataframe(action_rows, width="stretch", hide_index=True)
+    action_by_id = {str(action["id"]): action for action in actions}
+    selected_action_id = st.selectbox(
+        "選擇診斷動作",
+        options=list(action_by_id),
+        format_func=lambda action_id: str(action_by_id[action_id].get("label") or action_id),
+        key="maintenance_diagnostic_action_select",
+    )
+    if st.button("執行診斷", key="maintenance_run_diagnostic_action"):
+        result = run_api_action_or_none(
+            lambda: api_post(
+                f"/maintenance/diagnostics/{selected_action_id}/run",
+                {},
+                timeout=120,
+            ),
+            error_message="診斷執行失敗",
+        )
+        if isinstance(result, dict):
+            _render_maintenance_diagnostic_result(result)
+
+
+def _render_maintenance_diagnostic_result(result: dict) -> None:
+    status = str(result.get("status") or "")
+    message = str(result.get("message") or status or "診斷完成")
+    if status == "success":
+        st.success(message)
+    elif status in {"failed", "timeout"}:
+        st.warning(message)
+    else:
+        st.info(message)
+    output = "\n".join(
+        part
+        for part in (
+            str(result.get("stdout_tail") or "").strip(),
+            str(result.get("stderr_tail") or "").strip(),
+        )
+        if part
+    )
+    if output:
+        st.code(output, language="text")

@@ -151,8 +151,11 @@ def frontend_status() -> dict:
         and "from app.ui.maintenance_panels import (" in system_settings_maintenance_source
         and "render_external_deployment_panel(upgrade_audit, service_snapshot)"
         in system_settings_maintenance_source
-        and "render_background_task_observability_panel(service_snapshot, task_summary)"
+        and "render_background_task_observability_panel(\n        service_snapshot,"
         in system_settings_maintenance_source
+        and 'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'
+        in system_settings_maintenance_source
+        and "maintenance_diagnostics,\n    )" in system_settings_maintenance_source
         and "external_deployment_warning_rows(upgrade_audit)"
         not in system_settings_maintenance_source
         and 'st.expander("背景任務觀測"' not in system_settings_maintenance_source,
@@ -237,6 +240,19 @@ def frontend_status() -> dict:
         and "Queue 執行" in task_queue_diagnostics_source
         and "def task_queue_processing_label(" in task_queue_diagnostics_source,
         "ui_task_queue_diagnostics_path": "app/ui/task_queue_diagnostics.py",
+        "ui_maintenance_diagnostic_actions_enabled": (
+            'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'
+            in system_settings_maintenance_source
+            and "maintenance_diagnostics,\n    )" in system_settings_maintenance_source
+            and "def maintenance_diagnostic_action_rows(" in maintenance_task_panels_source
+            and "維護診斷動作" in maintenance_task_panels_source
+            and "選擇診斷動作" in maintenance_task_panels_source
+            and "maintenance_run_diagnostic_action" in maintenance_task_panels_source
+            and 'f"/maintenance/diagnostics/{selected_action_id}/run"'
+            in maintenance_task_panels_source
+            and "timeout=120" in maintenance_task_panels_source
+        ),
+        "ui_maintenance_diagnostic_actions_path": "app/ui/maintenance_task_panels.py",
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
         in external_deployment_source
         and "def external_deployment_readiness_rows(" in external_deployment_source

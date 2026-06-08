@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from streamlit_ui_test_helpers import load_report_helpers
 
 
@@ -193,6 +194,48 @@ def test_task_queue_repair_rows_prefer_status_payload() -> None:
             "修復指令": ".venv/bin/python scripts/upgrade_audit.py",
             "驗證指令": ".venv/bin/python scripts/upgrade_audit.py --json",
         }
+    ]
+
+
+def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> None:
+    rows = maintenance_diagnostic_action_rows(
+        {
+            "actions": [
+                {
+                    "id": "upgrade_audit",
+                    "label": "Upgrade audit",
+                    "description": "檢查核心升級能力與外部部署選配狀態。",
+                    "display_command": ".venv/bin/python scripts/upgrade_audit.py",
+                    "timeout_seconds": 90,
+                    "read_only": True,
+                },
+                {
+                    "id": "unsafe_action",
+                    "label": "Unsafe action",
+                    "description": "",
+                    "display_command": "",
+                    "timeout_seconds": 0,
+                    "read_only": False,
+                },
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "動作": "Upgrade audit",
+            "狀態": "可執行",
+            "說明": "檢查核心升級能力與外部部署選配狀態。",
+            "指令": ".venv/bin/python scripts/upgrade_audit.py",
+            "Timeout": 90,
+        },
+        {
+            "動作": "Unsafe action",
+            "狀態": "停用",
+            "說明": "-",
+            "指令": "-",
+            "Timeout": 0,
+        },
     ]
 
 

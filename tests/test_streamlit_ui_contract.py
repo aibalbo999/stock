@@ -344,7 +344,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "local_dependency_wait" in source
     assert '"驗證指令"' in source
     assert "render_external_deployment_panel(upgrade_audit, service_snapshot)" in source
-    assert "render_background_task_observability_panel(service_snapshot, task_summary)" in source
+    assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source
+    assert "render_background_task_observability_panel(\n        service_snapshot," in source
+    assert "maintenance_diagnostics,\n    )" in source
+    assert "def maintenance_diagnostic_action_rows(" in source
+    assert "維護診斷動作" in source
+    assert "選擇診斷動作" in source
+    assert "maintenance_run_diagnostic_action" in source
+    assert 'f"/maintenance/diagnostics/{selected_action_id}/run"' in source
+    assert "timeout=120" in source
     assert (
         "external_deployment_warning_rows(upgrade_audit)"
         not in Path("app/ui/system_settings_maintenance.py").read_text()

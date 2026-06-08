@@ -16,6 +16,7 @@ from app.services import (
     discovered_candidate_filings,
     discovered_market_payload,
     discovered_pipeline_checkpoints,
+    discovered_pipeline_results,
 )
 from app.services.discovered_pipeline import (
     DiscoveredTopicPipelineService,
@@ -141,6 +142,43 @@ def test_discovered_checkpoint_payload_logic_lives_outside_pipeline_orchestrator
     assert "NewsDocument.model_validate(" not in pipeline_source
     assert "json.loads(" in checkpoint_source
     assert "NewsDocument.model_validate(" in checkpoint_source
+
+
+def test_discovered_pipeline_result_payload_lives_outside_pipeline_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    results_source = Path("app/services/discovered_pipeline_results.py").read_text()
+
+    result = discovered_pipeline_results.discovered_pipeline_result_payload(
+        run_id=77,
+        run_record_updated=True,
+        report_id=88,
+        active_report_id=99,
+        auto_follow_up={"status": "completed"},
+        discovery={"plan": {}},
+        queries=["AI 伺服器"],
+        fixed_source_ingestion={"count": 1},
+        dynamic_query_ingestion=[],
+        candidate_filing_ingestion=None,
+        company_filing_ingestion={"stored_count": 0},
+        source_audit={"coverage": "ok"},
+        candidate_whitelist=[{"ticker": "2330", "status": "evidence_supported"}],
+        promoted_tickers=["2330"],
+        run_payload={"market": [{"ticker": "2330"}], "market_history_count": 3},
+        quality_gate={"status": "pass"},
+        report_execution={"evidence_count": 5},
+        request={"topic": "AI 產業鏈"},
+        topic="AI 產業鏈",
+        report={"title": "AI report"},
+        resumed_from_step="report_build",
+    )
+
+    assert result["active_report_id"] == 99
+    assert result["market"] == [{"ticker": "2330"}]
+    assert result["market_history_count"] == 3
+    assert result["monthly_revenue"] == []
+    assert result["resumed_from_step"] == "report_build"
+    assert '"market_history_count": run_payload' not in pipeline_source
+    assert '"market_history_count": run_payload' in results_source
 
 
 class FakeRun:

@@ -422,7 +422,7 @@ docker compose up -d celery-worker celery-beat
 - `POST /pipeline/runs/{run_id}/resume`
 - `POST /pipeline/discovered-runs/{run_id}/resume`
 - `POST /pipeline/run_discovered`
-- `POST /reports/generate`：同步產生報告；預設不進行資料 pre-refresh 或市場資料品質修復，避免 API/UI 等待長時間網路刷新。若確定需要同步修復，可明確設定 `SYNC_REPORT_PRE_REFRESH_ENABLED=true` 或 `SYNC_REPORT_QUALITY_RECOVERY_ENABLED=true`
+- `POST /reports/generate`：同步產生報告；不會在 request path 內執行資料 pre-refresh 或市場資料品質修復，避免 API/UI 等待長時間網路刷新。若設定 `SYNC_REPORT_PRE_REFRESH_ENABLED=true` 或 `SYNC_REPORT_QUALITY_RECOVERY_ENABLED=true`，run payload 只會記錄應改走 `POST /reports/generate_async` 或 `POST /tasks/data-operation` 的背景任務提示。
 - `POST /reports/generate_async`：排入 Celery 背景產報任務；建議 UI 與長流程優先使用此 endpoint 或 pipeline endpoint 輪詢任務狀態
 - `GET /reports`
 - `GET /reports/{report_id}`

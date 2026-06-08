@@ -20,10 +20,16 @@ def api_tasking_architecture_status(source_context: ApiArchitectureSourceContext
         in report_generation_api_source
     )
     sync_report_async_refresh_gates_present = (
-        '"IngestionPipeline"] if sync_pre_refresh_enabled else None'
+        "sync_pre_refresh_requested=sync_pre_refresh_enabled"
         in report_service_factory_source
-        and '"IngestionPipeline"] if sync_quality_recovery_enabled else None'
+        and "sync_quality_recovery_requested=sync_quality_recovery_enabled"
         in report_service_factory_source
+    )
+    sync_report_background_hint_present = (
+        '"background_task_endpoint": "POST /reports/generate_async"'
+        in report_generation_api_source
+        and '"data_operation_endpoint": "POST /tasks/data-operation"'
+        in report_generation_api_source
     )
     sync_report_refresh_defaults_disabled = (
         "sync_report_pre_refresh_enabled: bool = False" in sources["config"]
@@ -48,6 +54,7 @@ def api_tasking_architecture_status(source_context: ApiArchitectureSourceContext
             sync_report_async_bridge_guard_present,
             sync_report_async_refresh_gates_present,
             sync_report_refresh_defaults_disabled,
+            sync_report_background_hint_present,
         ),
     }
 
@@ -150,6 +157,7 @@ def _sync_report_refresh_status(
     sync_report_async_bridge_guard_present: bool,
     sync_report_async_refresh_gates_present: bool,
     sync_report_refresh_defaults_disabled: bool,
+    sync_report_background_hint_present: bool,
 ) -> dict:
     config_source = source_context.sources["config"]
     return {
@@ -168,6 +176,7 @@ def _sync_report_refresh_status(
             sync_report_blocking_async_refresh_calls
         ),
         "sync_report_async_bridge_guard_present": sync_report_async_bridge_guard_present,
+        "sync_report_background_task_hint_present": sync_report_background_hint_present,
         "sync_report_blocking_async_calls_gated": (
             not sync_report_blocking_async_refresh_calls or sync_report_async_refresh_gates_present
         ),

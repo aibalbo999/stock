@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import timedelta
 
-from app.core.async_bridge import run_async_from_sync
-from app.core.time import today_taipei
 from app.models.schemas import ReportRequest, ReportResponse
-from app.services.ingestion import IngestionPipeline
+from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.persistence import AnalysisRunRepository, ReportRepository
 from app.services.report_generator import ReportExecutionError
 from app.services.report_quality import should_recover_market_data_quality
-from app.services.llm_usage import record_llm_usage_from_report_execution
 
 
 class SyncReportGenerationApiService:
@@ -23,20 +19,24 @@ class SyncReportGenerationApiService:
         report_repository_cls: type[ReportRepository] = ReportRepository,
         report_build_service_factory: Callable[[], object],
         count_sufficient_company_filings_func: Callable[[list[str]], int],
-        ingestion_pipeline_cls: type[IngestionPipeline] | None = None,
-        quality_recovery_pipeline_cls: type[IngestionPipeline] | None = None,
+        ingestion_pipeline_cls: type | None = None,
+        quality_recovery_pipeline_cls: type | None = None,
+        sync_pre_refresh_requested: bool = False,
+        sync_quality_recovery_requested: bool = False,
         market_quality_recovery_required_func: Callable[[dict | None], bool] = should_recover_market_data_quality,
-        today_func: Callable = today_taipei,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls
         self.report_repository_cls = report_repository_cls
         self.report_build_service_factory = report_build_service_factory
         self.count_sufficient_company_filings_func = count_sufficient_company_filings_func
-        self.ingestion_pipeline_cls = ingestion_pipeline_cls
-        self.quality_recovery_pipeline_cls = quality_recovery_pipeline_cls
+        self.sync_pre_refresh_requested = bool(
+            sync_pre_refresh_requested or ingestion_pipeline_cls is not None
+        )
+        self.sync_quality_recovery_requested = bool(
+            sync_quality_recovery_requested or quality_recovery_pipeline_cls is not None
+        )
         self.market_quality_recovery_required_func = market_quality_recovery_required_func
-        self.today_func = today_func
 
     def generate(self, request: ReportRequest) -> ReportResponse:
         with self.session_scope_factory() as session:
@@ -50,8 +50,9 @@ class SyncReportGenerationApiService:
             build_kwargs = {
                 "company_filing_sufficient_count": self.count_sufficient_company_filings_func(request.tickers),
             }
-            if ingestion_summary:
-                build_kwargs["source_count"] = (ingestion_summary.get("news") or {}).get("count", 0)
+            news_count = (ingestion_summary.get("news") or {}).get("count")
+            if news_count is not None:
+                build_kwargs["source_count"] = news_count
             report_result = self.report_build_service_factory().build(request, **build_kwargs)
             report_result, quality_recovery = self._recover_market_quality_if_needed(
                 request,
@@ -96,11 +97,11 @@ class SyncReportGenerationApiService:
             self.analysis_run_repository_cls(session).mark_failed(run_id, error)
 
     def _pre_report_refresh(self, request: ReportRequest) -> dict:
-        if self.ingestion_pipeline_cls is None:
+        if not self.sync_pre_refresh_requested:
             return {}
-        return run_async_from_sync(
-            self.ingestion_pipeline_cls().pre_report_refresh(request),
-            operation="sync_report.pre_report_refresh",
+        return _background_task_required_payload(
+            reason="sync_report_pre_refresh_requires_background_task",
+            requested_tickers=request.tickers,
         )
 
     def _recover_market_quality_if_needed(
@@ -112,23 +113,34 @@ class SyncReportGenerationApiService:
         quality_gate = report_result.get("quality_gate") or {}
         if not self.market_quality_recovery_required_func(quality_gate):
             return report_result, None
-        if self.quality_recovery_pipeline_cls is None or not request.tickers:
+        if not request.tickers:
             return report_result, {"status": "skipped", "reason": "refresh_market_unavailable"}
-        today = self.today_func()
-        market_summary = run_async_from_sync(
-            self.quality_recovery_pipeline_cls().refresh_market(
-                request.tickers,
-                today - timedelta(days=max(request.lookback_days, 240)),
-                today,
-                filter_allowed=False,
-            ),
-            operation="sync_report.refresh_market_quality_recovery",
-        )
-        rebuilt = self.report_build_service_factory().build(request, **build_kwargs)
-        return rebuilt, {
-            "status": "completed",
+        if self.sync_quality_recovery_requested:
+            return report_result, {
+                **_background_task_required_payload(
+                    reason="sync_report_quality_recovery_requires_background_task",
+                    requested_tickers=request.tickers,
+                ),
+                "quality_gate_before": quality_gate,
+            }
+        return report_result, {
+            "status": "skipped",
+            "reason": "sync_report_quality_recovery_disabled",
             "action": "refresh_market",
             "quality_gate_before": quality_gate,
-            "quality_gate_after": rebuilt.get("quality_gate") or {},
-            "market": market_summary,
         }
+
+
+def _background_task_required_payload(*, reason: str, requested_tickers: list[str]) -> dict:
+    return {
+        "status": "skipped",
+        "reason": reason,
+        "action": "use_background_task",
+        "requested_tickers": list(requested_tickers),
+        "background_task_endpoint": "POST /reports/generate_async",
+        "data_operation_endpoint": "POST /tasks/data-operation",
+        "data_operation_payload": {
+            "operation": "market_refresh",
+            "payload": {"tickers": list(requested_tickers)},
+        },
+    }

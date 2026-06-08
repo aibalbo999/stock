@@ -82,12 +82,12 @@ def test_sync_report_generation_factory_disables_network_recovery_by_default() -
         )
     )
 
-    assert service.ingestion_pipeline_cls is None
-    assert service.quality_recovery_pipeline_cls is None
+    assert service.sync_pre_refresh_requested is False
+    assert service.sync_quality_recovery_requested is False
     assert service.market_quality_recovery_required_func({"status": "caution"}) is False
 
 
-def test_sync_report_generation_factory_can_opt_into_sync_network_recovery() -> None:
+def test_sync_report_generation_factory_can_opt_into_background_refresh_hints() -> None:
     service, should_recover = _sync_report_generation_service(
         SimpleNamespace(
             sync_report_pre_refresh_enabled=True,
@@ -96,8 +96,8 @@ def test_sync_report_generation_factory_can_opt_into_sync_network_recovery() -> 
         )
     )
 
-    assert service.ingestion_pipeline_cls is DummyIngestionPipeline
-    assert service.quality_recovery_pipeline_cls is DummyIngestionPipeline
+    assert service.sync_pre_refresh_requested is True
+    assert service.sync_quality_recovery_requested is True
     assert service.market_quality_recovery_required_func is should_recover
     assert service.market_quality_recovery_required_func({"status": "caution"}) is True
 
@@ -111,7 +111,7 @@ def test_sync_report_generation_factory_honors_global_recovery_disable() -> None
         )
     )
 
-    assert service.quality_recovery_pipeline_cls is None
+    assert service.sync_quality_recovery_requested is False
     assert service.market_quality_recovery_required_func({"status": "caution"}) is False
 
 

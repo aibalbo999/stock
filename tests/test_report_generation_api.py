@@ -88,7 +88,7 @@ def test_sync_report_generation_service_records_run_and_report_payload() -> None
     assert "failed" not in captured
 
 
-def test_sync_report_generation_service_refreshes_data_before_build() -> None:
+def test_sync_report_generation_service_records_background_hint_for_pre_refresh() -> None:
     captured = {"updated_payloads": []}
     response = ReportResponse(
         title="AI 產業鏈 自動分析報告",
@@ -96,9 +96,8 @@ def test_sync_report_generation_service_refreshes_data_before_build() -> None:
     )
 
     class FakeIngestionPipeline:
-        async def pre_report_refresh(self, request):
-            captured["refresh_request"] = request
-            return {"news": {"count": 7}, "market": {"stored": [{"ticker": "2330"}]}}
+        def __init__(self) -> None:
+            raise AssertionError("sync report must not run network refresh")
 
     class FakeBuildService:
         def build(self, request, **kwargs):
@@ -150,42 +149,44 @@ def test_sync_report_generation_service_refreshes_data_before_build() -> None:
     result = service.generate(request)
 
     assert result is response
-    assert captured["refresh_request"] == request
-    assert captured["build_kwargs"]["source_count"] == 7
-    assert captured["updated_payloads"][0][1]["ingestion"]["market"]["stored"] == [{"ticker": "2330"}]
+    assert "source_count" not in captured["build_kwargs"]
+    ingestion = captured["updated_payloads"][0][1]["ingestion"]
+    assert ingestion == {
+        "status": "skipped",
+        "reason": "sync_report_pre_refresh_requires_background_task",
+        "action": "use_background_task",
+        "requested_tickers": ["2330"],
+        "background_task_endpoint": "POST /reports/generate_async",
+        "data_operation_endpoint": "POST /tasks/data-operation",
+        "data_operation_payload": {
+            "operation": "market_refresh",
+            "payload": {"tickers": ["2330"]},
+        },
+    }
     assert "failed" not in captured
 
 
-def test_sync_report_generation_service_recovers_market_quality_before_storing() -> None:
+def test_sync_report_generation_service_records_background_hint_for_quality_recovery() -> None:
     captured = {"updated_payloads": []}
 
     class FakeRecoveryPipeline:
-        async def refresh_market(self, tickers, start_date, end_date, filter_allowed=True):
-            captured["refresh_market"] = {
-                "tickers": tickers,
-                "days": (end_date - start_date).days,
-                "filter_allowed": filter_allowed,
-            }
-            return {"stored": [{"ticker": "2330", "trade_date": "2026-06-02"}], "errors": []}
+        def __init__(self) -> None:
+            raise AssertionError("sync report must not run market quality recovery")
 
     class FakeBuildService:
         calls = 0
 
         def build(self, request, *, company_filing_sufficient_count=None):
             FakeBuildService.calls += 1
-            if FakeBuildService.calls == 1:
-                quality_gate = {
-                    "status": "caution",
-                    "warnings": ["股價日期不一致，最新可取得交易日未覆蓋多數股票"],
-                    "metrics": {
-                        "market_latest_trade_date_coverage": 0.5,
-                        "market_older_than_database_latest_count": 1,
-                    },
-                }
-                response = ReportResponse(title="first", markdown="# first")
-            else:
-                quality_gate = {"status": "ready", "warnings": [], "metrics": {}}
-                response = ReportResponse(title="rebuilt", markdown="# rebuilt")
+            quality_gate = {
+                "status": "caution",
+                "warnings": ["股價日期不一致，最新可取得交易日未覆蓋多數股票"],
+                "metrics": {
+                    "market_latest_trade_date_coverage": 0.5,
+                    "market_older_than_database_latest_count": 1,
+                },
+            }
+            response = ReportResponse(title="first", markdown="# first")
             return {
                 "response": response,
                 "quality_gate": quality_gate,
@@ -233,16 +234,27 @@ def test_sync_report_generation_service_recovers_market_quality_before_storing()
 
     result = service.generate(request)
 
-    assert FakeBuildService.calls == 2
-    assert result.title == "rebuilt"
-    assert captured["stored_response"].title == "rebuilt"
-    assert captured["refresh_market"]["tickers"] == ["2330"]
-    assert captured["refresh_market"]["days"] == 240
-    assert captured["refresh_market"]["filter_allowed"] is False
+    assert FakeBuildService.calls == 1
+    assert result.title == "first"
+    assert captured["stored_response"].title == "first"
     payload = captured["updated_payloads"][0][1]
-    assert payload["quality_gate"]["status"] == "ready"
+    assert payload["quality_gate"]["status"] == "caution"
+    assert payload["quality_recovery"]["status"] == "skipped"
+    assert payload["quality_recovery"]["reason"] == (
+        "sync_report_quality_recovery_requires_background_task"
+    )
+    assert payload["quality_recovery"]["action"] == "use_background_task"
+    assert payload["quality_recovery"]["background_task_endpoint"] == (
+        "POST /reports/generate_async"
+    )
+    assert payload["quality_recovery"]["data_operation_endpoint"] == (
+        "POST /tasks/data-operation"
+    )
+    assert payload["quality_recovery"]["data_operation_payload"] == {
+        "operation": "market_refresh",
+        "payload": {"tickers": ["2330"]},
+    }
     assert payload["quality_recovery"]["quality_gate_before"]["status"] == "caution"
-    assert payload["quality_recovery"]["quality_gate_after"]["status"] == "ready"
     assert "failed" not in captured
 
 

@@ -55,8 +55,8 @@ class ReportServiceFactoryMixin:
             report_repository_cls=d["ReportRepository"],
             report_build_service_factory=self.report_build,
             count_sufficient_company_filings_func=d["count_sufficient_company_filings"],
-            ingestion_pipeline_cls=d["IngestionPipeline"] if sync_pre_refresh_enabled else None,
-            quality_recovery_pipeline_cls=d["IngestionPipeline"] if sync_quality_recovery_enabled else None,
+            sync_pre_refresh_requested=sync_pre_refresh_enabled,
+            sync_quality_recovery_requested=sync_quality_recovery_enabled,
             market_quality_recovery_required_func=(
                 d["should_recover_market_data_quality"]
                 if sync_quality_recovery_enabled

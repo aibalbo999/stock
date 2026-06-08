@@ -51,6 +51,7 @@ def architecture_capabilities(
             and background_task_submission_ready
             and background_task_control_ready
             and api_status.get("sync_report_network_refresh_opt_in")
+            and api_status.get("sync_report_background_task_hint_present")
             and api_status.get("report_service_factory_extracted")
             and api_status.get("data_service_factory_extracted")
             and api_status.get("workflow_service_factory_extracted")

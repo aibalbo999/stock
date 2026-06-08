@@ -381,8 +381,9 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["sync_report_network_refresh_opt_in"] is True
     assert evidence["sync_report_pre_refresh_default_enabled"] is False
     assert evidence["sync_report_quality_recovery_default_enabled"] is False
-    assert evidence["sync_report_blocking_async_refresh_calls_present"] is True
-    assert evidence["sync_report_async_bridge_guard_present"] is True
+    assert evidence["sync_report_blocking_async_refresh_calls_present"] is False
+    assert evidence["sync_report_async_bridge_guard_present"] is False
+    assert evidence["sync_report_background_task_hint_present"] is True
     assert evidence["sync_report_blocking_async_calls_gated"] is True
     assert evidence["compatibility_service_present"] is True
     assert evidence["compatibility_service_domain_mixins_extracted"] is True

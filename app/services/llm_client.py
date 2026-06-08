@@ -12,6 +12,16 @@ import httpx
 from app.core.config import get_settings
 from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
 from app.services.llm_attempts import llm_attempt_failure_category, summarize_llm_attempts
+from app.services.llm_models import (
+    gemini_api_model_name,
+    gemini_model_candidates,
+    gemini_vision_model_candidates,
+    is_vision_model_candidate,
+    litellm_key_candidates,
+    litellm_model_candidates,
+    litellm_model_requires_api_key,
+    model_quota_cooldown_key,
+)
 from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 from app.services.llm_observability import (
     build_llm_observability_trace,
@@ -227,7 +237,7 @@ class LLMClient:
         errors: list[str] = []
         attempts: list[dict[str, object]] = list(prior_attempts)
         deadline = monotonic() + self.total_timeout_seconds
-        models = self._gemini_model_candidates()
+        models = gemini_model_candidates(self.settings)
         use_model_fallback = len(models) > 1
         daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in models:
@@ -420,7 +430,7 @@ class LLMClient:
         errors: list[str] = []
         attempts: list[dict[str, object]] = []
         deadline = monotonic() + self.total_timeout_seconds
-        models = self._gemini_model_candidates()
+        models = gemini_model_candidates(self.settings)
         use_model_fallback = len(models) > 1
         daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in models:
@@ -575,7 +585,7 @@ class LLMClient:
                 ),
             )
 
-        models = self._litellm_model_candidates()
+        models = litellm_model_candidates(self.settings)
         if not models:
             return LLMResult(
                 text="LiteLLM has no configured model candidates",
@@ -620,13 +630,13 @@ class LLMClient:
                         )
                     )
                     continue
-            key_candidates = self._litellm_key_candidates(model)
+            key_candidates = litellm_key_candidates(model, self.settings, self.rotator)
             if use_fast_model_chain_fallback and len(key_candidates) > 2:
                 key_candidates = key_candidates[:2]
             for key_index, api_key in key_candidates:
                 if stop_model_after_quota:
                     break
-                if self._litellm_model_requires_api_key(model) and not api_key:
+                if litellm_model_requires_api_key(model) and not api_key:
                     attempts.append(
                         self._attempt_record(
                             provider="litellm",
@@ -757,8 +767,8 @@ class LLMClient:
 
         models = [
             candidate
-            for candidate in self._litellm_model_candidates(preferred_model=model)
-            if self._is_vision_model_candidate(candidate)
+            for candidate in litellm_model_candidates(self.settings, preferred_model=model)
+            if is_vision_model_candidate(candidate)
         ]
         if not models:
             return LLMResult(
@@ -804,11 +814,11 @@ class LLMClient:
                         )
                     )
                     continue
-            key_candidates = self._litellm_key_candidates(candidate_model)
+            key_candidates = litellm_key_candidates(candidate_model, self.settings, self.rotator)
             for key_index, api_key in key_candidates[:2]:
                 if stop_model_after_quota:
                     break
-                if self._litellm_model_requires_api_key(candidate_model) and not api_key:
+                if litellm_model_requires_api_key(candidate_model) and not api_key:
                     attempts.append(
                         self._attempt_record(
                             provider="litellm",
@@ -909,7 +919,7 @@ class LLMClient:
         errors: list[str] = []
         attempts: list[dict[str, object]] = list(prior_attempts)
         deadline = monotonic() + self.total_timeout_seconds
-        model_candidates = self._gemini_vision_model_candidates(preferred_model=model)
+        model_candidates = gemini_vision_model_candidates(self.settings, preferred_model=model)
         use_model_fallback = len(model_candidates) > 1
         daily_exhausted = self._daily_quota_exhausted_model_keys()
         for model_name in model_candidates:
@@ -1131,7 +1141,7 @@ class LLMClient:
         )
 
     def _model_quota_cooldown_remaining(self, model: str) -> float:
-        key = self._model_quota_cooldown_key(model)
+        key = model_quota_cooldown_key(model)
         now = monotonic()
         with _model_quota_cooldowns_lock:
             until = _model_quota_cooldowns.get(key, 0.0)
@@ -1150,7 +1160,7 @@ class LLMClient:
             cooldown_seconds = self.model_quota_cooldown_seconds
         if cooldown_seconds <= 0:
             return
-        key = self._model_quota_cooldown_key(model)
+        key = model_quota_cooldown_key(model)
         until = monotonic() + cooldown_seconds
         with _model_quota_cooldowns_lock:
             _model_quota_cooldowns[key] = max(_model_quota_cooldowns.get(key, 0.0), until)
@@ -1168,15 +1178,6 @@ class LLMClient:
     @staticmethod
     def _model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
         return normalize_model_name(model) in exhausted_model_keys
-
-    @staticmethod
-    def _model_quota_cooldown_key(model: str) -> str:
-        normalized = str(model or "").strip().lower()
-        if normalized.startswith("models/"):
-            normalized = normalized.removeprefix("models/")
-        if normalized.startswith("gemini/"):
-            normalized = normalized.removeprefix("gemini/")
-        return normalized
 
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata("請只回答 ok，不要輸出任何其他文字。")
@@ -1210,117 +1211,6 @@ class LLMClient:
             fallback=result.fallback,
             attempts=result.attempts,
             observability=observability,
-        )
-
-    def _litellm_model_candidates(self, preferred_model: str | None = None) -> list[str]:
-        models = [self._litellm_model_name(preferred_model or self.settings.primary_llm_model)]
-        raw_fallbacks = str(getattr(self.settings, "llm_fallback_models", "") or "")
-        models.extend(
-            self._litellm_model_name(model.strip())
-            for model in raw_fallbacks.split(",")
-            if model.strip()
-        )
-        local_model = str(getattr(self.settings, "local_llm_model", "") or "").strip()
-        if local_model:
-            models.append(self._litellm_model_name(local_model))
-        return list(dict.fromkeys(model for model in models if model))
-
-    def _gemini_model_candidates(self, preferred_model: str | None = None) -> list[str]:
-        models = [self._gemini_api_model_name(preferred_model or self.settings.primary_llm_model)]
-        raw_fallbacks = str(getattr(self.settings, "llm_fallback_models", "") or "")
-        models.extend(
-            self._gemini_api_model_name(model.strip())
-            for model in raw_fallbacks.split(",")
-            if model.strip()
-        )
-        local_model = str(getattr(self.settings, "local_llm_model", "") or "").strip()
-        if local_model:
-            models.append(self._gemini_api_model_name(local_model))
-        return list(
-            dict.fromkeys(
-                model for model in models if model and self._is_gemini_text_model_candidate(model)
-            )
-        )
-
-    def _gemini_vision_model_candidates(self, preferred_model: str | None = None) -> list[str]:
-        return [
-            model
-            for model in self._gemini_model_candidates(preferred_model=preferred_model)
-            if self._is_vision_model_candidate(model)
-        ]
-
-    @staticmethod
-    def _gemini_api_model_name(model: str | None) -> str:
-        normalized = str(model or "").strip()
-        if normalized.startswith("models/"):
-            normalized = normalized.removeprefix("models/")
-        if normalized.startswith("gemini/"):
-            normalized = normalized.removeprefix("gemini/")
-        return normalized
-
-    @staticmethod
-    def _is_gemini_text_model_candidate(model: str) -> bool:
-        normalized = str(model or "").strip().lower()
-        if not normalized.startswith(("gemini", "gemma")):
-            return False
-        return not any(
-            blocked in normalized
-            for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
-        )
-
-    @staticmethod
-    def _is_vision_model_candidate(model: str) -> bool:
-        normalized = str(model or "").strip().lower()
-        if normalized.startswith(("models/", "gemini/")):
-            normalized = normalized.split("/", 1)[1]
-        if normalized.startswith("gemma"):
-            return False
-        return (
-            normalized.startswith("gemini")
-            or normalized.startswith("gpt-")
-            or normalized.startswith("openai/")
-            or normalized.startswith("claude")
-            or normalized.startswith("anthropic/")
-        ) and not any(
-            blocked in normalized
-            for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
-        )
-
-    @staticmethod
-    def _litellm_model_name(model: str) -> str:
-        normalized = str(model or "").strip()
-        if not normalized or "/" in normalized:
-            return normalized
-        if normalized.startswith(("gemini", "gemma")):
-            return f"gemini/{normalized}"
-        if normalized.startswith("claude"):
-            return f"anthropic/{normalized}"
-        return normalized
-
-    def _litellm_key_candidates(self, model: str) -> list[tuple[int | None, str | None]]:
-        normalized = str(model or "").strip().lower()
-        if (normalized.startswith("gemini/") or normalized.startswith("gemma")) and len(
-            self.rotator
-        ) > 0:
-            return self.rotator.candidates()
-        if normalized.startswith("openai/") or normalized.startswith("gpt-"):
-            api_key = getattr(self.settings, "openai_api_key", None)
-            return [(None, api_key)] if api_key else [(None, None)]
-        if normalized.startswith("anthropic/") or normalized.startswith("claude"):
-            api_key = getattr(self.settings, "anthropic_api_key", None)
-            return [(None, api_key)] if api_key else [(None, None)]
-        return [(None, None)]
-
-    @staticmethod
-    def _litellm_model_requires_api_key(model: str) -> bool:
-        normalized = str(model or "").strip().lower()
-        return (
-            normalized.startswith("gemini/")
-            or normalized.startswith("gemma")
-            or normalized.startswith("openai/")
-            or normalized.startswith("gpt-")
-            or normalized.startswith("anthropic/")
-            or normalized.startswith("claude")
         )
 
     @staticmethod
@@ -1452,7 +1342,7 @@ class LLMClient:
             max_output_tokens=8192,
         )
         response = client.models.generate_content(
-            model=self._gemini_api_model_name(model or self.settings.primary_llm_model),
+            model=gemini_api_model_name(model or self.settings.primary_llm_model),
             contents=prompt,
             config=config,
         )
@@ -1496,7 +1386,7 @@ class LLMClient:
         model: str | None = None,
         timeout_seconds: float | None = None,
     ) -> str:
-        model_name = self._gemini_api_model_name(model or self.settings.primary_llm_model)
+        model_name = gemini_api_model_name(model or self.settings.primary_llm_model)
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         )
@@ -1529,7 +1419,7 @@ class LLMClient:
         model: str,
         timeout_seconds: float | None = None,
     ) -> str:
-        model_name = self._gemini_api_model_name(model)
+        model_name = gemini_api_model_name(model)
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         )

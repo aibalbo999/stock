@@ -6,7 +6,7 @@ from collections import Counter
 LLM_ATTEMPT_OUTCOME_CATEGORIES = {
     "dependency_unavailable": "dependency_unavailable",
     "empty_response": "empty_response",
-    "missing_api_key": "configuration_error",
+    "missing_api_key": "configuration_error",  # pragma: allowlist secret
     "missing_model": "configuration_error",
     "provider_error": "provider_error",
     "quota_cooldown": "rate_limited",

@@ -486,33 +486,6 @@ def test_google_genai_provider_rotates_keys_before_http_fallback(monkeypatch) ->
     assert calls == [("prompt", "bad-key"), ("prompt", "good-key")]
 
 
-def test_gemini_model_candidates_filter_non_text_models_and_normalize_names() -> None:
-    client = object.__new__(LLMClient)
-    client.settings = fake_settings(
-        primary_llm_model="models/gemini-3.5-flash",
-        llm_fallback_models=(
-            "gemini-embedding-2,imagen-4.0-generate-001,"
-            "gemini-3.1-flash-live-preview,gemini-2.5-flash,"
-            "gemma-4-31b-it,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
-        ),
-        local_llm_model="gemma-4-31b-it",
-    )
-
-    assert client._gemini_model_candidates() == [
-        "gemini-3.5-flash",
-        "gemini-2.5-flash",
-        "gemma-4-31b-it",
-        "gemini-3.1-flash-lite",
-        "gemini-2.5-flash-lite",
-    ]
-    assert client._gemini_vision_model_candidates() == [
-        "gemini-3.5-flash",
-        "gemini-2.5-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-2.5-flash-lite",
-    ]
-
-
 def test_google_genai_model_chain_limits_key_rotation_and_uses_fallback(monkeypatch) -> None:
     client = object.__new__(LLMClient)
     client.settings = fake_settings(
@@ -677,28 +650,6 @@ def test_call_google_genai_uses_official_sdk_shape(monkeypatch) -> None:
     assert captured["generate_content"]["config"] == {
         "config": {"temperature": 0.2, "top_p": 0.8, "max_output_tokens": 8192}
     }
-
-
-def test_litellm_model_name_normalizes_gemini_only() -> None:
-    assert LLMClient._litellm_model_name("gemini-2.5-flash") == "gemini/gemini-2.5-flash"
-    assert LLMClient._litellm_model_name("gemini/gemini-2.5-flash") == "gemini/gemini-2.5-flash"
-    assert LLMClient._litellm_model_name("claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
-    assert (
-        LLMClient._litellm_model_name("anthropic/claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
-    )
-    assert LLMClient._litellm_model_name("gpt-4o-mini") == "gpt-4o-mini"
-    assert LLMClient._litellm_model_name("gemma-4-31b-it") == "gemini/gemma-4-31b-it"
-
-
-def test_litellm_key_candidates_support_openai_and_anthropic_keys() -> None:
-    client = object.__new__(LLMClient)
-    client.settings = fake_settings(openai_api_key="openai-key", anthropic_api_key="anthropic-key")
-    client.rotator = APIKeyRotator(["gemini-key"])
-
-    assert client._litellm_key_candidates("gpt-4o-mini") == [(None, "openai-key")]
-    assert client._litellm_key_candidates("openai/gpt-4o-mini") == [(None, "openai-key")]
-    assert client._litellm_key_candidates("anthropic/claude-3-5-haiku") == [(None, "anthropic-key")]
-    assert client._litellm_key_candidates("gemma-4-31b-it") == [(0, "gemini-key")]
 
 
 def test_llm_client_vision_uses_litellm_image_payload(monkeypatch) -> None:

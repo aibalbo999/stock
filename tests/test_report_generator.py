@@ -23,6 +23,7 @@ from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.llm_client import LLMResult
+from app.services.report_financial_narrative import financial_statement_summary
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_prompt_builder import build_report_prompt, format_llm_evidence
 from app.services.report_source_references import representative_sources
@@ -1519,10 +1520,12 @@ def test_financial_summary_ignores_percentage_and_total_liability_equity_fields(
     ]
 
     summary = ReportGenerator._financial_statement_summary(metrics)
+    helper_summary = financial_statement_summary(metrics)
 
     assert "2026 年度負債權益比約 0.46 倍" in summary["debt_trend"]
     assert "2026 年度 ROE 約 9.66%" in summary["roe_trend"]
     assert "687799687000.00%" not in summary["roe_trend"]
+    assert helper_summary == summary
 
 
 def test_financial_assessment_uses_total_liabilities_not_contract_liabilities() -> None:
@@ -1562,6 +1565,17 @@ def test_financial_assessment_uses_total_liabilities_not_contract_liabilities() 
     assert "負債權益比約 0.20 倍" in summary["debt_trend"]
     assert "負債權益比約 0.20 倍" in assessment["summary"]
     assert "負債權益比約 0.00 倍" not in assessment["summary"]
+
+
+def test_financial_narrative_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    narrative_source = Path("app/services/report_financial_narrative.py").read_text()
+
+    assert "from app.services.report_financial_narrative import" in generator_source
+    assert "def financial_statement_summary(" in narrative_source
+    assert "def metric_series(" in narrative_source
+    assert "def balance_sheet_total_series(" in narrative_source
+    assert "需補 FinMind 財報三表" not in generator_source
 
 
 def test_valuation_position_and_financial_confidence_labels() -> None:

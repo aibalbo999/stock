@@ -2013,6 +2013,7 @@ def test_report_formatting_helpers_live_outside_generator() -> None:
 
 def test_report_allocation_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    allocation_mixin_source = Path("app/services/report_generator_allocation.py").read_text()
     allocation_source = Path("app/services/report_allocation.py").read_text()
     request = ReportRequest(
         topic="AI 產業鏈",
@@ -2027,10 +2028,16 @@ def test_report_allocation_logic_lives_outside_generator() -> None:
         {"label": "3324 雙鴻", "upside_pct": 16, "downside_pct": 0},
     ]
 
-    assert "report_allocation" in generator_source
+    assert "report_allocation" not in generator_source
+    assert "ReportGeneratorAllocationMixin" in generator_source
+    assert "report_allocation" in allocation_mixin_source
+    assert "def _allocation_amounts(" in allocation_mixin_source
+    assert "def _render_allocation_plan(" in allocation_mixin_source
     assert "def allocation_amounts(" in allocation_source
     assert "def first_tranche_ratio(" in allocation_source
     assert "配置採淨分" not in generator_source
+    assert "def _allocation_amounts(" not in generator_source
+    assert "def _render_allocation_plan(" not in generator_source
     assert ReportGenerator._allocation_amounts(candidates, 50_000, 100_000) == (
         report_allocation.allocation_amounts(candidates, 50_000, 100_000)
     )

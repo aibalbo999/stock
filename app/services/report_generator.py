@@ -5,7 +5,6 @@ from collections.abc import Callable
 from app.db.session import session_scope
 from app.models.schemas import (
     FinancialMetric,
-    InvestorProfile,
     MarketSnapshot,
     MonthlyRevenue,
     NewsDocument,
@@ -21,6 +20,7 @@ from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal
 from app.services.report_execution import report_execution_summary as report_execution_summary
+from app.services.report_generator_allocation import ReportGeneratorAllocationMixin
 from app.services.report_generator_company import ReportGeneratorCompanyNarrativeMixin
 from app.services.report_generator_document import ReportGeneratorDocumentMixin
 from app.services.report_generator_financial import ReportGeneratorFinancialMixin
@@ -28,7 +28,6 @@ from app.services.report_integrity import ReportIntegrityError, assert_report_in
 from app.services import (
     report_action_checklist,
     report_appendix,
-    report_allocation,
     report_beginner_portfolio,
     report_company_analysis,
     report_company_matrix,
@@ -78,6 +77,7 @@ class ReportExecutionError(ValueError):
 
 
 class ReportGenerator(
+    ReportGeneratorAllocationMixin,
     ReportGeneratorDocumentMixin,
     ReportGeneratorCompanyNarrativeMixin,
     ReportGeneratorFinancialMixin,
@@ -998,50 +998,6 @@ class ReportGenerator(
             request,
             self._decision_reason,
         )
-
-    @staticmethod
-    def _render_allocation_plan(
-        candidates: list[dict],
-        deployable: int,
-        first_tranche: int,
-    ) -> list[str]:
-        return report_allocation.render_allocation_plan(candidates, deployable, first_tranche)
-
-    @staticmethod
-    def _allocation_amounts(
-        candidates: list[dict],
-        deployable: int,
-        first_tranche: int,
-    ) -> list[int]:
-        return report_allocation.allocation_amounts(candidates, deployable, first_tranche)
-
-    @staticmethod
-    def _round_lot_amount(amount: int) -> int:
-        return report_allocation.round_lot_amount(amount)
-
-    @staticmethod
-    def _round_down_lot_amount(amount: int) -> int:
-        return report_allocation.round_down_lot_amount(amount)
-
-    @staticmethod
-    def _max_position_amount(request: ReportRequest) -> int:
-        return report_allocation.max_position_amount(request)
-
-    @staticmethod
-    def _profile(request: ReportRequest) -> InvestorProfile:
-        return report_allocation.profile(request)
-
-    @staticmethod
-    def _profile_label(request: ReportRequest) -> str:
-        return report_allocation.profile_label(request)
-
-    @staticmethod
-    def _downside_gate(request: ReportRequest) -> int:
-        return report_allocation.downside_gate(request)
-
-    @staticmethod
-    def _first_tranche_ratio(request: ReportRequest) -> float:
-        return report_allocation.first_tranche_ratio(request)
 
     @staticmethod
     def _risk_warning_reason(estimate: dict) -> str:

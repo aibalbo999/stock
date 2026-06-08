@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import requests
 import streamlit as st
 
 from app.core.time import today_taipei
-from app.ui.api_client import api_post, request_error_message
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_post
 from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_enrichment_common import (
@@ -39,8 +39,8 @@ def _render_manual_news_form() -> None:
     if not manual_news_ready:
         st.caption("請先填入標題與內文。")
     if st.button("匯入新聞/研究摘要", type="primary", disabled=not manual_news_ready):
-        try:
-            result = api_post(
+        result = run_api_action_or_none(
+            lambda: api_post(
                 "/ingest/manual",
                 {
                     "title": title.strip(),
@@ -49,10 +49,11 @@ def _render_manual_news_form() -> None:
                     "published_at": published_at.isoformat(),
                     "url": url.strip() or None,
                 },
-            )
+            ),
+            error_message="匯入失敗",
+        )
+        if isinstance(result, dict):
             st.success(f"已匯入：{result.get('document_id')}")
-        except requests.RequestException as exc:
-            st.error(f"匯入失敗：{request_error_message(exc)}")
 
 
 def _render_company_filing_form(whitelist: Any, allowed_tickers: list[str]) -> None:
@@ -66,7 +67,10 @@ def _render_company_filing_form(whitelist: Any, allowed_tickers: list[str]) -> N
     )
     filing_company = st.text_input(
         "公司名稱",
-        value=next((company.name for company in whitelist.companies() if company.ticker == filing_ticker), ""),
+        value=next(
+            (company.name for company in whitelist.companies() if company.ticker == filing_ticker),
+            "",
+        ),
     )
     filing_type = st.selectbox(
         "文件類型",
@@ -143,8 +147,8 @@ def _submit_manual_company_filing(
     filing_date: Any,
     filing_url: str,
 ) -> None:
-    try:
-        result = api_post(
+    result = run_api_action_or_none(
+        lambda: api_post(
             "/company-filings/manual",
             {
                 "ticker": filing_ticker,
@@ -156,11 +160,11 @@ def _submit_manual_company_filing(
                 "published_at": filing_date.isoformat(),
                 "url": filing_url.strip() or None,
             },
-        )
+        ),
+        error_message="匯入公司文件失敗",
+    )
+    if isinstance(result, dict):
         st.success(f"已匯入公司文件：{result.get('document_id')}")
         st.caption(
-            f"來源分級：{result.get('source_tier')}；"
-            f"品質分數：{result.get('quality_score')}"
+            f"來源分級：{result.get('source_tier')}；品質分數：{result.get('quality_score')}"
         )
-    except requests.RequestException as exc:
-        st.error(f"匯入公司文件失敗：{request_error_message(exc)}")

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
-from app.ui.api_client import api_put, request_error_message
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_put
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
 
@@ -144,13 +144,11 @@ def _save_schedule_config(
         "rerun_report": rerun_report,
         "refresh_company_filings": refresh_company_filings,
     }
-    try:
-        saved = api_put("/schedule", payload)
-    except ValueError as exc:
-        st.error(f"儲存失敗：{exc}")
-    except requests.RequestException as exc:
-        st.error(f"儲存失敗：{request_error_message(exc)}")
-    else:
+    saved = run_api_action_or_none(
+        lambda: api_put("/schedule", payload),
+        error_message="儲存失敗",
+    )
+    if isinstance(saved, dict):
         st.success(
             f"已儲存：每日 {saved.get('timezone')} "
             f"{int(saved.get('hour') or 0):02d}:{int(saved.get('minute') or 0):02d} "

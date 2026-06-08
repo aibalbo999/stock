@@ -37,6 +37,7 @@ from app.services import (
     report_early_potential,
     report_final_potential,
     report_formatting,
+    report_investment_thesis,
     report_leading_signal,
     report_scope_sections,
     report_score_breakdown,
@@ -1235,6 +1236,27 @@ def test_investment_thesis_map_explains_reasons_sources_and_limits() -> None:
     assert "目前情境升值分" in thesis
     assert "代表性來源：2026-05-21 測試新聞B《台積電 CoWoS 大單》" in thesis
     assert "2026-05-20 測試新聞A《台積電 AI 需求成長》" in thesis
+
+
+def test_investment_thesis_map_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    request = ReportRequest(tickers=[])
+    generator_source = Path("app/services/report_generator.py").read_text()
+    thesis_source = Path("app/services/report_investment_thesis.py").read_text()
+
+    assert "report_investment_thesis" in generator_source
+    assert "def render_investment_thesis_map(" in thesis_source
+    assert "def thesis_reason(" in thesis_source
+    assert "本段把每檔股票拆成" not in generator_source
+    assert generator._render_investment_thesis_map(request, [], [], [], []) == (
+        report_investment_thesis.render_investment_thesis_map(
+            [],
+            request,
+            "",
+            generator._representative_sources,
+            generator._downside_source_references,
+        )
+    )
 
 
 def test_representative_sources_dedupes_and_sorts_newest_first() -> None:

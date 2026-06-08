@@ -7,6 +7,7 @@ from app.services import (
     topic_discovery_candidates,
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
+    topic_discovery_gap_queries,
     topic_discovery_models,
     topic_discovery_news_queries,
     topic_discovery_prompts,
@@ -295,6 +296,51 @@ def test_topic_discovery_supplemental_subtopic_queries_live_outside_query_planne
     assert "target_names" in supplemental_source
     assert "風險 瓶頸" in supplemental_source
     assert "def supplemental_subtopic_query_metadata(" in supplemental_source
+
+
+def test_topic_discovery_gap_queries_live_outside_query_planner() -> None:
+    queries_source = Path("app/services/topic_discovery_queries.py").read_text()
+    gap_source = Path("app/services/topic_discovery_gap_queries.py").read_text()
+    plan = TopicDiscoveryPlan(
+        subtopics=[
+            DiscoverySubtopic(
+                name="液冷散熱",
+                required_evidence=["液冷訂單", "出貨"],
+                risk_focus=["認證延遲"],
+                search_queries=["AI"],
+            )
+        ]
+    )
+    quality = DiscoveryPlanQuality(
+        status="insufficient",
+        score=30,
+        missing=["補需求與材料"],
+        coverage={"需求/成長": False, "供給/產能": True, "上游材料": False},
+        subtopic_count=1,
+        candidate_count=0,
+        recommendation="補 query",
+        query_quality={
+            "subtopics": {
+                "液冷散熱": {
+                    "generic_queries": ["AI"],
+                    "unaligned_queries": [],
+                    "has_international_query": False,
+                }
+            }
+        },
+    )
+
+    assert TopicDiscoveryService.coverage_gap_queries(
+        "AI 產業鏈", quality
+    ) == topic_discovery_gap_queries.coverage_gap_queries("AI 產業鏈", quality)
+    assert topic_discovery_queries.query_quality_gap_queries(
+        "AI 產業鏈", plan, quality
+    ) == topic_discovery_gap_queries.query_quality_gap_queries("AI 產業鏈", plan, quality)
+    assert "市場規模 展望" not in queries_source
+    assert "query_quality = quality.query_quality" not in queries_source
+    assert "市場規模 展望" in gap_source
+    assert "query_quality = quality.query_quality" in gap_source
+    assert "def query_quality_gap_queries(" in gap_source
 
 
 def test_topic_discovery_quality_lives_outside_service_module() -> None:

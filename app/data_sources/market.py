@@ -4,18 +4,19 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
-import time
 
 import httpx
 
 from app.core.config import get_settings
-from app.data_sources import market_parsers
+from app.data_sources import market_parsers, market_provider_runtime
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
 from app.services.task_cancellation import TaskCancelledError
 
-FINMIND_RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
-FUGLE_RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
+FINMIND_RETRYABLE_HTTP_STATUSES = market_provider_runtime.FINMIND_RETRYABLE_HTTP_STATUSES
+FUGLE_RETRYABLE_HTTP_STATUSES = market_provider_runtime.FUGLE_RETRYABLE_HTTP_STATUSES
+MarketDataProviderUnavailable = market_provider_runtime.MarketDataProviderUnavailable
+ProviderCircuitBreaker = market_provider_runtime.ProviderCircuitBreaker
 
 
 @dataclass(frozen=True)
@@ -30,66 +31,6 @@ class MarketFetchError:
             "dataset": self.dataset,
             "error": self.error,
         }
-
-
-class MarketDataProviderUnavailable(RuntimeError):
-    """Raised when a configured market data provider cannot be used."""
-
-
-class ProviderCircuitBreaker:
-    def __init__(
-        self,
-        provider: str,
-        *,
-        enabled: bool,
-        failure_threshold: int,
-        recovery_seconds: float,
-        monotonic_clock=time.monotonic,
-    ) -> None:
-        self.provider = provider
-        self.enabled = bool(enabled)
-        self.failure_threshold = max(1, int(failure_threshold))
-        self.recovery_seconds = max(0.0, float(recovery_seconds))
-        self.monotonic_clock = monotonic_clock
-        self.failure_count = 0
-        self.opened_at: float | None = None
-
-    def configure(
-        self,
-        *,
-        enabled: bool,
-        failure_threshold: int,
-        recovery_seconds: float,
-    ) -> None:
-        self.enabled = bool(enabled)
-        self.failure_threshold = max(1, int(failure_threshold))
-        self.recovery_seconds = max(0.0, float(recovery_seconds))
-        if not self.enabled:
-            self.failure_count = 0
-            self.opened_at = None
-
-    def before_call(self) -> None:
-        if not self.enabled or self.opened_at is None:
-            return
-        elapsed = self.monotonic_clock() - self.opened_at
-        if elapsed >= self.recovery_seconds:
-            self.opened_at = None
-            return
-        raise MarketDataProviderUnavailable(
-            f"{self.provider} circuit breaker is open; retry after {self.recovery_seconds - elapsed:.1f}s"
-        )
-
-    def record_success(self) -> None:
-        self.failure_count = 0
-        self.opened_at = None
-
-    def record_failure(self) -> None:
-        if not self.enabled:
-            return
-        self.failure_count += 1
-        if self.failure_count >= self.failure_threshold:
-            self.opened_at = self.monotonic_clock()
-
 
 class MarketDataClient:
     STALE_CACHE_SOURCE_MARKER = "cached-stale"
@@ -929,17 +870,19 @@ class MarketDataClient:
         return None
 
     def _provider_circuit_setting(self, provider: str, suffix: str, default):
-        attr = f"{provider}_circuit_breaker_{suffix}"
-        return getattr(self.settings, attr, default)
+        return market_provider_runtime.provider_circuit_setting(
+            self.settings,
+            provider,
+            suffix,
+            default,
+        )
 
     def _provider_circuit_breaker(self, provider: str) -> ProviderCircuitBreaker:
-        breaker = self._circuit_breakers[provider]
-        breaker.configure(
-            enabled=self._provider_circuit_setting(provider, "enabled", True),
-            failure_threshold=self._provider_circuit_setting(provider, "failure_threshold", 5),
-            recovery_seconds=self._provider_circuit_setting(provider, "recovery_seconds", 60.0),
+        return market_provider_runtime.configure_provider_circuit_breaker(
+            self.settings,
+            self._circuit_breakers,
+            provider,
         )
-        return breaker
 
     def _before_provider_request(self, provider: str) -> None:
         self._provider_circuit_breaker(provider).before_call()
@@ -951,10 +894,20 @@ class MarketDataClient:
         self._provider_circuit_breaker(provider).record_failure()
 
     def _should_retry_status(self, status_code: int, attempt: int) -> bool:
-        return status_code in FINMIND_RETRYABLE_HTTP_STATUSES and attempt < self.finmind_max_retries
+        return market_provider_runtime.should_retry_status(
+            status_code,
+            attempt,
+            retryable_statuses=FINMIND_RETRYABLE_HTTP_STATUSES,
+            max_retries=self.finmind_max_retries,
+        )
 
     def _should_retry_fugle_status(self, status_code: int, attempt: int) -> bool:
-        return status_code in FUGLE_RETRYABLE_HTTP_STATUSES and attempt < self.fugle_max_retries
+        return market_provider_runtime.should_retry_status(
+            status_code,
+            attempt,
+            retryable_statuses=FUGLE_RETRYABLE_HTTP_STATUSES,
+            max_retries=self.fugle_max_retries,
+        )
 
     async def _sleep_before_retry(self, response: httpx.Response | None, attempt: int) -> None:
         await asyncio.sleep(self._retry_delay_seconds(response, attempt))
@@ -967,39 +920,25 @@ class MarketDataClient:
         await asyncio.sleep(self._fugle_retry_delay_seconds(response, attempt))
 
     def _retry_delay_seconds(self, response: httpx.Response | None, attempt: int) -> float:
-        if response is not None:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    return min(self.finmind_max_retry_delay_seconds, max(0.0, float(retry_after)))
-                except ValueError:
-                    pass
-        return min(
-            self.finmind_max_retry_delay_seconds,
-            self.finmind_base_retry_delay_seconds * (2**attempt),
+        return market_provider_runtime.retry_delay_seconds(
+            response,
+            attempt,
+            base_retry_delay_seconds=self.finmind_base_retry_delay_seconds,
+            max_retry_delay_seconds=self.finmind_max_retry_delay_seconds,
         )
 
     def _fugle_retry_delay_seconds(self, response: httpx.Response | None, attempt: int) -> float:
-        if response is not None:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    return min(self.fugle_max_retry_delay_seconds, max(0.0, float(retry_after)))
-                except ValueError:
-                    pass
-        return min(
-            self.fugle_max_retry_delay_seconds,
-            self.fugle_base_retry_delay_seconds * (2**attempt),
+        return market_provider_runtime.retry_delay_seconds(
+            response,
+            attempt,
+            base_retry_delay_seconds=self.fugle_base_retry_delay_seconds,
+            max_retry_delay_seconds=self.fugle_max_retry_delay_seconds,
         )
 
     def _market_price_provider_order(self) -> list[str]:
-        providers = str(getattr(self.settings, "market_price_provider_order", "finmind,fugle"))
-        normalized: list[str] = []
-        for provider in providers.replace("\n", ",").split(","):
-            provider = provider.strip().lower()
-            if provider in {"finmind", "fugle", "official_openapi"} and provider not in normalized:
-                normalized.append(provider)
-        return normalized or ["finmind"]
+        return market_provider_runtime.market_price_provider_order(
+            getattr(self.settings, "market_price_provider_order", "finmind,fugle")
+        )
 
     @property
     def finmind_max_retries(self) -> int:

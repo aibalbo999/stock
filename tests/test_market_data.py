@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.data_sources import market_parsers
+from app.data_sources import market_parsers, market_provider_runtime
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
@@ -312,6 +312,18 @@ def test_price_history_falls_back_to_fugle_when_finmind_fails(monkeypatch) -> No
     assert cache.stored_price_history["snapshots"] == snapshots
 
 
+def test_market_price_provider_order_logic_lives_outside_client() -> None:
+    raw_order = " finmind\nfugle,finmind,official_openapi,unknown "
+    client = MarketDataClient()
+    client.settings = SimpleNamespace(market_price_provider_order=raw_order)
+
+    provider_order = client._market_price_provider_order()
+    helper_provider_order = market_provider_runtime.market_price_provider_order(raw_order)
+
+    assert provider_order == ["finmind", "fugle", "official_openapi"]
+    assert helper_provider_order == provider_order
+
+
 def test_price_history_uses_fugle_stats_when_fugle_candles_are_empty(monkeypatch) -> None:
     client = MarketDataClient()
     cache = FakeMarketDataCache()
@@ -535,7 +547,15 @@ def test_fugle_retry_delay_uses_retry_after_header() -> None:
         request=httpx.Request("GET", "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/2330"),
     )
 
+    helper_delay = market_provider_runtime.retry_delay_seconds(
+        response,
+        attempt=0,
+        base_retry_delay_seconds=0.5,
+        max_retry_delay_seconds=5.0,
+    )
+
     assert client._fugle_retry_delay_seconds(response, attempt=0) == 2.5
+    assert helper_delay == client._fugle_retry_delay_seconds(response, attempt=0)
 
 
 def test_fugle_row_to_snapshot() -> None:
@@ -631,7 +651,15 @@ def test_finmind_retry_delay_uses_retry_after_header() -> None:
         request=httpx.Request("GET", "https://api.finmindtrade.com/api/v4/data"),
     )
 
+    helper_delay = market_provider_runtime.retry_delay_seconds(
+        response,
+        attempt=0,
+        base_retry_delay_seconds=0.5,
+        max_retry_delay_seconds=5.0,
+    )
+
     assert client._retry_delay_seconds(response, attempt=0) == 3.5
+    assert helper_delay == client._retry_delay_seconds(response, attempt=0)
 
 
 def test_finmind_row_to_monthly_revenue() -> None:

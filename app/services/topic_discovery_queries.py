@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from app.services import topic_discovery_candidate_queries, topic_discovery_news_queries
+from app.services import (
+    topic_discovery_candidate_queries,
+    topic_discovery_news_queries,
+    topic_discovery_supplemental_queries,
+)
 from app.services.topic_discovery_models import (
     CandidateCompany,
     DiscoveryPlanQuality,
@@ -334,31 +338,10 @@ def supplemental_google_news_query_metadata(
             ]
         )
     )
-    target_names = set(missing_subtopics or [])
-    target_subtopics = [
-        subtopic
-        for subtopic in plan.subtopics
-        if not target_names or (subtopic.name or "未命名子題") in target_names
-    ]
-    queries: list[str] = []
-    for subtopic in target_subtopics:
-        evidence_terms = " ".join(subtopic.required_evidence[:2])
-        risk_terms = " ".join(subtopic.risk_focus[:2])
-        queries.append(f"{subtopic.name} {subtopic.rationale} {evidence_terms} 台股".strip())
-        if risk_terms:
-            queries.append(f"{subtopic.name} {risk_terms} 風險 瓶頸".strip())
-        for query in subtopic.search_queries[:2]:
-            queries.append(f"{query} 最新")
-
     query_items.extend(
-        google_news_metadata_from_queries(
-            queries,
-            source_type="supplemental",
-            hypothesis=topic_discovery_candidate_queries.SUPPLEMENTAL_HYPOTHESIS,
-            evidence_type="補抓資料源",
-            source_intent="company_disclosure",
-            max_urls=None,
-            existing_urls=[],
+        supplemental_subtopic_query_metadata(
+            plan,
+            missing_subtopics=missing_subtopics,
         )
     )
     return dedupe_query_metadata(
@@ -387,6 +370,16 @@ def supplemental_candidate_query_items(
 
 def round_robin_query_groups(groups: list[list[dict]]) -> list[dict]:
     return topic_discovery_candidate_queries.round_robin_query_groups(groups)
+
+
+def supplemental_subtopic_query_metadata(
+    plan: TopicDiscoveryPlan,
+    missing_subtopics: list[str] | None = None,
+) -> list[dict]:
+    return topic_discovery_supplemental_queries.supplemental_subtopic_query_metadata(
+        plan,
+        missing_subtopics=missing_subtopics,
+    )
 
 
 def dedupe_query_items(items: list[dict]) -> list[dict]:

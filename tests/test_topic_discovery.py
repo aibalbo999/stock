@@ -12,6 +12,7 @@ from app.services import (
     topic_discovery_prompts,
     topic_discovery_quality,
     topic_discovery_queries,
+    topic_discovery_supplemental_queries,
 )
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
@@ -243,6 +244,57 @@ def test_topic_discovery_candidate_queries_live_outside_query_planner() -> None:
     assert "法說會 年報 月營收" in candidate_queries_source
     assert "def candidate_query_items(" in candidate_queries_source
     assert "SUPPLEMENTAL_HYPOTHESIS" in candidate_queries_source
+
+
+def test_topic_discovery_supplemental_subtopic_queries_live_outside_query_planner() -> None:
+    queries_source = Path("app/services/topic_discovery_queries.py").read_text()
+    supplemental_source = Path("app/services/topic_discovery_supplemental_queries.py").read_text()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "液冷散熱",
+              "rationale": "功耗提升",
+              "required_evidence": ["液冷訂單"],
+              "risk_focus": ["認證延遲"],
+              "search_queries": ["AI 伺服器 液冷"]
+            },
+            {
+              "name": "出口管制",
+              "rationale": "政策風險",
+              "required_evidence": ["出口管制"],
+              "risk_focus": ["禁令", "地緣政治"],
+              "search_queries": ["export control AI chips"]
+            }
+          ],
+          "candidate_companies": []
+        }
+        """
+    )
+
+    metadata = topic_discovery_supplemental_queries.supplemental_subtopic_query_metadata(
+        plan,
+        missing_subtopics=["出口管制"],
+    )
+
+    assert topic_discovery_queries.supplemental_subtopic_query_metadata(
+        plan,
+        missing_subtopics=["出口管制"],
+    ) == metadata
+    assert TopicDiscoveryService().supplemental_google_news_query_metadata(
+        plan,
+        validated_candidates=[],
+        include_international=False,
+        missing_subtopics=["出口管制"],
+    ) == metadata
+    assert metadata
+    assert all("出口管制" in item["query"] or "export control" in item["query"] for item in metadata)
+    assert "target_names" not in queries_source
+    assert "subtopic.search_queries[:2]" not in queries_source
+    assert "target_names" in supplemental_source
+    assert "風險 瓶頸" in supplemental_source
+    assert "def supplemental_subtopic_query_metadata(" in supplemental_source
 
 
 def test_topic_discovery_quality_lives_outside_service_module() -> None:

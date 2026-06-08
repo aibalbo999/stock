@@ -21,6 +21,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_external_deployment_readiness.py"
     ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
+    status_frontend_runtime_source = Path("app/services/status_frontend_runtime.py").read_text()
     status_frontend_maintenance_source = Path(
         "app/services/status_frontend_maintenance.py"
     ).read_text()
@@ -47,6 +48,13 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def _frontend_status(" not in service_status_source
     assert "def frontend_status(" in status_frontend_source
     assert "def frontend_source_context(" in status_frontend_sources_source
+    assert "def frontend_runtime_status(" in status_frontend_runtime_source
+    assert "frontend_runtime_status(source_context)" in status_frontend_source
+    assert '"frontend_blocking_call_scan_paths"' not in status_frontend_source
+    assert '"asyncio_run_count"' not in status_frontend_source
+    assert '"async_task_endpoint_coverage"' not in status_frontend_source
+    assert '"sync_report_generate_used"' not in status_frontend_source
+    assert "def _frontend_constant_value(" not in status_frontend_source
     assert "def frontend_data_enrichment_status(" in status_frontend_data_enrichment_source
     assert "frontend_data_enrichment_status(source_context)" in status_frontend_source
     assert '"ui_company_filing_runtime_panel_enabled"' not in status_frontend_source
@@ -111,6 +119,10 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_source_context_extracted"] is True
     assert status["frontend"]["frontend_source_context_path"] == (
         "app/services/status_frontend_sources.py"
+    )
+    assert status["frontend"]["frontend_runtime_status_extracted"] is True
+    assert status["frontend"]["frontend_runtime_status_path"] == (
+        "app/services/status_frontend_runtime.py"
     )
     assert status["frontend"]["frontend_data_enrichment_status_extracted"] is True
     assert status["frontend"]["frontend_data_enrichment_status_path"] == (
@@ -310,6 +322,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["expected_pages_present"] is True
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_runtime_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True

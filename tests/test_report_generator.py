@@ -58,7 +58,12 @@ from app.services import (
     report_score_breakdown,
     report_source_coverage,
 )
-from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
+from app.services.report_generator import (
+    REPORT_READING_SORT_NOTE,
+    ReportExecutionError,
+    ReportGenerator,
+    report_execution_summary,
+)
 from app.services.report_decision_rules import (
     current_price_label,
     recheck_trigger_text,
@@ -798,6 +803,14 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
     )
 
     company_analysis = generator._render_company_analysis(["2330"], [], [], [snapshot])
+    direct_company_analysis = report_company_analysis.render_company_analysis_section(
+        generator,
+        ["2330"],
+        [],
+        [],
+        [snapshot],
+        reading_sort_note=REPORT_READING_SORT_NOTE,
+    )
     recommendations = generator._render_investment_recommendations(
         ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
         ["2330"],
@@ -806,6 +819,7 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
         [snapshot],
     )
 
+    assert company_analysis == direct_company_analysis
     assert "### 2330 台積電" in company_analysis
     assert "### 個股速覽" in company_analysis
     assert "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |" in company_analysis
@@ -831,8 +845,13 @@ def test_company_analysis_overview_logic_lives_outside_generator() -> None:
 
     assert "report_company_analysis" in generator_source
     assert "def overview_row(" in analysis_source
+    assert "def render_company_analysis_section(" in analysis_source
     assert "def render_company_analysis(" in analysis_source
     assert "### 個股速覽" not in generator_source
+    assert "未指定白名單個股" not in generator_source
+    assert "市場資料：" not in generator_source
+    assert "月營收：" not in generator_source
+    assert "風險/機會證據" not in generator_source
     assert report_company_analysis.render_company_analysis([], [], "排序說明") == (
         "### 個股速覽\n"
         "排序說明\n\n"

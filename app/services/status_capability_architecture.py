@@ -144,6 +144,8 @@ def architecture_capabilities(
             and frontend_status.get("frontend_task_queue_status_extracted")
             and frontend_status.get("frontend_task_failure_status_extracted")
             and frontend_status.get("frontend_data_enrichment_status_extracted")
+            and frontend_status.get("frontend_data_enrichment_tabs_status_extracted")
+            and frontend_status.get("frontend_data_enrichment_runtime_status_extracted")
             and frontend_status.get("frontend_settings_ui_status_extracted")
             and frontend_status.get("frontend_settings_core_status_extracted")
             and frontend_status.get("frontend_maintenance_ui_status_extracted")

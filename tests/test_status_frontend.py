@@ -11,6 +11,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     status_frontend_data_enrichment_source = Path(
         "app/services/status_frontend_data_enrichment.py"
     ).read_text()
+    status_frontend_data_enrichment_runtime_source = Path(
+        "app/services/status_frontend_data_enrichment_runtime.py"
+    ).read_text()
+    status_frontend_data_enrichment_tabs_source = Path(
+        "app/services/status_frontend_data_enrichment_tabs.py"
+    ).read_text()
     status_frontend_external_source = Path(
         "app/services/status_frontend_external_deployment.py"
     ).read_text()
@@ -63,8 +69,29 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def _frontend_constant_value(" not in status_frontend_source
     assert "def frontend_data_enrichment_status(" in status_frontend_data_enrichment_source
     assert "frontend_data_enrichment_status(source_context)" in status_frontend_source
+    assert "def frontend_data_enrichment_tabs_status(" in (
+        status_frontend_data_enrichment_tabs_source
+    )
+    assert "frontend_data_enrichment_tabs_status(source_context)" in (
+        status_frontend_data_enrichment_source
+    )
+    assert "def frontend_data_enrichment_runtime_status(" in (
+        status_frontend_data_enrichment_runtime_source
+    )
+    assert "frontend_data_enrichment_runtime_status(source_context)" in (
+        status_frontend_data_enrichment_source
+    )
     assert '"ui_company_filing_runtime_panel_enabled"' not in status_frontend_source
     assert '"ui_data_enrichment_tabs_extracted"' not in status_frontend_source
+    assert '"ui_data_enrichment_tabs_extracted"' not in (
+        status_frontend_data_enrichment_source
+    )
+    assert '"ui_company_filing_runtime_panel_enabled"' not in (
+        status_frontend_data_enrichment_source
+    )
+    assert '"ui_visual_rag_model_chain_panel_enabled"' not in (
+        status_frontend_data_enrichment_source
+    )
     assert "def frontend_external_deployment_status(" in status_frontend_external_source
     assert "frontend_external_deployment_status(source_context)" in status_frontend_source
     assert '"ui_external_deployment_diagnostics_enabled"' not in status_frontend_source
@@ -142,6 +169,14 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_data_enrichment_status_extracted"] is True
     assert status["frontend"]["frontend_data_enrichment_status_path"] == (
         "app/services/status_frontend_data_enrichment.py"
+    )
+    assert status["frontend"]["frontend_data_enrichment_tabs_status_extracted"] is True
+    assert status["frontend"]["frontend_data_enrichment_tabs_status_path"] == (
+        "app/services/status_frontend_data_enrichment_tabs.py"
+    )
+    assert status["frontend"]["frontend_data_enrichment_runtime_status_extracted"] is True
+    assert status["frontend"]["frontend_data_enrichment_runtime_status_path"] == (
+        "app/services/status_frontend_data_enrichment_runtime.py"
     )
     assert status["frontend"]["frontend_external_deployment_status_extracted"] is True
     assert status["frontend"]["frontend_external_deployment_status_path"] == (
@@ -357,6 +392,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_task_queue_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_data_enrichment_tabs_status_extracted"] is True
+    assert (
+        frontend_arch["evidence"]["frontend_data_enrichment_runtime_status_extracted"] is True
+    )
     assert (
         frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"]
         is True

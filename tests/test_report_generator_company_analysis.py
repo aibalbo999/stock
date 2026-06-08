@@ -1,17 +1,14 @@
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import (
-    EntityMatch,
     FinancialMetric,
     InvestorProfile,
     MarketSnapshot,
     MonthlyRevenue,
     NewsDocument,
     ReportRequest,
-    RiskFinding,
     RiskType,
     Source,
     ValuationMetric,
@@ -20,81 +17,7 @@ from app.services import report_company_analysis, report_company_matrix
 from app.services.entity_mapping import EntityMapper
 from app.services.report_generator import REPORT_READING_SORT_NOTE, ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
-
-
-def make_finding(
-    ticker: str,
-    name: str,
-    evidence: str,
-    risk_type: RiskType = RiskType.short_term_volatility,
-) -> RiskFinding:
-    return RiskFinding(
-        risk_type=risk_type,
-        topic="測試主題",
-        evidence=evidence,
-        source=Source(title=evidence, publisher="測試新聞", published_at=date(2026, 5, 22)),
-        related_companies=[
-            EntityMatch(
-                ticker=ticker,
-                name=name,
-                segment_id="test",
-                segment_name="測試產業",
-                matched_alias=name,
-            )
-        ],
-    )
-
-
-def make_financial_metrics(
-    ticker: str,
-    revenues: list[float],
-    net_incomes: list[float],
-    liabilities: Optional[list[float]] = None,
-    equities: Optional[list[float]] = None,
-) -> list[FinancialMetric]:
-    years = list(range(2022, 2022 + len(revenues)))
-    liabilities = liabilities or [100.0 for _ in years]
-    equities = equities or [200.0 for _ in years]
-    metrics: list[FinancialMetric] = []
-    for year, revenue, net_income, liability, equity in zip(years, revenues, net_incomes, liabilities, equities):
-        report_date = date(year, 3, 31)
-        metrics.extend(
-            [
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="營業收入",
-                    value=revenue,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="本期淨利",
-                    value=net_income,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="負債總額",
-                    value=liability,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="權益總額",
-                    value=equity,
-                    source="test",
-                ),
-            ]
-        )
-    return metrics
+from report_generator_factories import make_financial_metrics, make_finding
 
 
 def test_company_analysis_and_recommendations_do_not_overstate_market_only_data() -> None:

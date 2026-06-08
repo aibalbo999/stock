@@ -1,32 +1,9 @@
-from datetime import date
 from pathlib import Path
 
-from app.models.schemas import EntityMatch, ReportRequest, RiskFinding, RiskType, Source
+from app.models.schemas import ReportRequest, RiskType
 from app.services import report_decision_narrative
 from app.services.report_generator import ReportGenerator
-
-
-def make_finding(
-    ticker: str,
-    name: str,
-    evidence: str,
-    risk_type: RiskType = RiskType.short_term_volatility,
-) -> RiskFinding:
-    return RiskFinding(
-        risk_type=risk_type,
-        topic="測試主題",
-        evidence=evidence,
-        source=Source(title=evidence, publisher="測試新聞", published_at=date(2026, 5, 22)),
-        related_companies=[
-            EntityMatch(
-                ticker=ticker,
-                name=name,
-                segment_id="test",
-                segment_name="測試產業",
-                matched_alias=name,
-            )
-        ],
-    )
+from report_generator_factories import make_finding
 
 
 def test_structural_bottleneck_reason_names_specific_evidence() -> None:

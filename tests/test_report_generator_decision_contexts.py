@@ -1,63 +1,11 @@
 from datetime import date
-from typing import Optional
 
 from app.data_sources.news import NewsFetcher
-from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ReportRequest, ValuationMetric
+from app.models.schemas import MarketSnapshot, MonthlyRevenue, ReportRequest, ValuationMetric
 from app.services.entity_mapping import EntityMapper
 from app.services.report_generator import ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
-
-
-def make_financial_metrics(
-    ticker: str,
-    revenues: list[float],
-    net_incomes: list[float],
-    liabilities: Optional[list[float]] = None,
-    equities: Optional[list[float]] = None,
-) -> list[FinancialMetric]:
-    years = list(range(2022, 2022 + len(revenues)))
-    liabilities = liabilities or [100.0 for _ in years]
-    equities = equities or [200.0 for _ in years]
-    metrics: list[FinancialMetric] = []
-    for year, revenue, net_income, liability, equity in zip(years, revenues, net_incomes, liabilities, equities):
-        report_date = date(year, 3, 31)
-        metrics.extend(
-            [
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="營業收入",
-                    value=revenue,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="本期淨利",
-                    value=net_income,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="負債總額",
-                    value=liability,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="權益總額",
-                    value=equity,
-                    source="test",
-                ),
-            ]
-        )
-    return metrics
+from report_generator_factories import make_financial_metrics
 
 
 def test_stale_company_text_downgrades_actionable_decision() -> None:

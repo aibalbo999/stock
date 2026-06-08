@@ -19,29 +19,7 @@ from app.services import (
 from app.services.entity_mapping import EntityMapper
 from app.services.report_generator import ReportGenerator
 from app.services.whitelist import SupplyChainWhitelist
-
-
-def make_finding(
-    ticker: str,
-    name: str,
-    evidence: str,
-    risk_type: RiskType = RiskType.short_term_volatility,
-) -> RiskFinding:
-    return RiskFinding(
-        risk_type=risk_type,
-        topic="測試主題",
-        evidence=evidence,
-        source=Source(title=evidence, publisher="測試新聞", published_at=date(2026, 5, 22)),
-        related_companies=[
-            EntityMatch(
-                ticker=ticker,
-                name=name,
-                segment_id="test",
-                segment_name="測試產業",
-                matched_alias=name,
-            )
-        ],
-    )
+from report_generator_factories import make_finding
 
 
 def test_executive_snapshot_summarizes_decisions_in_table() -> None:

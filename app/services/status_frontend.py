@@ -244,9 +244,14 @@ def frontend_status() -> dict:
             "def external_deployment_readiness_rows(" in external_deployment_source
             and "def external_deployment_readiness_rows(" in external_deployment_common_source
             and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
+            and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
+            and "def external_deployment_local_action(" in external_deployment_common_source
+            and "local_dependency_wait" in external_deployment_common_source
             and "external_deployment_readiness_rows(upgrade_audit)" in ui_source
             and "外部部署 readiness checklist" in ui_source
             and '"部署決策"' in external_deployment_common_source
+            and '"本機動作"' in external_deployment_common_source
+            and '"本機指令"' in external_deployment_common_source
             and '"驗證指令"' in external_deployment_common_source
         ),
         "ui_external_deployment_diagnostics_extracted": (
@@ -271,6 +276,7 @@ def frontend_status() -> dict:
         and "def external_deployment_warning_items(" in external_deployment_common_source
         and "def external_deployment_readiness_rows(" in external_deployment_common_source
         and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
+        and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
         and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source

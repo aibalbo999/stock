@@ -410,7 +410,15 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         "需要該能力時配置",
         "需要該能力時配置",
     ]
+    assert [row["本機動作"] for row in readiness_rows] == [
+        "可啟動",
+        "可啟動",
+        "可啟動",
+        "需外部設定",
+    ]
     assert readiness_rows[0]["優先級"] == "P1"
+    assert "scripts/start_system.py --start-dependencies" in readiness_rows[0]["本機指令"]
+    assert "scripts/start_system.py --start-dependencies" in readiness_rows[1]["本機指令"]
     assert "GraphRAG payload" in readiness_rows[0]["影響範圍"]
     assert "另有 2 個 smoke 指令" in readiness_rows[0]["驗證指令"]
     assert "company_filing_render_smoke.py" in readiness_rows[1]["驗證指令"]
@@ -423,6 +431,76 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
         ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
+
+
+def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:
+    helpers = load_report_helpers()
+    unlocker_provider = "flare" + "solverr"
+    audit = {
+        "local_dependency_wait": {
+            "neo4j": False,
+            "neo4j_timeout_seconds": 20,
+            "flaresolverr": True,
+            "flaresolverr_timeout_seconds": 20,
+        },
+        "checks": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {"payload_export_ready": True},
+                "remediation": "啟動 Neo4j。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "recommended_env": [
+                        f"COMPANY_FILING_BROWSER_RENDER_PROVIDER={unlocker_provider}",
+                        "COMPANY_FILING_BROWSER_RENDER_URL=http://127.0.0.1:8191/v1",
+                    ],
+                },
+                "remediation": "啟動 FlareSolverr。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {},
+                "remediation": "設定 TEJ 或專業資料 API。",
+            },
+        ],
+    }
+
+    rows_by_item = {
+        row["項目"]: row for row in helpers["external_deployment_readiness_rows"](audit)
+    }
+
+    assert rows_by_item["外部 Neo4j 匯入連線"]["本機動作"] == "驗證失敗"
+    assert "--wait-local-neo4j 20" in rows_by_item["外部 Neo4j 匯入連線"]["本機指令"]
+    assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機動作"] == "已啟動"
+    assert (
+        "--wait-local-flaresolverr 20"
+        in rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機指令"]
+    )
+    assert rows_by_item["公司文件結構化 API 備援"]["本機動作"] == "需外部設定"
+    assert rows_by_item["公司文件結構化 API 備援"]["本機指令"] == "-"
 
 
 def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:

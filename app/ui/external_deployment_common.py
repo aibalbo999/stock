@@ -52,18 +52,56 @@ EXTERNAL_READINESS_METADATA = {
         "impact": "法說會簡報、重大訊息與專業財經資料備援。",
     },
 }
+EXTERNAL_LOCAL_ACTION_METADATA = {
+    ("ai_rag", "neo4j_import"): {
+        "wait_key": "neo4j",
+        "start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "verify_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+        ),
+    },
+    ("ai_rag", "graphrag_live_cypher_query"): {
+        "wait_key": "neo4j",
+        "start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "verify_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+        ),
+    },
+    ("data_business_logic", "company_filing_browser_or_proxy_fallback"): {
+        "wait_key": "browserless",
+        "start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "verify_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--wait-local-browserless 20 --local-browser-render-defaults --json"
+        ),
+    },
+    ("data_business_logic", "company_filing_high_risk_unlocker"): {
+        "wait_key": "flaresolverr",
+        "start_command": ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker",
+        "verify_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--prefer-unlocker --wait-local-flaresolverr 20 "
+            "--local-browser-render-defaults --json"
+        ),
+    },
+}
 
 
 def external_deployment_readiness_rows(upgrade_audit: dict) -> list[dict]:
     rows: list[dict] = []
     for item in external_deployment_readiness_items(upgrade_audit):
         metadata = external_deployment_readiness_metadata(item)
+        local_action = external_deployment_local_action(item, upgrade_audit)
         rows.append(
             {
                 "優先級": metadata["priority"],
                 "項目": item.get("label") or item.get("capability") or "-",
                 "狀態": external_deployment_readiness_state(item),
                 "部署決策": external_deployment_readiness_decision(item),
+                "本機動作": local_action["state"],
+                "本機指令": local_action["command"],
                 "影響範圍": metadata["impact"],
                 "下一步": item.get("remediation") or "-",
                 "驗證指令": external_deployment_command_summary(
@@ -110,6 +148,33 @@ def external_deployment_readiness_metadata(item: dict) -> dict:
     return {
         "priority": str(metadata.get("priority") or "P2"),
         "impact": str(metadata.get("impact") or item.get("detail") or "-"),
+    }
+
+
+def external_deployment_local_action(item: dict, upgrade_audit: dict) -> dict:
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    metadata = EXTERNAL_LOCAL_ACTION_METADATA.get(key)
+    if not metadata:
+        return {
+            "state": "已就緒" if item.get("severity") == "pass" else "需外部設定",
+            "command": "-",
+        }
+    wait_status = (
+        upgrade_audit.get("local_dependency_wait") if isinstance(upgrade_audit, dict) else {}
+    )
+    wait_status = wait_status if isinstance(wait_status, dict) else {}
+    wait_key = str(metadata.get("wait_key") or "")
+    verify_command = str(metadata.get("verify_command") or "-")
+    if wait_key and wait_key in wait_status:
+        return {
+            "state": "已啟動" if wait_status.get(wait_key) is True else "驗證失敗",
+            "command": verify_command,
+        }
+    if _external_readiness_item_ready(item):
+        return {"state": "已啟動", "command": verify_command}
+    return {
+        "state": "可啟動",
+        "command": str(metadata.get("start_command") or verify_command or "-"),
     }
 
 
@@ -225,6 +290,21 @@ def _is_external_readiness_item(item: dict) -> bool:
         return False
     key = (str(item.get("area") or ""), str(item.get("capability") or ""))
     return bool(item.get("deployment_check") or key in EXTERNAL_READINESS_METADATA)
+
+
+def _external_readiness_item_ready(item: dict) -> bool:
+    if item.get("severity") == "pass" or item.get("status") == "ready":
+        return True
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    return bool(
+        evidence.get("ready")
+        or evidence.get("connection_ok")
+        or evidence.get("neo4j_ready")
+        or evidence.get("unlocker_provider_ready")
+        or evidence.get("captcha_challenge_ready")
+        or evidence.get("browser_or_proxy_fallback_configured")
+        or evidence.get("playwright_render_configured")
+    )
 
 
 def _external_readiness_sort_key(item: dict, index: int) -> tuple[int, int, int]:

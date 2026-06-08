@@ -327,6 +327,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "外部部署 readiness checklist" in source
     assert "def external_deployment_readiness_rows(" in source
     assert '"部署決策"' in source
+    assert '"本機動作"' in source
+    assert '"本機指令"' in source
+    assert "local_dependency_wait" in source
     assert '"驗證指令"' in source
     assert "render_external_deployment_panel(upgrade_audit)" in source
     assert "render_background_task_observability_panel(service_snapshot, task_summary)" in source

@@ -3,7 +3,8 @@ from __future__ import annotations
 import requests
 import streamlit as st
 
-from app.ui.api_client import api_get, api_task_post, request_error_message
+from app.ui.api_client import api_task_post, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.follow_up_status import company_filing_action_label
 
 
@@ -77,7 +78,9 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
 
 
 def company_filing_gap_rows(task_status: dict) -> list[dict]:
-    result = _company_filing_result_payload(task_status.get("result") if isinstance(task_status, dict) else None)
+    result = _company_filing_result_payload(
+        task_status.get("result") if isinstance(task_status, dict) else None
+    )
     if not result:
         return []
     action_rows = _company_filing_next_action_rows(result)
@@ -131,10 +134,22 @@ def _company_filing_gap_summary_rows(result: dict) -> list[dict]:
         return []
     rows = []
     specs = (
-        ("visual_rag_setup_tickers", "設定 Visual RAG", "需要 PyMuPDF、VLM model 或 vision key/gateway"),
-        ("visual_rag_review_tickers", "檢查 Visual RAG/人工匯入", "VLM 額度、模型回應或抽取結果需要檢查"),
+        (
+            "visual_rag_setup_tickers",
+            "設定 Visual RAG",
+            "需要 PyMuPDF、VLM model 或 vision key/gateway",
+        ),
+        (
+            "visual_rag_review_tickers",
+            "檢查 Visual RAG/人工匯入",
+            "VLM 額度、模型回應或抽取結果需要檢查",
+        ),
         ("browser_recovery_tickers", "改用瀏覽器/Proxy 重試", "官方頁面疑似被反爬蟲或動態渲染擋住"),
-        ("setup_required_tickers", "補齊執行環境設定", "缺少 PDF parser、Browser render 或 Visual RAG 設定"),
+        (
+            "setup_required_tickers",
+            "補齊執行環境設定",
+            "缺少 PDF parser、Browser render 或 Visual RAG 設定",
+        ),
         ("ocr_required_tickers", "OCR 或人工匯入", "PDF 沒有可抽取文字或解析失敗"),
         ("broaden_search_tickers", "擴大官方搜尋", "現有搜尋結果不足或文件不匹配"),
         ("retryable_tickers", "稍後自動重試", "資料源暫時錯誤"),
@@ -240,10 +255,12 @@ def task_status_poll_caption(
 
 
 def _fetch_task_status(task_id: str, status_state_key: str) -> dict | None:
-    try:
-        task_status = api_get(f"/tasks/{task_id}")
-    except requests.RequestException as exc:
-        st.error(f"查詢失敗：{request_error_message(exc)}")
+    task_status = load_api_json_or_default(
+        f"/tasks/{task_id}",
+        None,
+        error_message="查詢失敗",
+    )
+    if not isinstance(task_status, dict):
         return None
     st.session_state[status_state_key] = task_status
     return task_status

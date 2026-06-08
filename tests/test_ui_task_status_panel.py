@@ -1,11 +1,53 @@
 from __future__ import annotations
 
 from app.ui.task_status_panel import (
+    _fetch_task_status,
     company_filing_gap_rows,
     task_status_diagnostic_rows,
     task_status_poll_caption,
     task_status_poll_interval_seconds,
 )
+
+
+class FakeStreamlit:
+    def __init__(self) -> None:
+        self.session_state: dict = {}
+
+
+def test_fetch_task_status_uses_api_loader_and_stores_dict(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeStreamlit()
+    captured = {}
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+
+    def fake_loader(path: str, fallback, *, error_message: str):
+        captured.update({"path": path, "fallback": fallback, "error_message": error_message})
+        return {"task_id": "task-1", "status": "SUCCESS"}
+
+    monkeypatch.setattr(task_status_panel, "load_api_json_or_default", fake_loader)
+
+    assert _fetch_task_status("task-1", "task_status") == {
+        "task_id": "task-1",
+        "status": "SUCCESS",
+    }
+    assert fake_st.session_state["task_status"] == {"task_id": "task-1", "status": "SUCCESS"}
+    assert captured == {
+        "path": "/tasks/task-1",
+        "fallback": None,
+        "error_message": "查詢失敗",
+    }
+
+
+def test_fetch_task_status_ignores_non_dict_loader_fallback(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "load_api_json_or_default", lambda *args, **kwargs: None)
+
+    assert _fetch_task_status("task-1", "task_status") is None
+    assert "task_status" not in fake_st.session_state
 
 
 def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> None:
@@ -179,27 +221,36 @@ def test_task_status_poll_interval_keeps_fast_polling_for_active_progress() -> N
 
 
 def test_task_status_poll_caption_explains_queued_poll_cadence() -> None:
-    assert task_status_poll_caption(
-        {"status": "PENDING", "ready": False},
-        auto_refresh=True,
-        fragment_supported=True,
-        default_seconds=5,
-    ) == "狀態輪詢：約每 8 秒更新，排隊中。"
+    assert (
+        task_status_poll_caption(
+            {"status": "PENDING", "ready": False},
+            auto_refresh=True,
+            fragment_supported=True,
+            default_seconds=5,
+        )
+        == "狀態輪詢：約每 8 秒更新，排隊中。"
+    )
 
 
 def test_task_status_poll_caption_explains_retry_poll_cadence() -> None:
-    assert task_status_poll_caption(
-        {"status": "RETRY", "ready": False},
-        auto_refresh=True,
-        fragment_supported=True,
-        default_seconds=5,
-    ) == "狀態輪詢：約每 15 秒更新，等待重試。"
+    assert (
+        task_status_poll_caption(
+            {"status": "RETRY", "ready": False},
+            auto_refresh=True,
+            fragment_supported=True,
+            default_seconds=5,
+        )
+        == "狀態輪詢：約每 15 秒更新，等待重試。"
+    )
 
 
 def test_task_status_poll_caption_reports_stopped_when_ready() -> None:
-    assert task_status_poll_caption(
-        {"status": "SUCCESS", "ready": True},
-        auto_refresh=True,
-        fragment_supported=True,
-        default_seconds=5,
-    ) == "狀態輪詢：任務已結束，自動刷新停止。"
+    assert (
+        task_status_poll_caption(
+            {"status": "SUCCESS", "ready": True},
+            auto_refresh=True,
+            fragment_supported=True,
+            default_seconds=5,
+        )
+        == "狀態輪詢：任務已結束，自動刷新停止。"
+    )

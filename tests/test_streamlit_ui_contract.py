@@ -252,7 +252,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def follow_up_tasks_html(" in ui.REPORT_SECTIONS_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "上方選擇一份最新版報告後" in source
-    assert 'api_get("/reports?limit=20")' in source
+    assert 'load_api_json_or_default(\n        "/reports?limit=20"' in source
     assert "latest_by_topic(20)" not in source
     assert "選擇最新版報告" in source
     assert "flex-wrap: wrap" in combined

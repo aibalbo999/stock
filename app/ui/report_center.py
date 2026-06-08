@@ -6,7 +6,8 @@ import requests
 import streamlit as st
 
 from app.services.report_quality import parse_quality_gate_from_markdown
-from app.ui.api_client import api_delete, api_get, request_error_message
+from app.ui.api_client import api_delete, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
 from app.ui.report_panels import (
     candidate_rows,
@@ -21,13 +22,15 @@ from app.ui.task_status_panel import render_task_status_panel
 
 
 def render_report_center() -> None:
-    render_section_header("報告中心", "查看每個主題的最新版 HTML 報告；舊版內容只保留在執行紀錄中追蹤。")
+    render_section_header(
+        "報告中心", "查看每個主題的最新版 HTML 報告；舊版內容只保留在執行紀錄中追蹤。"
+    )
     render_follow_up_flash()
-    try:
-        reports = api_get("/reports?limit=20")
-    except requests.RequestException as exc:
-        reports = []
-        st.error(f"讀取報告清單失敗：{request_error_message(exc)}")
+    reports = load_api_json_or_default(
+        "/reports?limit=20",
+        [],
+        error_message="讀取報告清單失敗",
+    )
     report_options = [
         {
             "id": report.get("id"),
@@ -60,8 +63,12 @@ def render_report_center() -> None:
     report_title = "report"
     history_result = None
     if selected_id:
-        try:
-            report_payload = api_get(f"/reports/{int(selected_id)}")
+        report_payload = load_api_json_or_default(
+            f"/reports/{int(selected_id)}",
+            {},
+            error_message="讀取報告內容失敗",
+        )
+        if isinstance(report_payload, dict) and report_payload:
             report_markdown = report_payload.get("markdown")
             report_title = report_payload.get("title") or "report"
             history_result = {
@@ -69,13 +76,12 @@ def render_report_center() -> None:
                 "topic": report_payload.get("topic"),
                 "tickers": report_payload.get("tickers") or [],
                 "request": report_payload.get("request") or {},
-                "quality_gate": report_payload.get("quality_gate") or parse_quality_gate_from_markdown(report_markdown or ""),
+                "quality_gate": report_payload.get("quality_gate")
+                or parse_quality_gate_from_markdown(report_markdown or ""),
                 "auto_follow_up": report_payload.get("auto_follow_up"),
                 "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
                 "candidate_audit": report_payload.get("candidate_audit") or {},
             }
-        except requests.RequestException:
-            st.error("讀取報告內容失敗，請確認 API 服務狀態。")
         if report_markdown:
             history_result = history_result or {
                 "report_id": selected_id,
@@ -137,12 +143,14 @@ def render_report_center() -> None:
         )
 
     with st.expander("疑難排解：執行紀錄"):
-        render_section_header("執行紀錄", "一般閱讀報告不需要查看；舊版報告與背景任務只在這裡查錯或追蹤。")
-        try:
-            runs = api_get("/runs?limit=20")
-        except requests.RequestException as exc:
-            runs = []
-            st.error(f"讀取執行紀錄失敗：{request_error_message(exc)}")
+        render_section_header(
+            "執行紀錄", "一般閱讀報告不需要查看；舊版報告與背景任務只在這裡查錯或追蹤。"
+        )
+        runs = load_api_json_or_default(
+            "/runs?limit=20",
+            [],
+            error_message="讀取執行紀錄失敗",
+        )
         run_rows = []
         for run in runs:
             if not isinstance(run, dict):
@@ -171,11 +179,11 @@ def render_report_center() -> None:
                 options=[row["id"] for row in run_rows],
                 format_func=lambda run_id: f"紀錄 #{run_id}",
             )
-            try:
-                selected_run = api_get(f"/runs/{int(selected_run_id)}")
-            except requests.RequestException as exc:
-                selected_run = {}
-                st.error(f"讀取紀錄失敗：{request_error_message(exc)}")
+            selected_run = load_api_json_or_default(
+                f"/runs/{int(selected_run_id)}",
+                {},
+                error_message="讀取紀錄失敗",
+            )
             if isinstance(selected_run, dict):
                 selected_run_payload = selected_run.get("payload") or "{}"
                 selected_run_error = selected_run.get("error")

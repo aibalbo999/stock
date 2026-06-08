@@ -6,7 +6,6 @@ from datetime import timedelta
 
 from app.data_sources.company_filings import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
-from app.core.prompts import REPORT_PROMPT_TEMPLATE, SYSTEM_PROMPT
 from app.db.session import session_scope
 from app.models.schemas import (
     FinancialMetric,
@@ -37,6 +36,11 @@ from app.services.persistence import (
 )
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services.report_models import AllocationItem, AllocationPlan, ReportContext, ReportSection
+from app.services.report_prompt_builder import (
+    build_report_prompt,
+    format_llm_evidence,
+    format_market_data,
+)
 from app.services.report_renderer import ReportMarkdownRenderer
 from app.services.report_quality import is_stale_market_data_source
 from app.services.report_source_references import (
@@ -55,8 +59,6 @@ from app.services.source_quality import (
 from app.services.whitelist import SupplyChainWhitelist
 
 
-MAX_LLM_EVIDENCE_DOCUMENTS = 60
-MAX_LLM_EVIDENCE_TEXT_CHARS = 300
 SOURCE_APPENDIX_LIMIT = 80
 REPORT_READING_SORT_NOTE = (
     "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
@@ -184,11 +186,13 @@ class ReportGenerator:
         leading_signals = self._leading_signals(tickers, valuation_metrics)
 
         graph_reasoning_context = self._graph_reasoning_context(request, tickers)
-        prompt = SYSTEM_PROMPT + "\n\n" + REPORT_PROMPT_TEMPLATE.format(
-            whitelist=self.whitelist.as_prompt_context(),
+        prompt = build_report_prompt(
+            whitelist_context=self.whitelist.as_prompt_context(),
             graph_context=graph_reasoning_context,
-            evidence=self._format_llm_evidence(evidence_docs, self._document_company_labels),
-            market_data=self._format_market_data(market_snapshots, monthly_revenues),
+            evidence_documents=evidence_docs,
+            market_snapshots=market_snapshots,
+            monthly_revenues=monthly_revenues,
+            ticker_label_resolver=self._document_company_labels,
         )
         llm_result = self._generate_llm_supplement(prompt)
         self.last_llm_result = llm_result
@@ -4992,65 +4996,14 @@ class ReportGenerator:
         documents: list[NewsDocument],
         ticker_label_resolver: Callable[[NewsDocument], list[str]] | None = None,
     ) -> str:
-        documents = filter_formal_evidence_documents(documents)
-        if not documents:
-            return "目前無足夠數據判斷。"
-        selected = documents[:MAX_LLM_EVIDENCE_DOCUMENTS]
-        lines = [
-            "以下為供模型補充分析用的截斷證據摘要；正式報告仍會使用完整資料庫、財報與估值規則交叉檢查。"
-        ]
-        for doc in selected:
-            text = " ".join(doc.text.split())[:MAX_LLM_EVIDENCE_TEXT_CHARS]
-            source_date = doc.source.published_at or "日期不明"
-            company_labels = ticker_label_resolver(doc) if ticker_label_resolver else []
-            source_id = ",".join(
-                label.split(" ", 1)[0] for label in company_labels if label.split(" ", 1)[0]
-            )
-            company_mapping = "、".join(company_labels) if company_labels else "未明確對應白名單公司"
-            lines.append(
-                "- "
-                f"source_date={source_date} | "
-                f"source_publisher={doc.source.publisher or ''} | "
-                f"source_title={doc.title} | "
-                f"source_id={source_id} | "
-                f"公司對應={company_mapping} | "
-                f"text={text}"
-            )
-        omitted = len(documents) - len(selected)
-        if omitted > 0:
-            lines.append(f"- 其餘 {omitted} 筆來源保留於系統資料庫，未放入模型提示以避免逾時。")
-        return "\n".join(lines)
+        return format_llm_evidence(documents, ticker_label_resolver)
 
     @staticmethod
     def _format_market_data(
         snapshots: list[MarketSnapshot],
         monthly_revenues: list[MonthlyRevenue] | None = None,
     ) -> str:
-        lines = []
-        if snapshots:
-            lines.extend(
-                [
-                    "- "
-                    f"{snapshot.ticker} trade_date={snapshot.trade_date.isoformat()} "
-                    f"close={snapshot.close} spread={snapshot.spread} "
-                    f"trading_volume={snapshot.trading_volume} source={snapshot.source} ticker={snapshot.ticker} "
-                    f"fetched_at={snapshot.fetched_at.isoformat(timespec='seconds')}"
-                    for snapshot in snapshots
-                ]
-            )
-        if monthly_revenues:
-            lines.extend(
-                [
-                    "- "
-                    f"{revenue.ticker} revenue_month={revenue.revenue_year}-{revenue.revenue_month:02d} "
-                    f"revenue={revenue.revenue} yoy_pct={revenue.yoy_pct} source={revenue.source} "
-                    f"fetched_at={revenue.fetched_at.isoformat(timespec='seconds')}"
-                    for revenue in monthly_revenues
-                ]
-            )
-        if not lines:
-            return "目前無市場資料快取。"
-        return "\n".join(lines)
+        return format_market_data(snapshots, monthly_revenues)
 
     @staticmethod
     def _model_status(result: LLMResult) -> str:

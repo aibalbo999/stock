@@ -32,6 +32,7 @@ from app.services import (
     report_appendix,
     report_allocation,
     report_company_narrative,
+    report_data_quality,
     report_formatting,
     report_scope_sections,
     report_source_coverage,
@@ -2436,6 +2437,29 @@ def test_data_quality_section_explains_complete_and_missing_layers() -> None:
     assert "2382 廣達" in section
     assert "不足：公司文本不足、缺主題歸因、缺股價、缺月營收" in section
     assert "完整 1 檔、部分可用 0 檔、資料不足 1 檔" in section
+
+
+def test_data_quality_render_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    data_quality_source = Path("app/services/report_data_quality.py").read_text()
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+
+    assert "report_data_quality" in generator_source
+    assert "def render_data_quality(" in data_quality_source
+    assert "data_quality_grade(" in data_quality_source
+    assert "本段檢查每檔股票是否同時具備" not in generator_source
+    assert generator._render_data_quality([], [], [], []) == report_data_quality.render_data_quality(
+        tickers=[],
+        documents=[],
+        findings=[],
+        market_snapshots=[],
+        companies=generator.whitelist.companies(),
+        related_documents_resolver=generator._related_documents,
+        related_findings_resolver=generator._related_findings,
+        company_filing_missing_resolver=generator._company_filing_missing,
+    )
 
 
 def test_source_coverage_summarizes_international_sources() -> None:

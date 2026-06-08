@@ -66,6 +66,7 @@ from app.services import (
     report_appendix,
     report_allocation,
     report_company_narrative,
+    report_data_quality,
     report_decision_rules,
     report_formatting,
     report_potential,
@@ -1445,94 +1446,21 @@ class ReportGenerator:
         leading_signals: dict[str, LeadingSignal] | None = None,
         request: ReportRequest | None = None,
     ) -> str:
-        if not tickers:
-            return "未形成可驗證股票範圍；本次報告只能保留主題觀察，不能產出個股投資判斷。"
-
-        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
-        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
-        metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        strong = 0
-        partial = 0
-        weak = 0
-        lines = [
-            "本段檢查每檔股票是否同時具備新聞/RAG、主題歸因、股價、月營收、已揭露年度財報、估值與公司公開文件；資料不足時，系統會降低建議強度。",
-            "",
-            "| 股票 | 新聞/RAG | 主題歸因 | 股價 | 月營收 | 年度財報 | 估值 | 公司文件 | 近況訊號 | 判讀 |",
-            "|---|---:|---:|---|---|---:|---|---|---|---|",
-        ]
-        for ticker in tickers:
-            company = companies.get(ticker)
-            related_documents = self._related_documents(ticker, documents)
-            related_findings = self._related_findings(ticker, findings)
-            has_snapshot = ticker in snapshots
-            has_revenue = ticker in revenues
-            ticker_metrics = metrics_by_ticker.get(ticker, [])
-            valuation = valuations.get(ticker)
-            signal = (leading_signals or {}).get(ticker)
-            filing_missing = self._company_filing_missing(ticker, documents)
-            quality = self._data_quality_grade(
-                related_documents,
-                related_findings,
-                snapshots.get(ticker),
-                revenues.get(ticker),
-                ticker_metrics,
-                valuation,
-                financial_metrics is not None or valuation_metrics is not None,
-                signal,
-                filing_missing,
-                recent_source_days=request.lookback_days if request else None,
-            )
-            missing = quality["missing"]
-
-            if not missing:
-                verdict = "完整，可進入二次篩選"
-                strong += 1
-            elif quality["grade"] == "partial":
-                verdict = "部分可用，僅列觀察：" + "、".join(missing)
-                partial += 1
-            else:
-                verdict = "不足：" + "、".join(missing)
-                weak += 1
-
-            label = f"{ticker} {company.name if company else ticker}"
-            price_label = snapshots[ticker].trade_date.isoformat() if has_snapshot else "缺"
-            revenue_label = (
-                f"{revenues[ticker].revenue_year}-{revenues[ticker].revenue_month:02d}"
-                if has_revenue
-                else "缺"
-            )
-            financial_label = str(len(ticker_metrics)) if ticker_metrics else "缺"
-            valuation_label = valuation.trade_date.isoformat() if valuation else "缺"
-            filing_label = "足夠" if not filing_missing else "缺"
-            signal_label = signal.direction if signal and signal.has_signal_data else "缺"
-            lines.append(
-                self._table_row(
-                    [
-                        label,
-                        len(related_documents),
-                        len(related_findings),
-                        price_label,
-                        revenue_label,
-                        financial_label,
-                        valuation_label,
-                        filing_label,
-                        signal_label,
-                        verdict,
-                    ]
-                )
-            )
-
-        lines.extend(
-            [
-                "",
-                f"整體判讀：完整 {strong} 檔、部分可用 {partial} 檔、資料不足 {weak} 檔。",
-            ]
+        return report_data_quality.render_data_quality(
+            tickers=tickers,
+            documents=documents,
+            findings=findings,
+            market_snapshots=market_snapshots,
+            monthly_revenues=monthly_revenues,
+            financial_metrics=financial_metrics,
+            valuation_metrics=valuation_metrics,
+            leading_signals=leading_signals,
+            companies=self.whitelist.companies(),
+            related_documents_resolver=self._related_documents,
+            related_findings_resolver=self._related_findings,
+            company_filing_missing_resolver=self._company_filing_missing,
+            recent_source_days=request.lookback_days if request else None,
         )
-        if weak or partial:
-            lines.append("投資結論會優先採用資料完整標的；資料不足標的不會只因單一題材或單一財務數字被列為優先買進。")
-        return "\n".join(lines)
 
     def _render_score_breakdown(
         self,

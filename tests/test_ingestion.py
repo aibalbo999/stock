@@ -6,6 +6,8 @@ from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.models.schemas import MarketSnapshot, ReportRequest
+from app.services import ingestion as ingestion_module
+from app.services import ingestion_documents
 from app.services.ingestion import (
     IngestionPipeline,
     classify_company_filing_error,
@@ -13,6 +15,25 @@ from app.services.ingestion import (
     company_filing_next_actions,
     company_filing_status,
 )
+
+
+def test_ingestion_reexports_dedicated_document_helpers() -> None:
+    assert IngestionPipeline._source_selection_limit is ingestion_documents.source_selection_limit
+    assert IngestionPipeline._select_diverse_sources is ingestion_documents.select_diverse_sources
+    assert IngestionPipeline._source_category_counts is ingestion_documents.source_category_counts
+    assert IngestionPipeline._matches_target_terms is ingestion_documents.matches_target_terms
+    assert (
+        IngestionPipeline._stale_market_source_count
+        is ingestion_documents.stale_market_source_count
+    )
+    assert IngestionPipeline._market_sources is ingestion_documents.market_sources
+    assert IngestionPipeline._dedupe_documents is ingestion_documents.dedupe_documents
+    assert IngestionPipeline._filter_documents is ingestion_documents.filter_documents
+    assert (
+        IngestionPipeline._is_low_quality_market_source
+        is ingestion_documents.is_low_quality_market_source
+    )
+    assert ingestion_module._dedupe_documents is ingestion_documents.dedupe_documents
 
 
 def test_source_category_counts_sum_stored_documents() -> None:
@@ -123,7 +144,9 @@ def test_ingest_web_search_stores_only_target_company_documents(monkeypatch) -> 
                 publisher=publisher or "example.com",
                 url=url,
             )
-        return NewsFetcher.from_manual_text(title="無關頁面", text="無關內容", publisher="example.com", url=url)
+        return NewsFetcher.from_manual_text(
+            title="無關頁面", text="無關內容", publisher="example.com", url=url
+        )
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
     monkeypatch.setattr("app.services.ingestion.NewsRepository", FakeNewsRepository)
@@ -284,7 +307,9 @@ def test_pre_report_refresh_filters_requested_tickers(monkeypatch) -> None:
 def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
     pipeline = IngestionPipeline()
 
-    async def fake_histories(self, tickers: list[str], start_date: date, end_date: date, *, force_refresh=False):
+    async def fake_histories(
+        self, tickers: list[str], start_date: date, end_date: date, *, force_refresh=False
+    ):
         assert force_refresh is True
         return {
             ticker: [
@@ -292,7 +317,9 @@ def test_refresh_market_can_keep_dynamic_ai_tickers(monkeypatch) -> None:
                     ticker=ticker,
                     trade_date=end_date,
                     close=100.0,
-                    source="Fugle historical stats" if ticker == "3017" else "FinMind TaiwanStockPrice",
+                    source="Fugle historical stats"
+                    if ticker == "3017"
+                    else "FinMind TaiwanStockPrice",
                 )
             ]
             for ticker in tickers
@@ -363,7 +390,9 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
                     url="https://mops.twse.com.tw/server-java/t57sb01?co_id=2330",
                 )
             ], []
-        return [], [{"source": "https://news.google.com/rss/search?q=2382", "error": "HTTP 503 timeout"}]
+        return [], [
+            {"source": "https://news.google.com/rss/search?q=2382", "error": "HTTP 503 timeout"}
+        ]
 
     async def fake_fetch_official_website_documents(
         self,
@@ -392,12 +421,26 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
         return [], []
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
-    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(
+        "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
+    )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_mops_annual_report_documents", fake_fetch_mops_annual_report_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_official_website_documents", fake_fetch_official_website_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents)
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_mops_annual_report_documents",
+        fake_fetch_mops_annual_report_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_official_website_documents",
+        fake_fetch_official_website_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents
+    )
 
     result = asyncio.run(
         IngestionPipeline().ingest_company_filings(
@@ -481,9 +524,13 @@ def test_ingest_company_filings_counts_cached_official_documents(monkeypatch) ->
         return [], []
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
-    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(
+        "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
+    )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
+    )
 
     result = asyncio.run(
         IngestionPipeline().ingest_company_filings(
@@ -503,7 +550,9 @@ def test_ingest_company_filings_counts_cached_official_documents(monkeypatch) ->
     assert result["missing_tickers"] == []
 
 
-def test_ingest_company_filings_focuses_missing_recommended_type_after_cached_annual_report(monkeypatch) -> None:
+def test_ingest_company_filings_focuses_missing_recommended_type_after_cached_annual_report(
+    monkeypatch,
+) -> None:
     calls = {"mops": 0, "discovery": []}
     cached_document = CompanyFilingFetcher.from_manual_text(
         ticker="2308",
@@ -574,10 +623,18 @@ def test_ingest_company_filings_focuses_missing_recommended_type_after_cached_an
         return [investor_document], []
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
-    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(
+        "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
+    )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_mops_annual_report_documents", fake_fetch_mops_annual_report_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_mops_annual_report_documents",
+        fake_fetch_mops_annual_report_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
+    )
 
     result = asyncio.run(
         IngestionPipeline().ingest_company_filings(
@@ -663,12 +720,26 @@ def test_ingest_company_filings_broadens_when_targeted_type_has_no_results(monke
         return [], []
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
-    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(
+        "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
+    )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_mops_annual_report_documents", fake_fetch_mops_annual_report_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_official_website_documents", fake_fetch_official_website_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents)
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_mops_annual_report_documents",
+        fake_fetch_mops_annual_report_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_official_website_documents",
+        fake_fetch_official_website_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents
+    )
 
     result = asyncio.run(
         IngestionPipeline().ingest_company_filings(
@@ -766,13 +837,29 @@ def test_ingest_company_filings_uses_web_search_when_news_discovery_is_empty(mon
         return [], []
 
     monkeypatch.setattr("app.services.ingestion.VectorStore", FakeVectorStore)
-    monkeypatch.setattr("app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository)
+    monkeypatch.setattr(
+        "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
+    )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
-    monkeypatch.setattr(IngestionPipeline, "_company_name_from_cached_evidence", staticmethod(lambda ticker: "川湖"))
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_mops_annual_report_documents", fake_fetch_mops_annual_report_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_official_website_documents", fake_fetch_official_website_documents)
-    monkeypatch.setattr(CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents)
+    monkeypatch.setattr(
+        IngestionPipeline, "_company_name_from_cached_evidence", staticmethod(lambda ticker: "川湖")
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_mops_annual_report_documents",
+        fake_fetch_mops_annual_report_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_official_website_documents",
+        fake_fetch_official_website_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher, "fetch_web_search_documents", fake_fetch_web_search_documents
+    )
 
     result = asyncio.run(
         IngestionPipeline().ingest_company_filings(
@@ -794,7 +881,10 @@ def test_classify_company_filing_errors() -> None:
     assert classify_company_filing_error("HTTP 503 timeout") == "retryable_source_error"
     assert classify_company_filing_error("PDF 掃描圖檔，請 OCR") == "manual_text_required"
     assert classify_company_filing_error("403 forbidden") == "source_access_restricted"
-    assert classify_company_filing_error("content does not mention the target company") == "content_not_usable"
+    assert (
+        classify_company_filing_error("content does not mention the target company")
+        == "content_not_usable"
+    )
 
 
 def test_company_filing_gap_summary_separates_retry_and_manual_actions() -> None:

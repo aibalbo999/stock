@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
@@ -23,6 +24,7 @@ from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.llm_client import LLMResult
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
+from app.services.report_source_references import representative_sources
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -1188,10 +1190,23 @@ def test_representative_sources_dedupes_and_sorts_newest_first() -> None:
     )
 
     sources = ReportGenerator._representative_sources([older, newer, duplicate_newer])
+    helper_sources = representative_sources([older, newer, duplicate_newer])
 
     assert sources.startswith("2026-05-21 測試新聞B《台積電 CoWoS 大單》")
     assert sources.count("台積電 CoWoS 大單") == 1
     assert "2026-05-20 測試新聞A《台積電 AI 需求成長》" in sources
+    assert helper_sources == sources
+
+
+def test_report_source_reference_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    references_source = Path("app/services/report_source_references.py").read_text()
+
+    assert "from app.services.report_source_references import" in generator_source
+    assert "def representative_sources(" in references_source
+    assert "def ordered_source_documents(" in references_source
+    assert "def source_reference_line(" in references_source
+    assert "source_credibility_weight_for_document" not in generator_source
 
 
 def test_early_potential_radar_prioritizes_low_attention_strengthening_signals() -> None:

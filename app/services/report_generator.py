@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app.data_sources.company_filings import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
@@ -39,13 +39,18 @@ from app.services.report_integrity import ReportIntegrityError, assert_report_in
 from app.services.report_models import AllocationItem, AllocationPlan, ReportContext, ReportSection
 from app.services.report_renderer import ReportMarkdownRenderer
 from app.services.report_quality import is_stale_market_data_source
+from app.services.report_source_references import (
+    downside_source_references,
+    ordered_source_documents,
+    representative_sources,
+    source_reference_line,
+)
 from app.services.scoring_engine import PotentialScoringEngine
 from app.services.risk_analyzer import RiskAnalyzer
 from app.services.source_quality import (
     filter_formal_evidence_documents,
     is_formal_evidence_document,
     remove_low_quality_investor_forum_lines,
-    source_credibility_weight_for_document,
 )
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -2181,36 +2186,7 @@ class ReportGenerator:
 
     @staticmethod
     def _representative_sources(documents: list[NewsDocument], limit: int = 3) -> str:
-        documents = filter_formal_evidence_documents(documents)
-        if not documents:
-            return "目前無足夠公司層級來源。"
-        labels = []
-        seen: set[tuple[str, str, str]] = set()
-        sorted_documents = sorted(
-            documents,
-            key=lambda document: (
-                source_credibility_weight_for_document(document),
-                document.source.published_at or date.min,
-                document.source.publisher or "",
-                document.title,
-            ),
-            reverse=True,
-        )
-        for document in sorted_documents:
-            key = (
-                document.title,
-                document.source.publisher or "",
-                document.source.published_at.isoformat() if document.source.published_at else "",
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            date_label = document.source.published_at.isoformat() if document.source.published_at else "日期不明"
-            publisher = document.source.publisher or "來源不明"
-            labels.append(f"{date_label} {publisher}《{document.title}》")
-            if len(labels) >= limit:
-                break
-        return "；".join(labels)
+        return representative_sources(documents, limit=limit)
 
     @staticmethod
     def _downside_source_references(
@@ -2218,77 +2194,16 @@ class ReportGenerator:
         findings,
         limit: int = 3,
     ) -> str:
-        risk_types = {
-            RiskType.structural_bottleneck,
-            RiskType.short_term_volatility,
-            RiskType.insufficient_data,
-        }
-        labels = []
-        seen: set[tuple[str, str, str]] = set()
-
-        def append_source(source) -> None:
-            key = (
-                source.title,
-                source.publisher or "",
-                source.published_at.isoformat() if source.published_at else "",
-            )
-            if key in seen:
-                return
-            seen.add(key)
-            date_label = source.published_at.isoformat() if source.published_at else "日期不明"
-            publisher = source.publisher or "來源不明"
-            labels.append(f"{date_label} {publisher}《{source.title}》")
-
-        for finding in findings:
-            if finding.risk_type in risk_types:
-                append_source(finding.source)
-            if len(labels) >= limit:
-                return "；".join(labels)
-
-        negative_keywords = ["下滑", "重摔", "毛利", "禁令", "制裁", "缺電", "產能不足", "吃緊", "延遲", "鬆動"]
-        for document in sorted(
+        return downside_source_references(
             documents,
-            key=lambda item: (
-                source_credibility_weight_for_document(item),
-                item.source.published_at or date.min,
-                item.source.publisher or "",
-                item.title,
-            ),
-            reverse=True,
-        ):
-            text = ReportGenerator._scoring_text_for_document(document)
-            if any(keyword in text for keyword in negative_keywords):
-                append_source(document.source)
-            if len(labels) >= limit:
-                break
-        return "；".join(labels)
+            findings,
+            limit=limit,
+            scoring_text_for_document=ReportGenerator._scoring_text_for_document,
+        )
 
     @staticmethod
     def _ordered_source_documents(documents: list[NewsDocument]) -> list[NewsDocument]:
-        documents = filter_formal_evidence_documents(documents)
-        ordered = sorted(
-            documents,
-            key=lambda document: (
-                source_credibility_weight_for_document(document),
-                document.source.published_at or date.min,
-                document.source.publisher or "",
-                document.title,
-            ),
-            reverse=True,
-        )
-        deduped = []
-        seen: set[tuple[str, str, str]] = set()
-        for document in ordered:
-            key = (
-                document.title,
-                document.source.publisher or "",
-                document.source.published_at.isoformat() if document.source.published_at else "",
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(document)
-        return deduped
+        return ordered_source_documents(documents)
 
     def _appendix_documents_for_tickers(
         self,
@@ -2309,10 +2224,7 @@ class ReportGenerator:
 
     @staticmethod
     def _source_reference_line(document: NewsDocument) -> str:
-        source_date = document.source.published_at.isoformat() if document.source.published_at else "日期不明"
-        publisher = document.source.publisher or "來源不明"
-        url = f"（{document.source.url}）" if document.source.url else ""
-        return f"- {source_date} {publisher}《{document.title}》{url}"
+        return source_reference_line(document)
 
     def _render_company_analysis(
         self,

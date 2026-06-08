@@ -41,15 +41,7 @@ def prune_report_files_for_topic(report_dir: Path, safe_topic: str, *, keep_path
 
 
 def prune_older_report_files_by_topic(report_dir: Path) -> int:
-    if not report_dir.exists():
-        return 0
-    grouped: dict[str, dict[str, list[Path]]] = {}
-    for candidate in report_artifact_files(report_dir):
-        grouped.setdefault(report_file_topic_key(candidate), {}).setdefault(
-            candidate.stem,
-            [],
-        ).append(candidate)
-
+    grouped = _report_versions_by_topic(report_dir)
     deleted = 0
     for report_versions in grouped.values():
         if len(report_versions) <= 1:
@@ -64,6 +56,60 @@ def prune_older_report_files_by_topic(report_dir: Path) -> int:
             for candidate in files:
                 deleted += _unlink_report_file(candidate)
     return deleted
+
+
+def report_retention_preview(report_dir: Path) -> dict:
+    grouped = _report_versions_by_topic(report_dir)
+    topics = []
+    deletable_artifact_count = 0
+    retained_artifact_count = 0
+    for topic, report_versions in sorted(grouped.items()):
+        keep_stem = max(
+            report_versions,
+            key=lambda stem: report_artifact_version_sort_key(report_versions[stem]),
+        )
+        retained_files = sorted(path.name for path in report_versions[keep_stem])
+        deletable_files = sorted(
+            path.name
+            for stem, files in report_versions.items()
+            if stem != keep_stem
+            for path in files
+        )
+        deletable_artifact_count += len(deletable_files)
+        retained_artifact_count += len(retained_files)
+        topics.append(
+            {
+                "topic": topic,
+                "version_count": len(report_versions),
+                "artifact_count": sum(len(files) for files in report_versions.values()),
+                "retained_stem": keep_stem,
+                "retained_files": retained_files,
+                "deletable_files": deletable_files,
+                "deletable_artifact_count": len(deletable_files),
+            }
+        )
+
+    return {
+        "policy": "latest_per_topic",
+        "report_dir": str(report_dir),
+        "report_dir_exists": report_dir.exists(),
+        "topic_count": len(topics),
+        "stale_topic_count": sum(1 for row in topics if row["deletable_artifact_count"]),
+        "artifact_count": sum(int(row["artifact_count"]) for row in topics),
+        "retained_artifact_count": retained_artifact_count,
+        "deletable_artifact_count": deletable_artifact_count,
+        "topics": topics,
+    }
+
+
+def _report_versions_by_topic(report_dir: Path) -> dict[str, dict[str, list[Path]]]:
+    grouped: dict[str, dict[str, list[Path]]] = {}
+    for candidate in report_artifact_files(report_dir):
+        grouped.setdefault(report_file_topic_key(candidate), {}).setdefault(
+            candidate.stem,
+            [],
+        ).append(candidate)
+    return grouped
 
 
 def report_artifact_files(report_dir: Path) -> list[Path]:

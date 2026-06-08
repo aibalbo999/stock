@@ -7,6 +7,7 @@ from app.models.schemas import ReportRequest
 from app.services.report_files import (
     prune_older_report_files_by_topic,
     report_file_topic_key,
+    report_retention_preview,
     write_report_file,
 )
 
@@ -90,6 +91,38 @@ def test_prune_older_report_files_by_topic_keeps_latest_each_topic(tmp_path) -> 
     assert latest_robot_pdf.exists()
     assert standalone.exists()
     assert standalone_html.exists()
+
+
+def test_report_retention_preview_reports_stale_artifacts_without_deleting(tmp_path) -> None:
+    old_ai = tmp_path / "20260606_120000_AI產業鏈.md"
+    old_ai_html = tmp_path / "20260606_120000_AI產業鏈.html"
+    latest_ai = tmp_path / "20260607_080000_AI產業鏈.md"
+    latest_ai_pdf = tmp_path / "20260607_080000_AI產業鏈.pdf"
+    standalone = tmp_path / "單一報告.md"
+    for path in (old_ai, old_ai_html, latest_ai, latest_ai_pdf, standalone):
+        path.write_text(path.name, encoding="utf-8")
+
+    preview = report_retention_preview(tmp_path)
+    rows_by_topic = {row["topic"]: row for row in preview["topics"]}
+
+    assert preview["policy"] == "latest_per_topic"
+    assert preview["topic_count"] == 2
+    assert preview["stale_topic_count"] == 1
+    assert preview["artifact_count"] == 5
+    assert preview["retained_artifact_count"] == 3
+    assert preview["deletable_artifact_count"] == 2
+    assert rows_by_topic["AI產業鏈"]["retained_stem"] == "20260607_080000_AI產業鏈"
+    assert rows_by_topic["AI產業鏈"]["retained_files"] == [
+        "20260607_080000_AI產業鏈.md",
+        "20260607_080000_AI產業鏈.pdf",
+    ]
+    assert rows_by_topic["AI產業鏈"]["deletable_files"] == [
+        "20260606_120000_AI產業鏈.html",
+        "20260606_120000_AI產業鏈.md",
+    ]
+    assert old_ai.exists()
+    assert old_ai_html.exists()
+    assert latest_ai.exists()
 
 
 def test_report_file_topic_key_handles_timestamped_and_legacy_names(tmp_path) -> None:

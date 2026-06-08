@@ -56,6 +56,10 @@ def create_report_router(
     ) -> dict:
         return services.report_query().observability_summary(limit)
 
+    @router.get("/reports/retention/preview")
+    def report_retention_preview(services: Any = Depends(services_dependency)) -> dict:
+        return services.report_query().retention_preview()
+
     @router.get("/reports/{report_id}")
     def get_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:
         try:

@@ -22,7 +22,7 @@ from app.services.report_followup import (
     report_tickers,
     sync_candidate_audit_section,
 )
-from app.services.report_files import REPORT_ARTIFACT_SUFFIXES
+from app.services.report_files import REPORT_ARTIFACT_SUFFIXES, report_retention_preview
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -250,6 +250,11 @@ class ReportQueryService:
             "bottlenecks": bottlenecks,
             "reports": rows,
         }
+
+    def retention_preview(self) -> dict:
+        return report_retention_preview(
+            Path(getattr(self.settings_provider(), "report_dir", Path("reports")))
+        )
 
     def get_report(self, report_id: int) -> dict:
         with self.session_scope_factory() as session:

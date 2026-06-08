@@ -534,6 +534,29 @@ def test_report_query_service_delete_report_removes_safe_markdown_file(tmp_path)
     outside_path.unlink()
 
 
+def test_report_query_service_returns_retention_preview(tmp_path) -> None:
+    old_ai = tmp_path / "20260606_120000_AI.md"
+    latest_ai = tmp_path / "20260607_080000_AI.md"
+    for path in (old_ai, latest_ai):
+        path.write_text(path.name, encoding="utf-8")
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = ReportQueryService(
+        session_scope_factory=fake_session_scope,
+        settings_provider=lambda: SimpleNamespace(report_dir=tmp_path),
+    )
+
+    preview = service.retention_preview()
+
+    assert preview["policy"] == "latest_per_topic"
+    assert preview["deletable_artifact_count"] == 1
+    assert preview["topics"][0]["retained_stem"] == "20260607_080000_AI"
+    assert old_ai.exists()
+
+
 def test_report_query_service_summarizes_latest_report_quality_gates() -> None:
     quality_gate = {
         "status": "caution",

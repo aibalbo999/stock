@@ -48,6 +48,10 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
             captured["observability_limit"] = limit
             return {"status": "ready", "totals": {"trace_captured_count": limit}}
 
+        def retention_preview(self) -> dict:
+            captured["retention_preview"] = True
+            return {"policy": "latest_per_topic", "deletable_artifact_count": 2}
+
         def get_report(self, report_id: int) -> dict:
             captured["report_id"] = report_id
             return {"report_id": report_id}
@@ -58,6 +62,7 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
     listed = client.get("/reports?limit=3")
     quality = client.get("/reports/quality/summary?limit=5")
     observability = client.get("/reports/observability/summary?limit=6")
+    retention_preview = client.get("/reports/retention/preview")
     fetched = client.get("/reports/7")
 
     assert generated.status_code == 200
@@ -69,6 +74,11 @@ def test_report_router_delegates_report_generation_and_queries() -> None:
     assert captured["quality_limit"] == 5
     assert observability.json() == {"status": "ready", "totals": {"trace_captured_count": 6}}
     assert captured["observability_limit"] == 6
+    assert retention_preview.json() == {
+        "policy": "latest_per_topic",
+        "deletable_artifact_count": 2,
+    }
+    assert captured["retention_preview"] is True
     assert fetched.json() == {"report_id": 7}
 
 

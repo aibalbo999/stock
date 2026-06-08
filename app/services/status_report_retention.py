@@ -7,6 +7,7 @@ from app.services.report_files import (
     prune_older_report_files_by_topic,
     report_artifact_files,
     report_file_topic_key,
+    report_retention_preview,
 )
 
 
@@ -19,6 +20,8 @@ def report_retention_status() -> dict:
     maintenance_ui_source = _read_text(
         root / "app" / "ui" / "system_settings_maintenance.py"
     )
+    maintenance_cleanup_source = _read_text(root / "app" / "ui" / "maintenance_cleanup_panel.py")
+    report_routes_source = _read_text(root / "app" / "api" / "report_routes.py")
     write_prunes_db = "self.prune_older_for_topic(report.topic, report.id)" in persistence_source
     report_file_write_prunes = (
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
@@ -45,6 +48,7 @@ def report_retention_status() -> dict:
         and "report_dir not in resolved.parents" in report_query_source
         and "def _report_artifact_sibling_paths(" in report_query_source
     )
+    retention_preview_smoke = _report_retention_preview_smoke()
     return {
         "collector_path": "app/services/status_report_retention.py",
         "policy": "latest_per_topic",
@@ -76,6 +80,12 @@ def report_retention_status() -> dict:
         "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
         "report_artifact_bulk_prune_available": "def report_artifact_files(" in report_files_source
         and "def prune_older_report_files_by_topic(" in report_files_source,
+        "report_retention_preview_available": "def report_retention_preview(" in report_files_source
+        and "def retention_preview(" in report_query_source,
+        "report_retention_preview_endpoint": '"/reports/retention/preview"' in report_routes_source
+        and "def report_retention_preview(" in report_routes_source,
+        "settings_ui_retention_preview": '"/reports/retention/preview"' in maintenance_cleanup_source
+        and "deletable_artifact_count" in maintenance_cleanup_source,
         "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
         "report_artifact_topic_key_parser_available": "def report_file_topic_key(" in report_files_source
         and "REPORT_ARTIFACT_SUFFIXES" in report_files_source,
@@ -83,6 +93,8 @@ def report_retention_status() -> dict:
         "markdown_retention_smoke": artifact_retention_smoke,
         "report_artifact_retention_smoke_passed": artifact_retention_smoke["passed"],
         "report_artifact_retention_smoke": artifact_retention_smoke,
+        "report_retention_preview_smoke_passed": retention_preview_smoke["passed"],
+        "report_retention_preview_smoke": retention_preview_smoke,
         "list_reports_uses_latest_by_topic": "latest_by_topic(limit)" in report_query_source,
         "quality_summary_uses_latest_by_topic": "latest_by_topic(safe_limit)"
         in report_query_source,
@@ -115,6 +127,7 @@ def report_retention_status() -> dict:
             "app/services/report_query.py",
             "app/services/data_operations_api.py",
             "app/ui/system_settings_maintenance.py",
+            "app/ui/maintenance_cleanup_panel.py",
         ],
     }
 
@@ -206,5 +219,41 @@ def _report_artifact_retention_smoke() -> dict:
             "kept_files": [],
             "expected_kept_files": [],
             "checks": {},
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _report_retention_preview_smoke() -> dict:
+    try:
+        with TemporaryDirectory() as temp_dir:
+            report_dir = Path(temp_dir)
+            old_ai = report_dir / "20260606_120000_AI_topic.md"
+            old_ai_html = report_dir / "20260606_120000_AI_topic.html"
+            latest_ai = report_dir / "20260607_080000_AI_topic.md"
+            standalone = report_dir / "single_report.md"
+            for path in (old_ai, old_ai_html, latest_ai, standalone):
+                path.write_text(path.name, encoding="utf-8")
+
+            preview = report_retention_preview(report_dir)
+            checks = {
+                "policy": preview.get("policy") == "latest_per_topic",
+                "topic_count": preview.get("topic_count") == 2,
+                "stale_topic_count": preview.get("stale_topic_count") == 1,
+                "deletable_artifact_count": preview.get("deletable_artifact_count") == 2,
+                "preview_does_not_delete_old_md": old_ai.exists(),
+                "preview_does_not_delete_old_html": old_ai_html.exists(),
+                "preview_keeps_latest": latest_ai.exists(),
+            }
+            return {
+                "passed": all(checks.values()),
+                "checks": checks,
+                "preview": preview,
+                "error": None,
+            }
+    except Exception as exc:
+        return {
+            "passed": False,
+            "checks": {},
+            "preview": {},
             "error": f"{type(exc).__name__}: {exc}",
         }

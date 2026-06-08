@@ -63,6 +63,7 @@ def data_business_capabilities(
             and report_retention_status.get("manual_delete_prunes_report_artifacts")
             and report_retention_status.get("manual_delete_artifact_guardrail")
             and report_retention_status.get("report_artifact_retention_smoke_passed")
+            and report_retention_status.get("report_retention_preview_smoke_passed")
             else "degraded",
             evidence=report_retention_status,
             detail=(

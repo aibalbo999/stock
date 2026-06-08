@@ -7,6 +7,7 @@ import streamlit as st
 from app.core.time import today_taipei, utc_now_naive
 from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_post
+from app.ui.api_loaders import load_api_json_or_default
 
 
 def render_maintenance_cleanup_panel() -> None:
@@ -19,6 +20,28 @@ def render_maintenance_cleanup_panel() -> None:
         )
         if not cleanup_confirmed:
             st.caption("勾選確認後才會啟用下方維護按鈕，避免手機或滑鼠誤觸。")
+        preview = load_api_json_or_default(
+            "/reports/retention/preview",
+            {"deletable_artifact_count": 0, "stale_topic_count": 0, "topics": []},
+            error_message="讀取報告保留預覽失敗",
+            notify="warning",
+        )
+        preview_cols = st.columns(3)
+        preview_cols[0].metric("可清舊報告檔", int(preview.get("deletable_artifact_count") or 0))
+        preview_cols[1].metric("有舊版主題", int(preview.get("stale_topic_count") or 0))
+        preview_cols[2].metric("目前主題數", int(preview.get("topic_count") or 0))
+        preview_rows = [
+            {
+                "主題": row.get("topic"),
+                "版本數": int(row.get("version_count") or 0),
+                "將清檔案": int(row.get("deletable_artifact_count") or 0),
+                "保留版本": row.get("retained_stem"),
+            }
+            for row in preview.get("topics") or []
+            if int(row.get("deletable_artifact_count") or 0)
+        ]
+        if preview_rows:
+            st.dataframe(preview_rows, width="stretch", hide_index=True)
         if st.button("清除失敗紀錄", disabled=not cleanup_confirmed):
             result = run_api_action_or_none(
                 lambda: api_post("/maintenance/cleanup", {"failed_runs": True}),

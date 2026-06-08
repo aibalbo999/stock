@@ -55,6 +55,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_markdown_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_report_artifacts_by_topic"] is True
+    assert report_retention["evidence"]["report_retention_preview_available"] is True
+    assert report_retention["evidence"]["report_retention_preview_endpoint"] is True
+    assert report_retention["evidence"]["settings_ui_retention_preview"] is True
     assert report_retention["evidence"]["run_links_cleared_for_pruned_reports"] is True
     assert report_retention["evidence"]["run_output_paths_cleared_for_pruned_reports"] is True
     assert report_retention["evidence"]["delete_before_clears_run_links"] is True
@@ -66,6 +69,7 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert report_retention["evidence"]["manual_delete_artifact_guardrail"] is True
     assert report_retention["evidence"]["markdown_retention_smoke_passed"] is True
     assert report_retention["evidence"]["report_artifact_retention_smoke_passed"] is True
+    assert report_retention["evidence"]["report_retention_preview_smoke_passed"] is True
     markdown_smoke = report_retention["evidence"]["markdown_retention_smoke"]
     assert markdown_smoke["passed"] is True
     assert markdown_smoke["deleted_count"] == 5
@@ -81,6 +85,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert all(markdown_smoke["checks"].values())
     artifact_smoke = report_retention["evidence"]["report_artifact_retention_smoke"]
     assert artifact_smoke == markdown_smoke
+    preview_smoke = report_retention["evidence"]["report_retention_preview_smoke"]
+    assert preview_smoke["passed"] is True
+    assert preview_smoke["preview"]["deletable_artifact_count"] == 2
+    assert all(preview_smoke["checks"].values())
 
     assert matrix["data_business_logic"]["company_filing_fetch_hardening"]["status"] == "ready"
     filing_hardening = matrix["data_business_logic"]["company_filing_fetch_hardening"]["evidence"]

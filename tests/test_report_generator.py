@@ -34,6 +34,7 @@ from app.services import (
     report_allocation,
     report_beginner_portfolio,
     report_company_analysis,
+    report_company_filing_checks,
     report_company_narrative,
     report_company_matrix,
     report_credibility_check,
@@ -1822,6 +1823,20 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
     ) == report_company_narrative.dcf_proxy_text(
         {"fcf_trend": "自由現金流成長 12.00%。"},
         valuation,
+    )
+
+
+def test_company_filing_check_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    filing_source = Path("app/services/report_company_filing_checks.py").read_text()
+
+    assert "report_company_filing_checks" in generator_source
+    assert "def company_filing_missing(" in filing_source
+    assert "HIGH_QUALITY_FILING_SCORE" in filing_source
+    assert "REQUIRED_CORE_DOCUMENT_TYPES" not in generator_source
+    assert "filing_quality_score(" not in generator_source
+    assert ReportGenerator._filing_type_label("annual_report") == report_company_filing_checks.filing_type_label(
+        "annual_report"
     )
 
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
 from app.db.session import session_scope
 from app.models.schemas import (
@@ -18,13 +17,12 @@ from app.models.schemas import (
 )
 from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import render_candidate_audit_markdown
-from app.services.entity_mapping import EntityMapper, company_filing_owner_ticker
+from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
 from app.services.llm_client import LLMClient, LLMResult, summarize_llm_attempts
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.persistence import (
-    CompanyFilingRepository,
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
@@ -63,6 +61,7 @@ from app.services import (
     report_allocation,
     report_beginner_portfolio,
     report_company_analysis,
+    report_company_filing_checks,
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
@@ -1697,48 +1696,31 @@ class ReportGenerator:
         return related
 
     def _company_filing_missing(self, ticker: str, documents: list[NewsDocument]) -> list[str]:
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        company = companies.get(ticker)
-        company_name = company.name if company else ""
-        high_quality_types: set[str] = set()
-
-        for document in self._company_filing_documents_from_db(ticker):
-            if filing_quality_score(document, ticker, company_name) >= 70:
-                high_quality_types.add(document.document_type)
-
-        for document in documents:
-            if not self._is_company_filing_document(ticker, document):
-                continue
-            document_type = self._news_document_filing_type(document)
-            if document_type and filing_quality_score(document, ticker, company_name) >= 70:
-                high_quality_types.add(document_type)
-
-        missing_required = [
-            document_type for document_type in REQUIRED_CORE_DOCUMENT_TYPES if document_type not in high_quality_types
-        ]
-        if not missing_required:
-            return []
-        return ["缺公司公開文件（" + "、".join(self._filing_type_label(item) for item in missing_required) + "）"]
+        return report_company_filing_checks.company_filing_missing(
+            ticker,
+            documents,
+            whitelist=self.whitelist,
+            session_scope_func=session_scope,
+        )
 
     @staticmethod
     def _filing_type_label(document_type: str) -> str:
-        return report_company_narrative.filing_type_label(document_type)
+        return report_company_filing_checks.filing_type_label(document_type)
 
     @staticmethod
     def _company_filing_documents_from_db(ticker: str):
-        try:
-            with session_scope() as session:
-                return CompanyFilingRepository(session).latest_by_tickers([ticker], limit_per_ticker=8)
-        except Exception:
-            return []
+        return report_company_filing_checks.company_filing_documents_from_db(
+            ticker,
+            session_scope_func=session_scope,
+        )
 
     @staticmethod
     def _is_company_filing_document(ticker: str, document: NewsDocument) -> bool:
-        return company_filing_owner_ticker(document) == ticker
+        return report_company_filing_checks.is_company_filing_document(ticker, document)
 
     @staticmethod
     def _news_document_filing_type(document: NewsDocument) -> str | None:
-        return report_company_narrative.news_document_filing_type(document)
+        return report_company_filing_checks.news_document_filing_type(document)
 
     @staticmethod
     def _data_quality_grade(

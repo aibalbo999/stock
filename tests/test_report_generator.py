@@ -33,6 +33,7 @@ from app.services import (
     report_allocation,
     report_company_narrative,
     report_data_quality,
+    report_early_potential,
     report_formatting,
     report_leading_signal,
     report_scope_sections,
@@ -1474,6 +1475,30 @@ def test_early_potential_radar_excludes_avoid_decisions() -> None:
 
     assert "4540 盟立" not in radar
     assert "已排除避開/降低曝險標的" in radar
+
+
+def test_early_potential_radar_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    early_source = Path("app/services/report_early_potential.py").read_text()
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+    document = NewsFetcher.from_manual_text(
+        title="台積電 AI 需求",
+        text="台積電 AI 需求。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    assert "report_early_potential" in generator_source
+    assert "def render_early_potential_radar(" in early_source
+    assert "def candidate_audit_evidence_counts(" in early_source
+    assert "def publisher_count(" in early_source
+    assert "本段專門找" not in generator_source
+    assert generator._publisher_count([document]) == report_early_potential.publisher_count([document])
+    assert generator._candidate_audit_evidence_counts() == report_early_potential.candidate_audit_evidence_counts(
+        generator.whitelist.candidate_audit()
+    )
 
 
 def test_financial_summary_ignores_percentage_and_total_liability_equity_fields() -> None:

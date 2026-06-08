@@ -194,6 +194,25 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error": "worker offline",
                 "started_at": "2026-06-07T12:00:00",
             },
+            {
+                "id": 25,
+                "operation": "company_filings_fetch",
+                "status": "failed",
+                "task_id": "task-filing",
+                "retryable": True,
+                "retry_kind": "data_operation",
+                "error_category": "data_source",
+                "error_severity": "warning",
+                "error_summary": "市場資料、公司文件或新聞來源異常",
+                "next_steps": [
+                    "檢查資料源 token、日期範圍與 company filing 後援設定。",
+                    "可先重刷快取或降低本次資料補強範圍。",
+                ],
+                "retry_endpoint": "POST /tasks/task-filing/retry",
+                "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-filing/retry",
+                "error": "MOPS blocked",
+                "started_at": "2026-06-07T13:00:00",
+            },
         ]
     }
 
@@ -220,6 +239,8 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[1]["next_steps"] == "-"
     assert rows[2]["action_route"] == "外部配置缺失"
     assert "Redis/Celery" in rows[2]["action_route_detail"]
+    assert rows[3]["retry"] == "可重試"
+    assert rows[3]["action_route"] == "外部配置缺失"
     assert action_rows == [
         {
             "處理路徑": "一鍵重試",
@@ -229,9 +250,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "處理路徑": "外部配置缺失",
-            "數量": 1,
+            "數量": 2,
             "說明": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
-            "代表任務": "data_operation｜task-queue",
+            "代表任務": "data_operation｜task-queue；company_filings_fetch｜task-filing",
         },
         {
             "處理路徑": "需人工處理",
@@ -247,7 +268,22 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "operation": "report_generation",
             "run_id": 22,
             "retry_endpoint": "POST /tasks/task-failed/retry",
-        }
+            "action_route": "一鍵重試",
+            "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
+            "retry_guarded": False,
+            "retry_guard_message": "",
+        },
+        {
+            "task_id": "task-filing",
+            "label": "company_filings_fetch｜run #25｜task-filing",
+            "operation": "company_filings_fetch",
+            "run_id": 25,
+            "retry_endpoint": "POST /tasks/task-filing/retry",
+            "action_route": "外部配置缺失",
+            "action_route_detail": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+            "retry_guarded": True,
+            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+        },
     ]
 
 

@@ -57,6 +57,10 @@ def task_retry_options(task_summary: dict) -> list[dict]:
                 "operation": row.get("operation") or "unknown",
                 "run_id": row.get("id"),
                 "retry_endpoint": row.get("retry_endpoint") or f"POST /tasks/{task_id}/retry",
+                "action_route": task_failure_action_route(row),
+                "action_route_detail": task_failure_action_route_detail(row),
+                "retry_guarded": task_failure_retry_guarded(row),
+                "retry_guard_message": task_failure_retry_guard_message(row),
             }
         )
     return options
@@ -84,15 +88,25 @@ def task_failure_action_route_rows(task_summary: dict) -> list[dict]:
 
 
 def task_failure_action_route(row: dict) -> str:
-    if row.get("retryable"):
-        return "一鍵重試"
     if _is_external_config_failure(row):
         return "外部配置缺失"
+    if row.get("retryable"):
+        return "一鍵重試"
     return "需人工處理"
 
 
 def task_failure_action_route_detail(row: dict) -> str:
     return TASK_FAILURE_ACTION_ROUTE_DETAILS.get(task_failure_action_route(row), "-")
+
+
+def task_failure_retry_guarded(row: dict) -> bool:
+    return bool(row.get("retryable") and task_failure_action_route(row) != "一鍵重試")
+
+
+def task_failure_retry_guard_message(row: dict) -> str:
+    if not task_failure_retry_guarded(row):
+        return ""
+    return f"先修配置再重試：{task_failure_action_route_detail(row)}"
 
 
 def _task_summary_failures(task_summary: dict) -> list[dict]:

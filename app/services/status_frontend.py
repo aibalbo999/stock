@@ -299,6 +299,11 @@ def frontend_status() -> dict:
         and "外部配置缺失" in task_failure_diagnostics_source
         and "需人工處理" in task_failure_diagnostics_source
         and "失敗處理路徑" in ui_source,
+        "ui_task_retry_guard_enabled": "retry_guarded" in task_failure_diagnostics_source
+        and "retry_guard_message" in task_failure_diagnostics_source
+        and "先修配置再重試" in task_failure_diagnostics_source
+        and "disabled=selected_retry_guarded" in ui_source
+        and "st.warning(selected_retry_guard_message)" in ui_source,
         "ui_task_failure_trend_enabled": 'task_summary.get("error_category_daily")' in ui_source
         and "失敗原因趨勢" in ui_source,
         "ui_task_failure_alerts_enabled": 'task_summary.get("alerts")' in ui_source

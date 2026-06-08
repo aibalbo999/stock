@@ -108,16 +108,26 @@ def _render_task_failure_drilldown(task_summary: dict) -> None:
 
 
 def _render_task_retry_controls(retry_options: list[dict]) -> None:
-    retry_labels = {option["task_id"]: option["label"] for option in retry_options}
+    retry_options_by_id = {str(option["task_id"]): option for option in retry_options}
+    retry_labels = {task_id: option["label"] for task_id, option in retry_options_by_id.items()}
     selected_retry_task_id = st.selectbox(
         "選擇要重試的失敗任務",
         options=[option["task_id"] for option in retry_options],
         format_func=lambda task_id: retry_labels.get(str(task_id), str(task_id)),
         key="maintenance_retry_task_select",
     )
+    selected_retry_option = retry_options_by_id.get(str(selected_retry_task_id), {})
+    selected_retry_guarded = bool(selected_retry_option.get("retry_guarded"))
+    selected_retry_guard_message = str(selected_retry_option.get("retry_guard_message") or "")
+    if selected_retry_guarded and selected_retry_guard_message:
+        st.warning(selected_retry_guard_message)
     retry_cols = st.columns([1, 1])
     with retry_cols[0]:
-        if st.button("重試選取任務", key="maintenance_retry_failed_task"):
+        if st.button(
+            "重試選取任務",
+            key="maintenance_retry_failed_task",
+            disabled=selected_retry_guarded,
+        ):
             retry_response = run_api_action_or_none(
                 lambda: api_task_post(
                     f"/tasks/{selected_retry_task_id}/retry",

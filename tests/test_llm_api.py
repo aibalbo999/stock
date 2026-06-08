@@ -427,6 +427,50 @@ def test_llm_api_service_returns_usage_summary() -> None:
                 "created_at": "2026-06-07T08:00:00",
             }
 
+    class FakeQuotaService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def summary(self) -> dict:
+            return {
+                "recommended_model": "gemini-3.5-flash",
+                "recommended_model_key": "gemini-3.5-flash",
+                "recommended_rank": 1,
+                "recommended_routing_tier": "primary",
+                "recommended_status": "available",
+                "recommended_reason": "Primary model remains within the current quota window.",
+                "model_order": ["gemini-3.5-flash", "gemini-2.5-flash", "gemma-4-31b-it"],
+                "routing_policy": {
+                    "strategy": "smartest_first_then_budget_degrade",
+                    "selection_rule": "Use the first configured model that is not exhausted.",
+                    "high_quota_fallback_models": ["gemma-4-31b-it"],
+                },
+                "window": {"reset_in_seconds": 5400},
+                "totals": {
+                    "request_count": 1,
+                    "completion_count": 1,
+                    "total_token_estimate": 99,
+                    "estimated_cost_usd": 0.0123,
+                },
+                "models": [
+                    {
+                        "rank": 1,
+                        "model": "gemini-3.5-flash",
+                        "status": "available",
+                        "status_reason": "within_configured_budget",
+                        "routing_tier": "primary",
+                        "routing_reason": "Primary candidate.",
+                        "requests_used": 1,
+                        "request_budget": 250,
+                        "requests_remaining": 249,
+                        "completion_count": 1,
+                        "tokens_used": 99,
+                        "token_budget": None,
+                        "tokens_remaining": None,
+                    }
+                ],
+            }
+
     @contextmanager
     def fake_session_scope():
         yield "session"
@@ -434,6 +478,7 @@ def test_llm_api_service_returns_usage_summary() -> None:
     service = LLMApiService(
         session_scope_factory=fake_session_scope,
         llm_usage_repository_cls=FakeUsageRepository,
+        llm_quota_service_cls=FakeQuotaService,
     )
 
     summary = service.usage_summary(7)
@@ -443,6 +488,25 @@ def test_llm_api_service_returns_usage_summary() -> None:
     assert summary["totals"]["fallback_path_count"] == 1
     assert summary["by_model"][0]["model"] == "gemini-3.5-flash"
     assert summary["by_operation"][0]["operation"] == "report_generation"
+    assert summary["routing_snapshot"]["available"] is True
+    assert summary["routing_snapshot"]["strategy"] == "smartest_first_then_budget_degrade"
+    assert summary["routing_snapshot"]["recommended_model"] == "gemini-3.5-flash"
+    assert summary["routing_snapshot"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
+    assert summary["routing_snapshot"]["models"][0] == {
+        "rank": 1,
+        "model": "gemini-3.5-flash",
+        "status": "available",
+        "status_reason": "within_configured_budget",
+        "routing_tier": "primary",
+        "routing_reason": "Primary candidate.",
+        "requests_used": 1,
+        "request_budget": 250,
+        "requests_remaining": 249,
+        "completion_count": 1,
+        "tokens_used": 99,
+        "token_budget": None,
+        "tokens_remaining": None,
+    }
 
 
 def test_llm_api_usage_summary_flags_cost_budget_and_fallback_alerts() -> None:

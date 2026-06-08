@@ -116,12 +116,14 @@ class LLMApiService:
     def usage_summary(self, days: int = 7) -> dict:
         if self.session_scope_factory is None:
             return {}
-        return summarize_llm_usage_records(
+        summary = summarize_llm_usage_records(
             days=days,
             settings=self.settings_provider(),
             session_scope_factory=self.session_scope_factory,
             llm_usage_repository_cls=self.llm_usage_repository_cls,
         )
+        summary["routing_snapshot"] = self._quota_routing_snapshot()
+        return summary
 
     def quota_summary(self) -> dict:
         if self.session_scope_factory is None:

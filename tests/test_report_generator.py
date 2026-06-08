@@ -23,6 +23,10 @@ from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.llm_client import LLMResult
+from app.services.report_financial_assessment import (
+    financial_valuation_assessment,
+    valuation_position_label,
+)
 from app.services.report_financial_narrative import financial_statement_summary
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_prompt_builder import build_report_prompt, format_llm_evidence
@@ -1585,6 +1589,10 @@ def test_valuation_position_and_financial_confidence_labels() -> None:
         ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=30, pb_ratio=8),
         peer,
     ) == "目前估值偏高"
+    assert valuation_position_label(
+        ValuationMetric(ticker="2330", trade_date=date(2026, 5, 22), pe_ratio=30, pb_ratio=8),
+        peer,
+    ) == "目前估值偏高"
     assert ReportGenerator._valuation_position_label(
         ValuationMetric(ticker="2382", trade_date=date(2026, 5, 22), pe_ratio=12, pb_ratio=3),
         peer,
@@ -1672,12 +1680,28 @@ def test_stale_market_data_downgrades_company_quality_and_valuation_assessment()
         valuation,
         {"pe_avg": 20.0, "pb_avg": 5.0, "count": 3},
     )
+    helper_assessment = financial_valuation_assessment(
+        metrics,
+        valuation,
+        {"pe_avg": 20.0, "pb_avg": 5.0, "count": 3},
+    )
 
+    assert helper_assessment == assessment
     assert quality["grade"] == "partial"
     assert "股價為快取救援" in quality["missing"]
     assert "財報為快取救援" in quality["missing"]
     assert "估值資料為快取救援，刷新前不判定低估/高估" in assessment["cautions"]
     assert "目前估值低於同業" not in assessment["upside_summary"]
+
+
+def test_financial_assessment_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    assessment_source = Path("app/services/report_financial_assessment.py").read_text()
+
+    assert "from app.services.report_financial_assessment import" in generator_source
+    assert "def financial_valuation_assessment(" in assessment_source
+    assert "def valuation_position_label(" in assessment_source
+    assert "財務資料為快取救援" not in generator_source
 
 
 def test_current_price_label_summarizes_immediate_entry_condition() -> None:

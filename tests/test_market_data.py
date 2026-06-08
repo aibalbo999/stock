@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.data_sources import market_parsers
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
@@ -18,6 +19,10 @@ from app.services.persistence import (
     ValuationMetricRepository,
 )
 from app.services.task_cancellation import TaskCancelledError
+
+
+def comparable_market_model(model):
+    return model.model_dump(exclude={"fetched_at"})
 
 
 class FakeMarketDataCache:
@@ -127,25 +132,26 @@ class FakeMarketDataCache:
 
 
 def test_finmind_row_to_snapshot() -> None:
-    snapshot = MarketDataClient._row_to_snapshot(
-        {
-            "date": "2026-05-22",
-            "stock_id": "2330",
-            "Trading_Volume": 123,
-            "Trading_money": 456,
-            "open": 1000.0,
-            "max": 1010.0,
-            "min": 990.0,
-            "close": 1005.0,
-            "spread": 5.0,
-            "Trading_turnover": 789,
-        }
-    )
+    row = {
+        "date": "2026-05-22",
+        "stock_id": "2330",
+        "Trading_Volume": 123,
+        "Trading_money": 456,
+        "open": 1000.0,
+        "max": 1010.0,
+        "min": 990.0,
+        "close": 1005.0,
+        "spread": 5.0,
+        "Trading_turnover": 789,
+    }
+    snapshot = MarketDataClient._row_to_snapshot(row)
+    helper_snapshot = market_parsers.row_to_snapshot(row)
 
     assert snapshot.ticker == "2330"
     assert snapshot.trade_date == date(2026, 5, 22)
     assert snapshot.high == 1010.0
     assert snapshot.trading_volume == 123
+    assert comparable_market_model(helper_snapshot) == comparable_market_model(snapshot)
 
 
 def test_finmind_public_fallback_can_be_disabled_without_token() -> None:
@@ -533,20 +539,19 @@ def test_fugle_retry_delay_uses_retry_after_header() -> None:
 
 
 def test_fugle_row_to_snapshot() -> None:
-    snapshot = MarketDataClient._fugle_row_to_snapshot(
-        {
-            "date": "2026-05-29",
-            "symbol": "2330",
-            "open": "1000",
-            "high": "1010",
-            "low": "990",
-            "close": "1005",
-            "volume": "123",
-            "turnover": "456",
-            "change": "5",
-        },
-        "2330",
-    )
+    row = {
+        "date": "2026-05-29",
+        "symbol": "2330",
+        "open": "1000",
+        "high": "1010",
+        "low": "990",
+        "close": "1005",
+        "volume": "123",
+        "turnover": "456",
+        "change": "5",
+    }
+    snapshot = MarketDataClient._fugle_row_to_snapshot(row, "2330")
+    helper_snapshot = market_parsers.fugle_row_to_snapshot(row, "2330")
 
     assert snapshot.ticker == "2330"
     assert snapshot.trade_date == date(2026, 5, 29)
@@ -554,23 +559,23 @@ def test_fugle_row_to_snapshot() -> None:
     assert snapshot.trading_volume == 123
     assert snapshot.trading_money == 456
     assert snapshot.source == "Fugle historical candles"
+    assert comparable_market_model(helper_snapshot) == comparable_market_model(snapshot)
 
 
 def test_fugle_stats_row_to_snapshot() -> None:
-    snapshot = MarketDataClient._fugle_stats_row_to_snapshot(
-        {
-            "date": "2026-05-29",
-            "symbol": "2330",
-            "openPrice": "1000",
-            "highPrice": "1010",
-            "lowPrice": "990",
-            "closePrice": "1005",
-            "tradeVolume": "123",
-            "tradeValue": "456",
-            "change": "5",
-        },
-        "2330",
-    )
+    row = {
+        "date": "2026-05-29",
+        "symbol": "2330",
+        "openPrice": "1000",
+        "highPrice": "1010",
+        "lowPrice": "990",
+        "closePrice": "1005",
+        "tradeVolume": "123",
+        "tradeValue": "456",
+        "change": "5",
+    }
+    snapshot = MarketDataClient._fugle_stats_row_to_snapshot(row, "2330")
+    helper_snapshot = market_parsers.fugle_stats_row_to_snapshot(row, "2330")
 
     assert snapshot.ticker == "2330"
     assert snapshot.trade_date == date(2026, 5, 29)
@@ -578,6 +583,7 @@ def test_fugle_stats_row_to_snapshot() -> None:
     assert snapshot.trading_volume == 123
     assert snapshot.trading_money == 456
     assert snapshot.source == "Fugle historical stats"
+    assert comparable_market_model(helper_snapshot) == comparable_market_model(snapshot)
 
 
 def test_finmind_rows_does_not_retry_non_retryable_status(monkeypatch) -> None:
@@ -629,19 +635,20 @@ def test_finmind_retry_delay_uses_retry_after_header() -> None:
 
 
 def test_finmind_row_to_monthly_revenue() -> None:
-    revenue = MarketDataClient._row_to_monthly_revenue(
-        {
-            "date": "2026-04-10",
-            "stock_id": "2330",
-            "revenue": "349567000000",
-            "revenue_year": "2026",
-            "revenue_month": "4",
-        }
-    )
+    row = {
+        "date": "2026-04-10",
+        "stock_id": "2330",
+        "revenue": "349567000000",
+        "revenue_year": "2026",
+        "revenue_month": "4",
+    }
+    revenue = MarketDataClient._row_to_monthly_revenue(row)
+    helper_revenue = market_parsers.row_to_monthly_revenue(row)
 
     assert revenue.ticker == "2330"
     assert revenue.revenue_date == date(2026, 4, 10)
     assert revenue.revenue == 349567000000
+    assert comparable_market_model(helper_revenue) == comparable_market_model(revenue)
     assert revenue.revenue_month == 4
 
 
@@ -762,14 +769,20 @@ def test_monthly_revenue_history_uses_official_openapi_fallback(monkeypatch) -> 
 
 
 def test_finmind_row_to_financial_metric() -> None:
+    row = {
+        "date": "2026-03-31",
+        "stock_id": "2330",
+        "type": "營業收入",
+        "value": "839254000000",
+        "origin_name": "營業收入合計",
+    }
     metric = MarketDataClient._row_to_financial_metric(
-        {
-            "date": "2026-03-31",
-            "stock_id": "2330",
-            "type": "營業收入",
-            "value": "839254000000",
-            "origin_name": "營業收入合計",
-        },
+        row,
+        "income_statement",
+        "TaiwanStockFinancialStatements",
+    )
+    helper_metric = market_parsers.row_to_financial_metric(
+        row,
         "income_statement",
         "TaiwanStockFinancialStatements",
     )
@@ -778,6 +791,7 @@ def test_finmind_row_to_financial_metric() -> None:
     assert metric.report_date == date(2026, 3, 31)
     assert metric.statement_type == "income_statement"
     assert metric.metric == "營業收入"
+    assert comparable_market_model(helper_metric) == comparable_market_model(metric)
     assert metric.value == 839254000000.0
 
 
@@ -1077,19 +1091,20 @@ def test_stale_cache_source_marker_is_preserved_when_source_is_long() -> None:
 
 
 def test_finmind_row_to_valuation_metric() -> None:
-    valuation = MarketDataClient._row_to_valuation_metric(
-        {
-            "date": "2026-05-22",
-            "stock_id": "2330",
-            "PER": "24.5",
-            "PBR": "5.8",
-            "dividend_yield": "1.6",
-        }
-    )
+    row = {
+        "date": "2026-05-22",
+        "stock_id": "2330",
+        "PER": "24.5",
+        "PBR": "5.8",
+        "dividend_yield": "1.6",
+    }
+    valuation = MarketDataClient._row_to_valuation_metric(row)
+    helper_valuation = market_parsers.row_to_valuation_metric(row)
 
     assert valuation.ticker == "2330"
     assert valuation.trade_date == date(2026, 5, 22)
     assert valuation.pe_ratio == 24.5
+    assert comparable_market_model(helper_valuation) == comparable_market_model(valuation)
     assert valuation.pb_ratio == 5.8
     assert valuation.dividend_yield == 1.6
 

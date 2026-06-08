@@ -51,6 +51,8 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
     assert status["llm_observability"]["export_timeout_seconds"] == 2.0
     assert "latency_ms" in status["llm_observability"]["captured_fields"]
     assert "total_token_estimate" in status["llm_observability"]["captured_fields"]
+    assert "routing_decision" in status["llm_observability"]["captured_fields"]
+    assert "quota_skip_count" in status["llm_observability"]["captured_fields"]
 
 
 def test_ai_rag_llm_capability_matrix_evidence(service_status_snapshot) -> None:
@@ -85,6 +87,14 @@ def test_ai_rag_llm_capability_matrix_evidence(service_status_snapshot) -> None:
     assert "latency_ms" in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
     assert (
         "total_token_estimate"
+        in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
+    )
+    assert (
+        "routing_decision"
+        in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
+    )
+    assert (
+        "quota_skip_count"
         in matrix["ai_rag"]["llm_observability"]["evidence"]["captured_fields"]
     )
     quota_routing = matrix["ai_rag"]["llm_quota_routing"]

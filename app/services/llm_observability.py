@@ -11,7 +11,7 @@ from importlib.util import find_spec
 from time import monotonic
 from typing import Any
 
-from app.services.llm_quota import normalize_model_name
+from app.services.llm_quota import normalize_model_name, parse_model_budget_map
 from app.services.llm_runtime import LLMResult
 
 LOGGER = logging.getLogger(__name__)
@@ -110,6 +110,12 @@ def llm_observability_status(settings: Any) -> dict:
         "captured_fields": [
             "provider",
             "model",
+            "routing_decision",
+            "selected_model_rank",
+            "selected_routing_tier",
+            "quota_skip_count",
+            "daily_quota_skip_count",
+            "cooldown_skip_count",
             "latency_ms",
             "attempt_count",
             "models_tried",
@@ -240,6 +246,12 @@ def build_llm_observability_trace(
         )
     attempts = tuple(getattr(result, "attempts", ()) or ())
     attempt_summary = _attempt_summary_for_trace(attempts)
+    routing_decision = _model_routing_decision(
+        result=result,
+        attempts=attempts,
+        attempt_summary=attempt_summary,
+        settings=settings,
+    )
     return {
         "enabled": status["enabled"],
         "provider": getattr(result, "provider", None),
@@ -251,6 +263,13 @@ def build_llm_observability_trace(
         "providers_tried": attempt_summary.get("providers_tried") or [],
         "fallback_path_used": attempt_summary.get("fallback_path_used"),
         "primary_failure_category": attempt_summary.get("primary_failure_category"),
+        "routing_decision": routing_decision,
+        "selected_model_rank": routing_decision.get("selected_model_rank"),
+        "selected_routing_tier": routing_decision.get("selected_routing_tier"),
+        "quota_skip_count": routing_decision.get("quota_skip_count"),
+        "daily_quota_skip_count": routing_decision.get("daily_quota_skip_count"),
+        "cooldown_skip_count": routing_decision.get("cooldown_skip_count"),
+        "degraded_from_primary": routing_decision.get("degraded_from_primary"),
         "fallback": bool(getattr(result, "fallback", False)),
         "input_token_estimate": input_tokens,
         "output_token_estimate": output_tokens,
@@ -600,6 +619,11 @@ def _phoenix_span_attributes(
         "total_token_estimate",
         "estimated_cost_usd",
         "fallback",
+        "selected_model_rank",
+        "quota_skip_count",
+        "daily_quota_skip_count",
+        "cooldown_skip_count",
+        "degraded_from_primary",
     ):
         value = trace.get(key)
         if isinstance(value, (str, int, float, bool)):
@@ -704,10 +728,144 @@ def _attempt_summary_for_trace(attempts: tuple[dict[str, object], ...]) -> dict:
     }
 
 
+def _model_routing_decision(
+    *,
+    result: Any,
+    attempts: tuple[dict[str, object], ...],
+    attempt_summary: dict,
+    settings: Any,
+) -> dict:
+    rows = [attempt for attempt in attempts if isinstance(attempt, dict)]
+    model_order = _configured_model_order(settings)
+    model_order_keys = [normalize_model_name(model) for model in model_order]
+    selected_model = str(getattr(result, "model", "") or "").strip()
+    selected_key = normalize_model_name(selected_model)
+    selected_rank = _model_rank(model_order_keys, selected_key)
+    skipped_rows = [
+        {
+            "model": str(attempt.get("model") or ""),
+            "model_key": normalize_model_name(str(attempt.get("model") or "")),
+            "reason": str(attempt.get("outcome") or ""),
+            "cooldown_seconds": attempt.get("cooldown_seconds"),
+        }
+        for attempt in rows
+        if str(attempt.get("outcome") or "") in {"quota_daily_exhausted", "quota_cooldown"}
+    ]
+    daily_quota_models = _ordered_model_values(
+        skipped_rows,
+        reason="quota_daily_exhausted",
+    )
+    cooldown_models = _ordered_model_values(skipped_rows, reason="quota_cooldown")
+    degraded_from_primary = bool(
+        selected_rank is not None
+        and selected_rank > 1
+        and not bool(getattr(result, "fallback", False))
+    )
+    if not degraded_from_primary and attempt_summary.get("fallback_path_used"):
+        degraded_from_primary = True
+    return {
+        "strategy": "smartest_first_then_budget_degrade",
+        "selection_rule": "Use the first configured model that is not exhausted or cooling down.",
+        "configured_model_order": model_order,
+        "configured_model_order_keys": model_order_keys,
+        "primary_model": model_order[0] if model_order else None,
+        "selected_model": selected_model or None,
+        "selected_model_key": selected_key or None,
+        "selected_model_rank": selected_rank,
+        "selected_routing_tier": _selected_routing_tier(
+            settings,
+            selected_model,
+            selected_rank,
+        ),
+        "degraded_from_primary": degraded_from_primary,
+        "routing_reason": _routing_decision_reason(
+            selected_rank=selected_rank,
+            fallback_path_used=bool(attempt_summary.get("fallback_path_used")),
+            skipped_rows=skipped_rows,
+            fallback=bool(getattr(result, "fallback", False)),
+        ),
+        "skipped_models": skipped_rows,
+        "quota_skipped_models": [row["model"] for row in skipped_rows if row["model"]],
+        "daily_quota_exhausted_models": daily_quota_models,
+        "cooldown_models": cooldown_models,
+        "quota_skip_count": len(skipped_rows),
+        "daily_quota_skip_count": len(daily_quota_models),
+        "cooldown_skip_count": len(cooldown_models),
+        "high_quota_fallback_used": (
+            _selected_routing_tier(settings, selected_model, selected_rank)
+            == "high_quota_fallback"
+        ),
+    }
+
+
 def _ordered_attempt_values(attempts: list[dict[str, object]], key: str) -> list[str]:
     return list(
         dict.fromkeys(
             str(attempt.get(key)) for attempt in attempts if attempt.get(key) not in {None, ""}
+        )
+    )
+
+
+def _configured_model_order(settings: Any) -> list[str]:
+    primary = str(getattr(settings, "primary_llm_model", "") or "").strip()
+    fallback_models = [
+        model.strip()
+        for model in str(getattr(settings, "llm_fallback_models", "") or "").split(",")
+        if model.strip()
+    ]
+    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
+    return list(dict.fromkeys(model for model in [primary, *fallback_models, local_model] if model))
+
+
+def _model_rank(model_order_keys: list[str], model_key: str) -> int | None:
+    if not model_key:
+        return None
+    try:
+        return model_order_keys.index(model_key) + 1
+    except ValueError:
+        return None
+
+
+def _selected_routing_tier(settings: Any, model: str, rank: int | None) -> str | None:
+    if not model:
+        return None
+    model_key = normalize_model_name(model)
+    if rank == 1:
+        return "primary"
+    request_budgets = parse_model_budget_map(
+        getattr(settings, "llm_model_daily_request_budgets", "")
+    )
+    if model_key.startswith("gemma") and int(request_budgets.get(model_key) or 0) >= 1000:
+        return "high_quota_fallback"
+    if model_key.startswith(("ollama/", "lm_studio/", "local/")):
+        return "local_fallback"
+    return "fallback" if rank is not None else "unconfigured"
+
+
+def _routing_decision_reason(
+    *,
+    selected_rank: int | None,
+    fallback_path_used: bool,
+    skipped_rows: list[dict],
+    fallback: bool,
+) -> str:
+    if fallback:
+        return "rules_engine_fallback"
+    if skipped_rows:
+        return "quota_or_cooldown_skip"
+    if fallback_path_used or (selected_rank is not None and selected_rank > 1):
+        return "selected_after_earlier_model_failed"
+    if selected_rank == 1:
+        return "primary_model_used"
+    return "unconfigured_model_used"
+
+
+def _ordered_model_values(rows: list[dict], *, reason: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(row.get("model"))
+            for row in rows
+            if row.get("reason") == reason and str(row.get("model") or "").strip()
         )
     )
 

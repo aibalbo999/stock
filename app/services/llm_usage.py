@@ -94,6 +94,12 @@ def summarize_llm_usage_records(
 def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
     created_at = str(record.get("created_at") or "")
     date = created_at[:10] if len(created_at) >= 10 else "unknown"
+    observability = record.get("observability") if isinstance(record.get("observability"), dict) else {}
+    routing_decision = (
+        observability.get("routing_decision")
+        if isinstance(observability.get("routing_decision"), dict)
+        else {}
+    )
     return {
         "created_at": created_at,
         "date": date,
@@ -108,6 +114,43 @@ def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
         "attempt_count": _int(record.get("attempt_count")),
         "retryable_failure_count": _int(record.get("retryable_failure_count")),
         "primary_failure_category": record.get("primary_failure_category"),
+        "selected_model_rank": _int(
+            observability.get("selected_model_rank")
+            if observability.get("selected_model_rank") is not None
+            else routing_decision.get("selected_model_rank")
+        ),
+        "selected_routing_tier": (
+            observability.get("selected_routing_tier")
+            or routing_decision.get("selected_routing_tier")
+        ),
+        "routing_reason": (
+            routing_decision.get("routing_reason")
+            or observability.get("routing_reason")
+        ),
+        "quota_skip_count": _int(
+            observability.get("quota_skip_count")
+            if observability.get("quota_skip_count") is not None
+            else routing_decision.get("quota_skip_count")
+        )
+        or 0,
+        "daily_quota_skip_count": _int(
+            observability.get("daily_quota_skip_count")
+            if observability.get("daily_quota_skip_count") is not None
+            else routing_decision.get("daily_quota_skip_count")
+        )
+        or 0,
+        "cooldown_skip_count": _int(
+            observability.get("cooldown_skip_count")
+            if observability.get("cooldown_skip_count") is not None
+            else routing_decision.get("cooldown_skip_count")
+        )
+        or 0,
+        "degraded_from_primary": bool(
+            observability.get("degraded_from_primary")
+            if observability.get("degraded_from_primary") is not None
+            else routing_decision.get("degraded_from_primary")
+        ),
+        "high_quota_fallback_used": bool(routing_decision.get("high_quota_fallback_used")),
     }
 
 
@@ -120,6 +163,11 @@ def _usage_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "fallback_count": sum(1 for row in rows if row["fallback"]),
         "fallback_path_count": sum(1 for row in rows if row["fallback_path_used"]),
         "retryable_failure_count": sum(row["retryable_failure_count"] or 0 for row in rows),
+        "quota_skip_count": sum(row["quota_skip_count"] or 0 for row in rows),
+        "daily_quota_skip_count": sum(row["daily_quota_skip_count"] or 0 for row in rows),
+        "cooldown_skip_count": sum(row["cooldown_skip_count"] or 0 for row in rows),
+        "degraded_from_primary_count": sum(1 for row in rows if row["degraded_from_primary"]),
+        "high_quota_fallback_count": sum(1 for row in rows if row["high_quota_fallback_used"]),
         "avg_latency_ms": round(sum(latency_values) / len(latency_values), 2)
         if latency_values
         else None,
@@ -190,6 +238,14 @@ def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observabi
                 "severity": "warning",
                 "code": "llm_retryable_failures",
                 "message": "Retryable LLM failures were observed in the selected window.",
+            }
+        )
+    if int(totals.get("quota_skip_count") or 0):
+        alerts.append(
+            {
+                "severity": "info",
+                "code": "llm_quota_routing_skips",
+                "message": "Some calls skipped exhausted or cooling-down models before selecting a fallback.",
             }
         )
     return alerts

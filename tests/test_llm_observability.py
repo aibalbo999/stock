@@ -144,6 +144,97 @@ def test_attach_llm_observability_returns_result_with_dispatch_metadata() -> Non
     assert traced.observability["external_trace_dispatch"]["reason"] == "local_sink"
 
 
+def test_llm_observability_trace_includes_model_routing_decision() -> None:
+    trace = build_llm_observability_trace(
+        prompt="請摘要 AI 供應鏈",
+        result=SimpleNamespace(
+            text="摘要",
+            provider="google_genai",
+            model="gemma-4-31b-it",
+            fallback=False,
+            attempts=(
+                {
+                    "provider": "google_genai",
+                    "model": "gemini-3.5-flash",
+                    "outcome": "quota_daily_exhausted",
+                    "retryable": True,
+                },
+                {
+                    "provider": "google_genai",
+                    "model": "gemini-2.5-flash",
+                    "outcome": "quota_cooldown",
+                    "retryable": True,
+                    "cooldown_seconds": 3600,
+                },
+                {
+                    "provider": "google_genai",
+                    "model": "gemma-4-31b-it",
+                    "outcome": "success",
+                },
+            ),
+        ),
+        latency_ms=321.0,
+        operation="report_generation",
+        settings=_settings(
+            primary_llm_model="gemini-3.5-flash",
+            llm_fallback_models="gemini-2.5-flash,gemma-4-31b-it",
+            local_llm_model="",
+            llm_model_daily_request_budgets=(
+                "gemini-3.5-flash=250,gemini-2.5-flash=250,gemma-4-31b-it=14400"
+            ),
+        ),
+    )
+
+    assert trace["selected_model_rank"] == 3
+    assert trace["selected_routing_tier"] == "high_quota_fallback"
+    assert trace["quota_skip_count"] == 2
+    assert trace["daily_quota_skip_count"] == 1
+    assert trace["cooldown_skip_count"] == 1
+    assert trace["degraded_from_primary"] is True
+    assert trace["routing_decision"] == {
+        "strategy": "smartest_first_then_budget_degrade",
+        "selection_rule": "Use the first configured model that is not exhausted or cooling down.",
+        "configured_model_order": [
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemma-4-31b-it",
+        ],
+        "configured_model_order_keys": [
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemma-4-31b-it",
+        ],
+        "primary_model": "gemini-3.5-flash",
+        "selected_model": "gemma-4-31b-it",
+        "selected_model_key": "gemma-4-31b-it",
+        "selected_model_rank": 3,
+        "selected_routing_tier": "high_quota_fallback",
+        "degraded_from_primary": True,
+        "routing_reason": "quota_or_cooldown_skip",
+        "skipped_models": [
+            {
+                "model": "gemini-3.5-flash",
+                "model_key": "gemini-3.5-flash",
+                "reason": "quota_daily_exhausted",
+                "cooldown_seconds": None,
+            },
+            {
+                "model": "gemini-2.5-flash",
+                "model_key": "gemini-2.5-flash",
+                "reason": "quota_cooldown",
+                "cooldown_seconds": 3600,
+            },
+        ],
+        "quota_skipped_models": ["gemini-3.5-flash", "gemini-2.5-flash"],
+        "daily_quota_exhausted_models": ["gemini-3.5-flash"],
+        "cooldown_models": ["gemini-2.5-flash"],
+        "quota_skip_count": 2,
+        "daily_quota_skip_count": 1,
+        "cooldown_skip_count": 1,
+        "high_quota_fallback_used": True,
+    }
+
+
 def test_export_langsmith_trace_uses_client_payload(monkeypatch) -> None:
     monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
     captured = {}

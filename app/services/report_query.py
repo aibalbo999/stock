@@ -371,6 +371,11 @@ class ReportQueryService:
             if isinstance(llm.get("attempt_summary"), dict)
             else {}
         )
+        routing_decision = (
+            llm_observability.get("routing_decision")
+            if isinstance(llm_observability.get("routing_decision"), dict)
+            else {}
+        )
         retrieval_trace = (
             execution.get("retrieval_trace")
             if isinstance(execution.get("retrieval_trace"), dict)
@@ -408,6 +413,39 @@ class ReportQueryService:
             "total_token_estimate": _metric_int(llm_observability.get("total_token_estimate")),
             "estimated_cost_usd": _metric_float(llm_observability.get("estimated_cost_usd")),
             "cost_tracking_mode": llm_observability.get("cost_tracking_mode"),
+            "selected_model_rank": _metric_int(
+                llm_observability.get("selected_model_rank")
+                if llm_observability.get("selected_model_rank") is not None
+                else routing_decision.get("selected_model_rank")
+            ),
+            "selected_routing_tier": (
+                llm_observability.get("selected_routing_tier")
+                or routing_decision.get("selected_routing_tier")
+            ),
+            "routing_reason": routing_decision.get("routing_reason"),
+            "quota_skip_count": _metric_int(
+                llm_observability.get("quota_skip_count")
+                if llm_observability.get("quota_skip_count") is not None
+                else routing_decision.get("quota_skip_count"),
+                default=0,
+            ),
+            "daily_quota_skip_count": _metric_int(
+                llm_observability.get("daily_quota_skip_count")
+                if llm_observability.get("daily_quota_skip_count") is not None
+                else routing_decision.get("daily_quota_skip_count"),
+                default=0,
+            ),
+            "cooldown_skip_count": _metric_int(
+                llm_observability.get("cooldown_skip_count")
+                if llm_observability.get("cooldown_skip_count") is not None
+                else routing_decision.get("cooldown_skip_count"),
+                default=0,
+            ),
+            "degraded_from_primary": bool(
+                llm_observability.get("degraded_from_primary")
+                if llm_observability.get("degraded_from_primary") is not None
+                else routing_decision.get("degraded_from_primary")
+            ),
             "retrieval_strategy": retrieval_trace.get("strategy"),
             "retrieval_latency_ms": _metric_float(
                 retrieval_trace.get("duration_ms")
@@ -596,6 +634,10 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         "fallback_count": sum(1 for row in rows if row.get("fallback")),
         "fallback_path_count": sum(1 for row in rows if row.get("fallback_path_used")),
         "retryable_failure_count": sum(row.get("retryable_failure_count") or 0 for row in rows),
+        "quota_skip_count": sum(row.get("quota_skip_count") or 0 for row in rows),
+        "daily_quota_skip_count": sum(row.get("daily_quota_skip_count") or 0 for row in rows),
+        "cooldown_skip_count": sum(row.get("cooldown_skip_count") or 0 for row in rows),
+        "degraded_from_primary_count": sum(1 for row in rows if row.get("degraded_from_primary")),
         "retrieval_trace_count": sum(1 for row in rows if row.get("retrieval_strategy")),
         "model_reranker_ready_count": sum(1 for row in rows if row.get("model_reranker_ready")),
         "keyword_fallback_count": sum(1 for row in rows if row.get("keyword_fallback")),
@@ -661,6 +703,9 @@ def _observability_bottleneck_components(row: dict) -> dict[str, float]:
     retryable_failures = _metric_int(row.get("retryable_failure_count"), default=0) or 0
     if retryable_failures:
         components["retryable_failures"] = min(30.0, float(retryable_failures) * 10.0)
+    quota_skips = _metric_int(row.get("quota_skip_count"), default=0) or 0
+    if quota_skips:
+        components["quota_routing_skip"] = min(15.0, float(quota_skips) * 5.0)
     if row.get("keyword_fallback"):
         components["keyword_reranker_fallback"] = 12.0
     llm_latency_ms = _metric_float(row.get("llm_latency_ms"))
@@ -687,6 +732,11 @@ def _observability_bottleneck_reasons(row: dict) -> list[str]:
     retryable_failures = _metric_int(row.get("retryable_failure_count"), default=0) or 0
     if retryable_failures:
         reasons.append(f"retryable_failures={retryable_failures}")
+    quota_skips = _metric_int(row.get("quota_skip_count"), default=0) or 0
+    if quota_skips:
+        reasons.append(f"quota_skips={quota_skips}")
+    if row.get("routing_reason"):
+        reasons.append(f"routing_reason={row['routing_reason']}")
     if row.get("keyword_fallback"):
         reasons.append("keyword_reranker_fallback")
     if row.get("llm_latency_ms") is not None:
@@ -713,6 +763,8 @@ def _observability_bottleneck_next_action(row: dict, dominant_factor: str) -> st
         return "重新產生或檢查 run payload 是否寫入 report_execution trace。"
     if dominant_factor in {"llm_fallback", "retryable_failures"}:
         return "檢查 quota/routing、429 cooldown 與模型順序，避免每份報告先撞耗盡模型。"
+    if dominant_factor == "quota_routing_skip":
+        return "檢查今日模型額度與 cooldown；若為預期降級，確認高額度 fallback 排在聰明模型之後。"
     if dominant_factor == "keyword_reranker_fallback":
         return "啟用 cross-encoder、Cohere 或 LLM reranker，降低關鍵字 fallback 排序風險。"
     if dominant_factor == "retrieval_latency":

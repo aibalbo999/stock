@@ -108,6 +108,12 @@ def test_llm_api_service_reports_status_from_settings() -> None:
             "captured_fields": [
                 "provider",
                 "model",
+                "routing_decision",
+                "selected_model_rank",
+                "selected_routing_tier",
+                "quota_skip_count",
+                "daily_quota_skip_count",
+                "cooldown_skip_count",
                 "latency_ms",
                 "attempt_count",
                 "models_tried",
@@ -424,6 +430,22 @@ def test_llm_api_service_returns_usage_summary() -> None:
                 "estimated_cost_usd": 0.0123,
                 "attempt_count": 2,
                 "retryable_failure_count": 1,
+                "observability": {
+                    "routing_decision": {
+                        "selected_model_rank": 2,
+                        "selected_routing_tier": "fallback",
+                        "routing_reason": "quota_or_cooldown_skip",
+                        "quota_skip_count": 1,
+                        "daily_quota_skip_count": 1,
+                        "cooldown_skip_count": 0,
+                        "degraded_from_primary": True,
+                        "high_quota_fallback_used": False,
+                    },
+                    "quota_skip_count": 1,
+                    "daily_quota_skip_count": 1,
+                    "cooldown_skip_count": 0,
+                    "degraded_from_primary": True,
+                },
                 "created_at": "2026-06-07T08:00:00",
             }
 
@@ -486,7 +508,15 @@ def test_llm_api_service_returns_usage_summary() -> None:
     assert summary["totals"]["request_count"] == 1
     assert summary["totals"]["total_token_estimate"] == 99
     assert summary["totals"]["fallback_path_count"] == 1
+    assert summary["totals"]["quota_skip_count"] == 1
+    assert summary["totals"]["daily_quota_skip_count"] == 1
+    assert summary["totals"]["cooldown_skip_count"] == 0
+    assert summary["totals"]["degraded_from_primary_count"] == 1
+    assert summary["recent"][0]["selected_model_rank"] == 2
+    assert summary["recent"][0]["selected_routing_tier"] == "fallback"
+    assert summary["recent"][0]["routing_reason"] == "quota_or_cooldown_skip"
     assert summary["by_model"][0]["model"] == "gemini-3.5-flash"
+    assert summary["by_model"][0]["quota_skip_count"] == 1
     assert summary["by_operation"][0]["operation"] == "report_generation"
     assert summary["routing_snapshot"]["available"] is True
     assert summary["routing_snapshot"]["strategy"] == "smartest_first_then_budget_degrade"

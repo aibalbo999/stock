@@ -618,6 +618,19 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
                     "total_token_estimate": 4096,
                     "estimated_cost_usd": 0.0012,
                     "cost_tracking_mode": "configured_rate_card",
+                    "routing_decision": {
+                        "selected_model_rank": 2,
+                        "selected_routing_tier": "fallback",
+                        "routing_reason": "quota_or_cooldown_skip",
+                        "quota_skip_count": 1,
+                        "daily_quota_skip_count": 1,
+                        "cooldown_skip_count": 0,
+                        "degraded_from_primary": True,
+                    },
+                    "quota_skip_count": 1,
+                    "daily_quota_skip_count": 1,
+                    "cooldown_skip_count": 0,
+                    "degraded_from_primary": True,
                 },
                 "attempt_summary": {
                     "attempt_count": 2,
@@ -672,18 +685,29 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["totals"]["estimated_cost_usd"] == 0.0012
     assert summary["totals"]["fallback_path_count"] == 1
     assert summary["totals"]["retryable_failure_count"] == 1
+    assert summary["totals"]["quota_skip_count"] == 1
+    assert summary["totals"]["daily_quota_skip_count"] == 1
+    assert summary["totals"]["cooldown_skip_count"] == 0
+    assert summary["totals"]["degraded_from_primary_count"] == 1
     assert summary["totals"]["keyword_fallback_count"] == 1
     assert summary["totals"]["graph_reasoning_ready_count"] == 1
     assert summary["totals"]["bottleneck_count"] == 1
     assert summary["totals"]["highest_bottleneck_score"] > 0
     assert summary["reports"][0]["run_id"] == 88
     assert summary["reports"][0]["model"] == "gemini-3.5-flash"
+    assert summary["reports"][0]["selected_model_rank"] == 2
+    assert summary["reports"][0]["selected_routing_tier"] == "fallback"
+    assert summary["reports"][0]["routing_reason"] == "quota_or_cooldown_skip"
+    assert summary["reports"][0]["quota_skip_count"] == 1
+    assert summary["reports"][0]["degraded_from_primary"] is True
     assert summary["reports"][0]["retrieval_latency_ms"] == 18.5
     assert summary["reports"][0]["reranker_fallback_reason"] == "keyword_provider_selected"
     assert summary["bottlenecks"][0]["id"] == 8
     assert summary["bottlenecks"][0]["severity"] == "warning"
     assert summary["bottlenecks"][0]["dominant_factor"] == "llm_fallback"
     assert "llm_fallback" in summary["bottlenecks"][0]["reasons"]
+    assert "quota_skips=1" in summary["bottlenecks"][0]["reasons"]
+    assert "routing_reason=quota_or_cooldown_skip" in summary["bottlenecks"][0]["reasons"]
     assert "quota/routing" in summary["bottlenecks"][0]["next_action"]
     assert {alert["code"] for alert in summary["alerts"]} == {
         "report_llm_fallback_used",

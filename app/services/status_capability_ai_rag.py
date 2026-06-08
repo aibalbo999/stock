@@ -124,6 +124,8 @@ def ai_rag_capabilities(
             and llm_observability.get("external_trace_export_supported")
             and "latency_ms" in (llm_observability.get("captured_fields") or [])
             and "total_token_estimate" in (llm_observability.get("captured_fields") or [])
+            and "routing_decision" in (llm_observability.get("captured_fields") or [])
+            and "quota_skip_count" in (llm_observability.get("captured_fields") or [])
             else "degraded",
             evidence={
                 "enabled": llm_observability.get("enabled"),

@@ -22,6 +22,7 @@ def architecture_capabilities(
             and api_status["route_module_count"] >= 7
             and api_status.get("app_factory_present")
             and api_status.get("main_uses_app_factory")
+            and api_status.get("api_service_factory_architecture_status_extracted")
             and api_status.get("api_compatibility_architecture_status_extracted")
             and api_status.get("compatibility_exports_present")
             and api_status.get("main_uses_compatibility_exports")

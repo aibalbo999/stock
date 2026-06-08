@@ -269,6 +269,9 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     status_api_compatibility_source = Path(
         "app/services/status_api_architecture_compatibility.py"
     ).read_text()
+    status_api_service_factory_source = Path(
+        "app/services/status_api_architecture_service_factory.py"
+    ).read_text()
     status_api_tasking_source = Path(
         "app/services/status_api_architecture_tasking.py"
     ).read_text()
@@ -283,8 +286,16 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
         status_api_compatibility_source
     )
     assert "api_compatibility_architecture_status(source_context)" in status_api_source
+    assert "def api_service_factory_architecture_status(" in (
+        status_api_service_factory_source
+    )
+    assert "api_service_factory_architecture_status(source_context)" in status_api_source
     assert "def api_tasking_architecture_status(" in status_api_tasking_source
     assert "api_tasking_architecture_status(source_context)" in status_api_source
+    assert '"report_service_factory_extracted"' not in status_api_source
+    assert '"data_service_factory_extracted"' not in status_api_source
+    assert '"workflow_service_factory_extracted"' not in status_api_source
+    assert '"ai_graph_service_factory_extracted"' not in status_api_source
     assert '"compatibility_export_domain_builders_extracted"' not in status_api_source
     assert '"compatibility_helper_domain_builders_extracted"' not in status_api_source
     assert '"compatibility_service_domain_mixins_extracted"' not in status_api_source
@@ -295,6 +306,10 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["api_compatibility_architecture_status_extracted"] is True
     assert evidence["api_compatibility_architecture_status_path"] == (
         "app/services/status_api_architecture_compatibility.py"
+    )
+    assert evidence["api_service_factory_architecture_status_extracted"] is True
+    assert evidence["api_service_factory_architecture_status_path"] == (
+        "app/services/status_api_architecture_service_factory.py"
     )
     assert evidence["api_tasking_architecture_status_extracted"] is True
     assert evidence["api_tasking_architecture_status_path"] == (

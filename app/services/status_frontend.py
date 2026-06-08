@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from app.services.status_frontend_data_enrichment import (
+    frontend_data_enrichment_status,
+)
 from app.services.status_frontend_external_deployment import (
     frontend_external_deployment_status,
 )
@@ -33,16 +36,6 @@ def frontend_status() -> dict:
     system_settings_source = ui_sources["system_settings.py"]
     system_settings_scope_source = ui_sources["system_settings_scope.py"]
     system_settings_schedule_source = ui_sources["system_settings_schedule.py"]
-    data_enrichment_runtime_source = ui_sources["data_enrichment_runtime.py"]
-    company_filing_runtime_rows_service_path = (
-        root / "app" / "services" / "company_filing_runtime_rows.py"
-    )
-    company_filing_runtime_rows_service_source = (
-        company_filing_runtime_rows_service_path.read_text()
-        if company_filing_runtime_rows_service_path.exists()
-        else ""
-    )
-    data_enrichment_source = source_context.data_enrichment_source
     pages = source_context.pages
     streamlit_pages_source = source_context.streamlit_pages_source
     frontend_blocking_call_scan_paths = source_context.frontend_blocking_call_scan_paths
@@ -196,46 +189,7 @@ def frontend_status() -> dict:
         and "llm_quota_metric_values(llm_quota)" in ui_source
         and "llm_quota_model_rows(llm_quota)" in ui_source,
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
-        "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows("
-        in data_enrichment_source
-        and "from app.services.company_filing_runtime_rows import"
-        in data_enrichment_runtime_source
-        and "def company_filing_runtime_rows(" in company_filing_runtime_rows_service_source
-        and (
-            'api_get("/services/status"' in data_enrichment_source
-            or 'load_api_json_or_default(\n        "/services/status"' in data_enrichment_source
-        )
-        and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in data_enrichment_source
-        and "公司文件補抓能力" in data_enrichment_source
-        and "visual_rag_runtime_available" in company_filing_runtime_rows_service_source
-        and "structured_api_configured" in company_filing_runtime_rows_service_source
-        and "playwright_render_configured" in company_filing_runtime_rows_service_source,
-        "ui_visual_rag_model_chain_panel_enabled": (
-            "def company_filing_visual_rag_model_chain_rows(" in data_enrichment_source
-        )
-        and "def company_filing_visual_rag_model_chain_rows("
-        in company_filing_runtime_rows_service_source
-        and "visual_rag_model_chain" in company_filing_runtime_rows_service_source
-        and "Visual RAG 模型鏈" in ui_source
-        and "Visual RAG / PDF 圖片解析模型鏈" in ui_source,
-        "ui_data_enrichment_tabs_extracted": (ui_dir / "data_enrichment_market.py").exists()
-        and (ui_dir / "data_enrichment_manual.py").exists()
-        and (ui_dir / "data_enrichment_rss.py").exists()
-        and (ui_dir / "data_enrichment_runtime.py").exists()
-        and "def render_market_data_tab(" in data_enrichment_source
-        and "def render_manual_ingest_tab(" in data_enrichment_source
-        and "def render_rss_ingest_tab(" in data_enrichment_source
-        and "def company_filing_runtime_rows(" in data_enrichment_source
-        and "render_market_data_tab(allowed_tickers)" in data_enrichment_source
-        and "render_manual_ingest_tab(whitelist, allowed_tickers)" in data_enrichment_source
-        and "render_rss_ingest_tab()" in data_enrichment_source,
-        "ui_data_enrichment_module_paths": [
-            "app/ui/data_enrichment_market.py",
-            "app/ui/data_enrichment_manual.py",
-            "app/ui/data_enrichment_rss.py",
-            "app/ui/data_enrichment_runtime.py",
-            "app/services/company_filing_runtime_rows.py",
-        ],
+        **frontend_data_enrichment_status(source_context),
         "external_css_path": str(style_path.relative_to(root)),
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source

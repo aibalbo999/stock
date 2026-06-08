@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from datetime import timedelta
 
 from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
 from app.core.time import format_taipei, now_taipei
@@ -71,6 +70,7 @@ from app.services import (
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
+    report_credibility_check,
     report_decision_narrative,
     report_decision_rules,
     report_early_potential,
@@ -885,129 +885,21 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        if not tickers:
-            return "目前沒有形成可驗證股票範圍；本報告可信度不足，只能作為主題觀察。"
-
-        publishers = {
-            document.source.publisher or document.source.url or document.title or "來源不明"
-            for document in documents
-        }
-        dated_documents = [document for document in documents if document.source.published_at is not None]
-        cutoff = now_taipei().date() - timedelta(days=request.lookback_days)
-        recent_documents = [
-            document
-            for document in dated_documents
-            if document.source.published_at and document.source.published_at >= cutoff
-        ]
-        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
-        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
-        metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-
-        company_rows = []
-        high_count = 0
-        medium_count = 0
-        low_count = 0
-        for ticker in tickers:
-            company = companies.get(ticker)
-            related_documents = self._related_documents(ticker, documents)
-            related_findings = self._related_findings(ticker, findings)
-            related_publishers = {
-                document.source.publisher or document.source.url or document.title or "來源不明"
-                for document in related_documents
-            }
-            latest_dates = [
-                document.source.published_at
-                for document in related_documents
-                if document.source.published_at is not None
-            ]
-            latest = max(latest_dates).isoformat() if latest_dates else "日期不明"
-            ticker_metrics = metrics_by_ticker.get(ticker, [])
-            signal = (leading_signals or {}).get(ticker)
-            filing_missing = self._company_filing_missing(ticker, documents)
-            quality = self._data_quality_grade(
-                related_documents,
-                related_findings,
-                snapshots.get(ticker),
-                revenues.get(ticker),
-                ticker_metrics,
-                valuations.get(ticker),
-                financial_metrics is not None or valuation_metrics is not None,
-                signal,
-                filing_missing,
-                recent_source_days=request.lookback_days,
-            )
-            limitations = []
-            if len(related_documents) < 2:
-                limitations.append("公司文本少於 2 筆")
-            if len(related_publishers) < 2:
-                limitations.append("來源家數少於 2")
-            if not related_findings:
-                limitations.append("缺少風險/機會歸因")
-            if ticker not in snapshots:
-                limitations.append("缺股價")
-            if ticker not in revenues:
-                limitations.append("缺月營收")
-            if not ticker_metrics:
-                limitations.append("缺已揭露年度財報")
-            if ticker not in valuations:
-                limitations.append("缺估值")
-            if filing_missing:
-                limitations.append("缺公司公開文件")
-
-            if quality["grade"] == "supported" and len(related_publishers) >= 2 and related_findings:
-                credibility = "高"
-                high_count += 1
-            elif quality["grade"] in {"supported", "partial"} or (len(related_documents) >= 2 and len(related_publishers) >= 2):
-                credibility = "中"
-                medium_count += 1
-            else:
-                credibility = "低"
-                low_count += 1
-            label = f"{ticker} {company.name if company else ticker}"
-            company_rows.append(
-                self._table_row(
-                    [
-                        label,
-                        credibility,
-                        f"{len(related_documents)} 筆 / {len(related_publishers)} 來源",
-                        f"{len(related_findings)} 筆",
-                        latest,
-                        "、".join(limitations[:5]) if limitations else "未發現重大資料缺口",
-                    ]
-                )
-            )
-
-        date_coverage = f"{len(dated_documents)}/{len(documents)} 筆" if documents else "0/0 筆"
-        recent_coverage = f"{len(recent_documents)}/{len(documents)} 筆" if documents else "0/0 筆"
-        source_status = "可追溯" if documents else "不足"
-        diversity_status = "多來源" if len(publishers) >= 3 else "偏少"
-        date_status = "可判讀" if dated_documents else "不足"
-        company_status = "可用" if high_count or medium_count else "不足"
-        lines = [
-            "本段檢查正式報告的分析可信度；這不同於「候選公司審計」的入選支持度。若分析可信度不足，結論會降級為觀察或待補資料。",
-            "",
-            "| 檢查項目 | 狀態 | 本次證據 | 對投資判斷的影響 |",
-            "|---|---|---|---|",
-            f"| 可追溯來源 | {source_status} | 共 {len(documents)} 筆文本 | 沒有來源時只保留主題觀察，不產生買進研究。 |",
-            f"| 來源多樣性 | {diversity_status} | {len(publishers)} 個發布者 | 來源過少時，避免被單一新聞或單一觀點誤導。 |",
-            f"| 全體來源時間戳 | {date_status} | {date_coverage} 有日期；近 {request.lookback_days} 天 {recent_coverage} | 這是全報告證據池覆蓋率；個股仍需看下方最近來源日期。 |",
-            f"| 公司層級分析完整度 | {company_status} | 高分析可信度 {high_count} 檔、中分析可信度 {medium_count} 檔、低分析可信度 {low_count} 檔 | 只有題材但缺近期公司證據時，不列入可研究標的。 |",
-            f"| 市場與財務資料 | 可檢查 | 股價 {len(snapshots)} 檔、月營收 {len(revenues)} 檔、估值 {len(valuations)} 檔 | 財務或估值缺口會限制投資理由強度。 |",
-            f"| 風險/機會歸因 | {'可用' if findings else '不足'} | {len(findings)} 筆系統驗證後歸因 | 風險未歸因時，不把新聞熱度直接當投資理由。 |",
-            "",
-            "### 個股可信度核對",
-            "| 股票 | 分析可信度 | 公司文本 | 歸因證據 | 最近來源日期 | 主要限制 |",
-            "|---|---|---:|---:|---|---|",
-            *company_rows,
-            "",
-            "### 分析可信度判讀規則",
-            "- 高分析可信度：公司文本、來源家數、風險/機會歸因、股價、月營收、財報、估值、公司文件與近期公司文本大致齊備。",
-            "- 中分析可信度：已有公司層級證據，但仍有財務、估值、官方文件或近期資料缺口。",
-            "- 低分析可信度：文本、來源家數或公司層級歸因不足；只能觀察，不應形成買進研究。",
-        ]
-        return "\n".join(lines)
+        return report_credibility_check.render_credibility_check(
+            request=request,
+            tickers=tickers,
+            documents=documents,
+            findings=findings,
+            market_snapshots=market_snapshots,
+            monthly_revenues=monthly_revenues,
+            financial_metrics=financial_metrics,
+            valuation_metrics=valuation_metrics,
+            leading_signals=leading_signals,
+            companies=self.whitelist.companies(),
+            related_documents_resolver=self._related_documents,
+            related_findings_resolver=self._related_findings,
+            company_filing_missing_resolver=self._company_filing_missing,
+        )
 
     def _decision_contexts(
         self,

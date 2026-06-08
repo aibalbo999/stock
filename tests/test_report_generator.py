@@ -36,6 +36,7 @@ from app.services import (
     report_company_analysis,
     report_company_narrative,
     report_company_matrix,
+    report_credibility_check,
     report_data_quality,
     report_decision_narrative,
     report_early_potential,
@@ -2784,6 +2785,8 @@ def test_appendix_logic_lives_outside_generator() -> None:
 
 
 def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    credibility_source = Path("app/services/report_credibility_check.py").read_text()
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
     generator.mapper = EntityMapper(generator.whitelist)
@@ -2831,6 +2834,12 @@ def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
     assert "| 2330 台積電 | 高 | 2 筆 / 2 來源 | 1 筆 | 2026-05-21 |" in section
     assert "缺已揭露年度財報" in section
     assert "### 分析可信度判讀規則" in section
+    assert "report_credibility_check" in generator_source
+    assert "def render_credibility_check(" in credibility_source
+    assert "def credibility_label(" in credibility_source
+    assert "個股可信度核對" not in generator_source
+    assert "分析可信度判讀規則" not in generator_source
+    assert report_credibility_check.publisher_label(documents[0]) == "測試新聞A"
 
 
 def test_evidence_ranking_expands_topic_with_company_aliases() -> None:

@@ -577,6 +577,7 @@ def test_report_generation_flow_orchestrates_generate_outside_generator() -> Non
 
 def test_evidence_digest_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    prompt_appendix_mixin_source = Path("app/services/report_generator_prompt_appendix.py").read_text()
     prompt_builder_source = Path("app/services/report_prompt_builder.py").read_text()
     document = NewsFetcher.from_manual_text(
         title="台積電 AI 需求成長",
@@ -587,7 +588,11 @@ def test_evidence_digest_logic_lives_outside_generator() -> None:
 
     digest = ReportGenerator._format_evidence([document])
 
-    assert "format_evidence_digest" in generator_source
+    assert "report_prompt_builder" not in generator_source
+    assert "ReportGeneratorPromptAppendixMixin" in generator_source
+    assert "format_evidence_digest" in prompt_appendix_mixin_source
+    assert "def _format_evidence(" in prompt_appendix_mixin_source
+    assert "def _format_evidence(" not in generator_source
     assert "doc.text[:500]" in prompt_builder_source
     assert digest == format_evidence_digest([document])
     assert "2026-05-20 測試新聞 台積電 AI 需求成長" in digest
@@ -3080,10 +3085,16 @@ def test_appendix_filters_sources_to_current_tickers_when_possible() -> None:
 
 def test_appendix_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    prompt_appendix_mixin_source = Path("app/services/report_generator_prompt_appendix.py").read_text()
     appendix_source = Path("app/services/report_appendix.py").read_text()
     result = LLMResult(text="fallback status", fallback=True)
 
-    assert "report_appendix" in generator_source
+    assert "report_appendix" not in generator_source
+    assert "ReportGeneratorPromptAppendixMixin" in generator_source
+    assert "report_appendix" in prompt_appendix_mixin_source
+    assert "def _render_appendix(" in prompt_appendix_mixin_source
+    assert "def _model_status(" in prompt_appendix_mixin_source
+    assert "def _render_appendix(" not in generator_source
     assert "def render_appendix(" in appendix_source
     assert "def appendix_documents_for_tickers(" in appendix_source
     assert "def model_status(" in appendix_source

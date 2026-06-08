@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from datetime import date
+from hashlib import sha1
 from pathlib import Path
 from urllib.parse import urlparse
 
 from app.core.config import get_settings
+from app.core.time import utc_now_naive
+from app.data_sources.company_filing_discovery import (
+    DOCUMENT_TYPE_KEYWORDS,
+    infer_document_type,
+    is_document_text_relevant,
+)
+from app.models.schemas import NewsDocument, Source
 
 
 STRUCTURED_API_SAMPLE_CONTRACT_PATH = Path("examples/structured_company_filing_sample.json")
@@ -235,6 +243,117 @@ def structured_api_enriched_text(
     ]
     metadata = " ".join(term for term in metadata_terms if term)
     return f"[Structured API metadata] {metadata}\n{text}" if metadata else text
+
+
+def structured_api_document_type(row: dict, *, title: str, text: str, url: str | None) -> str:
+    raw_type = structured_api_row_text(
+        row,
+        "document_type",
+        "documentType",
+        "doc_type",
+        "filing_type",
+        "category",
+        "type",
+    )
+    if raw_type in DOCUMENT_TYPE_KEYWORDS:
+        return raw_type
+    return infer_document_type(f"{raw_type}\n{title}\n{text}\n{url or ''}")
+
+
+def structured_api_row_to_news_document(
+    row: dict,
+    *,
+    ticker: str,
+    company_name: str,
+    provider: str,
+    document_types: list[str] | tuple[str, ...] | None = None,
+) -> tuple[NewsDocument, str] | None:
+    title = structured_api_row_text(
+        row,
+        "title",
+        "name",
+        "headline",
+        "subject",
+        "doc_title",
+        "document_title",
+        "report_title",
+    )
+    text = structured_api_row_text(
+        row,
+        "text",
+        "content",
+        "summary",
+        "body",
+        "abstract",
+        "description",
+        "plain_text",
+        "ocr_text",
+    )
+    url = structured_api_row_text(
+        row,
+        "url",
+        "source_url",
+        "file_url",
+        "download_url",
+        "document_url",
+        "documentUrl",
+        "pdf_url",
+        "source.url",
+        "file.url",
+        "document.url",
+    ) or None
+    document_type = structured_api_document_type(row, title=title, text=text, url=url)
+    if document_types and document_type not in set(document_types):
+        return None
+    if not title or not text:
+        return None
+    text = structured_api_enriched_text(
+        text,
+        row,
+        ticker=ticker,
+        company_name=company_name,
+        document_type=document_type,
+    )
+    publisher = (
+        structured_api_row_text(
+            row,
+            "publisher",
+            "source_name",
+            "provider",
+            "source.publisher",
+            "metadata.publisher",
+        )
+        or provider
+        or "structured company filing API"
+    )
+    source = Source(
+        title=title,
+        url=url,
+        publisher=publisher,
+        published_at=parse_structured_api_date(
+            structured_api_row_value(
+                row,
+                "published_at",
+                "date",
+                "publish_date",
+                "publishedDate",
+                "report_date",
+                "filing_date",
+                "announcement_date",
+                "updated_at",
+            )
+        ),
+        fetched_at=utc_now_naive(),
+    )
+    document = NewsDocument(
+        id=sha1(f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")).hexdigest(),
+        title=title,
+        text=text,
+        source=source,
+    )
+    if not is_document_text_relevant(document, ticker, company_name, document_types):
+        return None
+    return document, document_type
 
 
 def parse_structured_api_date(value: object) -> date | None:

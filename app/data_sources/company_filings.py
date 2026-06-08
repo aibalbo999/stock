@@ -107,10 +107,12 @@ from app.data_sources.company_filing_structured_api import (
     company_filing_structured_api_configured as company_filing_structured_api_configured,
     company_filing_structured_api_status_payload,
     parse_structured_api_date as parse_structured_api_date,
+    structured_api_document_type as structured_api_document_type,
     structured_api_document_rows as structured_api_document_rows,
     structured_api_enriched_text as structured_api_enriched_text,
     structured_api_provider_profile as structured_api_provider_profile,
     structured_api_request_contract as structured_api_request_contract,
+    structured_api_row_to_news_document as structured_api_row_to_news_document,
     structured_api_row_text as structured_api_row_text,
     structured_api_row_value as structured_api_row_value,
 )
@@ -735,91 +737,16 @@ class CompanyFilingFetcher:
         provider: str,
         document_types: list[str] | tuple[str, ...] | None = None,
     ) -> CompanyFilingDocument | None:
-        title = structured_api_row_text(
-            row,
-            "title",
-            "name",
-            "headline",
-            "subject",
-            "doc_title",
-            "document_title",
-            "report_title",
-        )
-        text = structured_api_row_text(
-            row,
-            "text",
-            "content",
-            "summary",
-            "body",
-            "abstract",
-            "description",
-            "plain_text",
-            "ocr_text",
-        )
-        url = structured_api_row_text(
-            row,
-            "url",
-            "source_url",
-            "file_url",
-            "download_url",
-            "document_url",
-            "documentUrl",
-            "pdf_url",
-            "source.url",
-            "file.url",
-            "document.url",
-        ) or None
-        document_type = structured_api_document_type(row, title=title, text=text, url=url)
-        if document_types and document_type not in set(document_types):
-            return None
-        if not title or not text:
-            return None
-        text = structured_api_enriched_text(
-            text,
+        parsed = structured_api_row_to_news_document(
             row,
             ticker=ticker,
             company_name=company_name,
-            document_type=document_type,
+            provider=provider,
+            document_types=document_types,
         )
-        publisher = (
-            structured_api_row_text(
-                row,
-                "publisher",
-                "source_name",
-                "provider",
-                "source.publisher",
-                "metadata.publisher",
-            )
-            or provider
-            or "structured company filing API"
-        )
-        source = Source(
-            title=title,
-            url=url,
-            publisher=publisher,
-            published_at=parse_structured_api_date(
-                structured_api_row_value(
-                    row,
-                    "published_at",
-                    "date",
-                    "publish_date",
-                    "publishedDate",
-                    "report_date",
-                    "filing_date",
-                    "announcement_date",
-                    "updated_at",
-                )
-            ),
-            fetched_at=utc_now_naive(),
-        )
-        news_document = NewsDocument(
-            id=sha1(f"structured-api:{ticker}:{document_type}:{url or title}".encode("utf-8")).hexdigest(),
-            title=title,
-            text=text,
-            source=source,
-        )
-        if not is_document_text_relevant(news_document, ticker, company_name, document_types):
+        if not parsed:
             return None
+        news_document, document_type = parsed
         return self.from_news_document(news_document, ticker, company_name, document_type=document_type)
 
     async def fetch_web_search_documents(
@@ -1132,18 +1059,3 @@ class CompanyFilingFetcher:
             if len(results) >= limit:
                 break
         return results
-
-
-def structured_api_document_type(row: dict, *, title: str, text: str, url: str | None) -> str:
-    raw_type = structured_api_row_text(
-        row,
-        "document_type",
-        "documentType",
-        "doc_type",
-        "filing_type",
-        "category",
-        "type",
-    )
-    if raw_type in DOCUMENT_TYPE_KEYWORDS:
-        return raw_type
-    return infer_document_type(f"{raw_type}\n{title}\n{text}\n{url or ''}")

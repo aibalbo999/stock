@@ -278,6 +278,14 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["main_uses_app_factory"] is True
     assert evidence["compatibility_exports_present"] is True
     assert evidence["main_uses_compatibility_exports"] is True
+    assert evidence["compatibility_export_domain_builders_extracted"] is True
+    assert evidence["compatibility_export_domain_builder_paths"] == [
+        "app/api/compatibility_export_core.py",
+        "app/api/compatibility_export_data.py",
+        "app/api/compatibility_export_discovery.py",
+        "app/api/compatibility_export_report.py",
+        "app/api/compatibility_export_workflow.py",
+    ]
     assert evidence["service_factory_lines"] < 260
     assert evidence["report_service_factory_extracted"] is True
     assert evidence["report_service_factory_path"] == "app/api/service_factory_report.py"

@@ -31,6 +31,11 @@ def api_controller_status() -> dict:
     legacy_facade_api_reference_locations = source_context.legacy_facade_api_reference_locations
     route_modules = source_context.route_modules
     compatibility_exports_path = paths["compatibility_exports"]
+    compatibility_export_core_path = paths["compatibility_export_core"]
+    compatibility_export_data_path = paths["compatibility_export_data"]
+    compatibility_export_discovery_path = paths["compatibility_export_discovery"]
+    compatibility_export_report_path = paths["compatibility_export_report"]
+    compatibility_export_workflow_path = paths["compatibility_export_workflow"]
     compatibility_helpers_path = paths["compatibility_helpers"]
     compatibility_helper_candidate_path = paths["compatibility_helper_candidate"]
     compatibility_helper_discovery_path = paths["compatibility_helper_discovery"]
@@ -47,6 +52,11 @@ def api_controller_status() -> dict:
     workflow_service_factory_path = paths["workflow_service_factory"]
     ai_graph_service_factory_path = paths["ai_graph_service_factory"]
     compatibility_exports_source = sources["compatibility_exports"]
+    compatibility_export_core_source = sources["compatibility_export_core"]
+    compatibility_export_data_source = sources["compatibility_export_data"]
+    compatibility_export_discovery_source = sources["compatibility_export_discovery"]
+    compatibility_export_report_source = sources["compatibility_export_report"]
+    compatibility_export_workflow_source = sources["compatibility_export_workflow"]
     compatibility_helpers_source = sources["compatibility_helpers"]
     compatibility_helper_candidate_source = sources["compatibility_helper_candidate"]
     compatibility_helper_discovery_source = sources["compatibility_helper_discovery"]
@@ -166,6 +176,35 @@ def api_controller_status() -> dict:
                 and "compatibility_export_namespace" in runtime_source
             )
         ),
+        "compatibility_export_domain_builders_extracted": (
+            compatibility_export_core_path.exists()
+            and compatibility_export_data_path.exists()
+            and compatibility_export_discovery_path.exists()
+            and compatibility_export_report_path.exists()
+            and compatibility_export_workflow_path.exists()
+            and "def compatibility_core_export_namespace(" in compatibility_export_core_source
+            and "def compatibility_data_export_namespace(" in compatibility_export_data_source
+            and "def compatibility_discovery_export_namespace("
+            in compatibility_export_discovery_source
+            and "def compatibility_report_export_namespace(" in compatibility_export_report_source
+            and "def compatibility_workflow_export_namespace("
+            in compatibility_export_workflow_source
+            and "compatibility_core_export_namespace" in compatibility_exports_source
+            and "compatibility_data_export_namespace" in compatibility_exports_source
+            and "compatibility_discovery_export_namespace" in compatibility_exports_source
+            and "compatibility_report_export_namespace" in compatibility_exports_source
+            and "compatibility_workflow_export_namespace" in compatibility_exports_source
+            and "from app.data_sources." not in compatibility_exports_source
+            and "from app.services.report_generator import" not in compatibility_exports_source
+            and "from app.services.discovery_workflow import" not in compatibility_exports_source
+        ),
+        "compatibility_export_domain_builder_paths": [
+            "app/api/compatibility_export_core.py",
+            "app/api/compatibility_export_data.py",
+            "app/api/compatibility_export_discovery.py",
+            "app/api/compatibility_export_report.py",
+            "app/api/compatibility_export_workflow.py",
+        ],
         "compatibility_helpers_present": compatibility_helpers_path.exists(),
         "main_uses_compatibility_helpers": (
             "compatibility_helper_namespace" in main_source

@@ -6,6 +6,11 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
+from app.api.compatibility_exports import (
+    COMPATIBILITY_EXPORT_NAMES,
+    LEGACY_HELPER_EXPORT_NAMES,
+    compatibility_export_namespace,
+)
 from app.api.compatibility_helpers import compatibility_helper_namespace
 from app.api.legacy_facade import LegacyApiFacade
 from app.api.schemas import FollowUpRunRequest
@@ -58,6 +63,36 @@ def test_compatibility_helper_namespace_splits_domain_builders() -> None:
     assert "def run_topic_discovery_ingestion(" in discovery_source
     assert "def run_report_follow_up(" in followup_source
     assert "def safe_mark_run_failed(" in run_state_source
+
+
+def test_compatibility_export_namespace_splits_domain_builders() -> None:
+    export_source = Path("app/api/compatibility_exports.py").read_text()
+    core_source = Path("app/api/compatibility_export_core.py").read_text()
+    data_source = Path("app/api/compatibility_export_data.py").read_text()
+    discovery_source = Path("app/api/compatibility_export_discovery.py").read_text()
+    report_source = Path("app/api/compatibility_export_report.py").read_text()
+    workflow_source = Path("app/api/compatibility_export_workflow.py").read_text()
+
+    namespace = compatibility_export_namespace()
+
+    assert len(COMPATIBILITY_EXPORT_NAMES) == 124
+    assert len(LEGACY_HELPER_EXPORT_NAMES) == 26
+    assert list(namespace) == list(COMPATIBILITY_EXPORT_NAMES)
+    assert namespace["ReportGenerator"].__name__ == "ReportGenerator"
+    assert namespace["TopicDiscoveryRequest"].__name__ == "TopicDiscoveryRequest"
+    assert "compatibility_core_export_namespace" in export_source
+    assert "compatibility_data_export_namespace" in export_source
+    assert "compatibility_discovery_export_namespace" in export_source
+    assert "compatibility_report_export_namespace" in export_source
+    assert "compatibility_workflow_export_namespace" in export_source
+    assert "from app.data_sources." not in export_source
+    assert "from app.services.report_generator import" not in export_source
+    assert "from app.services.discovery_workflow import" not in export_source
+    assert "def compatibility_core_export_namespace(" in core_source
+    assert "def compatibility_data_export_namespace(" in data_source
+    assert "def compatibility_discovery_export_namespace(" in discovery_source
+    assert "def compatibility_report_export_namespace(" in report_source
+    assert "def compatibility_workflow_export_namespace(" in workflow_source
 
 
 def test_legacy_api_facade_delegates_candidate_filing_gate() -> None:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
 from app.services import (
+    topic_discovery_candidate_queries,
     topic_discovery_candidates,
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
@@ -205,6 +206,43 @@ def test_topic_discovery_news_query_builders_live_outside_query_planner() -> Non
     assert "news.google.com/rss/search" not in queries_source
     assert "news.google.com/rss/search" in news_queries_source
     assert "def google_news_metadata_from_queries(" in news_queries_source
+
+
+def test_topic_discovery_candidate_queries_live_outside_query_planner() -> None:
+    queries_source = Path("app/services/topic_discovery_queries.py").read_text()
+    candidate_queries_source = Path("app/services/topic_discovery_candidate_queries.py").read_text()
+    candidate = CandidateCompany(
+        ticker="2382",
+        name="廣達",
+        segment="AI 伺服器代工",
+        rationale="AI server 出貨",
+        evidence_keywords=["AI 伺服器", "CSP", "GB200"],
+    )
+    candidate_items = topic_discovery_candidate_queries.candidate_query_items(
+        candidate,
+        include_international=True,
+    )
+
+    assert TopicDiscoveryService._candidate_query_items(
+        candidate,
+        include_international=True,
+    ) == candidate_items
+    assert topic_discovery_queries.supplemental_candidate_query_items(
+        candidate,
+        include_international=False,
+    ) == topic_discovery_candidate_queries.supplemental_candidate_query_items(
+        candidate,
+        include_international=False,
+    )
+    assert topic_discovery_queries.round_robin_query_groups(
+        [candidate_items[:2], candidate_items[2:4]]
+    ) == topic_discovery_candidate_queries.round_robin_query_groups(
+        [candidate_items[:2], candidate_items[2:4]]
+    )
+    assert "法說會 年報 月營收" not in queries_source
+    assert "法說會 年報 月營收" in candidate_queries_source
+    assert "def candidate_query_items(" in candidate_queries_source
+    assert "SUPPLEMENTAL_HYPOTHESIS" in candidate_queries_source
 
 
 def test_topic_discovery_quality_lives_outside_service_module() -> None:

@@ -39,6 +39,7 @@ from app.services import (
     report_data_quality,
     report_decision_narrative,
     report_early_potential,
+    report_executive_snapshot,
     report_final_potential,
     report_formatting,
     report_investment_recommendations,
@@ -2073,6 +2074,8 @@ def test_decision_criteria_note_explains_financial_red_flags_and_actionable_rule
 
 
 def test_executive_snapshot_summarizes_decisions_in_table() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    snapshot_source = Path("app/services/report_executive_snapshot.py").read_text()
     generator = object.__new__(ReportGenerator)
     generator.whitelist = SupplyChainWhitelist()
     generator.mapper = EntityMapper(generator.whitelist)
@@ -2119,6 +2122,12 @@ def test_executive_snapshot_summarizes_decisions_in_table() -> None:
     assert "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |" in snapshot_text
     assert "| 2330 台積電 | 可小額分批研究 | 2026-05-22 收盤 2255 | 可小額分批 | 完整 |" in snapshot_text
     assert "| 可小額研究 | 1 檔 |" in snapshot_text
+    assert "report_executive_snapshot" in generator_source
+    assert "def render_executive_snapshot(" in snapshot_source
+    assert "def decision_counts(" in snapshot_source
+    assert "決策總覽" not in generator_source
+    assert "品質門檻最多允許研究" not in generator_source
+    assert report_executive_snapshot.is_low_attention_topic("AI 產業鏈低關注潛力股")
 
 
 def test_executive_snapshot_warns_low_attention_topic_needs_radar_check() -> None:

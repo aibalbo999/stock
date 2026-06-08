@@ -74,6 +74,7 @@ from app.services import (
     report_decision_narrative,
     report_decision_rules,
     report_early_potential,
+    report_executive_snapshot,
     report_final_potential,
     report_formatting,
     report_leading_signal,
@@ -1291,15 +1292,7 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        if not tickers:
-            return "本次沒有形成可驗證個股清單；先補資料，不建議依此報告做個股配置。"
-
-        rows = []
-        actionable = 0
-        watch = 0
-        avoid = 0
-        weak = 0
-        for item in self._sort_decision_contexts(
+        contexts = self._sort_decision_contexts(
             self._decision_contexts(
                 request,
                 tickers,
@@ -1311,77 +1304,12 @@ class ReportGenerator:
                 valuation_metrics,
                 leading_signals,
             )
-        ):
-            decision = item["decision"]
-            quality = item["quality"]
-            estimate = item["estimate"]
-            signal = item.get("leading_signal")
-            if decision == "可小額分批研究":
-                actionable += 1
-            elif decision == "避開 / 降低曝險":
-                avoid += 1
-            elif quality["grade"] == "weak":
-                weak += 1
-            else:
-                watch += 1
-            rows.append(
-                self._table_row(
-                    [
-                        item["label"],
-                        decision,
-                        item["current_price"],
-                        item["current_price_label"],
-                        self._quality_label(quality["grade"]),
-                        f"{estimate['upside_pct']} 分",
-                        f"{estimate['downside_pct']} 分",
-                        signal.direction if signal else "未評估",
-                        "、".join(quality["missing"]) if quality["missing"] else "完整",
-                    ]
-                )
-            )
-
-        deployable = request.investor_capital - int(request.investor_capital * request.cash_reserve_pct)
-        if actionable:
-            headline = f"本次有 {actionable} 檔可小額研究；仍需依資金控管分批，不建議一次買滿。"
-        elif avoid:
-            headline = "本次沒有可小額研究標的，且有股票進入避開/降低曝險名單。"
-        else:
-            headline = "本次沒有可小額研究標的；先補資料或等待新證據。"
-        lines = [
-            f"**重點提醒：{headline}**",
-            "",
-            "| 項目 | 結果 |",
-            "|---|---|",
-            f"| 投資人設定 | {self._profile_label(request)}；總資金 {request.investor_capital:,} 元；"
-            f"品質門檻最多允許研究約 {deployable:,} 元，但本次實際配置以投資建議與資金控管為準 |",
-            f"| 本次股票範圍 | {len(tickers)} 檔 |",
-            f"| 可小額研究 | {actionable} 檔 |",
-            f"| 觀察/待補 | {watch + weak} 檔 |",
-            f"| 避開/降低曝險 | {avoid} 檔 |",
-        ]
-        if self._is_low_attention_topic(request.topic):
-            lines.append(
-                "| 低關注核對 | 可小額研究不等於低關注；是否真的屬於報導較少標的，請以「早期潛力雷達」為準 |"
-            )
-        lines.extend(
-            [
-                "",
-                "### 決策總覽",
-                REPORT_READING_SORT_NOTE,
-                "",
-                "| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 資料等級 | 目前情境升值分 | 目前情境降值分 | 近況訊號 | 主要缺口 |",
-                "|---|---|---|---|---|---:|---:|---|---|",
-                *rows,
-                "",
-                "閱讀方式：先看「判斷」與「主要缺口」；升值/降值欄位是目前情境分數，不是未來報酬率。",
-            ]
         )
-        return "\n".join(lines)
-
-    @staticmethod
-    def _is_low_attention_topic(topic: str) -> bool:
-        normalized = str(topic or "").lower()
-        return any(term in normalized for term in ["低關注", "冷門", "未被市場", "low attention"])
+        return report_executive_snapshot.render_executive_snapshot(
+            contexts,
+            request,
+            REPORT_READING_SORT_NOTE,
+        )
 
     def _render_data_quality(
         self,

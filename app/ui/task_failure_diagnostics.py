@@ -3,6 +3,7 @@ from __future__ import annotations
 
 EXTERNAL_CONFIG_FAILURE_CATEGORIES = {
     "data_source",
+    "external_config",
     "task_queue",
     "visual_rag",
 }
@@ -15,7 +16,7 @@ TASK_FAILURE_ACTION_ROUTE_ORDER = (
 
 TASK_FAILURE_ACTION_ROUTE_DETAILS = {
     "一鍵重試": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
-    "外部配置缺失": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+    "外部配置缺失": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
     "需人工處理": "payload、輸入範圍或取消狀態需人工檢查，修正後從原工作流程重送。",
 }
 
@@ -137,8 +138,11 @@ def _is_external_config_failure(row: dict) -> bool:
             "Redis",
             "Celery",
             "資料源 token",
+            "Structured API",
+            "結構化文件 API",
             "Visual RAG",
             "company filing 後援設定",
+            "外部部署 readiness",
         )
     )
 

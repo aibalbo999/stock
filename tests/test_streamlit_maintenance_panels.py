@@ -358,6 +358,25 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error": "MOPS blocked",
                 "started_at": "2026-06-07T13:00:00",
             },
+            {
+                "id": 26,
+                "operation": "company_filings_fetch",
+                "status": "failed",
+                "task_id": "task-structured-api",
+                "retryable": True,
+                "retry_kind": "data_operation",
+                "error_category": "external_config",
+                "error_severity": "warning",
+                "error_summary": "外部資料源或文件後援配置缺失",
+                "next_steps": [
+                    "查看 /services/status 與外部部署 readiness checklist，確認缺少的 env key。",
+                    "補齊結構化文件 API、Browser render/unlocker、Visual RAG gateway 或 Neo4j 設定後再重送任務。",
+                ],
+                "retry_endpoint": "POST /tasks/task-structured-api/retry",
+                "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-structured-api/retry",
+                "error": "structured_api_configuration: missing_structured_api_token",
+                "started_at": "2026-06-07T14:00:00",
+            },
         ]
     }
 
@@ -386,6 +405,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert "Redis/Celery" in rows[2]["action_route_detail"]
     assert rows[3]["retry"] == "可重試"
     assert rows[3]["action_route"] == "外部配置缺失"
+    assert rows[4]["category"] == "external_config"
+    assert rows[4]["action_route"] == "外部配置缺失"
+    assert "外部部署 readiness" in rows[4]["next_steps"]
     assert action_rows == [
         {
             "處理路徑": "一鍵重試",
@@ -395,9 +417,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "處理路徑": "外部配置缺失",
-            "數量": 2,
-            "說明": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
-            "代表任務": "data_operation｜task-queue；company_filings_fetch｜task-filing",
+            "數量": 3,
+            "說明": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "代表任務": "data_operation｜task-queue；company_filings_fetch｜task-filing；company_filings_fetch｜task-structured-api",
         },
         {
             "處理路徑": "需人工處理",
@@ -425,9 +447,20 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "run_id": 25,
             "retry_endpoint": "POST /tasks/task-filing/retry",
             "action_route": "外部配置缺失",
-            "action_route_detail": "先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+            "action_route_detail": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
             "retry_guarded": True,
-            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Visual RAG 或文件後援設定，再重送任務。",
+            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+        },
+        {
+            "task_id": "task-structured-api",
+            "label": "company_filings_fetch｜run #26｜task-structured-api",
+            "operation": "company_filings_fetch",
+            "run_id": 26,
+            "retry_endpoint": "POST /tasks/task-structured-api/retry",
+            "action_route": "外部配置缺失",
+            "action_route_detail": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "retry_guarded": True,
+            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
         },
     ]
 

@@ -209,6 +209,13 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
             True,
             "visual_rag",
         ),
+        (
+            "failed",
+            "structured_api_configuration: missing_structured_api_token",
+            "company_filings_fetch",
+            True,
+            "external_config",
+        ),
         ("cancelled", "", "report_generation", False, "cancelled"),
     ]
 

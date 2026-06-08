@@ -104,6 +104,28 @@ def test_task_status_diagnostic_rows_show_external_config_action_route() -> None
     assert "Redis/Celery" in rows[0]["action_route_detail"]
 
 
+def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
+    rows = task_status_diagnostic_rows(
+        {
+            "operation": "company_filings_fetch",
+            "error_category": "external_config",
+            "error_severity": "warning",
+            "error_summary": "外部資料源或文件後援配置缺失",
+            "retryable": True,
+            "retry_kind": "data_operation",
+            "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-structured-api/retry",
+            "next_steps": [
+                "查看 /services/status 與外部部署 readiness checklist，確認缺少的 env key。",
+                "補齊結構化文件 API、Browser render/unlocker、Visual RAG gateway 或 Neo4j 設定後再重送任務。",
+            ],
+        }
+    )
+
+    assert rows[0]["action_route"] == "外部配置缺失"
+    assert "Structured API" in rows[0]["action_route_detail"]
+    assert "外部部署 readiness" in rows[0]["next_steps"]
+
+
 def test_task_status_diagnostic_rows_hide_when_no_failure_category() -> None:
     assert task_status_diagnostic_rows({"status": "SUCCESS"}) == []
 

@@ -10,6 +10,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
+from app.services.llm_attempt_planning import iter_model_attempt_plans
 from app.services.llm_attempts import llm_attempt_failure_category, summarize_llm_attempts
 from app.services.llm_models import (
     gemini_model_candidates,
@@ -248,35 +249,17 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         models = gemini_model_candidates(self.settings)
         use_model_fallback = len(models) > 1
-        daily_exhausted = self._daily_quota_exhausted_model_keys()
-        for model_name in models:
-            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
-                attempts.append(
-                    self._attempt_record(
-                        provider="gemini_http",
-                        model=model_name,
-                        outcome="quota_daily_exhausted",
-                        retryable=True,
-                    )
-                )
+        for plan in self._iter_model_attempt_plans(
+            models,
+            provider="gemini_http",
+            use_model_fallback=use_model_fallback,
+            key_candidates_func=lambda _model: self.rotator.candidates(),
+        ):
+            model_name = plan.model
+            if plan.skipped_attempt:
+                attempts.append(plan.skipped_attempt)
                 continue
-            if use_model_fallback:
-                cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
-                if cooldown_remaining > 0:
-                    attempts.append(
-                        self._attempt_record(
-                            provider="gemini_http",
-                            model=model_name,
-                            outcome="quota_cooldown",
-                            retryable=True,
-                            cooldown_seconds=cooldown_remaining,
-                        )
-                    )
-                    continue
-            key_candidates = self.rotator.candidates()
-            if use_model_fallback and len(key_candidates) > 2:
-                key_candidates = key_candidates[:2]
-            for key_index, api_key in key_candidates:
+            for key_index, api_key in plan.key_candidates:
                 if monotonic() >= deadline:
                     errors.append(f"{model_name} total timeout before trying next key")
                     attempts.append(
@@ -441,35 +424,17 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         models = gemini_model_candidates(self.settings)
         use_model_fallback = len(models) > 1
-        daily_exhausted = self._daily_quota_exhausted_model_keys()
-        for model_name in models:
-            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
-                attempts.append(
-                    self._attempt_record(
-                        provider="google_genai",
-                        model=model_name,
-                        outcome="quota_daily_exhausted",
-                        retryable=True,
-                    )
-                )
+        for plan in self._iter_model_attempt_plans(
+            models,
+            provider="google_genai",
+            use_model_fallback=use_model_fallback,
+            key_candidates_func=lambda _model: self.rotator.candidates(),
+        ):
+            model_name = plan.model
+            if plan.skipped_attempt:
+                attempts.append(plan.skipped_attempt)
                 continue
-            if use_model_fallback:
-                cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
-                if cooldown_remaining > 0:
-                    attempts.append(
-                        self._attempt_record(
-                            provider="google_genai",
-                            model=model_name,
-                            outcome="quota_cooldown",
-                            retryable=True,
-                            cooldown_seconds=cooldown_remaining,
-                        )
-                    )
-                    continue
-            key_candidates = self.rotator.candidates()
-            if use_model_fallback and len(key_candidates) > 2:
-                key_candidates = key_candidates[:2]
-            for key_index, api_key in key_candidates:
+            for key_index, api_key in plan.key_candidates:
                 max_retries = 0 if use_model_fallback else self.max_retries_per_key
                 should_stop = False
                 for attempt in range(max_retries + 1):
@@ -613,36 +578,20 @@ class LLMClient:
         attempts: list[dict[str, object]] = []
         deadline = monotonic() + self.total_timeout_seconds
         use_fast_model_chain_fallback = len(models) > 1
-        daily_exhausted = self._daily_quota_exhausted_model_keys()
-        for model in models:
-            stop_model_after_quota = False
-            if self._model_daily_quota_exhausted(model, daily_exhausted):
-                attempts.append(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=model,
-                        outcome="quota_daily_exhausted",
-                        retryable=True,
-                    )
-                )
+        for plan in self._iter_model_attempt_plans(
+            models,
+            provider="litellm",
+            use_model_fallback=use_fast_model_chain_fallback,
+            key_candidates_func=lambda model: litellm_key_candidates(
+                model, self.settings, self.rotator
+            ),
+        ):
+            model = plan.model
+            if plan.skipped_attempt:
+                attempts.append(plan.skipped_attempt)
                 continue
-            if use_fast_model_chain_fallback:
-                cooldown_remaining = self._model_quota_cooldown_remaining(model)
-                if cooldown_remaining > 0:
-                    attempts.append(
-                        self._attempt_record(
-                            provider="litellm",
-                            model=model,
-                            outcome="quota_cooldown",
-                            retryable=True,
-                            cooldown_seconds=cooldown_remaining,
-                        )
-                    )
-                    continue
-            key_candidates = litellm_key_candidates(model, self.settings, self.rotator)
-            if use_fast_model_chain_fallback and len(key_candidates) > 2:
-                key_candidates = key_candidates[:2]
-            for key_index, api_key in key_candidates:
+            stop_model_after_quota = False
+            for key_index, api_key in plan.key_candidates:
                 if stop_model_after_quota:
                     break
                 if litellm_model_requires_api_key(model) and not api_key:
@@ -797,34 +746,21 @@ class LLMClient:
         attempts: list[dict[str, object]] = []
         deadline = monotonic() + self.total_timeout_seconds
         use_model_fallback = len(models) > 1
-        daily_exhausted = self._daily_quota_exhausted_model_keys()
-        for candidate_model in models:
-            stop_model_after_quota = False
-            if self._model_daily_quota_exhausted(candidate_model, daily_exhausted):
-                attempts.append(
-                    self._attempt_record(
-                        provider="litellm",
-                        model=candidate_model,
-                        outcome="quota_daily_exhausted",
-                        retryable=True,
-                    )
-                )
+        for plan in self._iter_model_attempt_plans(
+            models,
+            provider="litellm",
+            use_model_fallback=use_model_fallback,
+            key_candidates_func=lambda model: litellm_key_candidates(
+                model, self.settings, self.rotator
+            ),
+            max_key_candidates=2,
+        ):
+            candidate_model = plan.model
+            if plan.skipped_attempt:
+                attempts.append(plan.skipped_attempt)
                 continue
-            if use_model_fallback:
-                cooldown_remaining = self._model_quota_cooldown_remaining(candidate_model)
-                if cooldown_remaining > 0:
-                    attempts.append(
-                        self._attempt_record(
-                            provider="litellm",
-                            model=candidate_model,
-                            outcome="quota_cooldown",
-                            retryable=True,
-                            cooldown_seconds=cooldown_remaining,
-                        )
-                    )
-                    continue
-            key_candidates = litellm_key_candidates(candidate_model, self.settings, self.rotator)
-            for key_index, api_key in key_candidates[:2]:
+            stop_model_after_quota = False
+            for key_index, api_key in plan.key_candidates:
                 if stop_model_after_quota:
                     break
                 if litellm_model_requires_api_key(candidate_model) and not api_key:
@@ -930,35 +866,17 @@ class LLMClient:
         deadline = monotonic() + self.total_timeout_seconds
         model_candidates = gemini_vision_model_candidates(self.settings, preferred_model=model)
         use_model_fallback = len(model_candidates) > 1
-        daily_exhausted = self._daily_quota_exhausted_model_keys()
-        for model_name in model_candidates:
-            if self._model_daily_quota_exhausted(model_name, daily_exhausted):
-                attempts.append(
-                    self._attempt_record(
-                        provider="gemini_http",
-                        model=model_name,
-                        outcome="quota_daily_exhausted",
-                        retryable=True,
-                    )
-                )
+        for plan in self._iter_model_attempt_plans(
+            model_candidates,
+            provider="gemini_http",
+            use_model_fallback=use_model_fallback,
+            key_candidates_func=lambda _model: self.rotator.candidates(),
+        ):
+            model_name = plan.model
+            if plan.skipped_attempt:
+                attempts.append(plan.skipped_attempt)
                 continue
-            if use_model_fallback:
-                cooldown_remaining = self._model_quota_cooldown_remaining(model_name)
-                if cooldown_remaining > 0:
-                    attempts.append(
-                        self._attempt_record(
-                            provider="gemini_http",
-                            model=model_name,
-                            outcome="quota_cooldown",
-                            retryable=True,
-                            cooldown_seconds=cooldown_remaining,
-                        )
-                    )
-                    continue
-            key_candidates = self.rotator.candidates()
-            if len(model_candidates) > 1 and len(key_candidates) > 2:
-                key_candidates = key_candidates[:2]
-            for key_index, api_key in key_candidates:
+            for key_index, api_key in plan.key_candidates:
                 if monotonic() >= deadline:
                     attempts.append(
                         self._attempt_record(
@@ -1187,6 +1105,26 @@ class LLMClient:
     @staticmethod
     def _model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
         return normalize_model_name(model) in exhausted_model_keys
+
+    def _iter_model_attempt_plans(
+        self,
+        models: list[str],
+        *,
+        provider: str,
+        use_model_fallback: bool,
+        key_candidates_func,
+        max_key_candidates: int | None = None,
+    ):
+        return iter_model_attempt_plans(
+            models,
+            provider=provider,
+            daily_exhausted_model_keys=self._daily_quota_exhausted_model_keys(),
+            cooldown_remaining_func=self._model_quota_cooldown_remaining,
+            key_candidates_func=key_candidates_func,
+            attempt_record_func=self._attempt_record,
+            use_model_fallback=use_model_fallback,
+            max_key_candidates=max_key_candidates,
+        )
 
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata("請只回答 ok，不要輸出任何其他文字。")

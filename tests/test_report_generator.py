@@ -52,6 +52,7 @@ from app.services import (
     report_markdown_sections,
     report_market_snapshots,
     report_monitoring_checklist,
+    report_notes,
     report_risk_overview,
     report_scope_sections,
     report_score_breakdown,
@@ -2136,21 +2137,31 @@ def test_current_price_label_summarizes_immediate_entry_condition() -> None:
 
 
 def test_time_scope_note_distinguishes_current_history_and_scenario_scores() -> None:
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=21)
+    market_snapshots = [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)]
+    monthly_revenues = [
+        MonthlyRevenue(
+            ticker="2330",
+            revenue_date=date(2026, 4, 10),
+            revenue=1,
+            revenue_year=2026,
+            revenue_month=4,
+        )
+    ]
+    valuation_metrics = [ValuationMetric(ticker="2330", trade_date=date(2026, 5, 20), pe_ratio=20)]
     note = ReportGenerator._render_time_scope_note(
-        ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=21),
-        [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)],
-        [
-            MonthlyRevenue(
-                ticker="2330",
-                revenue_date=date(2026, 4, 10),
-                revenue=1,
-                revenue_year=2026,
-                revenue_month=4,
-            )
-        ],
-        [ValuationMetric(ticker="2330", trade_date=date(2026, 5, 20), pe_ratio=20)],
+        request,
+        market_snapshots,
+        monthly_revenues,
+        valuation_metrics,
     )
 
+    assert note == report_notes.render_time_scope_note(
+        request,
+        market_snapshots,
+        monthly_revenues,
+        valuation_metrics,
+    )
     assert "「目前」指本報告生成時間" in note
     assert "近 21 天來源" in note
     assert "目前估值" in note
@@ -2160,11 +2171,45 @@ def test_time_scope_note_distinguishes_current_history_and_scenario_scores() -> 
     assert "不是未來走勢預測" in note
 
 
-def test_decision_criteria_note_explains_financial_red_flags_and_actionable_rules() -> None:
-    note = ReportGenerator._render_decision_criteria_note(
-        ReportRequest(topic="AI 產業鏈", tickers=["2330"], investor_profile=InvestorProfile.aggressive)
+def test_report_note_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    notes_source = Path("app/services/report_notes.py").read_text()
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"], lookback_days=21)
+    market_snapshots = [MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 22), close=100)]
+    monthly_revenues = [
+        MonthlyRevenue(
+            ticker="2330",
+            revenue_date=date(2026, 4, 10),
+            revenue=1,
+            revenue_year=2026,
+            revenue_month=4,
+        )
+    ]
+    valuation_metrics = [ValuationMetric(ticker="2330", trade_date=date(2026, 5, 20), pe_ratio=20)]
+
+    assert "report_notes" in generator_source
+    assert "def render_time_scope_note(" in notes_source
+    assert "def render_decision_criteria_note(" in notes_source
+    assert "「目前」指本報告生成時間" not in generator_source
+    assert "可小額分批研究" not in generator_source
+    assert ReportGenerator._render_time_scope_note(
+        request,
+        market_snapshots,
+        monthly_revenues,
+        valuation_metrics,
+    ) == report_notes.render_time_scope_note(
+        request,
+        market_snapshots,
+        monthly_revenues,
+        valuation_metrics,
     )
 
+
+def test_decision_criteria_note_explains_financial_red_flags_and_actionable_rules() -> None:
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"], investor_profile=InvestorProfile.aggressive)
+    note = ReportGenerator._render_decision_criteria_note(request)
+
+    assert note == report_notes.render_decision_criteria_note(request)
     assert "目前情境降值分超過 12 分" in note
     assert "單純超過投資人門檻會先列觀察" in note
     assert "可小額分批研究" in note

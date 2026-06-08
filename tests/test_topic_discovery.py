@@ -2,7 +2,12 @@ from datetime import date
 from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
-from app.services import topic_discovery_models, topic_discovery_prompts, topic_discovery_queries
+from app.services import (
+    topic_discovery_models,
+    topic_discovery_prompts,
+    topic_discovery_quality,
+    topic_discovery_queries,
+)
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
 from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
@@ -140,6 +145,62 @@ def test_topic_discovery_queries_live_outside_service_module() -> None:
     assert "NVIDIA AI server supply chain Taiwan ODM" not in service_source
     assert "NVIDIA AI server supply chain Taiwan ODM" in queries_source
     assert "def google_news_urls(" in queries_source
+
+
+def test_topic_discovery_quality_lives_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    quality_source = Path("app/services/topic_discovery_quality.py").read_text()
+    plan = TopicDiscoveryService.parse_plan(
+        """
+        {
+          "subtopics": [
+            {
+              "name": "AI 伺服器需求",
+              "objective": "確認 AI 伺服器訂單與出貨是否成長",
+              "required_evidence": ["訂單", "出貨"],
+              "risk_focus": ["需求下修"],
+              "search_queries": ["AI 伺服器 訂單 出貨", "AI server orders shipment Taiwan"]
+            },
+            {
+              "name": "CoWoS 與 HBM 供給",
+              "objective": "確認先進封裝與記憶體供給是否形成瓶頸",
+              "required_evidence": ["CoWoS 產能", "HBM 供給"],
+              "risk_focus": ["供給瓶頸"],
+              "search_queries": ["CoWoS HBM 產能", "CoWoS HBM capacity bottleneck"]
+            },
+            {
+              "name": "液冷散熱",
+              "objective": "確認液冷散熱規格升級是否帶動營收",
+              "required_evidence": ["液冷訂單", "營收"],
+              "risk_focus": ["認證延遲"],
+              "search_queries": ["液冷散熱 訂單 營收", "liquid cooling revenue Taiwan"]
+            },
+            {
+              "name": "估值股價",
+              "objective": "比較估值與本益比是否過高",
+              "required_evidence": ["股價", "本益比"],
+              "risk_focus": ["估值過高"],
+              "search_queries": ["台股 AI 本益比 估值", "Taiwan AI valuation PE"]
+            }
+          ],
+          "candidate_companies": [
+            {
+              "ticker": "2382",
+              "name": "廣達",
+              "segment": "AI 伺服器代工",
+              "rationale": "AI server 出貨",
+              "evidence_keywords": ["AI server", "出貨"]
+            }
+          ]
+        }
+        """
+    )
+
+    assert TopicDiscoveryService.evaluate_plan_quality(plan) == topic_discovery_quality.evaluate_plan_quality(plan)
+    assert TopicDiscoveryService._plan_query_quality(plan) == topic_discovery_quality.plan_query_quality(plan)
+    assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" not in service_source
+    assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" in quality_source
+    assert "def plan_query_quality(" in quality_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

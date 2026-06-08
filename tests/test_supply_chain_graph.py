@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.supply_chain_routes import create_supply_chain_router
+from app.services import supply_chain_graph as graph_module
+from app.services import supply_chain_graph_models as graph_models
 from app.services.supply_chain_graph import SupplyChainGraph
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
 from app.services.whitelist import SupplyChainWhitelist
@@ -16,6 +18,20 @@ def supply_chain_client() -> TestClient:
     app = FastAPI()
     app.include_router(create_supply_chain_router(api_services=Services()))
     return TestClient(app)
+
+
+def test_supply_chain_graph_reexports_dedicated_model_types() -> None:
+    assert graph_module.SupplyChainNode is graph_models.SupplyChainNode
+    assert graph_module.SupplyChainEdge is graph_models.SupplyChainEdge
+    assert graph_module.GraphRetrievalHint is graph_models.GraphRetrievalHint
+    assert graph_module.GraphRetrievalQuery is graph_models.GraphRetrievalQuery
+    assert graph_module.SegmentCategory is graph_models.SegmentCategory
+    assert graph_module.CATEGORY_SPECS is graph_models.CATEGORY_SPECS
+    assert graph_module.DOWNSTREAM_CATEGORIES is graph_models.DOWNSTREAM_CATEGORIES
+    assert graph_module._compact_search_terms(["AI  伺服器", "ai 伺服器", "", "散熱"]) == [
+        "AI 伺服器",
+        "散熱",
+    ]
 
 
 def test_supply_chain_graph_builds_taxonomy_edges_from_static_whitelist() -> None:
@@ -72,7 +88,9 @@ def test_supply_chain_graph_retrieval_plan_builds_evidence_bound_queries() -> No
     assert "3324" in queries[0]["query"]
     assert "雙鴻" in queries[0]["query"]
     assert any(query["query_type"] == "relation_confirmation" for query in queries)
-    relation_query = next(query for query in queries if query["query_type"] == "relation_confirmation")
+    relation_query = next(
+        query for query in queries if query["query_type"] == "relation_confirmation"
+    )
     assert relation_query["related_tickers"]
     assert relation_query["relation_scope"] in {"downstream", "peer", "upstream"}
 
@@ -142,8 +160,7 @@ def test_dynamic_whitelist_graph_connects_robot_components_to_robot_systems() ->
 def test_supply_chain_graph_classifier_handles_known_segments() -> None:
     whitelist = SupplyChainWhitelist()
     categories = {
-        segment.name: SupplyChainGraph.classify_segment(segment)
-        for segment in whitelist.segments
+        segment.name: SupplyChainGraph.classify_segment(segment) for segment in whitelist.segments
     }
 
     assert categories["晶圓代工"] == "foundry"
@@ -163,12 +180,14 @@ def test_supply_chain_graph_endpoint_can_focus_on_requested_ticker() -> None:
     body = response.json()
     assert body["nodes"]
     assert all(
-        edge["source_ticker"] == "3324" or edge["target_ticker"] == "3324"
-        for edge in body["edges"]
+        edge["source_ticker"] == "3324" or edge["target_ticker"] == "3324" for edge in body["edges"]
     )
     assert "GraphRAG" in body["context"]
     assert body["retrieval_plan"]["queries_by_ticker"]["3324"]
-    assert body["retrieval_plan"]["queries_by_ticker"]["3324"][0]["query_type"] == "company_graph_neighborhood"
+    assert (
+        body["retrieval_plan"]["queries_by_ticker"]["3324"][0]["query_type"]
+        == "company_graph_neighborhood"
+    )
 
 
 def test_supply_chain_graph_neo4j_export_uses_parameterized_cypher() -> None:

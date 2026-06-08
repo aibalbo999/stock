@@ -34,6 +34,7 @@ def api_architecture_source_context() -> ApiArchitectureSourceContext:
         "operations_routes": api_dir / "operations_routes.py",
         "report_routes": api_dir / "report_routes.py",
         "error_details": api_dir / "error_details.py",
+        "task_submission_errors": api_dir / "task_submission_errors.py",
         "legacy_facade": api_dir / "legacy_facade.py",
         "compatibility_exports": api_dir / "compatibility_exports.py",
         "compatibility_helpers": api_dir / "compatibility_helpers.py",

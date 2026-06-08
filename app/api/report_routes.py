@@ -6,8 +6,11 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import api_services_provider
-from app.api.error_details import task_queue_unavailable_detail, task_submission_failed_detail
 from app.api.schemas import FollowUpRunRequest, ReportFollowUpTaskRequest
+from app.api.task_submission_errors import (
+    raise_task_queue_unavailable,
+    raise_task_submission_failed,
+)
 from app.models.schemas import ReportRequest, ReportResponse
 
 
@@ -45,11 +48,15 @@ def create_report_router(
         return services.report_query().list_reports(limit)
 
     @router.get("/reports/quality/summary")
-    def report_quality_summary(limit: int = 20, services: Any = Depends(services_dependency)) -> dict:
+    def report_quality_summary(
+        limit: int = 20, services: Any = Depends(services_dependency)
+    ) -> dict:
         return services.report_query().quality_summary(limit)
 
     @router.get("/reports/observability/summary")
-    def report_observability_summary(limit: int = 20, services: Any = Depends(services_dependency)) -> dict:
+    def report_observability_summary(
+        limit: int = 20, services: Any = Depends(services_dependency)
+    ) -> dict:
         return services.report_query().observability_summary(limit)
 
     @router.get("/reports/{report_id}")
@@ -88,7 +95,9 @@ def create_report_router(
         return await auto_start_follow_up_func(report_id)
 
     @router.post("/reports/{report_id}/follow-up/run")
-    async def run_report_follow_up(report_id: int, payload: Optional[FollowUpRunRequest] = None) -> dict:
+    async def run_report_follow_up(
+        report_id: int, payload: Optional[FollowUpRunRequest] = None
+    ) -> dict:
         return await run_follow_up_func(report_id, payload)
 
     @router.post("/reports/{report_id}/follow-up/run_async")
@@ -103,15 +112,9 @@ def create_report_router(
                 (payload or ReportFollowUpTaskRequest()).model_dump(mode="json"),
             )
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="report_follow_up"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="report_follow_up")
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=task_submission_failed_detail(exc, operation="report_follow_up"),
-            ) from exc
+            raise_task_submission_failed(exc, operation="report_follow_up")
 
     @router.delete("/reports/{report_id}")
     def delete_report(report_id: int, services: Any = Depends(services_dependency)) -> dict:

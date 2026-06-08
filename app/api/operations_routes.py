@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.data_operation_error_context import data_operation_error_context
 from app.api.dependencies import api_services_provider
-from app.api.error_details import task_queue_unavailable_detail, task_submission_failed_detail
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
@@ -14,6 +13,10 @@ from app.api.schemas import (
     ManualNewsIngest,
     MarketRefreshRequest,
     TopicDiscoveryRequest,
+)
+from app.api.task_submission_errors import (
+    raise_task_queue_unavailable,
+    raise_task_submission_failed,
 )
 from app.models.schemas import ReportRequest
 from app.services.schedule_config import ScheduleConfig
@@ -153,15 +156,9 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="generate_report"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="generate_report")
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=task_submission_failed_detail(exc, operation="generate_report"),
-            ) from exc
+            raise_task_submission_failed(exc, operation="generate_report")
 
     @router.post("/pipeline/run_discovered_async")
     def generate_discovered_report_async(
@@ -173,15 +170,9 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="run_discovered"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="run_discovered")
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=task_submission_failed_detail(exc, operation="run_discovered"),
-            ) from exc
+            raise_task_submission_failed(exc, operation="run_discovered")
 
     @router.post("/tasks/data-operation")
     def queue_data_operation(
@@ -197,23 +188,17 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(
-                    exc,
-                    operation=payload.operation,
-                    context=error_context,
-                ),
-            ) from exc
+            raise_task_queue_unavailable(
+                exc,
+                operation=payload.operation,
+                context=error_context,
+            )
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=task_submission_failed_detail(
-                    exc,
-                    operation=payload.operation,
-                    context=error_context,
-                ),
-            ) from exc
+            raise_task_submission_failed(
+                exc,
+                operation=payload.operation,
+                context=error_context,
+            )
 
     @router.get("/tasks/summary")
     def task_summary(
@@ -228,20 +213,14 @@ def create_operations_router(
         try:
             return services.run_task_api().get_task_status(task_id)
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="task_status"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="task_status")
 
     @router.post("/tasks/{task_id}/cancel")
     def cancel_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
         try:
             return services.run_task_api().cancel_task(task_id)
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="task_cancel"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="task_cancel")
 
     @router.post("/tasks/{task_id}/retry")
     def retry_task(task_id: str, services: Any = Depends(services_dependency)) -> dict:
@@ -252,10 +231,7 @@ def create_operations_router(
         except async_report_validation_error_cls as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except task_queue_unavailable_error_cls as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=task_queue_unavailable_detail(exc, operation="task_retry"),
-            ) from exc
+            raise_task_queue_unavailable(exc, operation="task_retry")
 
     @router.get("/tasks/{task_id}/run")
     def get_run_by_task_id(task_id: str, services: Any = Depends(services_dependency)) -> dict:

@@ -20,6 +20,7 @@ def api_controller_status() -> dict:
     operations_routes_source = sources["operations_routes"]
     report_routes_source = sources["report_routes"]
     error_details_source = sources["error_details"]
+    task_submission_errors_source = sources["task_submission_errors"]
     run_task_api_source = sources["run_task_api"]
     persistence_source = sources["persistence"]
     task_failure_diagnostics_source = sources["task_failure_diagnostics"]
@@ -27,9 +28,7 @@ def api_controller_status() -> dict:
     report_generation_api_source = sources["report_generation_api"]
     legacy_facade_path = paths["legacy_facade"]
     legacy_facade_reference_scan_paths = source_context.legacy_facade_reference_scan_paths
-    legacy_facade_api_reference_locations = (
-        source_context.legacy_facade_api_reference_locations
-    )
+    legacy_facade_api_reference_locations = source_context.legacy_facade_api_reference_locations
     route_modules = source_context.route_modules
     compatibility_exports_path = paths["compatibility_exports"]
     compatibility_helpers_path = paths["compatibility_helpers"]
@@ -114,7 +113,9 @@ def api_controller_status() -> dict:
         "app_factory_present": (api_dir / "app_factory.py").exists(),
         "main_uses_app_factory": "from app.api.app_factory import create_app" in main_source,
         "service_factory_present": service_factory_path.exists(),
-        "service_factory_lines": len(service_factory_source.splitlines()) if service_factory_source else None,
+        "service_factory_lines": len(service_factory_source.splitlines())
+        if service_factory_source
+        else None,
         "report_service_factory_path": "app/api/service_factory_report.py",
         "report_service_factory_extracted": report_service_factory_path.exists()
         and "class ReportServiceFactoryMixin" in report_service_factory_source
@@ -210,11 +211,16 @@ def api_controller_status() -> dict:
         "main_direct_domain_imports": direct_domain_imports,
         "structured_task_submission_errors": (
             "def task_submission_failed_detail(" in error_details_source
-            and operations_routes_source.count("task_submission_failed_detail(") >= 3
-            and report_routes_source.count("task_submission_failed_detail(") >= 1
+            and "def raise_task_submission_failed(" in task_submission_errors_source
+            and "def raise_task_queue_unavailable(" in task_submission_errors_source
+            and task_submission_errors_source.count("task_submission_failed_detail(") >= 1
+            and task_submission_errors_source.count("task_queue_unavailable_detail(") >= 1
+            and operations_routes_source.count("raise_task_submission_failed(") >= 3
+            and report_routes_source.count("raise_task_submission_failed(") >= 1
             and "background_task_submission_failed" in error_details_source
         ),
         "task_submission_error_detail_path": "app/api/error_details.py",
+        "task_submission_error_helper_path": "app/api/task_submission_errors.py",
         "task_failure_diagnostics_shared_service": task_failure_diagnostics_path.exists()
         and "def task_failure_diagnostic_payload(" in task_failure_diagnostics_source
         and "def task_failure_diagnostic(" in task_failure_diagnostics_source
@@ -226,21 +232,18 @@ def api_controller_status() -> dict:
         ),
         "task_submission_error_endpoint_coverage": {
             "generate_report_async": 'operation="generate_report"' in operations_routes_source
-            and "task_submission_failed_detail" in operations_routes_source,
+            and "raise_task_submission_failed" in operations_routes_source,
             "run_discovered_async": 'operation="run_discovered"' in operations_routes_source
-            and "task_submission_failed_detail" in operations_routes_source,
+            and "raise_task_submission_failed" in operations_routes_source,
             "data_operation": "operation=payload.operation" in operations_routes_source
-            and "task_submission_failed_detail" in operations_routes_source,
+            and "raise_task_submission_failed" in operations_routes_source,
             "report_follow_up": 'operation="report_follow_up"' in report_routes_source
-            and "task_submission_failed_detail" in report_routes_source,
+            and "raise_task_submission_failed" in report_routes_source,
         },
         "sync_report_network_refresh_opt_in": sync_report_refresh_defaults_disabled
         and (
             not sync_report_blocking_async_refresh_calls
-            or (
-                sync_report_async_refresh_gates_present
-                and sync_report_async_bridge_guard_present
-            )
+            or (sync_report_async_refresh_gates_present and sync_report_async_bridge_guard_present)
         ),
         "sync_report_pre_refresh_default_enabled": (
             "sync_report_pre_refresh_enabled: bool = True" in config_source
@@ -253,8 +256,7 @@ def api_controller_status() -> dict:
         ),
         "sync_report_async_bridge_guard_present": sync_report_async_bridge_guard_present,
         "sync_report_blocking_async_calls_gated": (
-            not sync_report_blocking_async_refresh_calls
-            or sync_report_async_refresh_gates_present
+            not sync_report_blocking_async_refresh_calls or sync_report_async_refresh_gates_present
         ),
         "compatibility_service_present": api_compatibility_path.exists(),
         "compatibility_service_domain_mixins_extracted": (
@@ -287,9 +289,7 @@ def api_controller_status() -> dict:
         "legacy_facade_api_reference_scan_paths": [
             str(path.relative_to(root)) for path in legacy_facade_reference_scan_paths
         ],
-        "legacy_facade_api_reference_scan_file_count": len(
-            legacy_facade_reference_scan_paths
-        ),
+        "legacy_facade_api_reference_scan_file_count": len(legacy_facade_reference_scan_paths),
         "legacy_facade_api_reference_locations": legacy_facade_api_reference_locations,
         "legacy_facade_api_reference_count": sum(
             item["count"] for item in legacy_facade_api_reference_locations

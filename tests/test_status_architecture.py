@@ -51,9 +51,7 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_task_queue_source = Path("app/services/status_task_queue.py").read_text()
-    status_task_queue_sources_source = Path(
-        "app/services/status_task_queue_sources.py"
-    ).read_text()
+    status_task_queue_sources_source = Path("app/services/status_task_queue_sources.py").read_text()
 
     assert status["task_queue"]["collector_path"] == "app/services/status_task_queue.py"
     assert status["task_queue"]["task_queue_source_diagnostics_extracted"] is True
@@ -102,7 +100,10 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     assert status["task_queue"]["compose_runtime_env_passthrough_ready"] is True
     assert status["task_queue"]["compose_runtime_env"]["celery_services_use_anchor"] is True
     assert status["task_queue"]["compose_runtime_env"]["missing_by_group"] == {}
-    assert status["task_queue"]["compose_runtime_env"]["present_groups"]["llm"]["GOOGLE_API_KEYS"] is True
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["llm"]["GOOGLE_API_KEYS"]
+        is True
+    )
     assert (
         status["task_queue"]["compose_runtime_env"]["present_groups"]["company_filings"][
             "COMPANY_FILING_STRUCTURED_API_URL"
@@ -116,29 +117,21 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         is True
     )
     assert (
-        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"][
-            "COMPOSE_NEO4J_URI"
-        ]
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["COMPOSE_NEO4J_URI"]
         is True
     )
     assert (
-        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_URI"]
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_URI"] is True
+    )
+    assert (
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["COMPOSE_NEO4J_AUTH"]
         is True
     )
     assert (
-        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"][
-            "COMPOSE_NEO4J_AUTH"
-        ]
-        is True
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_AUTH"] is True
     )
     assert (
-        status["task_queue"]["compose_runtime_env"]["present_groups"]["neo4j"]["NEO4J_AUTH"]
-        is True
-    )
-    assert (
-        status["task_queue"]["compose_runtime_env"]["present_groups"]["workflow"][
-            "WORKFLOW_ENGINE"
-        ]
+        status["task_queue"]["compose_runtime_env"]["present_groups"]["workflow"]["WORKFLOW_ENGINE"]
         is True
     )
     assert (
@@ -205,6 +198,7 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["main_direct_domain_import_count"] == 0
     assert evidence["structured_task_submission_errors"] is True
     assert evidence["task_submission_error_detail_path"] == "app/api/error_details.py"
+    assert evidence["task_submission_error_helper_path"] == "app/api/task_submission_errors.py"
     assert evidence["task_submission_error_endpoint_coverage"] == {
         "generate_report_async": True,
         "run_discovered_async": True,
@@ -228,9 +222,7 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["main_imports_legacy_facade"] is False
     assert "app/api/main.py" in evidence["legacy_facade_api_reference_scan_paths"]
     assert "app/api/runtime.py" in evidence["legacy_facade_api_reference_scan_paths"]
-    assert "app/api/legacy_facade.py" not in evidence[
-        "legacy_facade_api_reference_scan_paths"
-    ]
+    assert "app/api/legacy_facade.py" not in evidence["legacy_facade_api_reference_scan_paths"]
     assert evidence["legacy_facade_api_reference_scan_file_count"] >= 20
     assert evidence["legacy_facade_api_reference_count"] == 0
     assert evidence["legacy_facade_api_reference_locations"] == []
@@ -245,7 +237,9 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert task_queue_arch["status"] == ("ready" if status["task_queue"]["ready"] else "degraded")
     assert task_queue_arch["evidence"]["submission_contract_ready"] is True
     assert task_queue_arch["evidence"]["broker_ok"] == status["redis"]["ok"]
-    assert task_queue_arch["evidence"]["processing_ready"] == status["task_queue"]["processing_ready"]
+    assert (
+        task_queue_arch["evidence"]["processing_ready"] == status["task_queue"]["processing_ready"]
+    )
     assert task_queue_arch["evidence"]["worker_online"] == status["task_queue"]["worker_online"]
     assert "worker_nodes" in task_queue_arch["evidence"]
     assert task_queue_arch["evidence"]["task_queue_source_diagnostics_extracted"] is True
@@ -306,8 +300,11 @@ def test_runtime_migration_and_secret_scanning_architecture_capabilities(
     assert architecture["secret_scanning"]["evidence"]["local_regex_fallback_role"] == (
         "fallback_only"
     )
-    assert architecture["secret_scanning"]["evidence"]["external_engine_structured_findings"] is True
+    assert (
+        architecture["secret_scanning"]["evidence"]["external_engine_structured_findings"] is True
+    )
     assert architecture["secret_scanning"]["evidence"]["gitleaks_json_report_supported"] is True
-    assert "detect-secrets" in architecture["secret_scanning"]["evidence"][
-        "supported_external_engines"
-    ]
+    assert (
+        "detect-secrets"
+        in architecture["secret_scanning"]["evidence"]["supported_external_engines"]
+    )

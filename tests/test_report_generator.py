@@ -71,7 +71,7 @@ from app.services.report_decision_rules import (
     sort_decision_contexts,
 )
 from app.services.report_potential import data_quality_grade, estimate_potential
-from app.services.report_prompt_builder import build_report_prompt, format_llm_evidence
+from app.services.report_prompt_builder import build_report_prompt, format_evidence_digest, format_llm_evidence
 from app.services.report_source_references import representative_sources
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -540,10 +540,31 @@ def test_report_prompt_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
     prompt_builder_source = Path("app/services/report_prompt_builder.py").read_text()
 
-    assert "build_report_prompt(" in generator_source
+    assert "report_prompt_builder.build_report_prompt(" in generator_source
     assert "REPORT_PROMPT_TEMPLATE.format(" not in generator_source
     assert "def build_report_prompt(" in prompt_builder_source
+    assert "def format_evidence_digest(" in prompt_builder_source
     assert "def format_llm_evidence(" in prompt_builder_source
+    assert "doc.text[:500]" not in generator_source
+
+
+def test_evidence_digest_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    prompt_builder_source = Path("app/services/report_prompt_builder.py").read_text()
+    document = NewsFetcher.from_manual_text(
+        title="台積電 AI 需求成長",
+        text="台積電 AI 伺服器需求成長。" * 40,
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+
+    digest = ReportGenerator._format_evidence([document])
+
+    assert "format_evidence_digest" in generator_source
+    assert "doc.text[:500]" in prompt_builder_source
+    assert digest == format_evidence_digest([document])
+    assert "2026-05-20 測試新聞 台積電 AI 需求成長" in digest
+    assert len(digest) < len(document.text) + 80
 
 
 def test_report_market_snapshot_fetching_lives_outside_generator() -> None:

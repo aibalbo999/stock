@@ -43,11 +43,6 @@ from app.services.report_financial_assessment import (
     valuation_position_label,
 )
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
-from app.services.report_prompt_builder import (
-    build_report_prompt,
-    format_llm_evidence,
-    format_market_data,
-)
 from app.services import (
     report_action_checklist,
     report_appendix,
@@ -76,6 +71,7 @@ from app.services import (
     report_monitoring_checklist,
     report_notes,
     report_potential,
+    report_prompt_builder,
     report_risk_overview,
     report_scope_sections,
     report_score_breakdown,
@@ -181,7 +177,7 @@ class ReportGenerator:
         leading_signals = self._leading_signals(tickers, valuation_metrics)
 
         graph_reasoning_context = self._graph_reasoning_context(request, tickers)
-        prompt = build_report_prompt(
+        prompt = report_prompt_builder.build_report_prompt(
             whitelist_context=self.whitelist.as_prompt_context(),
             graph_context=graph_reasoning_context,
             evidence_documents=evidence_docs,
@@ -1729,27 +1725,21 @@ class ReportGenerator:
 
     @staticmethod
     def _format_evidence(documents: list[NewsDocument]) -> str:
-        documents = filter_formal_evidence_documents(documents)
-        if not documents:
-            return "目前無足夠數據判斷。"
-        return "\n".join(
-            f"- {doc.source.published_at or '日期不明'} {doc.source.publisher or ''} {doc.title}: {doc.text[:500]}"
-            for doc in documents
-        )
+        return report_prompt_builder.format_evidence_digest(documents)
 
     @staticmethod
     def _format_llm_evidence(
         documents: list[NewsDocument],
         ticker_label_resolver: Callable[[NewsDocument], list[str]] | None = None,
     ) -> str:
-        return format_llm_evidence(documents, ticker_label_resolver)
+        return report_prompt_builder.format_llm_evidence(documents, ticker_label_resolver)
 
     @staticmethod
     def _format_market_data(
         snapshots: list[MarketSnapshot],
         monthly_revenues: list[MonthlyRevenue] | None = None,
     ) -> str:
-        return format_market_data(snapshots, monthly_revenues)
+        return report_prompt_builder.format_market_data(snapshots, monthly_revenues)
 
     @staticmethod
     def _model_status(result: LLMResult) -> str:

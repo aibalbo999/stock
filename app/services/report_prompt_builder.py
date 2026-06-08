@@ -62,6 +62,16 @@ def format_llm_evidence(
     return "\n".join(lines)
 
 
+def format_evidence_digest(documents: list[NewsDocument]) -> str:
+    documents = filter_formal_evidence_documents(documents)
+    if not documents:
+        return "目前無足夠數據判斷。"
+    return "\n".join(
+        f"- {doc.source.published_at or '日期不明'} {doc.source.publisher or ''} {doc.title}: {doc.text[:500]}"
+        for doc in documents
+    )
+
+
 def format_market_data(
     snapshots: list[MarketSnapshot],
     monthly_revenues: list[MonthlyRevenue] | None = None,

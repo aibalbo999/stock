@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
-from app.ui.api_client import api_task_post, request_error_message
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_task_post
 from app.ui.task_failure_diagnostics import (
     task_failure_drilldown_rows,
     task_retry_options,
@@ -64,7 +64,9 @@ def _render_task_summary_metrics(task_summary: dict) -> None:
     task_cols[0].metric("7 日任務", int(task_totals.get("run_count") or 0))
     task_cols[1].metric(
         "成功率",
-        "-" if task_totals.get("success_rate") is None else f"{float(task_totals['success_rate']) * 100:.1f}%",
+        "-"
+        if task_totals.get("success_rate") is None
+        else f"{float(task_totals['success_rate']) * 100:.1f}%",
     )
     task_cols[2].metric("失敗", int(task_totals.get("failed_count") or 0))
     task_cols[3].metric("執行中", int(task_totals.get("running_count") or 0))
@@ -111,16 +113,17 @@ def _render_task_retry_controls(retry_options: list[dict]) -> None:
     retry_cols = st.columns([1, 1])
     with retry_cols[0]:
         if st.button("重試選取任務", key="maintenance_retry_failed_task"):
-            try:
-                retry_response = api_task_post(
+            retry_response = run_api_action_or_none(
+                lambda: api_task_post(
                     f"/tasks/{selected_retry_task_id}/retry",
                     {},
-                )
+                ),
+                error_message="重試失敗",
+            )
+            if isinstance(retry_response, dict):
                 retry_task_id = str(retry_response.get("task_id") or selected_retry_task_id)
                 st.session_state["maintenance_inspect_task_id"] = retry_task_id
                 st.success(f"已送出重試任務：{retry_task_id}")
-            except requests.RequestException as exc:
-                st.error(f"重試失敗：{request_error_message(exc)}")
     with retry_cols[1]:
         if st.button("查看選取任務", key="maintenance_inspect_failed_task"):
             st.session_state["maintenance_inspect_task_id"] = selected_retry_task_id

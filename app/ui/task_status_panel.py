@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
-from app.ui.api_client import api_task_post, request_error_message
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_task_post
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.follow_up_status import company_filing_action_label
 
@@ -281,22 +281,25 @@ def _render_task_status_panel_controls(
     action_cols = st.columns(2)
     with action_cols[0]:
         if st.button("取消任務", key=f"{refresh_key}_cancel"):
-            try:
-                st.session_state[status_state_key] = api_task_post(f"/tasks/{task_id}/cancel", {})
+            cancel_response = run_api_action_or_none(
+                lambda: api_task_post(f"/tasks/{task_id}/cancel", {}),
+                error_message="取消失敗",
+            )
+            if isinstance(cancel_response, dict):
+                st.session_state[status_state_key] = cancel_response
                 st.success("已送出取消要求。")
-            except requests.RequestException as exc:
-                st.error(f"取消失敗：{request_error_message(exc)}")
     with action_cols[1]:
         if st.button("重試任務", key=f"{refresh_key}_retry"):
-            try:
-                retry_response = api_task_post(f"/tasks/{task_id}/retry", {})
+            retry_response = run_api_action_or_none(
+                lambda: api_task_post(f"/tasks/{task_id}/retry", {}),
+                error_message="重試失敗",
+            )
+            if isinstance(retry_response, dict):
                 retry_task_id = retry_response.get("task_id") or task_id
                 if task_state_key:
                     st.session_state[task_state_key] = retry_task_id
                 st.session_state[status_state_key] = retry_response
                 st.success(f"已送出重試任務：{retry_task_id}")
-            except requests.RequestException as exc:
-                st.error(f"重試失敗：{request_error_message(exc)}")
     result = (task_status or {}).get("result")
     if (
         apply_result_key

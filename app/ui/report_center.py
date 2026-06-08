@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 
-import requests
 import streamlit as st
 
 from app.services.report_quality import parse_quality_gate_from_markdown
-from app.ui.api_client import api_delete, request_error_message
+from app.ui.api_actions import run_api_action_or_none
+from app.ui.api_client import api_delete
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
 from app.ui.report_panels import (
@@ -108,12 +108,13 @@ def render_report_center() -> None:
         with report_action_cols[2]:
             with st.expander("報告管理"):
                 if st.button("刪除此報告"):
-                    try:
-                        api_delete(f"/reports/{int(selected_id)}")
+                    deleted = run_api_action_or_none(
+                        lambda: api_delete(f"/reports/{int(selected_id)}"),
+                        error_message="刪除失敗",
+                    )
+                    if isinstance(deleted, dict):
                         st.success(f"已刪除報告 #{selected_id}｜{report_title}")
                         st.rerun()
-                    except requests.RequestException as exc:
-                        st.error(f"刪除失敗：{request_error_message(exc)}")
 
         history_tabs = st.tabs(["重點報告", "資料查核", "完整文字"])
         with history_tabs[0]:
@@ -206,11 +207,12 @@ def render_report_center() -> None:
             if selected_run_error:
                 st.error(selected_run_error)
             if st.button("刪除此分析紀錄"):
-                try:
-                    api_delete(f"/runs/{int(selected_run_id)}")
+                deleted = run_api_action_or_none(
+                    lambda: api_delete(f"/runs/{int(selected_run_id)}"),
+                    error_message="刪除失敗",
+                )
+                if isinstance(deleted, dict):
                     st.success(f"已刪除分析紀錄 #{selected_run_id}")
                     st.rerun()
-                except requests.RequestException as exc:
-                    st.error(f"刪除失敗：{request_error_message(exc)}")
         else:
             st.info("尚無任務執行紀錄。")

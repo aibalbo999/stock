@@ -251,7 +251,25 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
         "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待。 "
         "可用指令：.venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
     ]
-    assert fake_st.successes == ["已送出股價刷新背景任務：task-queued-without-worker"]
+    assert fake_st.successes == [
+        "已送出股價刷新背景任務：task-queued-without-worker"
+        "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+    ]
+
+
+def test_task_queue_submission_success_note_explains_worker_offline_queue_state() -> None:
+    assert (
+        background_tasks.task_queue_submission_success_note(
+            {"ready": True, "worker_ping_checked": True, "worker_online": False}
+        )
+        == "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+    )
+    assert (
+        background_tasks.task_queue_submission_success_note(
+            {"ready": True, "worker_ping_checked": True, "worker_online": True}
+        )
+        == ""
+    )
 
 
 def test_task_queue_preflight_reuses_ready_status_cache(monkeypatch) -> None:

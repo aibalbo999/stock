@@ -33,8 +33,11 @@ def submit_background_task(
     task_type: str | None = None,
     preflight: bool = False,
 ) -> dict | None:
-    if preflight and not task_queue_preflight_ready(error_message=error_message):
-        return None
+    preflight_task_queue = None
+    if preflight:
+        preflight_task_queue = task_queue_preflight_snapshot(error_message=error_message)
+        if preflight_task_queue is None:
+            return None
     task_response = run_api_action_or_none(
         submitter,
         error_message=error_message,
@@ -53,7 +56,8 @@ def submit_background_task(
         st.session_state[task_type_state_key] = task_type
     for status_state_key in status_state_keys:
         st.session_state.pop(status_state_key, None)
-    st.success(f"{success_message}：{task_id}")
+    success_note = task_queue_submission_success_note(preflight_task_queue)
+    st.success(f"{success_message}：{task_id}{success_note}")
     return task_response
 
 
@@ -102,18 +106,22 @@ def submit_data_operation_task(
 
 
 def task_queue_preflight_ready(*, error_message: str) -> bool:
+    return task_queue_preflight_snapshot(error_message=error_message) is not None
+
+
+def task_queue_preflight_snapshot(*, error_message: str) -> dict | None:
     try:
         task_queue = cached_task_queue_status()
     except requests.RequestException as exc:
         st.warning(f"無法預先確認背景任務狀態：{request_error_message(exc)}；仍會嘗試送出。")
-        return True
+        return {}
     if task_queue.get("ready"):
         worker_warning = task_queue_worker_warning(task_queue)
         if worker_warning:
             st.warning(worker_warning)
-        return True
+        return task_queue
     st.error(f"{error_message}：{task_queue_unready_message(task_queue)}")
-    return False
+    return None
 
 
 def cached_task_queue_status() -> dict:
@@ -170,7 +178,7 @@ def task_queue_unready_message(task_queue: dict) -> str:
 
 
 def task_queue_worker_warning(task_queue: dict) -> str:
-    if not task_queue.get("worker_ping_checked") or task_queue.get("worker_online"):
+    if not task_queue_accepts_submission_but_worker_offline(task_queue):
         return ""
     if task_queue.get("worker_ping_error"):
         detail = f"；錯誤：{task_queue['worker_ping_error']}"
@@ -179,6 +187,21 @@ def task_queue_worker_warning(task_queue: dict) -> str:
     smoke_commands = task_queue.get("smoke_commands") or []
     hint = f" 可用指令：{smoke_commands[0]}" if smoke_commands else ""
     return f"背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待{detail}。{hint}"
+
+
+def task_queue_submission_success_note(task_queue: dict | None) -> str:
+    if not task_queue_accepts_submission_but_worker_offline(task_queue):
+        return ""
+    return "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+
+
+def task_queue_accepts_submission_but_worker_offline(task_queue: dict | None) -> bool:
+    return bool(
+        isinstance(task_queue, dict)
+        and task_queue.get("ready")
+        and task_queue.get("worker_ping_checked")
+        and not task_queue.get("worker_online")
+    )
 
 
 def _task_id(task_response: Any) -> str:

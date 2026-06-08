@@ -9,6 +9,8 @@ from app.ui.external_deployment_common import (
     local_dependency_status_rows as _local_dependency_status_rows,
 )
 from app.ui.external_deployment_env_keys import (
+    external_deployment_env_check_detail_rows as _external_deployment_env_check_detail_rows,
+    external_deployment_env_check_summary_rows as _external_deployment_env_check_summary_rows,
     external_deployment_env_key_rows as _external_deployment_env_key_rows,
     external_deployment_env_resolution_rows as _external_deployment_env_resolution_rows,
 )
@@ -47,6 +49,34 @@ def external_deployment_env_resolution_rows(
     service_snapshot: dict | None = None,
 ) -> list[dict]:
     return _external_deployment_env_resolution_rows(upgrade_audit, service_snapshot)
+
+
+def external_deployment_env_check_summary_rows(
+    upgrade_audit: dict,
+    service_snapshot: dict | None = None,
+    *,
+    env_file: str = ".env",
+) -> list[dict]:
+    return _external_deployment_env_check_summary_rows(
+        upgrade_audit,
+        service_snapshot,
+        env_file=env_file,
+    )
+
+
+def external_deployment_env_check_detail_rows(
+    upgrade_audit: dict,
+    service_snapshot: dict | None = None,
+    *,
+    target: str = "host",
+    env_file: str = ".env",
+) -> list[dict]:
+    return _external_deployment_env_check_detail_rows(
+        upgrade_audit,
+        service_snapshot,
+        target=target,
+        env_file=env_file,
+    )
 
 
 def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:

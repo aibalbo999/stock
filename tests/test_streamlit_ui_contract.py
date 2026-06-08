@@ -181,6 +181,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
     assert (
+        "def external_deployment_env_check_summary_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def external_deployment_env_check_detail_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
         "def external_deployment_smoke_commands("
         in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
@@ -209,6 +217,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_env_resolution_rows(" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     )
+    assert "def external_deployment_env_check_summary_rows(" in (
+        ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
+    )
+    assert "def external_deployment_env_check_detail_rows(" in (
+        ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
+    )
     assert "from app.services.external_deployment_env_gaps import (" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     )
@@ -218,6 +232,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     )
     assert "外部設定缺口" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert "外部設定處理計畫" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    assert "目前 .env 外部部署檢查" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert "def recommended_maintenance_operation_id(" in (
         ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     )
@@ -351,6 +366,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_repair_rows(service_snapshot)" in source
     assert "task_queue_smoke_command(service_snapshot)" in source
     assert "external_deployment_warning_rows(upgrade_audit)" in source
+    assert "external_deployment_env_check_summary_rows(" in source
+    assert "external_deployment_env_check_detail_rows(" in source
+    assert '".env 檢查目標"' in source
     assert "external_deployment_smoke_commands(upgrade_audit)" in source
     assert "local_dependency_status_rows(service_snapshot)" in source
     assert "local_dependency_last_start_rows(service_snapshot)" in source

@@ -991,6 +991,131 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
     ]["設定鍵"]
 
 
+def test_external_deployment_env_check_rows_surface_env_drift_without_secret_leak(
+    tmp_path,
+) -> None:
+    helpers = load_report_helpers()
+    neo4j_pw_env = "NEO4J_" + "PASS" + "WORD"
+    db_value = "actual-db-" + "value"
+    structured_value = "actual-structured-" + "value"
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "NEO4J_URI=neo4j://localhost:7687",
+                "NEO4J_USER=neo4j",
+                f"{neo4j_pw_env}={db_value}",
+                "NEO4J_DATABASE=neo4j",
+                "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom",
+                "COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>",
+                f"COMPANY_FILING_STRUCTURED_API_TOKEN={structured_value}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    audit = {
+        "optional_warnings": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "status": "degraded",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "ready": False,
+                    "fallback_reason": "missing_settings:neo4j_uri",
+                    "local_docker_defaults": {
+                        "env_keys": [
+                            "NEO4J_URI",
+                            "NEO4J_USER",
+                            neo4j_pw_env,
+                            "NEO4J_DATABASE",
+                        ],
+                        "default_uri": "neo4j://localhost:7687",
+                    },
+                },
+                "remediation": "設定 Neo4j。",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "severity": "warn",
+                "optional": True,
+                "external_integration": True,
+                "deployment_check": True,
+                "evidence": {
+                    "runtime": {
+                        "configuration_ready": False,
+                        "configuration_check": {
+                            "ready": False,
+                            "status": "missing_required_env",
+                            "missing_env_keys": [
+                                "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+                                "COMPANY_FILING_STRUCTURED_API_TOKEN",
+                                "COMPANY_FILING_STRUCTURED_API_URL",
+                            ],
+                            "configured_env_keys": [],
+                            "token_required": True,
+                        },
+                    },
+                },
+                "remediation": "設定 TEJ 或專業資料 API。",
+            },
+        ]
+    }
+
+    summary_rows = helpers["external_deployment_env_check_summary_rows"](
+        audit,
+        {},
+        env_file=str(env_file),
+    )
+    host_rows = helpers["external_deployment_env_check_detail_rows"](
+        audit,
+        {},
+        env_file=str(env_file),
+    )
+    compose_rows = helpers["external_deployment_env_check_detail_rows"](
+        audit,
+        {},
+        target="compose",
+        env_file=str(env_file),
+    )
+    summary_by_target = {row["目標"]: row for row in summary_rows}
+    host_by_key = {row["設定鍵"]: row for row in host_rows}
+    compose_by_key = {row["設定鍵"]: row for row in compose_rows}
+
+    assert summary_by_target["host"]["狀態"] == "需補設定"
+    assert summary_by_target["host"][".env"] == "存在"
+    assert summary_by_target["host"]["檢查鍵數"] == 7
+    assert summary_by_target["host"]["已設定"] == 5
+    assert summary_by_target["host"]["缺少"] == 1
+    assert summary_by_target["host"]["值不同"] == 1
+    assert "--env-check" in summary_by_target["host"]["檢查指令"]
+    assert summary_by_target["compose"]["檢查鍵數"] == 7
+    assert summary_by_target["compose"]["缺少"] == 5
+    assert "--env-template-target compose" in summary_by_target["compose"]["檢查指令"]
+
+    assert host_by_key["NEO4J_URI"]["狀態"] == "就緒"
+    assert host_by_key[neo4j_pw_env]["目前值"] == "<set>"
+    assert host_by_key[neo4j_pw_env]["類型"] == "密鑰"
+    assert host_by_key["COMPANY_FILING_STRUCTURED_API_PROVIDER"]["狀態"] == "需確認"
+    assert host_by_key["COMPANY_FILING_STRUCTURED_API_PROVIDER"]["目前值"] == "custom"
+    assert host_by_key["COMPANY_FILING_STRUCTURED_API_URL"]["狀態"] == "需補設定"
+    assert host_by_key["COMPANY_FILING_STRUCTURED_API_URL"]["目前值"] == (
+        "<provider-json-endpoint>"
+    )
+    assert host_by_key["COMPANY_FILING_STRUCTURED_API_TOKEN"]["目前值"] == "<set>"
+    assert "COMPOSE_NEO4J_URI" in compose_by_key
+    assert "NEO4J_URI" not in compose_by_key
+    assert db_value not in str(host_rows)
+    assert structured_value not in str(host_rows)
+
+
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:
     helpers = load_report_helpers()
     unlocker_provider = "flare" + "solverr"

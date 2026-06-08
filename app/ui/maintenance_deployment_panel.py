@@ -5,6 +5,8 @@ import streamlit as st
 from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_post
 from app.ui.external_deployment_diagnostics import (
+    external_deployment_env_check_detail_rows,
+    external_deployment_env_check_summary_rows,
     external_deployment_env_key_rows,
     external_deployment_env_resolution_rows,
     external_deployment_readiness_rows,
@@ -42,6 +44,10 @@ def render_external_deployment_panel(
         upgrade_audit,
         service_snapshot,
     )
+    external_env_check_summary_rows = external_deployment_env_check_summary_rows(
+        upgrade_audit,
+        service_snapshot,
+    )
     high_risk_unlocker_rows = high_risk_filing_unlocker_rows(upgrade_audit)
     local_neo4j_rows = local_neo4j_operation_rows(upgrade_audit)
     local_unlocker_rows = local_unlocker_operation_rows(upgrade_audit)
@@ -68,6 +74,22 @@ def render_external_deployment_panel(
         if external_env_resolution_rows:
             st.caption("外部設定處理計畫")
             st.dataframe(external_env_resolution_rows, width="stretch", hide_index=True)
+        if external_env_check_summary_rows:
+            st.caption("目前 .env 外部部署檢查")
+            st.dataframe(external_env_check_summary_rows, width="stretch", hide_index=True)
+            env_check_target = st.radio(
+                ".env 檢查目標",
+                options=["host", "compose"],
+                horizontal=True,
+                key="external_env_check_target",
+            )
+            external_env_check_detail_rows = external_deployment_env_check_detail_rows(
+                upgrade_audit,
+                service_snapshot,
+                target=str(env_check_target),
+            )
+            if external_env_check_detail_rows:
+                st.dataframe(external_env_check_detail_rows, width="stretch", hide_index=True)
         if external_env_key_rows:
             st.caption("外部設定缺口")
             st.dataframe(external_env_key_rows, width="stretch", hide_index=True)

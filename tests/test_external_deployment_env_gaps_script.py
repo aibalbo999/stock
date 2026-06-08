@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from scripts import external_deployment_env_gaps
 
 
@@ -97,6 +99,13 @@ def test_external_deployment_env_gap_report_formats_text() -> None:
     assert "NEO4J_URI" in output
     assert "需人工密鑰" in output
     assert "structured_company_filing_smoke.py" in output
+
+
+def test_external_deployment_env_gap_script_uses_service_layer() -> None:
+    source = Path("scripts/external_deployment_env_gaps.py").read_text()
+
+    assert "from app.services.external_deployment_env_gaps import (" in source
+    assert "app.ui.external_deployment_env_keys" not in source
 
 
 def test_external_deployment_env_gap_script_json_and_strict(monkeypatch, capsys) -> None:

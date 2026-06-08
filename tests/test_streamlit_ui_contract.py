@@ -184,6 +184,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_env_key_rows(" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     )
+    assert "from app.services.external_deployment_env_gaps import (" in (
+        ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
+    )
+    assert "EXTERNAL_ENV_KEY_HINTS" not in ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     assert "from app.ui.external_deployment_env_keys import (" in (
         ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )

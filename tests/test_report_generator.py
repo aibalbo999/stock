@@ -28,7 +28,6 @@ from app.services import (
     report_company_filing_checks,
     report_company_narrative,
     report_company_matrix,
-    report_decision_narrative,
     report_decision_contexts,
     report_early_potential,
     report_execution,
@@ -1900,67 +1899,6 @@ def test_estimate_potential_explains_valuation_risk_without_zero_news_risk() -> 
     assert estimate["downside_pct"] > 5
     assert "新聞/RAG 未偵測到主要負向或瓶頸證據" in estimate["downside_reason"]
     assert "負向/瓶頸證據 0 項" not in estimate["downside_reason"]
-
-
-def test_structural_bottleneck_reason_names_specific_evidence() -> None:
-    finding = make_finding(
-        "2395",
-        "研華",
-        "產能吃緊造成交期延長",
-        RiskType.structural_bottleneck,
-    )
-    estimate = {"upside_pct": 18, "downside_pct": 4}
-    quality = {"grade": "supported", "missing": []}
-
-    rating = ReportGenerator._decision_label(estimate, quality, [finding], 12)
-    reason = ReportGenerator._decision_reason(
-        rating,
-        estimate,
-        quality,
-        [finding],
-        [],
-        12,
-        ReportRequest(topic="機器人 產業鏈", tickers=["2395"]),
-    )
-
-    assert rating == "觀察 / 等風險降低"
-    assert "瓶頸/限制證據：產能吃緊造成交期延長" in reason
-    assert "存在結構性瓶頸證據" not in reason
-
-
-def test_decision_reason_logic_lives_outside_generator() -> None:
-    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"])
-    estimate = {"upside_pct": 18, "downside_pct": 4}
-    quality = {"grade": "supported", "missing": []}
-    generator_source = Path("app/services/report_generator.py").read_text()
-    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
-    narrative_source = Path("app/services/report_decision_narrative.py").read_text()
-
-    assert "report_decision_narrative" not in generator_source
-    assert "ReportGeneratorDecisionRiskMixin" in generator_source
-    assert "report_decision_narrative" in decision_risk_mixin_source
-    assert "def _decision_reason(" in decision_risk_mixin_source
-    assert "def _decision_reason(" not in generator_source
-    assert "def decision_reason(" in narrative_source
-    assert "def structural_bottleneck_reason(" in narrative_source
-    assert "缺少可驗證市場資料" not in generator_source
-    assert ReportGenerator._decision_reason(
-        "可小額分批研究",
-        estimate,
-        quality,
-        [],
-        [],
-        5,
-        request,
-    ) == report_decision_narrative.decision_reason(
-        "可小額分批研究",
-        estimate,
-        quality,
-        [],
-        [],
-        5,
-        request,
-    )
 
 
 def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:

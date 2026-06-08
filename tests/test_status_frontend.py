@@ -116,6 +116,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/data_enrichment_manual.py",
         "app/ui/data_enrichment_rss.py",
         "app/ui/data_enrichment_runtime.py",
+        "app/services/company_filing_runtime_rows.py",
     ]
     assert status["frontend"]["ui_task_status_panel_path"] == "app/ui/task_status_panel.py"
     assert status["frontend"]["ui_report_observability_summary_enabled"] is True

@@ -29,6 +29,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     external_readiness_service_source = Path(
         "app/services/external_deployment_readiness.py"
     ).read_text()
+    company_filing_runtime_rows_service_source = Path(
+        "app/services/company_filing_runtime_rows.py"
+    ).read_text()
     styles = ui.STYLE_SOURCE.read_text()
     report_styles = ui.REPORT_STYLE_SOURCE.read_text()
     combined = source + "\n" + styles + "\n" + report_styles
@@ -111,6 +114,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'api_put("/schedule"' in ui.SYSTEM_SETTINGS_SCHEDULE_SOURCE.read_text()
     assert "st.dataframe(segment_rows" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "def company_filing_visual_rag_model_chain_rows(" in source
+    assert "from app.services.company_filing_runtime_rows import (" in source
+    assert "visual_rag_runtime_available" in company_filing_runtime_rows_service_source
+    assert "structured_api_configured" in company_filing_runtime_rows_service_source
+    assert "visual_rag_model_chain" in company_filing_runtime_rows_service_source
+    assert "visual_rag_runtime_available" not in Path(
+        "app/ui/data_enrichment_runtime.py"
+    ).read_text()
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()

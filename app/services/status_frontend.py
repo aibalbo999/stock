@@ -64,6 +64,15 @@ def frontend_status() -> dict:
     system_settings_source = ui_sources["system_settings.py"]
     system_settings_scope_source = ui_sources["system_settings_scope.py"]
     system_settings_schedule_source = ui_sources["system_settings_schedule.py"]
+    data_enrichment_runtime_source = ui_sources["data_enrichment_runtime.py"]
+    company_filing_runtime_rows_service_path = (
+        root / "app" / "services" / "company_filing_runtime_rows.py"
+    )
+    company_filing_runtime_rows_service_source = (
+        company_filing_runtime_rows_service_path.read_text()
+        if company_filing_runtime_rows_service_path.exists()
+        else ""
+    )
     data_enrichment_source = source_context.data_enrichment_source
     pages = source_context.pages
     streamlit_pages_source = source_context.streamlit_pages_source
@@ -502,19 +511,24 @@ def frontend_status() -> dict:
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
         "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows("
         in data_enrichment_source
+        and "from app.services.company_filing_runtime_rows import"
+        in data_enrichment_runtime_source
+        and "def company_filing_runtime_rows(" in company_filing_runtime_rows_service_source
         and (
             'api_get("/services/status"' in data_enrichment_source
             or 'load_api_json_or_default(\n        "/services/status"' in data_enrichment_source
         )
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in data_enrichment_source
         and "公司文件補抓能力" in data_enrichment_source
-        and "visual_rag_runtime_available" in data_enrichment_source
-        and "structured_api_configured" in data_enrichment_source
-        and "playwright_render_configured" in data_enrichment_source,
+        and "visual_rag_runtime_available" in company_filing_runtime_rows_service_source
+        and "structured_api_configured" in company_filing_runtime_rows_service_source
+        and "playwright_render_configured" in company_filing_runtime_rows_service_source,
         "ui_visual_rag_model_chain_panel_enabled": (
             "def company_filing_visual_rag_model_chain_rows(" in data_enrichment_source
         )
-        and "visual_rag_model_chain" in data_enrichment_source
+        and "def company_filing_visual_rag_model_chain_rows("
+        in company_filing_runtime_rows_service_source
+        and "visual_rag_model_chain" in company_filing_runtime_rows_service_source
         and "Visual RAG 模型鏈" in ui_source
         and "Visual RAG / PDF 圖片解析模型鏈" in ui_source,
         "ui_data_enrichment_tabs_extracted": (ui_dir / "data_enrichment_market.py").exists()
@@ -533,6 +547,7 @@ def frontend_status() -> dict:
             "app/ui/data_enrichment_manual.py",
             "app/ui/data_enrichment_rss.py",
             "app/ui/data_enrichment_runtime.py",
+            "app/services/company_filing_runtime_rows.py",
         ],
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"

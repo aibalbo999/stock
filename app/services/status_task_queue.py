@@ -20,6 +20,15 @@ EXPECTED_TASK_NAMES = {
     "data_operation_task": "app.tasks.tasks.data_operation_task",
     "report_follow_up_task": "app.tasks.tasks.report_follow_up_task",
 }
+TASK_QUEUE_REPAIR_COMMANDS = {
+    "inspect_ping": ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+    "start_dependencies": ".venv/bin/python scripts/start_system.py --start-dependencies",
+    "start_worker": (
+        ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker "
+        "-B --loglevel=INFO --pool=solo"
+    ),
+    "upgrade_audit": ".venv/bin/python scripts/upgrade_audit.py",
+}
 
 
 def task_queue_status(
@@ -105,9 +114,10 @@ def task_queue_status(
             "GET /tasks/{task_id}/run",
             "GET /tasks/summary",
         ],
+        "repair_commands": dict(TASK_QUEUE_REPAIR_COMMANDS),
         "smoke_commands": [
-            ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
-            ".venv/bin/python scripts/start_system.py --start-dependencies",
+            TASK_QUEUE_REPAIR_COMMANDS["inspect_ping"],
+            TASK_QUEUE_REPAIR_COMMANDS["start_dependencies"],
         ],
     }
 
@@ -122,7 +132,9 @@ def _task_export_status() -> dict:
             namespace = namespace_func()
     except Exception as exc:
         task_export_error = str(exc)
-    exported_tasks_present = {name: namespace.get(name) is not None for name in REQUIRED_TASK_EXPORTS}
+    exported_tasks_present = {
+        name: namespace.get(name) is not None for name in REQUIRED_TASK_EXPORTS
+    }
     missing_task_exports = [name for name, present in exported_tasks_present.items() if not present]
     task_names = {
         name: str(getattr(namespace.get(name), "name", "") or "")

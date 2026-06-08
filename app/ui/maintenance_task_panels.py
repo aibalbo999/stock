@@ -12,6 +12,7 @@ from app.ui.task_failure_diagnostics import (
 from app.ui.task_queue_diagnostics import (
     task_queue_health_alert,
     task_queue_health_rows,
+    task_queue_repair_rows,
     task_queue_smoke_command,
 )
 from app.ui.task_status_panel import render_task_status_panel
@@ -24,6 +25,10 @@ def render_background_task_observability_panel(
     with st.expander("背景任務觀測", expanded=False):
         st.caption("Queue / Worker readiness")
         st.dataframe(task_queue_health_rows(service_snapshot), width="stretch", hide_index=True)
+        repair_rows = task_queue_repair_rows(service_snapshot)
+        if repair_rows:
+            st.caption("Queue 修復指引")
+            st.dataframe(repair_rows, width="stretch", hide_index=True)
         queue_alert = task_queue_health_alert(service_snapshot)
         if queue_alert:
             message = str(queue_alert.get("message") or "")

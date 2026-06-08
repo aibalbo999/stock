@@ -149,6 +149,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_queue_preflight_cache_enabled")
             and frontend_status.get("ui_task_queue_worker_warning_enabled")
             and frontend_status.get("ui_task_queue_health_panel_extracted")
+            and frontend_status.get("ui_task_queue_repair_guidance_enabled")
             and frontend_status.get("ui_external_deployment_diagnostics_enabled")
             and frontend_status.get("ui_external_deployment_readiness_checklist_enabled")
             and frontend_status.get("ui_external_deployment_diagnostics_extracted")

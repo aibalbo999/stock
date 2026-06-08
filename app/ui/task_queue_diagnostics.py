@@ -92,11 +92,96 @@ def task_queue_smoke_command(service_snapshot: dict) -> str | None:
     return None
 
 
+def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
+    task_queue = _task_queue_from_snapshot(service_snapshot)
+    commands = _task_queue_repair_commands(task_queue)
+    verify_command = commands["inspect_ping"]
+    if not task_queue:
+        return [
+            {
+                "項目": "Task queue 狀態",
+                "狀態": "未取得",
+                "下一步": "確認 API /services/status 可讀取，再重新整理維護頁。",
+                "修復指令": "-",
+                "驗證指令": "curl -s http://127.0.0.1:8000/services/status",
+            }
+        ]
+    rows: list[dict] = []
+    if not task_queue.get("broker_configured"):
+        rows.append(
+            {
+                "項目": "Redis 設定",
+                "狀態": "未設定",
+                "下一步": "設定 REDIS_URL，或使用一鍵啟動帶起本機 Redis。",
+                "修復指令": commands["start_dependencies"],
+                "驗證指令": commands["upgrade_audit"],
+            }
+        )
+    if not task_queue.get("broker_ok") or not task_queue.get("backend_ok"):
+        rows.append(
+            {
+                "項目": "Redis Broker/Backend",
+                "狀態": "未連線",
+                "下一步": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+                "修復指令": commands["start_dependencies"],
+                "驗證指令": commands["upgrade_audit"],
+            }
+        )
+    if not task_queue.get("submission_contract_ready"):
+        rows.append(
+            {
+                "項目": "Celery task wiring",
+                "狀態": "未對齊",
+                "下一步": _task_wiring_detail(task_queue),
+                "修復指令": commands["upgrade_audit"],
+                "驗證指令": commands["upgrade_audit"],
+            }
+        )
+    if task_queue.get("ready") and not _task_queue_processing_ready(task_queue):
+        if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+            rows.append(
+                {
+                    "項目": "Celery Worker",
+                    "狀態": "未回應",
+                    "下一步": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+                    "修復指令": commands["start_worker"],
+                    "驗證指令": verify_command,
+                }
+            )
+        elif not task_queue.get("worker_ping_checked"):
+            rows.append(
+                {
+                    "項目": "Celery Worker ping",
+                    "狀態": "未檢查",
+                    "下一步": "執行 inspect ping 確認是否有 worker 回應。",
+                    "修復指令": verify_command,
+                    "驗證指令": verify_command,
+                }
+            )
+    return rows
+
+
 def _task_queue_from_snapshot(service_snapshot: dict) -> dict:
     if not isinstance(service_snapshot, dict):
         return {}
     task_queue = service_snapshot.get("task_queue")
     return task_queue if isinstance(task_queue, dict) else {}
+
+
+def _task_queue_repair_commands(task_queue: dict) -> dict[str, str]:
+    defaults = {
+        "inspect_ping": ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+        "start_dependencies": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "start_worker": (
+            ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker "
+            "-B --loglevel=INFO --pool=solo"
+        ),
+        "upgrade_audit": ".venv/bin/python scripts/upgrade_audit.py",
+    }
+    configured = task_queue.get("repair_commands")
+    if not isinstance(configured, dict):
+        return defaults
+    return {key: str(configured.get(key) or default) for key, default in defaults.items()}
 
 
 def _ok_label(value: object) -> str:

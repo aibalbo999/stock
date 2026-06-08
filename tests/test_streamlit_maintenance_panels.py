@@ -64,6 +64,7 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
 
     rows = helpers["task_queue_health_rows"](snapshot)
     alert = helpers["task_queue_health_alert"](snapshot)
+    repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
     assert rows[0]["項目"] == "Queue 提交"
     assert rows[0]["狀態"] == "可送出"
@@ -80,6 +81,7 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
     assert (
         helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
     )
+    assert repair_rows == []
 
 
 def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_submit() -> None:
@@ -102,6 +104,7 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
 
     rows = helpers["task_queue_health_rows"](snapshot)
     alert = helpers["task_queue_health_alert"](snapshot)
+    repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
     assert rows[0]["狀態"] == "可排隊"
     assert "worker 未回應" in rows[0]["說明"]
@@ -112,6 +115,18 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
     assert "timeout 1.0s" in rows[5]["說明"]
     assert alert["severity"] == "warning"
     assert "Celery worker 未回應" in alert["message"]
+    assert repair_rows == [
+        {
+            "項目": "Celery Worker",
+            "狀態": "未回應",
+            "下一步": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+            "修復指令": (
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker "
+                "-B --loglevel=INFO --pool=solo"
+            ),
+            "驗證指令": ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+        }
+    ]
 
 
 def test_task_queue_health_alert_blocks_unready_queue() -> None:
@@ -132,6 +147,7 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
 
     rows = helpers["task_queue_health_rows"](snapshot)
     alert = helpers["task_queue_health_alert"](snapshot)
+    repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
     assert rows[0]["狀態"] == "檢查"
     assert "Redis broker 未連線" in rows[0]["說明"]
@@ -141,6 +157,15 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
     assert "connection refused" in rows[2]["說明"]
     assert alert["severity"] == "error"
     assert "背景任務 queue 尚不可送出" in alert["message"]
+    assert repair_rows == [
+        {
+            "項目": "Redis Broker/Backend",
+            "狀態": "未連線",
+            "下一步": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+            "修復指令": ".venv/bin/python scripts/start_system.py --start-dependencies",
+            "驗證指令": ".venv/bin/python scripts/upgrade_audit.py",
+        }
+    ]
 
 
 def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:

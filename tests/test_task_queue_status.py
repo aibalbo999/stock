@@ -23,14 +23,25 @@ def test_task_queue_status_reports_worker_ping_online(monkeypatch) -> None:
     assert status["worker_count"] == 1
     assert status["worker_nodes"] == ["celery@worker-1"]
     assert status["worker_ping_timeout_seconds"] == 1.0
+    assert status["repair_commands"]["inspect_ping"].endswith("inspect ping")
+    assert (
+        "scripts/start_system.py --start-dependencies"
+        in status["repair_commands"]["start_dependencies"]
+    )
+    assert "worker -B --loglevel=INFO --pool=solo" in status["repair_commands"]["start_worker"]
+    assert status["smoke_commands"][0] == status["repair_commands"]["inspect_ping"]
 
 
-def test_task_queue_status_keeps_submission_ready_when_worker_ping_has_no_nodes(monkeypatch) -> None:
+def test_task_queue_status_keeps_submission_ready_when_worker_ping_has_no_nodes(
+    monkeypatch,
+) -> None:
     fake_app = object()
     monkeypatch.setattr(status_task_queue, "_task_export_status", lambda: _export_status(fake_app))
 
     status = status_task_queue.task_queue_status(
-        SimpleNamespace(redis_url="redis://localhost:6379/0", task_queue_worker_ping_timeout_seconds=0.2),
+        SimpleNamespace(
+            redis_url="redis://localhost:6379/0", task_queue_worker_ping_timeout_seconds=0.2
+        ),
         redis_status={"ok": True},
         redact_url=lambda value: value,
         worker_ping_func=lambda app, timeout: {},

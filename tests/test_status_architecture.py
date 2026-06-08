@@ -126,6 +126,16 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     assert isinstance(status["task_queue"]["worker_count"], int)
     assert isinstance(status["task_queue"]["worker_nodes"], list)
     assert status["task_queue"]["worker_ping_timeout_seconds"] >= 0.1
+    assert status["task_queue"]["repair_commands"]["inspect_ping"].endswith("inspect ping")
+    assert (
+        "scripts/start_system.py --start-dependencies"
+        in status["task_queue"]["repair_commands"]["start_dependencies"]
+    )
+    assert (
+        "worker -B --loglevel=INFO --pool=solo"
+        in status["task_queue"]["repair_commands"]["start_worker"]
+    )
+    assert "scripts/upgrade_audit.py" in status["task_queue"]["repair_commands"]["upgrade_audit"]
     assert status["task_queue"]["required_task_exports"] == [
         "celery_app",
         "generate_report_task",

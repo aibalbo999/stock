@@ -214,12 +214,21 @@ def frontend_status() -> dict:
         "ui_task_queue_health_panel_extracted": "def task_queue_health_rows("
         in task_queue_diagnostics_source
         and "def task_queue_health_alert(" in task_queue_diagnostics_source
+        and "def task_queue_repair_rows(" in task_queue_diagnostics_source
         and "def task_queue_smoke_command(" in task_queue_diagnostics_source
         and "task_queue_health_rows(service_snapshot)" in ui_source
         and "task_queue_health_alert(service_snapshot)" in ui_source
+        and "task_queue_repair_rows(service_snapshot)" in ui_source
         and "task_queue_smoke_command(service_snapshot)" in ui_source
+        and "Queue 修復指引" in ui_source
         and "from app.ui.task_queue_diagnostics import (" in ui_source
         and "def task_queue_health_rows(" not in maintenance_status_source,
+        "ui_task_queue_repair_guidance_enabled": "def task_queue_repair_rows("
+        in task_queue_diagnostics_source
+        and '"修復指令"' in task_queue_diagnostics_source
+        and '"驗證指令"' in task_queue_diagnostics_source
+        and "task_queue_repair_rows(service_snapshot)" in ui_source
+        and "Queue 修復指引" in ui_source,
         "ui_task_queue_processing_readiness_displayed": "processing_ready"
         in task_queue_diagnostics_source
         and "Queue 執行" in task_queue_diagnostics_source

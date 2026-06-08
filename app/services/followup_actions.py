@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
-from datetime import timedelta
 
 from app.core.async_bridge import run_async_from_sync
 from app.core.time import today_taipei
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
+from app.services import followup_executor as _followup_executor
 from app.services import followup_freshness as _followup_freshness
 from app.services.followup_completion import (
     follow_up_completion_blocker_actions as follow_up_completion_blocker_actions,
@@ -27,6 +26,10 @@ from app.services.followup_evidence import (
     needs_company_filing_sources as needs_company_filing_sources,
 )
 from app.services.followup_freshness import TRACKING_FRESHNESS_THRESHOLDS as TRACKING_FRESHNESS_THRESHOLDS
+from app.services.followup_executor import (
+    FOLLOW_UP_ACTION_CONCURRENCY as FOLLOW_UP_ACTION_CONCURRENCY,
+    FOLLOW_UP_ACTION_TIMEOUT_SECONDS as FOLLOW_UP_ACTION_TIMEOUT_SECONDS,
+)
 from app.services.ingestion import IngestionPipeline
 
 
@@ -42,8 +45,6 @@ FOLLOW_UP_ACTION_LABELS = {
     "rerun_analysis": "重跑分析報告",
 }
 TRACKING_CANDIDATE_LIMIT = 5
-FOLLOW_UP_ACTION_CONCURRENCY = 4
-FOLLOW_UP_ACTION_TIMEOUT_SECONDS = 90
 
 
 @dataclass(frozen=True)
@@ -570,40 +571,18 @@ async def execute_follow_up_actions(
     request: ReportRequest,
     news_limit: int = 30,
 ) -> dict:
-    today = today_taipei()
-    result: dict[str, object] = {"actions": [action.to_dict() for action in actions], "results": {}}
-    executable = [action for action in actions if action.action_type != "rerun_analysis"]
-    semaphore = asyncio.Semaphore(FOLLOW_UP_ACTION_CONCURRENCY)
-
-    async def run_action(action: FollowUpAction) -> tuple[str, dict]:
-        result_key = follow_up_result_key(action, request)
-        tickers = list(action.tickers)
-        try:
-            async with semaphore:
-                action_result = await asyncio.wait_for(
-                    execute_single_follow_up_action(action, request, news_limit, today),
-                    timeout=FOLLOW_UP_ACTION_TIMEOUT_SECONDS,
-                )
-        except asyncio.TimeoutError:
-            action_result = follow_up_action_error_result(
-                action,
-                tickers,
-                f"補強任務超過 {FOLLOW_UP_ACTION_TIMEOUT_SECONDS} 秒，已先記錄為可重試缺口。",
-                "timeout",
-            )
-        except Exception as exc:
-            action_result = follow_up_action_error_result(
-                action,
-                tickers,
-                str(exc) or exc.__class__.__name__,
-                "execution_error",
-            )
-        return result_key, action_result
-
-    for result_key, action_result in await asyncio.gather(*(run_action(action) for action in executable)):
-        result["results"][result_key] = action_result
-    result["execution_summary"] = summarize_follow_up_execution(result)
-    return result
+    return await _followup_executor.execute_follow_up_actions(
+        actions,
+        request,
+        news_limit,
+        pipeline_factory=IngestionPipeline,
+        today_func=today_taipei,
+        concurrency=FOLLOW_UP_ACTION_CONCURRENCY,
+        timeout_seconds=FOLLOW_UP_ACTION_TIMEOUT_SECONDS,
+        summarize_execution_func=summarize_follow_up_execution,
+        single_action_executor=execute_single_follow_up_action,
+        error_result_func=follow_up_action_error_result,
+    )
 
 
 def execute_follow_up_actions_sync(actions: list[FollowUpAction], request: ReportRequest, news_limit: int = 30) -> dict:
@@ -619,68 +598,18 @@ async def execute_single_follow_up_action(
     news_limit: int,
     today,
 ) -> dict:
-    pipeline = IngestionPipeline()
-    tickers = list(action.tickers or tuple(request.tickers))
-    if action.action_type == "ingest_news":
-        return await ingest_follow_up_news(
-            pipeline,
-            action,
-            request,
-            news_limit,
-            today,
-        )
-    if action.action_type == "ingest_company_filings":
-        document_types = company_filing_document_types_from_reason(action.reason)
-        company_name = company_name_from_follow_up_reason(action.reason)
-        company_names = {ticker: company_name for ticker in tickers if company_name}
-        result = await pipeline.ingest_company_filings(
-            tickers,
-            limit_per_query=max(2, min(5, news_limit // 10)),
-            filter_allowed=False,
-            document_types=document_types,
-            company_names=company_names,
-        )
-        result["target_terms"] = follow_up_target_terms(action)
-        return result
-    if action.action_type == "refresh_market":
-        return await pipeline.refresh_market(
-            tickers,
-            today - timedelta(days=max(request.lookback_days, 240)),
-            today,
-            filter_allowed=False,
-        )
-    if action.action_type == "refresh_monthly_revenue":
-        return await pipeline.refresh_monthly_revenue(
-            tickers,
-            today - timedelta(days=450),
-            today,
-            filter_allowed=False,
-        )
-    if action.action_type == "refresh_financial_metrics":
-        return await pipeline.refresh_financial_metrics(
-            tickers,
-            today - timedelta(days=365 * 6),
-            today,
-            filter_allowed=False,
-        )
-    if action.action_type == "refresh_valuations":
-        return await pipeline.refresh_valuations(
-            tickers,
-            today - timedelta(days=max(request.lookback_days, 30)),
-            today,
-            filter_allowed=False,
-        )
-    if action.action_type == "rerun_discovery":
-        return {
-            "status": "planned",
-            "reason": "主題拆解重跑會在補強後重新產生報告時執行。",
-        }
-    return follow_up_action_error_result(action, tickers, f"未知補強任務：{action.action_type}", "unknown_action")
+    return await _followup_executor.execute_single_follow_up_action(
+        action,
+        request,
+        news_limit,
+        today,
+        pipeline_factory=IngestionPipeline,
+        error_result_func=follow_up_action_error_result,
+    )
 
 
 def follow_up_result_key(action: FollowUpAction, request: ReportRequest) -> str:
-    tickers = list(action.tickers)
-    return action.action_type if not tickers else f"{action.action_type}:{','.join(tickers)}"
+    return _followup_executor.follow_up_result_key(action, request)
 
 
 def follow_up_action_error_result(
@@ -689,17 +618,4 @@ def follow_up_action_error_result(
     message: str,
     category: str,
 ) -> dict:
-    return {
-        "count": 0,
-        "items": [],
-        "target_terms": follow_up_target_terms(action),
-        "errors": [
-            {
-                "action_type": action.action_type,
-                "tickers": tickers,
-                "error": message,
-                "category": category,
-            }
-        ],
-        "source": "follow-up action guard",
-    }
+    return _followup_executor.follow_up_action_error_result(action, tickers, message, category)

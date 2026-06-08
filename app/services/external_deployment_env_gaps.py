@@ -197,6 +197,43 @@ def external_deployment_env_check_status_report(
     }
 
 
+def format_external_deployment_env_check_status_report(report: dict[str, Any]) -> str:
+    checks = report.get("checks") or {}
+    targets = report.get("targets") or sorted(str(target) for target in checks)
+    lines = [
+        (
+            f"External deployment env check: {report['status']} "
+            f"(target={report.get('target', 'all')}; gaps={report.get('gap_count', 0)})"
+        )
+    ]
+    if report.get("env_file"):
+        lines.append(f"Env file: {report['env_file']}")
+    if not checks:
+        lines.append("No external deployment env check details available.")
+        return "\n".join(lines)
+    for target in targets:
+        check = checks.get(str(target)) or {}
+        lines.append(
+            (
+                f"[{target}] {check.get('status', 'unknown')} "
+                f"(checked={check.get('checked_count', 0)}; "
+                f"missing={check.get('missing_count', 0)}; "
+                f"different={check.get('different_count', 0)})"
+            )
+        )
+        if check.get("env_file"):
+            exists = "exists" if check.get("env_file_exists") else "missing"
+            lines.append(f"  env file: {check['env_file']} ({exists})")
+        for row in check.get("rows") or []:
+            lines.append(
+                f"  - [{row['status']}] {row['env_key']} :: "
+                f"expected={row['expected_value']} current={row['current_value']}"
+            )
+            if row["action"] != "-":
+                lines.append(f"    action: {row['action']}")
+    return "\n".join(lines)
+
+
 def format_external_deployment_env_gap_report(report: dict[str, Any]) -> str:
     lines = [
         (

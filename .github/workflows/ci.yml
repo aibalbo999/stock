@@ -165,6 +165,7 @@ jobs:
           python scripts/frontend_smoke.py \
             --skip-browser \
             --api-endpoint /services/status \
+            --api-endpoint /services/external-deployment/env-check \
             --api-endpoint /llm/quota \
             --api-endpoint '/llm/usage/summary?days=7' \
             --api-endpoint '/supply-chain/graph/cypher-query?tickers=3324&target_ticker=2382&question=上下游衝擊' \

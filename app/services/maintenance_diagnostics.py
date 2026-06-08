@@ -36,6 +36,26 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "external_deployment_env_check": {
+        "id": "external_deployment_env_check",
+        "label": "External deployment env check",
+        "description": "比對目前 .env 的 host/compose 外部部署設定狀態，輸出會遮蔽密鑰。",
+        "display_command": (
+            ".venv/bin/python scripts/external_deployment_env_gaps.py "
+            "--env-check --env-check-target all --env-file .env"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/external_deployment_env_gaps.py",
+            "--env-check",
+            "--env-check-target",
+            "all",
+            "--env-file",
+            ".env",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
     "celery_inspect_ping": {
         "id": "celery_inspect_ping",
         "label": "Celery inspect ping",

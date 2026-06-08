@@ -15,6 +15,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert catalog["execution_policy"] == "allowlisted_read_only_subprocess"
     assert action_ids == {
         "celery_inspect_ping",
+        "external_deployment_env_check",
         "external_deployment_env_gaps",
         "external_integrations_smoke",
         "upgrade_audit",
@@ -27,6 +28,13 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     }["external_deployment_env_gaps"]
     assert "external_deployment_env_gaps.py --json" in env_gap_action["display_command"]
     assert "需人工補密鑰" in env_gap_action["description"]
+    env_check_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["external_deployment_env_check"]
+    assert "--env-check --env-check-target all --env-file .env" in (
+        env_check_action["display_command"]
+    )
+    assert "遮蔽密鑰" in env_check_action["description"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(

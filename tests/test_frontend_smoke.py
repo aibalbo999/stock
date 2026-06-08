@@ -4,6 +4,7 @@ import struct
 import zlib
 
 from app.services.frontend_smoke import (
+    DEFAULT_API_ENDPOINTS,
     check_http_target,
     check_streamlit_page_import_contract,
     png_has_nonblank_pixels,
@@ -125,6 +126,36 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
         "streamlit_http",
         "api_http:/services/status",
         "api_http:/llm/quota",
+        "streamlit_page_import_contract",
+        "streamlit_playwright",
+    ]
+
+
+def test_run_frontend_smoke_defaults_include_external_env_check(monkeypatch) -> None:
+    def fake_check(url, **kwargs):
+        return {
+            "label": kwargs["label"],
+            "url": url,
+            "status": "passed",
+            "status_code": 200,
+        }
+
+    monkeypatch.setattr("app.services.frontend_smoke.check_http_target", fake_check)
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.check_streamlit_page_import_contract",
+        lambda: {"label": "streamlit_page_import_contract", "status": "passed"},
+    )
+
+    report = run_frontend_smoke(skip_browser=True)
+
+    assert DEFAULT_API_ENDPOINTS == (
+        "/services/status",
+        "/services/external-deployment/env-check",
+    )
+    assert [check["label"] for check in report["checks"]] == [
+        "streamlit_http",
+        "api_http:/services/status",
+        "api_http:/services/external-deployment/env-check",
         "streamlit_page_import_contract",
         "streamlit_playwright",
     ]

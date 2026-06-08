@@ -5,7 +5,9 @@ import json
 
 from app.services.external_deployment_env_gaps import (
     external_deployment_env_gap_report,
+    external_deployment_env_check_status_report,
     format_external_deployment_env_gap_report,
+    format_external_deployment_env_check_status_report,
     format_external_deployment_env_check_report,
     format_external_deployment_env_template,
     external_deployment_env_check_report,
@@ -45,6 +47,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Choose host-only localhost values or docker-compose service DNS values.",
     )
     parser.add_argument(
+        "--env-check-target",
+        choices=("host", "compose", "all"),
+        default=None,
+        help=(
+            "Choose host, compose, or both targets for --env-check. Defaults to "
+            "--env-template-target for backward compatibility."
+        ),
+    )
+    parser.add_argument(
         "--env-file",
         default=".env",
         help="Env file to inspect when --env-check is used.",
@@ -56,6 +67,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    env_check_target = args.env_check_target or args.env_template_target
+    if args.env_check and env_check_target == "all":
+        check = external_deployment_env_check_status_report(
+            target="all",
+            env_file=args.env_file,
+            include_process_env=args.include_process_env,
+            strict_external=args.strict_external,
+        )
+        print(format_external_deployment_env_check_status_report(check))
+        return 1 if args.strict and check["status"] != "ready" else 0
+
     report = external_deployment_env_gap_report(strict_external=args.strict_external)
     strict_status = report["status"]
     if args.json:
@@ -65,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.env_check:
         check = external_deployment_env_check_report(
             report,
-            target=args.env_template_target,
+            target=env_check_target,
             env_file=args.env_file,
             include_process_env=args.include_process_env,
         )

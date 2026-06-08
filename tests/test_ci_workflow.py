@@ -47,6 +47,7 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
     assert "scripts/evaluate_visual_rag.py" in step_text
     assert "scripts/frontend_smoke.py" in step_text
     assert "--skip-browser" in step_text
+    assert "/services/external-deployment/env-check" in step_text
     assert "/llm/usage/summary?days=7" in step_text
 
 

@@ -10,7 +10,10 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-DEFAULT_API_ENDPOINTS = ("/services/status",)
+DEFAULT_API_ENDPOINTS = (
+    "/services/status",
+    "/services/external-deployment/env-check",
+)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",

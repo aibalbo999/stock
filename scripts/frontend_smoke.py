@@ -18,7 +18,10 @@ def main(argv: list[str] | None = None) -> int:
         "--api-endpoint",
         action="append",
         default=None,
-        help="API endpoint to check. Can be repeated; defaults to /services/status.",
+        help=(
+            "API endpoint to check. Can be repeated; defaults to /services/status "
+            "and /services/external-deployment/env-check."
+        ),
     )
     parser.add_argument(
         "--screenshot",

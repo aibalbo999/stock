@@ -433,6 +433,29 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     ]
     service_snapshot = {
         "local_dependencies": {
+            "last_start": {
+                "available": True,
+                "path": "data/local_dependency_start_status.json",
+                "updated_at": "2026-06-09T01:02:03Z",
+                "status": "已啟動",
+                "message": "Neo4j 與 Browserless 已送出啟動指令。",
+                "services": ["neo4j", "browserless"],
+                "wait": {
+                    "neo4j": True,
+                    "browserless": False,
+                    "browser_render_fallback": {
+                        "status": "switched_to_playwright",
+                        "reason": "browserless_not_ready",
+                        "browser": "chromium",
+                    },
+                },
+                "applied_env_keys": [
+                    "NEO4J_URI",
+                    "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+                ],
+                "include_unlocker": False,
+                "wait_seconds": 7,
+            },
             "ports": [
                 {
                     "service": "neo4j",
@@ -450,7 +473,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
                     "open": False,
                     "role": "MOPS unlocker",
                 },
-            ]
+            ],
         }
     }
     readiness_with_local_status = helpers["external_deployment_readiness_rows"](
@@ -458,6 +481,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         service_snapshot["local_dependencies"],
     )
     local_rows = helpers["local_dependency_status_rows"](service_snapshot)
+    last_start_rows = helpers["local_dependency_last_start_rows"](service_snapshot)
 
     assert readiness_with_local_status[0]["項目"] == "外部 Neo4j 匯入連線"
     assert readiness_with_local_status[0]["本機動作"] == "已啟動"
@@ -476,6 +500,32 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
             "用途": "MOPS unlocker",
         },
     ]
+    assert last_start_rows[0]["項目"] == "最近啟動"
+    assert last_start_rows[0]["狀態"] == "已啟動"
+    assert "服務 neo4j、browserless" in last_start_rows[0]["細節"]
+    assert "等待 7s" in last_start_rows[0]["細節"]
+    assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" in last_start_rows[0]["細節"]
+    assert {
+        "項目": "等待 Neo4j 7687",
+        "狀態": "就緒",
+        "更新時間": "2026-06-09T01:02:03Z",
+        "說明": "scripts/start_system.py --start-dependencies 等待結果",
+        "細節": "data/local_dependency_start_status.json",
+    } in last_start_rows
+    assert {
+        "項目": "等待 Browserless 3000",
+        "狀態": "尚未就緒",
+        "更新時間": "2026-06-09T01:02:03Z",
+        "說明": "scripts/start_system.py --start-dependencies 等待結果",
+        "細節": "data/local_dependency_start_status.json",
+    } in last_start_rows
+    assert {
+        "項目": "Browser render fallback",
+        "狀態": "switched_to_playwright",
+        "更新時間": "2026-06-09T01:02:03Z",
+        "說明": "browserless_not_ready",
+        "細節": "chromium",
+    } in last_start_rows
 
 
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:

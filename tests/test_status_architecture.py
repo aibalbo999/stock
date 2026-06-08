@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from app.core.config import Settings
+from app.services.local_dependency_diagnostics import local_dependency_runtime_status
 
 
 def test_backend_status_collectors_for_database_workflow_and_security(
@@ -34,6 +35,10 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert all(isinstance(row["open"], bool) for row in status["local_dependencies"]["ports"])
     assert "start_core" in status["local_dependencies"]["commands"]
     assert "verify_flaresolverr" in status["local_dependencies"]["commands"]
+    assert status["local_dependencies"]["last_start"]["path"] == (
+        "data/local_dependency_start_status.json"
+    )
+    assert isinstance(status["local_dependencies"]["last_start"]["available"], bool)
     assert status["database"]["init_mode"] == Settings().database_init_mode
     assert status["database"]["create_all_non_sqlite_allowed"] is False
     assert "migration" in status["database"]
@@ -62,6 +67,7 @@ def test_backend_status_collectors_for_database_workflow_and_security(
         in service_status_source
     )
     assert "def local_dependency_runtime_status(" in local_dependency_source
+    assert "def local_dependency_last_start_status(" in local_dependency_source
     assert "def is_local_port_open(" in local_dependency_source
     assert "def _security_scan_status(" not in service_status_source
     assert "def security_scan_status(" in status_security_source
@@ -70,6 +76,30 @@ def test_backend_status_collectors_for_database_workflow_and_security(
         "gitleaks",
         "local_regex",
     }
+
+
+def test_local_dependency_runtime_status_reads_last_start_snapshot(tmp_path) -> None:
+    status_path = tmp_path / "data/local_dependency_start_status.json"
+    status_path.parent.mkdir()
+    status_path.write_text(
+        (
+            '{"schema_version":1,"updated_at":"2026-06-09T01:02:03Z",'
+            '"status":"已啟動","message":"ok","services":["neo4j"],'
+            '"wait":{"neo4j":true},"applied_env_keys":["NEO4J_URI"],'
+            '"include_unlocker":false,"wait_seconds":5}'
+        ),
+        encoding="utf-8",
+    )
+
+    status = local_dependency_runtime_status(
+        root=tmp_path,
+        port_open_func=lambda _host, _port: False,
+    )
+
+    assert status["last_start"]["available"] is True
+    assert status["last_start"]["path"] == "data/local_dependency_start_status.json"
+    assert status["last_start"]["status"] == "已啟動"
+    assert status["last_start"]["wait"] == {"neo4j": True}
 
 
 def test_task_queue_status_contract_and_compatibility_alias(service_status_snapshot) -> None:

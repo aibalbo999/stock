@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import socket
 import subprocess
 from collections.abc import Callable, Mapping
@@ -38,6 +39,7 @@ LOCAL_DEPENDENCY_COMMANDS = {
         "--prefer-unlocker --wait-local-flaresolverr 20 --local-browser-render-defaults --json"
     ),
 }
+LOCAL_DEPENDENCY_START_STATUS_PATH = Path("data/local_dependency_start_status.json")
 
 
 def local_dependency_runtime_status(
@@ -80,6 +82,41 @@ def local_dependency_runtime_status(
         "unlocker_ready": "flaresolverr" in open_services,
         "commands": dict(LOCAL_DEPENDENCY_COMMANDS),
         "configured_env": _local_dependency_configured_env(env),
+        "last_start": local_dependency_last_start_status(root=project_root),
+    }
+
+
+def local_dependency_last_start_status(*, root: Path | None = None) -> dict:
+    project_root = root or Path(__file__).resolve().parents[2]
+    status_path = project_root / LOCAL_DEPENDENCY_START_STATUS_PATH
+    base = {
+        "available": False,
+        "path": LOCAL_DEPENDENCY_START_STATUS_PATH.as_posix(),
+    }
+    if not status_path.exists():
+        return {
+            **base,
+            "status": "missing",
+            "message": "尚未透過 scripts/start_system.py --start-dependencies 記錄本機依賴啟動結果。",
+        }
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            **base,
+            "status": "invalid",
+            "message": f"無法讀取本機依賴啟動紀錄：{exc}",
+        }
+    if not isinstance(payload, dict):
+        return {
+            **base,
+            "status": "invalid",
+            "message": "本機依賴啟動紀錄格式錯誤。",
+        }
+    return {
+        **payload,
+        "available": True,
+        "path": LOCAL_DEPENDENCY_START_STATUS_PATH.as_posix(),
     }
 
 

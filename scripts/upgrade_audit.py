@@ -242,6 +242,17 @@ def _format_text(audit: dict) -> str:
             f"{local_runtime.get('status', 'unknown')}; "
             f"open={open_services}; missing_core={missing_core}"
         )
+        last_start = (
+            local_runtime.get("last_start")
+            if isinstance(local_runtime.get("last_start"), dict)
+            else {}
+        )
+        if last_start.get("available"):
+            lines.append(
+                "Local dependency last start: "
+                f"{last_start.get('status', 'unknown')} at {last_start.get('updated_at', '-')}; "
+                f"path={last_start.get('path', '-')}"
+            )
     local_images = audit.get("local_docker_images")
     if local_images:
         image_lines = [

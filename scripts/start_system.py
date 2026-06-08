@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import os
 import socket
 import subprocess
@@ -10,10 +11,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.data_sources.company_filing_render import company_filing_playwright_browser_status
-from app.services.local_dependency_diagnostics import local_docker_image_status
+from app.services.local_dependency_diagnostics import (
+    LOCAL_DEPENDENCY_START_STATUS_PATH,
+    local_docker_image_status,
+)
 from app.services.schedule_config import ScheduleConfigStore
 from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 from app.services.upgrade_audit import audit_upgrade_capabilities
@@ -51,7 +56,9 @@ LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Start the stock analysis system.")
-    parser.add_argument("--open-browser", action="store_true", help="Open Streamlit in the default browser.")
+    parser.add_argument(
+        "--open-browser", action="store_true", help="Open Streamlit in the default browser."
+    )
     parser.add_argument(
         "--start-dependencies",
         action="store_true",
@@ -108,6 +115,7 @@ def main() -> int:
     dependency_status = None
     dependency_wait_status = {}
     local_dependency_env = {}
+    dependency_start_record = {}
     if args.start_dependencies:
         local_dependency_env = apply_local_dependency_env_defaults(
             enable_browser_render=True,
@@ -132,6 +140,14 @@ def main() -> int:
         )
         if switch_status:
             dependency_wait_status["browser_render_fallback"] = switch_status
+        dependency_start_record = write_local_dependency_start_status(
+            ROOT,
+            dependency_status,
+            dependency_wait_status,
+            local_dependency_env,
+            include_unlocker=bool(args.prefer_unlocker),
+            wait_seconds=max(0, int(args.dependency_wait_seconds)),
+        )
         if dependency_start_blocker(dependency_status):
             print_dependency_start_blocker(dependency_status, dependency_wait_status)
             return 1
@@ -213,16 +229,18 @@ def main() -> int:
     print("")
     print("啟動結果")
     if dependency_status:
-        print(
-            "- 依賴服務："
-            f"{dependency_status['status']}，"
-            f"{dependency_status['message']}"
-        )
+        print(f"- 依賴服務：{dependency_status['status']}，{dependency_status['message']}")
         for line in dependency_wait_status_lines(dependency_wait_status):
             print(line)
+        if dependency_start_record.get("path"):
+            print(f"- 依賴啟動紀錄：{dependency_start_record['path']}")
     print(f"- 資料庫 migration：{migration_status['status']}，{migration_status['message']}")
-    print(f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}")
-    print(f"- Streamlit: {'已啟動' if streamlit_started else '已在執行'}，連線檢查：{'正常' if streamlit_ok else '尚未回應'}")
+    print(
+        f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}"
+    )
+    print(
+        f"- Streamlit: {'已啟動' if streamlit_started else '已在執行'}，連線檢查：{'正常' if streamlit_ok else '尚未回應'}"
+    )
     if celery_enabled:
         print(
             "- 自動排程："
@@ -283,11 +301,7 @@ def print_upgrade_capability_preflight(
     implementation = audit.get("implementation") or {}
     deployment = audit.get("deployment") or {}
     optional_warning_count = int(summary.get("optional_warnings") or 0)
-    optional_warning_text = (
-        f"，外部選配 {optional_warning_count}"
-        if optional_warning_count
-        else ""
-    )
+    optional_warning_text = f"，外部選配 {optional_warning_count}" if optional_warning_count else ""
     print("")
     print("升級能力檢查")
     if local_dependency_env:
@@ -327,13 +341,70 @@ def dependency_start_blocker(dependency_status: dict | None) -> bool:
     return bool(dependency_status and dependency_status.get("status") in {"需下載", "失敗"})
 
 
-def print_dependency_start_blocker(dependency_status: dict, dependency_wait_status: dict | None = None) -> None:
+def print_dependency_start_blocker(
+    dependency_status: dict, dependency_wait_status: dict | None = None
+) -> None:
     print("")
     print("依賴服務：需要先處理")
     print(f"- {dependency_status.get('status', 'unknown')}，{dependency_status.get('message', '')}")
     for line in dependency_wait_status_lines(dependency_wait_status or {}):
         print(line)
-    print("- 已停止啟動流程；請先處理本機 Docker 依賴後重試，避免後續 migration/API 顯示誤導性錯誤。")
+    print(
+        "- 已停止啟動流程；請先處理本機 Docker 依賴後重試，避免後續 migration/API 顯示誤導性錯誤。"
+    )
+
+
+def write_local_dependency_start_status(
+    root: Path,
+    dependency_status: dict | None,
+    dependency_wait_status: dict | None,
+    local_dependency_env: dict[str, str],
+    *,
+    include_unlocker: bool = False,
+    wait_seconds: int = 0,
+) -> dict:
+    status = dependency_status if isinstance(dependency_status, dict) else {}
+    payload = {
+        "schema_version": 1,
+        "updated_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "status": str(status.get("status") or "unknown"),
+        "message": str(status.get("message") or ""),
+        "services": [str(service) for service in status.get("services") or []],
+        "wait": _safe_dependency_wait_status(dependency_wait_status or {}),
+        "applied_env_keys": sorted(str(key) for key in local_dependency_env),
+        "include_unlocker": bool(include_unlocker),
+        "wait_seconds": max(0, int(wait_seconds)),
+        "path": LOCAL_DEPENDENCY_START_STATUS_PATH.as_posix(),
+    }
+    status_path = root / LOCAL_DEPENDENCY_START_STATUS_PATH
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = status_path.with_name(f"{status_path.name}.tmp")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temp_path.replace(status_path)
+    return payload
+
+
+def _safe_dependency_wait_status(wait_status: dict) -> dict:
+    safe: dict[str, bool | dict[str, str]] = {}
+    allowed_detail_keys = {"status", "reason", "provider", "browser"}
+    for service, value in wait_status.items():
+        service_key = str(service)
+        if isinstance(value, bool):
+            safe[service_key] = value
+        elif isinstance(value, dict):
+            safe_detail = {
+                str(key): str(detail)
+                for key, detail in value.items()
+                if key in allowed_detail_keys and detail is not None
+            }
+            if safe_detail:
+                safe[service_key] = safe_detail
+        elif value is not None:
+            safe[service_key] = {"status": str(value)}
+    return safe
 
 
 def run_startup_migrations(root: Path, python: Path, *, skip: bool = False) -> dict[str, str]:
@@ -344,9 +415,15 @@ def run_startup_migrations(root: Path, python: Path, *, skip: bool = False) -> d
     if normalized_mode in {"none", "off", "disabled"}:
         return {"status": "略過", "message": f"DATABASE_INIT_MODE={mode}。"}
     if normalized_mode in {"create_all", "createall", "metadata"}:
-        return {"status": "略過", "message": f"DATABASE_INIT_MODE={mode}，使用本機 create_all 模式。"}
+        return {
+            "status": "略過",
+            "message": f"DATABASE_INIT_MODE={mode}，使用本機 create_all 模式。",
+        }
     if normalized_mode not in {"alembic", "migration", "migrations"}:
-        return {"status": "失敗", "message": f"不支援 DATABASE_INIT_MODE={mode}；請使用 alembic、create_all 或 none。"}
+        return {
+            "status": "失敗",
+            "message": f"不支援 DATABASE_INIT_MODE={mode}；請使用 alembic、create_all 或 none。",
+        }
     try:
         completed = subprocess.run(
             [str(python), "-m", "alembic", "upgrade", "head"],
@@ -362,7 +439,10 @@ def run_startup_migrations(root: Path, python: Path, *, skip: bool = False) -> d
         return {"status": "失敗", "message": f"alembic upgrade head 無法執行：{exc}"}
     if completed.returncode != 0:
         message = (completed.stderr or completed.stdout or "Alembic migration failed").strip()
-        return {"status": "失敗", "message": message.splitlines()[-1] if message else "Alembic migration failed"}
+        return {
+            "status": "失敗",
+            "message": message.splitlines()[-1] if message else "Alembic migration failed",
+        }
     return {"status": "完成", "message": "已執行 alembic upgrade head。"}
 
 
@@ -411,7 +491,9 @@ def start_dependency_services(
         )
         if pull_status.get("status") != "已下載":
             return pull_status
-        image_status = local_docker_image_status(_dependency_images(include_unlocker=include_unlocker))
+        image_status = local_docker_image_status(
+            _dependency_images(include_unlocker=include_unlocker)
+        )
         if not image_status.get("all_present"):
             missing = "、".join(image_status.get("missing_services") or [])
             return {
@@ -456,7 +538,10 @@ def start_dependency_services(
         return {"status": "失敗", "message": f"Docker Compose 啟動失敗：{exc}"}
     if completed.returncode != 0:
         message = (completed.stderr or completed.stdout or "Docker Compose 回傳錯誤").strip()
-        return {"status": "失敗", "message": message.splitlines()[-1] if message else "Docker Compose 回傳錯誤。"}
+        return {
+            "status": "失敗",
+            "message": message.splitlines()[-1] if message else "Docker Compose 回傳錯誤。",
+        }
     service_label = "、".join(_dependency_service_labels(dependency_services))
     return {
         "status": "已啟動",
@@ -504,7 +589,11 @@ def pull_missing_dependency_images(
     *,
     timeout_seconds: int = 300,
 ) -> dict[str, str]:
-    services = [service for service in missing_services if service in _dependency_images(include_unlocker=True)]
+    services = [
+        service
+        for service in missing_services
+        if service in _dependency_images(include_unlocker=True)
+    ]
     if not services:
         return {"status": "已下載", "message": "沒有需要下載的 Docker image。"}
     for service in services:
@@ -531,7 +620,9 @@ def pull_missing_dependency_images(
         except (OSError, subprocess.SubprocessError) as exc:
             return {"status": "失敗", "message": f"Docker image 下載失敗：{service}；{exc}"}
         if completed.returncode != 0:
-            message = (completed.stderr or completed.stdout or "Docker Compose pull 回傳錯誤").strip()
+            message = (
+                completed.stderr or completed.stdout or "Docker Compose pull 回傳錯誤"
+            ).strip()
             return {
                 "status": "失敗",
                 "message": f"Docker image 下載失敗：{service}；{message.splitlines()[-1] if message else '未知錯誤'}",
@@ -619,9 +710,13 @@ def wait_for_local_dependency_ports(
     results: dict[str, bool] = {}
     services = set(dependency_status.get("services") or [])
     if "redis" in services:
-        results["redis"] = wait_for_port("127.0.0.1", LOCAL_REDIS_PORT, timeout_seconds=timeout_seconds)
+        results["redis"] = wait_for_port(
+            "127.0.0.1", LOCAL_REDIS_PORT, timeout_seconds=timeout_seconds
+        )
     if "postgres" in services:
-        results["postgres"] = wait_for_port("127.0.0.1", LOCAL_POSTGRES_PORT, timeout_seconds=timeout_seconds)
+        results["postgres"] = wait_for_port(
+            "127.0.0.1", LOCAL_POSTGRES_PORT, timeout_seconds=timeout_seconds
+        )
     neo4j_uri = str(local_dependency_env.get("NEO4J_URI") or os.environ.get("NEO4J_URI") or "")
     if _is_local_neo4j_uri(neo4j_uri):
         results["neo4j"] = wait_for_port("127.0.0.1", 7687, timeout_seconds=timeout_seconds)
@@ -641,9 +736,7 @@ def wait_for_local_dependency_ports(
             timeout_seconds=timeout_seconds,
         )
     chroma_api_url = str(
-        local_dependency_env.get("CHROMA_API_URL")
-        or os.environ.get("CHROMA_API_URL")
-        or ""
+        local_dependency_env.get("CHROMA_API_URL") or os.environ.get("CHROMA_API_URL") or ""
     )
     if "chroma" in services or _is_local_chroma_api_url(chroma_api_url):
         results["chroma"] = wait_for_http_ok(
@@ -706,7 +799,9 @@ def fallback_local_browser_render_to_playwright(
     if not runtime.get("browser_available"):
         return {}
     selected_defaults = (
-        LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS if selected_flaresolverr else LOCAL_BROWSER_RENDER_ENV_DEFAULTS
+        LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS
+        if selected_flaresolverr
+        else LOCAL_BROWSER_RENDER_ENV_DEFAULTS
     )
     for key, value in selected_defaults.items():
         if os.environ.get(key) == value:
@@ -752,7 +847,9 @@ def dependency_wait_status_lines(wait_status: dict) -> list[str]:
 
 
 def _is_local_neo4j_uri(uri: str) -> bool:
-    return uri.startswith(("neo4j://localhost:", "neo4j://127.0.0.1:", "bolt://localhost:", "bolt://127.0.0.1:"))
+    return uri.startswith(
+        ("neo4j://localhost:", "neo4j://127.0.0.1:", "bolt://localhost:", "bolt://127.0.0.1:")
+    )
 
 
 def _is_local_browserless_render_url(url: str) -> bool:
@@ -788,7 +885,9 @@ def _browserless_health_url(render_url: str) -> str:
     query = urllib.parse.parse_qs(parts.query)
     token = (query.get("token") or [""])[0]
     health_query = urllib.parse.urlencode({"token": token}) if token else ""
-    return urllib.parse.urlunsplit((parts.scheme or "http", parts.netloc, "/json/version", health_query, ""))
+    return urllib.parse.urlunsplit(
+        (parts.scheme or "http", parts.netloc, "/json/version", health_query, "")
+    )
 
 
 def _chroma_health_url(api_url: str) -> str:
@@ -797,7 +896,9 @@ def _chroma_health_url(api_url: str) -> str:
 
 
 def _flaresolverr_health_url(render_url: str) -> str:
-    url = str(render_url or LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"])
+    url = str(
+        render_url or LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS["COMPANY_FILING_BROWSER_RENDER_URL"]
+    )
     parts = urllib.parse.urlsplit(url)
     return urllib.parse.urlunsplit((parts.scheme or "http", parts.netloc, "/health", "", ""))
 
@@ -925,8 +1026,8 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             action = "設定 COHERE_API_KEY，或改用 RAG_RERANKER_PROVIDER=bge 並安裝 .[rag]"
         elif reranking_evidence.get("keyword_fallback") or execution_mode == "keyword":
             action = (
-                '設定 RAG_RERANKER_PROVIDER=bge 並執行 '
-                f'{_pip_install_action(python_display, ".[rag]")}；'
+                "設定 RAG_RERANKER_PROVIDER=bge 並執行 "
+                f"{_pip_install_action(python_display, '.[rag]')}；"
                 "或設定 RAG_RERANKER_PROVIDER=cohere、RAG_RERANKER_MODEL=rerank-v3.5 與 COHERE_API_KEY"
             )
         else:
@@ -950,7 +1051,10 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
             actions.append("設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true")
         if visual_rag_evidence.get("renderer_dependency_available") is False:
             actions.append(_pip_install_action(python_display, ".[visual]"))
-        if not (runtime.get("vision_model_key_configured") or visual_rag_evidence.get("runtime_available")):
+        if not (
+            runtime.get("vision_model_key_configured")
+            or visual_rag_evidence.get("runtime_available")
+        ):
             actions.append(
                 "設定 COMPANY_FILING_VISUAL_RAG_MODEL 與 GOOGLE_API_KEYS / OPENAI_API_KEY / ANTHROPIC_API_KEY"
             )
@@ -959,7 +1063,9 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
                 "capability": "visual_rag",
                 "status": str(visual_rag.get("status") or "unknown"),
                 "reason": fallback,
-                "action": "；".join(actions) if actions else "確認 Visual RAG renderer 與 vision LLM 設定",
+                "action": "；".join(actions)
+                if actions
+                else "確認 Visual RAG renderer 與 vision LLM 設定",
             }
         )
 
@@ -970,7 +1076,7 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         dependency_available = neo4j_evidence.get("dependency_available")
         if dependency_available is False:
             action = (
-                f'{_pip_install_action(python_display, ".[graph]")}，並設定 '
+                f"{_pip_install_action(python_display, '.[graph]')}，並設定 "
                 "NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD；"
                 "設定後執行 .venv/bin/python scripts/neo4j_graphrag_smoke.py "
                 "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
@@ -1026,7 +1132,9 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         reason = str(market_fallback_evidence.get("fallback_reason") or "market_provider_not_ready")
         actions = []
         if market_fallback_evidence.get("official_openapi_fallback_enabled"):
-            actions.append("官方 OpenAPI 最新資料 fallback 已啟用，但完整歷史財務與完整股價歷史仍需授權來源")
+            actions.append(
+                "官方 OpenAPI 最新資料 fallback 已啟用，但完整歷史財務與完整股價歷史仍需授權來源"
+            )
         if not market_fallback_evidence.get("finmind_authenticated"):
             actions.append("設定 FINMIND_TOKEN，讓月營收、五年財務與估值使用穩定授權來源")
         if not market_fallback_evidence.get("fugle_price_fallback_configured"):
@@ -1053,7 +1161,9 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
         if filing_fallback_evidence.get("playwright_render_dependency_available"):
             actions.append("或啟用 COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true 做本機瀏覽器渲染")
         else:
-            actions.append(f'若要用本機 Playwright，先執行 {_pip_install_action(python_display, ".[browser]")}')
+            actions.append(
+                f"若要用本機 Playwright，先執行 {_pip_install_action(python_display, '.[browser]')}"
+            )
         items.append(
             {
                 "capability": "company_filing_browser_or_proxy_fallback",

@@ -7,6 +7,7 @@ from app.ui.external_deployment_diagnostics import (
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
     high_risk_filing_unlocker_rows,
+    local_dependency_last_start_rows,
     local_dependency_status_rows,
     local_neo4j_operation_rows,
     local_unlocker_operation_rows,
@@ -35,6 +36,7 @@ def render_external_deployment_panel(
     local_unlocker_rows = local_unlocker_operation_rows(upgrade_audit)
     structured_api_rows = structured_filing_api_operation_rows(upgrade_audit)
     local_dependency_rows = local_dependency_status_rows(service_snapshot)
+    local_dependency_start_rows = local_dependency_last_start_rows(service_snapshot)
     with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
         deploy = (
             upgrade_audit.get("deployment")
@@ -51,6 +53,9 @@ def render_external_deployment_panel(
         if external_readiness_rows:
             st.caption("外部部署 readiness checklist")
             st.dataframe(external_readiness_rows, width="stretch", hide_index=True)
+        if local_dependency_start_rows:
+            st.caption("最近本機依賴啟動")
+            st.dataframe(local_dependency_start_rows, width="stretch", hide_index=True)
         if local_dependency_rows:
             st.caption("本機依賴狀態")
             st.dataframe(local_dependency_rows, width="stretch", hide_index=True)

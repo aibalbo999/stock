@@ -212,6 +212,72 @@ def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:
     ]
 
 
+def local_dependency_last_start_rows(service_snapshot: dict) -> list[dict]:
+    status = (
+        service_snapshot.get("local_dependencies")
+        if isinstance(service_snapshot.get("local_dependencies"), dict)
+        else {}
+    )
+    last_start = status.get("last_start") if isinstance(status.get("last_start"), dict) else {}
+    if not last_start.get("available"):
+        return []
+    updated_at = str(last_start.get("updated_at") or "-")
+    rows = [
+        {
+            "項目": "最近啟動",
+            "狀態": last_start.get("status") or "-",
+            "更新時間": updated_at,
+            "說明": last_start.get("message") or "-",
+            "細節": _local_dependency_last_start_detail(last_start),
+        }
+    ]
+    wait_status = last_start.get("wait") if isinstance(last_start.get("wait"), dict) else {}
+    for service, ready in sorted(wait_status.items()):
+        if isinstance(ready, bool):
+            rows.append(
+                {
+                    "項目": f"等待 {_local_dependency_wait_label(str(service))}",
+                    "狀態": "就緒" if ready else "尚未就緒",
+                    "更新時間": updated_at,
+                    "說明": "scripts/start_system.py --start-dependencies 等待結果",
+                    "細節": str(last_start.get("path") or "-"),
+                }
+            )
+        elif isinstance(ready, dict):
+            rows.append(
+                {
+                    "項目": _local_dependency_wait_label(str(service)),
+                    "狀態": ready.get("status") or "-",
+                    "更新時間": updated_at,
+                    "說明": ready.get("reason") or "-",
+                    "細節": ready.get("provider") or ready.get("browser") or "-",
+                }
+            )
+    return rows
+
+
+def _local_dependency_last_start_detail(last_start: dict) -> str:
+    services = "、".join(str(service) for service in last_start.get("services") or []) or "-"
+    env_keys = "、".join(str(key) for key in last_start.get("applied_env_keys") or []) or "-"
+    unlocker = "含 unlocker" if last_start.get("include_unlocker") else "核心依賴"
+    wait_seconds = last_start.get("wait_seconds")
+    wait_text = f"等待 {wait_seconds}s" if wait_seconds is not None else "等待時間未記錄"
+    return f"{unlocker}；服務 {services}；{wait_text}；env keys {env_keys}"
+
+
+def _local_dependency_wait_label(service: str) -> str:
+    labels = {
+        "neo4j": "Neo4j 7687",
+        "browserless": "Browserless 3000",
+        "chroma": "Chroma 8001",
+        "postgres": "Postgres 5432",
+        "redis": "Redis 6379",
+        "flaresolverr": "FlareSolverr 8191",
+        "browser_render_fallback": "Browser render fallback",
+    }
+    return labels.get(service, service)
+
+
 def external_deployment_readiness_state(item: dict) -> str:
     severity = str(item.get("severity") or "")
     if severity == "pass":

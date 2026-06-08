@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from scripts.start_system import (
     run_startup_migrations,
     startup_database_init_mode,
     wait_for_local_dependency_ports,
+    write_local_dependency_start_status,
 )
 from start_system_test_helpers import ready_upgrade_matrix
 
@@ -98,14 +100,20 @@ def test_main_stops_before_migrations_when_dependency_start_needs_download(
     monkeypatch.setattr(start_system_module, "RUN_DIR", tmp_path / ".run")
     monkeypatch.setattr(start_system_module, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(sys, "argv", ["start_system.py", "--start-dependencies"])
-    monkeypatch.setattr(start_system_module, "apply_local_dependency_env_defaults", lambda **_kwargs: {})
+    monkeypatch.setattr(
+        start_system_module, "apply_local_dependency_env_defaults", lambda **_kwargs: {}
+    )
     monkeypatch.setattr(
         start_system_module,
         "start_dependency_services",
         lambda *_args, **_kwargs: {"status": "需下載", "message": "缺少 Docker image：chroma。"},
     )
-    monkeypatch.setattr(start_system_module, "wait_for_local_dependency_ports", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr(start_system_module, "fallback_local_browser_render_to_playwright", lambda *_args: {})
+    monkeypatch.setattr(
+        start_system_module, "wait_for_local_dependency_ports", lambda *_args, **_kwargs: {}
+    )
+    monkeypatch.setattr(
+        start_system_module, "fallback_local_browser_render_to_playwright", lambda *_args: {}
+    )
 
     def fail_if_migrations_run(*_args, **_kwargs):
         raise AssertionError("migrations should not run when dependency startup is blocked")
@@ -114,6 +122,61 @@ def test_main_stops_before_migrations_when_dependency_start_needs_download(
 
     assert start_system_module.main() == 1
     assert "已停止啟動流程" in capsys.readouterr().out
+    start_record = json.loads(
+        (tmp_path / "data/local_dependency_start_status.json").read_text(encoding="utf-8")
+    )
+    assert start_record["status"] == "需下載"
+    assert start_record["wait"] == {}
+
+
+def test_write_local_dependency_start_status_records_safe_snapshot(tmp_path) -> None:
+    sensitive_env_key = "NEO4J_" + "PASSWORD"
+    sensitive_env_value = "fixture-" + "value"
+    render_url_value = "http://127.0.0.1:3000/content?" + "token=sample"
+    record = write_local_dependency_start_status(
+        tmp_path,
+        {
+            "status": "已啟動",
+            "message": "Neo4j 與 Browserless 已送出啟動指令。",
+            "services": ["neo4j", "browserless"],
+        },
+        {
+            "neo4j": True,
+            "browserless": False,
+            "browser_render_fallback": {
+                "status": "switched_to_playwright",
+                "reason": "browserless_not_ready",
+                "token": "do-not-store",
+            },
+        },
+        {
+            sensitive_env_key: sensitive_env_value,
+            "COMPANY_FILING_BROWSER_RENDER_URL": render_url_value,
+        },
+        include_unlocker=False,
+        wait_seconds=7,
+    )
+
+    path = tmp_path / "data/local_dependency_start_status.json"
+    saved_text = path.read_text(encoding="utf-8")
+    saved = json.loads(saved_text)
+    assert record["path"] == "data/local_dependency_start_status.json"
+    assert saved["schema_version"] == 1
+    assert saved["status"] == "已啟動"
+    assert saved["services"] == ["neo4j", "browserless"]
+    assert saved["wait"]["neo4j"] is True
+    assert saved["wait"]["browserless"] is False
+    assert saved["wait"]["browser_render_fallback"] == {
+        "reason": "browserless_not_ready",
+        "status": "switched_to_playwright",
+    }
+    assert saved["applied_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "NEO4J_PASSWORD",
+    ]
+    assert sensitive_env_value not in saved_text
+    assert render_url_value not in saved_text
+    assert "do-not-store" not in saved_text
 
 
 def test_run_startup_migrations_runs_alembic_upgrade(monkeypatch, tmp_path) -> None:
@@ -150,7 +213,9 @@ def test_run_startup_migrations_reports_alembic_failure(monkeypatch, tmp_path) -
     monkeypatch.setenv("DATABASE_INIT_MODE", "alembic")
 
     def fake_run(command, **kwargs):
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr="db unavailable\nlast line")
+        return subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="db unavailable\nlast line"
+        )
 
     monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
 
@@ -170,7 +235,9 @@ def test_ensure_background_process_skips_running_pid(monkeypatch, tmp_path) -> N
     monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
     monkeypatch.setattr("scripts.start_system.is_process_running", lambda pid: pid == 123)
 
-    started = ensure_background_process("celery", ["python", "-m", "celery"], tmp_path / "celery.log")
+    started = ensure_background_process(
+        "celery", ["python", "-m", "celery"], tmp_path / "celery.log"
+    )
 
     assert started is False
 
@@ -182,15 +249,21 @@ def test_ensure_background_process_starts_and_writes_pid(monkeypatch, tmp_path) 
     monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
     monkeypatch.setattr("scripts.start_system.ROOT", tmp_path)
     monkeypatch.setattr("scripts.start_system.is_process_running", lambda _pid: False)
-    monkeypatch.setattr("scripts.start_system.subprocess.Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(
+        "scripts.start_system.subprocess.Popen", lambda *args, **kwargs: FakeProcess()
+    )
 
-    started = ensure_background_process("celery", ["python", "-m", "celery"], tmp_path / "celery.log")
+    started = ensure_background_process(
+        "celery", ["python", "-m", "celery"], tmp_path / "celery.log"
+    )
 
     assert started is True
     assert (tmp_path / "celery.pid").read_text(encoding="utf-8") == "456"
 
 
-def test_apply_local_dependency_env_defaults_supplies_neo4j_for_one_click_start(monkeypatch) -> None:
+def test_apply_local_dependency_env_defaults_supplies_neo4j_for_one_click_start(
+    monkeypatch,
+) -> None:
     for key in ("NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "NEO4J_DATABASE"):
         monkeypatch.delenv(key, raising=False)
 
@@ -218,7 +291,9 @@ def test_apply_local_dependency_env_defaults_preserves_existing_neo4j_env(monkey
     assert applied["NEO4J_DATABASE"] == "neo4j"
 
 
-def test_apply_local_dependency_env_defaults_can_enable_browser_render_when_available(monkeypatch) -> None:
+def test_apply_local_dependency_env_defaults_can_enable_browser_render_when_available(
+    monkeypatch,
+) -> None:
     for key in (
         "NEO4J_URI",
         "NEO4J_USER",
@@ -256,7 +331,9 @@ def test_apply_local_dependency_env_defaults_can_enable_local_chroma(monkeypatch
     os.environ.pop("CHROMA_API_URL", None)
 
 
-def test_apply_local_dependency_env_defaults_prefers_browserless_when_starting_compose(monkeypatch) -> None:
+def test_apply_local_dependency_env_defaults_prefers_browserless_when_starting_compose(
+    monkeypatch,
+) -> None:
     for key in (
         "NEO4J_URI",
         "NEO4J_USER",
@@ -314,7 +391,9 @@ def test_apply_local_dependency_env_defaults_can_prefer_flaresolverr_unlocker(mo
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
 
 
-def test_apply_local_dependency_env_defaults_skips_browser_render_without_dependency(monkeypatch) -> None:
+def test_apply_local_dependency_env_defaults_skips_browser_render_without_dependency(
+    monkeypatch,
+) -> None:
     for key in (
         "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
         "COMPANY_FILING_PROXY_URLS",
@@ -334,7 +413,9 @@ def test_apply_local_dependency_env_defaults_skips_browser_render_without_depend
     assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" not in os.environ
 
 
-def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(monkeypatch, capsys) -> None:
+def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(
+    monkeypatch, capsys
+) -> None:
     class FakeServiceStatusModule:
         @staticmethod
         def service_status() -> dict:
@@ -352,7 +433,9 @@ def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(monkey
                 )
             }
 
-    monkeypatch.setattr("scripts.start_system.importlib.import_module", lambda _name: FakeServiceStatusModule)
+    monkeypatch.setattr(
+        "scripts.start_system.importlib.import_module", lambda _name: FakeServiceStatusModule
+    )
 
     print_upgrade_capability_preflight(
         Path("/repo"),
@@ -388,7 +471,9 @@ def test_upgrade_preflight_strict_mode_requires_external_neo4j(monkeypatch, caps
                 )
             }
 
-    monkeypatch.setattr("scripts.start_system.importlib.import_module", lambda _name: FakeServiceStatusModule)
+    monkeypatch.setattr(
+        "scripts.start_system.importlib.import_module", lambda _name: FakeServiceStatusModule
+    )
 
     print_upgrade_capability_preflight(
         Path("/repo"),
@@ -426,7 +511,9 @@ def test_wait_for_local_dependency_ports_waits_for_neo4j_after_compose_start(mon
     assert captured == {"host": "127.0.0.1", "port": 7687, "timeout_seconds": 3}
 
 
-def test_wait_for_local_dependency_ports_waits_for_browserless_after_compose_start(monkeypatch) -> None:
+def test_wait_for_local_dependency_ports_waits_for_browserless_after_compose_start(
+    monkeypatch,
+) -> None:
     calls = []
     monkeypatch.delenv("NEO4J_URI", raising=False)
 
@@ -559,7 +646,9 @@ def test_dependency_wait_status_lines_are_empty_without_wait_status() -> None:
     assert dependency_wait_status_lines({}) == []
 
 
-def test_browserless_default_falls_back_to_playwright_when_dependency_did_not_start(monkeypatch) -> None:
+def test_browserless_default_falls_back_to_playwright_when_dependency_did_not_start(
+    monkeypatch,
+) -> None:
     for key in (
         "COMPANY_FILING_PROXY_URLS",
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
@@ -621,7 +710,9 @@ def test_browserless_default_stays_when_browserless_is_ready(monkeypatch) -> Non
     assert "COMPANY_FILING_BROWSER_RENDER_URL" in local_env
 
 
-def test_flaresolverr_default_falls_back_to_browserless_when_unlocker_is_not_ready(monkeypatch) -> None:
+def test_flaresolverr_default_falls_back_to_browserless_when_unlocker_is_not_ready(
+    monkeypatch,
+) -> None:
     for key in (
         "COMPANY_FILING_BROWSER_RENDER_ENABLED",
         "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
@@ -659,5 +750,7 @@ def test_flaresolverr_default_falls_back_to_browserless_when_unlocker_is_not_rea
             "http://127.0.0.1:3000/content?token=stock_ai_browserless_token"
         ),
     }
-    assert os.environ["COMPANY_FILING_BROWSER_RENDER_URL"].startswith("http://127.0.0.1:3000/content")
+    assert os.environ["COMPANY_FILING_BROWSER_RENDER_URL"].startswith(
+        "http://127.0.0.1:3000/content"
+    )
     assert "COMPANY_FILING_BROWSER_RENDER_PROVIDER" not in os.environ

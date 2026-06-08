@@ -141,6 +141,8 @@ def frontend_status() -> dict:
         and "def render_external_deployment_panel(" in maintenance_deployment_panel_source
         and "service_snapshot: dict | None = None" in maintenance_deployment_panel_source
         and "local_dependency_status_rows(service_snapshot)" in maintenance_deployment_panel_source
+        and "local_dependency_last_start_rows(service_snapshot)"
+        in maintenance_deployment_panel_source
         and "def render_ai_usage_panel(" in maintenance_ai_panels_source
         and "def render_background_task_observability_panel(" in maintenance_task_panels_source
         and "def render_report_quality_panel(" in maintenance_panels_source
@@ -228,6 +230,7 @@ def frontend_status() -> dict:
         and "def external_deployment_readiness_rows(" in external_deployment_source
         and "external_deployment_readiness_rows(\n        upgrade_audit," in ui_source
         and "外部部署 readiness checklist" in ui_source
+        and "最近本機依賴啟動" in ui_source
         and "本機依賴狀態" in ui_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
         and "optional_warnings" in maintenance_status_source
@@ -252,9 +255,13 @@ def frontend_status() -> dict:
             and "def external_deployment_local_action(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_source
+            and "def local_dependency_last_start_rows(" in external_deployment_common_source
+            and "def local_dependency_last_start_rows(" in external_deployment_source
             and "local_dependency_wait" in external_deployment_common_source
             and "local_dependency_status_rows(service_snapshot)" in ui_source
+            and "local_dependency_last_start_rows(service_snapshot)" in ui_source
             and "外部部署 readiness checklist" in ui_source
+            and "最近本機依賴啟動" in ui_source
             and "本機依賴狀態" in ui_source
             and '"部署決策"' in external_deployment_common_source
             and '"本機動作"' in external_deployment_common_source
@@ -267,6 +274,7 @@ def frontend_status() -> dict:
         and "from app.ui.external_deployment_diagnostics import (" in ui_source
         and "def external_deployment_readiness_rows(" in external_deployment_source
         and "def local_dependency_status_rows(" in external_deployment_source
+        and "def local_dependency_last_start_rows(" in external_deployment_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source
         and "def local_neo4j_operation_rows(" in external_deployment_source
@@ -275,6 +283,12 @@ def frontend_status() -> dict:
         and "def local_neo4j_operation_rows(" not in maintenance_status_source
         and "def structured_filing_api_operation_rows(" not in maintenance_status_source,
         "ui_external_deployment_diagnostics_path": "app/ui/external_deployment_diagnostics.py",
+        "ui_local_dependency_start_history_enabled": (
+            "def local_dependency_last_start_rows(" in external_deployment_common_source
+            and "def local_dependency_last_start_rows(" in external_deployment_source
+            and "local_dependency_last_start_rows(service_snapshot)" in ui_source
+            and "最近本機依賴啟動" in ui_source
+        ),
         "ui_external_deployment_domain_helpers_extracted": (
             ui_dir / "external_deployment_common.py"
         ).exists()

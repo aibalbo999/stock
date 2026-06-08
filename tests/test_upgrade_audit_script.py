@@ -27,6 +27,12 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "status": "partial",
                 "open_services": ["redis"],
                 "missing_core_services": ["neo4j"],
+                "last_start": {
+                    "available": True,
+                    "path": "data/local_dependency_start_status.json",
+                    "updated_at": "2026-06-09T01:02:03Z",
+                    "status": "已啟動",
+                },
             },
             "checks": [
                 {
@@ -73,6 +79,10 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
     assert "External integrations: caution (0/1 ready)" in output
     assert "Checks: 1 ready, 0 warnings, 1 optional deployment warnings, 0 failures" in output
     assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
+    assert (
+        "Local dependency last start: 已啟動 at 2026-06-09T01:02:03Z; "
+        "path=data/local_dependency_start_status.json"
+    ) in output
     assert "[WARN optional] ai_rag.neo4j_import" in output
 
 

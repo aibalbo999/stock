@@ -3,7 +3,12 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from app.services.followup_evidence_queries import needs_company_filing_sources
+from app.services.followup_planning_builders import (
+    candidate_audit_actions,
+    candidate_audit_reason,
+    candidate_rerun_discovery_action,
+    source_audit_actions,
+)
 from app.services.followup_planning_rule_sets import (
     COMPANY_DATA_AUDIT_RULES,
     MONITORING_TRIGGER_RULES,
@@ -29,40 +34,7 @@ def from_source_audit(source_audit: dict, tickers: tuple[str, ...], action_facto
         for name, detail in readiness.items()
         if isinstance(detail, dict) and detail.get("status") == "weak"
     ]
-    actions = []
-    if missing:
-        actions.append(
-            action_factory(
-                "ingest_news",
-                "來源覆蓋審計缺口：缺少來源覆蓋子題：" + "、".join(missing[:6]),
-                (),
-                "high",
-                "weekly",
-                "required",
-            )
-        )
-        actions.append(
-            action_factory(
-                "rerun_discovery",
-                "補齊缺來源子題後，重新驗證主題拆解、候選白名單與來源覆蓋。",
-                (),
-                "high",
-                "once",
-                "required",
-            )
-        )
-    elif weak:
-        actions.append(
-            action_factory(
-                "ingest_news",
-                "來源覆蓋審計缺口：弱來源子題需補不同發布者或缺少的資料意圖：" + "、".join(weak[:6]),
-                (),
-                "medium",
-                "weekly",
-                "required",
-            )
-        )
-    return actions
+    return source_audit_actions(missing, weak, action_factory)
 
 
 def from_quality_gate(quality_gate: dict, tickers: tuple[str, ...], action_factory: ActionFactory) -> list:
@@ -156,52 +128,11 @@ def from_candidate_audit_markdown(
         ticker = extract_ticker(row.get("股票", ""))
         tickers = (ticker,) if ticker else fallback_tickers
         confidence = candidate_confidence_field(row)
-        reason = "；".join(
-            item
-            for item in [
-                f"股票：{row.get('股票', '')}",
-                f"產業位置：{row.get('產業位置', '')}",
-                row.get("狀態", ""),
-                row.get("證據", ""),
-                row.get("排除 / 升格原因", ""),
-                row.get("下一步", ""),
-                f"信心：{confidence}" if confidence else "",
-            ]
-            if item
-        )
-        actions.append(
-            action_factory(
-                "ingest_news",
-                f"候選公司未升格，需補齊公司層級證據：{reason}",
-                tickers,
-                priority,
-                "weekly",
-                purpose,
-            )
-        )
-        if needs_company_filing_sources(reason):
-            actions.append(
-                action_factory(
-                    "ingest_company_filings",
-                    f"候選公司公開文件不足，需補官方年報、法說會或 IR 文字來源：{reason}",
-                    tickers,
-                    priority,
-                    "monthly",
-                    purpose,
-                )
-            )
+        reason = candidate_audit_reason(row, confidence)
+        actions.extend(candidate_audit_actions(reason, tickers, priority, purpose, action_factory))
         weak_or_missing.append(ticker)
     if weak_or_missing:
-        actions.append(
-            action_factory(
-                "rerun_discovery",
-                "補齊弱證據與待補候選後，重新執行主題拆解與候選升格驗證。",
-                fallback_tickers,
-                priority,
-                "once",
-                purpose,
-            )
-        )
+        actions.append(candidate_rerun_discovery_action(fallback_tickers, priority, purpose, action_factory))
     return actions
 
 

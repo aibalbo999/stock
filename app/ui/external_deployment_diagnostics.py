@@ -10,6 +10,7 @@ from app.ui.external_deployment_common import (
 )
 from app.ui.external_deployment_env_keys import (
     external_deployment_env_key_rows as _external_deployment_env_key_rows,
+    external_deployment_env_resolution_rows as _external_deployment_env_resolution_rows,
 )
 from app.ui.external_deployment_neo4j import (
     local_neo4j_operation_rows as _local_neo4j_operation_rows,
@@ -39,6 +40,13 @@ def external_deployment_env_key_rows(
     service_snapshot: dict | None = None,
 ) -> list[dict]:
     return _external_deployment_env_key_rows(upgrade_audit, service_snapshot)
+
+
+def external_deployment_env_resolution_rows(
+    upgrade_audit: dict,
+    service_snapshot: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_env_resolution_rows(upgrade_audit, service_snapshot)
 
 
 def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:

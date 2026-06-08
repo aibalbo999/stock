@@ -842,9 +842,14 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
     }
 
     rows = helpers["external_deployment_env_key_rows"](audit, service_snapshot)
+    resolution_rows = helpers["external_deployment_env_resolution_rows"](audit, service_snapshot)
     rows_by_key = {
         (row["能力"], row["設定鍵"]): row
         for row in rows
+    }
+    resolution_by_capability = {
+        row["能力"]: row
+        for row in resolution_rows
     }
 
     assert rows_by_key[("外部 Neo4j 匯入連線", "NEO4J_URI")]["狀態"] == "缺少"
@@ -879,6 +884,21 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
     assert "structured_company_filing_smoke.py" in rows_by_key[
         ("公司文件結構化 API 備援", "COMPANY_FILING_STRUCTURED_API_PROVIDER")
     ]["驗證指令"]
+    assert resolution_by_capability["外部 Neo4j 匯入連線"]["處理策略"] == (
+        "可用本機維護操作"
+    )
+    assert "start_system.py --start-dependencies" in resolution_by_capability[
+        "外部 Neo4j 匯入連線"
+    ]["建議動作"]
+    assert resolution_by_capability["MOPS/TWSE/TPEx 高風險文件 unlocker"]["處理策略"] == (
+        "需人工密鑰"
+    )
+    assert "COMPANY_FILING_BROWSER_RENDER_TOKEN" in resolution_by_capability[
+        "MOPS/TWSE/TPEx 高風險文件 unlocker"
+    ]["手動設定鍵"]
+    assert "GOOGLE_API_KEY" in resolution_by_capability[
+        "Visual RAG / VLM 財報解析"
+    ]["設定鍵"]
 
 
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:

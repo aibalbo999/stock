@@ -135,6 +135,7 @@ def external_deployment_env_gap_report(
     recommended_count = sum(1 for row in rows if row.get("狀態") == "建議")
     manual_secret_count = sum(1 for row in rows if row.get("處理類型") == "需人工密鑰")
     local_action_count = sum(1 for row in rows if row.get("處理類型") == "本機可套用")
+    resolution_rows = external_deployment_env_resolution_rows_from_key_rows(rows)
     return {
         "status": "action_required" if rows else "ready",
         "gap_count": len(rows),
@@ -142,7 +143,9 @@ def external_deployment_env_gap_report(
         "recommended_count": recommended_count,
         "manual_secret_count": manual_secret_count,
         "local_action_count": local_action_count,
+        "capability_gap_count": len(resolution_rows),
         "rows": rows,
+        "resolution_rows": resolution_rows,
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "local_unlocker_start_command": (
             ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker"
@@ -162,6 +165,17 @@ def format_external_deployment_env_gap_report(report: dict[str, Any]) -> str:
     if not report.get("rows"):
         lines.append("No external deployment env gaps detected.")
         return "\n".join(lines)
+    if report.get("resolution_rows"):
+        lines.append("Resolution plan:")
+        for row in report["resolution_rows"]:
+            lines.append(
+                f"- {row['優先級']} {row['能力']} :: {row['處理策略']} "
+                f"(gaps={row['缺口數']}; local={row['本機可套用']}; "
+                f"manual={row['需人工處理']})"
+            )
+            lines.append(f"  action: {row['建議動作']}")
+            lines.append(f"  keys: {row['設定鍵']}")
+            lines.append(f"  verify: {row['驗證指令']}")
     for row in report["rows"]:
         lines.append(
             f"- [{row['狀態']}] {row['優先級']} {row['能力']} :: "
@@ -201,7 +215,7 @@ def external_deployment_env_key_rows(
             recommended_value = (
                 env_summary["recommended"].get(env_key) or hint.get("default") or "-"
             )
-            resolution_type = _external_env_resolution_type(env_key, recommended_value)
+            resolution_type = _external_env_resolution_type(item, env_key, recommended_value)
             rows.append(
                 {
                     "優先級": metadata["priority"],
@@ -224,6 +238,118 @@ def external_deployment_env_key_rows(
                 }
             )
     return sorted(rows, key=_external_env_key_row_sort_key)
+
+
+def external_deployment_env_resolution_rows(
+    upgrade_audit: dict,
+    service_snapshot: dict | None = None,
+) -> list[dict]:
+    return external_deployment_env_resolution_rows_from_key_rows(
+        external_deployment_env_key_rows(upgrade_audit, service_snapshot)
+    )
+
+
+def external_deployment_env_resolution_rows_from_key_rows(rows: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        capability = str(row.get("能力") or "-")
+        grouped.setdefault(capability, []).append(row)
+    return [
+        _external_env_resolution_row(capability, capability_rows)
+        for capability, capability_rows in sorted(
+            grouped.items(),
+            key=lambda item: _external_env_resolution_sort_key(item[1]),
+        )
+    ]
+
+
+def _external_env_resolution_row(capability: str, rows: list[dict]) -> dict:
+    local_rows = [row for row in rows if row.get("處理類型") == "本機可套用"]
+    manual_rows = [row for row in rows if row.get("處理類型") != "本機可套用"]
+    secret_rows = [row for row in rows if row.get("處理類型") == "需人工密鑰"]
+    missing_count = sum(1 for row in rows if row.get("狀態") == "缺少")
+    recommended_count = sum(1 for row in rows if row.get("狀態") == "建議")
+    local_commands = _ordered_unique(row.get("維護動作") for row in local_rows)
+    manual_keys = _ordered_unique(row.get("設定鍵") for row in manual_rows)
+    all_keys = _ordered_unique(row.get("設定鍵") for row in rows)
+    verify_commands = _ordered_unique(row.get("驗證指令") for row in rows)
+    return {
+        "優先級": _best_priority(rows),
+        "能力": capability,
+        "處理策略": _external_env_resolution_strategy(local_rows, manual_rows, secret_rows),
+        "缺口數": len(rows),
+        "缺少": missing_count,
+        "建議": recommended_count,
+        "本機可套用": len(local_rows),
+        "需人工處理": len(manual_rows),
+        "需人工密鑰": len(secret_rows),
+        "設定鍵": "、".join(all_keys) if all_keys else "-",
+        "本機指令": "\n".join(local_commands) if local_commands else "-",
+        "手動設定鍵": "、".join(manual_keys) if manual_keys else "-",
+        "建議動作": _external_env_resolution_action(local_commands, manual_rows, rows),
+        "驗證指令": "\n".join(verify_commands) if verify_commands else "-",
+    }
+
+
+def _external_env_resolution_strategy(
+    local_rows: list[dict],
+    manual_rows: list[dict],
+    secret_rows: list[dict],
+) -> str:
+    if local_rows and not manual_rows:
+        return "可用本機維護操作"
+    if local_rows and manual_rows:
+        return "先啟動本機依賴，再補外部設定"
+    if secret_rows:
+        return "需人工密鑰"
+    if manual_rows:
+        return "需人工設定"
+    return "已無缺口"
+
+
+def _external_env_resolution_action(
+    local_commands: list[str],
+    manual_rows: list[dict],
+    rows: list[dict],
+) -> str:
+    if local_commands and not manual_rows:
+        return local_commands[0]
+    if local_commands and manual_rows:
+        return f"{local_commands[0]}；再補 {', '.join(_ordered_unique(row.get('設定鍵') for row in manual_rows))}"
+    if manual_rows:
+        return str(manual_rows[0].get("維護動作") or "手動補 .env 或 secret manager。")
+    if rows:
+        return str(rows[0].get("下一步") or "-")
+    return "-"
+
+
+def _external_env_resolution_sort_key(rows: list[dict]) -> tuple[int, int, str]:
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    best_priority = _best_priority(rows)
+    manual_count = sum(1 for row in rows if row.get("處理類型") != "本機可套用")
+    return (
+        priority_order.get(best_priority, 4),
+        -manual_count,
+        str(rows[0].get("能力") if rows else ""),
+    )
+
+
+def _best_priority(rows: list[dict]) -> str:
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    priorities = [str(row.get("優先級") or "P2") for row in rows]
+    return min(priorities or ["P2"], key=lambda item: priority_order.get(item, 4))
+
+
+def _ordered_unique(values: object) -> list[str]:
+    output: list[str] = []
+    for value in values if isinstance(values, list) else list(values or []):
+        text = str(value or "").strip()
+        if not text or text == "-" or text in output:
+            continue
+        output.append(text)
+    return output
 
 
 def _service_snapshot_external_env_items(service_snapshot: dict) -> list[dict]:
@@ -447,7 +573,10 @@ def _external_env_key_next_step(item: dict, env_key: str, status: str) -> str:
     return f"需要該能力時設定 {env_key}，再重跑 readiness checklist。"
 
 
-def _external_env_resolution_type(env_key: str, recommended_value: str) -> str:
+def _external_env_resolution_type(item: dict, env_key: str, recommended_value: str) -> str:
+    capability = str(item.get("capability") or "")
+    if capability in {"neo4j_import", "graphrag_live_cypher_query"}:
+        return "本機可套用"
     if env_key.endswith("_TOKEN") or env_key.endswith("_PASSWORD") or "API_KEY" in env_key:
         return "需人工密鑰"
     if env_key == "COMPANY_FILING_STRUCTURED_API_PROVIDER":

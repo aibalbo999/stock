@@ -6,6 +6,7 @@ from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_post
 from app.ui.external_deployment_diagnostics import (
     external_deployment_env_key_rows,
+    external_deployment_env_resolution_rows,
     external_deployment_readiness_rows,
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
@@ -37,6 +38,10 @@ def render_external_deployment_panel(
     external_warning_rows = external_deployment_warning_rows(upgrade_audit)
     external_smoke_commands = external_deployment_smoke_commands(upgrade_audit)
     external_env_key_rows = external_deployment_env_key_rows(upgrade_audit, service_snapshot)
+    external_env_resolution_rows = external_deployment_env_resolution_rows(
+        upgrade_audit,
+        service_snapshot,
+    )
     high_risk_unlocker_rows = high_risk_filing_unlocker_rows(upgrade_audit)
     local_neo4j_rows = local_neo4j_operation_rows(upgrade_audit)
     local_unlocker_rows = local_unlocker_operation_rows(upgrade_audit)
@@ -60,6 +65,9 @@ def render_external_deployment_panel(
         if external_readiness_rows:
             st.caption("外部部署 readiness checklist")
             st.dataframe(external_readiness_rows, width="stretch", hide_index=True)
+        if external_env_resolution_rows:
+            st.caption("外部設定處理計畫")
+            st.dataframe(external_env_resolution_rows, width="stretch", hide_index=True)
         if external_env_key_rows:
             st.caption("外部設定缺口")
             st.dataframe(external_env_key_rows, width="stretch", hide_index=True)

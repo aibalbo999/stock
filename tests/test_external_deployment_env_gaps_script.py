@@ -79,12 +79,38 @@ def test_external_deployment_env_gap_report_classifies_actions() -> None:
     assert report["missing_count"] >= 2
     assert report["manual_secret_count"] >= 1
     assert report["local_action_count"] >= 1
+    assert report["capability_gap_count"] >= 2
+    assert report["resolution_rows"]
     assert rows_by_key["NEO4J_URI"]["處理類型"] == "本機可套用"
     assert "start_system.py --start-dependencies" in rows_by_key["NEO4J_URI"]["維護動作"]
     assert rows_by_key["COMPANY_FILING_STRUCTURED_API_TOKEN"]["處理類型"] == "需人工密鑰"
     assert rows_by_key["COMPANY_FILING_STRUCTURED_API_TOKEN"]["維護動作"] == (
         "手動補 .env 或 secret manager；不由維護操作寫入。"
     )
+
+
+def test_external_deployment_env_gap_report_groups_resolution_plan() -> None:
+    report = external_deployment_env_gaps.external_deployment_env_gap_report(
+        upgrade_audit=_audit_with_env_gaps(),
+        service_snapshot={},
+    )
+    resolution_by_capability = {
+        row["能力"]: row
+        for row in report["resolution_rows"]
+    }
+
+    neo4j = resolution_by_capability["外部 Neo4j 匯入連線"]
+    assert neo4j["處理策略"] == "可用本機維護操作"
+    assert neo4j["本機可套用"] >= 1
+    assert neo4j["需人工處理"] == 0
+    assert "NEO4J_URI" in neo4j["設定鍵"]
+    assert "start_system.py --start-dependencies" in neo4j["建議動作"]
+
+    structured = resolution_by_capability["公司文件結構化 API 備援"]
+    assert structured["處理策略"] == "需人工密鑰"
+    assert structured["需人工密鑰"] == 1
+    assert "COMPANY_FILING_STRUCTURED_API_TOKEN" in structured["手動設定鍵"]
+    assert "structured_company_filing_smoke.py" in structured["驗證指令"]
 
 
 def test_external_deployment_env_gap_report_formats_text() -> None:
@@ -96,6 +122,7 @@ def test_external_deployment_env_gap_report_formats_text() -> None:
     output = external_deployment_env_gaps.format_external_deployment_env_gap_report(report)
 
     assert "External deployment env gaps: action_required" in output
+    assert "Resolution plan:" in output
     assert "NEO4J_URI" in output
     assert "需人工密鑰" in output
     assert "structured_company_filing_smoke.py" in output

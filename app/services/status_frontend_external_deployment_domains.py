@@ -38,8 +38,11 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "本機依賴狀態" in ui_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
         and "def external_deployment_env_key_rows(" in external_deployment_source
+        and "def external_deployment_env_resolution_rows(" in external_deployment_source
         and "external_deployment_env_key_rows(upgrade_audit, service_snapshot)"
         in ui_source
+        and "external_deployment_env_resolution_rows(" in ui_source
+        and "外部設定處理計畫" in ui_source
         and "外部設定缺口" in ui_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
@@ -68,13 +71,18 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "def local_dependency_last_start_rows(" in external_deployment_source
         and "def local_dependency_repair_rows(" in external_deployment_source
         and "def external_deployment_env_key_rows(" in external_deployment_env_keys_source
+        and "def external_deployment_env_resolution_rows("
+        in external_deployment_env_keys_source
         and "from app.services.external_deployment_env_gaps import"
         in external_deployment_env_keys_source
         and "def external_deployment_env_key_rows(" in env_gap_service_source
+        and "def external_deployment_env_resolution_rows(" in env_gap_service_source
+        and '"處理策略"' in env_gap_service_source
         and '"處理類型"' in env_gap_service_source
         and '"維護動作"' in env_gap_service_source
         and "external_deployment_env_key_rows(upgrade_audit, service_snapshot)"
         in ui_source
+        and "外部設定處理計畫" in ui_source
         and "外部設定缺口" in ui_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source
@@ -98,6 +106,8 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         in external_deployment_common_source
         and "def external_deployment_readiness_rows(" in external_deployment_common_source
         and "def external_deployment_env_key_rows(" in external_deployment_env_keys_source
+        and "def external_deployment_env_resolution_rows("
+        in external_deployment_env_keys_source
         and "from app.services.external_deployment_env_gaps import"
         in external_deployment_env_keys_source
         and "def external_deployment_env_gap_report(" in env_gap_service_source

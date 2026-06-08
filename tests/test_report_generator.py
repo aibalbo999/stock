@@ -28,7 +28,7 @@ from app.services.report_financial_assessment import (
     valuation_position_label,
 )
 from app.services.report_financial_narrative import financial_statement_summary
-from app.services import report_company_narrative
+from app.services import report_allocation, report_company_narrative, report_formatting
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_decision_rules import (
     current_price_label,
@@ -1633,6 +1633,51 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
         {"fcf_trend": "自由現金流成長 12.00%。"},
         valuation,
     )
+
+
+def test_report_formatting_helpers_live_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    formatting_source = Path("app/services/report_formatting.py").read_text()
+
+    assert "report_formatting" in generator_source
+    assert "def compact_text(" in formatting_source
+    assert "def table_row(" in formatting_source
+    assert "replace(\"|\", \"\\\\|\")" not in generator_source
+    assert ReportGenerator._table_row(["2330 | 台積電", "  可研究  "]) == report_formatting.table_row(
+        ["2330 | 台積電", "  可研究  "]
+    )
+    assert ReportGenerator._compact_text("abc def ghi", 7) == report_formatting.compact_text("abc def ghi", 7)
+    assert report_formatting.table_row(["2330 | 台積電", "  可研究  "]) == "| 2330 \\| 台積電 | 可研究 |"
+
+
+def test_report_allocation_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    allocation_source = Path("app/services/report_allocation.py").read_text()
+    request = ReportRequest(
+        topic="AI 產業鏈",
+        tickers=["2330"],
+        investor_capital=1_000_000,
+        beginner_mode=True,
+        max_position_pct=0.10,
+        cash_reserve_pct=0.30,
+    )
+    candidates = [
+        {"label": "2382 廣達", "upside_pct": 19, "downside_pct": 0},
+        {"label": "3324 雙鴻", "upside_pct": 16, "downside_pct": 0},
+    ]
+
+    assert "report_allocation" in generator_source
+    assert "def allocation_amounts(" in allocation_source
+    assert "def first_tranche_ratio(" in allocation_source
+    assert "配置採淨分" not in generator_source
+    assert ReportGenerator._allocation_amounts(candidates, 50_000, 100_000) == (
+        report_allocation.allocation_amounts(candidates, 50_000, 100_000)
+    )
+    assert ReportGenerator._render_allocation_plan(candidates, 50_000, 100_000) == (
+        report_allocation.render_allocation_plan(candidates, 50_000, 100_000)
+    )
+    assert ReportGenerator._profile_label(request) == report_allocation.profile_label(request)
+    assert ReportGenerator._downside_gate(request) == report_allocation.downside_gate(request)
 
 
 def test_valuation_position_and_financial_confidence_labels() -> None:

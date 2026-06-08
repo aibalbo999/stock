@@ -9,6 +9,16 @@ def task_queue_label(task_queue: dict) -> str:
     return "可送出"
 
 
+def task_queue_processing_label(task_queue: dict) -> str:
+    if _task_queue_processing_ready(task_queue):
+        return "可執行"
+    if not task_queue.get("ready"):
+        return "檢查"
+    if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+        return "等待 worker"
+    return "未確認"
+
+
 def task_queue_health_rows(service_snapshot: dict) -> list[dict]:
     task_queue = _task_queue_from_snapshot(service_snapshot)
     return [
@@ -16,6 +26,11 @@ def task_queue_health_rows(service_snapshot: dict) -> list[dict]:
             "項目": "Queue 提交",
             "狀態": task_queue_label(task_queue),
             "說明": _task_queue_submission_detail(task_queue),
+        },
+        {
+            "項目": "Queue 執行",
+            "狀態": task_queue_processing_label(task_queue),
+            "說明": _task_queue_processing_detail(task_queue),
         },
         {
             "項目": "Redis Broker",
@@ -52,16 +67,16 @@ def task_queue_health_alert(service_snapshot: dict) -> dict | None:
             "severity": "error",
             "message": f"背景任務 queue 尚不可送出：{_task_queue_submission_detail(task_queue)}",
         }
-    if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-        return {
-            "severity": "warning",
-            "message": "Queue 可收任務，但 Celery worker 未回應；任務可能停在佇列。",
-        }
-    if task_queue.get("worker_online"):
+    if _task_queue_processing_ready(task_queue):
         worker_count = int(task_queue.get("worker_count") or 0)
         return {
             "severity": "success",
             "message": f"Queue 與 Celery worker 可用；目前 {worker_count} 個 worker 節點回應。",
+        }
+    if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+        return {
+            "severity": "warning",
+            "message": "Queue 可收任務，但 Celery worker 未回應；任務可能停在佇列。",
         }
     return {
         "severity": "info",
@@ -105,6 +120,22 @@ def _task_queue_submission_detail(task_queue: dict) -> str:
     if not task_queue.get("submission_contract_ready"):
         issues.append("Celery task exports 或 task name 尚未對齊")
     return "；".join(issues) or "狀態未知"
+
+
+def _task_queue_processing_detail(task_queue: dict) -> str:
+    if _task_queue_processing_ready(task_queue):
+        return "Queue 已可提交，且 Celery worker 可接手執行。"
+    if not task_queue.get("ready"):
+        return "Queue 尚不可提交，需先修復提交狀態。"
+    if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+        return "Queue 可收任務，但 worker 未回應；任務會停在佇列直到 worker 上線。"
+    return "Queue 可提交，但 worker ping 尚未執行；執行 readiness 未確認。"
+
+
+def _task_queue_processing_ready(task_queue: dict) -> bool:
+    if "processing_ready" in task_queue:
+        return bool(task_queue.get("processing_ready"))
+    return bool(task_queue.get("ready") and task_queue.get("worker_online"))
 
 
 def _connection_detail(task_queue: dict, url_key: str) -> str:

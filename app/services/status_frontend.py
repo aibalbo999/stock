@@ -215,6 +215,10 @@ def frontend_status() -> dict:
         and "task_queue_smoke_command(service_snapshot)" in ui_source
         and "from app.ui.task_queue_diagnostics import (" in ui_source
         and "def task_queue_health_rows(" not in maintenance_status_source,
+        "ui_task_queue_processing_readiness_displayed": "processing_ready"
+        in task_queue_diagnostics_source
+        and "Queue 執行" in task_queue_diagnostics_source
+        and "def task_queue_processing_label(" in task_queue_diagnostics_source,
         "ui_task_queue_diagnostics_path": "app/ui/task_queue_diagnostics.py",
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
         in external_deployment_source

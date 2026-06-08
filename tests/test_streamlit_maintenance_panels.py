@@ -53,6 +53,7 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
             "broker_url": "redis://localhost:6379/0",
             "backend_url": "redis://localhost:6379/0",
             "submission_contract_ready": True,
+            "processing_ready": True,
             "worker_ping_checked": True,
             "worker_online": True,
             "worker_count": 1,
@@ -66,14 +67,19 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
 
     assert rows[0]["項目"] == "Queue 提交"
     assert rows[0]["狀態"] == "可送出"
-    assert rows[4]["項目"] == "Celery Worker"
-    assert rows[4]["狀態"] == "在線"
-    assert "celery@test.local" in rows[4]["說明"]
+    assert rows[1]["項目"] == "Queue 執行"
+    assert rows[1]["狀態"] == "可執行"
+    assert "worker 可接手執行" in rows[1]["說明"]
+    assert rows[5]["項目"] == "Celery Worker"
+    assert rows[5]["狀態"] == "在線"
+    assert "celery@test.local" in rows[5]["說明"]
     assert alert == {
         "severity": "success",
         "message": "Queue 與 Celery worker 可用；目前 1 個 worker 節點回應。",
     }
-    assert helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
+    assert (
+        helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
+    )
 
 
 def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_submit() -> None:
@@ -85,6 +91,7 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
             "broker_ok": True,
             "backend_ok": True,
             "submission_contract_ready": True,
+            "processing_ready": False,
             "worker_ping_checked": True,
             "worker_online": False,
             "worker_count": 0,
@@ -98,8 +105,11 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
 
     assert rows[0]["狀態"] == "可排隊"
     assert "worker 未回應" in rows[0]["說明"]
-    assert rows[4]["狀態"] == "未回應"
-    assert "timeout 1.0s" in rows[4]["說明"]
+    assert rows[1]["項目"] == "Queue 執行"
+    assert rows[1]["狀態"] == "等待 worker"
+    assert "停在佇列直到 worker 上線" in rows[1]["說明"]
+    assert rows[5]["狀態"] == "未回應"
+    assert "timeout 1.0s" in rows[5]["說明"]
     assert alert["severity"] == "warning"
     assert "Celery worker 未回應" in alert["message"]
 
@@ -113,6 +123,7 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
             "broker_ok": False,
             "backend_ok": False,
             "submission_contract_ready": True,
+            "processing_ready": False,
             "redis_error": "connection refused",
             "broker_url": "redis://localhost:6379/0",
             "backend_url": "redis://localhost:6379/0",
@@ -124,7 +135,10 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
 
     assert rows[0]["狀態"] == "檢查"
     assert "Redis broker 未連線" in rows[0]["說明"]
-    assert "connection refused" in rows[1]["說明"]
+    assert rows[1]["項目"] == "Queue 執行"
+    assert rows[1]["狀態"] == "檢查"
+    assert "Queue 尚不可提交" in rows[1]["說明"]
+    assert "connection refused" in rows[2]["說明"]
     assert alert["severity"] == "error"
     assert "背景任務 queue 尚不可送出" in alert["message"]
 
@@ -173,7 +187,10 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[0]["category"] == "quota"
     assert rows[0]["severity"] == "warning"
     assert rows[0]["summary"] == "模型/API 額度或速率限制"
-    assert rows[0]["next_steps"] == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。"
+    assert (
+        rows[0]["next_steps"]
+        == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。"
+    )
     assert rows[0]["retry"] == "可重試"
     assert rows[0]["retry_kind"] == "report_generation"
     assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
@@ -620,8 +637,20 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
             "implementation_status": "ready",
             "deployment_status": "caution",
         },
-        "implementation": {"status": "ready", "ready": 18, "total_checks": 18, "warnings": 0, "failures": 0},
-        "deployment": {"status": "caution", "ready": 0, "total_checks": 5, "warnings": 5, "failures": 0},
+        "implementation": {
+            "status": "ready",
+            "ready": 18,
+            "total_checks": 18,
+            "warnings": 0,
+            "failures": 0,
+        },
+        "deployment": {
+            "status": "caution",
+            "ready": 0,
+            "total_checks": 5,
+            "warnings": 5,
+            "failures": 0,
+        },
         "areas": {
             "ai_rag": {"ready": 9, "warnings": 2, "failures": 0, "checks": 11},
             "architecture": {"ready": 4, "warnings": 0, "failures": 0, "checks": 4},

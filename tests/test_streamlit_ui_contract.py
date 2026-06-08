@@ -350,6 +350,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_worker_warning(" in source
     assert "def task_queue_health_rows(" in source
     assert "def task_queue_health_alert(" in source
+    assert "def task_queue_processing_label(" in source
+    assert "Queue 執行" in source
+    assert "processing_ready" in source
     assert "def external_deployment_warning_rows(" in source
     assert "def external_deployment_smoke_commands(" in source
     assert "def external_deployment_warning_rows(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()

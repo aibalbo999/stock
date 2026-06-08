@@ -59,6 +59,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
+    assert status["frontend"]["ui_task_queue_processing_readiness_displayed"] is True
     assert (
         status["frontend"]["ui_task_queue_diagnostics_path"] == "app/ui/task_queue_diagnostics.py"
     )

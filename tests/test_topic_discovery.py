@@ -4,6 +4,7 @@ from pathlib import Path
 from app.data_sources.news import NewsFetcher
 from app.services import (
     topic_discovery_candidates,
+    topic_discovery_enrichment,
     topic_discovery_models,
     topic_discovery_prompts,
     topic_discovery_quality,
@@ -11,7 +12,13 @@ from app.services import (
 )
 from app.services.candidate_confidence import HIGH_CONFIDENCE_THRESHOLD
 from app.services.llm_client import LLMResult
-from app.services.topic_discovery import DiscoveryPlanQuality, TopicDiscoveryPlan, TopicDiscoveryService
+from app.services.topic_discovery import (
+    CandidateCompany,
+    DiscoveryPlanQuality,
+    DiscoverySubtopic,
+    TopicDiscoveryPlan,
+    TopicDiscoveryService,
+)
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -255,6 +262,43 @@ def test_topic_discovery_candidate_validation_lives_outside_service_module() -> 
     assert "通過候選入選門檻" not in service_source
     assert "通過候選入選門檻" in candidates_source
     assert "def validate_candidates(" in candidates_source
+
+
+def test_topic_discovery_enrichment_lives_outside_service_module() -> None:
+    service_source = Path("app/services/topic_discovery.py").read_text()
+    enrichment_source = Path("app/services/topic_discovery_enrichment.py").read_text()
+    plan = TopicDiscoveryPlan(
+        subtopics=[
+            DiscoverySubtopic(
+                name="AI 伺服器需求",
+                objective="確認 AI 伺服器訂單與出貨是否成長",
+                required_evidence=["訂單", "出貨"],
+                risk_focus=["需求下修"],
+                search_queries=["AI 伺服器 訂單 出貨", "AI server orders shipment Taiwan"],
+            )
+        ],
+        candidate_companies=[
+            CandidateCompany(
+                ticker="2382",
+                name="廣達",
+                segment="AI 伺服器代工",
+                rationale="AI server 出貨",
+                evidence_keywords=["AI server", "出貨"],
+            )
+        ],
+    )
+
+    assert TopicDiscoveryService.enrich_plan(
+        plan,
+        topic="AI 產業鏈",
+    ) == topic_discovery_enrichment.enrich_plan(plan, topic="AI 產業鏈")
+    assert (
+        TopicDiscoveryService.infer_source_intents(plan.subtopics[0])
+        == topic_discovery_enrichment.infer_source_intents(plan.subtopics[0])
+    )
+    assert "補查矽晶圓、電子級化學品" not in service_source
+    assert "補查矽晶圓、電子級化學品" in enrichment_source
+    assert "def enrich_plan(" in enrichment_source
 
 
 def test_google_news_urls_deduplicate_queries() -> None:

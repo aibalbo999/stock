@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from collections.abc import Callable
 import json
 from datetime import date, timedelta
@@ -10,13 +9,8 @@ from sqlalchemy import select
 
 from app.core.time import today_taipei
 from app.data_sources.company_filing_discovery import (
-    RECOMMENDED_DOCUMENT_TYPES,
     REQUIRED_CORE_DOCUMENT_TYPES,
     is_high_quality_company_filing,
-)
-from app.data_sources.company_filing_http import (
-    categorize_company_filing_error,
-    is_retryable_company_filing_error_category,
 )
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
@@ -28,6 +22,32 @@ from app.db.session import session_scope
 from app.models.schemas import ReportRequest
 from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
+from app.services.company_filing_results import (
+    COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES,
+    COMPANY_FILING_BROWSER_SETUP_CATEGORIES,
+    COMPANY_FILING_BROADEN_SEARCH_CATEGORIES,
+    COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES,
+    COMPANY_FILING_PDF_SETUP_CATEGORIES,
+    COMPANY_FILING_TEXT_RECOVERY_CATEGORIES,
+    COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES,
+    COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES,
+    LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP,
+    classify_company_filing_error,
+    company_filing_attempt_result,
+    company_filing_error_category_counts,
+    company_filing_error_is_retryable,
+    company_filing_gap_summary,
+    company_filing_next_action_type,
+    company_filing_next_actions,
+    company_filing_next_step,
+    company_filing_status,
+    company_filing_ticker_result,
+    enrich_company_filing_errors,
+    missing_company_filing_document_types,
+    normalize_company_filing_error_category,
+    should_broaden_company_filing_search,
+    should_retry_company_filing_fetch,
+)
 from app.services.persistence import (
     CompanyFilingRepository,
     FinancialMetricRepository,
@@ -39,6 +59,34 @@ from app.services.persistence import (
 from app.services.report_quality import is_stale_market_data_source
 from app.services.source_quality import is_low_quality_investor_forum_document
 from app.services.task_cancellation import TaskCancelledError
+
+__all__ = [
+    "COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES",
+    "COMPANY_FILING_BROWSER_SETUP_CATEGORIES",
+    "COMPANY_FILING_BROADEN_SEARCH_CATEGORIES",
+    "COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES",
+    "COMPANY_FILING_PDF_SETUP_CATEGORIES",
+    "COMPANY_FILING_TEXT_RECOVERY_CATEGORIES",
+    "COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES",
+    "COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES",
+    "IngestionPipeline",
+    "LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP",
+    "classify_company_filing_error",
+    "company_filing_attempt_result",
+    "company_filing_error_category_counts",
+    "company_filing_error_is_retryable",
+    "company_filing_gap_summary",
+    "company_filing_next_action_type",
+    "company_filing_next_actions",
+    "company_filing_next_step",
+    "company_filing_status",
+    "company_filing_ticker_result",
+    "enrich_company_filing_errors",
+    "missing_company_filing_document_types",
+    "normalize_company_filing_error_category",
+    "should_broaden_company_filing_search",
+    "should_retry_company_filing_fetch",
+]
 
 
 class IngestionPipeline:
@@ -74,15 +122,19 @@ class IngestionPipeline:
                 documents.extend(await fetcher.fetch_feed(url, publisher, fetch_limit))
             except Exception as exc:
                 errors.append({"source": url, "error": str(exc)})
-            documents = self._filter_documents(documents, start_date, end_date, quality_filter)[:limit]
-            source_selection = {"mode": "single_url", "selected_count": 1 if url else 0, "available_count": 1 if url else 0}
+            documents = self._filter_documents(documents, start_date, end_date, quality_filter)[
+                :limit
+            ]
+            source_selection = {
+                "mode": "single_url",
+                "selected_count": 1 if url else 0,
+                "available_count": 1 if url else 0,
+            }
         else:
             source_store = NewsSourceStore()
             available_sources = source_store.load()
             sources = (
-                source_store.sources_for_topic(topic)
-                if enabled_sources_only
-                else available_sources
+                source_store.sources_for_topic(topic) if enabled_sources_only else available_sources
             )
             source_limit = self._source_selection_limit(limit)
             sources = self._select_diverse_sources(sources, limit=source_limit)
@@ -93,7 +145,11 @@ class IngestionPipeline:
                 "selected_count": len(sources),
                 "available_count": len(available_sources),
                 "selected_sources": [source.name for source in sources],
-                "skipped_sources": [source.name for source in available_sources if source.enabled and source not in sources],
+                "skipped_sources": [
+                    source.name
+                    for source in available_sources
+                    if source.enabled and source not in sources
+                ],
                 "selected": selection["selected"] if enabled_sources_only else [],
                 "skipped": selection["skipped"] if enabled_sources_only else [],
             }
@@ -112,34 +168,44 @@ class IngestionPipeline:
                             ),
                             timeout=8,
                         )
-                        filtered_documents = self._filter_documents(source_documents, start_date, end_date, quality_filter)[:limit]
-                        return filtered_documents, {
-                            "name": source.name,
-                            "publisher": source.publisher or source.name,
-                            "url": source.url,
-                            "category": source.category,
-                            "scope": source.scope,
-                            "topics": source.topics,
-                            "source_intents": source.source_intents,
-                            "fetch_mode": "rss_or_atom",
-                            "stored_count": len(filtered_documents),
-                            "error_count": 0,
-                        }, None
+                        filtered_documents = self._filter_documents(
+                            source_documents, start_date, end_date, quality_filter
+                        )[:limit]
+                        return (
+                            filtered_documents,
+                            {
+                                "name": source.name,
+                                "publisher": source.publisher or source.name,
+                                "url": source.url,
+                                "category": source.category,
+                                "scope": source.scope,
+                                "topics": source.topics,
+                                "source_intents": source.source_intents,
+                                "fetch_mode": "rss_or_atom",
+                                "stored_count": len(filtered_documents),
+                                "error_count": 0,
+                            },
+                            None,
+                        )
                     except TaskCancelledError:
                         raise
                     except Exception as exc:
-                        return [], {
-                            "name": source.name,
-                            "publisher": source.publisher or source.name,
-                            "url": source.url,
-                            "category": source.category,
-                            "scope": source.scope,
-                            "topics": source.topics,
-                            "source_intents": source.source_intents,
-                            "fetch_mode": "rss_or_atom",
-                            "stored_count": 0,
-                            "error_count": 1,
-                        }, {"source": source.url, "error": str(exc) or exc.__class__.__name__}
+                        return (
+                            [],
+                            {
+                                "name": source.name,
+                                "publisher": source.publisher or source.name,
+                                "url": source.url,
+                                "category": source.category,
+                                "scope": source.scope,
+                                "topics": source.topics,
+                                "source_intents": source.source_intents,
+                                "fetch_mode": "rss_or_atom",
+                                "stored_count": 0,
+                                "error_count": 1,
+                            },
+                            {"source": source.url, "error": str(exc) or exc.__class__.__name__},
+                        )
 
             for filtered_documents, source_result, error in await asyncio.gather(
                 *(fetch_source(source) for source in sources)
@@ -213,7 +279,9 @@ class IngestionPipeline:
                 return index, query, [], str(exc) or exc.__class__.__name__
             return index, query, search_results, None
 
-        async def fetch_result(index: int, result: dict, preview: object) -> tuple[int, object | None, dict | None]:
+        async def fetch_result(
+            index: int, result: dict, preview: object
+        ) -> tuple[int, object | None, dict | None]:
             url = result.get("url") or ""
             async with fetch_semaphore:
                 try:
@@ -299,7 +367,11 @@ class IngestionPipeline:
             "queries": query_results,
             "target_terms": target_terms or [],
             "source": "DuckDuckGo targeted web search",
-            "source_selection": {"mode": "targeted_web_search", "topic": topic, "selected_count": len(queries)},
+            "source_selection": {
+                "mode": "targeted_web_search",
+                "topic": topic,
+                "selected_count": len(queries),
+            },
         }
 
     @staticmethod
@@ -340,9 +412,7 @@ class IngestionPipeline:
     @staticmethod
     def _matches_target_terms(document, target_terms: list[str] | None) -> bool:
         terms = [
-            term.casefold()
-            for term in (target_terms or [])
-            if term and len(term.strip()) >= 2
+            term.casefold() for term in (target_terms or []) if term and len(term.strip()) >= 2
         ]
         if not terms:
             return True
@@ -513,10 +583,19 @@ class IngestionPipeline:
             company_name = (
                 company_names.get(ticker)
                 or (company.name if company else "")
-                or next((document.company_name or "" for document in cached_documents if document.company_name), "")
+                or next(
+                    (
+                        document.company_name or ""
+                        for document in cached_documents
+                        if document.company_name
+                    ),
+                    "",
+                )
                 or self._company_name_from_cached_evidence(ticker)
             )
-            search_plans.append(fetcher.official_search_plan(ticker, company_name, document_types=document_types))
+            search_plans.append(
+                fetcher.official_search_plan(ticker, company_name, document_types=document_types)
+            )
             attempts = []
             company_documents = list(cached_documents)
             enriched_errors = []
@@ -541,7 +620,9 @@ class IngestionPipeline:
                 )
                 self._check_cancelled()
                 mops_attempted = True
-                mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
+                mops_enriched_errors = enrich_company_filing_errors(
+                    mops_errors, ticker, company_name
+                )
                 company_documents.extend(mops_documents)
                 enriched_errors.extend(mops_enriched_errors)
                 latest_errors = mops_enriched_errors
@@ -556,7 +637,9 @@ class IngestionPipeline:
                 company_documents,
                 list(target_document_types),
             )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+            if should_broaden_company_filing_search(
+                company_documents, enriched_errors, list(target_document_types)
+            ):
                 fetched_documents, company_errors = await fetcher.fetch_discovery_documents(
                     ticker,
                     company_name,
@@ -564,7 +647,9 @@ class IngestionPipeline:
                     document_types=missing_document_types or document_types,
                 )
                 self._check_cancelled()
-                targeted_enriched_errors = enrich_company_filing_errors(company_errors, ticker, company_name)
+                targeted_enriched_errors = enrich_company_filing_errors(
+                    company_errors, ticker, company_name
+                )
                 company_documents.extend(fetched_documents)
                 enriched_errors.extend(targeted_enriched_errors)
                 latest_errors = targeted_enriched_errors
@@ -587,7 +672,9 @@ class IngestionPipeline:
                     document_types=missing_document_types or document_types,
                 )
                 self._check_cancelled()
-                retry_enriched_errors = enrich_company_filing_errors(retry_errors, ticker, company_name)
+                retry_enriched_errors = enrich_company_filing_errors(
+                    retry_errors, ticker, company_name
+                )
                 company_documents.extend(retry_documents)
                 enriched_errors.extend(retry_enriched_errors)
                 latest_errors = retry_enriched_errors
@@ -598,7 +685,9 @@ class IngestionPipeline:
                         retry_enriched_errors,
                     )
                 )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+            if should_broaden_company_filing_search(
+                company_documents, enriched_errors, list(target_document_types)
+            ):
                 broad_documents, broad_errors = await fetcher.fetch_discovery_documents(
                     ticker,
                     company_name,
@@ -606,7 +695,9 @@ class IngestionPipeline:
                     document_types=None,
                 )
                 self._check_cancelled()
-                broad_enriched_errors = enrich_company_filing_errors(broad_errors, ticker, company_name)
+                broad_enriched_errors = enrich_company_filing_errors(
+                    broad_errors, ticker, company_name
+                )
                 company_documents.extend(broad_documents)
                 enriched_errors.extend(broad_enriched_errors)
                 latest_errors = broad_enriched_errors
@@ -627,7 +718,9 @@ class IngestionPipeline:
                     company_name,
                 )
                 self._check_cancelled()
-                mops_enriched_errors = enrich_company_filing_errors(mops_errors, ticker, company_name)
+                mops_enriched_errors = enrich_company_filing_errors(
+                    mops_errors, ticker, company_name
+                )
                 company_documents.extend(mops_documents)
                 enriched_errors.extend(mops_enriched_errors)
                 latest_errors = mops_enriched_errors
@@ -642,15 +735,22 @@ class IngestionPipeline:
                 company_documents,
                 list(target_document_types),
             )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
-                official_documents, official_errors = await fetcher.fetch_official_website_documents(
+            if should_broaden_company_filing_search(
+                company_documents, enriched_errors, list(target_document_types)
+            ):
+                (
+                    official_documents,
+                    official_errors,
+                ) = await fetcher.fetch_official_website_documents(
                     ticker,
                     company_name,
                     limit=limit_per_query + 5,
                     document_types=missing_document_types or document_types,
                 )
                 self._check_cancelled()
-                official_enriched_errors = enrich_company_filing_errors(official_errors, ticker, company_name)
+                official_enriched_errors = enrich_company_filing_errors(
+                    official_errors, ticker, company_name
+                )
                 company_documents.extend(official_documents)
                 enriched_errors.extend(official_enriched_errors)
                 latest_errors = official_enriched_errors
@@ -665,7 +765,9 @@ class IngestionPipeline:
                 company_documents,
                 list(target_document_types),
             )
-            if should_broaden_company_filing_search(company_documents, enriched_errors, list(target_document_types)):
+            if should_broaden_company_filing_search(
+                company_documents, enriched_errors, list(target_document_types)
+            ):
                 web_documents, web_errors = await fetcher.fetch_web_search_documents(
                     ticker,
                     company_name,
@@ -698,7 +800,9 @@ class IngestionPipeline:
                 )
             )
 
-        news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
+        news_documents = [
+            CompanyFilingRepository.to_news_document(document) for document in documents
+        ]
         self._check_cancelled()
         VectorStore().upsert_documents(news_documents)
         with session_scope() as session:
@@ -725,9 +829,7 @@ class IngestionPipeline:
             "errors": errors,
             "per_ticker_results": per_ticker_results,
             "missing_tickers": [
-                row["ticker"]
-                for row in per_ticker_results
-                if row["status"] != "sufficient"
+                row["ticker"] for row in per_ticker_results if row["status"] != "sufficient"
             ],
             "gap_summary": company_filing_gap_summary(per_ticker_results),
             "next_actions": company_filing_next_actions(per_ticker_results),
@@ -750,7 +852,9 @@ class IngestionPipeline:
         for ticker in allowed:
             self._check_cancelled()
             company = companies.get(ticker)
-            company_name = company.name if company else self._company_name_from_cached_evidence(ticker)
+            company_name = (
+                company.name if company else self._company_name_from_cached_evidence(ticker)
+            )
             try:
                 ticker_documents, ticker_errors = await asyncio.wait_for(
                     fetcher.fetch_mops_annual_report_documents(ticker, company_name),
@@ -760,7 +864,9 @@ class IngestionPipeline:
                 raise
             except Exception as exc:
                 ticker_documents = []
-                ticker_errors = [{"source": "MOPS annual report", "error": str(exc) or exc.__class__.__name__}]
+                ticker_errors = [
+                    {"source": "MOPS annual report", "error": str(exc) or exc.__class__.__name__}
+                ]
             enriched_errors = enrich_company_filing_errors(ticker_errors, ticker, company_name)
             documents.extend(ticker_documents)
             errors.extend(enriched_errors)
@@ -771,13 +877,19 @@ class IngestionPipeline:
                     ticker_documents,
                     ("annual_report",),
                     enriched_errors,
-                    [company_filing_attempt_result("mops_annual_report", ticker_documents, enriched_errors)],
+                    [
+                        company_filing_attempt_result(
+                            "mops_annual_report", ticker_documents, enriched_errors
+                        )
+                    ],
                 )
             )
 
         documents = self._dedupe_documents(documents)
         self._check_cancelled()
-        news_documents = [CompanyFilingRepository.to_news_document(document) for document in documents]
+        news_documents = [
+            CompanyFilingRepository.to_news_document(document) for document in documents
+        ]
         VectorStore().upsert_documents(news_documents)
         with session_scope() as session:
             repository = CompanyFilingRepository(session)
@@ -803,9 +915,7 @@ class IngestionPipeline:
             "errors": errors,
             "per_ticker_results": per_ticker_results,
             "missing_tickers": [
-                row["ticker"]
-                for row in per_ticker_results
-                if row["status"] != "sufficient"
+                row["ticker"] for row in per_ticker_results if row["status"] != "sufficient"
             ],
             "gap_summary": company_filing_gap_summary(per_ticker_results),
             "next_actions": company_filing_next_actions(per_ticker_results),
@@ -970,383 +1080,3 @@ class IngestionPipeline:
         has_political_noise = any(term in text for term in political_noise)
         has_market_context = any(term in text for term in market_terms)
         return has_political_noise and not has_market_context
-
-
-def classify_company_filing_error(message: str) -> str:
-    category = categorize_company_filing_error(message)
-    if category in {
-        "pdf_no_text",
-        "encrypted_pdf",
-        "pdf_parse_error",
-        "unsupported_pdf_parser",
-        "visual_rag_failed",
-        "visual_rag_missing_dependency",
-        "visual_rag_not_configured",
-        "visual_rag_quota",
-    }:
-        return "manual_text_required"
-    if category in {
-        "blocked_or_forbidden",
-        "blocked_or_placeholder",
-        "browser_render_failed",
-        "browser_render_not_configured",
-    }:
-        return "source_access_restricted"
-    if is_retryable_company_filing_error_category(category):
-        return "retryable_source_error"
-    if category in {
-        "company_mismatch",
-        "document_type_mismatch",
-        "too_short",
-        "too_large",
-        "unsafe_url",
-    }:
-        return "content_not_usable"
-    return "source_fetch_error"
-
-
-LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP = {
-    "retryable_source_error": "upstream_retryable",
-    "manual_text_required": "pdf_no_text",
-    "source_access_restricted": "blocked_or_forbidden",
-    "content_not_usable": "company_mismatch",
-    "source_fetch_error": "unknown",
-}
-COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES = {
-    "blocked_or_forbidden",
-    "blocked_or_placeholder",
-    "browser_render_failed",
-}
-COMPANY_FILING_BROWSER_SETUP_CATEGORIES = {"browser_render_not_configured"}
-COMPANY_FILING_PDF_SETUP_CATEGORIES = {
-    "missing_pdf_dependency",
-    "unsupported_pdf_parser",
-}
-COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES = {
-    "visual_rag_missing_dependency",
-    "visual_rag_not_configured",
-}
-COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES = {
-    "visual_rag_failed",
-    "visual_rag_quota",
-}
-COMPANY_FILING_TEXT_RECOVERY_CATEGORIES = {
-    "encrypted_pdf",
-    "pdf_no_text",
-    "pdf_parse_error",
-}
-COMPANY_FILING_BROADEN_SEARCH_CATEGORIES = {
-    "company_mismatch",
-    "document_type_mismatch",
-    "http_not_found",
-    "missing_pdf_link",
-    "too_large",
-    "too_short",
-    "website_not_found",
-}
-COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES = {
-    *COMPANY_FILING_BROWSER_SETUP_CATEGORIES,
-    *COMPANY_FILING_PDF_SETUP_CATEGORIES,
-    *COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES,
-    *COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES,
-    *COMPANY_FILING_TEXT_RECOVERY_CATEGORIES,
-    "unsafe_url",
-    "unknown",
-}
-
-
-def enrich_company_filing_errors(errors: list[dict], ticker: str, company_name: str) -> list[dict]:
-    enriched = []
-    for error in errors:
-        message = str(error.get("error", ""))
-        category = normalize_company_filing_error_category(error)
-        retryable = error.get("retryable")
-        if retryable is None:
-            retryable = is_retryable_company_filing_error_category(category)
-        enriched.append(
-            {
-                **error,
-                "ticker": ticker,
-                "company_name": company_name,
-                "category": category,
-                "legacy_category": error.get("legacy_category") or classify_company_filing_error(message),
-                "retryable": bool(retryable),
-            }
-        )
-    return enriched
-
-
-def normalize_company_filing_error_category(error: dict) -> str:
-    raw_category = str(error.get("category") or "")
-    if raw_category and raw_category not in LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP:
-        return raw_category
-    detected = categorize_company_filing_error(error.get("error", ""))
-    if detected != "unknown":
-        return detected
-    return LEGACY_COMPANY_FILING_ERROR_CATEGORY_MAP.get(raw_category, "unknown")
-
-
-def should_retry_company_filing_fetch(documents: list, errors: list[dict]) -> bool:
-    if documents or not errors:
-        return False
-    return all(company_filing_error_is_retryable(error) for error in errors)
-
-
-def should_broaden_company_filing_search(
-    documents: list,
-    errors: list[dict],
-    document_types: list[str] | None,
-) -> bool:
-    return bool(missing_company_filing_document_types(documents, document_types))
-
-
-def missing_company_filing_document_types(
-    documents: list,
-    document_types: list[str] | None,
-) -> list[str]:
-    if not document_types:
-        return []
-    available_types = {getattr(document, "document_type", "") for document in documents}
-    return [document_type for document_type in document_types if document_type not in available_types]
-
-
-def company_filing_attempt_result(strategy: str, documents: list, errors: list[dict]) -> dict:
-    category_counts = company_filing_error_category_counts(errors)
-    return {
-        "strategy": strategy,
-        "stored_count": len(documents),
-        "error_count": len(errors),
-        "error_categories": sorted(category_counts),
-        "error_category_counts": category_counts,
-        "retryable_error_count": sum(1 for error in errors if company_filing_error_is_retryable(error)),
-    }
-
-
-def company_filing_ticker_result(
-    ticker: str,
-    company_name: str,
-    documents: list,
-    target_document_types: tuple[str, ...],
-    errors: list[dict],
-    attempts: list[dict] | None = None,
-) -> dict:
-    document_types = sorted({document.document_type for document in documents})
-    missing_required = [
-        document_type
-        for document_type in target_document_types
-        if document_type not in document_types
-    ]
-    missing_recommended = [
-        document_type
-        for document_type in RECOMMENDED_DOCUMENT_TYPES
-        if document_type not in document_types and document_type not in target_document_types
-    ]
-    error_category_counts = company_filing_error_category_counts(errors)
-    error_categories = sorted(error_category_counts)
-    retryable_error_count = sum(1 for error in errors if company_filing_error_is_retryable(error))
-    status = company_filing_status(documents, missing_required, error_categories)
-    return {
-        "ticker": ticker,
-        "company_name": company_name,
-        "stored_count": len(documents),
-        "document_types": document_types,
-        "missing_required_types": missing_required,
-        "missing_recommended_types": missing_recommended,
-        "error_count": len(errors),
-        "error_categories": error_categories,
-        "error_category_counts": error_category_counts,
-        "retryable_error_count": retryable_error_count,
-        "non_retryable_error_count": len(errors) - retryable_error_count,
-        "attempts": attempts or [],
-        "status": status,
-        "next_step": company_filing_next_step(
-            status,
-            missing_required,
-            missing_recommended,
-            error_categories,
-        ),
-    }
-
-
-def company_filing_status(
-    documents: list,
-    missing_required: list[str],
-    error_categories: list[str],
-) -> str:
-    if documents and not missing_required:
-        return "sufficient"
-    if not documents and not error_categories:
-        return "broader_search_recommended"
-    category_set = set(error_categories)
-    if category_set & COMPANY_FILING_MANUAL_BLOCKING_CATEGORIES:
-        return "needs_manual_source"
-    if any(is_retryable_company_filing_error_category(category) for category in category_set):
-        return "retry_recommended"
-    if category_set and category_set.issubset(COMPANY_FILING_BROADEN_SEARCH_CATEGORIES):
-        return "broader_search_recommended"
-    return "needs_manual_source"
-
-
-def company_filing_next_step(
-    status: str,
-    missing_required: list[str],
-    missing_recommended: list[str],
-    error_categories: list[str] | None = None,
-) -> str:
-    category_set = set(error_categories or [])
-    if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
-        return "官方頁面疑似需要動態渲染；請設定 Browserless/Playwright 渲染服務後再自動補抓。"
-    if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
-        return "官方頁面疑似被反爬蟲或登入頁擋住；系統應改用 Proxy 或 Browser render/unlocker 後重試官方搜尋。"
-    if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
-        return "掃描型或複雜 PDF 需要 Visual RAG 後援；請確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL 與 vision LLM key/gateway 已配置。"
-    if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
-        return "Visual RAG 後援已觸發但未產生可用文字；請檢查 VLM 額度/模型回應，或改用官方 HTML/文字版與人工匯入。"
-    if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
-        return "PDF 解析相依套件不足；請安裝 PDF 額外相依套件後再重試公司公開文件補抓。"
-    if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
-        return "PDF 無法抽取可用文字；請改用官方 HTML/文字版，或先 OCR 後人工匯入。"
-    if category_set & {"company_mismatch", "document_type_mismatch"}:
-        return "抓到的文件與公司或文件類型不符；系統應擴大官方入口搜尋並避免採用錯誤公司證據。"
-    if status == "sufficient" and not missing_recommended:
-        return "公司公開文件已足夠進入個股分析。"
-    if status == "retry_recommended":
-        return "資料源暫時不穩，系統可稍後自動重試同一批官方搜尋。"
-    if status == "broader_search_recommended":
-        return "目前搜尋不到足夠文件，系統應擴大官方入口與公司 IR 查詢後再重跑。"
-    missing = missing_required or missing_recommended
-    if missing:
-        return "請補官方文件：" + "、".join(missing) + "；可使用 MOPS、TWSE/TPEx 或公司 IR 的 HTML/PDF/文字版。"
-    return "請改用公司 IR/MOPS 官方 URL 或人工貼上文件文字。"
-
-
-def company_filing_next_actions(per_ticker_results: list[dict]) -> list[dict]:
-    actions = []
-    for row in per_ticker_results:
-        if row["status"] == "sufficient":
-            continue
-        action_type = company_filing_next_action_type(row)
-        actions.append(
-            {
-                "ticker": row["ticker"],
-                "company_name": row["company_name"],
-                "action": action_type,
-                "reason": row["next_step"],
-                "missing_required_types": row["missing_required_types"],
-                "missing_recommended_types": row["missing_recommended_types"],
-                "error_categories": row.get("error_categories", []),
-                "error_category_counts": row.get("error_category_counts", {}),
-                "retryable_error_count": row.get("retryable_error_count", 0),
-            }
-        )
-    return actions
-
-
-def company_filing_next_action_type(row: dict) -> str:
-    category_set = set(row.get("error_categories") or [])
-    if category_set & COMPANY_FILING_BROWSER_SETUP_CATEGORIES:
-        return "configure_company_filing_browser_render"
-    if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
-        return "configure_company_filing_visual_rag"
-    if category_set & COMPANY_FILING_PDF_SETUP_CATEGORIES:
-        return "install_company_filing_pdf_dependencies"
-    if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
-        return "review_visual_rag_or_manual_import"
-    if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
-        return "ocr_or_manual_company_filing_text_import"
-    if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
-        return "retry_company_filing_with_browser_or_proxy"
-    if category_set & COMPANY_FILING_BROADEN_SEARCH_CATEGORIES:
-        return "broaden_company_filing_search"
-    return {
-        "retry_recommended": "retry_company_filing_search",
-        "broader_search_recommended": "broaden_company_filing_search",
-    }.get(row.get("status"), "manual_company_filing_import")
-
-
-def company_filing_gap_summary(per_ticker_results: list[dict]) -> dict:
-    status_counts: dict[str, int] = {}
-    category_counter: Counter[str] = Counter()
-    browser_required = []
-    setup_required = []
-    ocr_required = []
-    visual_rag_setup = []
-    visual_rag_review = []
-    broaden_search = []
-    manual_import = []
-    for row in per_ticker_results:
-        status = row.get("status", "unknown")
-        status_counts[status] = status_counts.get(status, 0) + 1
-        category_counts = row.get("error_category_counts") or {}
-        if category_counts:
-            category_counter.update({str(category): int(count) for category, count in category_counts.items()})
-        else:
-            category_counter.update(str(category) for category in row.get("error_categories") or [])
-        category_set = set(row.get("error_categories") or [])
-        ticker = row.get("ticker")
-        if not ticker:
-            continue
-        if category_set & COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES:
-            browser_required.append(ticker)
-        if category_set & (COMPANY_FILING_BROWSER_SETUP_CATEGORIES | COMPANY_FILING_PDF_SETUP_CATEGORIES):
-            setup_required.append(ticker)
-        if category_set & COMPANY_FILING_VISUAL_RAG_SETUP_CATEGORIES:
-            setup_required.append(ticker)
-            visual_rag_setup.append(ticker)
-        if category_set & COMPANY_FILING_TEXT_RECOVERY_CATEGORIES:
-            ocr_required.append(ticker)
-        if category_set & COMPANY_FILING_VISUAL_RAG_RECOVERY_CATEGORIES:
-            visual_rag_review.append(ticker)
-        if row.get("status") == "broader_search_recommended" or category_set & COMPANY_FILING_BROADEN_SEARCH_CATEGORIES:
-            broaden_search.append(ticker)
-        if row.get("status") == "needs_manual_source":
-            manual_import.append(ticker)
-    blocked = [
-        row["ticker"]
-        for row in per_ticker_results
-        if row.get("status") in {"needs_manual_source", "broader_search_recommended"}
-    ]
-    retryable = [
-        row["ticker"]
-        for row in per_ticker_results
-        if row.get("status") == "retry_recommended"
-    ]
-    if blocked:
-        recommendation = "部分公司仍缺官方文件，需先補來源或擴大官方搜尋後再進入完整個股分析。"
-    elif retryable:
-        recommendation = "部分公司因資料源暫時錯誤而不足，建議稍後自動重試後再重跑分析。"
-    else:
-        recommendation = "公司文件補強狀態足夠，可進入完整個股分析。"
-    return {
-        "total_tickers": len(per_ticker_results),
-        "status_counts": status_counts,
-        "retryable_tickers": retryable,
-        "blocked_tickers": blocked,
-        "error_category_counts": dict(sorted(category_counter.items())),
-        "browser_recovery_tickers": sorted(set(browser_required)),
-        "setup_required_tickers": sorted(set(setup_required)),
-        "ocr_required_tickers": sorted(set(ocr_required)),
-        "visual_rag_setup_tickers": sorted(set(visual_rag_setup)),
-        "visual_rag_review_tickers": sorted(set(visual_rag_review)),
-        "broaden_search_tickers": sorted(set(broaden_search)),
-        "manual_import_tickers": sorted(set(manual_import)),
-        "recommendation": recommendation,
-    }
-
-
-def company_filing_error_category_counts(errors: list[dict]) -> dict[str, int]:
-    return dict(
-        sorted(
-            Counter(
-                normalize_company_filing_error_category(error)
-                for error in errors
-            ).items()
-        )
-    )
-
-
-def company_filing_error_is_retryable(error: dict) -> bool:
-    retryable = error.get("retryable")
-    if retryable is not None:
-        return bool(retryable)
-    return is_retryable_company_filing_error_category(normalize_company_filing_error_category(error))

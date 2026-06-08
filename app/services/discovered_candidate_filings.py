@@ -3,19 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 from app.data_sources.company_filing_http import company_filing_error
-from app.services.discovery_workflow import is_deep_discovery
-from app.services.ingestion import (
+from app.services.company_filing_results import (
     company_filing_attempt_result,
     company_filing_gap_summary,
     company_filing_next_actions,
     company_filing_ticker_result,
 )
+from app.services.discovery_workflow import is_deep_discovery
 
 
-def should_revalidate_candidate_filings(candidates: list[dict], min_supported_ratio: float = 0.6) -> bool:
+def should_revalidate_candidate_filings(
+    candidates: list[dict], min_supported_ratio: float = 0.6
+) -> bool:
     if not candidates:
         return False
-    supported = sum(1 for candidate in candidates if candidate.get("status") == "evidence_supported")
+    supported = sum(
+        1 for candidate in candidates if candidate.get("status") == "evidence_supported"
+    )
     return (supported / len(candidates)) < min_supported_ratio
 
 

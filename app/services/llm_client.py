@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass, field
 from importlib import import_module
 from threading import Lock
@@ -13,7 +12,6 @@ from app.core.config import get_settings
 from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
 from app.services.llm_attempts import llm_attempt_failure_category, summarize_llm_attempts
 from app.services.llm_models import (
-    gemini_api_model_name,
     gemini_model_candidates,
     gemini_vision_model_candidates,
     is_vision_model_candidate,
@@ -26,6 +24,17 @@ from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_na
 from app.services.llm_observability import (
     build_llm_observability_trace,
     dispatch_llm_observability_trace,
+)
+from app.services.llm_provider_calls import (
+    call_gemini as _call_gemini_provider,
+    call_gemini_vision as _call_gemini_vision_provider,
+    call_google_genai as _call_google_genai_provider,
+    call_litellm as _call_litellm_provider,
+    call_litellm_vision as _call_litellm_vision_provider,
+    google_genai_response_text as _google_genai_response_text_provider,
+    image_data_url as _image_data_url_provider,
+    normalize_vision_images as _normalize_vision_images_provider,
+    tool_call_arguments as _tool_call_arguments_provider,
 )
 
 __all__ = [
@@ -1231,38 +1240,15 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         tool_choice: dict[str, Any] | str | None = None,
     ) -> str:
-        litellm = import_module("litellm")
-        try:
-            litellm.suppress_debug_info = True
-        except Exception:
-            pass
-        kwargs = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "top_p": 0.8,
-            "max_tokens": 8192,
-            "timeout": min(20.0, timeout_seconds or 20.0),
-        }
-        if api_key:
-            kwargs["api_key"] = api_key
-        if tools:
-            kwargs["tools"] = tools
-            if tool_choice:
-                kwargs["tool_choice"] = tool_choice
-        response = litellm.completion(**kwargs)
-        if isinstance(response, dict):
-            choice = (response.get("choices") or [{}])[0]
-            message = choice.get("message") or {}
-            tool_arguments = self._tool_call_arguments(message)
-            if tool_arguments:
-                return tool_arguments
-            return str(message.get("content") or "").strip()
-        choice = response.choices[0]
-        tool_arguments = self._tool_call_arguments(choice.message)
-        if tool_arguments:
-            return tool_arguments
-        return str(choice.message.content or "").strip()
+        return _call_litellm_provider(
+            prompt,
+            model,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+            tools=tools,
+            tool_choice=tool_choice,
+            import_module_func=import_module,
+        )
 
     def _call_litellm_vision(
         self,
@@ -1273,57 +1259,18 @@ class LLMClient:
         api_key: str | None = None,
         timeout_seconds: float | None = None,
     ) -> str:
-        litellm = import_module("litellm")
-        try:
-            litellm.suppress_debug_info = True
-        except Exception:
-            pass
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        content.extend(
-            {
-                "type": "image_url",
-                "image_url": {"url": self._image_data_url(image)},
-            }
-            for image in images
+        return _call_litellm_vision_provider(
+            prompt,
+            images=images,
+            model=model,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+            import_module_func=import_module,
         )
-        kwargs = {
-            "model": model,
-            "messages": [{"role": "user", "content": content}],
-            "temperature": 0.1,
-            "top_p": 0.8,
-            "max_tokens": 8192,
-            "timeout": min(45.0, timeout_seconds or 45.0),
-        }
-        if api_key:
-            kwargs["api_key"] = api_key
-        response = litellm.completion(**kwargs)
-        if isinstance(response, dict):
-            choice = (response.get("choices") or [{}])[0]
-            message = choice.get("message") or {}
-            return str(message.get("content") or "").strip()
-        return str(response.choices[0].message.content or "").strip()
 
     @staticmethod
     def _tool_call_arguments(message: object) -> str:
-        tool_calls = (
-            message.get("tool_calls")
-            if isinstance(message, dict)
-            else getattr(message, "tool_calls", None)
-        ) or []
-        if not tool_calls:
-            return ""
-        first_call = tool_calls[0]
-        function = (
-            first_call.get("function")
-            if isinstance(first_call, dict)
-            else getattr(first_call, "function", None)
-        )
-        arguments = (
-            function.get("arguments")
-            if isinstance(function, dict)
-            else getattr(function, "arguments", None)
-        )
-        return str(arguments or "").strip()
+        return _tool_call_arguments_provider(message)
 
     def _call_google_genai(
         self,
@@ -1333,50 +1280,18 @@ class LLMClient:
         model: str | None = None,
         timeout_seconds: float | None = None,
     ) -> str:
-        genai = import_module("google.genai")
-        genai_types = import_module("google.genai.types")
-        client = genai.Client(api_key=api_key)
-        config = genai_types.GenerateContentConfig(
-            temperature=0.2,
-            top_p=0.8,
-            max_output_tokens=8192,
+        return _call_google_genai_provider(
+            prompt,
+            api_key,
+            model=model,
+            primary_model=self.settings.primary_llm_model,
+            timeout_seconds=timeout_seconds,
+            import_module_func=import_module,
         )
-        response = client.models.generate_content(
-            model=gemini_api_model_name(model or self.settings.primary_llm_model),
-            contents=prompt,
-            config=config,
-        )
-        return self._google_genai_response_text(response)
 
     @staticmethod
     def _google_genai_response_text(response: object) -> str:
-        text = getattr(response, "text", None)
-        if text:
-            return str(text).strip()
-        if isinstance(response, dict):
-            text = response.get("text")
-            if text:
-                return str(text).strip()
-            candidates = response.get("candidates") or []
-        else:
-            candidates = getattr(response, "candidates", None) or []
-        parts: list[str] = []
-        for candidate in candidates:
-            content = (
-                candidate.get("content")
-                if isinstance(candidate, dict)
-                else getattr(candidate, "content", None)
-            )
-            candidate_parts = (
-                content.get("parts") if isinstance(content, dict) else getattr(content, "parts", [])
-            )
-            for part in candidate_parts or []:
-                part_text = (
-                    part.get("text") if isinstance(part, dict) else getattr(part, "text", "")
-                )
-                if part_text:
-                    parts.append(str(part_text))
-        return "\n".join(parts).strip()
+        return _google_genai_response_text_provider(response)
 
     def _call_gemini(
         self,
@@ -1386,29 +1301,13 @@ class LLMClient:
         model: str | None = None,
         timeout_seconds: float | None = None,
     ) -> str:
-        model_name = gemini_api_model_name(model or self.settings.primary_llm_model)
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        return _call_gemini_provider(
+            prompt,
+            api_key,
+            model=model,
+            primary_model=self.settings.primary_llm_model,
+            timeout_seconds=timeout_seconds,
         )
-        payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "topP": 0.8,
-                "maxOutputTokens": 8192,
-            },
-        }
-        with httpx.Client(timeout=min(45.0, timeout_seconds or 45.0)) as client:
-            response = client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
-            response.raise_for_status()
-        data = response.json()
-        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        return "\n".join(part.get("text", "") for part in parts).strip()
 
     def _call_gemini_vision(
         self,
@@ -1419,50 +1318,18 @@ class LLMClient:
         model: str,
         timeout_seconds: float | None = None,
     ) -> str:
-        model_name = gemini_api_model_name(model)
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        return _call_gemini_vision_provider(
+            prompt,
+            images=images,
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
         )
-        parts: list[dict[str, Any]] = [{"text": prompt}]
-        parts.extend(
-            {
-                "inlineData": {
-                    "mimeType": image["mime_type"],
-                    "data": image["base64"],
-                }
-            }
-            for image in images
-        )
-        payload = {
-            "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {
-                "temperature": 0.1,
-                "topP": 0.8,
-                "maxOutputTokens": 8192,
-            },
-        }
-        with httpx.Client(timeout=min(45.0, timeout_seconds or 45.0)) as client:
-            response = client.post(url, headers={"x-goog-api-key": api_key}, json=payload)
-            response.raise_for_status()
-        data = response.json()
-        candidate_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        return "\n".join(part.get("text", "") for part in candidate_parts).strip()
 
     @staticmethod
     def _normalize_vision_images(images: list[dict[str, Any]]) -> list[dict[str, str]]:
-        normalized: list[dict[str, str]] = []
-        for image in images or []:
-            mime_type = str(image.get("mime_type") or image.get("mimeType") or "image/png")
-            data = image.get("data")
-            if isinstance(data, bytes):
-                encoded = base64.b64encode(data).decode("ascii")
-            else:
-                encoded = str(image.get("base64") or data or "").strip()
-            if not encoded:
-                continue
-            normalized.append({"mime_type": mime_type, "base64": encoded})
-        return normalized
+        return _normalize_vision_images_provider(images)
 
     @staticmethod
     def _image_data_url(image: dict[str, str]) -> str:
-        return f"data:{image['mime_type']};base64,{image['base64']}"
+        return _image_data_url_provider(image)

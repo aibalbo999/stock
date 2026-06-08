@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -53,6 +54,18 @@ def test_api_key_rotator_advances_starting_key() -> None:
 
     assert rotator.candidates() == [(0, "a"), (1, "b"), (2, "c")]
     assert rotator.candidates() == [(1, "b"), (2, "c"), (0, "a")]
+
+
+def test_llm_provider_payload_helpers_are_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    provider_source = Path("app/services/llm_provider_calls.py").read_text()
+
+    assert "def call_litellm(" in provider_source
+    assert "def call_google_genai(" in provider_source
+    assert "def call_gemini_vision(" in provider_source
+    assert "litellm.completion" not in client_source
+    assert "client.models.generate_content" not in client_source
+    assert "inlineData" not in client_source
 
 
 def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:

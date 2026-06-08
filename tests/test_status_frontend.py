@@ -8,6 +8,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     service_status_source = Path("app/services/service_status.py").read_text()
     status_frontend_source = Path("app/services/status_frontend.py").read_text()
     status_frontend_sources_source = Path("app/services/status_frontend_sources.py").read_text()
+    status_frontend_external_source = Path(
+        "app/services/status_frontend_external_deployment.py"
+    ).read_text()
 
     assert "frontend" in status
     assert status["frontend"]["streamlit_entry_uses_navigation"] is True
@@ -20,10 +23,17 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def _frontend_status(" not in service_status_source
     assert "def frontend_status(" in status_frontend_source
     assert "def frontend_source_context(" in status_frontend_sources_source
+    assert "def frontend_external_deployment_status(" in status_frontend_external_source
+    assert "frontend_external_deployment_status(source_context)" in status_frontend_source
+    assert '"ui_external_deployment_diagnostics_enabled"' not in status_frontend_source
     assert "def _literal_occurrence_locations(" not in status_frontend_source
     assert status["frontend"]["frontend_source_context_extracted"] is True
     assert status["frontend"]["frontend_source_context_path"] == (
         "app/services/status_frontend_sources.py"
+    )
+    assert status["frontend"]["frontend_external_deployment_status_extracted"] is True
+    assert status["frontend"]["frontend_external_deployment_status_path"] == (
+        "app/services/status_frontend_external_deployment.py"
     )
     assert status["frontend"]["page_count"] >= 4
     assert status["frontend"]["expected_pages_present"] is True
@@ -179,6 +189,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["expected_pages_present"] is True
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True

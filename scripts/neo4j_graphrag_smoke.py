@@ -19,6 +19,10 @@ IMPORT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
     "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
 )
+LOCAL_CONTRACT_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --local-contract --json"
+)
 
 
 def neo4j_graphrag_smoke_report(
@@ -111,6 +115,78 @@ def neo4j_graphrag_smoke_report(
     )
 
 
+def neo4j_graphrag_local_contract_report(
+    *,
+    tickers: str = DEFAULT_TICKERS,
+    target_ticker: str = DEFAULT_TARGET_TICKER,
+    topic: str = DEFAULT_TOPIC,
+    question: str = DEFAULT_QUESTION,
+    max_depth: int = 3,
+    use_llm: bool = False,
+    service: SupplyChainGraphApiService | None = None,
+) -> dict[str, Any]:
+    graph_service = service or SupplyChainGraphApiService()
+    payload = graph_service.graph_neo4j_payload(tickers)
+    payload_summary = neo4j_payload_summary(payload)
+    plan_payload = graph_service.graph_cypher_plan(
+        tickers,
+        target_ticker=target_ticker,
+        topic=topic,
+        question=question,
+        max_depth=max_depth,
+        use_llm=use_llm,
+        include_dry_run=True,
+    )
+    query_result = summarize_query_result(plan_payload) or {}
+    query_result.pop("execution", None)
+    plan = query_result.get("plan") if isinstance(query_result, dict) else {}
+    plan_validation = plan.get("validation") if isinstance(plan, dict) else {}
+    local_dry_run = (
+        query_result.get("local_dry_run")
+        if isinstance(query_result.get("local_dry_run"), dict)
+        else {}
+    )
+    local_validation = (
+        local_dry_run.get("validation")
+        if isinstance(local_dry_run.get("validation"), dict)
+        else {}
+    )
+    plan_ready = bool(plan_validation.get("valid") and plan_validation.get("read_only"))
+    local_ready = bool(
+        local_dry_run.get("ready")
+        and local_dry_run.get("status") == "executed_dry_run"
+        and local_validation.get("valid")
+        and local_validation.get("read_only")
+    )
+    ready = bool(payload_summary["ready"] and plan_ready and local_ready)
+    if ready:
+        status = "ready"
+        remediation = None
+    elif not payload_summary["ready"]:
+        status = "payload_degraded"
+        remediation = "GraphRAG Neo4j payload is incomplete; inspect /supply-chain/graph/neo4j output."
+    elif not plan_ready:
+        status = "plan_degraded"
+        remediation = "Guarded Cypher plan is missing or failed read-only validation."
+    else:
+        status = "local_dry_run_degraded"
+        remediation = "Local in-memory Cypher dry-run failed; inspect the plan and graph whitelist data."
+
+    return build_smoke_report(
+        status=status,
+        ready=ready,
+        tickers=tickers,
+        target_ticker=target_ticker,
+        topic=topic,
+        question=question,
+        payload=payload_summary,
+        import_result=None,
+        query_result=query_result,
+        remediation=remediation,
+        local_contract=True,
+    )
+
+
 def neo4j_payload_summary(payload: dict[str, Any]) -> dict[str, Any]:
     parameters = payload.get("parameters") if isinstance(payload.get("parameters"), dict) else {}
     nodes = parameters.get("nodes") if isinstance(parameters.get("nodes"), list) else []
@@ -199,10 +275,12 @@ def build_smoke_report(
     import_result: dict[str, Any] | None,
     query_result: dict[str, Any] | None,
     remediation: str | None,
+    local_contract: bool = False,
 ) -> dict[str, Any]:
     return {
         "status": status,
         "ready": ready,
+        "local_contract": local_contract,
         "request": {
             "tickers": tickers,
             "target_ticker": target_ticker,
@@ -215,6 +293,7 @@ def build_smoke_report(
         "query_result": query_result,
         "smoke_command": SMOKE_COMMAND,
         "import_smoke_command": IMPORT_SMOKE_COMMAND,
+        "local_contract_command": LOCAL_CONTRACT_SMOKE_COMMAND,
         "remediation": remediation,
     }
 
@@ -224,8 +303,13 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     query = report.get("query_result") or {}
     execution = query.get("execution") if isinstance(query.get("execution"), dict) else {}
     local_dry_run = query.get("local_dry_run") if isinstance(query.get("local_dry_run"), dict) else {}
+    title = (
+        "Neo4j GraphRAG local contract"
+        if report.get("local_contract")
+        else "Neo4j GraphRAG smoke"
+    )
     lines = [
-        f"Neo4j GraphRAG smoke: {report['status']}",
+        f"{title}: {report['status']}",
         f"- ready: {str(bool(report.get('ready'))).lower()}",
         (
             "- payload: "
@@ -251,6 +335,7 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     if report.get("remediation"):
         lines.append(f"- remediation: {report['remediation']}")
     lines.append(f"- command: {report['smoke_command']}")
+    lines.append(f"- local contract command: {report['local_contract_command']}")
     lines.append(f"- import command: {report['import_smoke_command']}")
     return "\n".join(lines)
 
@@ -275,6 +360,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-records", type=int, default=8, help="Maximum live query records to return.")
     parser.add_argument("--use-llm", action="store_true", help="Allow LLM-generated Cypher plan before validation.")
     parser.add_argument("--import-first", action="store_true", help="Import the current graph into Neo4j before querying.")
+    parser.add_argument(
+        "--local-contract",
+        action="store_true",
+        help="Validate payload export, guarded Cypher plan, and local dry-run without live Neo4j.",
+    )
     parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     return parser
@@ -282,16 +372,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    report = neo4j_graphrag_smoke_report(
-        tickers=args.tickers,
-        target_ticker=args.target_ticker,
-        topic=args.topic,
-        question=args.question,
-        max_depth=args.max_depth,
-        max_records=args.max_records,
-        use_llm=bool(args.use_llm),
-        import_first=bool(args.import_first),
-    )
+    if args.local_contract:
+        report = neo4j_graphrag_local_contract_report(
+            tickers=args.tickers,
+            target_ticker=args.target_ticker,
+            topic=args.topic,
+            question=args.question,
+            max_depth=args.max_depth,
+            use_llm=bool(args.use_llm),
+        )
+    else:
+        report = neo4j_graphrag_smoke_report(
+            tickers=args.tickers,
+            target_ticker=args.target_ticker,
+            topic=args.topic,
+            question=args.question,
+            max_depth=args.max_depth,
+            max_records=args.max_records,
+            use_llm=bool(args.use_llm),
+            import_first=bool(args.import_first),
+        )
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:

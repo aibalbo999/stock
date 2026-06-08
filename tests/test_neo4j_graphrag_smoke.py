@@ -67,6 +67,16 @@ class FakeGraphService:
         self.calls.append(("query", tickers, kwargs))
         return _query(self.query_status)
 
+    def graph_cypher_plan(self, tickers: str, **kwargs) -> dict:
+        self.calls.append(("plan", tickers, kwargs))
+        query = _query(self.query_status)
+        return {
+            "strategy": query["strategy"],
+            "planner": query["planner"],
+            "plan": query["plan"],
+            "local_dry_run": query["local_dry_run"],
+        }
+
     def import_graph_to_neo4j(self, tickers: str) -> dict:
         self.calls.append(("import", tickers))
         return {"status": "imported", "node_count": 1}
@@ -128,6 +138,28 @@ def test_neo4j_graphrag_smoke_can_import_first() -> None:
     assert report["import_first"] is True
     assert report["import_result"]["status"] == "imported"
     assert [call[0] for call in service.calls] == ["payload", "import", "query"]
+
+
+def test_neo4j_graphrag_local_contract_does_not_require_live_neo4j() -> None:
+    service = FakeGraphService(query_status="not_configured")
+
+    report = smoke.neo4j_graphrag_local_contract_report(
+        tickers="2330",
+        target_ticker="2382",
+        question="上下游衝擊",
+        service=service,
+    )
+
+    assert report["status"] == "ready"
+    assert report["ready"] is True
+    assert report["local_contract"] is True
+    assert report["payload"]["ready"] is True
+    assert "execution" not in report["query_result"]
+    assert report["query_result"]["plan"]["validation"]["read_only"] is True
+    assert report["query_result"]["local_dry_run"]["status"] == "executed_dry_run"
+    assert "--local-contract" in report["local_contract_command"]
+    assert [call[0] for call in service.calls] == ["payload", "plan"]
+    assert smoke.smoke_exit_code(report, strict=True) == 0
 
 
 def test_neo4j_graphrag_smoke_stops_when_import_first_fails() -> None:

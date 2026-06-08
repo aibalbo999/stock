@@ -23,6 +23,10 @@ NEO4J_IMPORT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
     "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
 )
+NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --local-contract --json"
+)
 NEO4J_PAYLOAD_DRY_RUN_COMMAND = (
     ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run"
 )
@@ -96,8 +100,11 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
         NEO4J_GRAPHRAG_SMOKE_COMMAND,
         NEO4J_IMPORT_SMOKE_COMMAND,
     ],
+    "neo4j_payload_export_contract": [NEO4J_PAYLOAD_DRY_RUN_COMMAND],
+    "graphrag_local_cypher_dry_run": [NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND],
     "graphrag_live_cypher_query": [
         NEO4J_PAYLOAD_DRY_RUN_COMMAND,
+        NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND,
         NEO4J_GRAPHRAG_SMOKE_COMMAND,
         NEO4J_IMPORT_SMOKE_COMMAND,
     ],
@@ -129,6 +136,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
                 "remediation": item.get("remediation") or remediation,
             }
         )
+    checks.extend(local_graphrag_contract_checks(matrix))
     checks.append(structured_company_filing_sample_contract_check())
     return {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
@@ -139,6 +147,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
         "neo4j_import_smoke_command": NEO4J_IMPORT_SMOKE_COMMAND,
+        "neo4j_local_contract_smoke_command": NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND,
         "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "high_risk_company_filing_render_smoke_command": HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND,
@@ -146,6 +155,76 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         "structured_company_filing_sample_status": checks[-1]["status"],
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
+    }
+
+
+def local_graphrag_contract_checks(matrix: dict[str, Any]) -> list[dict[str, Any]]:
+    ai_rag = matrix.get("ai_rag") if isinstance(matrix.get("ai_rag"), dict) else {}
+    payload_item = (
+        ai_rag.get("neo4j_payload_export")
+        if isinstance(ai_rag.get("neo4j_payload_export"), dict)
+        else {}
+    )
+    cypher_item = (
+        ai_rag.get("graphrag_agentic_cypher")
+        if isinstance(ai_rag.get("graphrag_agentic_cypher"), dict)
+        else {}
+    )
+    return [
+        neo4j_payload_export_contract_check(payload_item),
+        graphrag_local_cypher_dry_run_check(cypher_item),
+    ]
+
+
+def neo4j_payload_export_contract_check(item: dict[str, Any]) -> dict[str, Any]:
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    ready = bool(item.get("status") == "ready" or evidence.get("payload_export_ready"))
+    status = "ready" if ready else str(item.get("status") or "unknown")
+    return {
+        "area": "ai_rag",
+        "capability": "neo4j_payload_export_contract",
+        "label": "Neo4j payload local contract",
+        "status": status,
+        "ready": ready,
+        "evidence": {
+            "capability_status": item.get("status"),
+            **evidence,
+        },
+        "smoke_commands": [NEO4J_PAYLOAD_DRY_RUN_COMMAND],
+        "remediation": item.get("remediation")
+        or "Keep /supply-chain/graph/neo4j producing parameterized neo4j_cypher_v1 payloads.",
+    }
+
+
+def graphrag_local_cypher_dry_run_check(item: dict[str, Any]) -> dict[str, Any]:
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    plan = (
+        evidence.get("agentic_cypher_plan_example")
+        if isinstance(evidence.get("agentic_cypher_plan_example"), dict)
+        else {}
+    )
+    validation = plan.get("validation") if isinstance(plan.get("validation"), dict) else {}
+    ready = bool(
+        item.get("status") == "ready"
+        and evidence.get("local_dry_run_enabled")
+        and evidence.get("local_dry_run_status") == "executed_dry_run"
+        and validation.get("valid")
+        and validation.get("read_only")
+    )
+    status = "ready" if ready else str(item.get("status") or "unknown")
+    return {
+        "area": "ai_rag",
+        "capability": "graphrag_local_cypher_dry_run",
+        "label": "GraphRAG local guarded Cypher dry-run",
+        "status": status,
+        "ready": ready,
+        "evidence": {
+            "capability_status": item.get("status"),
+            **evidence,
+        },
+        "smoke_commands": [NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND],
+        "remediation": item.get("remediation")
+        or "Keep GraphRAG guarded Cypher planning and in-memory dry-run validation healthy.",
     }
 
 
@@ -278,6 +357,7 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             lines.extend(f"    - {command}" for command in smoke_commands)
     lines.append(f"Local start: {report['local_start_command']}")
     lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
+    lines.append(f"Neo4j local contract: {report['neo4j_local_contract_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
     lines.append(
         f"High-risk filing unlocker smoke: {report['high_risk_company_filing_render_smoke_command']}"

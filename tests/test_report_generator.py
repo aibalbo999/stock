@@ -32,6 +32,7 @@ from app.services import (
     report_appendix,
     report_allocation,
     report_company_narrative,
+    report_company_matrix,
     report_data_quality,
     report_early_potential,
     report_final_potential,
@@ -1149,6 +1150,21 @@ def test_company_comparison_matrix_summarizes_decision_valuation_and_confidence(
     assert "等風險下降" in matrix
     assert "估值偏高" in matrix
     assert "高" in matrix
+
+
+def test_company_comparison_matrix_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    request = ReportRequest(tickers=[])
+    generator_source = Path("app/services/report_generator.py").read_text()
+    matrix_source = Path("app/services/report_company_matrix.py").read_text()
+
+    assert "report_company_matrix" in generator_source
+    assert "def render_company_comparison_matrix(" in matrix_source
+    assert "def company_matrix_reminder(" in matrix_source
+    assert "這張表用來比較正式分析股票" not in generator_source
+    assert generator._render_company_comparison_matrix(request, [], [], [], []) == (
+        report_company_matrix.render_company_comparison_matrix([], {}, {}, "")
+    )
 
 
 def test_investment_thesis_map_explains_reasons_sources_and_limits() -> None:

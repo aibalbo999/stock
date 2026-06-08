@@ -67,6 +67,7 @@ from app.services import (
     report_appendix,
     report_allocation,
     report_beginner_portfolio,
+    report_company_analysis,
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
@@ -1668,59 +1669,40 @@ class ReportGenerator:
             return "未指定白名單個股，無法產出個別公司分析。"
         request = request or ReportRequest(tickers=tickers)
 
-        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
-        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
         metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
-        peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
         companies = {company.ticker: company for company in self.whitelist.companies()}
-        ordered_tickers = self._ordered_tickers_for_reading(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
+        latest_valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
+        peer_valuation_summary = self._peer_valuation_summary(list(latest_valuations.values()))
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
         )
         overview_rows: list[str] = []
         detail_blocks: list[str] = []
-        for ticker in ordered_tickers:
+        for context in contexts:
+            ticker = context["ticker"]
             company = companies.get(ticker)
             segment = self.whitelist.segment_for_ticker(ticker)
-            snapshot = snapshots.get(ticker)
-            revenue = revenues.get(ticker)
+            snapshot = context.get("snapshot")
+            revenue = context.get("revenue")
             ticker_metrics = metrics_by_ticker.get(ticker, [])
-            valuation = valuations.get(ticker)
-            related_findings = self._related_findings(ticker, findings)
-            related_documents = self._related_documents(ticker, documents)
-            signal = (leading_signals or {}).get(ticker)
-            estimate = self._estimate_potential(
-                related_documents,
-                related_findings,
-                snapshot,
-                revenue,
-                signal,
-                ticker_metrics,
-                valuation,
-                peer_valuation_summary,
-            )
-            quality = self._data_quality_grade(
-                related_documents,
-                related_findings,
-                snapshot,
-                revenue,
-                ticker_metrics,
-                valuation,
-                financial_metrics is not None or valuation_metrics is not None,
-                signal,
-                self._company_filing_missing(ticker, documents),
-                recent_source_days=request.lookback_days,
-            )
+            valuation = context.get("valuation")
+            related_findings = context.get("findings") or []
+            related_documents = context.get("documents") or []
+            signal = context.get("leading_signal")
+            estimate = context["estimate"]
+            quality = context["quality"]
             downside_gate = self._downside_gate(request)
-            decision = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
+            decision = context["decision"]
             decision_reason = self._decision_reason(
                 decision,
                 estimate,
@@ -1734,47 +1716,14 @@ class ReportGenerator:
 
             name = company.name if company else ticker
             segment_name = segment.name if segment else "白名單未分類"
-            price_label = (
-                f"{snapshot.trade_date.isoformat()} 收盤 {snapshot.close if snapshot.close is not None else 'NA'}"
-                if snapshot
-                else "缺"
-            )
-            revenue_label = (
-                f"{revenue.revenue_year}-{revenue.revenue_month:02d} YoY "
-                f"{revenue.yoy_pct:.2f}%"
-                if revenue and revenue.yoy_pct is not None
-                else "缺" if not revenue else f"{revenue.revenue_year}-{revenue.revenue_month:02d} YoY NA"
-            )
-            evidence_label = (
-                f"{len(related_documents)} 文本 / {len(related_findings)} 歸因"
-            )
-            valuation_position = self._valuation_position_label(
-                valuation,
-                peer_valuation_summary,
-                self._has_negative_profitability(ticker_metrics),
-            )
+            price_label = report_company_analysis.price_label(snapshot)
+            valuation_position = context["valuation_label"]
             financial_confidence = self._financial_confidence_label(ticker_metrics, valuation, revenue)
-            current_price_label = self._current_price_label(
-                snapshot,
-                estimate,
-                quality,
-                valuation_position,
-                signal,
-                decision,
-                downside_gate,
-            )
             overview_rows.append(
-                self._table_row(
-                    [
-                        f"{ticker} {name}",
-                        segment_name,
-                        price_label,
-                        current_price_label,
-                        revenue_label,
-                        valuation_position,
-                        financial_confidence,
-                        evidence_label,
-                    ]
+                report_company_analysis.overview_row(
+                    context,
+                    segment_name,
+                    financial_confidence,
                 )
             )
 
@@ -1793,7 +1742,7 @@ class ReportGenerator:
             detail_blocks.append(
                 f"- 資料信心：{financial_confidence}；目前估值位置：{valuation_position}。"
             )
-            detail_blocks.append(f"- 追價風險標籤：{current_price_label}；最新可取得收盤價：{price_label}。")
+            detail_blocks.append(f"- 追價風險標籤：{context['current_price_label']}；最新可取得收盤價：{price_label}。")
             detail_blocks.append(f"- 產業鏈位置：{segment_name}")
             detail_blocks.extend(
                 self._company_basic_intro(
@@ -1857,18 +1806,11 @@ class ReportGenerator:
             )
             detail_blocks.append("")
 
-        lines = [
-            "### 個股速覽",
+        return report_company_analysis.render_company_analysis(
+            overview_rows,
+            detail_blocks,
             REPORT_READING_SORT_NOTE,
-            "",
-            "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |",
-            "|---|---|---|---|---|---|---|---|",
-            *overview_rows,
-            "",
-            "### 個股細節",
-            *detail_blocks,
-        ]
-        return "\n".join(lines).strip()
+        )
 
     def _company_basic_intro(
         self,

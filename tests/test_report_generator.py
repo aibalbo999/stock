@@ -33,6 +33,7 @@ from app.services import (
     report_appendix,
     report_allocation,
     report_beginner_portfolio,
+    report_company_analysis,
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
@@ -745,6 +746,23 @@ def test_company_analysis_and_recommendations_do_not_overstate_market_only_data(
     assert "新聞/研究證據：目前無足夠數據判斷" in company_analysis
     assert "觀察 / 資料不足" in recommendations
     assert "缺少新聞、財報或法說證據" in recommendations
+
+
+def test_company_analysis_overview_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    analysis_source = Path("app/services/report_company_analysis.py").read_text()
+
+    assert "report_company_analysis" in generator_source
+    assert "def overview_row(" in analysis_source
+    assert "def render_company_analysis(" in analysis_source
+    assert "### 個股速覽" not in generator_source
+    assert report_company_analysis.render_company_analysis([], [], "排序說明") == (
+        "### 個股速覽\n"
+        "排序說明\n\n"
+        "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |\n"
+        "|---|---|---|---|---|---|---|---|\n\n"
+        "### 個股細節"
+    )
 
 
 def test_report_reading_order_groups_by_decision_then_current_price() -> None:

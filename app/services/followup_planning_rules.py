@@ -4,6 +4,13 @@ import re
 from collections.abc import Callable
 
 from app.services.followup_evidence_queries import needs_company_filing_sources
+from app.services.followup_planning_rule_sets import (
+    COMPANY_DATA_AUDIT_RULES,
+    MONITORING_TRIGGER_RULES,
+    QUALITY_METRIC_RULES,
+    QUALITY_TEXT_RULES,
+    KeywordActionRule,
+)
 
 
 ActionFactory = Callable[..., object]
@@ -61,22 +68,9 @@ def from_source_audit(source_audit: dict, tickers: tuple[str, ...], action_facto
 def from_quality_gate(quality_gate: dict, tickers: tuple[str, ...], action_factory: ActionFactory) -> list:
     actions = []
     metrics = quality_gate.get("metrics") or {}
-    if int(metrics.get("market_stale_count") or 0) > 0:
-        actions.append(
-            action_factory("refresh_market", "快取救援資料：刷新股價歷史、成交量與近況訊號。", tickers, "high", "weekly")
-        )
-    if int(metrics.get("monthly_revenue_stale_count") or 0) > 0:
-        actions.append(
-            action_factory("refresh_monthly_revenue", "快取救援資料：刷新月營收與成長加速資料。", tickers, "high", "monthly")
-        )
-    if int(metrics.get("financial_metrics_stale_ticker_count") or 0) > 0:
-        actions.append(
-            action_factory("refresh_financial_metrics", "快取救援資料：刷新近五年財務資料。", tickers, "high", "monthly")
-        )
-    if int(metrics.get("valuation_stale_count") or 0) > 0:
-        actions.append(
-            action_factory("refresh_valuations", "快取救援資料：刷新估值與同業比較資料。", tickers, "high", "weekly")
-        )
+    for rule in QUALITY_METRIC_RULES:
+        if int(metrics.get(rule.metric_key) or 0) > 0:
+            actions.append(action_factory(rule.action_type, rule.reason, tickers, rule.priority, rule.frequency))
     issue_text = "；".join(
         [
             *[str(item) for item in quality_gate.get("blockers") or []],
@@ -86,39 +80,7 @@ def from_quality_gate(quality_gate: dict, tickers: tuple[str, ...], action_facto
     )
     if not issue_text:
         return actions
-    if has_keywords(issue_text, "股價", "成交量", "領先訊號", "近況訊號"):
-        actions.append(
-            action_factory("refresh_market", "補齊股價歷史、成交量與近況訊號。", tickers, "high", "weekly")
-        )
-    if has_keywords(issue_text, "月營收", "營收"):
-        actions.append(action_factory("refresh_monthly_revenue", "補齊月營收與成長加速資料。", tickers, "high", "monthly"))
-    if has_keywords(issue_text, "五年財務", "財務指標", "財務資料"):
-        actions.append(action_factory("refresh_financial_metrics", "補齊近五年財務資料。", tickers, "medium", "monthly"))
-    if has_keywords(issue_text, "估值", "P/E", "DCF", "同業"):
-        actions.append(action_factory("refresh_valuations", "補齊估值與同業比較資料。", tickers, "medium", "weekly"))
-    if has_keywords(issue_text, "資料來源", "來源", "新聞", "國際", "發布者", "時間戳", "近期資料"):
-        target_tickers = () if has_keywords(issue_text, "主題拆解子題", "來源覆蓋子題") else tickers
-        actions.append(
-            action_factory(
-                "ingest_news",
-                "補抓近期與國際資料源，提高 RAG 證據覆蓋。",
-                target_tickers,
-                "high",
-                "weekly",
-            )
-        )
-    if has_keywords(issue_text, "AI 拆解任務", "候選公司", "證據驗證", "正式分析股票"):
-        actions.append(action_factory("rerun_discovery", "重新執行 AI 主題拆解與候選白名單驗證。", tickers, "high", "once"))
-    if has_keywords(issue_text, "LLM 補充分析", "模型恢復"):
-        actions.append(
-            action_factory(
-                "rerun_analysis",
-                "LLM 供應商或 API key 恢復後，重新產生報告並保留來源核查。",
-                tickers,
-                "high",
-                "once",
-            )
-        )
+    actions.extend(actions_from_keyword_rules(issue_text, tickers, action_factory, QUALITY_TEXT_RULES))
     return actions
 
 
@@ -130,36 +92,15 @@ def from_company_data_audit(audit: dict, fallback_tickers: tuple[str, ...], acti
         ticker = str(row.get("ticker") or "")
         tickers = (ticker,) if ticker else fallback_tickers
         missing_text = "；".join(str(item) for item in row.get("missing") or [])
-        if has_keywords(missing_text, "股價", "成交量"):
-            actions.append(action_factory("refresh_market", f"個股資料審計缺口：{missing_text}", tickers, "high"))
-        if has_keywords(missing_text, "月營收"):
-            actions.append(action_factory("refresh_monthly_revenue", f"個股資料審計缺口：{missing_text}", tickers, "high"))
-        if has_keywords(missing_text, "五年財報", "核心財報", "財報"):
-            actions.append(action_factory("refresh_financial_metrics", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
-        if has_keywords(missing_text, "估值"):
-            actions.append(action_factory("refresh_valuations", f"個股資料審計缺口：{missing_text}", tickers, "medium"))
-        if has_keywords(missing_text, "公司原始公開文件", "公開文件"):
-            actions.append(
-                action_factory(
-                    "ingest_company_filings",
-                    f"個股資料審計缺口：{missing_text}",
-                    tickers,
-                    "high",
-                    "monthly",
-                    "required",
-                )
+        actions.extend(
+            actions_from_keyword_rules(
+                missing_text,
+                tickers,
+                action_factory,
+                COMPANY_DATA_AUDIT_RULES,
+                reason_prefix="個股資料審計缺口：",
             )
-        if has_keywords(missing_text, "公司文本", "公司層級文本", "文本證據", "AI 歸因", "入庫"):
-            actions.append(
-                action_factory(
-                    "ingest_news",
-                    f"個股資料審計缺口：{missing_text}",
-                    tickers,
-                    "high",
-                    "weekly",
-                    "required",
-                )
-            )
+        )
     return actions
 
 
@@ -295,19 +236,45 @@ def parse_confidence_score(value: str) -> int:
     return numbers[-1] if numbers else 0
 
 
-def actions_from_trigger(trigger: str, tickers: tuple[str, ...], action_factory: ActionFactory) -> list:
+def actions_from_keyword_rules(
+    text: str,
+    tickers: tuple[str, ...],
+    action_factory: ActionFactory,
+    rules: tuple[KeywordActionRule, ...],
+    *,
+    reason_prefix: str = "",
+) -> list:
     actions = []
-    if has_keywords(trigger, "股價歷史", "股價", "成交量", "領先訊號", "近況訊號"):
-        actions.append(action_factory("refresh_market", f"監控條件觸發：{trigger}", tickers, "high", "weekly", "tracking"))
-    if has_keywords(trigger, "月營收", "營收"):
-        actions.append(action_factory("refresh_monthly_revenue", f"監控條件觸發：{trigger}", tickers, "high", "monthly", "tracking"))
-    if has_keywords(trigger, "估值", "同業", "P/E", "DCF"):
-        actions.append(action_factory("refresh_valuations", f"監控條件觸發：{trigger}", tickers, "medium", "weekly", "tracking"))
-    if has_keywords(trigger, "五年財報", "財報", "財務"):
-        actions.append(action_factory("refresh_financial_metrics", f"監控條件觸發：{trigger}", tickers, "medium", "monthly", "tracking"))
-    if has_keywords(trigger, "新來源", "公司文本", "AI 歸因", "證據", "來源"):
-        actions.append(action_factory("ingest_news", f"監控條件觸發：{trigger}", tickers, "medium", "weekly", "tracking"))
+    for rule in rules:
+        if not has_keywords(text, *rule.keywords):
+            continue
+        action_tickers = (
+            ()
+            if rule.topic_level_keywords and has_keywords(text, *rule.topic_level_keywords)
+            else tickers
+        )
+        reason = rule.reason if rule.reason is not None else f"{reason_prefix}{text}"
+        actions.append(
+            action_factory(
+                rule.action_type,
+                reason,
+                action_tickers,
+                rule.priority,
+                rule.frequency,
+                rule.purpose,
+            )
+        )
     return actions
+
+
+def actions_from_trigger(trigger: str, tickers: tuple[str, ...], action_factory: ActionFactory) -> list:
+    return actions_from_keyword_rules(
+        trigger,
+        tickers,
+        action_factory,
+        MONITORING_TRIGGER_RULES,
+        reason_prefix="監控條件觸發：",
+    )
 
 
 def markdown_table_rows(

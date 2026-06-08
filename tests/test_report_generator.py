@@ -28,6 +28,7 @@ from app.services.report_financial_assessment import (
     valuation_position_label,
 )
 from app.services.report_financial_narrative import financial_statement_summary
+from app.services import report_company_narrative
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
 from app.services.report_decision_rules import (
     current_price_label,
@@ -1589,6 +1590,37 @@ def test_financial_narrative_logic_lives_outside_generator() -> None:
     assert "def metric_series(" in narrative_source
     assert "def balance_sheet_total_series(" in narrative_source
     assert "需補 FinMind 財報三表" not in generator_source
+
+
+def test_company_narrative_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    narrative_source = Path("app/services/report_company_narrative.py").read_text()
+
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 1),
+        revenue=349567000000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=18.5,
+    )
+    valuation = ValuationMetric(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        pe_ratio=20,
+        pb_ratio=5,
+        dividend_yield=1.5,
+    )
+
+    assert "report_company_narrative" in generator_source
+    assert "def company_quick_take(" in narrative_source
+    assert "def valuation_summary(" in narrative_source
+    assert "def financial_confidence_label(" in narrative_source
+    assert "無法判斷近期營收動能" not in generator_source
+    assert ReportGenerator._company_revenue_summary(revenue) == report_company_narrative.company_revenue_summary(revenue)
+    assert ReportGenerator._valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3}) == (
+        report_company_narrative.valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3})
+    )
 
 
 def test_valuation_position_and_financial_confidence_labels() -> None:

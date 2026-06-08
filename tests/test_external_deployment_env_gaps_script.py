@@ -128,6 +128,24 @@ def test_external_deployment_env_gap_report_formats_text() -> None:
     assert "structured_company_filing_smoke.py" in output
 
 
+def test_external_deployment_env_gap_report_formats_safe_env_template() -> None:
+    report = external_deployment_env_gaps.external_deployment_env_gap_report(
+        upgrade_audit=_audit_with_env_gaps(),
+        service_snapshot={},
+    )
+
+    output = external_deployment_env_gaps.format_external_deployment_env_template(report)
+
+    assert "External deployment env template" in output
+    assert output.count("NEO4J_URI=") == 1
+    assert "NEO4J_URI=neo4j://localhost:7687" in output
+    assert "# NEO4J_PASSWORD=<set-manually>" in output
+    assert "# COMPANY_FILING_STRUCTURED_API_TOKEN=<set-manually>" in output
+    assert "# COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in output
+    assert "# COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>" in output
+    assert "Do not commit real secrets" in output
+
+
 def test_external_deployment_env_gap_script_uses_service_layer() -> None:
     source = Path("scripts/external_deployment_env_gaps.py").read_text()
 
@@ -161,3 +179,33 @@ def test_external_deployment_env_gap_script_json_and_strict(monkeypatch, capsys)
     assert external_deployment_env_gaps.main(["--json"]) == 0
     assert '"COMPANY_FILING_STRUCTURED_API_TOKEN"' in capsys.readouterr().out
     assert external_deployment_env_gaps.main(["--strict", "--json"]) == 1
+
+
+def test_external_deployment_env_gap_script_prints_env_template(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        external_deployment_env_gaps,
+        "external_deployment_env_gap_report",
+        lambda **_kwargs: {
+            "status": "action_required",
+            "gap_count": 1,
+            "missing_count": 1,
+            "recommended_count": 0,
+            "manual_secret_count": 1,
+            "local_action_count": 0,
+            "rows": [
+                {
+                    "優先級": "P1",
+                    "能力": "公司文件結構化 API 備援",
+                    "設定鍵": "COMPANY_FILING_STRUCTURED_API_TOKEN",
+                    "狀態": "缺少",
+                    "建議值": "<token>",
+                    "處理類型": "需人工密鑰",
+                }
+            ],
+        },
+    )
+
+    assert external_deployment_env_gaps.main(["--env-template"]) == 0
+    output = capsys.readouterr().out
+    assert "External deployment env template" in output
+    assert "# COMPANY_FILING_STRUCTURED_API_TOKEN=<set-manually>" in output

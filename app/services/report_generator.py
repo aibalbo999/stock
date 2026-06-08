@@ -24,6 +24,7 @@ from app.services.report_generator_decision_risk import ReportGeneratorDecisionR
 from app.services.report_generator_document import ReportGeneratorDocumentMixin
 from app.services.report_generator_financial import ReportGeneratorFinancialMixin
 from app.services.report_generator_formatting import ReportGeneratorFormattingMixin
+from app.services.report_generator_market_scope import ReportGeneratorMarketScopeMixin
 from app.services.report_generator_potential import ReportGeneratorPotentialMixin
 from app.services.report_generator_prompt_appendix import ReportGeneratorPromptAppendixMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
@@ -44,10 +45,8 @@ from app.services import (
     report_investment_thesis,
     report_investment_recommendations,
     report_markdown_sections,
-    report_market_snapshots,
     report_monitoring_checklist,
     report_notes,
-    report_scope_sections,
     report_score_breakdown,
     report_source_coverage,
 )
@@ -80,6 +79,7 @@ class ReportGenerator(
     ReportGeneratorPotentialMixin,
     ReportGeneratorDecisionRiskMixin,
     ReportGeneratorPromptAppendixMixin,
+    ReportGeneratorMarketScopeMixin,
 ):
     def __init__(
         self,
@@ -206,41 +206,6 @@ class ReportGenerator(
             mapper=self.mapper,
             whitelist=self.whitelist,
             document_matcher=self._document_matches,
-        )
-
-    def _latest_market_snapshots(self, tickers: list[str]) -> list[MarketSnapshot]:
-        return report_market_snapshots.latest_market_snapshots(
-            tickers,
-            session_scope_func=session_scope,
-        )
-
-    def _latest_monthly_revenues(self, tickers: list[str]) -> list[MonthlyRevenue]:
-        return report_market_snapshots.latest_monthly_revenues(
-            tickers,
-            session_scope_func=session_scope,
-        )
-
-    def _financial_metrics(self, tickers: list[str]) -> list[FinancialMetric]:
-        return report_market_snapshots.financial_metrics(
-            tickers,
-            session_scope_func=session_scope,
-        )
-
-    def _latest_valuations(self, tickers: list[str]) -> list[ValuationMetric]:
-        return report_market_snapshots.latest_valuations(
-            tickers,
-            session_scope_func=session_scope,
-        )
-
-    def _leading_signals(
-        self,
-        tickers: list[str],
-        valuation_metrics: list[ValuationMetric],
-    ) -> dict[str, LeadingSignal]:
-        return report_market_snapshots.leading_signals(
-            tickers,
-            valuation_metrics,
-            session_scope_func=session_scope,
         )
 
     def _render_markdown(
@@ -856,23 +821,6 @@ class ReportGenerator(
             financial_metrics,
             leading_signal,
         )
-
-    def _render_scope(
-        self,
-        tickers: list[str],
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-    ) -> str:
-        return report_scope_sections.render_scope(
-            tickers,
-            market_snapshots,
-            monthly_revenues,
-            whitelist_context=self.whitelist.as_prompt_context(),
-        )
-
-    @staticmethod
-    def _render_revenue_check(tickers: list[str], monthly_revenues: list[MonthlyRevenue]) -> str:
-        return report_scope_sections.render_revenue_check(tickers, monthly_revenues)
 
     def _render_beginner_portfolio_plan(
         self,

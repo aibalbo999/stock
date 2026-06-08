@@ -601,10 +601,16 @@ def test_evidence_digest_logic_lives_outside_generator() -> None:
 
 def test_report_market_snapshot_fetching_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    market_scope_mixin_source = Path("app/services/report_generator_market_scope.py").read_text()
     snapshot_source = Path("app/services/report_market_snapshots.py").read_text()
     generator = object.__new__(ReportGenerator)
 
-    assert "report_market_snapshots" in generator_source
+    assert "report_market_snapshots" not in generator_source
+    assert "ReportGeneratorMarketScopeMixin" in generator_source
+    assert "report_market_snapshots" in market_scope_mixin_source
+    assert "def _latest_market_snapshots(" in market_scope_mixin_source
+    assert "def _leading_signals(" in market_scope_mixin_source
+    assert "def _latest_market_snapshots(" not in generator_source
     assert "def latest_market_snapshots(" in snapshot_source
     assert "def leading_signals(" in snapshot_source
     assert "MarketRepository(" not in generator_source
@@ -2062,6 +2068,7 @@ def test_report_allocation_logic_lives_outside_generator() -> None:
 
 def test_scope_section_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    market_scope_mixin_source = Path("app/services/report_generator_market_scope.py").read_text()
     scope_source = Path("app/services/report_scope_sections.py").read_text()
     revenue = MonthlyRevenue(
         ticker="2330",
@@ -2073,7 +2080,12 @@ def test_scope_section_logic_lives_outside_generator() -> None:
         source="FinMind TaiwanStockMonthRevenue",
     )
 
-    assert "report_scope_sections" in generator_source
+    assert "report_scope_sections" not in generator_source
+    assert "ReportGeneratorMarketScopeMixin" in generator_source
+    assert "report_scope_sections" in market_scope_mixin_source
+    assert "def _render_scope(" in market_scope_mixin_source
+    assert "def _render_revenue_check(" in market_scope_mixin_source
+    assert "def _render_revenue_check(" not in generator_source
     assert "def render_scope(" in scope_source
     assert "def render_revenue_check(" in scope_source
     assert "可先呼叫 /market/refresh" not in generator_source

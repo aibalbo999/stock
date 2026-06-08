@@ -2234,9 +2234,15 @@ def test_potential_scoring_logic_lives_outside_generator() -> None:
 
 def test_decision_rule_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
     decision_rule_source = Path("app/services/report_decision_rules.py").read_text()
 
-    assert "report_decision_rules" in generator_source
+    assert "report_decision_rules" not in generator_source
+    assert "ReportGeneratorDecisionRiskMixin" in generator_source
+    assert "report_decision_rules" in decision_risk_mixin_source
+    assert "def _sort_decision_contexts(" in decision_risk_mixin_source
+    assert "def _risk_warning_reason(" in decision_risk_mixin_source
+    assert "def _sort_decision_contexts(" not in generator_source
     assert "def sort_decision_contexts(" in decision_rule_source
     assert "def recheck_trigger_text(" in decision_rule_source
     assert "def current_price_label(" in decision_rule_source
@@ -4726,9 +4732,14 @@ def test_decision_reason_logic_lives_outside_generator() -> None:
     estimate = {"upside_pct": 18, "downside_pct": 4}
     quality = {"grade": "supported", "missing": []}
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
     narrative_source = Path("app/services/report_decision_narrative.py").read_text()
 
-    assert "report_decision_narrative" in generator_source
+    assert "report_decision_narrative" not in generator_source
+    assert "ReportGeneratorDecisionRiskMixin" in generator_source
+    assert "report_decision_narrative" in decision_risk_mixin_source
+    assert "def _decision_reason(" in decision_risk_mixin_source
+    assert "def _decision_reason(" not in generator_source
     assert "def decision_reason(" in narrative_source
     assert "def structural_bottleneck_reason(" in narrative_source
     assert "缺少可驗證市場資料" not in generator_source
@@ -4753,6 +4764,7 @@ def test_decision_reason_logic_lives_outside_generator() -> None:
 
 def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
     risk_source = Path("app/services/report_risk_overview.py").read_text()
     whitelist = SupplyChainWhitelist.from_candidate_whitelist(
         [
@@ -4795,7 +4807,11 @@ def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
         whitelist=whitelist,
     )
     assert generator._company_risk_summary([]) == report_risk_overview.company_risk_summary([], whitelist=whitelist)
-    assert "report_risk_overview" in generator_source
+    assert "report_risk_overview" not in generator_source
+    assert "ReportGeneratorDecisionRiskMixin" in generator_source
+    assert "report_risk_overview" in decision_risk_mixin_source
+    assert "def _render_risk_overview(" in decision_risk_mixin_source
+    assert "def _render_risk_overview(" not in generator_source
     assert "def render_risk_overview(" in risk_source
     assert "def company_risk_summary(" in risk_source
     assert "AI_INFRA_RISK_TERMS" in risk_source
@@ -4811,6 +4827,7 @@ def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
 
 def test_related_findings_logic_lives_outside_generator_and_dedupes() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
     risk_source = Path("app/services/report_risk_overview.py").read_text()
     finding = make_finding(
         "2330",
@@ -4833,6 +4850,8 @@ def test_related_findings_logic_lives_outside_generator_and_dedupes() -> None:
     findings = [finding, duplicate, unrelated]
 
     assert "def related_findings(" in risk_source
+    assert "def _related_findings(" in decision_risk_mixin_source
+    assert "def _related_findings(" not in generator_source
     assert "seen: set[tuple" not in generator_source
     assert ReportGenerator._related_findings("2330", findings) == report_risk_overview.related_findings(
         "2330",
@@ -4844,6 +4863,7 @@ def test_related_findings_logic_lives_outside_generator_and_dedupes() -> None:
 
 def test_findings_summary_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_risk_mixin_source = Path("app/services/report_generator_decision_risk.py").read_text()
     risk_source = Path("app/services/report_risk_overview.py").read_text()
     findings = [
         make_finding("2330", "台積電", "先進製程產能吃緊", RiskType.structural_bottleneck),
@@ -4852,6 +4872,8 @@ def test_findings_summary_logic_lives_outside_generator() -> None:
     ]
 
     assert "def findings_summary(" in risk_source
+    assert "def _summary(" in decision_risk_mixin_source
+    assert "def _summary(" not in generator_source
     assert "本次檢出" not in generator_source
     assert "目前檢索證據不足" not in generator_source
     assert ReportGenerator._summary([]) == report_risk_overview.findings_summary([])

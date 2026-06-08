@@ -51,6 +51,10 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                     "capability": "neo4j_import",
                     "label": "Neo4j import",
                     "status": "degraded",
+                    "enablement_profile": {
+                        "group_label": "可本機免費啟用",
+                        "cost_label": "本機 Neo4j 免費；託管 Neo4j 依方案",
+                    },
                     "remediation": "設定 NEO4J_URI",
                 },
             ],
@@ -84,6 +88,7 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
         "path=data/local_dependency_start_status.json"
     ) in output
     assert "[WARN optional] ai_rag.neo4j_import" in output
+    assert "enablement: 可本機免費啟用; cost: 本機 Neo4j 免費" in output
 
 
 def test_upgrade_audit_script_returns_failure_when_required_check_fails(monkeypatch) -> None:

@@ -28,7 +28,10 @@ def frontend_external_deployment_readiness_status(
             and "from app.services.external_deployment_readiness import"
             in external_deployment_common_source
             and "EXTERNAL_READINESS_METADATA" in readiness_service_source
+            and "EXTERNAL_ENABLEMENT_METADATA" in readiness_service_source
             and "EXTERNAL_LOCAL_ACTION_METADATA" in readiness_service_source
+            and "def external_deployment_enablement_profile(" in readiness_service_source
+            and "def external_deployment_enablement_profile(" in external_deployment_common_source
             and "def external_deployment_local_action(" in readiness_service_source
             and "def local_dependency_status_rows(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_source
@@ -45,6 +48,9 @@ def frontend_external_deployment_readiness_status(
             and "本機依賴修復指引" in ui_source
             and "本機依賴狀態" in ui_source
             and '"部署決策"' in readiness_service_source
+            and '"啟用分類"' in readiness_service_source
+            and '"成本/額度"' in readiness_service_source
+            and '"建議路徑"' in readiness_service_source
             and '"本機動作"' in readiness_service_source
             and '"本機指令"' in readiness_service_source
             and '"驗證指令"' in readiness_service_source

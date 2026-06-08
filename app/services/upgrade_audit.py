@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.external_deployment_readiness import external_deployment_enablement_profile
 from app.services.service_status import service_status
 
 
@@ -409,7 +410,7 @@ def _requirement_result(
     ) in EXTERNAL_INTEGRATION_CAPABILITIES
     deployment_check = (requirement.area, requirement.capability) in DEPLOYMENT_CHECK_CAPABILITIES
     evidence = capability.get("evidence") or {}
-    return {
+    result = {
         "area": requirement.area,
         "capability": requirement.capability,
         "label": requirement.label,
@@ -423,6 +424,9 @@ def _requirement_result(
         "evidence": evidence,
         "remediation": None if passed else _remediation_for_requirement(requirement, evidence),
     }
+    if external_integration:
+        result["enablement_profile"] = external_deployment_enablement_profile(result)
+    return result
 
 
 def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence: dict) -> str:

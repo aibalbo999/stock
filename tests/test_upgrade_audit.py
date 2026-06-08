@@ -121,6 +121,8 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
     assert warning["capability"] == "neo4j_import"
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert warning["enablement_profile"]["deployment_profile"] == "free_local"
+    assert warning["enablement_profile"]["group_label"] == "可本機免費啟用"
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in warning["remediation"]
     assert "neo4j_graphrag_smoke.py --json" in warning["remediation"]
     assert "--import-first" in warning["remediation"]
@@ -279,6 +281,8 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     )
     assert warning["optional"] is True
     assert warning["external_integration"] is True
+    assert warning["enablement_profile"]["deployment_profile"] == "paid_external"
+    assert warning["enablement_profile"]["paid_service_required"] is True
     assert "structured_company_filing_sample.json" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]
 

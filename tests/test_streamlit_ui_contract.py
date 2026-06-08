@@ -210,6 +210,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
     )
     assert '"部署決策"' in external_readiness_service_source
+    assert '"啟用分類"' in external_readiness_service_source
+    assert '"成本/額度"' in external_readiness_service_source
+    assert '"建議路徑"' in external_readiness_service_source
+    assert "EXTERNAL_ENABLEMENT_METADATA" in external_readiness_service_source
     assert "EXTERNAL_LOCAL_ACTION_METADATA" in external_readiness_service_source
     assert "def external_deployment_env_key_rows(" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
@@ -422,6 +426,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def local_dependency_last_start_rows(" in source
     assert "def local_dependency_repair_rows(" in source
     assert '"部署決策"' in external_readiness_service_source
+    assert '"啟用分類"' in external_readiness_service_source
+    assert '"成本/額度"' in external_readiness_service_source
+    assert '"建議路徑"' in external_readiness_service_source
+    assert "EXTERNAL_ENABLEMENT_METADATA" in external_readiness_service_source
+    assert "def external_deployment_enablement_profile(" in external_readiness_service_source
     assert '"本機動作"' in external_readiness_service_source
     assert '"本機指令"' in external_readiness_service_source
     assert "local_dependency_wait" in external_readiness_service_source

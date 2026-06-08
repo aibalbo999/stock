@@ -126,6 +126,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
     ]
+    assert checks["neo4j_import"]["enablement_profile"]["deployment_profile"] == "free_local"
+    assert checks["neo4j_import"]["enablement_profile"]["group_label"] == "可本機免費啟用"
     assert checks["graphrag_live_cypher_query"]["smoke_commands"][0].endswith(
         "scripts.import_supply_chain_graph_neo4j --dry-run"
     )
@@ -139,6 +141,12 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert checks["company_filing_high_risk_unlocker"]["smoke_commands"] == [
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
     ]
+    assert checks["company_filing_high_risk_unlocker"]["enablement_profile"][
+        "free_local_available"
+    ] is True
+    assert "FlareSolverr 本機免費" in checks["company_filing_high_risk_unlocker"][
+        "enablement_profile"
+    ]["cost_label"]
     assert checks["company_filing_render_provider_contract"]["ready"] is True
     assert checks["company_filing_render_provider_contract"]["evidence"][
         "provider_count"
@@ -153,6 +161,12 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
+    assert checks["company_filing_structured_api_fallback"]["enablement_profile"][
+        "deployment_profile"
+    ] == "paid_external"
+    assert checks["company_filing_structured_api_fallback"]["enablement_profile"][
+        "paid_service_required"
+    ] is True
     assert checks["company_filing_structured_api_sample_contract"]["ready"] is True
     assert checks["company_filing_structured_api_sample_contract"]["evidence"]["mode"] == (
         "sample_json_contract"
@@ -167,6 +181,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
 
     assert "smoke:" in output
     assert "External integrations: caution (5/9 ready)" in output
+    assert "enablement: 可本機免費啟用" in output
+    assert "enablement: 需外部資料 API" in output
     assert "Neo4j payload local contract: ready" in output
     assert "GraphRAG local guarded Cypher dry-run: ready" in output
     assert "--local-contract" in output

@@ -87,6 +87,71 @@ EXTERNAL_LOCAL_ACTION_METADATA = {
         ),
     },
 }
+EXTERNAL_ENABLEMENT_METADATA = {
+    ("ai_rag", "neo4j_import"): {
+        "group": "free_local_first",
+        "group_label": "可本機免費啟用",
+        "cost_profile": "free_local_or_managed",
+        "cost_label": "本機 Neo4j 免費；託管 Neo4j 依方案",
+        "recommended_path": "先啟動本機 Neo4j；正式部署再視流量改託管。",
+        "free_local_available": True,
+        "paid_service_required": False,
+    },
+    ("ai_rag", "graphrag_live_cypher_query"): {
+        "group": "free_local_first",
+        "group_label": "可本機免費啟用",
+        "cost_profile": "free_local_or_managed",
+        "cost_label": "本機 Neo4j 免費；託管 Neo4j 依方案",
+        "recommended_path": "先用本機 Neo4j 驗證 guarded Cypher；正式部署再接託管圖庫。",
+        "free_local_available": True,
+        "paid_service_required": False,
+    },
+    ("ai_rag", "visual_rag"): {
+        "group": "quota_or_local_model",
+        "group_label": "API 額度或本機模型",
+        "cost_profile": "free_quota_or_paid_tokens",
+        "cost_label": "Gemini 免費額度可先用；大量 PDF 圖像解析會消耗額度或 API 成本",
+        "recommended_path": "先限制 Visual RAG request budget，只對複雜 PDF 啟用。",
+        "free_local_available": False,
+        "paid_service_required": False,
+    },
+    ("data_business_logic", "company_filing_pdf_table_parser_runtime"): {
+        "group": "free_python_runtime",
+        "group_label": "免費 Python 套件",
+        "cost_profile": "free_runtime_dependency",
+        "cost_label": "pdfplumber/PyMuPDF 類套件免費；unstructured 可能需要較重系統依賴",
+        "recommended_path": "先安裝輕量 parser；只有複雜表格再補 unstructured。",
+        "free_local_available": True,
+        "paid_service_required": False,
+    },
+    ("data_business_logic", "company_filing_browser_or_proxy_fallback"): {
+        "group": "free_local_first",
+        "group_label": "可本機免費啟用",
+        "cost_profile": "free_local_or_paid_proxy",
+        "cost_label": "Playwright/Browserless 本機免費；rotating proxy 可能付費",
+        "recommended_path": "先用 Playwright 或 Browserless；遇到封鎖再加 proxy。",
+        "free_local_available": True,
+        "paid_service_required": False,
+    },
+    ("data_business_logic", "company_filing_high_risk_unlocker"): {
+        "group": "free_local_or_paid_unlocker",
+        "group_label": "本機免費或付費 unlocker",
+        "cost_profile": "free_flaresolverr_or_paid_managed",
+        "cost_label": "FlareSolverr 本機免費；ScrapingBee/BrightData 通常付費",
+        "recommended_path": "先用本機 FlareSolverr；穩定正式部署再評估 managed unlocker。",
+        "free_local_available": True,
+        "paid_service_required": False,
+    },
+    ("data_business_logic", "company_filing_structured_api_fallback"): {
+        "group": "paid_external_api",
+        "group_label": "需外部資料 API",
+        "cost_profile": "paid_contract_likely",
+        "cost_label": "TEJ 或專業資料商通常需付費合約/API token",
+        "recommended_path": "免費版先保留 sample contract；只有需要穩定法說/重大訊息才接資料商。",
+        "free_local_available": False,
+        "paid_service_required": True,
+    },
+}
 
 
 def external_deployment_readiness_rows(
@@ -96,6 +161,7 @@ def external_deployment_readiness_rows(
     rows: list[dict] = []
     for item in external_deployment_readiness_items(upgrade_audit):
         metadata = external_deployment_readiness_metadata(item)
+        enablement = external_deployment_enablement_profile(item)
         local_action = external_deployment_local_action(
             item,
             upgrade_audit,
@@ -107,6 +173,9 @@ def external_deployment_readiness_rows(
                 "項目": item.get("label") or item.get("capability") or "-",
                 "狀態": external_deployment_readiness_state(item),
                 "部署決策": external_deployment_readiness_decision(item),
+                "啟用分類": enablement["group_label"],
+                "成本/額度": enablement["cost_label"],
+                "建議路徑": enablement["recommended_path"],
                 "本機動作": local_action["state"],
                 "本機指令": local_action["command"],
                 "影響範圍": metadata["impact"],
@@ -155,6 +224,31 @@ def external_deployment_readiness_metadata(item: dict) -> dict:
     return {
         "priority": str(metadata.get("priority") or "P2"),
         "impact": str(metadata.get("impact") or item.get("detail") or "-"),
+    }
+
+
+def external_deployment_enablement_profile(item: dict) -> dict:
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    metadata = EXTERNAL_ENABLEMENT_METADATA.get(key, {})
+    free_local_available = bool(metadata.get("free_local_available"))
+    paid_service_required = bool(metadata.get("paid_service_required"))
+    return {
+        "group": str(metadata.get("group") or "external_configuration"),
+        "group_label": str(metadata.get("group_label") or "需外部設定"),
+        "cost_profile": str(metadata.get("cost_profile") or "unknown"),
+        "cost_label": str(metadata.get("cost_label") or "依外部服務設定而定"),
+        "recommended_path": str(
+            metadata.get("recommended_path") or item.get("remediation") or "-"
+        ),
+        "free_local_available": free_local_available,
+        "paid_service_required": paid_service_required,
+        "deployment_profile": (
+            "free_local"
+            if free_local_available and not paid_service_required
+            else "paid_external"
+            if paid_service_required
+            else "quota_or_external"
+        ),
     }
 
 
@@ -333,18 +427,23 @@ def external_deployment_command_summary(commands: list[str]) -> str:
 
 
 def external_deployment_warning_rows(upgrade_audit: dict) -> list[dict]:
-    return [
-        {
-            "面向": _external_area_label(item),
-            "能力": item.get("label") or item.get("capability") or "-",
-            "狀態": item.get("status") or "-",
-            "警示層級": _external_warning_level(item),
-            "說明": _external_warning_detail(item),
-            "診斷指令": "\n".join(external_smoke_commands_from_payload(item)) or "-",
-            "處理方向": item.get("remediation") or "-",
-        }
-        for item in external_deployment_warning_items(upgrade_audit)
-    ]
+    rows: list[dict] = []
+    for item in external_deployment_warning_items(upgrade_audit):
+        enablement = external_deployment_enablement_profile(item)
+        rows.append(
+            {
+                "面向": _external_area_label(item),
+                "能力": item.get("label") or item.get("capability") or "-",
+                "狀態": item.get("status") or "-",
+                "警示層級": _external_warning_level(item),
+                "啟用分類": enablement["group_label"],
+                "成本/額度": enablement["cost_label"],
+                "說明": _external_warning_detail(item),
+                "診斷指令": "\n".join(external_smoke_commands_from_payload(item)) or "-",
+                "處理方向": item.get("remediation") or "-",
+            }
+        )
+    return rows
 
 
 def external_deployment_smoke_commands(upgrade_audit: dict) -> list[str]:

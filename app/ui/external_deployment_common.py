@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from app.services.external_deployment_readiness import (
     EXTERNAL_DETAIL_KEYS as EXTERNAL_DETAIL_KEYS,
+    EXTERNAL_ENABLEMENT_METADATA as EXTERNAL_ENABLEMENT_METADATA,
     EXTERNAL_LOCAL_ACTION_METADATA as EXTERNAL_LOCAL_ACTION_METADATA,
     EXTERNAL_READINESS_METADATA as EXTERNAL_READINESS_METADATA,
     EXTERNAL_SMOKE_COMMAND_KEYS as EXTERNAL_SMOKE_COMMAND_KEYS,
     append_external_command as _append_external_command,
     collect_external_smoke_commands as _collect_external_smoke_commands,
     external_deployment_command_summary as _external_deployment_command_summary,
+    external_deployment_enablement_profile as _external_deployment_enablement_profile,
     external_deployment_item_by_capability as _external_deployment_item_by_capability,
     external_deployment_item_ready as _external_deployment_item_ready,
     external_deployment_local_action as _external_deployment_local_action,
@@ -42,6 +44,10 @@ def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
 
 def external_deployment_readiness_metadata(item: dict) -> dict:
     return _external_deployment_readiness_metadata(item)
+
+
+def external_deployment_enablement_profile(item: dict) -> dict:
+    return _external_deployment_enablement_profile(item)
 
 
 def external_deployment_local_action(

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.service_status import service_status
+from app.services.external_deployment_readiness import external_deployment_enablement_profile
 
 try:
     from scripts.company_filing_render_smoke import (
@@ -138,18 +139,18 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
     for area, capability, label, remediation in EXTERNAL_CHECKS:
         item = ((matrix.get(area) or {}).get(capability) or {})
         evidence = item.get("evidence") or {}
-        checks.append(
-            {
-                "area": area,
-                "capability": capability,
-                "label": label,
-                "status": item.get("status") or "unknown",
-                "ready": item.get("status") == "ready",
-                "evidence": evidence,
-                "smoke_commands": external_check_smoke_commands(capability, evidence),
-                "remediation": item.get("remediation") or remediation,
-            }
-        )
+        check = {
+            "area": area,
+            "capability": capability,
+            "label": label,
+            "status": item.get("status") or "unknown",
+            "ready": item.get("status") == "ready",
+            "evidence": evidence,
+            "smoke_commands": external_check_smoke_commands(capability, evidence),
+            "remediation": item.get("remediation") or remediation,
+        }
+        check["enablement_profile"] = external_deployment_enablement_profile(check)
+        checks.append(check)
     checks.extend(local_graphrag_contract_checks(matrix))
     checks.append(company_filing_render_provider_contract_check())
     checks.append(structured_company_filing_sample_contract_check())
@@ -376,6 +377,16 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
         lines.append(f"- [{marker}] {check['label']}: {check['status']}")
+        enablement = (
+            check.get("enablement_profile")
+            if isinstance(check.get("enablement_profile"), dict)
+            else {}
+        )
+        if enablement:
+            lines.append(
+                "  enablement: "
+                f"{enablement.get('group_label')}; cost: {enablement.get('cost_label')}"
+            )
         if not check.get("ready"):
             lines.append(f"  fix: {check['remediation']}")
         smoke_commands = [

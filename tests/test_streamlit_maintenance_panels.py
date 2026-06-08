@@ -645,6 +645,15 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert rows[2]["警示層級"] == "外部選配"
     assert "neo4j_graphrag_smoke.py" in rows[2]["診斷指令"]
     assert rows[3]["警示層級"] == "外部選配"
+    assert [row["啟用分類"] for row in rows] == [
+        "可本機免費啟用",
+        "可本機免費啟用",
+        "可本機免費啟用",
+        "需外部資料 API",
+    ]
+    assert "託管 Neo4j" in rows[0]["成本/額度"]
+    assert "rotating proxy" in rows[1]["成本/額度"]
+    assert "TEJ" in rows[3]["成本/額度"]
     assert "missing_browser_render_url" in rows[1]["說明"]
     assert "structured_company_filing_smoke.py" in rows[3]["診斷指令"]
     assert len(rows) == 4
@@ -666,6 +675,15 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         "需要該能力時配置",
         "需要該能力時配置",
     ]
+    assert [row["啟用分類"] for row in readiness_rows] == [
+        "可本機免費啟用",
+        "可本機免費啟用",
+        "可本機免費啟用",
+        "需外部資料 API",
+    ]
+    assert "本機 Neo4j 免費" in readiness_rows[0]["成本/額度"]
+    assert "先用 Playwright" in readiness_rows[1]["建議路徑"]
+    assert "免費版先保留 sample contract" in readiness_rows[3]["建議路徑"]
     assert [row["本機動作"] for row in readiness_rows] == [
         "可啟動",
         "可啟動",
@@ -1176,12 +1194,17 @@ def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> N
     assert rows_by_item["外部 Neo4j 匯入連線"]["本機動作"] == "驗證失敗"
     assert "--wait-local-neo4j 20" in rows_by_item["外部 Neo4j 匯入連線"]["本機指令"]
     assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機動作"] == "已啟動"
+    assert rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["啟用分類"] == (
+        "本機免費或付費 unlocker"
+    )
+    assert "FlareSolverr 本機免費" in rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["成本/額度"]
     assert (
         "--wait-local-flaresolverr 20"
         in rows_by_item["MOPS/TWSE/TPEx 高風險文件 unlocker"]["本機指令"]
     )
     assert rows_by_item["公司文件結構化 API 備援"]["本機動作"] == "需外部設定"
     assert rows_by_item["公司文件結構化 API 備援"]["本機指令"] == "-"
+    assert rows_by_item["公司文件結構化 API 備援"]["啟用分類"] == "需外部資料 API"
 
 
 def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:

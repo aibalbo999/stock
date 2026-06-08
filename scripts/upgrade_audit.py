@@ -275,6 +275,16 @@ def _format_text(audit: dict) -> str:
             f"- [{marker}{optional}] {check['area']}.{check['capability']}: "
             f"{check['label']} ({check['status']})"
         )
+        enablement = (
+            check.get("enablement_profile")
+            if isinstance(check.get("enablement_profile"), dict)
+            else {}
+        )
+        if enablement:
+            lines.append(
+                "  enablement: "
+                f"{enablement.get('group_label')}; cost: {enablement.get('cost_label')}"
+            )
         if check["remediation"]:
             lines.append(f"  fix: {check['remediation']}")
     return "\n".join(lines)

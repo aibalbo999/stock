@@ -39,6 +39,7 @@ from app.services import (
     report_credibility_check,
     report_data_quality,
     report_decision_narrative,
+    report_document_matching,
     report_early_potential,
     report_executive_snapshot,
     report_final_potential,
@@ -564,6 +565,38 @@ def test_document_matches_prefer_persisted_entity_metadata_over_text_guessing() 
     assert [(match.ticker, match.name, match.matched_alias) for match in matches] == [
         ("3017", "奇鋐", "metadata")
     ]
+
+
+def test_document_matching_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    matching_source = Path("app/services/report_document_matching.py").read_text()
+    whitelist = SupplyChainWhitelist.from_candidate_whitelist(
+        [
+            {
+                "ticker": "3017",
+                "name": "奇鋐",
+                "segment": "散熱模組",
+                "status": "evidence_supported",
+            }
+        ]
+    )
+    document = NewsFetcher.from_manual_text(
+        title="奇鋐液冷散熱",
+        text="奇鋐液冷散熱需求升溫。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    ).model_copy(update={"entity_tickers": ["3017"], "entity_names": ["奇鋐"]})
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = whitelist
+
+    assert "report_document_matching" in generator_source
+    assert "def document_matches(" in matching_source
+    assert "def document_metadata_matches(" in matching_source
+    assert 'matched_alias="metadata"' not in generator_source
+    assert generator._document_metadata_matches(document) == report_document_matching.document_metadata_matches(
+        document,
+        whitelist,
+    )
 
 
 def test_generate_fails_when_dynamic_candidates_are_not_loaded() -> None:

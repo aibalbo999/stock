@@ -7,7 +7,6 @@ from app.core.time import format_taipei, now_taipei
 from app.db.session import session_scope
 from app.models.schemas import (
     FinancialMetric,
-    EntityMatch,
     InvestorProfile,
     MarketSnapshot,
     MonthlyRevenue,
@@ -71,6 +70,7 @@ from app.services import (
     report_credibility_check,
     report_decision_narrative,
     report_decision_rules,
+    report_document_matching,
     report_early_potential,
     report_evidence_retrieval,
     report_executive_snapshot,
@@ -1855,57 +1855,35 @@ class ReportGenerator:
         if cache is None:
             cache = {}
             self._document_match_cache = cache
-        key = (
-            document.id or "",
-            document.source.url or "",
-            document.title,
-            len(document.text or ""),
+        return report_document_matching.document_matches(
+            document,
+            mapper=self.mapper,
+            whitelist=self.whitelist,
+            cache=cache,
         )
-        if key not in cache:
-            metadata_matches = self._document_metadata_matches(document)
-            cache[key] = metadata_matches or self.mapper.match_document(document)
-        return cache[key]
 
-    def _document_metadata_matches(self, document: NewsDocument) -> list[EntityMatch]:
-        tickers = set(document.entity_tickers)
-        if not tickers:
-            return []
-        matches = []
-        for segment in self.whitelist.segments:
-            for company in segment.companies:
-                if company.ticker not in tickers:
-                    continue
-                matches.append(
-                    EntityMatch(
-                        ticker=company.ticker,
-                        name=company.name,
-                        segment_id=segment.id,
-                        segment_name=segment.name,
-                        matched_alias="metadata",
-                    )
-                )
-        return matches
+    def _document_metadata_matches(self, document: NewsDocument) -> list:
+        return report_document_matching.document_metadata_matches(document, self.whitelist)
 
     def _related_documents(self, ticker: str, documents: list[NewsDocument]) -> list[NewsDocument]:
-        documents = filter_formal_evidence_documents(documents)
-        return [
-            document
-            for document in documents
-            if any(match.ticker == ticker for match in self._document_matches(document))
-        ]
+        return report_document_matching.related_documents(
+            ticker,
+            documents,
+            document_match_resolver=self._document_matches,
+        )
 
     def _document_company_labels(self, document: NewsDocument) -> list[str]:
-        try:
-            return [f"{match.ticker} {match.name}" for match in self._document_matches(document)]
-        except Exception:
-            return []
+        return report_document_matching.document_company_labels(
+            document,
+            document_match_resolver=self._document_matches,
+        )
 
     def _candidate_audit_evidence_counts(self) -> dict[str, dict[str, int]]:
-        return report_early_potential.candidate_audit_evidence_counts(self.whitelist.candidate_audit())
+        return report_document_matching.candidate_audit_evidence_counts(self.whitelist.candidate_audit())
 
     @staticmethod
     def _publisher_count(documents: list[NewsDocument]) -> int:
-        return report_early_potential.publisher_count(documents)
+        return report_document_matching.publisher_count(documents)
 
     def _render_beginner_portfolio_plan(
         self,

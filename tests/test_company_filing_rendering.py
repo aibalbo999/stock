@@ -285,7 +285,7 @@ def test_company_filing_browser_render_uses_scrapingbee_params(monkeypatch) -> N
     assert captured["kwargs"]["params"] == {
         "url": "https://investor.tsmc.com/annual-report",
         "render_js": "true",
-        "api_key": "bee-token",
+        "api_key": "bee-token",  # pragma: allowlist secret
     }
     assert "Authorization" not in captured["kwargs"]["headers"]
 

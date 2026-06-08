@@ -24,15 +24,19 @@ from app.ui.external_deployment_diagnostics import (
 )
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
-    task_failure_drilldown_rows,
-    task_queue_health_alert,
-    task_queue_health_rows,
-    task_queue_smoke_command,
-    task_retry_options,
     upgrade_audit_html,
     upgrade_audit_rows,
 )
 from app.ui.report_observability_panel import render_report_observability_panel
+from app.ui.task_failure_diagnostics import (
+    task_failure_drilldown_rows,
+    task_retry_options,
+)
+from app.ui.task_queue_diagnostics import (
+    task_queue_health_alert,
+    task_queue_health_rows,
+    task_queue_smoke_command,
+)
 from app.ui.task_status_panel import render_task_status_panel
 
 

@@ -28,6 +28,8 @@ def frontend_status() -> dict:
         ui_dir / "llm_quota_panel.py",
         ui_dir / "report_observability_panel.py",
         ui_dir / "external_deployment_diagnostics.py",
+        ui_dir / "task_queue_diagnostics.py",
+        ui_dir / "task_failure_diagnostics.py",
         ui_dir / "maintenance_status.py",
         ui_dir / "analysis_workspace.py",
         ui_dir / "report_center.py",
@@ -74,6 +76,8 @@ def frontend_status() -> dict:
     llm_quota_panel_source = _read_text(ui_dir / "llm_quota_panel.py")
     report_observability_panel_source = _read_text(ui_dir / "report_observability_panel.py")
     external_deployment_source = _read_text(ui_dir / "external_deployment_diagnostics.py")
+    task_queue_diagnostics_source = _read_text(ui_dir / "task_queue_diagnostics.py")
+    task_failure_diagnostics_source = _read_text(ui_dir / "task_failure_diagnostics.py")
     maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
     data_enrichment_source = "\n".join(
         _read_text(path)
@@ -195,12 +199,15 @@ def frontend_status() -> dict:
         "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
         "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning(" in background_tasks_source
         and "Celery worker 未回應" in background_tasks_source,
-        "ui_task_queue_health_panel_extracted": "def task_queue_health_rows(" in maintenance_status_source
-        and "def task_queue_health_alert(" in maintenance_status_source
-        and "def task_queue_smoke_command(" in maintenance_status_source
+        "ui_task_queue_health_panel_extracted": "def task_queue_health_rows(" in task_queue_diagnostics_source
+        and "def task_queue_health_alert(" in task_queue_diagnostics_source
+        and "def task_queue_smoke_command(" in task_queue_diagnostics_source
         and "task_queue_health_rows(service_snapshot)" in ui_source
         and "task_queue_health_alert(service_snapshot)" in ui_source
-        and "task_queue_smoke_command(service_snapshot)" in ui_source,
+        and "task_queue_smoke_command(service_snapshot)" in ui_source
+        and "from app.ui.task_queue_diagnostics import (" in ui_source
+        and "def task_queue_health_rows(" not in maintenance_status_source,
+        "ui_task_queue_diagnostics_path": "app/ui/task_queue_diagnostics.py",
         "ui_external_deployment_diagnostics_enabled": "def external_deployment_warning_rows("
         in external_deployment_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
@@ -230,16 +237,25 @@ def frontend_status() -> dict:
         and "def local_neo4j_operation_rows(" not in maintenance_status_source
         and "def structured_filing_api_operation_rows(" not in maintenance_status_source,
         "ui_external_deployment_diagnostics_path": "app/ui/external_deployment_diagnostics.py",
-        "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in maintenance_status_source
-        and "def task_retry_options(" in maintenance_status_source
+        "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in task_failure_diagnostics_source
+        and "def task_retry_options(" in task_failure_diagnostics_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source
         and "task_retry_options(task_summary)" in ui_source
         and 'api_task_post(\n                                f"/tasks/{selected_retry_task_id}/retry"' in ui_source
         and "render_task_status_panel(" in ui_source,
-        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")' in maintenance_status_source
-        and '"severity": row.get("error_severity")' in maintenance_status_source
-        and '"summary": row.get("error_summary")' in maintenance_status_source
-        and '"next_steps": _task_next_steps_text(row)' in maintenance_status_source
+        "ui_task_failure_diagnostics_extracted": (
+            ui_dir / "task_failure_diagnostics.py"
+        ).exists()
+        and "from app.ui.task_failure_diagnostics import (" in ui_source
+        and "def task_failure_drilldown_rows(" in task_failure_diagnostics_source
+        and "def task_retry_options(" in task_failure_diagnostics_source
+        and "def task_failure_drilldown_rows(" not in maintenance_status_source
+        and "def task_retry_options(" not in maintenance_status_source,
+        "ui_task_failure_diagnostics_path": "app/ui/task_failure_diagnostics.py",
+        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")' in task_failure_diagnostics_source
+        and '"severity": row.get("error_severity")' in task_failure_diagnostics_source
+        and '"summary": row.get("error_summary")' in task_failure_diagnostics_source
+        and '"next_steps": _task_next_steps_text(row)' in task_failure_diagnostics_source
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
         "ui_task_failure_trend_enabled": 'task_summary.get("error_category_daily")' in ui_source

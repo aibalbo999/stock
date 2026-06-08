@@ -225,6 +225,8 @@ def frontend_status() -> dict:
         and "def task_queue_health_rows(" not in maintenance_status_source,
         "ui_task_queue_repair_guidance_enabled": "def task_queue_repair_rows("
         in task_queue_diagnostics_source
+        and 'task_queue.get("repair_plan")' in task_queue_diagnostics_source
+        and "def _task_queue_repair_plan_row(" in task_queue_diagnostics_source
         and '"修復指令"' in task_queue_diagnostics_source
         and '"驗證指令"' in task_queue_diagnostics_source
         and "task_queue_repair_rows(service_snapshot)" in ui_source

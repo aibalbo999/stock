@@ -168,6 +168,34 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
     ]
 
 
+def test_task_queue_repair_rows_prefer_status_payload() -> None:
+    helpers = load_report_helpers()
+    snapshot = {
+        "task_queue": {
+            "repair_plan": [
+                {
+                    "item": "Custom repair",
+                    "state": "needs_action",
+                    "next_step": "Run the allowlisted diagnostic.",
+                    "repair_command": ".venv/bin/python scripts/upgrade_audit.py",
+                    "verify_command": ".venv/bin/python scripts/upgrade_audit.py --json",
+                    "severity": "warning",
+                }
+            ],
+        }
+    }
+
+    assert helpers["task_queue_repair_rows"](snapshot) == [
+        {
+            "項目": "Custom repair",
+            "狀態": "needs_action",
+            "下一步": "Run the allowlisted diagnostic.",
+            "修復指令": ".venv/bin/python scripts/upgrade_audit.py",
+            "驗證指令": ".venv/bin/python scripts/upgrade_audit.py --json",
+        }
+    ]
+
+
 def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     helpers = load_report_helpers()
     task_summary = {

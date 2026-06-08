@@ -30,6 +30,7 @@ def test_task_queue_status_reports_worker_ping_online(monkeypatch) -> None:
     )
     assert "worker -B --loglevel=INFO --pool=solo" in status["repair_commands"]["start_worker"]
     assert status["smoke_commands"][0] == status["repair_commands"]["inspect_ping"]
+    assert status["repair_plan"] == []
 
 
 def test_task_queue_status_keeps_submission_ready_when_worker_ping_has_no_nodes(
@@ -54,6 +55,16 @@ def test_task_queue_status_keeps_submission_ready_when_worker_ping_has_no_nodes(
     assert status["worker_count"] == 0
     assert status["worker_ping_error"] is None
     assert status["worker_ping_timeout_seconds"] == 0.2
+    assert status["repair_plan"] == [
+        {
+            "item": "Celery Worker",
+            "state": "未回應",
+            "next_step": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+            "repair_command": status_task_queue.TASK_QUEUE_REPAIR_COMMANDS["start_worker"],
+            "verify_command": status_task_queue.TASK_QUEUE_REPAIR_COMMANDS["inspect_ping"],
+            "severity": "warning",
+        }
+    ]
 
 
 def test_task_queue_status_skips_worker_ping_when_broker_is_down(monkeypatch) -> None:
@@ -72,6 +83,16 @@ def test_task_queue_status_skips_worker_ping_when_broker_is_down(monkeypatch) ->
     assert status["worker_ping_checked"] is False
     assert status["worker_ping_skipped_reason"] == "broker_unavailable"
     assert status["worker_online"] is False
+    assert status["repair_plan"] == [
+        {
+            "item": "Redis Broker/Backend",
+            "state": "未連線",
+            "next_step": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+            "repair_command": status_task_queue.TASK_QUEUE_REPAIR_COMMANDS["start_dependencies"],
+            "verify_command": status_task_queue.TASK_QUEUE_REPAIR_COMMANDS["upgrade_audit"],
+            "severity": "error",
+        }
+    ]
 
 
 def _export_status(fake_app) -> dict:

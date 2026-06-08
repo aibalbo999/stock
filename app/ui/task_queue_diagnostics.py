@@ -94,6 +94,9 @@ def task_queue_smoke_command(service_snapshot: dict) -> str | None:
 
 def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
     task_queue = _task_queue_from_snapshot(service_snapshot)
+    repair_plan = task_queue.get("repair_plan")
+    if isinstance(repair_plan, list):
+        return [_task_queue_repair_plan_row(row) for row in repair_plan if isinstance(row, dict)]
     commands = _task_queue_repair_commands(task_queue)
     verify_command = commands["inspect_ping"]
     if not task_queue:
@@ -159,6 +162,16 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
                 }
             )
     return rows
+
+
+def _task_queue_repair_plan_row(row: dict) -> dict:
+    return {
+        "項目": row.get("item") or row.get("項目") or "-",
+        "狀態": row.get("state") or row.get("狀態") or "-",
+        "下一步": row.get("next_step") or row.get("下一步") or "-",
+        "修復指令": row.get("repair_command") or row.get("修復指令") or "-",
+        "驗證指令": row.get("verify_command") or row.get("驗證指令") or "-",
+    }
 
 
 def _task_queue_from_snapshot(service_snapshot: dict) -> dict:

@@ -367,6 +367,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_health_rows(" in source
     assert "def task_queue_health_alert(" in source
     assert "def task_queue_repair_rows(" in source
+    assert 'task_queue.get("repair_plan")' in source
+    assert "def _task_queue_repair_plan_row(" in source
     assert "def task_queue_processing_label(" in source
     assert "Queue 執行" in source
     assert '"修復指令"' in source

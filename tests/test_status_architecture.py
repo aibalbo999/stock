@@ -136,6 +136,11 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         in status["task_queue"]["repair_commands"]["start_worker"]
     )
     assert "scripts/upgrade_audit.py" in status["task_queue"]["repair_commands"]["upgrade_audit"]
+    assert isinstance(status["task_queue"]["repair_plan"], list)
+    assert all(
+        {"item", "state", "next_step", "repair_command", "verify_command", "severity"} <= set(row)
+        for row in status["task_queue"]["repair_plan"]
+    )
     assert status["task_queue"]["required_task_exports"] == [
         "celery_app",
         "generate_report_task",

@@ -63,7 +63,7 @@ def task_queue_status(
         and export_status["task_names_match_expected"]
     )
     ready = bool(broker_configured and broker_ok and submission_contract_ready)
-    return {
+    status = {
         "collector_path": "app/services/status_task_queue.py",
         "task_queue_source_diagnostics_extracted": source_diagnostics.__class__.__name__
         == "TaskQueueSourceDiagnostics"
@@ -120,6 +120,82 @@ def task_queue_status(
             TASK_QUEUE_REPAIR_COMMANDS["start_dependencies"],
         ],
     }
+    status["repair_plan"] = task_queue_repair_plan(status)
+    return status
+
+
+def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
+    commands = _task_queue_repair_commands(task_queue)
+    verify_command = commands["inspect_ping"]
+    if not task_queue:
+        return [
+            {
+                "item": "Task queue 狀態",
+                "state": "未取得",
+                "next_step": "確認 API /services/status 可讀取，再重新整理維護頁。",
+                "repair_command": "-",
+                "verify_command": "curl -s http://127.0.0.1:8000/services/status",
+                "severity": "warning",
+            }
+        ]
+    rows: list[dict[str, str]] = []
+    if not task_queue.get("broker_configured"):
+        rows.append(
+            {
+                "item": "Redis 設定",
+                "state": "未設定",
+                "next_step": "設定 REDIS_URL，或使用一鍵啟動帶起本機 Redis。",
+                "repair_command": commands["start_dependencies"],
+                "verify_command": commands["upgrade_audit"],
+                "severity": "error",
+            }
+        )
+    if not task_queue.get("broker_ok") or not task_queue.get("backend_ok"):
+        rows.append(
+            {
+                "item": "Redis Broker/Backend",
+                "state": "未連線",
+                "next_step": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+                "repair_command": commands["start_dependencies"],
+                "verify_command": commands["upgrade_audit"],
+                "severity": "error",
+            }
+        )
+    if not task_queue.get("submission_contract_ready"):
+        rows.append(
+            {
+                "item": "Celery task wiring",
+                "state": "未對齊",
+                "next_step": _task_wiring_detail(task_queue),
+                "repair_command": commands["upgrade_audit"],
+                "verify_command": commands["upgrade_audit"],
+                "severity": "error",
+            }
+        )
+    if task_queue.get("ready") and not _task_queue_processing_ready(task_queue):
+        if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
+            rows.append(
+                {
+                    "item": "Celery Worker",
+                    "state": "未回應",
+                    "next_step": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+                    "repair_command": commands["start_worker"],
+                    "verify_command": verify_command,
+                    "severity": "warning",
+                }
+            )
+        elif not task_queue.get("worker_ping_checked"):
+            rows.append(
+                {
+                    "item": "Celery Worker ping",
+                    "state": "未檢查",
+                    "next_step": "執行 inspect ping 確認是否有 worker 回應。",
+                    "repair_command": verify_command,
+                    "verify_command": verify_command,
+                    "severity": "info",
+                }
+            )
+    return rows
 
 
 def _task_export_status() -> dict:
@@ -157,6 +233,35 @@ def _task_export_status() -> dict:
         "task_names_match_expected": task_names_match_expected,
         "_celery_app": celery_app,
     }
+
+
+def _task_queue_repair_commands(task_queue: dict) -> dict[str, str]:
+    configured = task_queue.get("repair_commands") if isinstance(task_queue, dict) else {}
+    if not isinstance(configured, dict):
+        configured = {}
+    return {
+        key: str(configured.get(key) or default)
+        for key, default in TASK_QUEUE_REPAIR_COMMANDS.items()
+    }
+
+
+def _task_queue_processing_ready(task_queue: dict) -> bool:
+    if "processing_ready" in task_queue:
+        return bool(task_queue.get("processing_ready"))
+    return bool(task_queue.get("ready") and task_queue.get("worker_online"))
+
+
+def _task_wiring_detail(task_queue: dict) -> str:
+    if task_queue.get("submission_contract_ready"):
+        return "必要 Celery task exports 與 task name 已對齊。"
+    missing = task_queue.get("missing_task_exports")
+    if isinstance(missing, list) and missing:
+        return "缺少 exports：" + "、".join(str(item) for item in missing)
+    if task_queue.get("task_export_error"):
+        return f"task export error: {task_queue['task_export_error']}"
+    if task_queue.get("task_names_match_expected") is False:
+        return "task name 與預期不一致。"
+    return "尚未取得 task wiring 診斷。"
 
 
 def _worker_ping_status(

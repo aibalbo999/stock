@@ -303,6 +303,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "external_deployment_smoke_commands(upgrade_audit)" in source
     assert "local_dependency_status_rows(service_snapshot)" in source
     assert "local_dependency_last_start_rows(service_snapshot)" in source
+    assert "local_dependency_repair_rows(service_snapshot)" in source
     assert "high_risk_filing_unlocker_rows(upgrade_audit)" in source
     assert "local_neo4j_operation_rows(upgrade_audit)" in source
     assert "local_unlocker_operation_rows(upgrade_audit)" in source
@@ -331,10 +332,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "外部部署選配狀態" in source
     assert "外部部署 readiness checklist" in source
     assert "最近本機依賴啟動" in source
+    assert "本機依賴修復指引" in source
     assert "本機依賴狀態" in source
     assert "def external_deployment_readiness_rows(" in source
     assert "def local_dependency_status_rows(" in source
     assert "def local_dependency_last_start_rows(" in source
+    assert "def local_dependency_repair_rows(" in source
     assert '"部署決策"' in source
     assert '"本機動作"' in source
     assert '"本機指令"' in source

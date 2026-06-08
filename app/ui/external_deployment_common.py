@@ -212,6 +212,26 @@ def local_dependency_status_rows(service_snapshot: dict) -> list[dict]:
     ]
 
 
+def local_dependency_repair_rows(service_snapshot: dict) -> list[dict]:
+    status = (
+        service_snapshot.get("local_dependencies")
+        if isinstance(service_snapshot.get("local_dependencies"), dict)
+        else {}
+    )
+    repair_plan = status.get("repair_plan") if isinstance(status.get("repair_plan"), list) else []
+    return [
+        {
+            "項目": row.get("item") or row.get("項目") or "-",
+            "狀態": row.get("state") or row.get("狀態") or "-",
+            "下一步": row.get("next_step") or row.get("下一步") or "-",
+            "修復指令": row.get("repair_command") or row.get("修復指令") or "-",
+            "驗證指令": row.get("verify_command") or row.get("驗證指令") or "-",
+        }
+        for row in repair_plan
+        if isinstance(row, dict)
+    ]
+
+
 def local_dependency_last_start_rows(service_snapshot: dict) -> list[dict]:
     status = (
         service_snapshot.get("local_dependencies")

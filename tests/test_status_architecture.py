@@ -35,6 +35,11 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert all(isinstance(row["open"], bool) for row in status["local_dependencies"]["ports"])
     assert "start_core" in status["local_dependencies"]["commands"]
     assert "verify_flaresolverr" in status["local_dependencies"]["commands"]
+    assert isinstance(status["local_dependencies"]["repair_plan"], list)
+    assert all(
+        {"item", "state", "next_step", "repair_command", "verify_command", "severity"} <= set(row)
+        for row in status["local_dependencies"]["repair_plan"]
+    )
     assert status["local_dependencies"]["last_start"]["path"] == (
         "data/local_dependency_start_status.json"
     )
@@ -68,6 +73,7 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     )
     assert "def local_dependency_runtime_status(" in local_dependency_source
     assert "def local_dependency_last_start_status(" in local_dependency_source
+    assert "def local_dependency_repair_plan(" in local_dependency_source
     assert "def is_local_port_open(" in local_dependency_source
     assert "def _security_scan_status(" not in service_status_source
     assert "def security_scan_status(" in status_security_source
@@ -100,6 +106,38 @@ def test_local_dependency_runtime_status_reads_last_start_snapshot(tmp_path) -> 
     assert status["last_start"]["path"] == "data/local_dependency_start_status.json"
     assert status["last_start"]["status"] == "已啟動"
     assert status["last_start"]["wait"] == {"neo4j": True}
+
+
+def test_local_dependency_runtime_status_builds_service_repair_plan(tmp_path) -> None:
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    def fake_port_open(_host: str, port: int) -> bool:
+        return port in {6379, 5432, 8001}
+
+    status = local_dependency_runtime_status(
+        root=tmp_path,
+        environ={"COMPANY_FILING_BROWSER_RENDER_URL": "http://127.0.0.1:8191/v1"},
+        port_open_func=fake_port_open,
+    )
+
+    repair_by_item = {row["item"]: row for row in status["repair_plan"]}
+    assert repair_by_item["Neo4j"] == {
+        "item": "Neo4j",
+        "state": "未偵測",
+        "next_step": "GraphRAG live graph。啟動核心本機依賴後重新檢查。",
+        "repair_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+        "verify_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+        ),
+        "severity": "error",
+    }
+    assert repair_by_item["Browserless"]["verify_command"] == (
+        ".venv/bin/python scripts/upgrade_audit.py "
+        "--wait-local-browserless 20 --local-browser-render-defaults --json"
+    )
+    assert repair_by_item["FlareSolverr unlocker"]["severity"] == "warning"
+    assert "--prefer-unlocker" in repair_by_item["FlareSolverr unlocker"]["repair_command"]
 
 
 def test_task_queue_status_contract_and_compatibility_alias(service_status_snapshot) -> None:

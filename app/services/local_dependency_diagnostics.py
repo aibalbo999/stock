@@ -66,10 +66,13 @@ def local_dependency_runtime_status(
     core_services = ["redis", "postgres", "neo4j", "browserless", "chroma"]
     missing_core_services = [service for service in core_services if service not in open_services]
     compose_path = project_root / "docker-compose.yml"
+    compose_file_present = compose_path.exists()
+    commands = dict(LOCAL_DEPENDENCY_COMMANDS)
+    configured_env = _local_dependency_configured_env(env)
     return {
         "collector_path": "app/services/local_dependency_diagnostics.py",
         "compose_path": "docker-compose.yml",
-        "compose_file_present": compose_path.exists(),
+        "compose_file_present": compose_file_present,
         "status": "ready"
         if not missing_core_services
         else "partial"
@@ -80,9 +83,16 @@ def local_dependency_runtime_status(
         "missing_core_services": missing_core_services,
         "core_ready": not missing_core_services,
         "unlocker_ready": "flaresolverr" in open_services,
-        "commands": dict(LOCAL_DEPENDENCY_COMMANDS),
-        "configured_env": _local_dependency_configured_env(env),
+        "commands": commands,
+        "configured_env": configured_env,
         "last_start": local_dependency_last_start_status(root=project_root),
+        "repair_plan": local_dependency_repair_plan(
+            compose_file_present=compose_file_present,
+            ports=ports,
+            missing_core_services=missing_core_services,
+            configured_env=configured_env,
+            commands=commands,
+        ),
     }
 
 
@@ -118,6 +128,53 @@ def local_dependency_last_start_status(*, root: Path | None = None) -> dict:
         "available": True,
         "path": LOCAL_DEPENDENCY_START_STATUS_PATH.as_posix(),
     }
+
+
+def local_dependency_repair_plan(
+    *,
+    compose_file_present: bool,
+    ports: list[dict],
+    missing_core_services: list[str],
+    configured_env: dict,
+    commands: dict[str, str],
+) -> list[dict[str, str]]:
+    if not compose_file_present:
+        return [
+            {
+                "item": "docker-compose.yml",
+                "state": "缺少",
+                "next_step": "確認目前工作目錄是專案根目錄，且 docker-compose.yml 存在。",
+                "repair_command": "-",
+                "verify_command": "ls docker-compose.yml",
+                "severity": "error",
+            }
+        ]
+    rows = [
+        {
+            "item": _local_dependency_service_label(service),
+            "state": "未偵測",
+            "next_step": f"{_local_dependency_service_role(service)}。啟動核心本機依賴後重新檢查。",
+            "repair_command": commands.get("start_core") or "-",
+            "verify_command": _local_dependency_verify_command(service, commands),
+            "severity": "error",
+        }
+        for service in missing_core_services
+    ]
+    if configured_env.get("flaresolverr_url_configured") and not _local_dependency_port_open(
+        ports,
+        "flaresolverr",
+    ):
+        rows.append(
+            {
+                "item": "FlareSolverr unlocker",
+                "state": "未偵測",
+                "next_step": "已配置本機 FlareSolverr URL；啟動 unlocker profile，或改用 Browserless/Playwright。",
+                "repair_command": commands.get("start_unlocker") or "-",
+                "verify_command": commands.get("verify_flaresolverr") or "-",
+                "severity": "warning",
+            }
+        )
+    return rows
 
 
 def is_local_port_open(host: str, port: int, *, timeout_seconds: float = 0.1) -> bool:
@@ -175,6 +232,31 @@ def local_docker_image_status(images: dict[str, str] | None = None) -> dict:
         if not missing
         else "docker compose pull " + " ".join(row["service"] for row in missing),
     }
+
+
+def _local_dependency_service_label(service: str) -> str:
+    metadata = LOCAL_DEPENDENCY_PORTS.get(service) or {}
+    return str(metadata.get("label") or service)
+
+
+def _local_dependency_service_role(service: str) -> str:
+    metadata = LOCAL_DEPENDENCY_PORTS.get(service) or {}
+    return str(metadata.get("role") or "本機依賴服務")
+
+
+def _local_dependency_verify_command(service: str, commands: dict[str, str]) -> str:
+    service_commands = {
+        "neo4j": commands.get("verify_neo4j"),
+        "browserless": commands.get("verify_browserless"),
+    }
+    return str(service_commands.get(service) or ".venv/bin/python scripts/upgrade_audit.py --json")
+
+
+def _local_dependency_port_open(ports: list[dict], service: str) -> bool:
+    for row in ports:
+        if isinstance(row, dict) and row.get("service") == service:
+            return bool(row.get("open"))
+    return False
 
 
 def _local_dependency_configured_env(env: Mapping[str, str]) -> dict:

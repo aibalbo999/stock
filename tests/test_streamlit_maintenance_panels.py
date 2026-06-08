@@ -486,6 +486,19 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     ]
     service_snapshot = {
         "local_dependencies": {
+            "repair_plan": [
+                {
+                    "item": "Neo4j",
+                    "state": "未偵測",
+                    "next_step": "GraphRAG live graph。啟動核心本機依賴後重新檢查。",
+                    "repair_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                    "verify_command": (
+                        ".venv/bin/python scripts/upgrade_audit.py "
+                        "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+                    ),
+                    "severity": "error",
+                }
+            ],
             "last_start": {
                 "available": True,
                 "path": "data/local_dependency_start_status.json",
@@ -535,6 +548,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     )
     local_rows = helpers["local_dependency_status_rows"](service_snapshot)
     last_start_rows = helpers["local_dependency_last_start_rows"](service_snapshot)
+    repair_rows = helpers["local_dependency_repair_rows"](service_snapshot)
 
     assert readiness_with_local_status[0]["項目"] == "外部 Neo4j 匯入連線"
     assert readiness_with_local_status[0]["本機動作"] == "已啟動"
@@ -579,6 +593,18 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         "說明": "browserless_not_ready",
         "細節": "chromium",
     } in last_start_rows
+    assert repair_rows == [
+        {
+            "項目": "Neo4j",
+            "狀態": "未偵測",
+            "下一步": "GraphRAG live graph。啟動核心本機依賴後重新檢查。",
+            "修復指令": ".venv/bin/python scripts/start_system.py --start-dependencies",
+            "驗證指令": (
+                ".venv/bin/python scripts/upgrade_audit.py "
+                "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+            ),
+        }
+    ]
 
 
 def test_external_deployment_readiness_rows_reflect_local_dependency_wait() -> None:

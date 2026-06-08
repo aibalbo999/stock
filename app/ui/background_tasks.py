@@ -7,6 +7,7 @@ from typing import Any
 import requests
 import streamlit as st
 
+from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import (
     api_task_post,
     api_task_queue_status,
@@ -34,10 +35,12 @@ def submit_background_task(
 ) -> dict | None:
     if preflight and not task_queue_preflight_ready(error_message=error_message):
         return None
-    try:
-        task_response = submitter()
-    except requests.RequestException as exc:
-        st.error(f"{error_message}：{request_error_message(exc)}")
+    task_response = run_api_action_or_none(
+        submitter,
+        error_message=error_message,
+        error_notifier=st.error,
+    )
+    if task_response is None:
         return None
 
     task_id = _task_id(task_response)

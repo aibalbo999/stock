@@ -82,7 +82,29 @@ def test_submit_background_task_preserves_state_on_request_error(monkeypatch) ->
 
     assert result is None
     assert fake_st.session_state["last_data_task_id"] == "task-old"
-    assert fake_st.errors == ["股價刷新任務送出失敗：task queue unavailable 建議：啟動 Redis；啟動 Celery"]
+    assert fake_st.errors == [
+        "股價刷新任務送出失敗：task queue unavailable 建議：啟動 Redis；啟動 Celery"
+    ]
+    assert fake_st.successes == []
+    assert fake_st.warnings == []
+
+
+def test_submit_background_task_preserves_state_on_json_error(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    fake_st.session_state["last_data_task_id"] = "task-old"
+    monkeypatch.setattr(background_tasks, "st", fake_st)
+
+    result = background_tasks.submit_background_task(
+        lambda: (_ for _ in ()).throw(ValueError("invalid json")),
+        task_state_key="last_data_task_id",
+        status_state_keys=("refresh_data_task_status_status",),
+        success_message="已送出股價刷新背景任務",
+        error_message="股價刷新任務送出失敗",
+    )
+
+    assert result is None
+    assert fake_st.session_state["last_data_task_id"] == "task-old"
+    assert fake_st.errors == ["股價刷新任務送出失敗：invalid json"]
     assert fake_st.successes == []
     assert fake_st.warnings == []
 
@@ -145,7 +167,9 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
             "celery_app_available": True,
             "missing_task_exports": [],
             "task_names_match_expected": True,
-            "smoke_commands": [".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"],
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+            ],
         },
     )
 
@@ -171,7 +195,9 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
     assert fake_st.successes == []
 
 
-def test_submit_background_task_warns_and_continues_when_preflight_status_unavailable(monkeypatch) -> None:
+def test_submit_background_task_warns_and_continues_when_preflight_status_unavailable(
+    monkeypatch,
+) -> None:
     fake_st = FakeStreamlit()
     monkeypatch.setattr(background_tasks, "st", fake_st)
     monkeypatch.setattr(
@@ -205,7 +231,9 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
             "worker_ping_checked": True,
             "worker_online": False,
             "worker_ping_error": None,
-            "smoke_commands": [".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"],
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+            ],
         },
     )
 

@@ -56,3 +56,20 @@ def test_run_api_action_or_none_reports_value_error(monkeypatch) -> None:
         is None
     )
     assert fake_st.errors == ["儲存失敗：invalid json"]
+
+
+def test_run_api_action_or_none_can_use_custom_error_notifier(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    notified_errors: list[str] = []
+    monkeypatch.setattr(api_actions, "st", fake_st)
+
+    assert (
+        api_actions.run_api_action_or_none(
+            lambda: (_ for _ in ()).throw(ValueError("invalid json")),
+            error_message="送出失敗",
+            error_notifier=notified_errors.append,
+        )
+        is None
+    )
+    assert notified_errors == ["送出失敗：invalid json"]
+    assert fake_st.errors == []

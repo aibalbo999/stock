@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import requests
 import streamlit as st
 
 from app.core.time import today_taipei
 from app.ui.api_client import (
     API_TASK_PREFLIGHT_TIMEOUT_SECONDS,
-    api_get,
-    request_error_message,
     task_payload_dates,
 )
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_enrichment_common import (
@@ -25,25 +23,36 @@ from app.ui.data_enrichment_runtime import (
 
 
 def render_market_data_tab(allowed_tickers: list[str]) -> None:
-    render_section_header("市場資料", "刷新股價、五年財報與估值資料；這些資料會影響品質門檻與投資行動限制。")
-    try:
-        status_snapshot = api_get("/db/status")
-    except requests.RequestException as exc:
-        status_snapshot = {"tables": {}}
-        st.error(f"讀取資料庫狀態失敗：{request_error_message(exc)}")
+    render_section_header(
+        "市場資料", "刷新股價、五年財報與估值資料；這些資料會影響品質門檻與投資行動限制。"
+    )
+    status_snapshot = load_api_json_or_default(
+        "/db/status",
+        {"tables": {}},
+        error_message="讀取資料庫狀態失敗",
+    )
     table_counts = status_snapshot.get("tables", {})
     count_cols = st.columns(5)
-    count_cols[0].metric("股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0)
-    count_cols[1].metric("月營收快取", table_counts.get("monthly_revenue_snapshots", {}).get("count") or 0)
-    count_cols[2].metric("財報三表快取", table_counts.get("financial_metric_snapshots", {}).get("count") or 0)
-    count_cols[3].metric("估值快取", table_counts.get("valuation_metric_snapshots", {}).get("count") or 0)
+    count_cols[0].metric(
+        "股價快取", table_counts.get("stock_price_snapshots", {}).get("count") or 0
+    )
+    count_cols[1].metric(
+        "月營收快取", table_counts.get("monthly_revenue_snapshots", {}).get("count") or 0
+    )
+    count_cols[2].metric(
+        "財報三表快取", table_counts.get("financial_metric_snapshots", {}).get("count") or 0
+    )
+    count_cols[3].metric(
+        "估值快取", table_counts.get("valuation_metric_snapshots", {}).get("count") or 0
+    )
     count_cols[4].metric("公司文件", table_counts.get("company_filings", {}).get("count") or 0)
 
-    try:
-        service_snapshot = api_get("/services/status", timeout=API_TASK_PREFLIGHT_TIMEOUT_SECONDS)
-    except requests.RequestException as exc:
-        service_snapshot = {}
-        st.error(f"讀取公司文件能力狀態失敗：{request_error_message(exc)}")
+    service_snapshot = load_api_json_or_default(
+        "/services/status",
+        {},
+        error_message="讀取公司文件能力狀態失敗",
+        timeout=API_TASK_PREFLIGHT_TIMEOUT_SECONDS,
+    )
     runtime_rows = company_filing_runtime_rows(service_snapshot)
     visual_rag_chain_rows = company_filing_visual_rag_model_chain_rows(service_snapshot)
     if runtime_rows:
@@ -61,7 +70,9 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     )
     col_start, col_end = st.columns(2)
     with col_start:
-        market_start = st.date_input("起始日期", value=today_taipei().replace(day=1), key="market_start")
+        market_start = st.date_input(
+            "起始日期", value=today_taipei().replace(day=1), key="market_start"
+        )
     with col_end:
         market_end = st.date_input("結束日期", value=today_taipei(), key="market_end")
 
@@ -137,16 +148,16 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
 
 
 def _render_cache_summary(allowed_tickers: list[str]) -> None:
-    try:
-        cache_summary = api_get("/market/cache-summary?tickers=" + ",".join(allowed_tickers))
-    except requests.RequestException as exc:
-        cache_summary = {
+    cache_summary = load_api_json_or_default(
+        "/market/cache-summary?tickers=" + ",".join(allowed_tickers),
+        {
             "market_snapshots": [],
             "valuations": [],
             "company_filings": [],
             "financial_metric_count": 0,
-        }
-        st.error(f"讀取市場快取失敗：{request_error_message(exc)}")
+        },
+        error_message="讀取市場快取失敗",
+    )
     cached_snapshots = cache_summary.get("market_snapshots") or []
     cached_valuations = cache_summary.get("valuations") or []
     cached_filings = cache_summary.get("company_filings") or []

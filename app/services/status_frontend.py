@@ -16,6 +16,7 @@ def frontend_status() -> dict:
     ui_sources = source_context.ui_sources
     dashboard_core_source = ui_sources["dashboard_core.py"]
     api_client_source = ui_sources["api_client.py"]
+    api_loaders_source = ui_sources["api_loaders.py"]
     background_tasks_source = ui_sources["background_tasks.py"]
     task_status_panel_source = ui_sources["task_status_panel.py"]
     report_state_source = ui_sources["report_state.py"]
@@ -39,9 +40,7 @@ def frontend_status() -> dict:
     external_deployment_common_source = ui_sources["external_deployment_common.py"]
     external_deployment_unlocker_source = ui_sources["external_deployment_unlocker.py"]
     external_deployment_neo4j_source = ui_sources["external_deployment_neo4j.py"]
-    external_deployment_structured_api_source = ui_sources[
-        "external_deployment_structured_api.py"
-    ]
+    external_deployment_structured_api_source = ui_sources["external_deployment_structured_api.py"]
     task_queue_diagnostics_source = ui_sources["task_queue_diagnostics.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
@@ -71,8 +70,10 @@ def frontend_status() -> dict:
     )
     return {
         "collector_path": "app/services/status_frontend.py",
-        "frontend_source_context_extracted": source_context.__class__.__name__ == "FrontendSourceContext"
+        "frontend_source_context_extracted": source_context.__class__.__name__
+        == "FrontendSourceContext"
         and "dashboard_core.py" in ui_sources
+        and "api_loaders.py" in ui_sources
         and "maintenance_cleanup_panel.py" in ui_sources
         and bool(frontend_blocking_call_scan_paths),
         "frontend_source_context_path": "app/services/status_frontend_sources.py",
@@ -92,8 +93,7 @@ def frontend_status() -> dict:
         ),
         "streamlit_page_import_contract_ready": (
             "from app.ui.dashboard_core import configure_page" in ui_source
-            and "from app.ui.streamlit_dashboard import configure_page"
-            in streamlit_pages_source
+            and "from app.ui.streamlit_dashboard import configure_page" in streamlit_pages_source
             and "render_analysis_workspace" in streamlit_pages_source
             and "render_report_center" in streamlit_pages_source
             and "render_data_enrichment" in streamlit_pages_source
@@ -103,9 +103,13 @@ def frontend_status() -> dict:
         "ui_wildcard_imports_removed": "import *" not in page_source
         and "F403" not in page_source
         and "F405" not in page_source,
-        "dashboard_core_lines": len(dashboard_core_source.splitlines()) if dashboard_core_source else None,
+        "dashboard_core_lines": len(dashboard_core_source.splitlines())
+        if dashboard_core_source
+        else None,
         "report_html_renderer_path": "app/ui/report_html.py",
-        "report_html_renderer_lines": len(report_html_source.splitlines()) if report_html_source else None,
+        "report_html_renderer_lines": len(report_html_source.splitlines())
+        if report_html_source
+        else None,
         "report_html_renderer_extracted": (ui_dir / "report_html.py").exists()
         and "def report_html(" in report_html_source
         and "def report_html(" not in dashboard_core_source
@@ -143,7 +147,8 @@ def frontend_status() -> dict:
         and "render_external_deployment_panel(upgrade_audit)" in system_settings_maintenance_source
         and "render_background_task_observability_panel(service_snapshot, task_summary)"
         in system_settings_maintenance_source
-        and "external_deployment_warning_rows(upgrade_audit)" not in system_settings_maintenance_source
+        and "external_deployment_warning_rows(upgrade_audit)"
+        not in system_settings_maintenance_source
         and 'st.expander("背景任務觀測"' not in system_settings_maintenance_source,
         "ui_maintenance_panels_path": "app/ui/maintenance_panels.py",
         "ui_maintenance_panel_module_paths": [
@@ -152,18 +157,16 @@ def frontend_status() -> dict:
             "app/ui/maintenance_task_panels.py",
             "app/ui/maintenance_cleanup_panel.py",
         ],
-        "ui_system_settings_tabs_extracted": (
-            ui_dir / "system_settings_scope.py"
-        ).exists()
+        "ui_system_settings_tabs_extracted": (ui_dir / "system_settings_scope.py").exists()
         and (ui_dir / "system_settings_schedule.py").exists()
         and "render_scope_tab(settings_whitelist)" in system_settings_source
         and "render_schedule_tab(sorted(settings_whitelist.allowed_tickers()))"
         in system_settings_source
         and "def render_scope_tab(" in system_settings_scope_source
         and "def render_schedule_tab(" in system_settings_schedule_source
-        and "api_put(\"/schedule\"" in system_settings_schedule_source
+        and 'api_put("/schedule"' in system_settings_schedule_source
         and "SupplyChainWhitelist" not in system_settings_schedule_source
-        and "api_put(\"/schedule\"" not in system_settings_source
+        and 'api_put("/schedule"' not in system_settings_source
         and "st.dataframe(segment_rows" not in system_settings_source,
         "ui_system_settings_tab_paths": [
             "app/ui/system_settings_scope.py",
@@ -176,6 +179,12 @@ def frontend_status() -> dict:
         and "def api_task_post(" not in dashboard_core_source
         and "from app.ui.api_client import (" in ui_source,
         "ui_api_client_path": "app/ui/api_client.py",
+        "ui_api_loaders_extracted": (ui_dir / "api_loaders.py").exists()
+        and "def load_api_json_or_default(" in api_loaders_source
+        and "request_error_message(exc)" in api_loaders_source
+        and "deepcopy(fallback)" in api_loaders_source
+        and "from app.ui.api_loaders import load_api_json_or_default" in ui_source,
+        "ui_api_loaders_path": "app/ui/api_loaders.py",
         "ui_background_task_client_extracted": (ui_dir / "background_tasks.py").exists()
         and "def submit_background_task(" in background_tasks_source
         and "def submit_api_task(" in background_tasks_source
@@ -183,7 +192,8 @@ def frontend_status() -> dict:
         and "def submit_background_task(" not in dashboard_core_source
         and "from app.ui.background_tasks import" in ui_source,
         "ui_background_task_client_path": "app/ui/background_tasks.py",
-        "ui_task_queue_preflight_enabled": "def task_queue_preflight_ready(" in background_tasks_source
+        "ui_task_queue_preflight_enabled": "def task_queue_preflight_ready("
+        in background_tasks_source
         and "api_task_queue_status" in background_tasks_source
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in api_client_source
         and "preflight: bool = True" in background_tasks_source,
@@ -193,9 +203,11 @@ def frontend_status() -> dict:
         and "TASK_QUEUE_PREFLIGHT_READY_TTL_SECONDS" in background_tasks_source
         and "TASK_QUEUE_PREFLIGHT_UNREADY_TTL_SECONDS" in background_tasks_source,
         "ui_task_queue_preflight_degrades_open": "仍會嘗試送出" in background_tasks_source,
-        "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning(" in background_tasks_source
+        "ui_task_queue_worker_warning_enabled": "def task_queue_worker_warning("
+        in background_tasks_source
         and "Celery worker 未回應" in background_tasks_source,
-        "ui_task_queue_health_panel_extracted": "def task_queue_health_rows(" in task_queue_diagnostics_source
+        "ui_task_queue_health_panel_extracted": "def task_queue_health_rows("
+        in task_queue_diagnostics_source
         and "def task_queue_health_alert(" in task_queue_diagnostics_source
         and "def task_queue_smoke_command(" in task_queue_diagnostics_source
         and "task_queue_health_rows(service_snapshot)" in ui_source
@@ -243,8 +255,7 @@ def frontend_status() -> dict:
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
         and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source
-        and "def structured_filing_api_operation_rows("
-        in external_deployment_structured_api_source
+        and "def structured_filing_api_operation_rows(" in external_deployment_structured_api_source
         and "from app.ui.external_deployment_common import" in external_deployment_source
         and "from app.ui.external_deployment_unlocker import" in external_deployment_source
         and "from app.ui.external_deployment_neo4j import" in external_deployment_source
@@ -255,22 +266,22 @@ def frontend_status() -> dict:
             "app/ui/external_deployment_neo4j.py",
             "app/ui/external_deployment_structured_api.py",
         ],
-        "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows(" in task_failure_diagnostics_source
+        "ui_task_failure_drilldown_enabled": "def task_failure_drilldown_rows("
+        in task_failure_diagnostics_source
         and "def task_retry_options(" in task_failure_diagnostics_source
         and "task_failure_drilldown_rows(task_summary)" in ui_source
         and "task_retry_options(task_summary)" in ui_source
         and 'f"/tasks/{selected_retry_task_id}/retry"' in ui_source
         and "render_task_status_panel(" in ui_source,
-        "ui_task_failure_diagnostics_extracted": (
-            ui_dir / "task_failure_diagnostics.py"
-        ).exists()
+        "ui_task_failure_diagnostics_extracted": (ui_dir / "task_failure_diagnostics.py").exists()
         and "from app.ui.task_failure_diagnostics import (" in ui_source
         and "def task_failure_drilldown_rows(" in task_failure_diagnostics_source
         and "def task_retry_options(" in task_failure_diagnostics_source
         and "def task_failure_drilldown_rows(" not in maintenance_status_source
         and "def task_retry_options(" not in maintenance_status_source,
         "ui_task_failure_diagnostics_path": "app/ui/task_failure_diagnostics.py",
-        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")' in task_failure_diagnostics_source
+        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")'
+        in task_failure_diagnostics_source
         and '"severity": row.get("error_severity")' in task_failure_diagnostics_source
         and '"summary": row.get("error_summary")' in task_failure_diagnostics_source
         and '"next_steps": _task_next_steps_text(row)' in task_failure_diagnostics_source
@@ -296,7 +307,8 @@ def frontend_status() -> dict:
         and "狀態輪詢：" in task_status_panel_source
         and "fragment_supported" in task_status_panel_source
         and "st.caption(\n        task_status_poll_caption(" in task_status_panel_source,
-        "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows(" in task_status_panel_source
+        "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows("
+        in task_status_panel_source
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
@@ -309,16 +321,19 @@ def frontend_status() -> dict:
         and "llm_quota_metric_values(llm_quota)" in ui_source
         and "llm_quota_model_rows(llm_quota)" in ui_source,
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
-        "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows(" in data_enrichment_source
-        and 'api_get("/services/status"' in data_enrichment_source
+        "ui_company_filing_runtime_panel_enabled": "def company_filing_runtime_rows("
+        in data_enrichment_source
+        and (
+            'api_get("/services/status"' in data_enrichment_source
+            or 'load_api_json_or_default(\n        "/services/status"' in data_enrichment_source
+        )
         and "API_TASK_PREFLIGHT_TIMEOUT_SECONDS" in data_enrichment_source
         and "公司文件補抓能力" in data_enrichment_source
         and "visual_rag_runtime_available" in data_enrichment_source
         and "structured_api_configured" in data_enrichment_source
         and "playwright_render_configured" in data_enrichment_source,
         "ui_visual_rag_model_chain_panel_enabled": (
-            "def company_filing_visual_rag_model_chain_rows("
-            in data_enrichment_source
+            "def company_filing_visual_rag_model_chain_rows(" in data_enrichment_source
         )
         and "visual_rag_model_chain" in data_enrichment_source
         and "Visual RAG 模型鏈" in ui_source
@@ -341,7 +356,8 @@ def frontend_status() -> dict:
             "app/ui/data_enrichment_runtime.py",
         ],
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
-        "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20" in ui_source
+        "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"
+        in ui_source
         and "報告生成觀測" in ui_source
         and "trace_captured_count" in ui_source
         and "keyword_fallback_count" in ui_source,
@@ -350,7 +366,9 @@ def frontend_status() -> dict:
         and 'summary.get("bottlenecks")' in report_observability_panel_source
         and "優先優化清單" in report_observability_panel_source
         and "render_report_observability_panel(report_observability_summary)" in ui_source,
-        "ui_report_observability_panel_extracted": (ui_dir / "report_observability_panel.py").exists()
+        "ui_report_observability_panel_extracted": (
+            ui_dir / "report_observability_panel.py"
+        ).exists()
         and "def report_observability_metric_values(" in report_observability_panel_source
         and "def report_observability_bottleneck_rows(" in report_observability_panel_source
         and "def render_report_observability_panel(" in report_observability_panel_source
@@ -434,7 +452,9 @@ def frontend_status() -> dict:
         "asyncio_run_locations": asyncio_run_locations,
         "long_blocking_post_timeout_present": bool(long_blocking_post_locations),
         "long_blocking_post_timeout_locations": long_blocking_post_locations,
-        "api_write_timeout_seconds": _frontend_constant_value(ui_source, "API_WRITE_TIMEOUT_SECONDS"),
+        "api_write_timeout_seconds": _frontend_constant_value(
+            ui_source, "API_WRITE_TIMEOUT_SECONDS"
+        ),
         "api_task_queue_timeout_seconds": _frontend_constant_value(
             ui_source,
             "API_TASK_QUEUE_TIMEOUT_SECONDS",

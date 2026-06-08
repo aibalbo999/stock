@@ -13,8 +13,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["streamlit_entry_uses_navigation"] is True
     assert status["frontend"]["collector_path"] == "app/services/status_frontend.py"
     assert frontend_status()["collector_path"] == "app/services/status_frontend.py"
-    assert "from app.services.status_frontend import frontend_status as collect_frontend_status" in (
-        service_status_source
+    assert (
+        "from app.services.status_frontend import frontend_status as collect_frontend_status"
+        in (service_status_source)
     )
     assert "def _frontend_status(" not in service_status_source
     assert "def frontend_status(" in status_frontend_source
@@ -49,6 +50,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ]
     assert status["frontend"]["ui_api_client_extracted"] is True
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
+    assert status["frontend"]["ui_api_loaders_extracted"] is True
+    assert status["frontend"]["ui_api_loaders_path"] == "app/ui/api_loaders.py"
     assert status["frontend"]["ui_background_task_client_extracted"] is True
     assert status["frontend"]["ui_background_task_client_path"] == "app/ui/background_tasks.py"
     assert status["frontend"]["ui_task_queue_preflight_enabled"] is True
@@ -56,7 +59,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
     assert status["frontend"]["ui_task_queue_worker_warning_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
-    assert status["frontend"]["ui_task_queue_diagnostics_path"] == "app/ui/task_queue_diagnostics.py"
+    assert (
+        status["frontend"]["ui_task_queue_diagnostics_path"] == "app/ui/task_queue_diagnostics.py"
+    )
     assert status["frontend"]["ui_external_deployment_diagnostics_enabled"] is True
     assert status["frontend"]["ui_external_deployment_diagnostics_extracted"] is True
     assert status["frontend"]["ui_external_deployment_diagnostics_path"] == (
@@ -111,7 +116,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_markdown_helpers_extracted"] is True
     assert status["frontend"]["ui_report_markdown_helpers_path"] == "app/ui/report_markdown.py"
     assert status["frontend"]["ui_report_candidate_audit_extracted"] is True
-    assert status["frontend"]["ui_report_candidate_audit_path"] == "app/ui/report_candidate_audit.py"
+    assert (
+        status["frontend"]["ui_report_candidate_audit_path"] == "app/ui/report_candidate_audit.py"
+    )
     assert status["frontend"]["ui_report_formatters_extracted"] is True
     assert status["frontend"]["ui_report_formatters_path"] == "app/ui/report_formatters.py"
     assert status["frontend"]["ui_report_sections_extracted"] is True
@@ -126,9 +133,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["uses_task_queue_preflight"] is True
     assert status["frontend"]["uses_task_status_panel"] is True
     blocking_scan_paths = set(status["frontend"]["frontend_blocking_call_scan_paths"])
-    expected_ui_scan_paths = {
-        path.as_posix() for path in sorted(Path("app/ui").glob("*.py"))
-    }
+    expected_ui_scan_paths = {path.as_posix() for path in sorted(Path("app/ui").glob("*.py"))}
     assert expected_ui_scan_paths <= blocking_scan_paths
     assert "streamlit_app.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
     assert "pages/01_分析工作區.py" in status["frontend"]["frontend_blocking_call_scan_paths"]
@@ -162,6 +167,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True
     assert frontend_arch["evidence"]["ui_system_settings_tabs_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
+    assert frontend_arch["evidence"]["ui_api_loaders_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_queue_preflight_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_preflight_cache_enabled"] is True
@@ -194,12 +200,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_sections_extracted"] is True
     assert frontend_arch["evidence"]["ui_wildcard_imports_removed"] is True
     assert frontend_arch["evidence"]["external_report_css_loaded"] is True
-    assert "pages/03_資料補強.py" in frontend_arch["evidence"][
-        "frontend_blocking_call_scan_paths"
-    ]
-    assert "app/ui/__init__.py" in frontend_arch["evidence"][
-        "frontend_blocking_call_scan_paths"
-    ]
+    assert "pages/03_資料補強.py" in frontend_arch["evidence"]["frontend_blocking_call_scan_paths"]
+    assert "app/ui/__init__.py" in frontend_arch["evidence"]["frontend_blocking_call_scan_paths"]
     assert frontend_arch["evidence"]["frontend_blocking_call_scan_file_count"] == len(
         frontend_arch["evidence"]["frontend_blocking_call_scan_paths"]
     )

@@ -6,6 +6,7 @@ from pathlib import Path
 DASHBOARD_SOURCE = Path("app/ui/streamlit_dashboard.py")
 DASHBOARD_CORE_SOURCE = Path("app/ui/dashboard_core.py")
 API_CLIENT_SOURCE = Path("app/ui/api_client.py")
+API_LOADERS_SOURCE = Path("app/ui/api_loaders.py")
 BACKGROUND_TASKS_SOURCE = Path("app/ui/background_tasks.py")
 TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
@@ -38,6 +39,7 @@ UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
     DASHBOARD_CORE_SOURCE,
     API_CLIENT_SOURCE,
+    API_LOADERS_SOURCE,
     BACKGROUND_TASKS_SOURCE,
     TASK_STATUS_PANEL_SOURCE,
     REPORT_STATE_SOURCE,

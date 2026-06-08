@@ -6,6 +6,7 @@ from pathlib import Path
 UI_MODULE_NAMES = (
     "dashboard_core.py",
     "api_client.py",
+    "api_loaders.py",
     "background_tasks.py",
     "task_status_panel.py",
     "report_state.py",

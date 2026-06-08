@@ -112,7 +112,9 @@ def architecture_capabilities(
                 "compose_runtime_env": task_queue_status.get("compose_runtime_env"),
                 "submission_endpoints": task_queue_status.get("submission_endpoints"),
                 "status_endpoints": task_queue_status.get("status_endpoints"),
-                "structured_task_submission_errors": api_status.get("structured_task_submission_errors"),
+                "structured_task_submission_errors": api_status.get(
+                    "structured_task_submission_errors"
+                ),
                 "task_failure_diagnostics_shared_service": api_status.get(
                     "task_failure_diagnostics_shared_service"
                 ),
@@ -141,6 +143,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_maintenance_panels_extracted")
             and frontend_status.get("ui_system_settings_tabs_extracted")
             and frontend_status.get("ui_api_client_extracted")
+            and frontend_status.get("ui_api_loaders_extracted")
             and frontend_status.get("ui_background_task_client_extracted")
             and frontend_status.get("ui_task_queue_preflight_enabled")
             and frontend_status.get("ui_task_queue_preflight_cache_enabled")

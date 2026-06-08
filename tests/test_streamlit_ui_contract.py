@@ -37,15 +37,22 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_panels import (" in source
-    assert "from app.ui.maintenance_deployment_panel import render_external_deployment_panel" in source
+    assert (
+        "from app.ui.maintenance_deployment_panel import render_external_deployment_panel" in source
+    )
     assert "from app.ui.maintenance_ai_panels import (" in source
-    assert "from app.ui.maintenance_task_panels import render_background_task_observability_panel" in source
+    assert (
+        "from app.ui.maintenance_task_panels import render_background_task_observability_panel"
+        in source
+    )
     assert "from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel" in source
     assert "from app.ui.maintenance_status import (" in source
     assert "from app.ui.external_deployment_diagnostics import (" in source
     assert "from app.ui.task_queue_diagnostics import (" in source
     assert "from app.ui.task_failure_diagnostics import (" in source
-    assert "from app.ui.report_observability_panel import render_report_observability_panel" in source
+    assert (
+        "from app.ui.report_observability_panel import render_report_observability_panel" in source
+    )
     assert "from app.ui.follow_up_status import (" in source
     assert "from app.ui.api_client import (" in source
     assert "from app.ui.background_tasks import" in source
@@ -67,24 +74,30 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "F405" not in source
     assert "upgrade-audit-grid" in combined
     assert '[data-baseweb="tab"] p' in combined
-    assert 'def render_analysis_workspace() -> None:' in source
-    assert 'def render_report_center() -> None:' in source
-    assert 'def render_data_enrichment() -> None:' in source
-    assert 'def render_system_settings() -> None:' in source
-    assert 'def render_maintenance_tab() -> None:' in source
-    assert 'def render_external_deployment_panel(upgrade_audit: dict) -> None:' in source
-    assert 'def render_background_task_observability_panel(' in source
-    assert 'def render_report_quality_panel(report_quality_summary: dict) -> None:' in source
-    assert 'def render_maintenance_cleanup_panel() -> None:' in source
-    assert 'def render_external_deployment_panel(' not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
-    assert 'def render_ai_usage_panel(' not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
-    assert 'def render_background_task_observability_panel(' not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
-    assert 'def render_maintenance_cleanup_panel(' not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
-    assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
-    assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
-    assert 'def render_rss_ingest_tab() -> None:' in source
-    assert 'def render_scope_tab(settings_whitelist: SupplyChainWhitelist) -> None:' in source
-    assert 'def render_schedule_tab(settings_tickers: list[str]) -> None:' in source
+    assert "def render_analysis_workspace() -> None:" in source
+    assert "def render_report_center() -> None:" in source
+    assert "def render_data_enrichment() -> None:" in source
+    assert "def render_system_settings() -> None:" in source
+    assert "def render_maintenance_tab() -> None:" in source
+    assert "def render_external_deployment_panel(upgrade_audit: dict) -> None:" in source
+    assert "def render_background_task_observability_panel(" in source
+    assert "def render_report_quality_panel(report_quality_summary: dict) -> None:" in source
+    assert "def render_maintenance_cleanup_panel() -> None:" in source
+    assert "def render_external_deployment_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
+    assert "def render_ai_usage_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
+    assert (
+        "def render_background_task_observability_panel("
+        not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
+    )
+    assert "def render_maintenance_cleanup_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
+    assert "def render_market_data_tab(allowed_tickers: list[str]) -> None:" in source
+    assert (
+        "def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:"
+        in source
+    )
+    assert "def render_rss_ingest_tab() -> None:" in source
+    assert "def render_scope_tab(settings_whitelist: SupplyChainWhitelist) -> None:" in source
+    assert "def render_schedule_tab(settings_tickers: list[str]) -> None:" in source
     assert "render_scope_tab(settings_whitelist)" in ui.SYSTEM_SETTINGS_SOURCE.read_text()
     assert "render_schedule_tab(sorted(settings_whitelist.allowed_tickers()))" in (
         ui.SYSTEM_SETTINGS_SOURCE.read_text()
@@ -103,10 +116,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
-    assert "or schedule_task == \"latest_report_update\"" in source
+    assert 'or schedule_task == "latest_report_update"' in source
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source
-    assert "report_action_cols = st.columns([0.16, 0.16, 0.68], gap=\"small\")" in source
+    assert 'report_action_cols = st.columns([0.16, 0.16, 0.68], gap="small")' in source
     assert ".report { max-width:1360px" in report_styles
     assert ".report-grid { display:block" in report_styles
     assert "<style>\n  :root" not in source
@@ -121,6 +134,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def follow_up_result_message(" in ui.FOLLOW_UP_STATUS_SOURCE.read_text()
     assert "def api_task_post(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def api_task_post(" in ui.API_CLIENT_SOURCE.read_text()
+    assert "def load_api_json_or_default(" in ui.API_LOADERS_SOURCE.read_text()
+    assert "from app.ui.api_loaders import load_api_json_or_default" in source
     assert "def submit_background_task(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def submit_background_task(" in ui.BACKGROUND_TASKS_SOURCE.read_text()
     assert "def submit_data_operation_task(" in ui.BACKGROUND_TASKS_SOURCE.read_text()
@@ -135,38 +150,69 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_smoke_command(" in ui.TASK_QUEUE_DIAGNOSTICS_SOURCE.read_text()
     assert "def external_deployment_warning_rows(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def external_deployment_smoke_commands(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
-    assert "def external_deployment_warning_rows(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
-    assert "def external_deployment_smoke_commands(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
-    assert "def local_neo4j_operation_rows(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
-    assert "def local_unlocker_operation_rows(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert (
+        "def high_risk_filing_unlocker_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def external_deployment_warning_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def external_deployment_smoke_commands("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def local_neo4j_operation_rows(" in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def local_unlocker_operation_rows("
+        in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
     assert (
         "def structured_filing_api_operation_rows("
         in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
     )
-    assert "def external_deployment_warning_items(" in ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
-    assert "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
+    assert (
+        "def external_deployment_warning_items(" in ui.EXTERNAL_DEPLOYMENT_COMMON_SOURCE.read_text()
+    )
+    assert (
+        "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()
+    )
     assert "def local_neo4j_operation_rows(" in ui.EXTERNAL_DEPLOYMENT_NEO4J_SOURCE.read_text()
     assert (
         "def structured_filing_api_operation_rows("
         in ui.EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE.read_text()
     )
-    assert "def _high_risk_unlocker_strategy(" not in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
-    assert "def _neo4j_payload_summary(" not in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    assert (
+        "def _high_risk_unlocker_strategy("
+        not in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
+    assert (
+        "def _neo4j_payload_summary(" not in ui.EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE.read_text()
+    )
     assert "def task_failure_drilldown_rows(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_retry_options(" not in ui.MAINTENANCE_STATUS_SOURCE.read_text()
     assert "def task_failure_drilldown_rows(" in ui.TASK_FAILURE_DIAGNOSTICS_SOURCE.read_text()
     assert "def task_retry_options(" in ui.TASK_FAILURE_DIAGNOSTICS_SOURCE.read_text()
-    assert "def render_report_observability_panel(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
-    assert "def report_observability_metric_values(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
-    assert "def report_observability_bottleneck_rows(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert (
+        "def render_report_observability_panel(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
+    assert (
+        "def report_observability_metric_values("
+        in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
+    assert (
+        "def report_observability_bottleneck_rows("
+        in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
     assert "report_obs_cols" not in source
     assert "def render_task_status_panel(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     report_center_source = Path("app/ui/report_center.py").read_text()
     assert "from app.ui.task_status_panel import render_task_status_panel" in report_center_source
     assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
-    assert "refresh_key=f\"history_run_task_status_{selected_run_id}\"" in report_center_source
+    assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
     assert 'st.button("查詢背景任務狀態")' not in report_center_source
     assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
     assert "def task_status_diagnostic_rows(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
@@ -188,7 +234,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def candidate_audit_html(" not in ui.REPORT_HTML_SOURCE.read_text()
     assert "def candidate_audit_html(" in ui.REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
     assert "def candidate_source_matches_display_entity(" not in ui.REPORT_HTML_SOURCE.read_text()
-    assert "def candidate_source_matches_display_entity(" in ui.REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
+    assert (
+        "def candidate_source_matches_display_entity("
+        in ui.REPORT_CANDIDATE_AUDIT_SOURCE.read_text()
+    )
     assert "def metric_count_from_payload(" not in ui.REPORT_HTML_SOURCE.read_text()
     assert "def metric_count_from_payload(" in ui.REPORT_FORMATTERS_SOURCE.read_text()
     assert "def quality_issue_html(" not in ui.REPORT_HTML_SOURCE.read_text()
@@ -206,17 +255,17 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'api_get("/reports?limit=20")' in source
     assert "latest_by_topic(20)" not in source
     assert "選擇最新版報告" in source
-    assert 'flex-wrap: wrap' in combined
+    assert "flex-wrap: wrap" in combined
     assert 'button[data-testid^="stBaseButton"]' in styles
     assert '[data-testid="stSliderThumbValue"]' in styles
     assert '[data-baseweb="tag"]' in styles
-    assert 'min-height: 40px !important' in styles
+    assert "min-height: 40px !important" in styles
     assert 'svg[role="button"]' in styles
     assert '[data-testid="stWidgetLabel"]' in styles
     assert '[data-testid="stDateInputField"]' in styles
     assert '[data-testid="stNumberInputField"]' in styles
     assert '[data-baseweb="input"]' in styles
-    assert 'border-color: #64748b' in styles
+    assert "border-color: #64748b" in styles
     assert '[data-testid="stJson"] *' in styles
     assert '[data-testid="stCode"] pre' in styles
     assert "white-space: pre-wrap" in styles
@@ -277,10 +326,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "外部部署選配狀態" in source
     assert "render_external_deployment_panel(upgrade_audit)" in source
     assert "render_background_task_observability_panel(service_snapshot, task_summary)" in source
-    assert "external_deployment_warning_rows(upgrade_audit)" not in Path(
-        "app/ui/system_settings_maintenance.py"
-    ).read_text()
-    assert 'st.expander("背景任務觀測"' not in Path("app/ui/system_settings_maintenance.py").read_text()
+    assert (
+        "external_deployment_warning_rows(upgrade_audit)"
+        not in Path("app/ui/system_settings_maintenance.py").read_text()
+    )
+    assert (
+        'st.expander("背景任務觀測"'
+        not in Path("app/ui/system_settings_maintenance.py").read_text()
+    )
     assert "正式分析不等於買進" in source
     assert "letter-spacing: -" not in combined
     assert "stock-hero" not in combined
@@ -321,7 +374,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'error_message="股價刷新任務送出失敗"' in source
     assert 'error_message="分析背景任務送出失敗"' in source
     assert 'error_message="自動補強任務送出失敗"' in source
-    assert "st.session_state[\"last_data_task_id\"]" not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert 'st.session_state["last_data_task_id"]' not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert 'task_state_key="last_data_task_id"' in source
     assert 'task_state_key="last_async_task_id"' in source
     assert 'task_state_key="last_follow_up_task_id"' in source
@@ -330,7 +383,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
 def test_follow_up_controls_use_scoped_widget_keys() -> None:
     source = ui.read_ui_source()
 
-    assert 'def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report")' in source
+    assert (
+        'def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report")'
+        in source
+    )
     assert 'key_suffix = f"{scope}_{report_id}"' in source
     assert 'key=f"followup_purpose_{key_suffix}"' in source
     assert 'scope="analysis_result"' in source

@@ -3,7 +3,8 @@ from __future__ import annotations
 import requests
 import streamlit as st
 
-from app.ui.api_client import api_get, api_put, request_error_message
+from app.ui.api_client import api_put, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
 
 
@@ -98,11 +99,9 @@ def render_schedule_tab(settings_tickers: list[str]) -> None:
 
 
 def _load_schedule_config() -> dict:
-    try:
-        return api_get("/schedule")
-    except requests.RequestException as exc:
-        st.error(f"讀取排程設定失敗：{request_error_message(exc)}")
-        return {
+    return load_api_json_or_default(
+        "/schedule",
+        {
             "enabled": False,
             "task": "latest_report_update",
             "hour": 15,
@@ -114,7 +113,9 @@ def _load_schedule_config() -> dict:
             "refresh_company_filings": True,
             "rerun_report": True,
             "timezone": "Asia/Taipei",
-        }
+        },
+        error_message="讀取排程設定失敗",
+    )
 
 
 def _save_schedule_config(

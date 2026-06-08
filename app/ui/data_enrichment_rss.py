@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
-from app.ui.api_client import api_get, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_enrichment_common import (
@@ -14,11 +13,11 @@ from app.ui.data_enrichment_common import (
 
 def render_rss_ingest_tab() -> None:
     render_section_header("RSS 匯入", "從既有資料源或指定 URL 抓取最新文本。")
-    try:
-        configured_sources = api_get("/news/sources")
-    except requests.RequestException as exc:
-        configured_sources = []
-        st.error(f"讀取 RSS 來源失敗：{request_error_message(exc)}")
+    configured_sources = load_api_json_or_default(
+        "/news/sources",
+        [],
+        error_message="讀取 RSS 來源失敗",
+    )
     if configured_sources:
         st.dataframe(
             configured_sources,

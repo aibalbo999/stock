@@ -1,80 +1,68 @@
 from __future__ import annotations
 
-from pathlib import Path
+from app.services.status_api_architecture_sources import api_architecture_source_context
 
 
 def api_controller_status() -> dict:
-    app_dir = Path(__file__).resolve().parents[1]
-    root = app_dir.parent
-    api_dir = app_dir / "api"
-    main_path = api_dir / "main.py"
-    service_factory_path = api_dir / "service_factory.py"
-    runtime_path = api_dir / "runtime.py"
-    operations_routes_path = api_dir / "operations_routes.py"
-    report_routes_path = api_dir / "report_routes.py"
-    error_details_path = api_dir / "error_details.py"
-    tasks_path = app_dir / "tasks" / "tasks.py"
-    run_task_api_path = app_dir / "services" / "run_task_api.py"
-    persistence_path = app_dir / "services" / "persistence.py"
-    task_failure_diagnostics_path = app_dir / "services" / "task_failure_diagnostics.py"
-    config_path = app_dir / "core" / "config.py"
-    report_generation_api_path = app_dir / "services" / "report_generation_api.py"
-    main_source = _read_source(main_path)
+    source_context = api_architecture_source_context()
+    root = source_context.root
+    api_dir = source_context.api_dir
+    paths = source_context.paths
+    sources = source_context.sources
+    service_factory_path = paths["service_factory"]
+    runtime_path = paths["runtime"]
+    task_failure_diagnostics_path = paths["task_failure_diagnostics"]
+    main_source = sources["main"]
     main_py_lines = len(main_source.splitlines()) if main_source else None
-    runtime_source = _read_source(runtime_path)
-    service_factory_source = _read_source(service_factory_path)
-    tasks_source = _read_source(tasks_path)
-    operations_routes_source = _read_source(operations_routes_path)
-    report_routes_source = _read_source(report_routes_path)
-    error_details_source = _read_source(error_details_path)
-    run_task_api_source = _read_source(run_task_api_path)
-    persistence_source = _read_source(persistence_path)
-    task_failure_diagnostics_source = _read_source(task_failure_diagnostics_path)
-    config_source = _read_source(config_path)
-    report_generation_api_source = _read_source(report_generation_api_path)
-    legacy_facade_path = api_dir / "legacy_facade.py"
-    api_python_paths = sorted(api_dir.glob("*.py")) if api_dir.exists() else []
-    legacy_facade_reference_scan_paths = [
-        path for path in api_python_paths if path != legacy_facade_path
-    ]
-    legacy_facade_api_reference_locations = _literal_occurrence_locations(
-        legacy_facade_reference_scan_paths,
-        ("LegacyApiFacade", "app.api.legacy_facade", "_legacy_api"),
-        root=root,
+    runtime_source = sources["runtime"]
+    service_factory_source = sources["service_factory"]
+    tasks_source = sources["tasks"]
+    operations_routes_source = sources["operations_routes"]
+    report_routes_source = sources["report_routes"]
+    error_details_source = sources["error_details"]
+    run_task_api_source = sources["run_task_api"]
+    persistence_source = sources["persistence"]
+    task_failure_diagnostics_source = sources["task_failure_diagnostics"]
+    config_source = sources["config"]
+    report_generation_api_source = sources["report_generation_api"]
+    legacy_facade_path = paths["legacy_facade"]
+    legacy_facade_reference_scan_paths = source_context.legacy_facade_reference_scan_paths
+    legacy_facade_api_reference_locations = (
+        source_context.legacy_facade_api_reference_locations
     )
-    route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
-    compatibility_exports_path = api_dir / "compatibility_exports.py"
-    compatibility_helpers_path = api_dir / "compatibility_helpers.py"
-    compatibility_helper_candidate_path = api_dir / "compatibility_helper_candidate.py"
-    compatibility_helper_discovery_path = api_dir / "compatibility_helper_discovery.py"
-    compatibility_helper_followup_path = api_dir / "compatibility_helper_followup.py"
-    compatibility_helper_run_state_path = api_dir / "compatibility_helper_run_state.py"
-    task_exports_path = api_dir / "task_exports.py"
-    api_compatibility_path = app_dir / "services" / "api_compatibility.py"
-    compatibility_candidate_path = app_dir / "services" / "api_compatibility_candidate.py"
-    compatibility_discovery_path = app_dir / "services" / "api_compatibility_discovery.py"
-    compatibility_followup_path = app_dir / "services" / "api_compatibility_followup.py"
-    compatibility_run_state_path = app_dir / "services" / "api_compatibility_run_state.py"
-    report_service_factory_path = api_dir / "service_factory_report.py"
-    data_service_factory_path = api_dir / "service_factory_data.py"
-    workflow_service_factory_path = api_dir / "service_factory_workflow.py"
-    ai_graph_service_factory_path = api_dir / "service_factory_ai.py"
-    compatibility_exports_source = _read_source(compatibility_exports_path)
-    compatibility_helpers_source = _read_source(compatibility_helpers_path)
-    compatibility_helper_candidate_source = _read_source(compatibility_helper_candidate_path)
-    compatibility_helper_discovery_source = _read_source(compatibility_helper_discovery_path)
-    compatibility_helper_followup_source = _read_source(compatibility_helper_followup_path)
-    compatibility_helper_run_state_source = _read_source(compatibility_helper_run_state_path)
-    legacy_facade_source = _read_source(legacy_facade_path)
-    api_compatibility_source = _read_source(api_compatibility_path)
-    compatibility_candidate_source = _read_source(compatibility_candidate_path)
-    compatibility_discovery_source = _read_source(compatibility_discovery_path)
-    compatibility_followup_source = _read_source(compatibility_followup_path)
-    compatibility_run_state_source = _read_source(compatibility_run_state_path)
-    report_service_factory_source = _read_source(report_service_factory_path)
-    data_service_factory_source = _read_source(data_service_factory_path)
-    workflow_service_factory_source = _read_source(workflow_service_factory_path)
-    ai_graph_service_factory_source = _read_source(ai_graph_service_factory_path)
+    route_modules = source_context.route_modules
+    compatibility_exports_path = paths["compatibility_exports"]
+    compatibility_helpers_path = paths["compatibility_helpers"]
+    compatibility_helper_candidate_path = paths["compatibility_helper_candidate"]
+    compatibility_helper_discovery_path = paths["compatibility_helper_discovery"]
+    compatibility_helper_followup_path = paths["compatibility_helper_followup"]
+    compatibility_helper_run_state_path = paths["compatibility_helper_run_state"]
+    task_exports_path = paths["task_exports"]
+    api_compatibility_path = paths["api_compatibility"]
+    compatibility_candidate_path = paths["compatibility_candidate"]
+    compatibility_discovery_path = paths["compatibility_discovery"]
+    compatibility_followup_path = paths["compatibility_followup"]
+    compatibility_run_state_path = paths["compatibility_run_state"]
+    report_service_factory_path = paths["report_service_factory"]
+    data_service_factory_path = paths["data_service_factory"]
+    workflow_service_factory_path = paths["workflow_service_factory"]
+    ai_graph_service_factory_path = paths["ai_graph_service_factory"]
+    compatibility_exports_source = sources["compatibility_exports"]
+    compatibility_helpers_source = sources["compatibility_helpers"]
+    compatibility_helper_candidate_source = sources["compatibility_helper_candidate"]
+    compatibility_helper_discovery_source = sources["compatibility_helper_discovery"]
+    compatibility_helper_followup_source = sources["compatibility_helper_followup"]
+    compatibility_helper_run_state_source = sources["compatibility_helper_run_state"]
+    legacy_facade_source = sources["legacy_facade"]
+    api_compatibility_source = sources["api_compatibility"]
+    compatibility_candidate_source = sources["compatibility_candidate"]
+    compatibility_discovery_source = sources["compatibility_discovery"]
+    compatibility_followup_source = sources["compatibility_followup"]
+    compatibility_run_state_source = sources["compatibility_run_state"]
+    report_service_factory_source = sources["report_service_factory"]
+    data_service_factory_source = sources["data_service_factory"]
+    workflow_service_factory_source = sources["workflow_service_factory"]
+    ai_graph_service_factory_source = sources["ai_graph_service_factory"]
     direct_domain_imports = [
         line.strip()
         for line in main_source.splitlines()
@@ -114,6 +102,12 @@ def api_controller_status() -> dict:
     )
     return {
         "collector_path": "app/services/status_api_architecture.py",
+        "api_source_context_extracted": source_context.__class__.__name__
+        == "ApiArchitectureSourceContext"
+        and "main" in sources
+        and "legacy_facade" in sources
+        and bool(legacy_facade_reference_scan_paths),
+        "api_source_context_path": "app/services/status_api_architecture_sources.py",
         "main_py_lines": main_py_lines,
         "route_module_count": len(route_modules),
         "route_modules": route_modules,
@@ -262,7 +256,7 @@ def api_controller_status() -> dict:
             not sync_report_blocking_async_refresh_calls
             or sync_report_async_refresh_gates_present
         ),
-        "compatibility_service_present": (app_dir / "services" / "api_compatibility.py").exists(),
+        "compatibility_service_present": api_compatibility_path.exists(),
         "compatibility_service_domain_mixins_extracted": (
             compatibility_candidate_path.exists()
             and compatibility_discovery_path.exists()
@@ -304,32 +298,3 @@ def api_controller_status() -> dict:
         "legacy_facade_alias_only": "ApiCompatibilityService" in legacy_facade_source
         and "class LegacyApiFacade(ApiCompatibilityService)" in legacy_facade_source,
     }
-
-
-def _literal_occurrence_locations(
-    paths: list[Path],
-    literals: tuple[str, ...],
-    *,
-    root: Path,
-) -> list[dict[str, int | str]]:
-    locations: list[dict[str, int | str]] = []
-    for path in paths:
-        source = _read_source(path)
-        for literal in literals:
-            count = source.count(literal)
-            if count:
-                locations.append(
-                    {
-                        "path": str(path.relative_to(root)),
-                        "literal": literal,
-                        "count": count,
-                    }
-                )
-    return locations
-
-
-def _read_source(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return ""

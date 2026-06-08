@@ -41,14 +41,20 @@ def test_upgrade_capability_matrix_keeps_domain_details_out_of_composition_root(
 
 def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
     api_architecture_source = Path("app/services/status_api_architecture.py").read_text()
+    api_architecture_sources_source = Path(
+        "app/services/status_api_architecture_sources.py"
+    ).read_text()
     ai_rag_source = Path("app/services/status_capability_ai_rag.py").read_text()
     architecture_source = Path("app/services/status_capability_architecture.py").read_text()
     data_business_source = Path("app/services/status_capability_data_business.py").read_text()
     helpers_source = Path("app/services/status_capability_helpers.py").read_text()
 
     assert "def api_controller_status(" in api_architecture_source
-    assert "def _read_source(" in api_architecture_source
-    assert api_architecture_source.count(".read_text(") == 1
+    assert "api_architecture_source_context(" in api_architecture_source
+    assert "def _read_source(" not in api_architecture_source
+    assert api_architecture_source.count(".read_text(") == 0
+    assert "def api_architecture_source_context(" in api_architecture_sources_source
+    assert "def _literal_occurrence_locations(" in api_architecture_sources_source
 
     assert "def ai_rag_capabilities(" in ai_rag_source
     assert '"graphrag_live_cypher_query": _capability(' in ai_rag_source

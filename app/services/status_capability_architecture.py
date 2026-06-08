@@ -18,6 +18,7 @@ def architecture_capabilities(
         "thin_api_controller": _capability(
             "ready"
             if (api_status.get("main_py_lines") or 10_000) <= 220
+            and api_status.get("api_source_context_extracted")
             and api_status["route_module_count"] >= 7
             and api_status.get("app_factory_present")
             and api_status.get("main_uses_app_factory")

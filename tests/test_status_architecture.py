@@ -158,6 +158,10 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
 
     assert thin_api["status"] == "ready"
     assert evidence["collector_path"] == "app/services/status_api_architecture.py"
+    assert evidence["api_source_context_extracted"] is True
+    assert evidence["api_source_context_path"] == (
+        "app/services/status_api_architecture_sources.py"
+    )
     assert evidence["main_py_lines"] <= 120
     assert "report_routes.py" in evidence["route_modules"]
     assert evidence["app_factory_present"] is True

@@ -49,6 +49,7 @@ from app.services.llm_runtime import (
     llm_retry_delay_seconds as _llm_retry_delay_seconds,
     llm_should_retry_after_error as _llm_should_retry_after_error,
     llm_should_stop_after_status as _llm_should_stop_after_status,
+    llm_success_result as _llm_success_result,
     model_daily_quota_exhausted as _runtime_model_daily_quota_exhausted,
     model_quota_cooldown_remaining as _runtime_model_quota_cooldown_remaining,
     start_model_quota_cooldown as _runtime_start_model_quota_cooldown,
@@ -283,12 +284,12 @@ class LLMClient:
                                     outcome="success",
                                 )
                             )
-                            return LLMResult(
+                            return _llm_success_result(
                                 text=text,
                                 key_index=key_index,
                                 model=model_name,
                                 provider="gemini_http",
-                                attempts=tuple(attempts),
+                                attempts=attempts,
                             )
                         errors.append(f"{model_name} key[{key_index}] empty response")
                         attempts.append(
@@ -448,12 +449,12 @@ class LLMClient:
                                     outcome="success",
                                 )
                             )
-                            return LLMResult(
+                            return _llm_success_result(
                                 text=text,
                                 key_index=key_index,
                                 model=model_name,
                                 provider="google_genai",
-                                attempts=tuple(attempts),
+                                attempts=attempts,
                             )
                         errors.append(f"{model_name} key[{key_index}] empty SDK response")
                         attempts.append(
@@ -613,12 +614,12 @@ class LLMClient:
                                     outcome="success",
                                 )
                             )
-                            return LLMResult(
+                            return _llm_success_result(
                                 text=text,
                                 key_index=key_index,
                                 model=model,
                                 provider="litellm",
-                                attempts=tuple(attempts),
+                                attempts=attempts,
                             )
                         errors.append(f"{model} empty response")
                         attempts.append(
@@ -775,12 +776,12 @@ class LLMClient:
                                 outcome="success",
                             )
                         )
-                        return LLMResult(
+                        return _llm_success_result(
                             text=text,
                             key_index=key_index,
                             model=candidate_model,
                             provider="litellm",
-                            attempts=tuple(attempts),
+                            attempts=attempts,
                         )
                     errors.append(f"{candidate_model} empty vision response")
                     attempts.append(
@@ -875,12 +876,12 @@ class LLMClient:
                                 outcome="success",
                             )
                         )
-                        return LLMResult(
+                        return _llm_success_result(
                             text=text,
                             key_index=key_index,
                             model=model_name,
                             provider="gemini_http",
-                            attempts=tuple(attempts),
+                            attempts=attempts,
                         )
                     attempts.append(
                         self._attempt_record(

@@ -71,6 +71,23 @@ def llm_attempt_record(
     return record
 
 
+def llm_success_result(
+    *,
+    text: str,
+    provider: str,
+    model: str | None,
+    key_index: int | None = None,
+    attempts: Sequence[dict[str, object]] = (),
+) -> LLMResult:
+    return LLMResult(
+        text=text,
+        key_index=key_index,
+        model=model,
+        provider=provider,
+        attempts=tuple(attempts),
+    )
+
+
 def llm_failure_result(
     *,
     text: str,
@@ -232,6 +249,7 @@ __all__ = [
     "llm_retry_delay_seconds",
     "llm_should_retry_after_error",
     "llm_should_stop_after_status",
+    "llm_success_result",
     "model_daily_quota_exhausted",
     "model_quota_cooldown_remaining",
     "start_model_quota_cooldown",

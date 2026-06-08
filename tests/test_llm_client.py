@@ -106,10 +106,34 @@ def test_llm_runtime_helpers_are_split_from_client() -> None:
     assert "def llm_retry_delay_seconds(" in runtime_source
     assert "def exception_status_code(" in runtime_source
     assert "def model_quota_cooldown_remaining(" in runtime_source
+    assert "def llm_success_result(" in runtime_source
     assert "def llm_failure_result(" in runtime_source
     assert "def llm_should_retry_after_error(" in runtime_source
     assert "def llm_should_stop_after_status(" in runtime_source
+    assert "LLMResult(" not in client_source
     assert "fallback=True" not in client_source
+
+
+def test_llm_runtime_success_result_preserves_provider_metadata_and_attempts() -> None:
+    attempts = (
+        {"provider": "gemini_http", "model": "gemini-primary", "outcome": "http_error"},
+        {"provider": "gemini_http", "model": "gemini-fallback", "outcome": "success"},
+    )
+
+    result = llm_runtime.llm_success_result(
+        text="ok",
+        provider="gemini_http",
+        model="gemini-fallback",
+        key_index=1,
+        attempts=attempts,
+    )
+
+    assert result.text == "ok"
+    assert result.provider == "gemini_http"
+    assert result.model == "gemini-fallback"
+    assert result.key_index == 1
+    assert result.fallback is False
+    assert result.attempts == attempts
 
 
 def test_llm_runtime_error_retry_helpers_capture_provider_retry_policy() -> None:

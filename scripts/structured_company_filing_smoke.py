@@ -7,10 +7,10 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from app.data_sources.company_filing_structured_api import structured_api_document_rows
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     company_filing_structured_api_status,
-    structured_api_document_rows,
 )
 
 

@@ -41,6 +41,21 @@ from app.data_sources.company_filing_render import (
     company_filing_user_agent_for_url as company_filing_user_agent_for_url,
     company_filing_user_agents as company_filing_user_agents,
 )
+from app.data_sources.company_filing_structured_api import (
+    STRUCTURED_API_PROVIDER_PROFILES as STRUCTURED_API_PROVIDER_PROFILES,
+    STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS as STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS,
+    STRUCTURED_API_RESPONSE_ROW_ALIASES as STRUCTURED_API_RESPONSE_ROW_ALIASES,
+    STRUCTURED_API_SAMPLE_CONTRACT_PATH as STRUCTURED_API_SAMPLE_CONTRACT_PATH,
+    company_filing_structured_api_configured as company_filing_structured_api_configured,
+    company_filing_structured_api_status_payload,
+    parse_structured_api_date as parse_structured_api_date,
+    structured_api_document_rows as structured_api_document_rows,
+    structured_api_enriched_text as structured_api_enriched_text,
+    structured_api_provider_profile as structured_api_provider_profile,
+    structured_api_request_contract as structured_api_request_contract,
+    structured_api_row_text as structured_api_row_text,
+    structured_api_row_value as structured_api_row_value,
+)
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 from app.services.company_filing_cache import RedisCompanyFilingCache
@@ -89,45 +104,6 @@ MAX_FETCHED_DOCUMENT_CHARS = 500_000
 MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
 OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 COMPANY_FILING_RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
-STRUCTURED_API_SAMPLE_CONTRACT_PATH = Path("examples/structured_company_filing_sample.json")
-STRUCTURED_API_PROVIDER_PROFILES = {
-    "tej": {
-        "label": "TEJ structured company filings",
-        "auth_mode": "bearer",
-        "token_location": "authorization_header",
-        "document_type_param": "document_type",
-        "request_param_keys": ["ticker", "company_name", "limit", "document_type"],
-    },
-    "scrapingbee_dataset": {
-        "label": "ScrapingBee dataset/API fallback",
-        "auth_mode": "query_param",
-        "token_location": "query_param",
-        "token_param": "api_key",
-        "document_type_param": "document_types",
-        "request_param_keys": ["ticker", "company_name", "limit", "document_types", "api_key"],
-    },
-    "brightdata_dataset": {
-        "label": "BrightData dataset/API fallback",
-        "auth_mode": "bearer",
-        "token_location": "authorization_header",
-        "document_type_param": "document_types",
-        "request_param_keys": ["ticker", "company_name", "limit", "document_types"],
-    },
-    "custom": {
-        "label": "Custom structured company filing API",
-        "auth_mode": "bearer_optional",
-        "token_location": "authorization_header",
-        "document_type_param": "document_types",
-        "request_param_keys": ["ticker", "company_name", "limit", "document_types"],
-    },
-}
-STRUCTURED_API_RESPONSE_ROW_ALIASES = ("documents", "data", "results", "items", "records", "list")
-STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS = (
-    "title/name/headline/doc_title",
-    "text/content/body/abstract/summary",
-    "ticker_or_company_mention",
-    "document_type_match",
-)
 PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
 RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES = {
     "blocked_or_forbidden",
@@ -167,42 +143,11 @@ MAX_PDF_TABLE_COLUMNS = 14
 MAX_PDF_TABLE_CELL_CHARS = 160
 
 
-def company_filing_structured_api_configured() -> bool:
-    settings = get_settings()
-    return bool(
-        str(settings.company_filing_structured_api_provider or "").strip()
-        and str(settings.company_filing_structured_api_url or "").strip()
-    )
-
-
 def company_filing_structured_api_status() -> dict:
     settings = get_settings()
-    provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
-    endpoint = str(settings.company_filing_structured_api_url or "").strip()
-    configured = bool(provider and endpoint)
-    parsed = urlparse(endpoint)
-    profile = structured_api_provider_profile(provider)
-    sample_contract = structured_api_sample_contract_status()
-    return {
-        "configured": configured,
-        "provider": provider or None,
-        "provider_profile": profile,
-        "provider_profile_key": profile["profile_key"],
-        "supported_provider_examples": list(STRUCTURED_API_PROVIDER_PROFILES),
-        "supported_provider_profiles": {
-            key: {
-                "label": value["label"],
-                "auth_mode": value["auth_mode"],
-                "token_location": value["token_location"],
-                "document_type_param": value["document_type_param"],
-                "request_param_keys": value["request_param_keys"],
-            }
-            for key, value in STRUCTURED_API_PROVIDER_PROFILES.items()
-        },
-        "url_configured": bool(endpoint),
-        "token_configured": bool(str(settings.company_filing_structured_api_token or "").strip()),
-        "timeout_seconds": max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
-        "retry_policy": {
+    return company_filing_structured_api_status_payload(
+        settings,
+        retry_policy={
             "attempts": company_filing_request_attempts(),
             "retryable_http_statuses": sorted(COMPANY_FILING_RETRYABLE_HTTP_STATUSES),
             "base_retry_delay_seconds": max(
@@ -214,39 +159,8 @@ def company_filing_structured_api_status() -> dict:
                 float(settings.company_filing_max_retry_delay_seconds),
             ),
         },
-        "response_row_aliases": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
-        "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
-        "request_contract": {
-            "method": "GET",
-            "auth_mode": profile["auth_mode"],
-            "token_location": profile["token_location"],
-            "query_param_keys": profile["request_param_keys"],
-            "document_type_param": profile["document_type_param"],
-            "response_rows": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
-            "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
-        },
-        "contract": (
-            "GET JSON with documents/data/results/items/records/list rows; supported aliases include "
-            "title/headline/doc_title, text/content/body/abstract, url/file_url/download_url, "
-            "publisher/source_name, published_at/publish_date/report_date, document_type/doc_type/category."
-        ),
-        "smoke_cli": (
-            ".venv/bin/python scripts/structured_company_filing_smoke.py "
-            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
-        ),
-        "sample_contract_cli": (
-            ".venv/bin/python scripts/structured_company_filing_smoke.py "
-            "--sample-json examples/structured_company_filing_sample.json "
-            "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
-        ),
-        "sample_contract": sample_contract,
-        "sample_contract_ready": bool(sample_contract.get("ready")),
-        "fallback_reason": None
-        if configured and parsed.scheme in {"http", "https"} and parsed.hostname
-        else "missing_structured_api_provider_or_url"
-        if not configured
-        else "invalid_structured_api_url",
-    }
+        sample_contract=structured_api_sample_contract_status(),
+    )
 
 
 def structured_api_sample_contract_status(sample_path: Path | None = None) -> dict:
@@ -321,54 +235,6 @@ def structured_api_sample_contract_status(sample_path: Path | None = None) -> di
         "error_count": len(errors),
         "errors": errors[:10],
         "smoke_cli": smoke_cli,
-    }
-
-
-def structured_api_provider_profile(provider: str) -> dict:
-    provider_key = str(provider or "").strip().lower() or "custom"
-    profile_key = provider_key if provider_key in STRUCTURED_API_PROVIDER_PROFILES else "custom"
-    profile = dict(STRUCTURED_API_PROVIDER_PROFILES[profile_key])
-    profile["provider"] = provider_key
-    profile["profile_key"] = profile_key
-    profile["profile_supported"] = provider_key in STRUCTURED_API_PROVIDER_PROFILES or profile_key == "custom"
-    return profile
-
-
-def structured_api_request_contract(
-    *,
-    provider: str,
-    endpoint: str,
-    token: str = "",
-    ticker: str,
-    company_name: str = "",
-    limit: int = 3,
-    document_types: list[str] | tuple[str, ...] | None = None,
-) -> dict:
-    profile = structured_api_provider_profile(provider)
-    headers = {"Accept": "application/json"}
-    params: dict[str, object] = {
-        "ticker": ticker,
-        "company_name": company_name,
-        "limit": max(1, int(limit)),
-    }
-    requested_types = ",".join(document_types or ())
-    if requested_types:
-        params[str(profile["document_type_param"])] = requested_types
-    normalized_token = str(token or "").strip()
-    if normalized_token and profile["token_location"] == "authorization_header":
-        headers["Authorization"] = f"Bearer {normalized_token}"
-    elif normalized_token and profile["token_location"] == "query_param":
-        params[str(profile.get("token_param") or "api_key")] = normalized_token
-    return {
-        "method": "GET",
-        "provider": profile["provider"],
-        "profile_key": profile["profile_key"],
-        "endpoint": endpoint,
-        "headers": headers,
-        "params": params,
-        "auth_mode": profile["auth_mode"],
-        "token_location": profile["token_location"],
-        "document_type_param": profile["document_type_param"],
     }
 
 
@@ -1763,44 +1629,6 @@ def is_document_text_relevant(
     return is_relevant_company_filing_result(document, ticker, company_name)
 
 
-def structured_api_document_rows(payload: object) -> list[dict]:
-    if isinstance(payload, list):
-        rows = payload
-    elif isinstance(payload, dict):
-        rows = (
-            payload.get("documents")
-            or payload.get("data")
-            or payload.get("results")
-            or payload.get("items")
-            or payload.get("records")
-            or payload.get("list")
-            or []
-        )
-    else:
-        rows = []
-    return [row for row in rows if isinstance(row, dict)]
-
-
-def structured_api_row_value(row: dict, *keys: str) -> object:
-    for key in keys:
-        current: object = row
-        for part in str(key).split("."):
-            if not isinstance(current, dict) or part not in current:
-                current = None
-                break
-            current = current.get(part)
-        if current not in (None, ""):
-            return current
-    return None
-
-
-def structured_api_row_text(row: dict, *keys: str) -> str:
-    value = structured_api_row_value(row, *keys)
-    if isinstance(value, (dict, list, tuple, set)):
-        return ""
-    return str(value or "").strip()
-
-
 def structured_api_document_type(row: dict, *, title: str, text: str, url: str | None) -> str:
     raw_type = structured_api_row_text(
         row,
@@ -1814,47 +1642,6 @@ def structured_api_document_type(row: dict, *, title: str, text: str, url: str |
     if raw_type in DOCUMENT_TYPE_KEYWORDS:
         return raw_type
     return infer_document_type(f"{raw_type}\n{title}\n{text}\n{url or ''}")
-
-
-def structured_api_enriched_text(
-    text: str,
-    row: dict,
-    *,
-    ticker: str,
-    company_name: str,
-    document_type: str,
-) -> str:
-    metadata_terms = [
-        ticker,
-        company_name,
-        document_type,
-        document_type.replace("_", " "),
-        structured_api_row_text(
-            row,
-            "document_type",
-            "documentType",
-            "doc_type",
-            "filing_type",
-            "category",
-            "type",
-        ),
-        structured_api_row_text(row, "ticker", "stock_id", "stockId", "stock_no", "stockNo", "company_id"),
-        structured_api_row_text(row, "company", "company_name", "companyName", "company_full_name"),
-    ]
-    metadata = " ".join(term for term in metadata_terms if term)
-    return f"[Structured API metadata] {metadata}\n{text}" if metadata else text
-
-
-def parse_structured_api_date(value: object) -> date | None:
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return date.fromisoformat(text[:10])
-    except ValueError:
-        return None
 
 
 def pdf_title_from_url(url: str) -> str:

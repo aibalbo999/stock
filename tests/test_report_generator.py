@@ -41,6 +41,7 @@ from app.services import (
     report_early_potential,
     report_final_potential,
     report_formatting,
+    report_investment_recommendations,
     report_investment_thesis,
     report_leading_signal,
     report_monitoring_checklist,
@@ -762,6 +763,41 @@ def test_company_analysis_overview_logic_lives_outside_generator() -> None:
         "| 股票 | 產業位置 | 最新可取得收盤價 | 追價風險標籤 | 月營收 | 目前估值位置 | 財務信心 | 證據狀態 |\n"
         "|---|---|---|---|---|---|---|---|\n\n"
         "### 個股細節"
+    )
+
+
+def test_investment_recommendations_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    recommendations_source = Path("app/services/report_investment_recommendations.py").read_text()
+    request = ReportRequest(tickers=["2330"])
+    context = {
+        "ticker": "2330",
+        "label": "2330 台積電",
+        "current_price": "目前無足夠數據判斷",
+        "current_price_label": "觀察等待",
+        "decision": "觀察 / 資料待補",
+        "rationale": "缺資料。",
+        "documents": [],
+        "snapshot": None,
+        "revenue": None,
+    }
+
+    assert "report_investment_recommendations" in generator_source
+    assert "def render_investment_recommendations(" in recommendations_source
+    assert "def recommendation_row(" in recommendations_source
+    assert "未納入投資人風險承受度" not in generator_source
+    assert "| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |" not in generator_source
+    assert report_investment_recommendations.render_investment_recommendations(
+        [context],
+        request,
+        "排序說明",
+        lambda documents: "代表性來源",
+    ) == (
+        "以下為非個人化研究建議；未納入投資人風險承受度、持股成本與資金配置，不構成個別買賣指令。\n"
+        "排序說明\n\n"
+        "| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |\n"
+        "|---|---|---|---|---|---:|---|\n"
+        "| 2330 台積電 | 目前無足夠數據判斷 | 觀察等待 | 觀察 / 資料待補 | 缺資料。 | 不適用 / 0 元 | 目前無足夠數據判斷 |"
     )
 
 

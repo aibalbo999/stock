@@ -78,6 +78,7 @@ from app.services import (
     report_formatting,
     report_leading_signal,
     report_investment_thesis,
+    report_investment_recommendations,
     report_monitoring_checklist,
     report_potential,
     report_scope_sections,
@@ -1835,108 +1836,39 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        if not tickers:
-            return "目前無足夠數據判斷。"
-
-        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
-        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
-        metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
-        peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        ordered_tickers = self._ordered_tickers_for_reading(
-            request,
-            tickers,
-            documents,
-            findings,
-            market_snapshots,
-            monthly_revenues,
-            financial_metrics,
-            valuation_metrics,
-            leading_signals,
-        )
-        lines = [
-            "以下為非個人化研究建議；未納入投資人風險承受度、持股成本與資金配置，不構成個別買賣指令。",
-            REPORT_READING_SORT_NOTE,
-            "",
-            "| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |",
-            "|---|---|---|---|---|---:|---|",
-        ]
-        for ticker in ordered_tickers:
-            company = companies.get(ticker)
-            snapshot = snapshots.get(ticker)
-            revenue = revenues.get(ticker)
-            related_findings = self._related_findings(ticker, findings)
-            related_documents = self._related_documents(ticker, documents)
-            signal = (leading_signals or {}).get(ticker)
-            estimate = self._estimate_potential(
-                related_documents,
-                related_findings,
-                snapshot,
-                revenue,
-                signal,
-                metrics_by_ticker.get(ticker, []),
-                valuations.get(ticker),
-                peer_valuation_summary,
+        downside_gate = self._downside_gate(request)
+        contexts = []
+        for context in self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
             )
-            quality = self._data_quality_grade(
-                related_documents,
-                related_findings,
-                snapshot,
-                revenue,
-                metrics_by_ticker.get(ticker, []),
-                valuations.get(ticker),
-                financial_metrics is not None or valuation_metrics is not None,
-                signal,
-                self._company_filing_missing(ticker, documents),
-                recent_source_days=request.lookback_days,
-            )
-            downside_gate = self._downside_gate(request)
-            name = company.name if company else ticker
-            rating = self._decision_label(estimate, quality, related_findings, downside_gate, signal)
-            valuation_label = self._valuation_position_label(
-                valuations.get(ticker),
-                peer_valuation_summary,
-                self._has_negative_profitability(metrics_by_ticker.get(ticker, [])),
-            )
-            current_price = self._current_price_text(snapshot)
-            current_price_label = self._current_price_label(
-                snapshot,
-                estimate,
-                quality,
-                valuation_label,
-                signal,
-                rating,
-                downside_gate,
-            )
-            rationale = self._decision_reason(
-                rating,
-                estimate,
-                quality,
-                related_findings,
-                related_documents,
+        ):
+            context = dict(context)
+            context["rationale"] = self._decision_reason(
+                context["decision"],
+                context["estimate"],
+                context["quality"],
+                context.get("findings") or [],
+                context.get("documents") or [],
                 downside_gate,
                 request,
-                signal,
+                context.get("leading_signal"),
             )
-
-            max_position = self._max_position_amount(request)
-            position_limit = f"約 {max_position:,} 元" if rating == "可小額分批研究" else "不適用 / 0 元"
-            source = (
-                f"{snapshot.trade_date.isoformat()} {snapshot.source} {ticker}"
-                if snapshot
-                else "目前無足夠數據判斷"
-            )
-            if revenue:
-                source += f"；{revenue.revenue_date.isoformat()} {revenue.source} {ticker}"
-            if related_documents:
-                source += f"；代表性文本：{self._representative_sources(related_documents, limit=2)}"
-            lines.append(
-                self._table_row(
-                    [f"{ticker} {name}", current_price, current_price_label, rating, rationale, position_limit, source]
-                )
-            )
-        return "\n".join(lines)
+            contexts.append(context)
+        return report_investment_recommendations.render_investment_recommendations(
+            contexts,
+            request,
+            REPORT_READING_SORT_NOTE,
+            lambda related_documents: self._representative_sources(related_documents, limit=2),
+        )
 
     @staticmethod
     def _company_evidence_summary(related_documents: list[NewsDocument], related_findings) -> str:

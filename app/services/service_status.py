@@ -47,6 +47,7 @@ from app.services.status_report_retention import (
 from app.services.status_security import security_scan_status as collect_security_scan_status
 from app.services.status_task_queue import task_queue_status as collect_task_queue_status
 from app.services.status_vector_store import vector_store_status as collect_vector_store_status
+from app.services.runtime_identity import runtime_identity_status
 from app.services.visual_rag import visual_rag_status
 from app.services.workflow_orchestration import workflow_orchestration_status
 
@@ -86,7 +87,9 @@ def service_status() -> dict:
         redis_status=redis_status,
         redact_url=_redact_url,
     )
+    runtime_identity = runtime_identity_status()
     status = {
+        "runtime_identity": runtime_identity,
         "database": {
             "init_mode": settings.database_init_mode,
             "create_all_non_sqlite_allowed": settings.database_allow_create_all_non_sqlite,

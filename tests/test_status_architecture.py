@@ -16,8 +16,12 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert "database" in status
     assert "workflow_orchestration" in status
     assert "python_runtime" in status
+    assert "runtime_identity" in status
     assert "task_queue" in status
     assert "local_dependencies" in status
+    assert status["runtime_identity"]["collector_path"] == "app/services/runtime_identity.py"
+    assert "git_commit" in status["runtime_identity"]
+    assert "git_dirty" in status["runtime_identity"]
     assert status["local_dependencies"]["collector_path"] == (
         "app/services/local_dependency_diagnostics.py"
     )
@@ -70,6 +74,9 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert (
         "from app.services.local_dependency_diagnostics import local_dependency_runtime_status"
         in service_status_source
+    )
+    assert "from app.services.runtime_identity import runtime_identity_status" in (
+        service_status_source
     )
     assert "def local_dependency_runtime_status(" in local_dependency_source
     assert "def local_dependency_last_start_status(" in local_dependency_source

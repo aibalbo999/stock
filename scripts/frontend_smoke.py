@@ -29,6 +29,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Screenshot output path when Playwright is available.",
     )
     parser.add_argument("--skip-browser", action="store_true", help="Skip Playwright visual smoke.")
+    parser.add_argument(
+        "--skip-runtime-identity",
+        action="store_true",
+        help="Skip API runtime commit comparison.",
+    )
+    parser.add_argument(
+        "--expected-api-commit",
+        default=None,
+        help="Expected API runtime git commit. Defaults to the current working tree commit.",
+    )
     parser.add_argument("--timeout", type=float, default=10.0, help="Per-check timeout in seconds.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(argv)
@@ -39,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         api_endpoints=tuple(args.api_endpoint or DEFAULT_API_ENDPOINTS),
         screenshot_path=args.screenshot,
         skip_browser=args.skip_browser,
+        check_runtime_identity=not args.skip_runtime_identity,
+        expected_api_commit=args.expected_api_commit,
         timeout_seconds=args.timeout,
     )
     print(to_json(report) if args.json else format_frontend_smoke_report(report))

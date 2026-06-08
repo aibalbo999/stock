@@ -5,6 +5,7 @@ import zlib
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    check_api_runtime_identity,
     check_http_target,
     check_streamlit_page_import_contract,
     png_has_nonblank_pixels,
@@ -118,7 +119,11 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
         lambda: {"label": "streamlit_page_import_contract", "status": "passed"},
     )
 
-    report = run_frontend_smoke(skip_browser=True, api_endpoints=("/services/status", "/llm/quota"))
+    report = run_frontend_smoke(
+        skip_browser=True,
+        api_endpoints=("/services/status", "/llm/quota"),
+        check_runtime_identity=False,
+    )
 
     assert report["status"] == "passed"
     assert report["skipped_count"] == 1
@@ -145,6 +150,10 @@ def test_run_frontend_smoke_defaults_include_external_env_check(monkeypatch) -> 
         "app.services.frontend_smoke.check_streamlit_page_import_contract",
         lambda: {"label": "streamlit_page_import_contract", "status": "passed"},
     )
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.check_api_runtime_identity",
+        lambda *_args, **_kwargs: {"label": "api_runtime_identity", "status": "passed"},
+    )
 
     report = run_frontend_smoke(skip_browser=True)
 
@@ -156,9 +165,47 @@ def test_run_frontend_smoke_defaults_include_external_env_check(monkeypatch) -> 
         "streamlit_http",
         "api_http:/services/status",
         "api_http:/services/external-deployment/env-check",
+        "api_runtime_identity",
         "streamlit_page_import_contract",
         "streamlit_playwright",
     ]
+
+
+def test_check_api_runtime_identity_matches_commit_prefix() -> None:
+    result = check_api_runtime_identity(
+        "http://localhost:8000",
+        expected_commit="commit-main-test",
+        opener=lambda *_args, **_kwargs: FakeResponse(
+            b'{"git_commit":"commit-main-test","source":"git","git_dirty":false}'
+        ),
+    )
+
+    assert result["status"] == "passed"
+    assert result["actual_commit_short"] == "commit-main-"
+
+
+def test_check_api_runtime_identity_fails_on_commit_mismatch() -> None:
+    result = check_api_runtime_identity(
+        "http://localhost:8000",
+        expected_commit="commit-main-test",
+        opener=lambda *_args, **_kwargs: FakeResponse(
+            b'{"git_commit":"commit-old-test","source":"git","git_dirty":false}'
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "api_runtime_commit_mismatch"
+
+
+def test_check_api_runtime_identity_fails_when_runtime_commit_missing() -> None:
+    result = check_api_runtime_identity(
+        "http://localhost:8000",
+        expected_commit="commit-main-test",
+        opener=lambda *_args, **_kwargs: FakeResponse(b'{"status":"ok"}'),
+    )
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "api_runtime_commit_unavailable"
 
 
 def _png(*, width: int, height: int, pixels: list[tuple[int, int, int]]) -> bytes:

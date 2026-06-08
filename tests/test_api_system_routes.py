@@ -17,6 +17,7 @@ def system_router_client(
     maintenance_operation_catalog: dict | None = None,
     maintenance_operation_run_func=None,
     external_env_check_func=None,
+    runtime_identity: dict | None = None,
 ) -> TestClient:
     router = create_system_router(
         db_status_func=lambda: db_status or {},
@@ -29,6 +30,7 @@ def system_router_client(
         maintenance_operation_run_func=maintenance_operation_run_func
         or (lambda action_id, **kwargs: {"action_id": action_id, **kwargs}),
         external_env_check_func=external_env_check_func or (lambda **kwargs: {"kwargs": kwargs}),
+        runtime_identity_func=lambda: runtime_identity or {},
     )
 
     app = FastAPI()
@@ -57,6 +59,19 @@ def test_system_router_services_status_endpoint() -> None:
     assert "database" in body
     assert "market_data_cache" in body
     assert "vector_store" in body
+
+
+def test_system_router_runtime_identity_endpoint() -> None:
+    response = system_router_client(
+        runtime_identity={
+            "collector_path": "app/services/runtime_identity.py",
+            "git_commit": "commit-main-test",
+            "git_commit_short": "commit-main-",
+        }
+    ).get("/services/runtime-identity")
+
+    assert response.status_code == 200
+    assert response.json()["git_commit"] == "commit-main-test"
 
 
 def test_system_router_upgrade_audit_endpoint() -> None:

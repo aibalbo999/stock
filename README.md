@@ -452,7 +452,7 @@ export STOCK_AI_BACKUP_PASSPHRASE="換成自己的長密碼"
 
 此模式會產生 `backups/stock_ai_backup_*.zip.enc`，使用 Fernet + PBKDF2 加密，並移除明文備份資料夾；需解密時用 `.venv/bin/python scripts/system_backup.py decrypt backups/<file>.zip.enc --encrypt-passphrase-env STOCK_AI_BACKUP_PASSPHRASE`。若要建立每日排程命令，可執行 `.venv/bin/python scripts/system_backup.py schedule-command --time 02:30 --keep 14`，會輸出 cron 與 launchd 範例。
 
-服務啟動後可跑 `.venv/bin/python scripts/frontend_smoke.py --json`，它會檢查 Streamlit 首頁、FastAPI `/services/status`、`/services/external-deployment/env-check`、`pages/` 多頁入口與 `app.ui.streamlit_dashboard` facade 的匯入合約，並在 Playwright 可用時截圖到 `artifacts/frontend_smoke/streamlit.png` 且驗證畫面不是空白 PNG。CI 或沒有瀏覽器 binary 的環境可加 `--skip-browser`，仍保留 HTTP 與多頁匯入合約 smoke。
+服務啟動後可跑 `.venv/bin/python scripts/frontend_smoke.py --json`，它會檢查 Streamlit 首頁、FastAPI `/services/status`、`/services/external-deployment/env-check`、`/services/runtime-identity`、`pages/` 多頁入口與 `app.ui.streamlit_dashboard` facade 的匯入合約，並比對 API runtime 回報的 git commit 是否等於目前工作樹 commit，避免本機 8000/8501 還跑著舊程序卻誤判 smoke 通過；若是遠端部署沒有 git metadata，可加 `--skip-runtime-identity` 或用 `--expected-api-commit` 指定部署 commit。Playwright 可用時會截圖到 `artifacts/frontend_smoke/streamlit.png` 且驗證畫面不是空白 PNG。CI 或沒有瀏覽器 binary 的環境可加 `--skip-browser`，仍保留 HTTP、runtime identity 與多頁匯入合約 smoke。
 
 GitHub Actions workflow 位於 `.github/workflows/ci.yml`，會自動執行 `ruff check .`、`scripts/security_scan.py --engine detect-secrets`、`pytest -q`、`scripts/upgrade_audit.py --json`、外部整合 smoke、公司文件 Playwright render smoke、Neo4j GraphRAG live import/query smoke、結構化公司文件 sample contract smoke、GraphRAG reasoning golden eval、Visual RAG golden eval，以及啟動 API/Streamlit 後的 `scripts/frontend_smoke.py --skip-browser --json`。
 

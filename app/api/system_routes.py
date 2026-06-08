@@ -8,6 +8,7 @@ from app.api.schemas import MaintenanceOperationRunRequest
 from app.services.external_deployment_env_gaps import (
     external_deployment_env_check_status_report,
 )
+from app.services.runtime_identity import runtime_identity_status
 from app.services.maintenance_diagnostics import (
     maintenance_diagnostic_action_catalog,
     run_maintenance_diagnostic_action,
@@ -28,6 +29,7 @@ def create_system_router(
     maintenance_operation_catalog_func: Callable[[], dict] = maintenance_operation_catalog,
     maintenance_operation_run_func: Callable[..., dict] = run_maintenance_operation,
     external_env_check_func: Callable[..., dict] = external_deployment_env_check_status_report,
+    runtime_identity_func: Callable[[], dict] = runtime_identity_status,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -42,6 +44,10 @@ def create_system_router(
     @router.get("/services/status")
     def services_status() -> dict:
         return service_status_func()
+
+    @router.get("/services/runtime-identity")
+    def services_runtime_identity() -> dict:
+        return runtime_identity_func()
 
     @router.get("/services/upgrade-audit")
     def services_upgrade_audit(strict_external: bool = False) -> dict:

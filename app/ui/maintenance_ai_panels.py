@@ -35,23 +35,14 @@ def render_ai_quota_panel(llm_quota: dict, service_snapshot: dict) -> None:
 
 def render_ai_usage_panel(llm_usage_summary: dict) -> None:
     with st.expander("AI 用量趨勢與成本", expanded=True):
-        usage_totals = (
-            llm_usage_summary.get("totals")
-            if isinstance(llm_usage_summary.get("totals"), dict)
-            else {}
-        )
-        usage_cols = st.columns(5)
-        usage_cols[0].metric("7 日請求", int(usage_totals.get("request_count") or 0))
-        usage_cols[1].metric("7 日 Token", int(usage_totals.get("total_token_estimate") or 0))
-        usage_cols[2].metric(
-            "估算成本 USD",
-            f"{float(usage_totals.get('estimated_cost_usd') or 0.0):.4f}",
-        )
-        usage_cols[3].metric("Fallback 次數", int(usage_totals.get("fallback_path_count") or 0))
-        usage_cols[4].metric("可重試失敗", int(usage_totals.get("retryable_failure_count") or 0))
+        usage_metrics = llm_usage_metric_values(llm_usage_summary)
+        usage_cols = st.columns(len(usage_metrics))
+        for column, (label, value) in zip(usage_cols, usage_metrics.items()):
+            column.metric(label, value)
         daily_usage_rows = llm_usage_summary.get("daily") or []
         model_usage_rows = llm_usage_summary.get("by_model") or []
         operation_usage_rows = llm_usage_summary.get("by_operation") or []
+        recent_routing_rows = llm_usage_recent_routing_rows(llm_usage_summary)
         if daily_usage_rows:
             st.caption("每日 token / request 趨勢")
             st.dataframe(daily_usage_rows, width="stretch", hide_index=True)
@@ -69,6 +60,9 @@ def render_ai_usage_panel(llm_usage_summary: dict) -> None:
                 st.caption(caption)
             if routing_rows:
                 st.dataframe(routing_rows, width="stretch", hide_index=True)
+        if recent_routing_rows:
+            st.caption("最近模型路由事件")
+            st.dataframe(recent_routing_rows, width="stretch", hide_index=True)
         if not (daily_usage_rows or model_usage_rows or operation_usage_rows):
             st.info("尚未有可彙總的 AI 用量紀錄。")
         usage_alerts = llm_usage_summary.get("alerts") or []
@@ -87,6 +81,19 @@ def render_ai_usage_panel(llm_usage_summary: dict) -> None:
                 f"{cost_budget.get('status')}｜"
                 f"window ${float(cost_budget.get('window_cost_budget_usd') or 0.0):.4f}"
             )
+
+
+def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
+    totals = _dict_value(llm_usage_summary.get("totals"))
+    return {
+        "7 日請求": int(totals.get("request_count") or 0),
+        "7 日 Token": int(totals.get("total_token_estimate") or 0),
+        "估算成本 USD": f"{float(totals.get('estimated_cost_usd') or 0.0):.4f}",
+        "Fallback 次數": int(totals.get("fallback_path_count") or 0),
+        "可重試失敗": int(totals.get("retryable_failure_count") or 0),
+        "Quota skip": int(totals.get("quota_skip_count") or 0),
+        "模型降級": int(totals.get("degraded_from_primary_count") or 0),
+    }
 
 
 def llm_usage_routing_captions(llm_usage_summary: dict) -> list[str]:
@@ -141,6 +148,33 @@ def llm_usage_routing_rows(llm_usage_summary: dict) -> list[dict]:
             }
         )
     return rows
+
+
+def llm_usage_recent_routing_rows(llm_usage_summary: dict) -> list[dict]:
+    rows = []
+    for item in llm_usage_summary.get("recent") or []:
+        if not isinstance(item, dict):
+            continue
+        quota_skips = int(item.get("quota_skip_count") or 0)
+        degraded = bool(item.get("degraded_from_primary"))
+        routing_reason = str(item.get("routing_reason") or "").strip()
+        if not (quota_skips or degraded or routing_reason):
+            continue
+        rows.append(
+            {
+                "created_at": item.get("created_at"),
+                "operation": item.get("operation"),
+                "model": item.get("model"),
+                "selected_rank": item.get("selected_model_rank"),
+                "tier": item.get("selected_routing_tier"),
+                "routing_reason": routing_reason or None,
+                "quota_skip_count": quota_skips,
+                "daily_quota_skip_count": int(item.get("daily_quota_skip_count") or 0),
+                "cooldown_skip_count": int(item.get("cooldown_skip_count") or 0),
+                "degraded_from_primary": degraded,
+            }
+        )
+    return rows[-20:]
 
 
 def _dict_value(value: Any) -> dict:

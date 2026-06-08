@@ -14,6 +14,8 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
             "trace_captured_count": 2,
             "avg_llm_latency_ms": 123.45,
             "keyword_fallback_count": 1,
+            "quota_skip_count": 2,
+            "degraded_from_primary_count": 1,
         },
         "alerts": [
             {"severity": "warning", "message": "Trace coverage is incomplete."},
@@ -35,6 +37,8 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
         "Trace 覆蓋": 2,
         "平均 LLM ms": 123.45,
         "Keyword fallback": 1,
+        "Quota skip": 2,
+        "模型降級": 1,
     }
     assert report_observability_alert_rows(summary) == [
         {"severity": "warning", "message": "Trace coverage is incomplete."}
@@ -54,6 +58,8 @@ def test_report_observability_metric_values_handle_missing_summary() -> None:
         "Trace 覆蓋": 0,
         "平均 LLM ms": "-",
         "Keyword fallback": 0,
+        "Quota skip": 0,
+        "模型降級": 0,
     }
     assert report_observability_alert_rows({}) == []
     assert report_observability_bottleneck_rows({}) == []

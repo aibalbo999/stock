@@ -13,6 +13,8 @@ def report_observability_metric_values(summary: dict[str, Any]) -> dict[str, obj
         "Trace 覆蓋": int(totals.get("trace_captured_count") or 0),
         "平均 LLM ms": totals.get("avg_llm_latency_ms") or "-",
         "Keyword fallback": int(totals.get("keyword_fallback_count") or 0),
+        "Quota skip": int(totals.get("quota_skip_count") or 0),
+        "模型降級": int(totals.get("degraded_from_primary_count") or 0),
     }
 
 
@@ -30,12 +32,9 @@ def report_observability_report_rows(summary: dict[str, Any]) -> list[dict]:
 
 def render_report_observability_panel(report_observability_summary: dict[str, Any]) -> None:
     metrics = report_observability_metric_values(report_observability_summary)
-    metric_cols = st.columns(5)
-    metric_cols[0].metric("狀態", metrics["狀態"])
-    metric_cols[1].metric("最新版報告", metrics["最新版報告"])
-    metric_cols[2].metric("Trace 覆蓋", metrics["Trace 覆蓋"])
-    metric_cols[3].metric("平均 LLM ms", metrics["平均 LLM ms"])
-    metric_cols[4].metric("Keyword fallback", metrics["Keyword fallback"])
+    metric_cols = st.columns(len(metrics))
+    for column, (label, value) in zip(metric_cols, metrics.items()):
+        column.metric(label, value)
 
     for alert in report_observability_alert_rows(report_observability_summary):
         message = str(alert.get("message") or alert.get("code") or "")

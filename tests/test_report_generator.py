@@ -34,6 +34,7 @@ from app.services import (
     report_company_narrative,
     report_data_quality,
     report_early_potential,
+    report_final_potential,
     report_formatting,
     report_leading_signal,
     report_scope_sections,
@@ -2176,6 +2177,20 @@ def test_final_potential_screen_reports_upside_and_downside_thresholds() -> None
     assert "升值分約" in screen
     assert "目前證據的情境降值分約" in screen
     assert "2330 台積電" in screen
+
+
+def test_final_potential_screen_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    generator_source = Path("app/services/report_generator.py").read_text()
+    final_source = Path("app/services/report_final_potential.py").read_text()
+
+    assert "report_final_potential" in generator_source
+    assert "def render_final_potential_screen(" in final_source
+    assert "def source_label(" in final_source
+    assert "本段為非個人化情境篩選" not in generator_source
+    assert generator._render_final_potential_screen([], [], [], []) == (
+        report_final_potential.render_final_potential_screen([])
+    )
 
 
 def test_monthly_revenue_check_and_estimate_use_yoy() -> None:

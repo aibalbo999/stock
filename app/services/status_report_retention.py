@@ -35,7 +35,22 @@ def report_retention_status() -> dict:
         "repository_latest_tie_breaks_by_id": "GeneratedReport.id.desc()" in persistence_source,
         "repository_bulk_prune_available": "def prune_older_by_topic(" in persistence_source,
         "repository_topic_prune_available": "def prune_older_for_topic(" in persistence_source,
-        "run_links_cleared_for_pruned_reports": ".values(report_id=None)" in persistence_source,
+        "run_links_cleared_for_pruned_reports": (
+            "def _clear_analysis_run_report_links(" in persistence_source
+            and "_clear_analysis_run_report_links(old_report_ids)" in persistence_source
+        ),
+        "run_output_paths_cleared_for_pruned_reports": (
+            "def _clear_analysis_run_report_links(" in persistence_source
+            and ".values(report_id=None, output_path=None)" in persistence_source
+        ),
+        "delete_before_clears_run_links": (
+            "def delete_before(self, before: datetime) -> int:" in persistence_source
+            and "_clear_analysis_run_report_links(old_report_ids)" in persistence_source
+        ),
+        "orphan_cleanup_clears_output_path": (
+            "def clear_orphan_report_refs(" in persistence_source
+            and ".values(report_id=None, output_path=None)" in persistence_source
+        ),
         "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
         "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
         "markdown_retention_smoke_passed": markdown_retention_smoke["passed"],

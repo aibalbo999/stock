@@ -184,7 +184,11 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
             ReportResponse(title="robot", markdown="# robot"),
         )
         run = AnalysisRunRepository(session).start("test", {})
-        AnalysisRunRepository(session).mark_success(run.id, old_report.id)
+        AnalysisRunRepository(session).mark_success(
+            run.id,
+            old_report.id,
+            "reports/20260606_120000_AI.md",
+        )
 
         latest_report = repository.create(
             ReportRequest(topic="AI 產業鏈", tickers=["3324"]),
@@ -195,7 +199,9 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
         assert repository.get(old_report.id) is None
         assert repository.get(latest_report.id) is not None
         assert repository.get(other_topic_report.id) is not None
-        assert AnalysisRunRepository(session).get(run.id).report_id is None
+        restored_run = AnalysisRunRepository(session).get(run.id)
+        assert restored_run.report_id is None
+        assert restored_run.output_path is None
     finally:
         session.close()
 
@@ -221,6 +227,51 @@ def test_report_repository_delete_clears_analysis_run_link_and_output_path() -> 
         session.commit()
 
         restored_run = run_repository.get(run.id)
+        assert restored_run.report_id is None
+        assert restored_run.output_path is None
+    finally:
+        session.close()
+
+
+def test_report_repository_delete_before_clears_analysis_run_link_and_output_path() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        old_report = GeneratedReport(
+            title="old ai",
+            topic="AI",
+            tickers_json="[]",
+            findings_json="[]",
+            markdown="# old",
+            generated_at=datetime(2026, 5, 1, 9, 0, 0),
+        )
+        latest_report = GeneratedReport(
+            title="new ai",
+            topic="AI",
+            tickers_json="[]",
+            findings_json="[]",
+            markdown="# new",
+            generated_at=datetime(2026, 5, 2, 9, 0, 0),
+        )
+        session.add_all([old_report, latest_report])
+        session.flush()
+        run_repository = AnalysisRunRepository(session)
+        run = run_repository.start("legacy", {})
+        run_repository.mark_success(
+            run.id,
+            old_report.id,
+            "reports/20260501_090000_AI.md",
+        )
+        session.commit()
+
+        assert ReportRepository(session).delete_before(datetime(2026, 5, 2, 0, 0, 0)) == 1
+        session.commit()
+
+        restored_run = run_repository.get(run.id)
+        assert session.get(GeneratedReport, old_report.id) is None
+        assert session.get(GeneratedReport, latest_report.id) is not None
         assert restored_run.report_id is None
         assert restored_run.output_path is None
     finally:
@@ -348,7 +399,11 @@ def test_report_repository_prunes_legacy_duplicate_topic_reports_and_run_links()
         session.add_all([old_ai, new_ai, robot])
         session.flush()
         run = AnalysisRunRepository(session).start("legacy", {})
-        AnalysisRunRepository(session).mark_success(run.id, report_id=old_ai.id)
+        AnalysisRunRepository(session).mark_success(
+            run.id,
+            report_id=old_ai.id,
+            output_path="reports/20260501_090000_AI.md",
+        )
         session.commit()
 
         assert ReportRepository(session).prune_older_by_topic() == 1
@@ -357,7 +412,31 @@ def test_report_repository_prunes_legacy_duplicate_topic_reports_and_run_links()
         assert session.get(GeneratedReport, old_ai.id) is None
         assert session.get(GeneratedReport, new_ai.id) is not None
         assert session.get(GeneratedReport, robot.id) is not None
-        assert AnalysisRunRepository(session).get(run.id).report_id is None
+        restored_run = AnalysisRunRepository(session).get(run.id)
+        assert restored_run.report_id is None
+        assert restored_run.output_path is None
+    finally:
+        session.close()
+
+
+def test_analysis_run_repository_clear_orphan_report_refs_clears_output_path() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        run_repository = AnalysisRunRepository(session)
+        run = run_repository.start("legacy", {})
+        run_repository.mark_success(run.id, 999, "reports/missing.md")
+        session.commit()
+
+        assert run_repository.orphan_report_ids() == [run.id]
+        assert run_repository.clear_orphan_report_refs() == 1
+        session.commit()
+
+        restored_run = run_repository.get(run.id)
+        assert restored_run.report_id is None
+        assert restored_run.output_path is None
     finally:
         session.close()
 

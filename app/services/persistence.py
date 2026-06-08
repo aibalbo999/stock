@@ -330,18 +330,22 @@ class ReportRepository:
         report = self.session.get(GeneratedReport, report_id)
         if report is None:
             return False
-        self.session.execute(
-            update(AnalysisRun)
-            .where(AnalysisRun.report_id == report_id)
-            .values(report_id=None, output_path=None)
-        )
+        self._clear_analysis_run_report_links([report_id])
         self.session.delete(report)
         self.session.flush()
         return True
 
     def delete_before(self, before: datetime) -> int:
+        old_report_ids = list(
+            self.session.scalars(
+                select(GeneratedReport.id).where(GeneratedReport.generated_at < before)
+            )
+        )
+        if not old_report_ids:
+            return 0
+        self._clear_analysis_run_report_links(old_report_ids)
         result = self.session.execute(
-            delete(GeneratedReport).where(GeneratedReport.generated_at < before)
+            delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
         )
         self.session.flush()
         return result.rowcount or 0
@@ -364,11 +368,7 @@ class ReportRepository:
             seen_topics.add(report.topic)
         if not old_report_ids:
             return 0
-        self.session.execute(
-            update(AnalysisRun)
-            .where(AnalysisRun.report_id.in_(old_report_ids))
-            .values(report_id=None)
-        )
+        self._clear_analysis_run_report_links(old_report_ids)
         result = self.session.execute(
             delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
         )
@@ -383,16 +383,21 @@ class ReportRepository:
         old_report_ids = list(self.session.scalars(statement))
         if not old_report_ids:
             return 0
-        self.session.execute(
-            update(AnalysisRun)
-            .where(AnalysisRun.report_id.in_(old_report_ids))
-            .values(report_id=None)
-        )
+        self._clear_analysis_run_report_links(old_report_ids)
         result = self.session.execute(
             delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
         )
         self.session.flush()
         return result.rowcount or 0
+
+    def _clear_analysis_run_report_links(self, report_ids: list[int]) -> None:
+        if not report_ids:
+            return
+        self.session.execute(
+            update(AnalysisRun)
+            .where(AnalysisRun.report_id.in_(report_ids))
+            .values(report_id=None, output_path=None)
+        )
 
 
 class RiskClassificationRepository:
@@ -635,7 +640,9 @@ class AnalysisRunRepository:
         if not orphan_ids:
             return 0
         result = self.session.execute(
-            update(AnalysisRun).where(AnalysisRun.id.in_(orphan_ids)).values(report_id=None)
+            update(AnalysisRun)
+            .where(AnalysisRun.id.in_(orphan_ids))
+            .values(report_id=None, output_path=None)
         )
         self.session.flush()
         return result.rowcount or 0

@@ -5,20 +5,16 @@ from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from typing import Any
 
-from app.data_sources.market import MarketFetchError
 from app.models.schemas import (
-    FinancialMetric,
-    MarketSnapshot,
-    MonthlyRevenue,
     NewsDocument,
     ReportResponse,
-    ValuationMetric,
 )
 from app.services.discovered_candidate_filings import (
     candidate_filing_revalidation_tickers as candidate_filing_revalidation_tickers,
     company_filing_timeout_result as company_filing_timeout_result,
     should_revalidate_candidate_filings as should_revalidate_candidate_filings,
 )
+from app.services import discovered_market_payload
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
 from app.services.task_cancellation import TaskCancelledError, raise_if_task_cancelled
@@ -1161,49 +1157,13 @@ class DiscoveredTopicPipelineService:
                 restored.append(document)
         return restored
 
-    @classmethod
-    def _market_data_payload(cls, market_data: dict) -> dict:
-        return {
-            "snapshots": cls._json_safe(market_data.get("snapshots") or []),
-            "price_history_snapshots": cls._json_safe(market_data.get("price_history_snapshots") or []),
-            "market_errors": cls._json_safe(market_data.get("market_errors") or []),
-            "monthly_revenues": cls._json_safe(market_data.get("monthly_revenues") or []),
-            "monthly_revenue_errors": cls._json_safe(market_data.get("monthly_revenue_errors") or []),
-            "latest_monthly_revenues": cls._json_safe(market_data.get("latest_monthly_revenues") or []),
-            "financial_metrics": cls._json_safe(market_data.get("financial_metrics") or []),
-            "financial_metric_errors": cls._json_safe(market_data.get("financial_metric_errors") or []),
-            "valuations": cls._json_safe(market_data.get("valuations") or []),
-            "valuation_errors": cls._json_safe(market_data.get("valuation_errors") or []),
-        }
+    @staticmethod
+    def _market_data_payload(market_data: dict) -> dict:
+        return discovered_market_payload.market_data_payload(market_data)
 
     @staticmethod
     def _market_data_from_payload(payload: dict) -> dict:
-        return {
-            "snapshots": [MarketSnapshot.model_validate(item) for item in payload.get("snapshots") or []],
-            "price_history_snapshots": [
-                MarketSnapshot.model_validate(item) for item in payload.get("price_history_snapshots") or []
-            ],
-            "market_errors": [MarketFetchError(**item) for item in payload.get("market_errors") or []],
-            "monthly_revenues": [
-                MonthlyRevenue.model_validate(item) for item in payload.get("monthly_revenues") or []
-            ],
-            "monthly_revenue_errors": [
-                MarketFetchError(**item) for item in payload.get("monthly_revenue_errors") or []
-            ],
-            "latest_monthly_revenues": [
-                MonthlyRevenue.model_validate(item) for item in payload.get("latest_monthly_revenues") or []
-            ],
-            "financial_metrics": [
-                FinancialMetric.model_validate(item) for item in payload.get("financial_metrics") or []
-            ],
-            "financial_metric_errors": [
-                MarketFetchError(**item) for item in payload.get("financial_metric_errors") or []
-            ],
-            "valuations": [ValuationMetric.model_validate(item) for item in payload.get("valuations") or []],
-            "valuation_errors": [
-                MarketFetchError(**item) for item in payload.get("valuation_errors") or []
-            ],
-        }
+        return discovered_market_payload.market_data_from_payload(payload)
 
     def _revalidate_candidates(
         self,

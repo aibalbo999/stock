@@ -1,16 +1,18 @@
 import json
 from contextlib import contextmanager
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.data_sources.market import MarketFetchError
 from app.db.models import Base
 from app.models.schemas import MarketSnapshot, NewsDocument, ReportResponse, Source
 from app.services.topic_discovery import TopicDiscoveryService
-from app.services import discovered_candidate_filings
+from app.services import discovered_candidate_filings, discovered_market_payload
 from app.services.discovered_pipeline import (
     DiscoveredTopicPipelineService,
     candidate_filing_revalidation_tickers,
@@ -68,6 +70,31 @@ def test_company_filing_timeout_result_has_gap_summary_and_next_actions() -> Non
     assert result["next_actions"][0]["ticker"] == "1504"
     assert result["errors"][0]["category"] == "timeout"
     assert result["errors"][0]["retryable"] is True
+
+
+def test_discovered_market_payload_logic_lives_outside_pipeline_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    payload_source = Path("app/services/discovered_market_payload.py").read_text()
+    snapshot = MarketSnapshot(ticker="2330", trade_date=date(2026, 5, 29), close=1200)
+    error = MarketFetchError(ticker="2330", dataset="price", error="timeout")
+
+    payload = discovered_market_payload.market_data_payload(
+        {
+            "snapshots": [snapshot],
+            "price_history_snapshots": [snapshot],
+            "market_errors": [error],
+        }
+    )
+    restored = discovered_market_payload.market_data_from_payload(payload)
+
+    assert DiscoveredTopicPipelineService._market_data_payload({"snapshots": [snapshot]})["snapshots"][0] == (
+        payload["snapshots"][0]
+    )
+    assert isinstance(restored["snapshots"][0], MarketSnapshot)
+    assert restored["snapshots"][0].trade_date == date(2026, 5, 29)
+    assert restored["market_errors"][0] == error
+    assert "MarketSnapshot.model_validate(" not in pipeline_source
+    assert "MarketSnapshot.model_validate(" in payload_source
 
 
 class FakeRun:

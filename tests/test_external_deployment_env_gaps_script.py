@@ -155,10 +155,15 @@ def test_external_deployment_env_gap_script_uses_service_layer() -> None:
 
 def test_external_deployment_env_gap_service_reuses_readiness_service() -> None:
     source = Path("app/services/external_deployment_env_gaps.py").read_text()
+    template_source = Path("app/services/external_deployment_env_templates.py").read_text()
 
     assert "from app.services.external_deployment_readiness import (" in source
+    assert "from app.services.external_deployment_env_templates import (" in source
     assert "EXTERNAL_READINESS_METADATA = {" not in source
     assert "def external_deployment_readiness_items(" not in source
+    assert "def format_external_deployment_env_template(" in template_source
+    assert "def _external_env_template_secret_key(" in template_source
+    assert "def _external_env_template_entries(" not in source
 
 
 def test_external_deployment_env_gap_script_json_and_strict(monkeypatch, capsys) -> None:

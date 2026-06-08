@@ -8,7 +8,7 @@ from datetime import date
 import httpx
 
 from app.core.config import get_settings
-from app.data_sources import market_finmind, market_parsers, market_provider_runtime
+from app.data_sources import market_finmind, market_fugle, market_parsers, market_provider_runtime
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
 from app.services.market_data_cache import RedisMarketDataCache
 from app.services.task_cancellation import TaskCancelledError
@@ -75,12 +75,8 @@ class MarketDataClient:
         "mopsfin_t187ap07_O_ins",
         "mopsfin_t187ap07_O_mim",
     )
-    FUGLE_HISTORICAL_CANDLES_URL = (
-        "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/{ticker}"
-    )
-    FUGLE_HISTORICAL_STATS_URL = (
-        "https://api.fugle.tw/marketdata/v1.0/stock/historical/stats/{ticker}"
-    )
+    FUGLE_HISTORICAL_CANDLES_URL = market_fugle.FUGLE_HISTORICAL_CANDLES_URL
+    FUGLE_HISTORICAL_STATS_URL = market_fugle.FUGLE_HISTORICAL_STATS_URL
 
     def __init__(self, cancellation_checker: Callable[[], None] | None = None) -> None:
         self.settings = get_settings()
@@ -645,33 +641,16 @@ class MarketDataClient:
         return payload if isinstance(payload, dict) else {}
 
     async def _fetch_fugle_json(self, url: str, *, params: dict) -> dict:
-        headers = {"X-API-KEY": self.fugle_api_key}
-        self._before_provider_request("fugle")
-        last_error: Exception | None = None
-        for attempt in range(self.fugle_max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=self.fugle_timeout) as client:
-                    response = await client.get(url, params=params, headers=headers)
-                    response.raise_for_status()
-                self._record_provider_success("fugle")
-                payload = response.json()
-                return payload if isinstance(payload, dict) else {}
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                if not self._should_retry_fugle_status(exc.response.status_code, attempt):
-                    if exc.response.status_code in FUGLE_RETRYABLE_HTTP_STATUSES:
-                        self._record_provider_failure("fugle")
-                    raise
-                await self._sleep_before_fugle_retry(exc.response, attempt)
-            except (httpx.TransportError, TimeoutError) as exc:
-                last_error = exc
-                if attempt >= self.fugle_max_retries:
-                    self._record_provider_failure("fugle")
-                    raise
-                await self._sleep_before_fugle_retry(None, attempt)
-        if last_error:
-            raise last_error
-        return {}
+        return await market_fugle.fetch_fugle_json(
+            settings=self.settings,
+            timeout=self.fugle_timeout,
+            circuit_breakers=self._circuit_breakers,
+            url=url,
+            params=params,
+            api_key=self.fugle_api_key,
+            max_retries=self.fugle_max_retries,
+            sleep_before_retry=self._sleep_before_fugle_retry,
+        )
 
     async def _fetch_official_openapi_price_snapshot(
         self,

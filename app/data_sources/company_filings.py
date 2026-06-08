@@ -5,9 +5,8 @@ from hashlib import sha1
 import importlib
 import json
 from pathlib import Path
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote_plus
 
-import httpx
 from bs4 import BeautifulSoup
 
 from app.core.config import get_settings
@@ -99,6 +98,17 @@ from app.data_sources.company_filing_render import (
     company_filing_user_agent_for_url as company_filing_user_agent_for_url,
     company_filing_user_agents as company_filing_user_agents,
 )
+from app.data_sources.company_filing_sources import (
+    MAX_FETCHED_DOCUMENT_BYTES as MAX_FETCHED_DOCUMENT_BYTES,
+    OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS as OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS,
+    company_profile_from_rows as company_profile_from_rows,
+    download_mops_pdf as download_mops_pdf,
+    duckduckgo_company_filing_search as duckduckgo_company_filing_search,
+    fetch_company_filing_url_text as fetch_company_filing_url_text,
+    fetch_company_filing_url_text_with_final_url as fetch_company_filing_url_text_with_final_url,
+    fetch_tpex_company_profiles as fetch_tpex_company_profiles,
+    fetch_twse_company_profiles as fetch_twse_company_profiles,
+)
 from app.data_sources.company_filing_structured_api import (
     STRUCTURED_API_PROVIDER_PROFILES as STRUCTURED_API_PROVIDER_PROFILES,
     STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS as STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS,
@@ -119,10 +129,6 @@ from app.data_sources.company_filing_structured_api import (
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 from app.services.company_filing_cache import RedisCompanyFilingCache
-
-
-MAX_FETCHED_DOCUMENT_BYTES = 20_000_000
-OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 
 
 def company_filing_structured_api_status() -> dict:
@@ -843,30 +849,7 @@ class CompanyFilingFetcher:
 
     @staticmethod
     async def _download_mops_pdf(ticker: str, filename: str, kind: str) -> tuple[str, bytes]:
-        entry_url = "https://doc.twse.com.tw/server-java/t57sb01"
-        async with httpx.AsyncClient(**company_filing_client_options(entry_url, timeout=30, follow_redirects=True)) as client:
-            response = await company_filing_request_with_retries(
-                client,
-                "POST",
-                entry_url,
-                data={
-                    "step": "9",
-                    "kind": kind,
-                    "co_id": ticker,
-                    "filename": filename,
-                    "colorchg": "1",
-                },
-            )
-            response.encoding = "big5"
-            soup = BeautifulSoup(response.text, "html.parser")
-            link = soup.find("a", href=True)
-            if not link:
-                raise ValueError("MOPS did not return a PDF download link")
-            pdf_url = urljoin("https://doc.twse.com.tw", link["href"])
-            pdf_response = await company_filing_request_with_retries(client, "GET", pdf_url)
-        if len(pdf_response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-            raise ValueError("company filing content is too large to import")
-        return pdf_url, pdf_response.content
+        return await download_mops_pdf(ticker, filename, kind)
 
     async def fetch_official_website_documents(
         self,
@@ -958,12 +941,11 @@ class CompanyFilingFetcher:
         encoding: str | None = None,
         timeout: int = 20,
     ) -> str:
-        text, _ = await CompanyFilingFetcher._fetch_url_text_with_final_url(
+        return await fetch_company_filing_url_text(
             url,
             encoding=encoding,
             timeout=timeout,
         )
-        return text
 
     @staticmethod
     async def _fetch_url_text_with_final_url(
@@ -972,90 +954,32 @@ class CompanyFilingFetcher:
         timeout: int = 20,
         max_html_redirects: int = 2,
     ) -> tuple[str, str]:
-        current_url = url
-        visited = set()
-        for _ in range(max_html_redirects + 1):
-            response = await company_filing_fetch_response_with_retries(
-                "GET",
-                current_url,
-                timeout=timeout,
-                follow_redirects=True,
-            )
-            content_length = int(response.headers.get("content-length") or 0)
-            if content_length > MAX_FETCHED_DOCUMENT_BYTES or len(response.content) > MAX_FETCHED_DOCUMENT_BYTES:
-                raise ValueError("company filing content is too large to import")
-            if encoding:
-                response.encoding = encoding
-            final_url = str(response.url)
-            text = response.text
-            redirect_url = extract_html_redirect_url(text, final_url)
-            if not redirect_url or redirect_url in visited:
-                return text, final_url
-            visited.add(final_url)
-            current_url = redirect_url
-        return text, final_url
+        return await fetch_company_filing_url_text_with_final_url(
+            url,
+            encoding=encoding,
+            timeout=timeout,
+            max_html_redirects=max_html_redirects,
+        )
 
     @classmethod
     async def twse_company_profile(cls, ticker: str) -> dict:
         if cls._twse_profile_cache is None:
-            url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-            response = await company_filing_fetch_response_with_retries(
-                "GET",
-                url,
-                timeout=20,
-                follow_redirects=True,
-            )
-            cls._twse_profile_cache = response.json()
-        twse_row = next((row for row in cls._twse_profile_cache if str(row.get("公司代號") or "") == ticker), None)
-        if twse_row:
-            return twse_row
-        if cls._tpex_profile_cache is None:
-            url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
-            response = await company_filing_fetch_response_with_retries(
-                "GET",
-                url,
-                timeout=20,
-                follow_redirects=True,
-            )
-            cls._tpex_profile_cache = response.json()
-        tpex_row = next(
-            (
-                row
-                for row in cls._tpex_profile_cache
-                if str(row.get("SecuritiesCompanyCode") or "") == ticker
-            ),
-            None,
+            cls._twse_profile_cache = await fetch_twse_company_profiles()
+        profile = company_profile_from_rows(
+            ticker,
+            twse_rows=cls._twse_profile_cache,
+            tpex_rows=[],
         )
-        return normalize_tpex_company_profile(tpex_row) if tpex_row else {}
+        if profile:
+            return profile
+        if cls._tpex_profile_cache is None:
+            cls._tpex_profile_cache = await fetch_tpex_company_profiles()
+        return company_profile_from_rows(
+            ticker,
+            twse_rows=[],
+            tpex_rows=cls._tpex_profile_cache,
+        )
 
     @staticmethod
     async def _duckduckgo_search(query_text: str, limit: int = 5) -> list[dict]:
-        url = f"https://duckduckgo.com/html/?q={quote_plus(query_text)}"
-        response = await company_filing_fetch_response_with_retries(
-            "GET",
-            url,
-            timeout=20,
-            follow_redirects=True,
-        )
-        soup = BeautifulSoup(response.text, "html.parser")
-        results = []
-        for result in soup.select(".result"):
-            link = result.select_one("a.result__a")
-            if not link:
-                continue
-            href = normalize_search_result_url(link.get("href") or "")
-            if not href:
-                continue
-            snippet_node = result.select_one(".result__snippet")
-            parsed = urlparse(href)
-            results.append(
-                {
-                    "title": link.get_text(" ", strip=True),
-                    "url": href,
-                    "snippet": snippet_node.get_text(" ", strip=True) if snippet_node else "",
-                    "publisher": parsed.netloc,
-                }
-            )
-            if len(results) >= limit:
-                break
-        return results
+        return await duckduckgo_company_filing_search(query_text, limit)

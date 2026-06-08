@@ -21,6 +21,7 @@ from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal
 from app.services.report_execution import report_execution_summary as report_execution_summary
+from app.services.report_generator_company import ReportGeneratorCompanyNarrativeMixin
 from app.services.report_generator_financial import ReportGeneratorFinancialMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
@@ -30,7 +31,6 @@ from app.services import (
     report_beginner_portfolio,
     report_company_analysis,
     report_company_filing_checks,
-    report_company_narrative,
     report_company_matrix,
     report_data_quality,
     report_credibility_check,
@@ -78,7 +78,7 @@ class ReportExecutionError(ValueError):
     pass
 
 
-class ReportGenerator(ReportGeneratorFinancialMixin):
+class ReportGenerator(ReportGeneratorCompanyNarrativeMixin, ReportGeneratorFinancialMixin):
     def __init__(
         self,
         vector_store: VectorStore | None = None,
@@ -894,136 +894,8 @@ class ReportGenerator(ReportGeneratorFinancialMixin):
             leading_signal,
         )
 
-    @staticmethod
-    def _valuation_conclusion(
-        snapshot: MarketSnapshot | None,
-        valuation: ValuationMetric | None,
-        peer_summary: dict[str, float | None] | None = None,
-    ) -> str:
-        return report_company_narrative.valuation_conclusion(snapshot, valuation, peer_summary)
-
-    @staticmethod
-    def _company_market_summary(snapshot: MarketSnapshot | None) -> str:
-        return report_company_narrative.company_market_summary(snapshot)
-
     def _company_risk_summary(self, related_findings) -> str:
         return report_risk_overview.company_risk_summary(related_findings, whitelist=self.whitelist)
-
-    @staticmethod
-    def _trend_summary(related_documents: list[NewsDocument], related_findings) -> str:
-        return report_company_narrative.trend_summary(related_documents, related_findings)
-
-    @staticmethod
-    def _near_term_outlook(
-        revenue: MonthlyRevenue | None, related_documents: list[NewsDocument], related_findings
-    ) -> str:
-        return report_company_narrative.near_term_outlook(
-            revenue,
-            related_documents,
-            related_findings,
-        )
-
-    @staticmethod
-    def _growth_opportunity_text(
-        related_documents: list[NewsDocument],
-        related_findings,
-        revenue: MonthlyRevenue | None,
-    ) -> str:
-        return report_company_narrative.growth_opportunity_text(
-            related_documents,
-            related_findings,
-            revenue,
-        )
-
-    @staticmethod
-    def _long_term_growth_text(
-        financial_summary: dict[str, str],
-        revenue: MonthlyRevenue | None,
-        related_documents: list[NewsDocument],
-    ) -> str:
-        return report_company_narrative.long_term_growth_text(
-            financial_summary,
-            revenue,
-            related_documents,
-        )
-
-    @staticmethod
-    def _dcf_proxy_text(
-        financial_summary: dict[str, str], valuation: ValuationMetric | None
-    ) -> str:
-        return report_company_narrative.dcf_proxy_text(financial_summary, valuation)
-
-    @staticmethod
-    def _industry_average_text(peer_summary: dict[str, float | None]) -> str:
-        return report_company_narrative.industry_average_text(peer_summary)
-
-    @staticmethod
-    def _bull_case(revenue: MonthlyRevenue | None, related_documents: list[NewsDocument]) -> str:
-        return report_company_narrative.bull_case(revenue, related_documents)
-
-    @staticmethod
-    def _bear_case(related_findings) -> str:
-        return report_company_narrative.bear_case(related_findings)
-
-    @staticmethod
-    def _moat_score(
-        related_documents: list[NewsDocument],
-        related_findings,
-        revenue: MonthlyRevenue | None,
-        financial_summary: dict[str, str] | None = None,
-    ) -> int:
-        return report_company_narrative.moat_score(
-            related_documents,
-            related_findings,
-            revenue,
-            financial_summary,
-        )
-
-    @staticmethod
-    def _moat_reason(
-        score: int,
-        related_documents: list[NewsDocument],
-        related_findings,
-        revenue: MonthlyRevenue | None,
-        financial_summary: dict[str, str] | None = None,
-    ) -> str:
-        return report_company_narrative.moat_reason(
-            score,
-            related_documents,
-            related_findings,
-            revenue,
-            financial_summary,
-        )
-
-    @staticmethod
-    def _moat_factor_text(
-        factor: str,
-        related_documents: list[NewsDocument],
-        related_findings,
-        revenue: MonthlyRevenue | None,
-        financial_summary: dict[str, str],
-    ) -> str:
-        return report_company_narrative.moat_factor_text(
-            factor,
-            related_documents,
-            related_findings,
-            revenue,
-            financial_summary,
-        )
-
-    @staticmethod
-    def _company_rating(
-        snapshot: MarketSnapshot | None,
-        revenue: MonthlyRevenue | None,
-        related_documents: list[NewsDocument],
-        related_findings,
-    ) -> str:
-        return report_company_narrative.company_rating(
-            snapshot,
-            revenue,
-            related_documents,
-            related_findings,
-        )
 
     def _sanitized_risk_topic_for_finding(self, finding) -> str:
         return report_risk_overview.sanitized_risk_topic_for_finding(finding, self.whitelist)

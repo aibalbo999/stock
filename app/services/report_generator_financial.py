@@ -3,11 +3,9 @@ from __future__ import annotations
 from app.models.schemas import (
     FinancialMetric,
     MarketSnapshot,
-    MonthlyRevenue,
-    NewsDocument,
     ValuationMetric,
 )
-from app.services import report_company_narrative, report_decision_rules
+from app.services import report_decision_rules
 from app.services.leading_signals import LeadingSignal
 from app.services.report_financial_assessment import (
     decline_risk_points,
@@ -33,44 +31,6 @@ from app.services.report_financial_narrative import (
 
 
 class ReportGeneratorFinancialMixin:
-    @staticmethod
-    def _company_evidence_summary(related_documents: list[NewsDocument], related_findings) -> str:
-        return report_company_narrative.company_evidence_summary(
-            related_documents, related_findings
-        )
-
-    @staticmethod
-    def _company_filing_evidence_summary(related_documents: list[NewsDocument]) -> str:
-        return report_company_narrative.company_filing_evidence_summary(related_documents)
-
-    @staticmethod
-    def _company_revenue_summary(revenue: MonthlyRevenue | None) -> str:
-        return report_company_narrative.company_revenue_summary(revenue)
-
-    @staticmethod
-    def _company_quick_take(
-        snapshot: MarketSnapshot | None,
-        revenue: MonthlyRevenue | None,
-        financial_metrics: list[FinancialMetric],
-        valuation: ValuationMetric | None,
-        related_documents: list[NewsDocument],
-        related_findings,
-    ) -> str:
-        return report_company_narrative.company_quick_take(
-            snapshot,
-            revenue,
-            financial_metrics,
-            valuation,
-            related_documents,
-            related_findings,
-        )
-
-    @staticmethod
-    def _group_financial_metrics(
-        metrics: list[FinancialMetric],
-    ) -> dict[str, list[FinancialMetric]]:
-        return report_company_narrative.group_financial_metrics(metrics)
-
     @staticmethod
     def _financial_statement_summary(metrics: list[FinancialMetric]) -> dict[str, str]:
         return financial_statement_summary(metrics)
@@ -159,20 +119,6 @@ class ReportGeneratorFinancialMixin:
         return peer_valuation_summary(valuations)
 
     @staticmethod
-    def _valuation_summary(
-        valuation: ValuationMetric | None,
-        peer_summary: dict[str, float | None] | None = None,
-    ) -> str:
-        return report_company_narrative.valuation_summary(valuation, peer_summary)
-
-    @staticmethod
-    def _valuation_peer_comparison(
-        valuation: ValuationMetric,
-        peer_summary: dict[str, float | None],
-    ) -> str:
-        return report_company_narrative.valuation_peer_comparison(valuation, peer_summary)
-
-    @staticmethod
     def _valuation_position_label(
         valuation: ValuationMetric | None,
         peer_summary: dict[str, float | None] | None = None,
@@ -183,16 +129,6 @@ class ReportGeneratorFinancialMixin:
     @staticmethod
     def _has_negative_profitability(metrics: list[FinancialMetric]) -> bool:
         return has_negative_profitability(metrics)
-
-    @staticmethod
-    def _sanitize_leading_signal_for_profitability(
-        signal: LeadingSignal,
-        has_negative_profitability: bool,
-    ) -> LeadingSignal:
-        return report_company_narrative.sanitize_leading_signal_for_profitability(
-            signal,
-            has_negative_profitability,
-        )
 
     @staticmethod
     def _current_price_text(snapshot: MarketSnapshot | None) -> str:
@@ -216,16 +152,4 @@ class ReportGeneratorFinancialMixin:
             leading_signal,
             decision,
             downside_gate,
-        )
-
-    @staticmethod
-    def _financial_confidence_label(
-        financial_metrics: list[FinancialMetric],
-        valuation: ValuationMetric | None,
-        revenue: MonthlyRevenue | None,
-    ) -> str:
-        return report_company_narrative.financial_confidence_label(
-            financial_metrics,
-            valuation,
-            revenue,
         )

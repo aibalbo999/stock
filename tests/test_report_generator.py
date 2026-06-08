@@ -1924,6 +1924,7 @@ def test_financial_narrative_logic_lives_outside_generator() -> None:
 
 def test_company_narrative_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
+    company_mixin_source = Path("app/services/report_generator_company.py").read_text()
     narrative_source = Path("app/services/report_company_narrative.py").read_text()
 
     revenue = MonthlyRevenue(
@@ -1942,7 +1943,12 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
         dividend_yield=1.5,
     )
 
-    assert "report_company_narrative" in generator_source
+    assert "ReportGeneratorCompanyNarrativeMixin" in generator_source
+    assert "report_company_narrative" not in generator_source
+    assert "from app.services import report_company_narrative" in company_mixin_source
+    assert "def _company_revenue_summary(" in company_mixin_source
+    assert "def _dcf_proxy_text(" in company_mixin_source
+    assert "def _moat_factor_text(" in company_mixin_source
     assert "def company_quick_take(" in narrative_source
     assert "def valuation_summary(" in narrative_source
     assert "def financial_confidence_label(" in narrative_source

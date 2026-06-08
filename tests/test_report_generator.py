@@ -47,6 +47,7 @@ from app.services import (
     report_investment_thesis,
     report_leading_signal,
     report_monitoring_checklist,
+    report_risk_overview,
     report_scope_sections,
     report_score_breakdown,
     report_source_coverage,
@@ -4450,6 +4451,8 @@ def test_decision_reason_logic_lives_outside_generator() -> None:
 
 
 def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    risk_source = Path("app/services/report_risk_overview.py").read_text()
     whitelist = SupplyChainWhitelist.from_candidate_whitelist(
         [
             {
@@ -4486,6 +4489,16 @@ def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:
     assert "良率(1)" in overview
     assert "HBM" not in overview
     assert "先進封裝" not in overview
+    assert "report_risk_overview" in generator_source
+    assert "def render_risk_overview(" in risk_source
+    assert "AI_INFRA_RISK_TERMS" in risk_source
+    assert "AI_INFRA_RISK_TERMS" not in generator_source
+    assert "### 代表性證據" not in generator_source
+    assert report_risk_overview.sanitize_risk_topic(
+        "HBM, 良率, 先進封裝",
+        ["1597"],
+        whitelist=whitelist,
+    ) == "良率"
 
 
 def test_investment_recommendations_escape_source_title_pipes() -> None:

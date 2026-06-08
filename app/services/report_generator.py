@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Callable
 
 from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
@@ -82,6 +81,7 @@ from app.services import (
     report_investment_recommendations,
     report_monitoring_checklist,
     report_potential,
+    report_risk_overview,
     report_scope_sections,
     report_score_breakdown,
     report_source_coverage,
@@ -106,47 +106,6 @@ REPORT_READING_SORT_NOTE = (
     "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
     "同組再依最新可取得收盤價由高到低；缺股價者排在同組後段。"
 )
-AI_INFRA_RISK_TERMS = {
-    "CoWoS",
-    "cowos",
-    "HBM",
-    "hbm",
-    "先進封裝",
-    "先進製程",
-    "液冷",
-    "水冷",
-    "缺電",
-}
-AI_INFRA_CONTEXT_TERMS = {
-    "AI 伺服器",
-    "AI伺服器",
-    "資料中心",
-    "data center",
-    "datacenter",
-    "server",
-    "伺服器",
-    "晶圓",
-    "半導體",
-    "封裝",
-    "CoWoS",
-    "cowos",
-    "HBM",
-    "hbm",
-    "PCB",
-    "pcb",
-    "載板",
-    "ABF",
-    "abf",
-    "CCL",
-    "ccl",
-    "矽晶圓",
-    "AI 晶片",
-    "散熱",
-    "液冷",
-    "水冷",
-    "CSP",
-    "GPU",
-}
 
 
 class ReportExecutionError(ValueError):
@@ -2034,110 +1993,30 @@ class ReportGenerator:
         )
 
     def _sanitized_risk_topic_for_finding(self, finding) -> str:
-        return self._sanitize_risk_topic(
-            finding.topic,
-            [company.ticker for company in finding.related_companies],
-        )
+        return report_risk_overview.sanitized_risk_topic_for_finding(finding, self.whitelist)
 
     def _sanitize_risk_topic(self, topic: str, tickers: list[str] | None = None) -> str:
-        raw_parts = (
-            str(topic or "")
-            .replace("，", ",")
-            .replace("、", ",")
-            .replace("/", ",")
-            .split(",")
-        )
-        parts = [part.strip() for part in raw_parts if part.strip()]
-        if not parts:
-            return "營運與供應鏈風險"
-        allows_ai_infra = self._companies_allow_ai_infra_risk(tickers or [])
-        sanitized = [
-            part
-            for part in parts
-            if allows_ai_infra or not self._is_ai_infra_specific_risk_term(part)
-        ]
-        if sanitized:
-            return ", ".join(dict.fromkeys(sanitized))
-        return "營運與供應鏈風險"
+        return report_risk_overview.sanitize_risk_topic(topic, tickers, whitelist=self.whitelist)
 
     def _companies_allow_ai_infra_risk(self, tickers: list[str]) -> bool:
-        if not tickers:
-            return True
-        return any(self._company_allows_ai_infra_risk(ticker) for ticker in tickers)
+        return report_risk_overview.companies_allow_ai_infra_risk(tickers, self.whitelist)
 
     def _company_allows_ai_infra_risk(self, ticker: str) -> bool:
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        company = companies.get(ticker)
-        segment = self.whitelist.segment_for_ticker(ticker)
-        context = " ".join(
-            [
-                company.name if company else "",
-                " ".join(company.evidence_keywords) if company else "",
-                segment.name if segment else "",
-                segment.notes or "" if segment else "",
-            ]
-        ).lower()
-        return any(term.lower() in context for term in AI_INFRA_CONTEXT_TERMS)
+        return report_risk_overview.company_allows_ai_infra_risk(ticker, self.whitelist)
 
     @staticmethod
     def _is_ai_infra_specific_risk_term(term: str) -> bool:
-        lowered = term.lower()
-        return any(marker.lower() == lowered or marker.lower() in lowered for marker in AI_INFRA_RISK_TERMS)
+        return report_risk_overview.is_ai_infra_specific_risk_term(term)
 
     @staticmethod
     def _finding_scope_companies(finding, scope_tickers: set[str] | None = None) -> list:
-        companies = list(finding.related_companies)
-        if not scope_tickers:
-            return companies
-        return [company for company in companies if company.ticker in scope_tickers]
+        return report_risk_overview.finding_scope_companies(finding, scope_tickers)
 
     def _risk_findings_for_scope(self, findings, tickers: list[str] | None = None) -> list:
-        scope_tickers = set(tickers or [])
-        if not scope_tickers:
-            return list(findings)
-        scoped = []
-        for finding in findings:
-            if self._finding_scope_companies(finding, scope_tickers):
-                scoped.append(finding)
-        return scoped
+        return report_risk_overview.risk_findings_for_scope(findings, tickers)
 
     def _render_risk_overview(self, findings, tickers: list[str] | None = None) -> str:
-        scoped_findings = self._risk_findings_for_scope(findings, tickers)
-        if not scoped_findings:
-            return "目前無足夠數據判斷。"
-
-        scope_tickers = set(tickers or [])
-        topic_counts = Counter(self._sanitized_risk_topic_for_finding(finding) for finding in scoped_findings)
-        company_counts: Counter[str] = Counter()
-        for finding in scoped_findings:
-            for company in self._finding_scope_companies(finding, scope_tickers):
-                company_counts[f"{company.ticker} {company.name}"] += 1
-
-        lines = [
-            f"- 結構性瓶頸：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.structural_bottleneck)} 筆",
-            f"- 短期波動：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.short_term_volatility)} 筆",
-            f"- 機會/成長：{sum(1 for finding in scoped_findings if finding.risk_type == RiskType.opportunity_or_growth)} 筆",
-            "- 主要歸因主題："
-            + ("、".join(f"{topic}({count})" for topic, count in topic_counts.most_common(5)) or "目前無足夠數據判斷"),
-            "- 受影響公司："
-            + ("、".join(f"{company}({count})" for company, count in company_counts.most_common(5)) or "未明確對應公司"),
-            "",
-            "### 代表性證據",
-        ]
-        for finding in scoped_findings[:8]:
-            source_date = finding.source.published_at.isoformat() if finding.source.published_at else "日期不明"
-            companies = (
-                ", ".join(f"{c.ticker} {c.name}" for c in self._finding_scope_companies(finding, scope_tickers))
-                or "未明確對應公司"
-            )
-            topic = self._sanitized_risk_topic_for_finding(finding)
-            lines.append(
-                f"- {topic}：{companies}；來源：{source_date} "
-                f"{finding.source.publisher or ''} {finding.source.title}"
-            )
-        if len(scoped_findings) > 8:
-            lines.append(f"- 其餘 {len(scoped_findings) - 8} 筆歸因證據已保留於系統資料庫，不在主報告逐條展開。")
-        return "\n".join(lines)
+        return report_risk_overview.render_risk_overview(findings, tickers, whitelist=self.whitelist)
 
     def _render_scope(
         self,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from app.core.time import utc_now_naive
@@ -10,21 +10,34 @@ from app.models.schemas import ReportRequest
 from app.services.entity_mapping import EntityMapper
 from app.services.persistence import AnalysisRunRepository
 from app.services.report_followup import serialize_run
+from app.services.run_task_api_summary import (
+    alert_severity_for_category as _alert_severity_for_category,
+    alert_sort_key as _alert_sort_key,
+    celery_progress as _celery_progress,
+    celery_status_progress as _celery_status_progress,
+    count_error_categories as _count_error_categories,
+    count_rows as _count_rows,
+    diagnostic_from_failure_detail as _diagnostic_from_failure_detail,
+    error_category_daily_rows as _error_category_daily_rows,
+    parse_datetime as _parse_datetime,
+    persistent_task_failure_detail as _persistent_task_failure_detail,
+    progress_payload as _progress_payload,
+    run_operation as _run_operation,
+    run_retry_kind as _run_retry_kind,
+    run_source as _run_source,
+    run_summary_row as _run_summary_row,
+    serialized_run_payload as _serialized_run_payload,
+    task_failure_alert_message as _task_failure_alert_message,
+    task_failure_alerts as _task_failure_alerts,
+    task_failure_diagnostic as _task_failure_diagnostic,
+    task_next_action as _task_next_action,
+    task_status_failure_detail as _task_status_failure_detail,
+    task_summary_totals as _task_summary_totals,
+)
 from app.services.task_failure_diagnostics import (
     DATA_OPERATION_TASKS,
     parse_payload as parse_task_payload,
-    run_operation as diagnostic_run_operation,
-    run_retry_kind as diagnostic_run_retry_kind,
-    run_source as diagnostic_run_source,
-    serialized_run_payload as diagnostic_serialized_run_payload,
-    task_failure_diagnostic as diagnostic_task_failure_diagnostic,
-    task_next_action as diagnostic_task_next_action,
 )
-
-
-def _alert_sort_key(alert: dict) -> int:
-    severity_order = {"error": 0, "warning": 1, "info": 2}
-    return severity_order.get(str(alert.get("severity") or "info"), 3)
 
 
 class RunTaskApiError(ValueError):
@@ -74,7 +87,9 @@ class RunTaskApiService:
             runs = self.analysis_run_repository_cls(session).latest(limit)
         return [self.serialize_run_func(run) for run in runs]
 
-    def task_summary(self, days: int = 7, limit: int = 500, stale_minutes: int | None = None) -> dict:
+    def task_summary(
+        self, days: int = 7, limit: int = 500, stale_minutes: int | None = None
+    ) -> dict:
         safe_days = max(1, min(int(days or 7), 90))
         safe_limit = max(1, min(int(limit or 500), 1000))
         if stale_minutes is None and self.settings_provider is not None:
@@ -88,7 +103,9 @@ class RunTaskApiService:
             since = getattr(repository, "since", None)
             runs = since(start, safe_limit) if callable(since) else repository.latest(safe_limit)
         rows = [
-            self._run_summary_row(self.serialize_run_func(run), stale_after_minutes=stale_after, now=end)
+            self._run_summary_row(
+                self.serialize_run_func(run), stale_after_minutes=stale_after, now=end
+            )
             for run in runs
         ]
         rows = [row for row in rows if row["started_at"] >= start.isoformat()]
@@ -133,14 +150,18 @@ class RunTaskApiService:
     def generate_report_async(self, request: ReportRequest) -> dict:
         mapper = self.entity_mapper_cls()
         filtered_tickers = mapper.filter_allowed_tickers(request.tickers)
-        dropped_tickers = [ticker for ticker in request.tickers if ticker not in set(filtered_tickers)]
+        dropped_tickers = [
+            ticker for ticker in request.tickers if ticker not in set(filtered_tickers)
+        ]
         if dropped_tickers:
             raise AsyncReportValidationError(
                 "async report generation received tickers outside the static whitelist: "
                 + ", ".join(dropped_tickers)
             )
         if not filtered_tickers:
-            raise AsyncReportValidationError("async report generation requires at least one whitelisted ticker")
+            raise AsyncReportValidationError(
+                "async report generation requires at least one whitelisted ticker"
+            )
         task = self._delay_task(
             self.report_task,
             request.model_dump(mode="json"),
@@ -162,7 +183,9 @@ class RunTaskApiService:
 
     def queue_data_operation(self, operation: str, payload: dict[str, Any] | None = None) -> dict:
         if operation not in DATA_OPERATION_TASKS:
-            raise AsyncReportValidationError(f"unsupported data operation task: {operation or 'missing'}")
+            raise AsyncReportValidationError(
+                f"unsupported data operation task: {operation or 'missing'}"
+            )
         task = self._delay_task(
             self.data_operation_task,
             {"operation": operation, "payload": payload or {}},
@@ -196,7 +219,9 @@ class RunTaskApiService:
         try:
             result = self.celery_app.AsyncResult(task_id)
         except Exception as exc:
-            raise TaskQueueUnavailableError(f"task queue unavailable while checking task status: {exc}") from exc
+            raise TaskQueueUnavailableError(
+                f"task queue unavailable while checking task status: {exc}"
+            ) from exc
         response = {
             "task_id": task_id,
             "status": result.status,
@@ -242,7 +267,9 @@ class RunTaskApiService:
         try:
             self.celery_app.control.revoke(task_id, terminate=False)
         except Exception as exc:
-            raise TaskQueueUnavailableError(f"task queue unavailable while cancelling task: {exc}") from exc
+            raise TaskQueueUnavailableError(
+                f"task queue unavailable while cancelling task: {exc}"
+            ) from exc
         run_payload = None
         with self.session_scope_factory() as session:
             repository = self.analysis_run_repository_cls(session)
@@ -268,15 +295,21 @@ class RunTaskApiService:
         retry_kind = self._run_retry_kind(payload, run)
         if retry_kind == "data_operation":
             operation = str(payload.get("operation") or "")
-            operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+            operation_payload = (
+                payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+            )
             retried = self.queue_data_operation(operation, operation_payload)
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         if retry_kind == "report_follow_up":
             follow_up_payload = self._follow_up_retry_payload(payload)
-            retried = self.queue_report_follow_up(int(payload["source_report_id"]), follow_up_payload)
+            retried = self.queue_report_follow_up(
+                int(payload["source_report_id"]), follow_up_payload
+            )
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         if retry_kind == "report_generation":
-            request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else payload
+            request_payload = (
+                payload.get("request") if isinstance(payload.get("request"), dict) else payload
+            )
             retried = self.generate_report_async(ReportRequest.model_validate(request_payload))
             return {**retried, "retried_from_task_id": task_id, "retried_from_run_id": run.id}
         raise AsyncReportValidationError("task payload is not retryable")
@@ -323,440 +356,25 @@ class RunTaskApiService:
     def _parse_payload(payload_json: str | None) -> dict:
         return parse_task_payload(payload_json)
 
-    @staticmethod
-    def _celery_progress(celery_info: Any) -> dict | None:
-        if isinstance(celery_info, dict) and isinstance(celery_info.get("progress"), dict):
-            return celery_info["progress"]
-        return None
-
-    @staticmethod
-    def _progress_payload(serialized_run: dict | None, celery_progress: dict | None = None) -> dict:
-        if celery_progress:
-            return celery_progress
-        if not serialized_run:
-            return {
-                "status": "unknown",
-                "progress_pct": None,
-                "current_step": None,
-                "resume_hint": None,
-            }
-        workflow_summary = serialized_run.get("workflow_summary")
-        if isinstance(workflow_summary, dict):
-            return {
-                "status": workflow_summary.get("status"),
-                "progress_pct": workflow_summary.get("progress_pct"),
-                "current_step": workflow_summary.get("current_step"),
-                "next_incomplete_step": workflow_summary.get("next_incomplete_step"),
-                "resume_hint": workflow_summary.get("resume_hint"),
-            }
-        status = str(serialized_run.get("status") or "unknown")
-        return {
-            "status": status,
-            "progress_pct": 1.0 if status == "success" else 0.0 if status == "running" else None,
-            "current_step": None,
-            "resume_hint": None,
-        }
-
-    @staticmethod
-    def _celery_status_progress(status: str | None, *, ready: bool) -> dict:
-        normalized = str(status or "PENDING").upper()
-        if normalized == "SUCCESS":
-            return {
-                "status": "success",
-                "progress_pct": 1.0,
-                "current_step": "task_completed",
-                "resume_hint": None,
-            }
-        if normalized == "FAILURE":
-            return {
-                "status": "failed",
-                "progress_pct": None,
-                "current_step": "task_failed",
-                "resume_hint": "任務失敗；可查看錯誤後使用重試任務。",
-            }
-        if normalized == "REVOKED":
-            return {
-                "status": "cancelled",
-                "progress_pct": None,
-                "current_step": "task_cancelled",
-                "resume_hint": "任務已取消。",
-            }
-        if normalized == "RETRY":
-            return {
-                "status": "retrying",
-                "progress_pct": 0.0,
-                "current_step": "task_retrying",
-                "resume_hint": "Celery 正在重試，等待 worker 更新 run 狀態。",
-            }
-        if normalized == "STARTED":
-            return {
-                "status": "running",
-                "progress_pct": 0.05,
-                "current_step": "worker_started",
-                "resume_hint": "Worker 已接手，等待 analysis run metadata。",
-            }
-        return {
-            "status": "queued" if not ready else normalized.casefold(),
-            "progress_pct": 0.0 if not ready else None,
-            "current_step": "waiting_for_worker",
-            "resume_hint": "任務已送出，等待 Celery worker 建立 analysis run。",
-        }
-
-    @classmethod
-    def _run_summary_row(cls, run: dict, *, stale_after_minutes: int, now: datetime) -> dict:
-        payload = cls._serialized_run_payload(run)
-        started_at = str(run.get("started_at") or "")
-        finished_at = str(run.get("finished_at") or "")
-        started_dt = cls._parse_datetime(started_at)
-        finished_dt = cls._parse_datetime(finished_at)
-        status = str(run.get("status") or "unknown")
-        task_id = payload.get("celery_task_id")
-        persisted_failure = cls._persistent_task_failure_detail(payload)
-        operation = str(persisted_failure.get("operation") or cls._run_operation(payload, run))
-        retry_kind = (
-            persisted_failure.get("retry_kind")
-            if "retry_kind" in persisted_failure
-            else cls._run_retry_kind(payload, run)
-        )
-        retryable = bool(
-            persisted_failure.get("retryable")
-            if "retryable" in persisted_failure
-            else task_id and retry_kind
-        )
-        failure_diagnostic = cls._diagnostic_from_failure_detail(persisted_failure) or cls._task_failure_diagnostic(
-            status=status,
-            error=run.get("error"),
-            operation=operation,
-            retryable=retryable,
-        )
-        duration_seconds = None
-        if started_dt and finished_dt:
-            duration_seconds = max(0.0, (finished_dt - started_dt).total_seconds())
-        running_age_seconds = None
-        if status == "running" and started_dt:
-            running_age_seconds = max(0.0, (now - started_dt).total_seconds())
-        return {
-            "id": run.get("id"),
-            "source": str(run.get("source") or "unknown"),
-            "operation": operation,
-            "status": status,
-            "report_id": run.get("report_id"),
-            "task_id": payload.get("celery_task_id"),
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_seconds": round(duration_seconds, 3) if duration_seconds is not None else None,
-            "running_age_seconds": round(running_age_seconds, 3) if running_age_seconds is not None else None,
-            "stale_running": bool(
-                running_age_seconds is not None
-                and running_age_seconds >= stale_after_minutes * 60
-            ),
-            "error": run.get("error"),
-            "error_category": failure_diagnostic.get("category"),
-            "error_severity": failure_diagnostic.get("severity"),
-            "error_summary": failure_diagnostic.get("summary"),
-            "next_steps": failure_diagnostic.get("next_steps") or [],
-            "retryable": retryable,
-            "retry_kind": retry_kind,
-            "retry_endpoint": persisted_failure.get("retry_endpoint")
-            or (f"POST /tasks/{task_id}/retry" if task_id and retry_kind else None),
-            "status_endpoint": persisted_failure.get("status_endpoint")
-            or (f"GET /tasks/{task_id}" if task_id else None),
-            "run_endpoint": persisted_failure.get("run_endpoint")
-            or (f"GET /runs/{run.get('id')}" if run.get("id") else None),
-            "next_action": persisted_failure.get("next_action") or cls._task_next_action(
-                status=status,
-                task_id=task_id,
-                retry_kind=retry_kind,
-                error=run.get("error"),
-                diagnostic=failure_diagnostic,
-            ),
-        }
-
-    @staticmethod
-    def _persistent_task_failure_detail(payload: dict) -> dict:
-        detail = payload.get("task_failure_diagnostic") if isinstance(payload, dict) else None
-        return detail if isinstance(detail, dict) else {}
-
-    @staticmethod
-    def _diagnostic_from_failure_detail(detail: dict) -> dict | None:
-        if not isinstance(detail, dict) or not detail.get("error_category"):
-            return None
-        return {
-            "category": detail.get("error_category"),
-            "severity": detail.get("error_severity"),
-            "summary": detail.get("error_summary"),
-            "next_steps": detail.get("next_steps") if isinstance(detail.get("next_steps"), list) else [],
-        }
-
-    @staticmethod
-    def _serialized_run_payload(run: dict) -> dict:
-        return diagnostic_serialized_run_payload(run)
-
-    @staticmethod
-    def _run_retry_kind(payload: dict, run: dict | Any) -> str | None:
-        return diagnostic_run_retry_kind(payload, run)
-
-    @staticmethod
-    def _run_source(run: dict | Any) -> str:
-        return diagnostic_run_source(run)
-
-    @staticmethod
-    def _task_next_action(
-        *,
-        status: str,
-        task_id: object,
-        retry_kind: str | None,
-        error: object,
-        diagnostic: dict | None = None,
-    ) -> str:
-        return diagnostic_task_next_action(
-            status=status,
-            task_id=task_id,
-            retry_kind=retry_kind,
-            error=error,
-            diagnostic=diagnostic,
-        )
-
-    @staticmethod
-    def _task_failure_diagnostic(
-        *,
-        status: str,
-        error: object,
-        operation: str,
-        retryable: bool,
-    ) -> dict:
-        return diagnostic_task_failure_diagnostic(
-            status=status,
-            error=error,
-            operation=operation,
-            retryable=retryable,
-        )
-
-    @classmethod
-    def _task_status_failure_detail(
-        cls,
-        *,
-        task_id: str,
-        task_status: str,
-        error: object,
-        serialized_run: dict | None,
-    ) -> dict:
-        run_payload = cls._serialized_run_payload(serialized_run or {})
-        persisted_failure = cls._persistent_task_failure_detail(run_payload)
-        if persisted_failure:
-            return {
-                **persisted_failure,
-                "status_endpoint": persisted_failure.get("status_endpoint") or f"GET /tasks/{task_id}",
-                "run_endpoint": persisted_failure.get("run_endpoint")
-                or (
-                    f"GET /runs/{serialized_run.get('id')}"
-                    if isinstance(serialized_run, dict) and serialized_run.get("id")
-                    else None
-                ),
-            }
-        retry_kind = cls._run_retry_kind(run_payload, serialized_run or {}) if serialized_run else None
-        retryable = bool(task_id and retry_kind)
-        run_status = str((serialized_run or {}).get("status") or task_status or "unknown")
-        operation = cls._run_operation(run_payload, serialized_run or {}) if serialized_run else "task_status"
-        error_text = error or (serialized_run or {}).get("error")
-        diagnostic = cls._task_failure_diagnostic(
-            status=run_status,
-            error=error_text,
-            operation=operation,
-            retryable=retryable,
-        )
-        if not diagnostic.get("category"):
-            return {}
-        return {
-            "operation": operation,
-            "error_category": diagnostic.get("category"),
-            "error_severity": diagnostic.get("severity"),
-            "error_summary": diagnostic.get("summary"),
-            "next_steps": diagnostic.get("next_steps") or [],
-            "retryable": retryable,
-            "retry_kind": retry_kind,
-            "retry_endpoint": f"POST /tasks/{task_id}/retry" if retryable else None,
-            "status_endpoint": f"GET /tasks/{task_id}",
-            "run_endpoint": (
-                f"GET /runs/{serialized_run.get('id')}"
-                if isinstance(serialized_run, dict) and serialized_run.get("id")
-                else None
-            ),
-            "next_action": cls._task_next_action(
-                status=run_status,
-                task_id=task_id,
-                retry_kind=retry_kind,
-                error=error_text,
-                diagnostic=diagnostic,
-            ),
-        }
-
-    @staticmethod
-    def _run_operation(payload: dict, run: dict) -> str:
-        return diagnostic_run_operation(payload, run)
-
-    @staticmethod
-    def _task_summary_totals(rows: list[dict]) -> dict:
-        completed = [
-            float(row["duration_seconds"])
-            for row in rows
-            if row.get("duration_seconds") is not None
-        ]
-        success_count = sum(1 for row in rows if row.get("status") == "success")
-        failed_count = sum(1 for row in rows if row.get("status") == "failed")
-        cancelled_count = sum(1 for row in rows if row.get("status") == "cancelled")
-        running_count = sum(1 for row in rows if row.get("status") == "running")
-        total_count = len(rows)
-        return {
-            "run_count": total_count,
-            "success_count": success_count,
-            "failed_count": failed_count,
-            "cancelled_count": cancelled_count,
-            "running_count": running_count,
-            "stale_running_count": sum(1 for row in rows if row.get("stale_running")),
-            "success_rate": round(success_count / total_count, 4) if total_count else None,
-            "avg_duration_seconds": round(sum(completed) / len(completed), 3) if completed else None,
-        }
-
-    @staticmethod
-    def _count_error_categories(rows: list[dict]) -> list[dict]:
-        counts: dict[tuple[str, str], int] = {}
-        for row in rows:
-            category = row.get("error_category")
-            if not category:
-                continue
-            severity = str(row.get("error_severity") or "unknown")
-            key = (str(category), severity)
-            counts[key] = counts.get(key, 0) + 1
-        return [
-            {"error_category": category, "severity": severity, "count": count}
-            for (category, severity), count in sorted(
-                counts.items(),
-                key=lambda item: (-item[1], item[0][0], item[0][1]),
-            )
-        ]
-
-    @classmethod
-    def _error_category_daily_rows(cls, rows: list[dict]) -> list[dict]:
-        counts: dict[tuple[str, str, str], int] = {}
-        for row in rows:
-            category = row.get("error_category")
-            if not category:
-                continue
-            started_at = cls._parse_datetime(row.get("started_at"))
-            date_value = started_at.date().isoformat() if started_at else "unknown"
-            severity = str(row.get("error_severity") or "unknown")
-            key = (date_value, str(category), severity)
-            counts[key] = counts.get(key, 0) + 1
-        return [
-            {
-                "date": date_value,
-                "error_category": category,
-                "severity": severity,
-                "count": count,
-            }
-            for (date_value, category, severity), count in sorted(
-                counts.items(),
-                key=lambda item: (item[0][0], item[0][1], item[0][2]),
-            )
-        ]
-
-    @classmethod
-    def _task_failure_alerts(cls, rows: list[dict], daily_rows: list[dict]) -> list[dict]:
-        category_rows: dict[str, list[dict]] = {}
-        daily_dates: dict[str, set[str]] = {}
-        for row in rows:
-            category = row.get("error_category")
-            if category:
-                category_rows.setdefault(str(category), []).append(row)
-        for row in daily_rows:
-            category = row.get("error_category")
-            date_value = row.get("date")
-            if category and date_value:
-                daily_dates.setdefault(str(category), set()).add(str(date_value))
-        alerts = []
-        for category, grouped_rows in sorted(category_rows.items()):
-            count = len(grouped_rows)
-            days = len(daily_dates.get(category, set()))
-            severity = cls._alert_severity_for_category(category, grouped_rows, count=count, days=days)
-            if not severity:
-                continue
-            sample = grouped_rows[0]
-            alerts.append(
-                {
-                    "severity": severity,
-                    "code": f"task_failure_{category}",
-                    "error_category": category,
-                    "count": count,
-                    "days": days,
-                    "message": cls._task_failure_alert_message(
-                        category=category,
-                        count=count,
-                        days=days,
-                        summary=str(sample.get("error_summary") or category),
-                    ),
-                    "next_steps": sample.get("next_steps") if isinstance(sample.get("next_steps"), list) else [],
-                }
-            )
-        stale_count = sum(1 for row in rows if row.get("stale_running"))
-        if stale_count:
-            alerts.append(
-                {
-                    "severity": "warning",
-                    "code": "task_stale_running",
-                    "error_category": "stale_running",
-                    "count": stale_count,
-                    "days": 0,
-                    "message": f"有 {stale_count} 個背景任務疑似卡住，請檢查 worker 與任務狀態。",
-                    "next_steps": [
-                        "查看背景任務觀測中的疑似卡住任務。",
-                        "確認 Celery worker 是否在線，必要時取消或重試任務。",
-                    ],
-                }
-            )
-        return sorted(alerts, key=lambda item: (_alert_sort_key(item), str(item.get("code") or "")))
-
-    @staticmethod
-    def _alert_severity_for_category(
-        category: str,
-        rows: list[dict],
-        *,
-        count: int,
-        days: int,
-    ) -> str | None:
-        if category in {"task_queue", "payload_validation"}:
-            return "error"
-        if count >= 2 or days >= 2:
-            return "warning" if any(row.get("error_severity") != "error" for row in rows) else "error"
-        return None
-
-    @staticmethod
-    def _task_failure_alert_message(
-        *,
-        category: str,
-        count: int,
-        days: int,
-        summary: str,
-    ) -> str:
-        if days >= 2:
-            return f"{summary} 在 {days} 天內重複出現 {count} 次，建議優先處理。"
-        return f"{summary} 近期出現 {count} 次，建議檢查相關設定或外部服務。"
-
-    @staticmethod
-    def _count_rows(rows: list[dict], key: str) -> list[dict]:
-        counts: dict[str, int] = {}
-        for row in rows:
-            counts[str(row.get(key) or "unknown")] = counts.get(str(row.get(key) or "unknown"), 0) + 1
-        return [
-            {key: bucket, "count": count}
-            for bucket, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-        ]
-
-    @staticmethod
-    def _parse_datetime(value: object) -> datetime | None:
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(str(value))
-        except ValueError:
-            return None
+    _alert_sort_key = staticmethod(_alert_sort_key)
+    _celery_progress = staticmethod(_celery_progress)
+    _progress_payload = staticmethod(_progress_payload)
+    _celery_status_progress = staticmethod(_celery_status_progress)
+    _run_summary_row = staticmethod(_run_summary_row)
+    _persistent_task_failure_detail = staticmethod(_persistent_task_failure_detail)
+    _diagnostic_from_failure_detail = staticmethod(_diagnostic_from_failure_detail)
+    _serialized_run_payload = staticmethod(_serialized_run_payload)
+    _run_retry_kind = staticmethod(_run_retry_kind)
+    _run_source = staticmethod(_run_source)
+    _task_next_action = staticmethod(_task_next_action)
+    _task_failure_diagnostic = staticmethod(_task_failure_diagnostic)
+    _task_status_failure_detail = staticmethod(_task_status_failure_detail)
+    _run_operation = staticmethod(_run_operation)
+    _task_summary_totals = staticmethod(_task_summary_totals)
+    _count_error_categories = staticmethod(_count_error_categories)
+    _error_category_daily_rows = staticmethod(_error_category_daily_rows)
+    _task_failure_alerts = staticmethod(_task_failure_alerts)
+    _alert_severity_for_category = staticmethod(_alert_severity_for_category)
+    _task_failure_alert_message = staticmethod(_task_failure_alert_message)
+    _count_rows = staticmethod(_count_rows)
+    _parse_datetime = staticmethod(_parse_datetime)

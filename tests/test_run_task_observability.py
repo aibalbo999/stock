@@ -6,7 +6,19 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from app.core.time import utc_now_naive
+from app.services import run_task_api as run_task_api_module
+from app.services import run_task_api_summary
 from app.services.run_task_api import RunTaskApiService
+
+
+def test_run_task_api_reexports_dedicated_summary_helpers() -> None:
+    assert run_task_api_module._alert_sort_key is run_task_api_summary.alert_sort_key
+    assert RunTaskApiService._run_summary_row is run_task_api_summary.run_summary_row
+    assert RunTaskApiService._task_failure_alerts is run_task_api_summary.task_failure_alerts
+    assert (
+        RunTaskApiService._task_failure_diagnostic is run_task_api_summary.task_failure_diagnostic
+    )
+    assert RunTaskApiService._celery_status_progress is run_task_api_summary.celery_status_progress
 
 
 def test_run_task_api_summarizes_recent_task_health() -> None:
@@ -122,7 +134,7 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
     assert summary["by_operation"][2] == {"operation": "market_refresh", "count": 1}
     assert summary["by_error_category"] == [
         {"error_category": "data_source", "severity": "warning", "count": 1},
-        {"error_category": "quota", "severity": "warning", "count": 1}
+        {"error_category": "quota", "severity": "warning", "count": 1},
     ]
     assert summary["error_category_daily"] == [
         {
@@ -175,8 +187,20 @@ def test_run_task_api_classifies_common_task_failure_causes() -> None:
     cases = [
         ("failed", "RESOURCE_EXHAUSTED quota exceeded", "report_generation", True, "quota"),
         ("failed", "Redis broker connection refused", "market_refresh", True, "task_queue"),
-        ("failed", "unsupported data operation task", "data_operation", False, "payload_validation"),
-        ("failed", "ReadTimeout while fetching documents", "company_filings_fetch", True, "timeout"),
+        (
+            "failed",
+            "unsupported data operation task",
+            "data_operation",
+            False,
+            "payload_validation",
+        ),
+        (
+            "failed",
+            "ReadTimeout while fetching documents",
+            "company_filings_fetch",
+            True,
+            "timeout",
+        ),
         ("failed", "MOPS returned HTTP 403 captcha", "company_filings_fetch", True, "data_source"),
         (
             "failed",

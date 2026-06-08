@@ -47,29 +47,40 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "def report_retention_status(" in report_retention_source
     assert report_retention["evidence"]["write_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["write_prunes_markdown_by_topic"] is True
+    assert report_retention["evidence"]["write_prunes_report_artifacts_by_topic"] is True
     assert report_retention["evidence"]["repository_latest_by_topic_available"] is True
     assert report_retention["evidence"]["repository_latest_tie_breaks_by_id"] is True
     assert report_retention["evidence"]["list_reports_uses_latest_by_topic"] is True
     assert report_retention["evidence"]["quality_summary_uses_latest_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_markdown_by_topic"] is True
+    assert report_retention["evidence"]["maintenance_prunes_report_artifacts_by_topic"] is True
     assert report_retention["evidence"]["run_links_cleared_for_pruned_reports"] is True
     assert report_retention["evidence"]["run_output_paths_cleared_for_pruned_reports"] is True
     assert report_retention["evidence"]["delete_before_clears_run_links"] is True
     assert report_retention["evidence"]["orphan_cleanup_clears_output_path"] is True
     assert report_retention["evidence"]["manual_delete_clears_run_links"] is True
     assert report_retention["evidence"]["manual_delete_prunes_markdown"] is True
+    assert report_retention["evidence"]["manual_delete_prunes_report_artifacts"] is True
     assert report_retention["evidence"]["manual_delete_markdown_guardrail"] is True
+    assert report_retention["evidence"]["manual_delete_artifact_guardrail"] is True
     assert report_retention["evidence"]["markdown_retention_smoke_passed"] is True
+    assert report_retention["evidence"]["report_artifact_retention_smoke_passed"] is True
     markdown_smoke = report_retention["evidence"]["markdown_retention_smoke"]
     assert markdown_smoke["passed"] is True
-    assert markdown_smoke["deleted_count"] == 2
+    assert markdown_smoke["deleted_count"] == 5
     assert markdown_smoke["kept_files"] == [
+        "20260607_080000_AI_topic.html",
         "20260607_080000_AI_topic.md",
+        "20260607_080000_AI_topic.pdf",
+        "20260607_090000_robot_topic.html",
         "20260607_090000_robot_topic.md",
+        "single_report.html",
         "single_report.md",
     ]
     assert all(markdown_smoke["checks"].values())
+    artifact_smoke = report_retention["evidence"]["report_artifact_retention_smoke"]
+    assert artifact_smoke == markdown_smoke
 
     assert matrix["data_business_logic"]["company_filing_fetch_hardening"]["status"] == "ready"
     filing_hardening = matrix["data_business_logic"]["company_filing_fetch_hardening"]["evidence"]

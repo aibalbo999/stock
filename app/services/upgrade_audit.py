@@ -197,7 +197,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         "latest_report_retention",
         "最新版報告保留策略",
         ("upgrade_capability_matrix", "data_business_logic", "latest_report_retention"),
-        remediation="確認報告寫入、報告中心、品質摘要與 maintenance cleanup 都使用 latest-per-topic retention，且舊 markdown 檔會同步清理。",
+        remediation="確認報告寫入、報告中心、品質摘要與 maintenance cleanup 都使用 latest-per-topic retention，且舊 markdown/html/pdf 報告檔會同步清理。",
     ),
     UpgradeAuditRequirement(
         "data_business_logic",

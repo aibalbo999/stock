@@ -479,7 +479,13 @@ def test_report_query_service_lists_and_deletes_reports() -> None:
 
 def test_report_query_service_delete_report_removes_safe_markdown_file(tmp_path) -> None:
     report_path = tmp_path / "20260607_080000_AI.md"
+    report_html_path = tmp_path / "20260607_080000_AI.html"
+    report_pdf_path = tmp_path / "20260607_080000_AI.pdf"
+    other_report_html_path = tmp_path / "20260607_090000_AI.html"
     report_path.write_text("# report", encoding="utf-8")
+    report_html_path.write_text("<h1>report</h1>", encoding="utf-8")
+    report_pdf_path.write_bytes(b"%PDF")
+    other_report_html_path.write_text("<h1>keep</h1>", encoding="utf-8")
     duplicate_path = str(report_path)
     non_markdown_path = tmp_path / "notes.txt"
     non_markdown_path.write_text("keep", encoding="utf-8")
@@ -518,8 +524,11 @@ def test_report_query_service_delete_report_removes_safe_markdown_file(tmp_path)
         settings_provider=lambda: SimpleNamespace(report_dir=tmp_path),
     )
 
-    assert service.delete_report(7) == {"deleted": True, "id": 7, "deleted_report_files": 1}
+    assert service.delete_report(7) == {"deleted": True, "id": 7, "deleted_report_files": 3}
     assert not report_path.exists()
+    assert not report_html_path.exists()
+    assert not report_pdf_path.exists()
+    assert other_report_html_path.exists()
     assert non_markdown_path.exists()
     assert outside_path.exists()
     outside_path.unlink()

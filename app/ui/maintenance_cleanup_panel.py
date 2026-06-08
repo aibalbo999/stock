@@ -56,7 +56,7 @@ def render_maintenance_cleanup_panel() -> None:
             if isinstance(result, dict):
                 st.success(
                     f"已刪除 {result.get('old_report_versions_deleted', 0)} 筆舊版報告，"
-                    f"{result.get('old_report_files_deleted', 0)} 個舊 markdown 檔，"
+                    f"{result.get('old_report_files_deleted', 0)} 個舊報告檔，"
                     "每個主題只保留最新版。"
                 )
         cleanup_days = st.number_input("保留天數", min_value=1, max_value=3650, value=90)

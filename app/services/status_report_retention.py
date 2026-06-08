@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from app.services.report_files import (
     prune_older_report_files_by_topic,
+    report_artifact_files,
     report_file_topic_key,
 )
 
@@ -23,12 +24,33 @@ def report_retention_status() -> dict:
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
         in report_files_source
     )
-    markdown_retention_smoke = _markdown_retention_smoke()
+    artifact_retention_smoke = _report_artifact_retention_smoke()
+    report_file_write_prunes_artifacts = (
+        report_file_write_prunes and "REPORT_ARTIFACT_SUFFIXES" in report_files_source
+    )
+    maintenance_prunes_artifacts = (
+        "self._prune_older_report_files()" in data_operations_source
+        and "prune_older_report_files_by_topic" in data_operations_source
+        and "REPORT_ARTIFACT_SUFFIXES" in report_files_source
+    )
+    manual_delete_prunes_artifacts = (
+        "delete_report_markdown_files(" in report_query_source
+        and "_report_artifact_sibling_paths(" in report_query_source
+        and "REPORT_ARTIFACT_SUFFIXES" in report_query_source
+        and '"deleted_report_files"' in report_query_source
+    )
+    manual_delete_artifact_guardrail = (
+        "def _safe_report_markdown_path(" in report_query_source
+        and 'suffix.lower() != ".md"' in report_query_source
+        and "report_dir not in resolved.parents" in report_query_source
+        and "def _report_artifact_sibling_paths(" in report_query_source
+    )
     return {
         "collector_path": "app/services/status_report_retention.py",
         "policy": "latest_per_topic",
         "write_prunes_db_by_topic": write_prunes_db,
         "write_prunes_markdown_by_topic": report_file_write_prunes,
+        "write_prunes_report_artifacts_by_topic": report_file_write_prunes_artifacts,
         "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
         and "row_number()" in persistence_source
         and "partition_by=GeneratedReport.topic" in persistence_source,
@@ -52,9 +74,15 @@ def report_retention_status() -> dict:
             and ".values(report_id=None, output_path=None)" in persistence_source
         ),
         "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
+        "report_artifact_bulk_prune_available": "def report_artifact_files(" in report_files_source
+        and "def prune_older_report_files_by_topic(" in report_files_source,
         "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
-        "markdown_retention_smoke_passed": markdown_retention_smoke["passed"],
-        "markdown_retention_smoke": markdown_retention_smoke,
+        "report_artifact_topic_key_parser_available": "def report_file_topic_key(" in report_files_source
+        and "REPORT_ARTIFACT_SUFFIXES" in report_files_source,
+        "markdown_retention_smoke_passed": artifact_retention_smoke["passed"],
+        "markdown_retention_smoke": artifact_retention_smoke,
+        "report_artifact_retention_smoke_passed": artifact_retention_smoke["passed"],
+        "report_artifact_retention_smoke": artifact_retention_smoke,
         "list_reports_uses_latest_by_topic": "latest_by_topic(limit)" in report_query_source,
         "quality_summary_uses_latest_by_topic": "latest_by_topic(safe_limit)"
         in report_query_source,
@@ -65,6 +93,7 @@ def report_retention_status() -> dict:
         "maintenance_prunes_markdown_by_topic": "self._prune_older_report_files()"
         in data_operations_source
         and "prune_older_report_files_by_topic" in data_operations_source,
+        "maintenance_prunes_report_artifacts_by_topic": maintenance_prunes_artifacts,
         "maintenance_returns_policy": '"report_retention_policy": "latest_per_topic"'
         in data_operations_source,
         "manual_delete_clears_run_links": ".values(report_id=None, output_path=None)"
@@ -72,10 +101,12 @@ def report_retention_status() -> dict:
         "manual_delete_prunes_markdown": "delete_report_markdown_files("
         in report_query_source
         and '"deleted_report_files"' in report_query_source,
+        "manual_delete_prunes_report_artifacts": manual_delete_prunes_artifacts,
         "manual_delete_markdown_guardrail": "def _safe_report_markdown_path("
         in report_query_source
         and 'suffix.lower() != ".md"' in report_query_source
         and "report_dir not in resolved.parents" in report_query_source,
+        "manual_delete_artifact_guardrail": manual_delete_artifact_guardrail,
         "settings_ui_cleanup_action": '"latest_reports_only": True' in maintenance_ui_source
         and '"orphan_report_refs": True' in maintenance_ui_source,
         "covered_paths": [
@@ -95,32 +126,67 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _markdown_retention_smoke() -> dict:
+def _report_artifact_retention_smoke() -> dict:
     try:
         with TemporaryDirectory() as temp_dir:
             report_dir = Path(temp_dir)
             old_ai = report_dir / "20260606_120000_AI_topic.md"
+            old_ai_html = report_dir / "20260606_120000_AI_topic.html"
+            old_ai_pdf = report_dir / "20260606_120000_AI_topic.pdf"
             latest_ai = report_dir / "20260607_080000_AI_topic.md"
+            latest_ai_html = report_dir / "20260607_080000_AI_topic.html"
+            latest_ai_pdf = report_dir / "20260607_080000_AI_topic.pdf"
             old_robot = report_dir / "010_robot_topic.md"
+            old_robot_pdf = report_dir / "010_robot_topic.pdf"
             latest_robot = report_dir / "20260607_090000_robot_topic.md"
+            latest_robot_html = report_dir / "20260607_090000_robot_topic.html"
             standalone = report_dir / "single_report.md"
-            for path in (old_ai, latest_ai, old_robot, latest_robot, standalone):
+            standalone_html = report_dir / "single_report.html"
+            for path in (
+                old_ai,
+                old_ai_html,
+                old_ai_pdf,
+                latest_ai,
+                latest_ai_html,
+                latest_ai_pdf,
+                old_robot,
+                old_robot_pdf,
+                latest_robot,
+                latest_robot_html,
+                standalone,
+                standalone_html,
+            ):
                 path.write_text(path.name, encoding="utf-8")
 
             timestamped_topic_key = report_file_topic_key(latest_ai)
             legacy_topic_key = report_file_topic_key(old_robot)
             deleted_count = prune_older_report_files_by_topic(report_dir)
-            kept_files = sorted(path.name for path in report_dir.glob("*.md"))
+            kept_files = sorted(path.name for path in report_artifact_files(report_dir))
             expected_kept_files = sorted(
-                [latest_ai.name, latest_robot.name, standalone.name]
+                [
+                    latest_ai.name,
+                    latest_ai_html.name,
+                    latest_ai_pdf.name,
+                    latest_robot.name,
+                    latest_robot_html.name,
+                    standalone.name,
+                    standalone_html.name,
+                ]
             )
             checks = {
-                "deleted_count": deleted_count == 2,
+                "deleted_count": deleted_count == 5,
                 "latest_timestamped_report_kept": latest_ai.exists(),
+                "latest_timestamped_html_kept": latest_ai_html.exists(),
+                "latest_timestamped_pdf_kept": latest_ai_pdf.exists(),
                 "old_timestamped_report_removed": not old_ai.exists(),
+                "old_timestamped_html_removed": not old_ai_html.exists(),
+                "old_timestamped_pdf_removed": not old_ai_pdf.exists(),
                 "latest_legacy_topic_report_kept": latest_robot.exists(),
+                "latest_legacy_topic_html_kept": latest_robot_html.exists(),
                 "old_legacy_topic_report_removed": not old_robot.exists(),
+                "old_legacy_topic_pdf_removed": not old_robot_pdf.exists(),
                 "standalone_report_kept": standalone.exists(),
+                "standalone_html_kept": standalone_html.exists(),
                 "timestamped_topic_key": timestamped_topic_key == "AI_topic",
                 "legacy_topic_key": legacy_topic_key == "robot_topic",
                 "kept_files": kept_files == expected_kept_files,

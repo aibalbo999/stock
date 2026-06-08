@@ -10,6 +10,7 @@ from app.models.schemas import ReportRequest
 
 TIMESTAMPED_REPORT_PATTERN = re.compile(r"^(?P<date>\d{8})_(?P<time>\d{6})_(?P<topic>.+)$")
 PREFIXED_REPORT_PATTERN = re.compile(r"^\d+_(?P<topic>.+)$")
+REPORT_ARTIFACT_SUFFIXES = frozenset({".md", ".html", ".pdf"})
 
 
 def write_report_file(report_dir: Path, request: ReportRequest, response: Any) -> Path:
@@ -29,35 +30,50 @@ def safe_report_topic(topic: str) -> str:
 def prune_report_files_for_topic(report_dir: Path, safe_topic: str, *, keep_path: Path) -> int:
     deleted = 0
     keep_path = keep_path.resolve()
-    for candidate in report_dir.glob("*.md"):
-        if candidate.resolve() == keep_path:
+    keep_stem = keep_path.stem
+    for candidate in report_artifact_files(report_dir):
+        if candidate.resolve() == keep_path or candidate.stem == keep_stem:
             continue
         if not report_file_matches_topic(candidate, safe_topic):
             continue
-        candidate.unlink()
-        deleted += 1
+        deleted += _unlink_report_file(candidate)
     return deleted
 
 
 def prune_older_report_files_by_topic(report_dir: Path) -> int:
     if not report_dir.exists():
         return 0
-    grouped: dict[str, list[Path]] = {}
-    for candidate in report_dir.glob("*.md"):
-        if candidate.is_file():
-            grouped.setdefault(report_file_topic_key(candidate), []).append(candidate)
+    grouped: dict[str, dict[str, list[Path]]] = {}
+    for candidate in report_artifact_files(report_dir):
+        grouped.setdefault(report_file_topic_key(candidate), {}).setdefault(
+            candidate.stem,
+            [],
+        ).append(candidate)
 
     deleted = 0
-    for files in grouped.values():
-        if len(files) <= 1:
+    for report_versions in grouped.values():
+        if len(report_versions) <= 1:
             continue
-        keep_path = max(files, key=report_file_sort_key).resolve()
-        for candidate in files:
-            if candidate.resolve() == keep_path:
+        keep_stem = max(
+            report_versions,
+            key=lambda stem: report_artifact_version_sort_key(report_versions[stem]),
+        )
+        for stem, files in report_versions.items():
+            if stem == keep_stem:
                 continue
-            candidate.unlink()
-            deleted += 1
+            for candidate in files:
+                deleted += _unlink_report_file(candidate)
     return deleted
+
+
+def report_artifact_files(report_dir: Path) -> list[Path]:
+    if not report_dir.exists():
+        return []
+    return [
+        candidate
+        for candidate in report_dir.iterdir()
+        if candidate.is_file() and candidate.suffix.lower() in REPORT_ARTIFACT_SUFFIXES
+    ]
 
 
 def report_file_matches_topic(path: Path, safe_topic: str) -> bool:
@@ -85,6 +101,12 @@ def report_file_sort_key(path: Path) -> tuple[datetime, float, str]:
     return parsed or datetime.min, modified_at, path.name
 
 
+def report_artifact_version_sort_key(paths: list[Path]) -> tuple[datetime, float, str]:
+    if not paths:
+        return datetime.min, 0.0, ""
+    return max(report_file_sort_key(path) for path in paths)
+
+
 def _report_file_timestamp(path: Path) -> datetime | None:
     match = TIMESTAMPED_REPORT_PATTERN.match(path.stem)
     if not match:
@@ -96,3 +118,13 @@ def _report_file_timestamp(path: Path) -> datetime | None:
         )
     except ValueError:
         return None
+
+
+def _unlink_report_file(path: Path) -> int:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        return 0
+    return 1

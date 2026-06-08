@@ -22,6 +22,7 @@ from app.services.report_followup import (
     report_tickers,
     sync_candidate_audit_section,
 )
+from app.services.report_files import REPORT_ARTIFACT_SUFFIXES
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -562,16 +563,19 @@ def delete_report_markdown_files(output_paths: list[str], *, report_dir: Path) -
     root = _resolved_report_dir(report_dir)
     for output_path in output_paths:
         candidate = _safe_report_markdown_path(output_path, root)
-        if candidate is None or candidate in seen:
+        if candidate is None:
             continue
-        seen.add(candidate)
-        try:
-            candidate.unlink()
-            deleted += 1
-        except FileNotFoundError:
-            continue
-        except OSError:
-            continue
+        for artifact in _report_artifact_sibling_paths(candidate, root):
+            if artifact in seen:
+                continue
+            seen.add(artifact)
+            try:
+                artifact.unlink()
+                deleted += 1
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
     return deleted
 
 
@@ -590,6 +594,21 @@ def _safe_report_markdown_path(output_path: str, report_dir: Path) -> Path | Non
     if resolved != report_dir and report_dir not in resolved.parents:
         return None
     return resolved
+
+
+def _report_artifact_sibling_paths(markdown_path: Path, report_dir: Path) -> list[Path]:
+    artifacts = []
+    for suffix in sorted(REPORT_ARTIFACT_SUFFIXES):
+        candidate = markdown_path.with_suffix(suffix)
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved != report_dir and report_dir not in resolved.parents:
+            continue
+        if resolved.is_file():
+            artifacts.append(resolved)
+    return artifacts
 
 
 def _resolved_report_dir(report_dir: Path) -> Path:

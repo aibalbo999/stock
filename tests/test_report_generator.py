@@ -40,6 +40,7 @@ from app.services import (
     report_formatting,
     report_investment_thesis,
     report_leading_signal,
+    report_monitoring_checklist,
     report_scope_sections,
     report_score_breakdown,
     report_source_coverage,
@@ -4496,6 +4497,20 @@ def test_monitoring_checklist_renders_recheck_and_avoid_rules() -> None:
     assert "近況訊號由偏空轉為中性以上" in markdown
     assert "近況訊號維持偏空" in markdown
     assert "每週" in markdown
+
+
+def test_monitoring_checklist_logic_lives_outside_generator() -> None:
+    generator = object.__new__(ReportGenerator)
+    request = ReportRequest(tickers=[])
+    generator_source = Path("app/services/report_generator.py").read_text()
+    monitoring_source = Path("app/services/report_monitoring_checklist.py").read_text()
+
+    assert "report_monitoring_checklist" in generator_source
+    assert "def render_monitoring_checklist(" in monitoring_source
+    assert "這張表把觀察與避開名單轉成" not in generator_source
+    assert generator._render_monitoring_checklist(request, [], [], [], []) == (
+        report_monitoring_checklist.render_monitoring_checklist([], ReportGenerator._downside_gate(request))
+    )
 
 
 def test_render_leading_signal_check_outputs_table() -> None:

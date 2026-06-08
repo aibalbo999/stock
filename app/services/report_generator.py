@@ -75,6 +75,7 @@ from app.services import (
     report_formatting,
     report_leading_signal,
     report_investment_thesis,
+    report_monitoring_checklist,
     report_potential,
     report_scope_sections,
     report_score_breakdown,
@@ -1185,7 +1186,7 @@ class ReportGenerator:
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
         if not tickers:
-            return "目前無可監控股票。"
+            return report_monitoring_checklist.render_monitoring_checklist([], self._downside_gate(request))
         downside_gate = self._downside_gate(request)
         contexts = self._sort_decision_contexts(
             self._decision_contexts(
@@ -1200,25 +1201,7 @@ class ReportGenerator:
                 leading_signals,
             )
         )
-        lines = [
-            "這張表把觀察與避開名單轉成可執行監控規則；條件未改善前，不把觀察股升級為買進研究。",
-            "",
-            "| 股票 | 目前動作 | 重新研究條件 | 繼續避開/觀察條件 | 監控頻率 |",
-            "|---|---|---|---|---|",
-        ]
-        for context in contexts:
-            lines.append(
-                self._table_row(
-                    [
-                        context["label"],
-                        context["decision"],
-                        self._recheck_trigger_text(context, downside_gate),
-                        self._avoid_trigger_text(context, downside_gate),
-                        self._monitor_frequency(context),
-                    ]
-                )
-            )
-        return "\n".join(lines)
+        return report_monitoring_checklist.render_monitoring_checklist(contexts, downside_gate)
 
     def _render_follow_up_actions(
         self,

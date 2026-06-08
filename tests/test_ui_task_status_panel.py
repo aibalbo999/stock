@@ -75,10 +75,33 @@ def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> N
             "summary": "模型/API 額度或速率限制",
             "retry": "可重試",
             "retry_kind": "report_generation",
+            "action_route": "一鍵重試",
+            "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
             "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-quota/retry",
             "next_steps": "查看 AI 額度與模型路由或資料源額度。；等待額度重置後再重試。",
         }
     ]
+
+
+def test_task_status_diagnostic_rows_show_external_config_action_route() -> None:
+    rows = task_status_diagnostic_rows(
+        {
+            "operation": "data_operation",
+            "error_category": "task_queue",
+            "error_severity": "error",
+            "error_summary": "Redis/Celery queue 或 worker 異常",
+            "retryable": False,
+            "retry_kind": None,
+            "next_action": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+            "next_steps": [
+                "確認 /services/status 的 task_queue.ready 與 worker_online。",
+                "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
+            ],
+        }
+    )
+
+    assert rows[0]["action_route"] == "外部配置缺失"
+    assert "Redis/Celery" in rows[0]["action_route_detail"]
 
 
 def test_task_status_diagnostic_rows_hide_when_no_failure_category() -> None:

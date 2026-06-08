@@ -365,6 +365,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"category": row.get("error_category")' in source
     assert '"next_steps": _task_next_steps_text(row)' in source
     assert '"category": task_status.get("error_category")' in source
+    assert '"action_route": task_failure_action_route(task_status)' in source
+    assert "task_failure_action_route_detail(task_status)" in source
     assert '"next_steps": _task_status_next_steps_text(task_status)' in source
     assert "失敗診斷" in source
     assert "仍會嘗試送出" in source

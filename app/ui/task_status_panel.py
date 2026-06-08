@@ -6,6 +6,10 @@ from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_task_post
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.follow_up_status import company_filing_action_label
+from app.ui.task_failure_diagnostics import (
+    task_failure_action_route,
+    task_failure_action_route_detail,
+)
 
 
 TASK_STATUS_QUEUED_POLL_SECONDS = 8
@@ -71,6 +75,8 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
             "summary": task_status.get("error_summary") or "-",
             "retry": "可重試" if task_status.get("retryable") else "需人工",
             "retry_kind": task_status.get("retry_kind") or "-",
+            "action_route": task_failure_action_route(task_status),
+            "action_route_detail": task_failure_action_route_detail(task_status),
             "next_action": task_status.get("next_action") or "-",
             "next_steps": _task_status_next_steps_text(task_status),
         }

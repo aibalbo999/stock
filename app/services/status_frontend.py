@@ -323,6 +323,8 @@ def frontend_status() -> dict:
         in task_status_panel_source
         and "失敗診斷" in task_status_panel_source
         and '"category": task_status.get("error_category")' in task_status_panel_source
+        and '"action_route": task_failure_action_route(task_status)' in task_status_panel_source
+        and "task_failure_action_route_detail(task_status)" in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
         "ui_llm_quota_panel_extracted": (ui_dir / "llm_quota_panel.py").exists()
         and "def llm_quota_metric_values(" in llm_quota_panel_source

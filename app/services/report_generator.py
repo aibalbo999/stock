@@ -1673,6 +1673,7 @@ class ReportGenerator:
         companies = {company.ticker: company for company in self.whitelist.companies()}
         latest_valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
         peer_valuation_summary = self._peer_valuation_summary(list(latest_valuations.values()))
+        candidate_audit = self._candidate_audit_by_ticker()
         contexts = self._sort_decision_contexts(
             self._decision_contexts(
                 request,
@@ -1745,12 +1746,15 @@ class ReportGenerator:
             detail_blocks.append(f"- 追價風險標籤：{context['current_price_label']}；最新可取得收盤價：{price_label}。")
             detail_blocks.append(f"- 產業鏈位置：{segment_name}")
             detail_blocks.extend(
-                self._company_basic_intro(
+                report_company_analysis.basic_intro(
                     ticker,
                     name,
                     segment_name,
                     company,
                     related_documents,
+                    candidate_audit.get(ticker, {}),
+                    self._is_company_filing_document,
+                    self._news_document_filing_type,
                 )
             )
             if snapshot:
@@ -1789,8 +1793,7 @@ class ReportGenerator:
             else:
                 detail_blocks.append("- 新聞/研究證據：目前無足夠數據判斷。")
             detail_blocks.extend(
-                self._render_wall_street_company_sections(
-                    ticker,
+                report_company_narrative.render_wall_street_company_sections(
                     name,
                     segment_name,
                     snapshot,
@@ -1800,6 +1803,7 @@ class ReportGenerator:
                     peer_valuation_summary,
                     related_documents,
                     related_findings,
+                    self._company_risk_summary(related_findings),
                     decision,
                     decision_reason,
                 )
@@ -1812,137 +1816,12 @@ class ReportGenerator:
             REPORT_READING_SORT_NOTE,
         )
 
-    def _company_basic_intro(
-        self,
-        ticker: str,
-        name: str,
-        segment_name: str,
-        company,
-        related_documents: list[NewsDocument],
-    ) -> list[str]:
-        candidate = self._candidate_audit_by_ticker().get(ticker, {})
-        aliases = [
-            alias
-            for alias in (getattr(company, "aliases", []) or [])
-            if alias and alias not in {ticker, name}
-        ]
-        keywords = (
-            list(getattr(company, "evidence_keywords", []) or [])
-            or list(candidate.get("evidence_keywords") or [])
-        )
-        rationale = self._compact_text(candidate.get("rationale") or "", 120)
-        if rationale:
-            role_text = f"{rationale}。"
-        else:
-            role_text = "本報告只把它視為此主題中的可驗證研究對象，不直接推論為受惠股。"
-        alias_text = "、".join(aliases[:4]) if aliases else "本次主要使用股票代號與公司名稱比對。"
-        keyword_text = "、".join(str(keyword) for keyword in keywords[:6]) if keywords else "尚未設定固定關鍵字，主要依公司名稱、代號與來源文本比對。"
-        filing_documents = [document for document in related_documents if self._is_company_filing_document(ticker, document)]
-        filing_types = sorted(
-            {
-                self._news_document_filing_type(document) or "company_disclosure"
-                for document in filing_documents
-            }
-        )
-        publisher_count = len({document.source.publisher or "未知來源" for document in related_documents})
-        filing_text = (
-            f"已納入 {len(filing_documents)} 份公司公開文件（{', '.join(filing_types[:3])}）。"
-            if filing_documents
-            else "尚未取得可用公司公開文件。"
-        )
-        return [
-            "#### 公司基本介紹",
-            f"- 基本定位：{ticker} {name}，本報告歸類在「{segment_name}」。{role_text}",
-            f"- 常見名稱/代號：{alias_text}",
-            f"- 本主題關聯關鍵字：{keyword_text}",
-            f"- 本次資料基礎：{filing_text}另有 {len(related_documents)} 筆公司相關文本、{publisher_count} 個來源供交叉檢查。",
-        ]
-
     def _candidate_audit_by_ticker(self) -> dict[str, dict]:
         return {
             str(candidate.get("ticker")): candidate
             for candidate in self.whitelist.candidate_audit()
             if candidate.get("ticker")
         }
-
-    def _render_wall_street_company_sections(
-        self,
-        ticker: str,
-        name: str,
-        segment_name: str,
-        snapshot: MarketSnapshot | None,
-        revenue: MonthlyRevenue | None,
-        financial_metrics: list[FinancialMetric],
-        valuation: ValuationMetric | None,
-        peer_valuation_summary: dict[str, float | None],
-        related_documents: list[NewsDocument],
-        related_findings,
-        decision: str,
-        decision_reason: str,
-    ) -> list[str]:
-        financial_summary = self._financial_statement_summary(financial_metrics)
-        valuation_summary = self._valuation_summary(valuation, peer_valuation_summary)
-        evidence_summary = self._company_evidence_summary(related_documents, related_findings)
-        filing_summary = self._company_filing_evidence_summary(related_documents)
-        revenue_summary = self._company_revenue_summary(revenue)
-        moat_score = self._moat_score(related_documents, related_findings, revenue, financial_summary)
-        return [
-            "",
-            "#### 華爾街式完整分析框架",
-            f"- 商業模式與收入來源：{name} 本次被歸類在「{segment_name}」。"
-            f"{filing_summary}本系統會交叉使用主題文本、月營收、已揭露年度財報與估值資料判斷需求是否落到公司層級。{evidence_summary}",
-            f"- 競爭優勢（護城河）：護城河初評 {moat_score}/10。"
-            f"依據：{self._moat_reason(moat_score, related_documents, related_findings, revenue, financial_summary)}",
-            f"- 產業趨勢：{self._trend_summary(related_documents, related_findings)}",
-            f"- 財務健康狀況：{financial_summary['health']} {revenue_summary}",
-            "- 關鍵風險：" + self._company_risk_summary(related_findings),
-            f"- 與競爭對手的估值比較：{valuation_summary} 同業 EV/EBITDA、毛利率與成長率比較仍需補資料。",
-            "- 未來多頭情境：若需求證據延續、月營收成長改善且風險訊號未升高，股價具備重新評價機會。",
-            "- 未來空頭情境：若風險訊號增加、月營收轉弱或產業瓶頸影響出貨，應降低曝險或等待資料修復。",
-            "- 目前基本情境：維持觀察，除非資料完整度與目前情境降值門檻同時通過，才進入小額分批研究。",
-            f"- 未來 12-24 個月展望：{self._near_term_outlook(revenue, related_documents, related_findings)}",
-            "",
-            "#### 已揭露年度財務檢查",
-            f"- 營收成長：{financial_summary['revenue_trend']}",
-            f"- 淨利趨勢：{financial_summary['net_income_trend']}",
-            f"- 自由現金流：{financial_summary['fcf_trend']}",
-            f"- 利潤率：{financial_summary['margin_trend']}",
-            f"- 負債水準：{financial_summary['debt_trend']}",
-            f"- ROE：{financial_summary['roe_trend']}",
-            f"- 財務體質判斷：{financial_summary['strength']}",
-            "",
-            "#### 競爭護城河",
-            f"- 品牌影響力：{self._moat_factor_text('brand', related_documents, related_findings, revenue, financial_summary)}",
-            f"- 網路效應：{self._moat_factor_text('network', related_documents, related_findings, revenue, financial_summary)}",
-            f"- 轉換成本：{self._moat_factor_text('switching_cost', related_documents, related_findings, revenue, financial_summary)}",
-            f"- 成本優勢：{self._moat_factor_text('cost', related_documents, related_findings, revenue, financial_summary)}",
-            f"- 專利或獨家技術：{self._moat_factor_text('technology', related_documents, related_findings, revenue, financial_summary)}",
-            f"- 護城河強度：{moat_score}/10。此分數只根據目前來源與月營收訊號，非完整同業研究。",
-            "",
-            "#### 估值分析",
-            f"- P/E 與同業比較：{valuation_summary}",
-            f"- DCF 估值：{self._dcf_proxy_text(financial_summary, valuation)}",
-            f"- 產業平均估值：{self._industry_average_text(peer_valuation_summary)}",
-            f"- 目前是否低估或高估：{self._valuation_conclusion(snapshot, valuation, peer_valuation_summary)}",
-            "",
-            "#### 未來成長假設",
-            f"- 市場規模與產業成長率：{self._trend_summary(related_documents, related_findings)}",
-            f"- 擴張機會與新產品：{self._growth_opportunity_text(related_documents, related_findings, revenue)}",
-            "- AI 或技術優勢：若文本明確指向 AI 供應鏈受惠，可列為觀察點，但仍需訂單與財務驗證。",
-            f"- 5-10 年潛在成長空間：{self._long_term_growth_text(financial_summary, revenue, related_documents)}",
-            "",
-            "#### 多空辯論",
-            f"- 多頭分析師：{self._bull_case(revenue, related_documents)}",
-            f"- 空頭分析師：{self._bear_case(related_findings)}",
-            "- 中性結論：目前以資料完整度與風險門檻為準；缺少完整財報/估值時，不應只靠題材做重倉決策。",
-            "",
-            "#### 是否應該投資",
-            f"- 短期展望（1 年內）：{self._near_term_outlook(revenue, related_documents, related_findings)}",
-            f"- 長期展望（5 年以上）：{self._long_term_growth_text(financial_summary, revenue, related_documents)}",
-            "- 關鍵催化因素：月營收加速、客戶/訂單驗證、產能瓶頸緩解、毛利率改善。",
-            "- 主要風險：" + self._company_risk_summary(related_findings),
-            f"- 本次操作結論：{decision}。理由：{decision_reason}；此結論沿用投資建議總表，不等於個人化買賣建議。",
-        ]
 
     def _render_investment_recommendations(
         self,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from app.models.schemas import MarketSnapshot, MonthlyRevenue
+from collections.abc import Callable
+
+from app.models.schemas import MarketSnapshot, MonthlyRevenue, NewsDocument
 from app.services import report_formatting
 
 
@@ -40,6 +42,60 @@ def overview_row(
             evidence_label(context.get("documents") or [], context.get("findings") or []),
         ]
     )
+
+
+def basic_intro(
+    ticker: str,
+    name: str,
+    segment_name: str,
+    company,
+    related_documents: list[NewsDocument],
+    candidate: dict,
+    is_company_filing_document: Callable[[str, NewsDocument], bool],
+    news_document_filing_type: Callable[[NewsDocument], str | None],
+) -> list[str]:
+    aliases = [
+        alias
+        for alias in (getattr(company, "aliases", []) or [])
+        if alias and alias not in {ticker, name}
+    ]
+    keywords = (
+        list(getattr(company, "evidence_keywords", []) or [])
+        or list(candidate.get("evidence_keywords") or [])
+    )
+    rationale = report_formatting.compact_text(candidate.get("rationale") or "", max_chars=120)
+    if rationale:
+        role_text = f"{rationale}。"
+    else:
+        role_text = "本報告只把它視為此主題中的可驗證研究對象，不直接推論為受惠股。"
+    alias_text = "、".join(aliases[:4]) if aliases else "本次主要使用股票代號與公司名稱比對。"
+    keyword_text = (
+        "、".join(str(keyword) for keyword in keywords[:6])
+        if keywords
+        else "尚未設定固定關鍵字，主要依公司名稱、代號與來源文本比對。"
+    )
+    filing_documents = [
+        document for document in related_documents if is_company_filing_document(ticker, document)
+    ]
+    filing_types = sorted(
+        {
+            news_document_filing_type(document) or "company_disclosure"
+            for document in filing_documents
+        }
+    )
+    publisher_count = len({document.source.publisher or "未知來源" for document in related_documents})
+    filing_text = (
+        f"已納入 {len(filing_documents)} 份公司公開文件（{', '.join(filing_types[:3])}）。"
+        if filing_documents
+        else "尚未取得可用公司公開文件。"
+    )
+    return [
+        "#### 公司基本介紹",
+        f"- 基本定位：{ticker} {name}，本報告歸類在「{segment_name}」。{role_text}",
+        f"- 常見名稱/代號：{alias_text}",
+        f"- 本主題關聯關鍵字：{keyword_text}",
+        f"- 本次資料基礎：{filing_text}另有 {len(related_documents)} 筆公司相關文本、{publisher_count} 個來源供交叉檢查。",
+    ]
 
 
 def render_company_analysis(

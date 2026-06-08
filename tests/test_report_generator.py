@@ -972,6 +972,8 @@ def test_company_analysis_uses_financial_and_valuation_data() -> None:
 
 
 def test_company_basic_intro_uses_dynamic_candidate_context() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    analysis_source = Path("app/services/report_company_analysis.py").read_text()
     whitelist = SupplyChainWhitelist.from_candidate_whitelist(
         [
             {
@@ -1006,6 +1008,8 @@ def test_company_basic_intro_uses_dynamic_candidate_context() -> None:
     assert "基本定位：2308 台達電，本報告歸類在「伺服驅動與控制系統」。電源、伺服驅動與控制器可支援機器人平台。" in company_analysis
     assert "本主題關聯關鍵字：伺服驅動、控制器、機器人" in company_analysis
     assert "另有 1 筆公司相關文本、1 個來源供交叉檢查" in company_analysis
+    assert "def basic_intro(" in analysis_source
+    assert "本主題關聯關鍵字" not in generator_source
 
 
 def test_company_analysis_operation_conclusion_matches_investment_decision() -> None:
@@ -1715,9 +1719,11 @@ def test_company_narrative_logic_lives_outside_generator() -> None:
     assert "def moat_factor_text(" in narrative_source
     assert "def dcf_proxy_text(" in narrative_source
     assert "def growth_opportunity_text(" in narrative_source
+    assert "def render_wall_street_company_sections(" in narrative_source
     assert "無法判斷近期營收動能" not in generator_source
     assert "硬體與供應鏈公司通常不是典型網路效應" not in generator_source
     assert "系統暫不硬算目標價" not in generator_source
+    assert "華爾街式完整分析框架" not in generator_source
     assert ReportGenerator._company_revenue_summary(revenue) == report_company_narrative.company_revenue_summary(revenue)
     assert ReportGenerator._valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3}) == (
         report_company_narrative.valuation_summary(valuation, {"pe_avg": 20, "pb_avg": 5, "count": 3})

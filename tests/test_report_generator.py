@@ -36,6 +36,7 @@ from app.services import (
     report_company_narrative,
     report_company_matrix,
     report_data_quality,
+    report_decision_narrative,
     report_early_potential,
     report_final_potential,
     report_formatting,
@@ -4338,6 +4339,36 @@ def test_structural_bottleneck_reason_names_specific_evidence() -> None:
     assert rating == "觀察 / 等風險降低"
     assert "瓶頸/限制證據：產能吃緊造成交期延長" in reason
     assert "存在結構性瓶頸證據" not in reason
+
+
+def test_decision_reason_logic_lives_outside_generator() -> None:
+    request = ReportRequest(topic="AI 產業鏈", tickers=["2330"])
+    estimate = {"upside_pct": 18, "downside_pct": 4}
+    quality = {"grade": "supported", "missing": []}
+    generator_source = Path("app/services/report_generator.py").read_text()
+    narrative_source = Path("app/services/report_decision_narrative.py").read_text()
+
+    assert "report_decision_narrative" in generator_source
+    assert "def decision_reason(" in narrative_source
+    assert "def structural_bottleneck_reason(" in narrative_source
+    assert "缺少可驗證市場資料" not in generator_source
+    assert ReportGenerator._decision_reason(
+        "可小額分批研究",
+        estimate,
+        quality,
+        [],
+        [],
+        5,
+        request,
+    ) == report_decision_narrative.decision_reason(
+        "可小額分批研究",
+        estimate,
+        quality,
+        [],
+        [],
+        5,
+        request,
+    )
 
 
 def test_risk_overview_filters_ai_infra_labels_for_robotics_companies() -> None:

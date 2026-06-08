@@ -1756,7 +1756,7 @@ def test_company_filing_pdf_visual_rag_failure_preserves_fallback_reason(monkeyp
     monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODE", "fallback")
     get_settings.cache_clear()
     monkeypatch.setattr(
-        "app.data_sources.company_filings._extract_pdf_text_with_pypdf",
+        "app.data_sources.company_filing_parsers._extract_pdf_text_with_pypdf",
         fake_extract_pypdf,
     )
     monkeypatch.setattr("app.services.visual_rag.extract_visual_pdf_text", fake_visual_extract)
@@ -1790,7 +1790,7 @@ def test_company_filing_pdf_without_text_can_use_visual_rag_fallback(monkeypatch
     monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_MODE", "fallback")
     get_settings.cache_clear()
     monkeypatch.setattr(
-        "app.data_sources.company_filings._extract_pdf_text_with_pypdf",
+        "app.data_sources.company_filing_parsers._extract_pdf_text_with_pypdf",
         fake_extract_pypdf,
     )
     monkeypatch.setattr("app.services.visual_rag.extract_visual_pdf_text", fake_visual_extract)

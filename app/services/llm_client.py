@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-from collections import Counter
 from dataclasses import dataclass, field
 from importlib import import_module
 from threading import Lock
@@ -11,11 +10,22 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import get_settings
+from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
+from app.services.llm_attempts import llm_attempt_failure_category, summarize_llm_attempts
 from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 from app.services.llm_observability import (
     build_llm_observability_trace,
     dispatch_llm_observability_trace,
 )
+
+__all__ = [
+    "APIKeyRotator",
+    "LLMClient",
+    "LLMResult",
+    "get_shared_rotator",
+    "llm_attempt_failure_category",
+    "summarize_llm_attempts",
+]
 
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 ROTATABLE_HTTP_STATUSES = {401, 403, *RETRYABLE_HTTP_STATUSES}
@@ -24,18 +34,6 @@ DEFAULT_BASE_RETRY_DELAY_SECONDS = 0.5
 DEFAULT_MAX_RETRY_DELAY_SECONDS = 5.0
 DEFAULT_TOTAL_TIMEOUT_SECONDS = 60.0
 DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS = 60 * 60
-LLM_ATTEMPT_OUTCOME_CATEGORIES = {
-    "dependency_unavailable": "dependency_unavailable",
-    "empty_response": "empty_response",
-    "missing_api_key": "configuration_error",
-    "missing_model": "configuration_error",
-    "provider_error": "provider_error",
-    "quota_cooldown": "rate_limited",
-    "quota_daily_exhausted": "rate_limited",
-    "sdk_error": "provider_error",
-    "timeout": "timeout",
-    "transport_error": "network_error",
-}
 
 
 @dataclass(frozen=True)
@@ -49,147 +47,8 @@ class LLMResult:
     observability: dict[str, object] = field(default_factory=dict)
 
 
-class APIKeyRotator:
-    def __init__(self, keys: list[str]) -> None:
-        self.keys = keys
-        self._index = 0
-        self._lock = Lock()
-
-    def __len__(self) -> int:
-        return len(self.keys)
-
-    def candidates(self) -> list[tuple[int, str]]:
-        if not self.keys:
-            return []
-        with self._lock:
-            start = self._index
-            self._index = (self._index + 1) % len(self.keys)
-        return [
-            ((start + offset) % len(self.keys), self.keys[(start + offset) % len(self.keys)])
-            for offset in range(len(self.keys))
-        ]
-
-
-_rotator_cache: dict[tuple[str, ...], APIKeyRotator] = {}
-_rotator_cache_lock = Lock()
 _model_quota_cooldowns: dict[str, float] = {}
 _model_quota_cooldowns_lock = Lock()
-
-
-def get_shared_rotator(keys: list[str]) -> APIKeyRotator:
-    fingerprint = tuple(keys)
-    with _rotator_cache_lock:
-        if fingerprint not in _rotator_cache:
-            _rotator_cache[fingerprint] = APIKeyRotator(keys)
-        return _rotator_cache[fingerprint]
-
-
-def summarize_llm_attempts(attempts: tuple[dict[str, object], ...] | list[dict[str, object]]) -> dict:
-    rows = [attempt for attempt in attempts or [] if isinstance(attempt, dict)]
-    outcome_counts = Counter(str(attempt.get("outcome") or "unknown") for attempt in rows)
-    failed_attempts = [
-        attempt
-        for attempt in rows
-        if str(attempt.get("outcome") or "") != "success"
-    ]
-    failure_categories = [
-        llm_attempt_failure_category(attempt)
-        for attempt in failed_attempts
-    ]
-    http_status_counts = Counter(
-        str(attempt.get("status"))
-        for attempt in rows
-        if attempt.get("status") is not None
-    )
-    last_failure = next(
-        (
-            attempt
-            for attempt in reversed(rows)
-            if str(attempt.get("outcome") or "") != "success"
-        ),
-        {},
-    )
-    final_attempt = rows[-1] if rows else {}
-    first_attempt = rows[0] if rows else {}
-    providers_tried = _ordered_attempt_values(rows, "provider")
-    models_tried = _ordered_attempt_values(rows, "model")
-    final_outcome = final_attempt.get("outcome")
-    final_success = final_outcome == "success"
-    retry_used = any(_safe_int(attempt.get("attempt")) > 1 for attempt in rows)
-    provider_fallback_used = bool(
-        final_success
-        and providers_tried
-        and final_attempt.get("provider") is not None
-        and str(first_attempt.get("provider") or "") != str(final_attempt.get("provider") or "")
-    )
-    model_fallback_used = bool(
-        final_success
-        and models_tried
-        and final_attempt.get("model") is not None
-        and str(first_attempt.get("model") or "") != str(final_attempt.get("model") or "")
-    )
-    category_counts = Counter(failure_categories)
-    return {
-        "attempt_count": len(rows),
-        "providers_tried": providers_tried,
-        "models_tried": models_tried,
-        "outcome_counts": dict(sorted(outcome_counts.items())),
-        "failure_category_counts": dict(sorted(category_counts.items())),
-        "http_status_counts": dict(sorted(http_status_counts.items())),
-        "failed_attempt_count": len(failed_attempts),
-        "successful_attempt_count": int(outcome_counts.get("success", 0)),
-        "retryable_failure_count": sum(1 for attempt in rows if attempt.get("retryable") is True),
-        "retry_used": retry_used,
-        "success_after_failure": bool(final_success and failed_attempts),
-        "provider_fallback_used": provider_fallback_used,
-        "model_fallback_used": model_fallback_used,
-        "fallback_path_used": bool(provider_fallback_used or model_fallback_used),
-        "primary_failure_category": category_counts.most_common(1)[0][0] if category_counts else None,
-        "last_failure_category": llm_attempt_failure_category(last_failure) if last_failure else None,
-        "primary_provider": first_attempt.get("provider"),
-        "primary_model": first_attempt.get("model"),
-        "final_provider": final_attempt.get("provider"),
-        "final_model": final_attempt.get("model"),
-        "final_outcome": final_outcome,
-        "final_success": final_success,
-    }
-
-
-def llm_attempt_failure_category(attempt: dict[str, object]) -> str:
-    outcome = str(attempt.get("outcome") or "unknown")
-    if outcome == "success":
-        return "success"
-    status = attempt.get("status")
-    if status is not None:
-        try:
-            status_code = int(status)
-        except (TypeError, ValueError):
-            return "http_error"
-        if status_code in {401, 403}:
-            return "auth_or_permission_error"
-        if status_code == 429:
-            return "rate_limited"
-        if status_code in {500, 502, 503, 504}:
-            return "upstream_error"
-        return "http_error"
-    return LLM_ATTEMPT_OUTCOME_CATEGORIES.get(outcome, "unknown_error")
-
-
-def _safe_int(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _ordered_attempt_values(attempts: list[dict[str, object]], key: str) -> list[str]:
-    return list(
-        dict.fromkeys(
-            str(attempt.get(key))
-            for attempt in attempts
-            if attempt.get(key) not in {None, ""}
-        )
-    )
 
 
 class LLMClient:
@@ -207,7 +66,11 @@ class LLMClient:
         result = self.generate_with_metadata(prompt)
         if result.fallback:
             return result.text
-        key_note = f"Gemini API key pool index：{result.key_index}" if result.key_index is not None else "Gemini API"
+        key_note = (
+            f"Gemini API key pool index：{result.key_index}"
+            if result.key_index is not None
+            else "Gemini API"
+        )
         provider_note = f"，provider={result.provider}" if result.provider else ""
         return f"{result.text}\n\n模型狀態：{key_note}，model={result.model}{provider_note}"
 
@@ -461,7 +324,9 @@ class LLMClient:
                         break
                     except httpx.HTTPStatusError as exc:
                         status = exc.response.status_code
-                        errors.append(f"{model_name} key[{key_index}] HTTP {status} attempt {attempt + 1}")
+                        errors.append(
+                            f"{model_name} key[{key_index}] HTTP {status} attempt {attempt + 1}"
+                        )
                         if status == 429:
                             self._start_model_quota_cooldown(model_name, exc.response)
                         attempts.append(
@@ -481,7 +346,11 @@ class LLMClient:
                         if status == 429 and use_model_fallback:
                             should_stop = True
                             break
-                        if status in RETRYABLE_HTTP_STATUSES and attempt < max_retries and monotonic() < deadline:
+                        if (
+                            status in RETRYABLE_HTTP_STATUSES
+                            and attempt < max_retries
+                            and monotonic() < deadline
+                        ):
                             self._sleep_before_retry(exc.response, attempt)
                             continue
                         break
@@ -637,10 +506,16 @@ class LLMClient:
                         break
                     except Exception as exc:
                         status = self._exception_status_code(exc)
-                        status_label = f"HTTP {status}" if status is not None else exc.__class__.__name__
-                        errors.append(f"{model_name} key[{key_index}] SDK {status_label} attempt {attempt + 1}")
+                        status_label = (
+                            f"HTTP {status}" if status is not None else exc.__class__.__name__
+                        )
+                        errors.append(
+                            f"{model_name} key[{key_index}] SDK {status_label} attempt {attempt + 1}"
+                        )
                         if status == 429:
-                            self._start_model_quota_cooldown(model_name, getattr(exc, "response", None))
+                            self._start_model_quota_cooldown(
+                                model_name, getattr(exc, "response", None)
+                            )
                         attempts.append(
                             self._attempt_record(
                                 provider="google_genai",
@@ -650,7 +525,9 @@ class LLMClient:
                                 outcome="http_error" if status is not None else "sdk_error",
                                 status=status,
                                 error=None if status is not None else exc.__class__.__name__,
-                                retryable=(status in RETRYABLE_HTTP_STATUSES) if status is not None else True,
+                                retryable=(status in RETRYABLE_HTTP_STATUSES)
+                                if status is not None
+                                else True,
                             )
                         )
                         if status is not None and status not in ROTATABLE_HTTP_STATUSES:
@@ -814,8 +691,12 @@ class LLMClient:
                         break
                     except Exception as exc:
                         status = self._exception_status_code(exc)
-                        status_label = f"HTTP {status}" if status is not None else exc.__class__.__name__
-                        errors.append(f"{model} key[{key_index}] {status_label} attempt {attempt + 1}")
+                        status_label = (
+                            f"HTTP {status}" if status is not None else exc.__class__.__name__
+                        )
+                        errors.append(
+                            f"{model} key[{key_index}] {status_label} attempt {attempt + 1}"
+                        )
                         if status == 429:
                             self._start_model_quota_cooldown(model, getattr(exc, "response", None))
                         attempts.append(
@@ -827,7 +708,9 @@ class LLMClient:
                                 outcome="http_error" if status is not None else "provider_error",
                                 status=status,
                                 error=None if status is not None else exc.__class__.__name__,
-                                retryable=(status in RETRYABLE_HTTP_STATUSES) if status is not None else True,
+                                retryable=(status in RETRYABLE_HTTP_STATUSES)
+                                if status is not None
+                                else True,
                             )
                         )
                         if status is not None and status not in ROTATABLE_HTTP_STATUSES:
@@ -841,7 +724,8 @@ class LLMClient:
                         break
 
         return LLMResult(
-            text="LiteLLM 呼叫失敗，將改走既有 Gemini HTTP 或規則引擎。" + ("；".join(errors) if errors else ""),
+            text="LiteLLM 呼叫失敗，將改走既有 Gemini HTTP 或規則引擎。"
+            + ("；".join(errors) if errors else ""),
             provider="litellm",
             fallback=True,
             attempts=tuple(attempts),
@@ -987,7 +871,9 @@ class LLMClient:
                         f"{'HTTP ' + str(status) if status is not None else exc.__class__.__name__}"
                     )
                     if status == 429:
-                        self._start_model_quota_cooldown(candidate_model, getattr(exc, "response", None))
+                        self._start_model_quota_cooldown(
+                            candidate_model, getattr(exc, "response", None)
+                        )
                         stop_model_after_quota = True
                     attempts.append(
                         self._attempt_record(
@@ -1188,25 +1074,48 @@ class LLMClient:
 
     @property
     def provider(self) -> str:
-        return str(
-            getattr(self.settings, "llm_provider", "gemini_http") or "gemini_http"
-        ).lower().replace("-", "_")
+        return (
+            str(getattr(self.settings, "llm_provider", "gemini_http") or "gemini_http")
+            .lower()
+            .replace("-", "_")
+        )
 
     @property
     def max_retries_per_key(self) -> int:
-        return max(0, int(getattr(self.settings, "llm_max_retries_per_key", DEFAULT_MAX_RETRIES_PER_KEY)))
+        return max(
+            0, int(getattr(self.settings, "llm_max_retries_per_key", DEFAULT_MAX_RETRIES_PER_KEY))
+        )
 
     @property
     def base_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "llm_base_retry_delay_seconds", DEFAULT_BASE_RETRY_DELAY_SECONDS)))
+        return max(
+            0.0,
+            float(
+                getattr(
+                    self.settings, "llm_base_retry_delay_seconds", DEFAULT_BASE_RETRY_DELAY_SECONDS
+                )
+            ),
+        )
 
     @property
     def max_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "llm_max_retry_delay_seconds", DEFAULT_MAX_RETRY_DELAY_SECONDS)))
+        return max(
+            0.0,
+            float(
+                getattr(
+                    self.settings, "llm_max_retry_delay_seconds", DEFAULT_MAX_RETRY_DELAY_SECONDS
+                )
+            ),
+        )
 
     @property
     def total_timeout_seconds(self) -> float:
-        return max(1.0, float(getattr(self.settings, "llm_total_timeout_seconds", DEFAULT_TOTAL_TIMEOUT_SECONDS)))
+        return max(
+            1.0,
+            float(
+                getattr(self.settings, "llm_total_timeout_seconds", DEFAULT_TOTAL_TIMEOUT_SECONDS)
+            ),
+        )
 
     @property
     def model_quota_cooldown_seconds(self) -> float:
@@ -1250,7 +1159,9 @@ class LLMClient:
         if not bool(getattr(self.settings, "llm_quota_hard_routing_enabled", True)):
             return set()
         try:
-            return LLMQuotaGovernanceService(settings_provider=lambda: self.settings).exhausted_model_keys()
+            return LLMQuotaGovernanceService(
+                settings_provider=lambda: self.settings
+            ).exhausted_model_keys()
         except Exception:
             return set()
 
@@ -1268,9 +1179,7 @@ class LLMClient:
         return normalized
 
     def healthcheck(self) -> LLMResult:
-        return self.generate_with_metadata(
-            "請只回答 ok，不要輸出任何其他文字。"
-        )
+        return self.generate_with_metadata("請只回答 ok，不要輸出任何其他文字。")
 
     def _with_observability(
         self,
@@ -1329,9 +1238,7 @@ class LLMClient:
             models.append(self._gemini_api_model_name(local_model))
         return list(
             dict.fromkeys(
-                model
-                for model in models
-                if model and self._is_gemini_text_model_candidate(model)
+                model for model in models if model and self._is_gemini_text_model_candidate(model)
             )
         )
 
@@ -1392,7 +1299,9 @@ class LLMClient:
 
     def _litellm_key_candidates(self, model: str) -> list[tuple[int | None, str | None]]:
         normalized = str(model or "").strip().lower()
-        if (normalized.startswith("gemini/") or normalized.startswith("gemma")) and len(self.rotator) > 0:
+        if (normalized.startswith("gemini/") or normalized.startswith("gemma")) and len(
+            self.rotator
+        ) > 0:
             return self.rotator.candidates()
         if normalized.startswith("openai/") or normalized.startswith("gpt-"):
             api_key = getattr(self.settings, "openai_api_key", None)
@@ -1569,12 +1478,12 @@ class LLMClient:
                 else getattr(candidate, "content", None)
             )
             candidate_parts = (
-                content.get("parts")
-                if isinstance(content, dict)
-                else getattr(content, "parts", [])
+                content.get("parts") if isinstance(content, dict) else getattr(content, "parts", [])
             )
             for part in candidate_parts or []:
-                part_text = part.get("text") if isinstance(part, dict) else getattr(part, "text", "")
+                part_text = (
+                    part.get("text") if isinstance(part, dict) else getattr(part, "text", "")
+                )
                 if part_text:
                     parts.append(str(part_text))
         return "\n".join(parts).strip()
@@ -1589,8 +1498,7 @@ class LLMClient:
     ) -> str:
         model_name = self._gemini_api_model_name(model or self.settings.primary_llm_model)
         url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model_name}:generateContent"
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         )
         payload = {
             "contents": [
@@ -1623,8 +1531,7 @@ class LLMClient:
     ) -> str:
         model_name = self._gemini_api_model_name(model)
         url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model_name}:generateContent"
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         )
         parts: list[dict[str, Any]] = [{"text": prompt}]
         parts.extend(

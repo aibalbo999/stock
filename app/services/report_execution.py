@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.llm_client import summarize_llm_attempts
+from app.services.llm_attempts import summarize_llm_attempts
 
 
 def report_execution_summary(generator: object) -> dict:
@@ -8,7 +8,9 @@ def report_execution_summary(generator: object) -> dict:
     excluded_low_quality = getattr(generator, "last_excluded_low_quality_documents", None) or []
     llm_result = getattr(generator, "last_llm_result", None)
     vector_store = getattr(generator, "vector_store", None)
-    retrieval_trace = getattr(vector_store, "last_retrieval_trace", None) if vector_store is not None else None
+    retrieval_trace = (
+        getattr(vector_store, "last_retrieval_trace", None) if vector_store is not None else None
+    )
     graph_reasoning_plan = getattr(generator, "last_graph_reasoning_plan", None)
     llm_status = None
     if llm_result is not None:

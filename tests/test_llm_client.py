@@ -6,7 +6,9 @@ import httpx
 import pytest
 
 from app.services import llm_client as llm_module
-from app.services.llm_client import APIKeyRotator, LLMClient, get_shared_rotator, summarize_llm_attempts
+from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
+from app.services.llm_attempts import summarize_llm_attempts
+from app.services.llm_client import LLMClient
 
 
 @pytest.fixture(autouse=True)
@@ -564,7 +566,9 @@ def test_google_genai_model_quota_cooldown_skips_recently_limited_model(monkeypa
         calls.append((prompt, model, api_key))
         if model == "gemini-3.5-flash":
             response = httpx.Response(429, request=httpx.Request("POST", "https://example.test"))
-            raise httpx.HTTPStatusError("quota exhausted", request=response.request, response=response)
+            raise httpx.HTTPStatusError(
+                "quota exhausted", request=response.request, response=response
+            )
         return "2.5 ok"
 
     monkeypatch.setattr(client, "_call_google_genai", fake_call)
@@ -586,8 +590,7 @@ def test_google_genai_model_quota_cooldown_skips_recently_limited_model(monkeypa
         ("prompt", "gemini-2.5-flash", "key-a"),
     ]
     assert any(
-        attempt.get("model") == "gemini-3.5-flash"
-        and attempt.get("outcome") == "quota_cooldown"
+        attempt.get("model") == "gemini-3.5-flash" and attempt.get("outcome") == "quota_cooldown"
         for attempt in second.attempts
     )
     with llm_module._model_quota_cooldowns_lock:
@@ -680,7 +683,9 @@ def test_litellm_model_name_normalizes_gemini_only() -> None:
     assert LLMClient._litellm_model_name("gemini-2.5-flash") == "gemini/gemini-2.5-flash"
     assert LLMClient._litellm_model_name("gemini/gemini-2.5-flash") == "gemini/gemini-2.5-flash"
     assert LLMClient._litellm_model_name("claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
-    assert LLMClient._litellm_model_name("anthropic/claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
+    assert (
+        LLMClient._litellm_model_name("anthropic/claude-3-5-haiku") == "anthropic/claude-3-5-haiku"
+    )
     assert LLMClient._litellm_model_name("gpt-4o-mini") == "gpt-4o-mini"
     assert LLMClient._litellm_model_name("gemma-4-31b-it") == "gemini/gemma-4-31b-it"
 

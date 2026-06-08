@@ -13,7 +13,7 @@ from app.rag.vector_store import VectorStore
 from app.services.candidate_confidence import format_confidence_score
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignalAnalyzer
-from app.services.llm_client import summarize_llm_attempts
+from app.services.llm_attempts import summarize_llm_attempts
 from app.services.persistence import (
     FinancialMetricRepository,
     MarketRepository,
@@ -55,7 +55,10 @@ def should_recover_market_data_quality(quality_gate: dict | None) -> bool:
             and market_latest_trade_date_coverage is not None
             and float(market_latest_trade_date_coverage or 0) < 0.8
         )
-        or any(term in issue_text for term in ["股價資料覆蓋率", "股價日期不一致", "資料庫最新交易日股價"])
+        or any(
+            term in issue_text
+            for term in ["股價資料覆蓋率", "股價日期不一致", "資料庫最新交易日股價"]
+        )
     )
 
 
@@ -99,7 +102,10 @@ def build_report_quality_gate(
     source_quality = source_quality or {}
     plan_quality = plan_quality or source_audit.get("plan_quality") or {}
     exploration_supported_ratio = float(
-        candidate_support.get("exploration_supported_ratio", candidate_support.get("supported_ratio")) or 0
+        candidate_support.get(
+            "exploration_supported_ratio", candidate_support.get("supported_ratio")
+        )
+        or 0
     )
     formal_supported_ratio = float(
         candidate_support.get(
@@ -114,12 +120,22 @@ def build_report_quality_gate(
     market_coverage = market_count / promoted_count if promoted_count else 0
     monthly_coverage = monthly_revenue_count / promoted_count if promoted_count else 0
     valuation_coverage = valuation_count / promoted_count if promoted_count else 0
-    market_fresh_coverage = max(0, market_count - market_stale_count) / promoted_count if promoted_count else 0
-    monthly_fresh_coverage = (
-        max(0, monthly_revenue_count - monthly_revenue_stale_count) / promoted_count if promoted_count else 0
+    market_fresh_coverage = (
+        max(0, market_count - market_stale_count) / promoted_count if promoted_count else 0
     )
-    valuation_fresh_coverage = max(0, valuation_count - valuation_stale_count) / promoted_count if promoted_count else 0
-    leading_signal_coverage = leading_signal_count / promoted_count if promoted_count and leading_signal_count is not None else None
+    monthly_fresh_coverage = (
+        max(0, monthly_revenue_count - monthly_revenue_stale_count) / promoted_count
+        if promoted_count
+        else 0
+    )
+    valuation_fresh_coverage = (
+        max(0, valuation_count - valuation_stale_count) / promoted_count if promoted_count else 0
+    )
+    leading_signal_coverage = (
+        leading_signal_count / promoted_count
+        if promoted_count and leading_signal_count is not None
+        else None
+    )
     company_filing_coverage = (
         company_filing_sufficient_count / promoted_count
         if promoted_count and company_filing_sufficient_count is not None
@@ -138,8 +154,16 @@ def build_report_quality_gate(
         if status not in {"missing", "weak"}:
             continue
         lower_name = str(name).lower()
-        is_financial_subtopic = any(term in lower_name for term in ["財務", "估值", "股價", "營收", "現金流"])
-        if is_financial_subtopic and market_count > 0 and monthly_revenue_count > 0 and valuation_count > 0 and financial_metrics_count > 0:
+        is_financial_subtopic = any(
+            term in lower_name for term in ["財務", "估值", "股價", "營收", "現金流"]
+        )
+        if (
+            is_financial_subtopic
+            and market_count > 0
+            and monthly_revenue_count > 0
+            and valuation_count > 0
+            and financial_metrics_count > 0
+        ):
             continue
         if status == "missing":
             adjusted_missing_subtopics.append(name)
@@ -150,7 +174,9 @@ def build_report_quality_gate(
     if adjusted_weak_subtopics:
         weak_subtopic_count = len(adjusted_weak_subtopics)
     unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
-    timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0) if source_quality else 0
+    timestamp_coverage = (
+        float(source_quality.get("timestamp_coverage") or 0) if source_quality else 0
+    )
     recent_coverage = float(source_quality.get("recent_coverage") or 0) if source_quality else 0
     source_lookback_days = int(source_quality.get("lookback_days") or 90) if source_quality else 90
     high_credibility_ratio = source_quality.get("high_credibility_ratio")
@@ -159,9 +185,15 @@ def build_report_quality_gate(
     llm_observability = (llm_status or {}).get("observability") or {}
     rag_embedding_status = rag_status.get("embedding_status") or {}
     rag_reranker_status = rag_status.get("reranker_status") or {}
-    rag_reranker_provider = str(
-        rag_reranker_status.get("normalized_provider") or rag_reranker_status.get("provider") or ""
-    ).lower().replace("-", "_")
+    rag_reranker_provider = (
+        str(
+            rag_reranker_status.get("normalized_provider")
+            or rag_reranker_status.get("provider")
+            or ""
+        )
+        .lower()
+        .replace("-", "_")
+    )
     rag_retrieval_status = rag_status.get("retrieval_status") or {}
     market_provider_summary = market_provider_summary or {}
     stale_market_dataset_count = (
@@ -198,7 +230,9 @@ def build_report_quality_gate(
         blockers.append(f"AI 拆解子題仍有 {missing_subtopic_count} 個完全缺少相關來源")
     if weak_subtopic_count:
         if not missing_subtopic_count and source_count >= 100 and unique_publishers >= 20:
-            observations.append(f"主題拆解仍有 {weak_subtopic_count} 個子題可持續追蹤，已由多來源資料覆蓋主要結論")
+            observations.append(
+                f"主題拆解仍有 {weak_subtopic_count} 個子題可持續追蹤，已由多來源資料覆蓋主要結論"
+            )
         else:
             warnings.append(f"AI 拆解子題仍有 {weak_subtopic_count} 個來源或資料意圖不足")
     if source_quality:
@@ -212,9 +246,17 @@ def build_report_quality_gate(
             warnings.append("資料來源多樣性偏低")
         if source_count >= 8 and recent_coverage < 0.4:
             warnings.append(f"近 {source_lookback_days} 天來源比例偏低，可能混入過舊產業假設")
-        if high_credibility_ratio is not None and source_count >= 8 and float(high_credibility_ratio) < 0.35:
+        if (
+            high_credibility_ratio is not None
+            and source_count >= 8
+            and float(high_credibility_ratio) < 0.35
+        ):
             warnings.append("高可信來源比例偏低，正式結論需補官方文件或主流財經新聞")
-        if low_credibility_ratio is not None and source_count >= 8 and float(low_credibility_ratio) > 0.35:
+        if (
+            low_credibility_ratio is not None
+            and source_count >= 8
+            and float(low_credibility_ratio) > 0.35
+        ):
             warnings.append("投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由")
     if plan_quality:
         plan_status = str(plan_quality.get("status") or "unknown")
@@ -247,7 +289,11 @@ def build_report_quality_gate(
         and market_trade_date_lag_days is not None
         and market_trade_date_lag_days <= 1
     )
-    if promoted_count and market_latest_trade_date_coverage is not None and market_latest_trade_date_coverage < 0.8:
+    if (
+        promoted_count
+        and market_latest_trade_date_coverage is not None
+        and market_latest_trade_date_coverage < 0.8
+    ):
         if market_trade_date_warning_suppressed:
             observations.append("股價日期略有差異，系統已使用各股票最新可取得收盤資料")
         else:
@@ -282,9 +328,13 @@ def build_report_quality_gate(
         if market_latest_only_count:
             observations.append("股價資料含官方最新救援來源，動能與區間漲跌需等待完整歷史資料覆核")
         if monthly_revenue_latest_only_count:
-            observations.append("月營收資料含官方最新救援來源，連續成長趨勢需等待完整月營收歷史覆核")
+            observations.append(
+                "月營收資料含官方最新救援來源，連續成長趨勢需等待完整月營收歷史覆核"
+            )
         if financial_metrics_latest_only_ticker_count:
-            observations.append("財務資料含官方最新季報救援來源，五年財務趨勢需等待完整歷史財報覆核")
+            observations.append(
+                "財務資料含官方最新季報救援來源，五年財務趨勢需等待完整歷史財報覆核"
+            )
         if valuation_latest_only_count:
             observations.append("估值資料含官方最新救援來源，同業估值比較需等待完整估值歷史覆核")
     if promoted_count and leading_signal_coverage is not None:
@@ -302,7 +352,9 @@ def build_report_quality_gate(
         if llm_fallback:
             warnings.append("LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿")
         elif llm_attempt_summary.get("success_after_failure"):
-            observations.append("LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察")
+            observations.append(
+                "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察"
+            )
         else:
             observations.append("LLM 補充分析已完成，且仍受來源與白名單驗證約束")
     if rag_status:
@@ -314,24 +366,29 @@ def build_report_quality_gate(
             and not rag_embedding_status.get("custom_embedding_enabled")
         ):
             if rag_embedding_status.get("chroma_default_fallback_allowed"):
-                warnings.append("RAG 自訂 embedding 未啟用，已退回 Chroma 預設模型，繁中檢索信心需下修")
+                warnings.append(
+                    "RAG 自訂 embedding 未啟用，已退回 Chroma 預設模型，繁中檢索信心需下修"
+                )
             else:
                 warnings.append("RAG 自訂 embedding 未啟用，已停用持久化向量庫並退回關鍵字檢索")
-        if (
-            rag_reranker_status
-            and rag_reranker_provider in {"keyword", "hybrid"}
-        ):
-            warnings.append("RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核")
+        if rag_reranker_status and rag_reranker_provider in {"keyword", "hybrid"}:
+            warnings.append(
+                "RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核"
+            )
         elif (
             rag_reranker_status
             and rag_reranker_status.get("keyword_fallback")
             and not rag_reranker_status.get("model_reranker_ready")
         ):
-            warnings.append("RAG reranker auto 模式已退回關鍵字排序，模型級重排序尚未可用，來源排序信心需人工覆核")
+            warnings.append(
+                "RAG reranker auto 模式已退回關鍵字排序，模型級重排序尚未可用，來源排序信心需人工覆核"
+            )
         elif (
             rag_reranker_status
             and rag_reranker_provider not in {"", "none", "disabled", "off"}
-            and not rag_reranker_status.get("model_reranker_ready", rag_reranker_status.get("available"))
+            and not rag_reranker_status.get(
+                "model_reranker_ready", rag_reranker_status.get("available")
+            )
         ):
             warnings.append("RAG reranker 未啟用或推論失敗，檢索排序信心需人工覆核")
 
@@ -399,12 +456,18 @@ def build_report_quality_gate(
             "market_latest_trade_date": _date_to_text(market_latest_trade_date),
             "market_latest_trade_date_coverage": market_latest_trade_date_coverage,
             "market_database_latest_trade_date": _date_to_text(market_database_latest_trade_date),
-            "market_older_than_database_latest_count": int(market_older_than_database_latest_count or 0),
+            "market_older_than_database_latest_count": int(
+                market_older_than_database_latest_count or 0
+            ),
             "market_trade_date_lag_days": market_trade_date_lag_days,
             "market_trade_date_warning_suppressed": market_trade_date_warning_suppressed,
             "leading_signal_coverage": leading_signal_coverage,
             "company_filing_coverage": company_filing_coverage,
-            "llm_analysis_status": "fallback" if llm_fallback else "enabled" if llm_status else None,
+            "llm_analysis_status": "fallback"
+            if llm_fallback
+            else "enabled"
+            if llm_status
+            else None,
             "llm_model": llm_status.get("model"),
             "llm_key_index": llm_status.get("key_index"),
             "llm_provider": llm_status.get("provider"),
@@ -623,9 +686,13 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
         }
     cutoff = now_taipei().date() - timedelta(days=max(1, lookback_days))
     publishers = {
-        _normalize_publisher(document.source.publisher or document.source.url or document.source.title)
+        _normalize_publisher(
+            document.source.publisher or document.source.url or document.source.title
+        )
         for document in documents
-        if _normalize_publisher(document.source.publisher or document.source.url or document.source.title)
+        if _normalize_publisher(
+            document.source.publisher or document.source.url or document.source.title
+        )
     }
     published_dates = [
         _source_date(document.source.published_at)
@@ -679,7 +746,9 @@ def _date_value(value: date | datetime | str | None) -> date | None:
         return None
 
 
-def _date_lag_days(value: date | datetime | str | None, reference: date | datetime | str | None) -> int | None:
+def _date_lag_days(
+    value: date | datetime | str | None, reference: date | datetime | str | None
+) -> int | None:
     value_date = _date_value(value)
     reference_date = _date_value(reference)
     if value_date is None or reference_date is None:
@@ -720,7 +789,9 @@ def _stale_market_data_count(rows: list[object]) -> int:
 
 
 def _stale_financial_metric_ticker_count(metrics: list[object]) -> int:
-    return len({str(getattr(metric, "ticker", "")) for metric in metrics if _is_stale_market_data(metric)})
+    return len(
+        {str(getattr(metric, "ticker", "")) for metric in metrics if _is_stale_market_data(metric)}
+    )
 
 
 def _latest_only_market_data_count(rows: list[object]) -> int:
@@ -728,7 +799,13 @@ def _latest_only_market_data_count(rows: list[object]) -> int:
 
 
 def _latest_only_financial_metric_ticker_count(metrics: list[object]) -> int:
-    return len({str(getattr(metric, "ticker", "")) for metric in metrics if _is_latest_only_market_data(metric)})
+    return len(
+        {
+            str(getattr(metric, "ticker", ""))
+            for metric in metrics
+            if _is_latest_only_market_data(metric)
+        }
+    )
 
 
 def market_trade_date_summary(
@@ -758,7 +835,8 @@ def market_trade_date_summary(
     older_than_database_latest_count = sum(
         1
         for ticker in promoted_tickers
-        if ticker_dates.get(ticker) is not None and ticker_dates[ticker] < database_latest_trade_date
+        if ticker_dates.get(ticker) is not None
+        and ticker_dates[ticker] < database_latest_trade_date
     )
     lag_days = (
         _date_lag_days(ticker_dates.get(ticker), database_latest_trade_date)
@@ -776,8 +854,16 @@ def market_trade_date_summary(
 
 
 def _peer_valuation_summary(valuations) -> dict[str, float | None]:
-    pe_values = [valuation.pe_ratio for valuation in valuations if valuation.pe_ratio is not None and valuation.pe_ratio > 0]
-    pb_values = [valuation.pb_ratio for valuation in valuations if valuation.pb_ratio is not None and valuation.pb_ratio > 0]
+    pe_values = [
+        valuation.pe_ratio
+        for valuation in valuations
+        if valuation.pe_ratio is not None and valuation.pe_ratio > 0
+    ]
+    pb_values = [
+        valuation.pb_ratio
+        for valuation in valuations
+        if valuation.pb_ratio is not None and valuation.pb_ratio > 0
+    ]
     return {
         "pe_avg": sum(pe_values) / len(pe_values) if pe_values else None,
         "pb_avg": sum(pb_values) / len(pb_values) if pb_values else None,
@@ -797,9 +883,14 @@ def build_quality_gate_for_request(
     if not tickers:
         tickers = EntityMapper().filter_allowed_tickers(request.tickers)
     source_count = len(documents or []) if source_count is None else source_count
-    source_quality = summarize_document_source_quality(documents or [], request.lookback_days) if documents else None
+    source_quality = (
+        summarize_document_source_quality(documents or [], request.lookback_days)
+        if documents
+        else None
+    )
     source_audit = {
-        "candidate_support": candidate_support or {
+        "candidate_support": candidate_support
+        or {
             "total": len(tickers),
             "supported": len(tickers),
             "unsupported": 0,
@@ -818,7 +909,9 @@ def build_quality_gate_for_request(
         valuation_count = len(valuations)
         market_stale_count = _stale_market_data_count(snapshots)
         monthly_revenue_stale_count = _stale_market_data_count(monthly_revenues)
-        financial_metrics_stale_ticker_count = _stale_financial_metric_ticker_count(financial_metrics)
+        financial_metrics_stale_ticker_count = _stale_financial_metric_ticker_count(
+            financial_metrics
+        )
         valuation_stale_count = _stale_market_data_count(valuations)
         market_latest_only_count = _latest_only_market_data_count(snapshots)
         monthly_revenue_latest_only_count = _latest_only_market_data_count(monthly_revenues)
@@ -841,7 +934,9 @@ def build_quality_gate_for_request(
         revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
     valuation_map = {valuation.ticker: valuation for valuation in valuations}
     peer_summary = _peer_valuation_summary(valuations)
-    leading_signals = LeadingSignalAnalyzer().build(tickers, price_histories, revenue_histories, valuation_map, peer_summary)
+    leading_signals = LeadingSignalAnalyzer().build(
+        tickers, price_histories, revenue_histories, valuation_map, peer_summary
+    )
     leading_signal_count = sum(1 for signal in leading_signals.values() if signal.has_signal_data)
     return build_report_quality_gate(
         source_audit,
@@ -875,7 +970,9 @@ def build_quality_gate_for_request(
         market_latest_trade_date=market_date_summary["latest_trade_date"],
         market_latest_trade_date_coverage=market_date_summary["latest_trade_date_coverage"],
         market_database_latest_trade_date=market_date_summary["database_latest_trade_date"],
-        market_older_than_database_latest_count=market_date_summary["older_than_database_latest_count"],
+        market_older_than_database_latest_count=market_date_summary[
+            "older_than_database_latest_count"
+        ],
         market_max_trade_date_lag_days=market_date_summary["max_trade_date_lag_days"],
     )
 
@@ -917,7 +1014,9 @@ def rag_runtime_status() -> dict:
     }
 
 
-def _rag_persistent_collection_enabled(settings, embedding_status: dict, chroma_available: bool) -> bool:
+def _rag_persistent_collection_enabled(
+    settings, embedding_status: dict, chroma_available: bool
+) -> bool:
     if not settings.use_chroma:
         return False
     if not chroma_available:
@@ -1057,10 +1156,15 @@ def render_quality_gate_markdown(quality_gate: dict) -> str:
     if warnings:
         lines.append("- 警示項：" + "；".join(_investor_friendly_issue(item) for item in warnings))
     if observations:
-        lines.append("- 觀察項：" + "；".join(_investor_friendly_issue(item) for item in observations))
+        lines.append(
+            "- 觀察項：" + "；".join(_investor_friendly_issue(item) for item in observations)
+        )
     remediation_actions = quality_gate.get("remediation_actions") or []
     if remediation_actions:
-        lines.append("- 建議補強：" + "；".join(_investor_friendly_issue(action) for action in remediation_actions))
+        lines.append(
+            "- 建議補強："
+            + "；".join(_investor_friendly_issue(action) for action in remediation_actions)
+        )
     self_healing = quality_gate.get("self_healing") or {}
     self_healing_actions = self_healing.get("actions") or []
     if self_healing_actions:
@@ -1124,7 +1228,7 @@ def _format_llm_status(metrics: dict) -> str:
             recovery_bits.append("已切換備援模型")
         elif metrics.get("llm_provider_fallback_used"):
             recovery_bits.append("已切換備援供應商")
-        recovery_text = f"，{ '、'.join(recovery_bits) }" if recovery_bits else ""
+        recovery_text = f"，{'、'.join(recovery_bits)}" if recovery_bits else ""
         trace_text = _format_llm_observability(metrics)
         return f"已啟用（模型：{model}{provider_text}{recovery_text}{trace_text}）"
     if status == "fallback":
@@ -1151,7 +1255,10 @@ def _format_llm_observability(metrics: dict) -> str:
 
 
 def _format_rag_status(metrics: dict) -> str:
-    if metrics.get("rag_retrieval_mode") is None and metrics.get("rag_reranker_execution_mode") is None:
+    if (
+        metrics.get("rag_retrieval_mode") is None
+        and metrics.get("rag_reranker_execution_mode") is None
+    ):
         return "未評估"
     retrieval_labels = {
         "chroma_hybrid": "向量庫 + 關鍵字混合檢索",
@@ -1205,7 +1312,9 @@ def _format_market_provider_summary(metrics: dict) -> str:
         item = summary.get(key) or {}
         label = item.get("label") or key
         providers = item.get("providers") or []
-        provider_text = "、".join(str(provider) for provider in providers) if providers else "未入庫"
+        provider_text = (
+            "、".join(str(provider) for provider in providers) if providers else "未入庫"
+        )
         stale_count = int(item.get("stale_count") or 0)
         latest_only_count = int(item.get("latest_only_count") or 0)
         notes = []
@@ -1266,7 +1375,9 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
     action_label = fields.get("投資行動狀態", "目前無足夠數據判斷。")
     dynamic_source_field = fields.get("自動搜尋來源入庫") or fields.get("AI 動態來源入庫")
     llm_field = fields.get("模型補充分析") or fields.get("LLM 補充分析")
-    recent_source_field = _first_matching_value(fields, r"近\s*\d+\s*天來源比例") or fields.get("近期資料比例")
+    recent_source_field = _first_matching_value(fields, r"近\s*\d+\s*天來源比例") or fields.get(
+        "近期資料比例"
+    )
     return {
         "status": status_map.get(fields.get("狀態", ""), "unknown"),
         "blockers": _split_issue_field(fields.get("阻擋項")),
@@ -1285,13 +1396,19 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "promoted_count": _parse_int(fields.get("正式分析股票")),
             "candidate_supported_ratio": _parse_percent(fields.get("候選公司證據覆蓋率")),
             "exploration_candidate_supported_ratio": _parse_percent(fields.get("探索候選覆蓋率")),
-            "formal_confidence_avg": _parse_confidence_value(fields.get("正式股票證據信心"), "平均"),
-            "formal_confidence_min": _parse_confidence_value(fields.get("正式股票證據信心"), "最低"),
+            "formal_confidence_avg": _parse_confidence_value(
+                fields.get("正式股票證據信心"), "平均"
+            ),
+            "formal_confidence_min": _parse_confidence_value(
+                fields.get("正式股票證據信心"), "最低"
+            ),
             "dynamic_source_count": _parse_int(dynamic_source_field),
             "source_unique_publishers": _parse_optional_int(fields.get("來源發布者數")),
             "source_timestamp_coverage": _parse_optional_percent(fields.get("來源時間戳覆蓋率")),
             "source_recent_coverage": _parse_optional_percent(recent_source_field),
-            "source_lookback_days": _parse_int(_first_matching_field(fields, r"近\s*(\d+)\s*天來源比例")),
+            "source_lookback_days": _parse_int(
+                _first_matching_field(fields, r"近\s*(\d+)\s*天來源比例")
+            ),
             "discovery_plan_status": _parse_plan_quality_status(fields.get("拆解任務品質")),
             "discovery_plan_score": _parse_plan_quality_score(fields.get("拆解任務品質")),
             "llm_analysis_status": _parse_llm_status(llm_field),
@@ -1299,8 +1416,12 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
             "monthly_revenue_coverage": _parse_percent(fields.get("月營收資料覆蓋率")),
             "valuation_coverage": _parse_percent(fields.get("估值資料覆蓋率")),
             "market_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "股價"),
-            "monthly_revenue_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "月營收"),
-            "financial_metrics_stale_ticker_count": _parse_stale_metric_count(fields.get("快取救援資料"), "五年財務"),
+            "monthly_revenue_stale_count": _parse_stale_metric_count(
+                fields.get("快取救援資料"), "月營收"
+            ),
+            "financial_metrics_stale_ticker_count": _parse_stale_metric_count(
+                fields.get("快取救援資料"), "五年財務"
+            ),
             "valuation_stale_count": _parse_stale_metric_count(fields.get("快取救援資料"), "估值"),
             "leading_signal_coverage": _parse_optional_percent(
                 fields.get("近況訊號覆蓋率") or fields.get("領先訊號覆蓋率")
@@ -1312,8 +1433,10 @@ def parse_quality_gate_from_markdown(markdown: str) -> dict | None:
 
 
 def _markdown_section(markdown: str, heading: str) -> str:
-    match = re.search(rf"^## {re.escape(heading)}\n(?P<body>.*?)(?=^## |\Z)", markdown, flags=re.S | re.M)
-    return (match.group("body").strip() if match else "")
+    match = re.search(
+        rf"^## {re.escape(heading)}\n(?P<body>.*?)(?=^## |\Z)", markdown, flags=re.S | re.M
+    )
+    return match.group("body").strip() if match else ""
 
 
 def _split_issue_field(value: str | None) -> list[str]:
@@ -1457,7 +1580,9 @@ def remove_quality_gate_sections(markdown: str) -> str:
 def attach_quality_gate_to_report(response: ReportResponse, quality_gate: dict) -> ReportResponse:
     quality_section = render_quality_gate_markdown(quality_gate)
     action_guard = render_quality_action_guard_markdown(quality_gate)
-    inserted_sections = quality_section if not action_guard else f"{quality_section}\n\n{action_guard}"
+    inserted_sections = (
+        quality_section if not action_guard else f"{quality_section}\n\n{action_guard}"
+    )
     markdown = remove_quality_gate_sections(response.markdown)
     first_section = markdown.find("\n## ")
     if first_section == -1:

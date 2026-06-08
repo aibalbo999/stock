@@ -1,6 +1,12 @@
 from datetime import date
 
-from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ReportResponse, ValuationMetric
+from app.models.schemas import (
+    FinancialMetric,
+    MarketSnapshot,
+    MonthlyRevenue,
+    ReportResponse,
+    ValuationMetric,
+)
 from app.services.llm_client import LLMResult
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -115,7 +121,12 @@ def test_quality_gate_markdown_includes_market_provider_summary() -> None:
         financial_metrics_count=8,
         valuation_count=1,
         market_provider_summary={
-            "price_history": {"label": "股價", "providers": ["Fugle"], "stale_count": 0, "latest_only_count": 0},
+            "price_history": {
+                "label": "股價",
+                "providers": ["Fugle"],
+                "stale_count": 0,
+                "latest_only_count": 0,
+            },
             "monthly_revenue": {
                 "label": "月營收",
                 "providers": ["TWSE OpenAPI"],
@@ -123,7 +134,12 @@ def test_quality_gate_markdown_includes_market_provider_summary() -> None:
                 "latest_only_count": 1,
             },
             "financial_metrics": {"label": "五年財務", "providers": ["FinMind"], "stale_count": 0},
-            "valuation": {"label": "估值", "providers": ["FinMind"], "stale_count": 1, "latest_only_count": 0},
+            "valuation": {
+                "label": "估值",
+                "providers": ["FinMind"],
+                "stale_count": 1,
+                "latest_only_count": 0,
+            },
         },
         monthly_revenue_latest_only_count=1,
     )
@@ -199,8 +215,18 @@ def test_quality_gate_records_llm_observability_metrics() -> None:
             model="gemini-2.5-flash",
             provider="gemini",
             attempts=(
-                {"provider": "gemini", "model": "gemini-3.5-flash", "outcome": "sdk_error", "status": 429},
-                {"provider": "gemini", "model": "gemini-2.5-flash", "outcome": "success", "attempt": 1},
+                {
+                    "provider": "gemini",
+                    "model": "gemini-3.5-flash",
+                    "outcome": "sdk_error",
+                    "status": 429,
+                },
+                {
+                    "provider": "gemini",
+                    "model": "gemini-2.5-flash",
+                    "outcome": "success",
+                    "attempt": 1,
+                },
             ),
             observability={
                 "latency_ms": 123.4,
@@ -489,7 +515,10 @@ def test_report_quality_gate_warns_when_rag_embedding_falls_back() -> None:
     assert gate["status"] == "caution"
     assert "RAG 自訂 embedding 未啟用，已停用持久化向量庫並退回關鍵字檢索" in gate["warnings"]
     assert gate["metrics"]["rag_embedding_enabled"] is False
-    assert gate["metrics"]["rag_embedding_fallback_reason"] == "missing_dependency:sentence_transformers"
+    assert (
+        gate["metrics"]["rag_embedding_fallback_reason"]
+        == "missing_dependency:sentence_transformers"
+    )
     assert gate["metrics"]["rag_retrieval_strategy"] == "hybrid-vector-bm25"
     assert gate["metrics"]["rag_bm25_enabled"] is True
     assert gate["metrics"]["rag_keyword_corpus_limit"] == 2000
@@ -526,7 +555,10 @@ def test_report_quality_gate_warns_when_cross_encoder_reranker_falls_back() -> N
     assert "RAG reranker 未啟用或推論失敗，檢索排序信心需人工覆核" in gate["warnings"]
     assert gate["metrics"]["rag_reranker_available"] is False
     assert gate["metrics"]["rag_reranker_model_ready"] is False
-    assert gate["metrics"]["rag_reranker_fallback_reason"] == "missing_dependency:sentence_transformers"
+    assert (
+        gate["metrics"]["rag_reranker_fallback_reason"]
+        == "missing_dependency:sentence_transformers"
+    )
 
 
 def test_report_quality_gate_warns_when_reranker_is_keyword_only() -> None:
@@ -557,9 +589,10 @@ def test_report_quality_gate_warns_when_reranker_is_keyword_only() -> None:
     )
 
     assert gate["status"] == "caution"
-    assert "RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核" in gate[
-        "warnings"
-    ]
+    assert (
+        "RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核"
+        in gate["warnings"]
+    )
     assert gate["metrics"]["rag_reranker_available"] is True
     assert gate["metrics"]["rag_reranker_model_ready"] is False
     assert gate["metrics"]["rag_reranker_keyword_fallback"] is True
@@ -627,9 +660,9 @@ def test_report_quality_gate_discloses_llm_recovery_path() -> None:
     assert gate["metrics"]["llm_failed_attempt_count"] == 1
     assert gate["metrics"]["llm_success_after_failure"] is True
     assert gate["metrics"]["llm_fallback_path_used"] is True
-    assert "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察" in gate[
-        "observations"
-    ]
+    assert (
+        "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察" in gate["observations"]
+    )
 
 
 def test_report_quality_gate_blocks_low_confidence_formal_stocks() -> None:
@@ -837,7 +870,9 @@ def test_quality_gate_markdown_uses_investor_friendly_model_warning() -> None:
             "blockers": [],
             "observations": [],
             "metrics": {"llm_analysis_status": "fallback"},
-            "remediation_actions": ["檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。"],
+            "remediation_actions": [
+                "檢查 LLM API key、供應商狀態與重試策略；模型恢復後重新產生報告並保留事實核查。"
+            ],
             "action_policy": {"label": "需人工覆核"},
         }
     )
@@ -869,7 +904,9 @@ def test_parse_quality_gate_from_markdown_restores_remediation_actions() -> None
 
 
 def test_attach_quality_gate_adds_action_guard_for_insufficient_report() -> None:
-    gate = _quality_gate(candidate_support={"supported_ratio": 0.3}, dynamic_stored_count=3, promoted_tickers=[])
+    gate = _quality_gate(
+        candidate_support={"supported_ratio": 0.3}, dynamic_stored_count=3, promoted_tickers=[]
+    )
     response = ReportResponse(
         title="AI 產業鏈 自動分析報告",
         markdown="# AI 產業鏈 自動分析報告\n\n## 投資建議\n- 測試",
@@ -910,7 +947,9 @@ def test_attach_quality_gate_replaces_existing_quality_sections() -> None:
 
 
 def test_attach_quality_gate_replaces_ready_section_with_new_action_guard() -> None:
-    gate = _quality_gate(candidate_support={"supported_ratio": 0.3}, dynamic_stored_count=3, promoted_tickers=[])
+    gate = _quality_gate(
+        candidate_support={"supported_ratio": 0.3}, dynamic_stored_count=3, promoted_tickers=[]
+    )
     response = ReportResponse(
         title="AI 產業鏈 自動分析報告",
         markdown=(

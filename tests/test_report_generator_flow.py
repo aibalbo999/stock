@@ -189,7 +189,9 @@ def test_report_market_snapshot_fetching_lives_outside_generator() -> None:
     assert "def leading_signals(" in snapshot_source
     assert "MarketRepository(" not in generator_source
     assert "LeadingSignalAnalyzer" not in generator_source
-    assert generator._latest_market_snapshots([]) == report_market_snapshots.latest_market_snapshots(
+    assert generator._latest_market_snapshots(
+        []
+    ) == report_market_snapshots.latest_market_snapshots(
         [],
         session_scope_func=lambda: None,
     )
@@ -330,7 +332,9 @@ def test_generate_allows_discovered_tickers_when_dynamic_whitelist_is_loaded() -
 
     class FakeLLM:
         def generate_with_metadata(self, prompt):
-            return type("Result", (), {"text": "{}", "fallback": True, "model": None, "key_index": None})()
+            return type(
+                "Result", (), {"text": "{}", "fallback": True, "model": None, "key_index": None}
+            )()
 
     generator = object.__new__(ReportGenerator)
     generator.whitelist = whitelist

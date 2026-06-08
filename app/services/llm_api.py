@@ -5,7 +5,8 @@ from importlib.util import find_spec
 from typing import Any
 
 from app.core.config import get_settings
-from app.services.llm_client import LLMClient, summarize_llm_attempts
+from app.services.llm_attempts import summarize_llm_attempts
+from app.services.llm_client import LLMClient
 from app.services.llm_observability import llm_observability_status
 from app.services.llm_quota import LLMQuotaGovernanceService
 from app.services.llm_usage import list_llm_usage_records, summarize_llm_usage_records
@@ -32,7 +33,9 @@ class LLMApiService:
         settings = self.settings_provider()
         provider = str(settings.llm_provider or "").lower().replace("-", "_")
         fallback_models = self._fallback_models(settings)
-        local_gateway_configured = any(self._model_provider(model) == "local" for model in fallback_models)
+        local_gateway_configured = any(
+            self._model_provider(model) == "local" for model in fallback_models
+        )
         provider_keys = {
             "gemini": len(settings.gemini_api_keys) > 0,
             "openai": bool(settings.openai_api_key),
@@ -65,10 +68,14 @@ class LLMApiService:
             "enabled": self._provider_enabled(provider, provider_keys),
             "provider": settings.llm_provider,
             "sdk_dependency": sdk_dependency,
-            "sdk_dependency_available": self._module_available(sdk_dependency) if sdk_dependency else None,
+            "sdk_dependency_available": self._module_available(sdk_dependency)
+            if sdk_dependency
+            else None,
             "fallback_models": fallback_models,
             "fallback_model_readiness": fallback_readiness,
-            "fallback_model_ready_count": sum(1 for item in fallback_readiness if item["key_configured"] is True),
+            "fallback_model_ready_count": sum(
+                1 for item in fallback_readiness if item["key_configured"] is True
+            ),
             "provider_keys_configured": provider_keys,
             "observability": llm_observability_status(settings),
             "quota_routing": self._quota_routing_snapshot(),
@@ -150,9 +157,7 @@ class LLMApiService:
             }
         models = summary.get("models") if isinstance(summary.get("models"), list) else []
         routing_policy = (
-            summary.get("routing_policy")
-            if isinstance(summary.get("routing_policy"), dict)
-            else {}
+            summary.get("routing_policy") if isinstance(summary.get("routing_policy"), dict) else {}
         )
         return {
             "available": True,
@@ -164,11 +169,15 @@ class LLMApiService:
             "recommended_routing_tier": summary.get("recommended_routing_tier"),
             "recommended_status": summary.get("recommended_status"),
             "recommended_reason": summary.get("recommended_reason"),
-            "model_order": summary.get("model_order") if isinstance(summary.get("model_order"), list) else [],
+            "model_order": summary.get("model_order")
+            if isinstance(summary.get("model_order"), list)
+            else [],
             "exhausted_models": [
                 str(model.get("model"))
                 for model in models
-                if isinstance(model, dict) and model.get("status") == "exhausted" and model.get("model")
+                if isinstance(model, dict)
+                and model.get("status") == "exhausted"
+                and model.get("model")
             ],
             "high_quota_fallback_models": routing_policy.get("high_quota_fallback_models") or [],
             "window": summary.get("window") if isinstance(summary.get("window"), dict) else {},

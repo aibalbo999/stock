@@ -184,6 +184,22 @@ def data_business_capabilities(
                 "When PDF table extraction is enabled, pdfplumber or unstructured[pdf] must be importable."
             ),
         ),
+        "company_filing_render_provider_contract": _capability(
+            "ready"
+            if company_filing_status.get("browser_render_provider_contract_ready")
+            else "degraded",
+            evidence={
+                "ready": company_filing_status.get("browser_render_provider_contract_ready"),
+                "smoke_cli": company_filing_status.get(
+                    "browser_render_provider_contract_smoke_cli"
+                ),
+                "contract": company_filing_status.get("browser_render_provider_contract"),
+            },
+            detail=(
+                "Offline provider contract check for Browserless, Generic, FlareSolverr, "
+                "ScrapingBee, and BrightData request/response mappings."
+            ),
+        ),
         "company_filing_browser_or_proxy_fallback": _capability(
             "ready"
             if company_filing_status.get("browser_or_proxy_fallback_configured")

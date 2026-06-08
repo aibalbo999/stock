@@ -5,15 +5,11 @@ import asyncio
 import json
 from typing import Any
 
-import httpx
-
 from app.core.config import get_settings
 from app.data_sources.company_filings import (
-    BROWSER_RENDER_PROVIDERS,
     CompanyFilingFetcher,
-    company_filing_browser_render_request,
     company_filing_browser_render_provider,
-    company_filing_browser_render_response_text,
+    company_filing_browser_render_provider_contract_status,
     company_filing_browser_render_status,
     company_filing_error,
     company_filing_playwright_browser_status,
@@ -249,108 +245,12 @@ def company_filing_render_provider_contract_report(
     *,
     target_url: str = DEFAULT_SMOKE_URL,
 ) -> dict[str, Any]:
-    rows = [
-        _provider_contract_row(provider, target_url=target_url)
-        for provider in sorted(BROWSER_RENDER_PROVIDERS)
-    ]
-    ready = all(row.get("ready") for row in rows)
-    return {
-        "status": "ready" if ready else "degraded",
-        "ready": ready,
-        "target_url": target_url,
-        "provider_count": len(rows),
-        "providers": rows,
-        "smoke_command": PROVIDER_CONTRACT_SMOKE_COMMAND,
-        "remediation": None
-        if ready
-        else "Inspect company filing render provider request/response contract rows.",
-    }
-
-
-def _provider_contract_row(provider: str, *, target_url: str) -> dict[str, Any]:
-    endpoint = _provider_contract_endpoint(provider)
-    headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent": "company-filing-render-contract-smoke",
-    }
-    try:
-        rendered_url, method, request_kwargs = company_filing_browser_render_request(
-            provider=provider,
-            endpoint=endpoint,
-            target_url=target_url,
-            headers=headers,
-            token="contract-token",
-            timeout_seconds=30.0,
-        )
-        response_html, final_url = _provider_contract_response(provider, target_url=target_url)
-    except Exception as exc:
-        return {
-            "provider": provider,
-            "ready": False,
-            "error": f"{exc.__class__.__name__}: {exc}",
-        }
-    return {
-        "provider": provider,
-        "ready": bool(response_html),
-        "method": method,
-        "endpoint": rendered_url,
-        "request_contract": _request_contract_summary(request_kwargs, target_url),
-        "response_contract": {
-            "parser_ready": bool(response_html),
-            "final_url": final_url,
-            "html_length": len(response_html),
-        },
-    }
-
-
-def _provider_contract_endpoint(provider: str) -> str:
-    endpoints = {
-        "brightdata": "https://api.brightdata.com/request",
-        "browserless": "https://browserless.example/content",
-        "flaresolverr": "http://flaresolverr:8191/v1",
-        "generic": "https://render.example/content",
-        "scrapingbee": "https://app.scrapingbee.com/api/v1",
-    }
-    return endpoints.get(provider, "https://render.example/content")
-
-
-def _provider_contract_response(provider: str, *, target_url: str) -> tuple[str, str]:
-    if provider == "flaresolverr":
-        response = httpx.Response(
-            200,
-            json={
-                "status": "ok",
-                "solution": {
-                    "url": f"{target_url.rstrip('/')}/rendered",
-                    "response": "<html><body>company filing render contract</body></html>",
-                },
-            },
-            request=httpx.Request("POST", _provider_contract_endpoint(provider)),
-        )
-    else:
-        response = httpx.Response(
-            200,
-            text="<html><body>company filing render contract</body></html>",
-            request=httpx.Request("GET", _provider_contract_endpoint(provider)),
-        )
-    return company_filing_browser_render_response_text(
-        response,
-        provider=provider,
+    report = company_filing_browser_render_provider_contract_status(
         target_url=target_url,
     )
-
-
-def _request_contract_summary(request_kwargs: dict[str, Any], target_url: str) -> dict[str, Any]:
-    headers = request_kwargs.get("headers") if isinstance(request_kwargs.get("headers"), dict) else {}
-    json_payload = request_kwargs.get("json") if isinstance(request_kwargs.get("json"), dict) else {}
-    params = request_kwargs.get("params") if isinstance(request_kwargs.get("params"), dict) else {}
     return {
-        "header_keys": sorted(headers),
-        "authorization_header_configured": "Authorization" in headers,
-        "json_keys": sorted(json_payload),
-        "param_keys": sorted(params),
-        "target_url_attached": target_url in {json_payload.get("url"), params.get("url")},
-        "query_auth_param_configured": "api_key" in params,
+        **report,
+        "smoke_command": report.get("smoke_cli") or PROVIDER_CONTRACT_SMOKE_COMMAND,
     }
 
 

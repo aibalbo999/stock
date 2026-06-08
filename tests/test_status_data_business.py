@@ -95,6 +95,16 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "playwright_render_runtime" in filing_hardening
     assert "pdf_parser_dependencies" in filing_hardening
 
+    render_contract = matrix["data_business_logic"][
+        "company_filing_render_provider_contract"
+    ]
+    assert render_contract["status"] == "ready"
+    assert render_contract["evidence"]["ready"] is True
+    assert render_contract["evidence"]["contract"]["provider_count"] == 5
+    assert render_contract["evidence"]["smoke_cli"].endswith(
+        "scripts/company_filing_render_smoke.py --provider-contract --json"
+    )
+
     high_risk_unlocker = matrix["data_business_logic"]["company_filing_high_risk_unlocker"]
     expected_high_risk_unlocker_status = (
         "ready"

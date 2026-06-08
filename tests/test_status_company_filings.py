@@ -79,6 +79,17 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
         "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     )
+    assert status["company_filings"]["browser_render_provider_contract_ready"] is True
+    assert status["company_filings"]["browser_render_provider_contract"][
+        "provider_count"
+    ] == 5
+    assert "flaresolverr" in {
+        row["provider"]
+        for row in status["company_filings"]["browser_render_provider_contract"]["providers"]
+    }
+    assert status["company_filings"][
+        "browser_render_provider_contract_smoke_cli"
+    ].endswith("scripts/company_filing_render_smoke.py --provider-contract --json")
     assert status["company_filings"]["browser_render_timeout_seconds"] == 30.0
     assert status["company_filings"]["structured_api_configured"] is False
     assert status["company_filings"]["structured_api_provider"] is None

@@ -8,6 +8,7 @@ from app.data_sources.company_filings import (
     DEFAULT_COMPANY_FILING_USER_AGENTS,
     HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS,
     UNLOCKER_BROWSER_RENDER_PROVIDERS,
+    company_filing_browser_render_provider_contract_status,
     company_filing_browser_render_status,
     company_filing_playwright_browser_status,
     company_filing_structured_api_status,
@@ -22,6 +23,9 @@ def company_filing_status(
     visual_rag_runtime: dict,
     module_available: Callable[[str], bool] = None,
     browser_render_status_func: Callable[[], dict] = company_filing_browser_render_status,
+    browser_render_provider_contract_status_func: Callable[
+        [], dict
+    ] = company_filing_browser_render_provider_contract_status,
     playwright_browser_status_func: Callable[[str | None], dict] = company_filing_playwright_browser_status,
     structured_api_status_func: Callable[[], dict] = company_filing_structured_api_status,
 ) -> dict:
@@ -37,6 +41,7 @@ def company_filing_status(
     )
     user_agent_count = int(user_agent_status.get("effective_user_agent_count") or 0)
     browser_render_runtime = browser_render_status_func()
+    browser_render_provider_contract = browser_render_provider_contract_status_func()
     browser_render_configured = bool(
         browser_render_runtime.get("runtime_available")
     )
@@ -106,6 +111,13 @@ def company_filing_status(
             "endpoint_reachable"
         ),
         "browser_render_runtime": browser_render_runtime,
+        "browser_render_provider_contract": browser_render_provider_contract,
+        "browser_render_provider_contract_ready": browser_render_provider_contract.get(
+            "ready"
+        ),
+        "browser_render_provider_contract_smoke_cli": browser_render_provider_contract.get(
+            "smoke_cli"
+        ),
         "browser_render_configured": browser_render_configured,
         "browser_render_concurrency": max(
             1,

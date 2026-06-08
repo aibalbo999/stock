@@ -208,6 +208,21 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
+        "company_filing_render_provider_contract",
+        "公司文件 render/unlocker provider contract",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_render_provider_contract",
+        ),
+        remediation=(
+            "執行 .venv/bin/python scripts/company_filing_render_smoke.py "
+            "--provider-contract --json，確認 Browserless/FlareSolverr/ScrapingBee/"
+            "BrightData request/response mapping。"
+        ),
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
         "company_filing_pdf_table_parser_runtime",
         "PDF 表格 parser runtime",
         (

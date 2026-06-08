@@ -34,6 +34,7 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "market_data_provider_fallback": {"status": "ready", "evidence": {}},
             "latest_report_retention": {"status": "ready", "evidence": {}},
             "company_filing_fetch_hardening": {"status": "ready", "evidence": {}},
+            "company_filing_render_provider_contract": {"status": "ready", "evidence": {}},
             "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
             "company_filing_high_risk_unlocker": {"status": "ready", "evidence": {}},
@@ -354,6 +355,30 @@ def test_upgrade_audit_fails_llm_quota_routing_regression() -> None:
     assert failure["optional"] is False
     assert failure["external_integration"] is False
     assert audit["areas"]["ai_rag"]["failures"] == 1
+
+
+def test_upgrade_audit_fails_render_provider_contract_regression() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "data_business_logic.company_filing_render_provider_contract": {
+                    "status": "degraded",
+                    "evidence": {"smoke_cli": "render contract smoke"},
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "failed"
+    assert audit["implementation"]["status"] == "failed"
+    failure = next(
+        item
+        for item in audit["failures"]
+        if item["capability"] == "company_filing_render_provider_contract"
+    )
+    assert failure["optional"] is False
+    assert failure["external_integration"] is False
+    assert failure["deployment_check"] is False
 
 
 def test_upgrade_audit_fails_frontend_blocking_regression() -> None:

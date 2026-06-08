@@ -76,9 +76,9 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     )
 
     assert report["status"] == "caution"
-    assert report["ready_count"] == 4
-    assert report["check_count"] == 8
-    assert report["actionable_check_count"] == 8
+    assert report["ready_count"] == 5
+    assert report["check_count"] == 9
+    assert report["actionable_check_count"] == 9
     assert {check["capability"] for check in report["checks"]} == {
         "neo4j_payload_export_contract",
         "graphrag_local_cypher_dry_run",
@@ -87,6 +87,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "company_filing_browser_or_proxy_fallback",
         "company_filing_high_risk_unlocker",
         "company_filing_structured_api_fallback",
+        "company_filing_render_provider_contract",
         "company_filing_structured_api_sample_contract",
     }
     assert "start_system.py --start-dependencies" in report["local_start_command"]
@@ -99,6 +100,9 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     ]
     assert "mops.twse.com.tw" in report[
         "high_risk_company_filing_render_smoke_command"
+    ]
+    assert "provider-contract" in report[
+        "company_filing_render_provider_contract_command"
     ]
     assert "structured_company_filing_smoke.py" in report[
         "structured_company_filing_smoke_command"
@@ -135,6 +139,13 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert checks["company_filing_high_risk_unlocker"]["smoke_commands"] == [
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
     ]
+    assert checks["company_filing_render_provider_contract"]["ready"] is True
+    assert checks["company_filing_render_provider_contract"]["evidence"][
+        "provider_count"
+    ] == 5
+    assert checks["company_filing_render_provider_contract"]["smoke_commands"] == [
+        ".venv/bin/python scripts/company_filing_render_smoke.py --provider-contract --json"
+    ]
     assert checks["company_filing_structured_api_fallback"]["smoke_commands"] == [
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--sample-json examples/structured_company_filing_sample.json "
@@ -155,10 +166,12 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     output = format_external_integration_report(report)
 
     assert "smoke:" in output
-    assert "External integrations: caution (4/8 ready)" in output
+    assert "External integrations: caution (5/9 ready)" in output
     assert "Neo4j payload local contract: ready" in output
     assert "GraphRAG local guarded Cypher dry-run: ready" in output
     assert "--local-contract" in output
+    assert "Company filing render provider contract: ready" in output
+    assert "--provider-contract" in output
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in output
     assert "High-risk filing unlocker smoke" in output
     assert "https://mops.twse.com.tw/" in output

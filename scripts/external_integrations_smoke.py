@@ -8,6 +8,13 @@ from typing import Any
 from app.services.service_status import service_status
 
 try:
+    from scripts.company_filing_render_smoke import (
+        company_filing_render_provider_contract_report,
+    )
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    from company_filing_render_smoke import company_filing_render_provider_contract_report
+
+try:
     from scripts.structured_company_filing_smoke import (
         structured_company_filing_sample_report,
     )
@@ -47,6 +54,10 @@ COMPANY_FILING_RENDER_SMOKE_COMMAND = (
 HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--url https://mops.twse.com.tw/ --json"
+)
+COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND = (
+    ".venv/bin/python scripts/company_filing_render_smoke.py "
+    "--provider-contract --json"
 )
 
 EXTERNAL_CHECKS = (
@@ -108,6 +119,9 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
         NEO4J_GRAPHRAG_SMOKE_COMMAND,
         NEO4J_IMPORT_SMOKE_COMMAND,
     ],
+    "company_filing_render_provider_contract": [
+        COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND
+    ],
     "company_filing_browser_or_proxy_fallback": [COMPANY_FILING_RENDER_SMOKE_COMMAND],
     "company_filing_high_risk_unlocker": [HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND],
     "company_filing_structured_api_fallback": [
@@ -137,6 +151,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
             }
         )
     checks.extend(local_graphrag_contract_checks(matrix))
+    checks.append(company_filing_render_provider_contract_check())
     checks.append(structured_company_filing_sample_contract_check())
     return {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
@@ -151,10 +166,26 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
         "high_risk_company_filing_render_smoke_command": HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND,
+        "company_filing_render_provider_contract_command": COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         "structured_company_filing_sample_status": checks[-1]["status"],
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
+    }
+
+
+def company_filing_render_provider_contract_check() -> dict[str, Any]:
+    report = company_filing_render_provider_contract_report()
+    return {
+        "area": "data_business_logic",
+        "capability": "company_filing_render_provider_contract",
+        "label": "Company filing render provider contract",
+        "status": report.get("status") or "unknown",
+        "ready": bool(report.get("ready")),
+        "evidence": report,
+        "smoke_commands": [COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND],
+        "remediation": report.get("remediation")
+        or "Keep Browserless/FlareSolverr/ScrapingBee/BrightData request and response mappings healthy.",
     }
 
 
@@ -359,6 +390,10 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
     lines.append(f"Neo4j local contract: {report['neo4j_local_contract_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
+    lines.append(
+        "Filing render provider contract: "
+        f"{report['company_filing_render_provider_contract_command']}"
+    )
     lines.append(
         f"High-risk filing unlocker smoke: {report['high_risk_company_filing_render_smoke_command']}"
     )

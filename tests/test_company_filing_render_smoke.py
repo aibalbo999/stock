@@ -219,6 +219,42 @@ def test_company_filing_render_smoke_reports_failed_attempt(monkeypatch) -> None
     assert smoke.smoke_exit_code(report, strict=False) == 1
 
 
+def test_company_filing_render_provider_contract_reports_supported_providers() -> None:
+    report = smoke.company_filing_render_provider_contract_report()
+
+    assert report["status"] == "ready"
+    assert report["ready"] is True
+    assert report["provider_count"] == 5
+    providers = {row["provider"]: row for row in report["providers"]}
+    assert set(providers) == {
+        "brightdata",
+        "browserless",
+        "flaresolverr",
+        "generic",
+        "scrapingbee",
+    }
+    assert providers["flaresolverr"]["method"] == "POST"
+    assert providers["flaresolverr"]["request_contract"]["json_keys"] == [
+        "cmd",
+        "maxTimeout",
+        "url",
+    ]
+    assert providers["flaresolverr"]["response_contract"]["final_url"].endswith(
+        "/rendered"
+    )
+    assert providers["scrapingbee"]["method"] == "GET"
+    assert providers["scrapingbee"]["request_contract"]["param_keys"] == [
+        "api_key",
+        "render_js",
+        "url",
+    ]
+    assert providers["brightdata"]["request_contract"][
+        "authorization_header_configured"
+    ] is True
+    assert "--provider-contract" in report["smoke_command"]
+    assert smoke.smoke_exit_code(report, strict=True) == 0
+
+
 def test_company_filing_render_smoke_main_prints_json(monkeypatch, capsys) -> None:
     async def fake_report(**_kwargs):
         return {"status": "ready", "ready": True}
@@ -227,3 +263,10 @@ def test_company_filing_render_smoke_main_prints_json(monkeypatch, capsys) -> No
 
     assert smoke.main(["--json"]) == 0
     assert '"status": "ready"' in capsys.readouterr().out
+
+
+def test_company_filing_render_smoke_main_prints_provider_contract_json(capsys) -> None:
+    assert smoke.main(["--provider-contract", "--json"]) == 0
+    output = capsys.readouterr().out
+    assert '"provider_count": 5' in output
+    assert '"status": "ready"' in output

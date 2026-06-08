@@ -50,6 +50,7 @@ from app.services import (
     report_investment_thesis,
     report_leading_signal,
     report_markdown_sections,
+    report_market_snapshots,
     report_monitoring_checklist,
     report_risk_overview,
     report_scope_sections,
@@ -537,6 +538,27 @@ def test_report_prompt_logic_lives_outside_generator() -> None:
     assert "REPORT_PROMPT_TEMPLATE.format(" not in generator_source
     assert "def build_report_prompt(" in prompt_builder_source
     assert "def format_llm_evidence(" in prompt_builder_source
+
+
+def test_report_market_snapshot_fetching_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    snapshot_source = Path("app/services/report_market_snapshots.py").read_text()
+    generator = object.__new__(ReportGenerator)
+
+    assert "report_market_snapshots" in generator_source
+    assert "def latest_market_snapshots(" in snapshot_source
+    assert "def leading_signals(" in snapshot_source
+    assert "MarketRepository(" not in generator_source
+    assert "LeadingSignalAnalyzer" not in generator_source
+    assert generator._latest_market_snapshots([]) == report_market_snapshots.latest_market_snapshots(
+        [],
+        session_scope_func=lambda: None,
+    )
+    assert generator._leading_signals([], []) == report_market_snapshots.leading_signals(
+        [],
+        [],
+        session_scope_func=lambda: None,
+    )
 
 
 def test_report_markdown_section_orchestration_lives_outside_generator() -> None:

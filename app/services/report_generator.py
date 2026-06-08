@@ -21,13 +21,7 @@ from app.services.entity_mapping import EntityMapper
 from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
 from app.services.llm_client import LLMClient, LLMResult, summarize_llm_attempts
 from app.services.llm_analysis import LLMSupplementValidator
-from app.services.leading_signals import LeadingSignal, LeadingSignalAnalyzer
-from app.services.persistence import (
-    FinancialMetricRepository,
-    MarketRepository,
-    MonthlyRevenueRepository,
-    ValuationMetricRepository,
-)
+from app.services.leading_signals import LeadingSignal
 from app.services.report_financial_narrative import (
     balance_sheet_total_series,
     debt_equity_phrase,
@@ -79,6 +73,7 @@ from app.services import (
     report_investment_thesis,
     report_investment_recommendations,
     report_markdown_sections,
+    report_market_snapshots,
     report_monitoring_checklist,
     report_potential,
     report_risk_overview,
@@ -313,58 +308,39 @@ class ReportGenerator:
         )
 
     def _latest_market_snapshots(self, tickers: list[str]) -> list[MarketSnapshot]:
-        if not tickers:
-            return []
-        try:
-            with session_scope() as session:
-                return MarketRepository(session).latest_by_tickers(tickers)
-        except Exception:
-            return []
+        return report_market_snapshots.latest_market_snapshots(
+            tickers,
+            session_scope_func=session_scope,
+        )
 
     def _latest_monthly_revenues(self, tickers: list[str]) -> list[MonthlyRevenue]:
-        if not tickers:
-            return []
-        try:
-            with session_scope() as session:
-                return MonthlyRevenueRepository(session).latest_by_tickers(tickers)
-        except Exception:
-            return []
+        return report_market_snapshots.latest_monthly_revenues(
+            tickers,
+            session_scope_func=session_scope,
+        )
 
     def _financial_metrics(self, tickers: list[str]) -> list[FinancialMetric]:
-        if not tickers:
-            return []
-        try:
-            with session_scope() as session:
-                return FinancialMetricRepository(session).by_tickers(tickers)
-        except Exception:
-            return []
+        return report_market_snapshots.financial_metrics(
+            tickers,
+            session_scope_func=session_scope,
+        )
 
     def _latest_valuations(self, tickers: list[str]) -> list[ValuationMetric]:
-        if not tickers:
-            return []
-        try:
-            with session_scope() as session:
-                return ValuationMetricRepository(session).latest_by_tickers(tickers)
-        except Exception:
-            return []
+        return report_market_snapshots.latest_valuations(
+            tickers,
+            session_scope_func=session_scope,
+        )
 
     def _leading_signals(
         self,
         tickers: list[str],
         valuation_metrics: list[ValuationMetric],
     ) -> dict[str, LeadingSignal]:
-        if not tickers:
-            return {}
-        try:
-            with session_scope() as session:
-                price_histories = MarketRepository(session).history_by_tickers(tickers, limit=90)
-                revenue_histories = MonthlyRevenueRepository(session).history_by_tickers(tickers, limit=18)
-        except Exception:
-            price_histories = {}
-            revenue_histories = {}
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics}
-        peer_summary = self._peer_valuation_summary(valuation_metrics)
-        return LeadingSignalAnalyzer().build(tickers, price_histories, revenue_histories, valuations, peer_summary)
+        return report_market_snapshots.leading_signals(
+            tickers,
+            valuation_metrics,
+            session_scope_func=session_scope,
+        )
 
     def _render_markdown(
         self,

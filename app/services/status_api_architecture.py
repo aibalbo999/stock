@@ -5,6 +5,7 @@ from pathlib import Path
 
 def api_controller_status() -> dict:
     app_dir = Path(__file__).resolve().parents[1]
+    root = app_dir.parent
     api_dir = app_dir / "api"
     main_path = api_dir / "main.py"
     service_factory_path = api_dir / "service_factory.py"
@@ -31,8 +32,17 @@ def api_controller_status() -> dict:
     task_failure_diagnostics_source = _read_source(task_failure_diagnostics_path)
     config_source = _read_source(config_path)
     report_generation_api_source = _read_source(report_generation_api_path)
-    route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     legacy_facade_path = api_dir / "legacy_facade.py"
+    api_python_paths = sorted(api_dir.glob("*.py")) if api_dir.exists() else []
+    legacy_facade_reference_scan_paths = [
+        path for path in api_python_paths if path != legacy_facade_path
+    ]
+    legacy_facade_api_reference_locations = _literal_occurrence_locations(
+        legacy_facade_reference_scan_paths,
+        ("LegacyApiFacade", "app.api.legacy_facade", "_legacy_api"),
+        root=root,
+    )
+    route_modules = sorted(path.name for path in api_dir.glob("*_routes.py"))
     compatibility_exports_path = api_dir / "compatibility_exports.py"
     compatibility_helpers_path = api_dir / "compatibility_helpers.py"
     compatibility_helper_candidate_path = api_dir / "compatibility_helper_candidate.py"
@@ -280,10 +290,42 @@ def api_controller_status() -> dict:
         ],
         "main_imports_legacy_facade": "app.api.legacy_facade" in main_source
         or "LegacyApiFacade" in main_source,
+        "legacy_facade_api_reference_scan_paths": [
+            str(path.relative_to(root)) for path in legacy_facade_reference_scan_paths
+        ],
+        "legacy_facade_api_reference_scan_file_count": len(
+            legacy_facade_reference_scan_paths
+        ),
+        "legacy_facade_api_reference_locations": legacy_facade_api_reference_locations,
+        "legacy_facade_api_reference_count": sum(
+            item["count"] for item in legacy_facade_api_reference_locations
+        ),
         "legacy_facade_present": legacy_facade_path.exists(),
         "legacy_facade_alias_only": "ApiCompatibilityService" in legacy_facade_source
         and "class LegacyApiFacade(ApiCompatibilityService)" in legacy_facade_source,
     }
+
+
+def _literal_occurrence_locations(
+    paths: list[Path],
+    literals: tuple[str, ...],
+    *,
+    root: Path,
+) -> list[dict[str, int | str]]:
+    locations: list[dict[str, int | str]] = []
+    for path in paths:
+        source = _read_source(path)
+        for literal in literals:
+            count = source.count(literal)
+            if count:
+                locations.append(
+                    {
+                        "path": str(path.relative_to(root)),
+                        "literal": literal,
+                        "count": count,
+                    }
+                )
+    return locations
 
 
 def _read_source(path: Path) -> str:

@@ -200,6 +200,14 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
         "app/services/api_compatibility_run_state.py",
     ]
     assert evidence["main_imports_legacy_facade"] is False
+    assert "app/api/main.py" in evidence["legacy_facade_api_reference_scan_paths"]
+    assert "app/api/runtime.py" in evidence["legacy_facade_api_reference_scan_paths"]
+    assert "app/api/legacy_facade.py" not in evidence[
+        "legacy_facade_api_reference_scan_paths"
+    ]
+    assert evidence["legacy_facade_api_reference_scan_file_count"] >= 20
+    assert evidence["legacy_facade_api_reference_count"] == 0
+    assert evidence["legacy_facade_api_reference_locations"] == []
     assert evidence["legacy_facade_present"] is True
     assert evidence["legacy_facade_alias_only"] is True
 

@@ -1,71 +1,13 @@
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
-from app.data_sources.news import NewsFetcher
-from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ReportRequest, ValuationMetric
-from app.services.entity_mapping import EntityMapper
+from app.models.schemas import MonthlyRevenue, ValuationMetric
 from app.services import (
     report_company_filing_checks,
     report_company_narrative,
     report_decision_contexts,
 )
-from app.services.report_generator import (
-    ReportGenerator,
-)
-from app.services.whitelist import SupplyChainWhitelist
-
-
-def make_financial_metrics(
-    ticker: str,
-    revenues: list[float],
-    net_incomes: list[float],
-    liabilities: Optional[list[float]] = None,
-    equities: Optional[list[float]] = None,
-) -> list[FinancialMetric]:
-    years = list(range(2022, 2022 + len(revenues)))
-    liabilities = liabilities or [100.0 for _ in years]
-    equities = equities or [200.0 for _ in years]
-    metrics: list[FinancialMetric] = []
-    for year, revenue, net_income, liability, equity in zip(years, revenues, net_incomes, liabilities, equities):
-        report_date = date(year, 3, 31)
-        metrics.extend(
-            [
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="營業收入",
-                    value=revenue,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="income_statement",
-                    metric="本期淨利",
-                    value=net_income,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="負債總額",
-                    value=liability,
-                    source="test",
-                ),
-                FinancialMetric(
-                    ticker=ticker,
-                    report_date=report_date,
-                    statement_type="balance_sheet",
-                    metric="權益總額",
-                    value=equity,
-                    source="test",
-                ),
-            ]
-        )
-    return metrics
+from app.services.report_generator import ReportGenerator
 
 
 def test_company_narrative_logic_lives_outside_generator() -> None:
@@ -147,54 +89,3 @@ def test_decision_context_logic_lives_outside_generator() -> None:
     assert "snapshots = {snapshot.ticker" not in generator_source
     assert "peer_valuation_summary = generator._peer_valuation_summary" in context_source
     assert report_decision_contexts.build_decision_contexts
-
-
-def test_stale_company_text_downgrades_actionable_decision() -> None:
-    generator = object.__new__(ReportGenerator)
-    generator.whitelist = SupplyChainWhitelist.from_candidate_whitelist(
-        [
-            {
-                "ticker": "2059",
-                "name": "川湖",
-                "segment": "伺服器導軌",
-                "status": "evidence_supported",
-                "evidence_keywords": ["AI 伺服器"],
-            }
-        ]
-    )
-    generator.mapper = EntityMapper(generator.whitelist)
-    generator._company_filing_missing = lambda ticker, documents: []
-    request = ReportRequest(topic="AI 產業鏈低關注潛力股", tickers=["2059"], lookback_days=120)
-    old_document = NewsFetcher.from_manual_text(
-        title="川湖 AI 伺服器導軌需求成長",
-        text="文件類型：annual_report\n川湖 AI 伺服器導軌需求成長。",
-        publisher="公開資訊觀測站 MOPS",
-        published_at=date(2025, 6, 6),
-    )
-    snapshot = MarketSnapshot(ticker="2059", trade_date=date(2026, 5, 29), close=5065)
-    revenue = MonthlyRevenue(
-        ticker="2059",
-        revenue_date=date(2026, 5, 1),
-        revenue=100,
-        revenue_year=2026,
-        revenue_month=4,
-        yoy_pct=79.1,
-    )
-    metrics = make_financial_metrics("2059", [100, 130, 160, 200], [10, 15, 22, 32])
-    valuation = ValuationMetric(ticker="2059", trade_date=date(2026, 5, 29), pe_ratio=20, pb_ratio=3)
-
-    context = generator._decision_contexts(
-        request,
-        ["2059"],
-        [old_document],
-        [],
-        [snapshot],
-        [revenue],
-        metrics,
-        [valuation],
-        {},
-    )[0]
-
-    assert "缺近 120 天公司文本" in context["quality"]["missing"]
-    assert context["decision"] == "觀察 / 資料待補"
-

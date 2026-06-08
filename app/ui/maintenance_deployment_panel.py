@@ -26,6 +26,7 @@ def render_external_deployment_panel(
     upgrade_audit: dict,
     service_snapshot: dict | None = None,
     maintenance_operations: dict | None = None,
+    external_env_check: dict | None = None,
 ) -> None:
     service_snapshot = service_snapshot or {}
     local_dependency_status = (
@@ -45,8 +46,7 @@ def render_external_deployment_panel(
         service_snapshot,
     )
     external_env_check_summary_rows = external_deployment_env_check_summary_rows(
-        upgrade_audit,
-        service_snapshot,
+        external_env_check or {}
     )
     high_risk_unlocker_rows = high_risk_filing_unlocker_rows(upgrade_audit)
     local_neo4j_rows = local_neo4j_operation_rows(upgrade_audit)
@@ -84,8 +84,7 @@ def render_external_deployment_panel(
                 key="external_env_check_target",
             )
             external_env_check_detail_rows = external_deployment_env_check_detail_rows(
-                upgrade_audit,
-                service_snapshot,
+                external_env_check or {},
                 target=str(env_check_target),
             )
             if external_env_check_detail_rows:

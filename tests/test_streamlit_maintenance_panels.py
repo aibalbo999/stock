@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from app.services.external_deployment_env_gaps import (
+    external_deployment_env_check_status_report,
+)
 from app.ui.maintenance_deployment_panel import (
     maintenance_operation_recommendation_caption,
     maintenance_operation_rows,
@@ -1069,21 +1072,16 @@ def test_external_deployment_env_check_rows_surface_env_drift_without_secret_lea
         ]
     }
 
-    summary_rows = helpers["external_deployment_env_check_summary_rows"](
-        audit,
-        {},
+    check_payload = external_deployment_env_check_status_report(
+        upgrade_audit=audit,
+        service_snapshot={},
         env_file=str(env_file),
     )
-    host_rows = helpers["external_deployment_env_check_detail_rows"](
-        audit,
-        {},
-        env_file=str(env_file),
-    )
+    summary_rows = helpers["external_deployment_env_check_summary_rows"](check_payload)
+    host_rows = helpers["external_deployment_env_check_detail_rows"](check_payload)
     compose_rows = helpers["external_deployment_env_check_detail_rows"](
-        audit,
-        {},
+        check_payload,
         target="compose",
-        env_file=str(env_file),
     )
     summary_by_target = {row["目標"]: row for row in summary_rows}
     host_by_key = {row["設定鍵"]: row for row in host_rows}

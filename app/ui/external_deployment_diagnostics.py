@@ -52,30 +52,19 @@ def external_deployment_env_resolution_rows(
 
 
 def external_deployment_env_check_summary_rows(
-    upgrade_audit: dict,
-    service_snapshot: dict | None = None,
-    *,
-    env_file: str = ".env",
+    check_payload: dict,
 ) -> list[dict]:
-    return _external_deployment_env_check_summary_rows(
-        upgrade_audit,
-        service_snapshot,
-        env_file=env_file,
-    )
+    return _external_deployment_env_check_summary_rows(check_payload)
 
 
 def external_deployment_env_check_detail_rows(
-    upgrade_audit: dict,
-    service_snapshot: dict | None = None,
+    check_payload: dict,
     *,
     target: str = "host",
-    env_file: str = ".env",
 ) -> list[dict]:
     return _external_deployment_env_check_detail_rows(
-        upgrade_audit,
-        service_snapshot,
+        check_payload,
         target=target,
-        env_file=env_file,
     )
 
 

@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from app.services.external_deployment_env_gaps import (
-    external_deployment_env_check_report as _external_deployment_env_check_report,
-    external_deployment_env_gap_report as _external_deployment_env_gap_report,
     external_deployment_env_key_rows as _external_deployment_env_key_rows,
     external_deployment_env_resolution_rows as _external_deployment_env_resolution_rows,
 )
-
-ENV_CHECK_TARGETS = ("host", "compose")
 
 
 def external_deployment_env_key_rows(
@@ -24,47 +20,22 @@ def external_deployment_env_resolution_rows(
     return _external_deployment_env_resolution_rows(upgrade_audit, service_snapshot)
 
 
-def external_deployment_env_check_summary_rows(
-    upgrade_audit: dict,
-    service_snapshot: dict | None = None,
-    *,
-    env_file: str = ".env",
-) -> list[dict]:
-    gap_report = _external_deployment_env_gap_report(
-        upgrade_audit=upgrade_audit,
-        service_snapshot=service_snapshot or {},
-    )
+def external_deployment_env_check_summary_rows(check_payload: dict) -> list[dict]:
     return [
-        _external_deployment_env_check_summary_row(
-            _external_deployment_env_check_report(
-                gap_report,
-                target=target,
-                env_file=env_file,
-            )
-        )
-        for target in ENV_CHECK_TARGETS
+        _external_deployment_env_check_summary_row(check)
+        for check in _external_deployment_env_check_reports(check_payload)
     ]
 
 
 def external_deployment_env_check_detail_rows(
-    upgrade_audit: dict,
-    service_snapshot: dict | None = None,
+    check_payload: dict,
     *,
     target: str = "host",
-    env_file: str = ".env",
 ) -> list[dict]:
-    gap_report = _external_deployment_env_gap_report(
-        upgrade_audit=upgrade_audit,
-        service_snapshot=service_snapshot or {},
-    )
-    check = _external_deployment_env_check_report(
-        gap_report,
-        target=target,
-        env_file=env_file,
-    )
+    check = _external_deployment_env_check_report_for_target(check_payload, target=target)
     return [
         {
-            "目標": check["target"],
+            "目標": check.get("target") or str(target or "host"),
             "設定鍵": row["env_key"],
             "狀態": _external_deployment_env_check_status_label(str(row["status"])),
             "建議值": row["expected_value"],
@@ -76,6 +47,32 @@ def external_deployment_env_check_detail_rows(
         for row in check.get("rows") or []
         if isinstance(row, dict)
     ]
+
+
+def _external_deployment_env_check_reports(check_payload: dict) -> list[dict]:
+    checks = check_payload.get("checks") if isinstance(check_payload, dict) else {}
+    if not isinstance(checks, dict):
+        return []
+    ordered_targets = [str(target) for target in check_payload.get("targets") or []]
+    if not ordered_targets:
+        ordered_targets = sorted(str(target) for target in checks)
+    return [
+        checks[target]
+        for target in ordered_targets
+        if isinstance(checks.get(target), dict)
+    ]
+
+
+def _external_deployment_env_check_report_for_target(
+    check_payload: dict,
+    *,
+    target: str,
+) -> dict:
+    checks = check_payload.get("checks") if isinstance(check_payload, dict) else {}
+    if not isinstance(checks, dict):
+        return {}
+    check = checks.get(str(target or "host").strip().lower())
+    return check if isinstance(check, dict) else {}
 
 
 def _external_deployment_env_check_summary_row(check: dict) -> dict:

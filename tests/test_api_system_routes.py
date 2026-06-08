@@ -16,6 +16,7 @@ def system_router_client(
     maintenance_diagnostic_run_func=None,
     maintenance_operation_catalog: dict | None = None,
     maintenance_operation_run_func=None,
+    external_env_check_func=None,
 ) -> TestClient:
     router = create_system_router(
         db_status_func=lambda: db_status or {},
@@ -27,6 +28,7 @@ def system_router_client(
         maintenance_operation_catalog_func=lambda: maintenance_operation_catalog or {},
         maintenance_operation_run_func=maintenance_operation_run_func
         or (lambda action_id, **kwargs: {"action_id": action_id, **kwargs}),
+        external_env_check_func=external_env_check_func or (lambda **kwargs: {"kwargs": kwargs}),
     )
 
     app = FastAPI()
@@ -95,6 +97,43 @@ def test_system_router_upgrade_audit_endpoint_passes_strict_external_flag() -> N
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     assert captured["kwargs"] == {"strict_external": True}
+
+
+def test_system_router_external_env_check_endpoint_delegates_options() -> None:
+    captured = {}
+
+    def fake_env_check(**kwargs):
+        captured["kwargs"] = kwargs
+        return {
+            "status": "action_required",
+            "target": "compose",
+            "checks": {"compose": {"status": "action_required", "rows": []}},
+        }
+
+    response = system_router_client(external_env_check_func=fake_env_check).get(
+        "/services/external-deployment/env-check"
+        "?target=compose&strict_external=true&include_process_env=true"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["target"] == "compose"
+    assert captured["kwargs"] == {
+        "target": "compose",
+        "strict_external": True,
+        "include_process_env": True,
+    }
+
+
+def test_system_router_external_env_check_endpoint_rejects_bad_target() -> None:
+    def fake_env_check(**_kwargs):
+        raise ValueError("Unsupported external env check target: 'prod'")
+
+    response = system_router_client(external_env_check_func=fake_env_check).get(
+        "/services/external-deployment/env-check?target=prod"
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported external env check target" in response.json()["detail"]
 
 
 def test_system_router_maintenance_diagnostics_catalog_endpoint() -> None:

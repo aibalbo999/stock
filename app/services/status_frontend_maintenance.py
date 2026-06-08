@@ -44,7 +44,10 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         in system_settings_maintenance_source
         and 'maintenance_operations = load_api_json_or_default(\n        "/maintenance/operations"'
         in system_settings_maintenance_source
-        and "maintenance_operations,\n    )" in system_settings_maintenance_source
+        and 'external_env_check = load_api_json_or_default(\n        "/services/external-deployment/env-check"'
+        in system_settings_maintenance_source
+        and "maintenance_operations,\n        external_env_check,\n    )"
+        in system_settings_maintenance_source
         and "render_background_task_observability_panel(\n        service_snapshot,"
         in system_settings_maintenance_source
         and 'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'

@@ -5,6 +5,9 @@ from collections.abc import Callable
 from fastapi import APIRouter, HTTPException
 
 from app.api.schemas import MaintenanceOperationRunRequest
+from app.services.external_deployment_env_gaps import (
+    external_deployment_env_check_status_report,
+)
 from app.services.maintenance_diagnostics import (
     maintenance_diagnostic_action_catalog,
     run_maintenance_diagnostic_action,
@@ -24,6 +27,7 @@ def create_system_router(
     maintenance_diagnostic_run_func: Callable[[str], dict] = run_maintenance_diagnostic_action,
     maintenance_operation_catalog_func: Callable[[], dict] = maintenance_operation_catalog,
     maintenance_operation_run_func: Callable[..., dict] = run_maintenance_operation,
+    external_env_check_func: Callable[..., dict] = external_deployment_env_check_status_report,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -42,6 +46,21 @@ def create_system_router(
     @router.get("/services/upgrade-audit")
     def services_upgrade_audit(strict_external: bool = False) -> dict:
         return upgrade_audit_func(strict_external=strict_external)
+
+    @router.get("/services/external-deployment/env-check")
+    def services_external_deployment_env_check(
+        target: str = "all",
+        strict_external: bool = False,
+        include_process_env: bool = False,
+    ) -> dict:
+        try:
+            return external_env_check_func(
+                target=target,
+                strict_external=strict_external,
+                include_process_env=include_process_env,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/maintenance/diagnostics")
     def maintenance_diagnostics() -> dict:

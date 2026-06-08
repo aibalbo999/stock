@@ -424,7 +424,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "local_dependency_wait" in external_readiness_service_source
     assert '"驗證指令"' in external_readiness_service_source
     assert "render_external_deployment_panel(\n        upgrade_audit," in source
-    assert "maintenance_operations,\n    )" in source
+    assert 'load_api_json_or_default(\n        "/services/external-deployment/env-check"' in source
+    assert "maintenance_operations,\n        external_env_check,\n    )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source
     assert "render_background_task_observability_panel(\n        service_snapshot," in source
     assert "maintenance_diagnostics,\n    )" in source

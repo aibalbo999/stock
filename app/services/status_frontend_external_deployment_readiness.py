@@ -67,7 +67,10 @@ def frontend_external_deployment_readiness_status(
         "ui_maintenance_operations_enabled": (
             'maintenance_operations = load_api_json_or_default(\n        "/maintenance/operations"'
             in system_settings_maintenance_source
-            and "maintenance_operations,\n    )" in system_settings_maintenance_source
+            and 'external_env_check = load_api_json_or_default(\n        "/services/external-deployment/env-check"'
+            in system_settings_maintenance_source
+            and "maintenance_operations,\n        external_env_check,\n    )"
+            in system_settings_maintenance_source
             and "def maintenance_operation_rows(" in maintenance_deployment_panel_source
             and "本機依賴操作" in maintenance_deployment_panel_source
             and "選擇維護操作" in maintenance_deployment_panel_source

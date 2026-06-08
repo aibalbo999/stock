@@ -55,6 +55,11 @@ def render_maintenance_tab() -> None:
         {"operations": []},
         error_message="讀取維護操作失敗",
     )
+    external_env_check = load_api_json_or_default(
+        "/services/external-deployment/env-check",
+        {"status": "unknown", "checks": {}},
+        error_message="讀取外部部署 .env 檢查失敗",
+    )
     report_observability_summary = load_api_json_or_default(
         "/reports/observability/summary?limit=20",
         {"status": "unknown", "totals": {}, "reports": [], "alerts": []},
@@ -84,6 +89,7 @@ def render_maintenance_tab() -> None:
         upgrade_audit,
         service_snapshot,
         maintenance_operations,
+        external_env_check,
     )
     render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)

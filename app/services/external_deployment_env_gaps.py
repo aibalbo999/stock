@@ -118,6 +118,7 @@ EXTERNAL_CAPABILITY_ENV_DEFAULTS = {
         "COMPANY_FILING_STRUCTURED_API_TOKEN",
     ),
 }
+EXTERNAL_ENV_CHECK_TARGETS = ("host", "compose")
 
 
 def external_deployment_env_gap_report(
@@ -159,6 +160,43 @@ def external_deployment_env_gap_report(
     }
 
 
+def external_deployment_env_check_status_report(
+    *,
+    target: str = "all",
+    env_file: str = ".env",
+    include_process_env: bool = False,
+    strict_external: bool = False,
+    upgrade_audit: dict[str, Any] | None = None,
+    service_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    targets = _external_env_check_targets(target)
+    gap_report = external_deployment_env_gap_report(
+        upgrade_audit=upgrade_audit,
+        service_snapshot=service_snapshot,
+        strict_external=strict_external,
+    )
+    checks = {
+        check_target: external_deployment_env_check_report(
+            gap_report,
+            target=check_target,
+            env_file=env_file,
+            include_process_env=include_process_env,
+        )
+        for check_target in targets
+    }
+    return {
+        "status": _external_env_check_status_from_reports(list(checks.values())),
+        "target": "all" if len(targets) > 1 else targets[0],
+        "targets": targets,
+        "strict_external": bool(strict_external),
+        "include_process_env": bool(include_process_env),
+        "env_file": env_file,
+        "gap_status": gap_report.get("status"),
+        "gap_count": gap_report.get("gap_count", 0),
+        "checks": checks,
+    }
+
+
 def format_external_deployment_env_gap_report(report: dict[str, Any]) -> str:
     lines = [
         (
@@ -190,6 +228,25 @@ def format_external_deployment_env_gap_report(report: dict[str, Any]) -> str:
         lines.append(f"  action: {row['維護動作']}")
         lines.append(f"  verify: {row['驗證指令']}")
     return "\n".join(lines)
+
+
+def _external_env_check_targets(target: str) -> list[str]:
+    normalized = str(target or "all").strip().lower()
+    if normalized == "all":
+        return list(EXTERNAL_ENV_CHECK_TARGETS)
+    if normalized in EXTERNAL_ENV_CHECK_TARGETS:
+        return [normalized]
+    allowed = ", ".join(("all", *EXTERNAL_ENV_CHECK_TARGETS))
+    raise ValueError(f"Unsupported external env check target: {target!r}. Use one of: {allowed}.")
+
+
+def _external_env_check_status_from_reports(reports: list[dict[str, Any]]) -> str:
+    statuses = [str(report.get("status") or "ready") for report in reports]
+    if "action_required" in statuses:
+        return "action_required"
+    if "review_required" in statuses:
+        return "review_required"
+    return "ready"
 
 
 def external_deployment_env_key_rows(

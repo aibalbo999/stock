@@ -35,6 +35,7 @@ from app.services import (
     report_data_quality,
     report_formatting,
     report_scope_sections,
+    report_score_breakdown,
     report_source_coverage,
 )
 from app.services.report_generator import ReportExecutionError, ReportGenerator, report_execution_summary
@@ -2376,6 +2377,28 @@ def test_score_breakdown_explains_factors_and_data_quality() -> None:
     assert "| 2330 台積電 |" in breakdown
     assert "月營收年增率 18.50% +2" in breakdown
     assert "公司相關文本僅 0 筆" in breakdown
+
+
+def test_score_breakdown_render_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    score_source = Path("app/services/report_score_breakdown.py").read_text()
+    generator = object.__new__(ReportGenerator)
+    generator.whitelist = SupplyChainWhitelist()
+    generator.mapper = EntityMapper(generator.whitelist)
+
+    assert "report_score_breakdown" in generator_source
+    assert "def render_score_breakdown(" in score_source
+    assert "estimate_potential(" in score_source
+    assert "此段拆解研究分級來源" not in generator_source
+    assert generator._render_score_breakdown([], [], [], []) == report_score_breakdown.render_score_breakdown(
+        tickers=[],
+        documents=[],
+        findings=[],
+        market_snapshots=[],
+        companies=generator.whitelist.companies(),
+        related_documents_resolver=generator._related_documents,
+        related_findings_resolver=generator._related_findings,
+    )
 
 
 def test_data_quality_section_explains_complete_and_missing_layers() -> None:

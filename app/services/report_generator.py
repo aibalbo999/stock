@@ -71,6 +71,7 @@ from app.services import (
     report_formatting,
     report_potential,
     report_scope_sections,
+    report_score_breakdown,
     report_source_coverage,
 )
 from app.services.report_renderer import ReportMarkdownRenderer
@@ -1473,53 +1474,19 @@ class ReportGenerator:
         valuation_metrics: list[ValuationMetric] | None = None,
         leading_signals: dict[str, LeadingSignal] | None = None,
     ) -> str:
-        if not tickers:
-            return "目前無足夠數據判斷。"
-
-        snapshots = {snapshot.ticker: snapshot for snapshot in market_snapshots}
-        revenues = {revenue.ticker: revenue for revenue in monthly_revenues or []}
-        metrics_by_ticker = self._group_financial_metrics(financial_metrics or [])
-        valuations = {valuation.ticker: valuation for valuation in valuation_metrics or []}
-        peer_valuation_summary = self._peer_valuation_summary(list(valuations.values()))
-        companies = {company.ticker: company for company in self.whitelist.companies()}
-        lines = [
-            "此段拆解研究分級來源；分數是排序與風險控管用途，不代表預期報酬率。",
-            "",
-            "| 股票 | 目前情境升值分 | 目前情境降值分 | 主要加分 | 主要風險 | 資料提醒 |",
-            "|---|---:|---:|---|---|---|",
-        ]
-        for ticker in tickers:
-            company = companies.get(ticker)
-            label = f"{ticker} {company.name if company else ticker}"
-            related_documents = self._related_documents(ticker, documents)
-            related_findings = self._related_findings(ticker, findings)
-            estimate = self._estimate_potential(
-                related_documents,
-                related_findings,
-                snapshots.get(ticker),
-                revenues.get(ticker),
-                (leading_signals or {}).get(ticker),
-                metrics_by_ticker.get(ticker, []),
-                valuations.get(ticker),
-                peer_valuation_summary,
-            )
-            lines.append(
-                self._table_row(
-                    [
-                        label,
-                        f"{estimate['upside_pct']} 分",
-                        f"{estimate['downside_pct']} 分",
-                        self._format_factors(estimate["upside_factors"]),
-                        self._format_factors(estimate["downside_factors"]),
-                        self._score_data_note(
-                            estimate["confidence_notes"],
-                            metrics_by_ticker.get(ticker, []),
-                            valuations.get(ticker),
-                        ),
-                    ]
-                )
-            )
-        return "\n".join(lines)
+        return report_score_breakdown.render_score_breakdown(
+            tickers=tickers,
+            documents=documents,
+            findings=findings,
+            market_snapshots=market_snapshots,
+            monthly_revenues=monthly_revenues,
+            financial_metrics=financial_metrics,
+            valuation_metrics=valuation_metrics,
+            leading_signals=leading_signals,
+            companies=self.whitelist.companies(),
+            related_documents_resolver=self._related_documents,
+            related_findings_resolver=self._related_findings,
+        )
 
     def _render_source_coverage(
         self,

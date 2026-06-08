@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import requests
 import streamlit as st
 
 from app.core.time import today_taipei
 from app.services.whitelist import SupplyChainWhitelist
-from app.ui.api_client import api_get, request_error_message
+from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.report_panels import (
@@ -54,7 +53,9 @@ def render_analysis_workspace() -> None:
         """.format(today=today_taipei().isoformat()),
         unsafe_allow_html=True,
     )
-    render_section_header("建立一次分析", "預設使用 AI 拆解主題並抓取國內外資料；不確定時維持預設即可。")
+    render_section_header(
+        "建立一次分析", "預設使用 AI 拆解主題並抓取國內外資料；不確定時維持預設即可。"
+    )
     analysis_config_col, analysis_result_col = st.columns([0.36, 0.64], gap="large")
     with analysis_config_col:
         with st.form("analysis_form"):
@@ -82,8 +83,12 @@ def render_analysis_workspace() -> None:
             beginner_mode = investor_profile == "beginner"
 
             st.markdown("#### 風險與資金")
-            max_position_pct = st.slider("單檔上限", min_value=1, max_value=20, value=10, format="%d%%")
-            cash_reserve_pct = st.slider("保留現金", min_value=10, max_value=80, value=30, format="%d%%")
+            max_position_pct = st.slider(
+                "單檔上限", min_value=1, max_value=20, value=10, format="%d%%"
+            )
+            cash_reserve_pct = st.slider(
+                "保留現金", min_value=10, max_value=80, value=30, format="%d%%"
+            )
             discovery_limit = st.slider("資料抓取強度", min_value=2, max_value=20, value=5)
 
             with st.expander("進階選項"):
@@ -102,7 +107,11 @@ def render_analysis_workspace() -> None:
                     "報告引用資料量",
                     min_value=40,
                     max_value=200,
-                    value=180 if analysis_mode == "deep" else 120 if analysis_mode == "standard" else 80,
+                    value=180
+                    if analysis_mode == "deep"
+                    else 120
+                    if analysis_mode == "standard"
+                    else 80,
                     step=20,
                 )
                 tickers = st.multiselect(
@@ -110,7 +119,9 @@ def render_analysis_workspace() -> None:
                     options=sorted(SupplyChainWhitelist().allowed_tickers()),
                     default=[],
                 )
-                st.caption("分析任務一律交由 FastAPI / Celery 背景執行，送出後可用 task id 查詢進度。")
+                st.caption(
+                    "分析任務一律交由 FastAPI / Celery 背景執行，送出後可用 task id 查詢進度。"
+                )
 
             run_sync = st.form_submit_button("執行分析", type="primary")
 
@@ -178,15 +189,14 @@ def render_analysis_workspace() -> None:
                 if not task_id:
                     st.warning("請輸入 task id。")
                 else:
-                    try:
-                        st.json(api_get(f"/tasks/{task_id}/run"))
-                    except requests.HTTPError as exc:
-                        if exc.response.status_code == 404:
-                            st.info("尚未找到對應紀錄；任務剛送出時可能需要等待。")
-                        else:
-                            st.error(f"查詢失敗：{request_error_message(exc)}")
-                    except requests.RequestException as exc:
-                        st.error(f"查詢失敗：{request_error_message(exc)}")
+                    task_run = load_api_json_or_default(
+                        f"/tasks/{task_id}/run",
+                        None,
+                        error_message="查詢失敗",
+                        not_found_message="尚未找到對應紀錄；任務剛送出時可能需要等待。",
+                    )
+                    if task_run is not None:
+                        st.json(task_run)
 
     with analysis_result_col:
         result = st.session_state.get("last_analysis_result")
@@ -198,7 +208,9 @@ def render_analysis_workspace() -> None:
             metric_cols[0].metric("報告", f"#{result['report_id']}")
             metric_cols[1].metric(
                 "正式分析股票",
-                metric_count_from_payload(result, "promoted_tickers", analysis_metrics, "promoted_count", 0),
+                metric_count_from_payload(
+                    result, "promoted_tickers", analysis_metrics, "promoted_count", 0
+                ),
             )
             metric_cols[2].metric("候選清單", len(result.get("candidate_whitelist", [])))
             metric_cols[3].metric("設定總資金", f"{int(investor_capital):,}")
@@ -217,12 +229,18 @@ def render_analysis_workspace() -> None:
             with result_tabs[1]:
                 render_quality_gate(result)
                 render_company_data_audit(int(result["report_id"]))
-                render_follow_up_controls(int(result["report_id"]), report_markdown, scope="analysis_result")
+                render_follow_up_controls(
+                    int(result["report_id"]), report_markdown, scope="analysis_result"
+                )
                 with st.expander("資料來源概況"):
                     render_source_audit(result)
                 if result.get("candidate_whitelist"):
                     st.markdown("**候選清單驗證**")
-                    st.dataframe(candidate_rows(result["candidate_whitelist"]), width="stretch", hide_index=True)
+                    st.dataframe(
+                        candidate_rows(result["candidate_whitelist"]),
+                        width="stretch",
+                        hide_index=True,
+                    )
                 with st.expander("進階：原始報告文字"):
                     st.markdown(report_markdown)
         else:

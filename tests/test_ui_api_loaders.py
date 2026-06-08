@@ -11,12 +11,16 @@ class FakeStreamlit:
     def __init__(self) -> None:
         self.errors: list[str] = []
         self.warnings: list[str] = []
+        self.infos: list[str] = []
 
     def error(self, message: str) -> None:
         self.errors.append(message)
 
     def warning(self, message: str) -> None:
         self.warnings.append(message)
+
+    def info(self, message: str) -> None:
+        self.infos.append(message)
 
 
 def test_load_api_json_or_default_returns_api_payload(monkeypatch) -> None:
@@ -107,3 +111,31 @@ def test_load_api_json_or_default_can_suppress_notification(monkeypatch) -> None
     ) == {"_load_error": True}
     assert fake_st.errors == []
     assert fake_st.warnings == []
+    assert fake_st.infos == []
+
+
+def test_load_api_json_or_default_reports_not_found_info(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(api_loaders, "st", fake_st)
+
+    response = SimpleNamespace(status_code=404, json=lambda: {"detail": "not found"})
+    exc = requests.HTTPError("404 Client Error")
+    exc.response = response
+    monkeypatch.setattr(
+        api_loaders,
+        "api_get",
+        lambda path: (_ for _ in ()).throw(exc),
+    )
+
+    assert (
+        api_loaders.load_api_json_or_default(
+            "/tasks/task-1/run",
+            None,
+            error_message="查詢失敗",
+            not_found_message="尚未找到對應紀錄；任務剛送出時可能需要等待。",
+        )
+        is None
+    )
+    assert fake_st.errors == []
+    assert fake_st.warnings == []
+    assert fake_st.infos == ["尚未找到對應紀錄；任務剛送出時可能需要等待。"]

@@ -107,6 +107,47 @@ def basic_intro(
     ]
 
 
+def market_data_line(snapshot: MarketSnapshot | None) -> str:
+    if not snapshot:
+        return "- 市場資料：目前無足夠數據判斷。"
+    return (
+        "- 市場資料："
+        f"{snapshot.trade_date.isoformat()} 收盤 {snapshot.close if snapshot.close is not None else 'NA'}，"
+        f"漲跌 {snapshot.spread if snapshot.spread is not None else 'NA'}，"
+        f"成交量 {snapshot.trading_volume if snapshot.trading_volume is not None else 'NA'}；"
+        f"來源：{snapshot.source}，擷取時間（台灣）{format_taipei(snapshot.fetched_at)}"
+    )
+
+
+def monthly_revenue_line(revenue: MonthlyRevenue | None) -> str:
+    if not revenue:
+        return "- 月營收：目前無足夠數據判斷。"
+    yoy = f"{revenue.yoy_pct:.2f}%" if revenue.yoy_pct is not None else "無去年同期可比資料"
+    return (
+        "- 月營收："
+        f"{revenue.revenue_year}-{revenue.revenue_month:02d} 營收 {revenue.revenue:,}，"
+        f"年增率 {yoy}；來源：{revenue.source}，"
+        f"擷取時間（台灣）{format_taipei(revenue.fetched_at)}"
+    )
+
+
+def evidence_lines(related_documents: list[NewsDocument], related_findings) -> list[str]:
+    if related_findings:
+        lines = []
+        for finding in related_findings[:3]:
+            source_date = finding.source.published_at.isoformat() if finding.source.published_at else "日期不明"
+            lines.append(
+                f"- 風險/機會證據：{finding.risk_type.value}；{finding.evidence}；"
+                f"來源：{source_date} {finding.source.publisher or ''} {finding.source.title}"
+            )
+        if len(related_findings) > 3:
+            lines.append(f"- 其餘 {len(related_findings) - 3} 筆證據已收斂於風險摘要與資料來源附錄。")
+        return lines
+    if related_documents:
+        return [f"- 新聞/研究證據：找到 {len(related_documents)} 筆相關文本，但未形成可歸因風險。"]
+    return ["- 新聞/研究證據：目前無足夠數據判斷。"]
+
+
 class CompanyAnalysisDependencies(Protocol):
     whitelist: Any
 
@@ -267,41 +308,9 @@ def render_company_analysis_section(
                 dependencies._news_document_filing_type,
             )
         )
-        if snapshot:
-            detail_blocks.append(
-                "- 市場資料："
-                f"{snapshot.trade_date.isoformat()} 收盤 {snapshot.close if snapshot.close is not None else 'NA'}，"
-                f"漲跌 {snapshot.spread if snapshot.spread is not None else 'NA'}，"
-                f"成交量 {snapshot.trading_volume if snapshot.trading_volume is not None else 'NA'}；"
-                f"來源：{snapshot.source}，擷取時間（台灣）{format_taipei(snapshot.fetched_at)}"
-            )
-        else:
-            detail_blocks.append("- 市場資料：目前無足夠數據判斷。")
-
-        if revenue:
-            yoy = f"{revenue.yoy_pct:.2f}%" if revenue.yoy_pct is not None else "無去年同期可比資料"
-            detail_blocks.append(
-                "- 月營收："
-                f"{revenue.revenue_year}-{revenue.revenue_month:02d} 營收 {revenue.revenue:,}，"
-                f"年增率 {yoy}；來源：{revenue.source}，"
-                f"擷取時間（台灣）{format_taipei(revenue.fetched_at)}"
-            )
-        else:
-            detail_blocks.append("- 月營收：目前無足夠數據判斷。")
-
-        if related_findings:
-            for finding in related_findings[:3]:
-                source_date = finding.source.published_at.isoformat() if finding.source.published_at else "日期不明"
-                detail_blocks.append(
-                    f"- 風險/機會證據：{finding.risk_type.value}；{finding.evidence}；"
-                    f"來源：{source_date} {finding.source.publisher or ''} {finding.source.title}"
-                )
-            if len(related_findings) > 3:
-                detail_blocks.append(f"- 其餘 {len(related_findings) - 3} 筆證據已收斂於風險摘要與資料來源附錄。")
-        elif related_documents:
-            detail_blocks.append(f"- 新聞/研究證據：找到 {len(related_documents)} 筆相關文本，但未形成可歸因風險。")
-        else:
-            detail_blocks.append("- 新聞/研究證據：目前無足夠數據判斷。")
+        detail_blocks.append(market_data_line(snapshot))
+        detail_blocks.append(monthly_revenue_line(revenue))
+        detail_blocks.extend(evidence_lines(related_documents, related_findings))
         detail_blocks.extend(
             report_company_narrative.render_wall_street_company_sections(
                 name,

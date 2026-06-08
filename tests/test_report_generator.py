@@ -861,6 +861,53 @@ def test_company_analysis_overview_logic_lives_outside_generator() -> None:
     )
 
 
+def test_company_analysis_detail_block_helpers_format_market_revenue_and_evidence() -> None:
+    snapshot = MarketSnapshot(
+        ticker="2330",
+        trade_date=date(2026, 5, 22),
+        close=1000.0,
+        spread=25.0,
+        trading_volume=12345,
+        source="FinMind TaiwanStockPrice",
+    )
+    revenue = MonthlyRevenue(
+        ticker="2330",
+        revenue_date=date(2026, 4, 30),
+        revenue=410_725_118_000,
+        revenue_year=2026,
+        revenue_month=4,
+        yoy_pct=25.0,
+        source="FinMind TaiwanStockMonthRevenue",
+    )
+    document = NewsFetcher.from_manual_text(
+        title="台積電 AI 需求成長",
+        text="台積電 AI 需求成長。",
+        publisher="測試新聞",
+        published_at=date(2026, 5, 20),
+    )
+    findings = [
+        make_finding("2330", "台積電", f"測試風險證據 {index}", RiskType.structural_bottleneck)
+        for index in range(4)
+    ]
+
+    market_line = report_company_analysis.market_data_line(snapshot)
+    revenue_line = report_company_analysis.monthly_revenue_line(revenue)
+    finding_lines = report_company_analysis.evidence_lines([document], findings)
+
+    assert "2026-05-22 收盤 1000.0" in market_line
+    assert "成交量 12345" in market_line
+    assert report_company_analysis.market_data_line(None) == "- 市場資料：目前無足夠數據判斷。"
+    assert "2026-04 營收 410,725,118,000" in revenue_line
+    assert "年增率 25.00%" in revenue_line
+    assert report_company_analysis.monthly_revenue_line(None) == "- 月營收：目前無足夠數據判斷。"
+    assert finding_lines[0].startswith("- 風險/機會證據：structural_bottleneck；測試風險證據 0")
+    assert finding_lines[-1] == "- 其餘 1 筆證據已收斂於風險摘要與資料來源附錄。"
+    assert report_company_analysis.evidence_lines([document], []) == [
+        "- 新聞/研究證據：找到 1 筆相關文本，但未形成可歸因風險。"
+    ]
+    assert report_company_analysis.evidence_lines([], []) == ["- 新聞/研究證據：目前無足夠數據判斷。"]
+
+
 def test_investment_recommendations_logic_lives_outside_generator() -> None:
     generator_source = Path("app/services/report_generator.py").read_text()
     recommendations_source = Path("app/services/report_investment_recommendations.py").read_text()

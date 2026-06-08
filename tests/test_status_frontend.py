@@ -29,6 +29,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ]
     assert status["frontend"]["ui_maintenance_panels_extracted"] is True
     assert status["frontend"]["ui_maintenance_panels_path"] == "app/ui/maintenance_panels.py"
+    assert status["frontend"]["ui_maintenance_panel_module_paths"] == [
+        "app/ui/maintenance_deployment_panel.py",
+        "app/ui/maintenance_ai_panels.py",
+        "app/ui/maintenance_task_panels.py",
+        "app/ui/maintenance_cleanup_panel.py",
+    ]
     assert status["frontend"]["ui_api_client_extracted"] is True
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
     assert status["frontend"]["ui_background_task_client_extracted"] is True

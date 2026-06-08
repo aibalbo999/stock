@@ -18,6 +18,10 @@ REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
+MAINTENANCE_DEPLOYMENT_PANEL_SOURCE = Path("app/ui/maintenance_deployment_panel.py")
+MAINTENANCE_AI_PANELS_SOURCE = Path("app/ui/maintenance_ai_panels.py")
+MAINTENANCE_TASK_PANELS_SOURCE = Path("app/ui/maintenance_task_panels.py")
+MAINTENANCE_CLEANUP_PANEL_SOURCE = Path("app/ui/maintenance_cleanup_panel.py")
 REPORT_OBSERVABILITY_PANEL_SOURCE = Path("app/ui/report_observability_panel.py")
 EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE = Path("app/ui/external_deployment_diagnostics.py")
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
@@ -39,6 +43,10 @@ UI_SOURCE_FILES = [
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
     MAINTENANCE_PANELS_SOURCE,
+    MAINTENANCE_DEPLOYMENT_PANEL_SOURCE,
+    MAINTENANCE_AI_PANELS_SOURCE,
+    MAINTENANCE_TASK_PANELS_SOURCE,
+    MAINTENANCE_CLEANUP_PANEL_SOURCE,
     REPORT_OBSERVABILITY_PANEL_SOURCE,
     EXTERNAL_DEPLOYMENT_DIAGNOSTICS_SOURCE,
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
@@ -116,6 +124,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_panels import (" in source
+    assert "from app.ui.maintenance_deployment_panel import render_external_deployment_panel" in source
+    assert "from app.ui.maintenance_ai_panels import (" in source
+    assert "from app.ui.maintenance_task_panels import render_background_task_observability_panel" in source
+    assert "from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel" in source
     assert "from app.ui.maintenance_status import (" in source
     assert "from app.ui.external_deployment_diagnostics import (" in source
     assert "from app.ui.task_queue_diagnostics import (" in source
@@ -151,6 +163,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'def render_background_task_observability_panel(' in source
     assert 'def render_report_quality_panel(report_quality_summary: dict) -> None:' in source
     assert 'def render_maintenance_cleanup_panel() -> None:' in source
+    assert 'def render_external_deployment_panel(' not in MAINTENANCE_PANELS_SOURCE.read_text()
+    assert 'def render_ai_usage_panel(' not in MAINTENANCE_PANELS_SOURCE.read_text()
+    assert 'def render_background_task_observability_panel(' not in MAINTENANCE_PANELS_SOURCE.read_text()
+    assert 'def render_maintenance_cleanup_panel(' not in MAINTENANCE_PANELS_SOURCE.read_text()
     assert 'def render_market_data_tab(allowed_tickers: list[str]) -> None:' in source
     assert 'def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:' in source
     assert 'def render_rss_ingest_tab() -> None:' in source

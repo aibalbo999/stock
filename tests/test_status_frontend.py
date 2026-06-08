@@ -20,6 +20,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     status_frontend_external_readiness_source = Path(
         "app/services/status_frontend_external_deployment_readiness.py"
     ).read_text()
+    status_frontend_report_rendering_source = Path(
+        "app/services/status_frontend_report_rendering.py"
+    ).read_text()
+    status_frontend_report_workflow_source = Path(
+        "app/services/status_frontend_report_workflow.py"
+    ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
     status_frontend_runtime_source = Path("app/services/status_frontend_runtime.py").read_text()
     status_frontend_maintenance_source = Path(
@@ -83,6 +89,15 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert '"ui_maintenance_operations_enabled"' not in status_frontend_external_source
     assert "def frontend_report_ui_status(" in status_frontend_reports_source
     assert "frontend_report_ui_status(source_context)" in status_frontend_source
+    assert "def frontend_report_rendering_status(" in status_frontend_report_rendering_source
+    assert "frontend_report_rendering_status(source_context)" in status_frontend_reports_source
+    assert "def frontend_report_workflow_status(" in status_frontend_report_workflow_source
+    assert "frontend_report_workflow_status(source_context)" in status_frontend_reports_source
+    assert '"report_html_renderer_extracted"' not in status_frontend_reports_source
+    assert '"ui_report_observability_summary_enabled"' not in status_frontend_reports_source
+    assert '"ui_report_state_extracted"' not in status_frontend_reports_source
+    assert '"ui_report_sections_extracted"' not in status_frontend_reports_source
+    assert '"external_report_css_loaded"' not in status_frontend_reports_source
     assert '"ui_report_observability_summary_enabled"' not in status_frontend_source
     assert '"ui_report_sections_extracted"' not in status_frontend_source
     assert "def frontend_settings_ui_status(" in status_frontend_settings_source
@@ -143,6 +158,14 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_report_ui_status_extracted"] is True
     assert status["frontend"]["frontend_report_ui_status_path"] == (
         "app/services/status_frontend_reports.py"
+    )
+    assert status["frontend"]["frontend_report_rendering_status_extracted"] is True
+    assert status["frontend"]["frontend_report_rendering_status_path"] == (
+        "app/services/status_frontend_report_rendering.py"
+    )
+    assert status["frontend"]["frontend_report_workflow_status_extracted"] is True
+    assert status["frontend"]["frontend_report_workflow_status_path"] == (
+        "app/services/status_frontend_report_workflow.py"
     )
     assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
     assert status["frontend"]["frontend_settings_ui_status_path"] == (
@@ -325,6 +348,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_runtime_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_report_rendering_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_report_workflow_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True

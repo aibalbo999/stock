@@ -138,6 +138,8 @@ def architecture_capabilities(
             and frontend_status.get("frontend_source_context_extracted")
             and frontend_status.get("frontend_runtime_status_extracted")
             and frontend_status.get("frontend_report_ui_status_extracted")
+            and frontend_status.get("frontend_report_rendering_status_extracted")
+            and frontend_status.get("frontend_report_workflow_status_extracted")
             and frontend_status.get("frontend_task_ui_status_extracted")
             and frontend_status.get("frontend_task_queue_status_extracted")
             and frontend_status.get("frontend_task_failure_status_extracted")

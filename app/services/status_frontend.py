@@ -1,131 +1,50 @@
 from __future__ import annotations
 
-from pathlib import Path
+from app.services.status_frontend_sources import frontend_source_context
 
 
 def frontend_status() -> dict:
-    root = Path(__file__).resolve().parents[2]
-    streamlit_path = root / "streamlit_app.py"
-    pages_dir = root / "pages"
-    ui_dir = root / "app" / "ui"
-    style_path = ui_dir / "styles" / "stock_dashboard.css"
-    report_style_path = ui_dir / "styles" / "report_html.css"
-    streamlit_source = _read_text(streamlit_path)
-    ui_paths = [
-        ui_dir / "dashboard_core.py",
-        ui_dir / "api_client.py",
-        ui_dir / "background_tasks.py",
-        ui_dir / "task_status_panel.py",
-        ui_dir / "report_state.py",
-        ui_dir / "report_panels.py",
-        ui_dir / "report_follow_up_controls.py",
-        ui_dir / "report_markdown.py",
-        ui_dir / "report_candidate_audit.py",
-        ui_dir / "report_formatters.py",
-        ui_dir / "report_sections.py",
-        ui_dir / "report_html.py",
-        ui_dir / "follow_up_status.py",
-        ui_dir / "llm_quota_panel.py",
-        ui_dir / "report_observability_panel.py",
-        ui_dir / "external_deployment_diagnostics.py",
-        ui_dir / "task_queue_diagnostics.py",
-        ui_dir / "task_failure_diagnostics.py",
-        ui_dir / "maintenance_status.py",
-        ui_dir / "analysis_workspace.py",
-        ui_dir / "report_center.py",
-        ui_dir / "data_enrichment.py",
-        ui_dir / "data_enrichment_common.py",
-        ui_dir / "data_enrichment_manual.py",
-        ui_dir / "data_enrichment_market.py",
-        ui_dir / "data_enrichment_rss.py",
-        ui_dir / "data_enrichment_runtime.py",
-        ui_dir / "system_settings.py",
-        ui_dir / "system_settings_maintenance.py",
-        ui_dir / "maintenance_panels.py",
-        ui_dir / "maintenance_deployment_panel.py",
-        ui_dir / "maintenance_ai_panels.py",
-        ui_dir / "maintenance_task_panels.py",
-        ui_dir / "maintenance_cleanup_panel.py",
-        ui_dir / "streamlit_dashboard.py",
-    ]
-    ui_source = "\n".join(_read_text(path) for path in ui_paths)
-    page_source = "\n".join(
-        _read_text(path)
-        for path in [
-            ui_dir / "analysis_workspace.py",
-            ui_dir / "report_center.py",
-            ui_dir / "data_enrichment.py",
-            ui_dir / "data_enrichment_common.py",
-            ui_dir / "data_enrichment_manual.py",
-            ui_dir / "data_enrichment_market.py",
-            ui_dir / "data_enrichment_rss.py",
-            ui_dir / "data_enrichment_runtime.py",
-            ui_dir / "system_settings.py",
-            ui_dir / "system_settings_maintenance.py",
-            ui_dir / "maintenance_panels.py",
-            ui_dir / "maintenance_deployment_panel.py",
-            ui_dir / "maintenance_ai_panels.py",
-            ui_dir / "maintenance_task_panels.py",
-            ui_dir / "maintenance_cleanup_panel.py",
-            ui_dir / "streamlit_dashboard.py",
-        ]
-    )
-    dashboard_core_source = _read_text(ui_dir / "dashboard_core.py")
-    api_client_source = _read_text(ui_dir / "api_client.py")
-    background_tasks_source = _read_text(ui_dir / "background_tasks.py")
-    task_status_panel_source = _read_text(ui_dir / "task_status_panel.py")
-    report_state_source = _read_text(ui_dir / "report_state.py")
-    report_panels_source = _read_text(ui_dir / "report_panels.py")
-    report_follow_up_controls_source = _read_text(ui_dir / "report_follow_up_controls.py")
-    report_markdown_source = _read_text(ui_dir / "report_markdown.py")
-    report_candidate_audit_source = _read_text(ui_dir / "report_candidate_audit.py")
-    report_formatters_source = _read_text(ui_dir / "report_formatters.py")
-    report_sections_source = _read_text(ui_dir / "report_sections.py")
-    report_html_source = _read_text(ui_dir / "report_html.py")
-    system_settings_maintenance_source = _read_text(ui_dir / "system_settings_maintenance.py")
-    maintenance_panels_source = _read_text(ui_dir / "maintenance_panels.py")
-    maintenance_deployment_panel_source = _read_text(ui_dir / "maintenance_deployment_panel.py")
-    maintenance_ai_panels_source = _read_text(ui_dir / "maintenance_ai_panels.py")
-    maintenance_task_panels_source = _read_text(ui_dir / "maintenance_task_panels.py")
-    maintenance_cleanup_panel_source = _read_text(ui_dir / "maintenance_cleanup_panel.py")
-    follow_up_status_source = _read_text(ui_dir / "follow_up_status.py")
-    llm_quota_panel_source = _read_text(ui_dir / "llm_quota_panel.py")
-    report_observability_panel_source = _read_text(ui_dir / "report_observability_panel.py")
-    external_deployment_source = _read_text(ui_dir / "external_deployment_diagnostics.py")
-    task_queue_diagnostics_source = _read_text(ui_dir / "task_queue_diagnostics.py")
-    task_failure_diagnostics_source = _read_text(ui_dir / "task_failure_diagnostics.py")
-    maintenance_status_source = _read_text(ui_dir / "maintenance_status.py")
-    data_enrichment_source = "\n".join(
-        _read_text(path)
-        for path in [
-            ui_dir / "data_enrichment.py",
-            ui_dir / "data_enrichment_common.py",
-            ui_dir / "data_enrichment_manual.py",
-            ui_dir / "data_enrichment_market.py",
-            ui_dir / "data_enrichment_rss.py",
-            ui_dir / "data_enrichment_runtime.py",
-        ]
-    )
-    pages = sorted(path.name for path in pages_dir.glob("*.py")) if pages_dir.exists() else []
-    streamlit_pages_source = "\n".join(
-        _read_text(pages_dir / page_name) for page_name in pages
-    )
-    all_ui_python_paths = sorted(ui_dir.glob("*.py")) if ui_dir.exists() else []
-    frontend_blocking_call_scan_paths = [
-        streamlit_path,
-        *[pages_dir / page_name for page_name in pages],
-        *all_ui_python_paths,
-    ]
-    asyncio_run_locations = _literal_occurrence_locations(
-        frontend_blocking_call_scan_paths,
-        "asyncio.run",
-        root=root,
-    )
-    long_blocking_post_locations = _literal_occurrence_locations(
-        frontend_blocking_call_scan_paths,
-        "timeout=900",
-        root=root,
-    )
+    source_context = frontend_source_context()
+    root = source_context.root
+    ui_dir = source_context.ui_dir
+    style_path = source_context.style_path
+    report_style_path = source_context.report_style_path
+    streamlit_source = source_context.streamlit_source
+    ui_paths = source_context.ui_paths
+    ui_source = source_context.ui_source
+    page_source = source_context.page_source
+    ui_sources = source_context.ui_sources
+    dashboard_core_source = ui_sources["dashboard_core.py"]
+    api_client_source = ui_sources["api_client.py"]
+    background_tasks_source = ui_sources["background_tasks.py"]
+    task_status_panel_source = ui_sources["task_status_panel.py"]
+    report_state_source = ui_sources["report_state.py"]
+    report_panels_source = ui_sources["report_panels.py"]
+    report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
+    report_markdown_source = ui_sources["report_markdown.py"]
+    report_candidate_audit_source = ui_sources["report_candidate_audit.py"]
+    report_formatters_source = ui_sources["report_formatters.py"]
+    report_sections_source = ui_sources["report_sections.py"]
+    report_html_source = ui_sources["report_html.py"]
+    system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
+    maintenance_panels_source = ui_sources["maintenance_panels.py"]
+    maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
+    maintenance_ai_panels_source = ui_sources["maintenance_ai_panels.py"]
+    maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
+    maintenance_cleanup_panel_source = ui_sources["maintenance_cleanup_panel.py"]
+    follow_up_status_source = ui_sources["follow_up_status.py"]
+    llm_quota_panel_source = ui_sources["llm_quota_panel.py"]
+    report_observability_panel_source = ui_sources["report_observability_panel.py"]
+    external_deployment_source = ui_sources["external_deployment_diagnostics.py"]
+    task_queue_diagnostics_source = ui_sources["task_queue_diagnostics.py"]
+    task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
+    maintenance_status_source = ui_sources["maintenance_status.py"]
+    data_enrichment_source = source_context.data_enrichment_source
+    pages = source_context.pages
+    streamlit_pages_source = source_context.streamlit_pages_source
+    frontend_blocking_call_scan_paths = source_context.frontend_blocking_call_scan_paths
+    asyncio_run_locations = source_context.asyncio_run_locations
+    long_blocking_post_locations = source_context.long_blocking_post_locations
     async_task_endpoints = [
         "/pipeline/run_discovered_async",
         "/reports/generate_async",
@@ -143,6 +62,11 @@ def frontend_status() -> dict:
     )
     return {
         "collector_path": "app/services/status_frontend.py",
+        "frontend_source_context_extracted": source_context.__class__.__name__ == "FrontendSourceContext"
+        and "dashboard_core.py" in ui_sources
+        and "maintenance_cleanup_panel.py" in ui_sources
+        and bool(frontend_blocking_call_scan_paths),
+        "frontend_source_context_path": "app/services/status_frontend_sources.py",
         "streamlit_app_lines": len(streamlit_source.splitlines()) if streamlit_source else None,
         "streamlit_entry_uses_navigation": "st.navigation" in streamlit_source
         and "st.Page" in streamlit_source,
@@ -484,26 +408,6 @@ def frontend_status() -> dict:
     }
 
 
-def _literal_occurrence_locations(
-    paths: list[Path],
-    literal: str,
-    *,
-    root: Path,
-) -> list[dict[str, int | str]]:
-    locations: list[dict[str, int | str]] = []
-    for path in paths:
-        source = _read_text(path)
-        count = source.count(literal)
-        if count:
-            locations.append(
-                {
-                    "path": str(path.relative_to(root)),
-                    "count": count,
-                }
-            )
-    return locations
-
-
 def _frontend_constant_value(source: str, name: str) -> int | None:
     prefix = f"{name} = "
     for line in source.splitlines():
@@ -513,10 +417,3 @@ def _frontend_constant_value(source: str, name: str) -> int | None:
             except ValueError:
                 return None
     return None
-
-
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return ""

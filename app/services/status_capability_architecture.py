@@ -125,6 +125,7 @@ def architecture_capabilities(
             and int(frontend_status.get("page_count") or 0) >= 4
             and frontend_status.get("expected_pages_present")
             and frontend_status.get("streamlit_page_import_contract_ready")
+            and frontend_status.get("frontend_source_context_extracted")
             and frontend_status.get("external_css_loaded")
             and frontend_status.get("external_report_css_loaded")
             and frontend_status.get("report_html_renderer_extracted")

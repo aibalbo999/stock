@@ -22,6 +22,7 @@ UI_MODULE_NAMES = (
     "report_observability_panel.py",
     "external_deployment_diagnostics.py",
     "external_deployment_common.py",
+    "external_deployment_env_keys.py",
     "external_deployment_unlocker.py",
     "external_deployment_neo4j.py",
     "external_deployment_structured_api.py",

@@ -38,6 +38,7 @@ def frontend_status() -> dict:
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     external_deployment_source = ui_sources["external_deployment_diagnostics.py"]
     external_deployment_common_source = ui_sources["external_deployment_common.py"]
+    external_deployment_env_keys_source = ui_sources["external_deployment_env_keys.py"]
     external_deployment_unlocker_source = ui_sources["external_deployment_unlocker.py"]
     external_deployment_neo4j_source = ui_sources["external_deployment_neo4j.py"]
     external_deployment_structured_api_source = ui_sources["external_deployment_structured_api.py"]
@@ -265,6 +266,10 @@ def frontend_status() -> dict:
         and "本機依賴修復指引" in ui_source
         and "本機依賴狀態" in ui_source
         and "def external_deployment_smoke_commands(" in external_deployment_source
+        and "def external_deployment_env_key_rows(" in external_deployment_source
+        and "external_deployment_env_key_rows(upgrade_audit, service_snapshot)"
+        in ui_source
+        and "外部設定缺口" in ui_source
         and "optional_warnings" in maintenance_status_source
         and "external_deployment_warning_rows(upgrade_audit)" in ui_source
         and "external_deployment_smoke_commands(upgrade_audit)" in ui_source
@@ -316,6 +321,12 @@ def frontend_status() -> dict:
         and "def local_dependency_status_rows(" in external_deployment_source
         and "def local_dependency_last_start_rows(" in external_deployment_source
         and "def local_dependency_repair_rows(" in external_deployment_source
+        and "def external_deployment_env_key_rows(" in external_deployment_env_keys_source
+        and '"處理類型"' in external_deployment_env_keys_source
+        and '"維護動作"' in external_deployment_env_keys_source
+        and "external_deployment_env_key_rows(upgrade_audit, service_snapshot)"
+        in ui_source
+        and "外部設定缺口" in ui_source
         and "def external_deployment_warning_rows(" in external_deployment_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_source
         and "def local_neo4j_operation_rows(" in external_deployment_source
@@ -355,11 +366,13 @@ def frontend_status() -> dict:
         "ui_external_deployment_domain_helpers_extracted": (
             ui_dir / "external_deployment_common.py"
         ).exists()
+        and (ui_dir / "external_deployment_env_keys.py").exists()
         and (ui_dir / "external_deployment_unlocker.py").exists()
         and (ui_dir / "external_deployment_neo4j.py").exists()
         and (ui_dir / "external_deployment_structured_api.py").exists()
         and "def external_deployment_warning_items(" in external_deployment_common_source
         and "def external_deployment_readiness_rows(" in external_deployment_common_source
+        and "def external_deployment_env_key_rows(" in external_deployment_env_keys_source
         and "EXTERNAL_READINESS_METADATA" in external_deployment_common_source
         and "EXTERNAL_LOCAL_ACTION_METADATA" in external_deployment_common_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
@@ -367,11 +380,13 @@ def frontend_status() -> dict:
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source
         and "def structured_filing_api_operation_rows(" in external_deployment_structured_api_source
         and "from app.ui.external_deployment_common import" in external_deployment_source
+        and "from app.ui.external_deployment_env_keys import" in external_deployment_source
         and "from app.ui.external_deployment_unlocker import" in external_deployment_source
         and "from app.ui.external_deployment_neo4j import" in external_deployment_source
         and "from app.ui.external_deployment_structured_api import" in external_deployment_source,
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",
+            "app/ui/external_deployment_env_keys.py",
             "app/ui/external_deployment_unlocker.py",
             "app/ui/external_deployment_neo4j.py",
             "app/ui/external_deployment_structured_api.py",

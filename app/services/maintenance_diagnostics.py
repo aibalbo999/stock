@@ -27,6 +27,15 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "external_deployment_env_gaps": {
+        "id": "external_deployment_env_gaps",
+        "label": "External deployment env gaps",
+        "description": "彙整外部部署選配缺少的 env key，區分本機可套用與需人工補密鑰。",
+        "display_command": ".venv/bin/python scripts/external_deployment_env_gaps.py --json",
+        "argv": [sys.executable, "scripts/external_deployment_env_gaps.py", "--json"],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
     "celery_inspect_ping": {
         "id": "celery_inspect_ping",
         "label": "Celery inspect ping",

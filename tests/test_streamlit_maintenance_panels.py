@@ -851,12 +851,22 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
     assert rows_by_key[("外部 Neo4j 匯入連線", "NEO4J_URI")]["建議值"] == (
         "neo4j://localhost:7687"
     )
+    assert rows_by_key[("外部 Neo4j 匯入連線", "NEO4J_URI")]["處理類型"] == "本機可套用"
+    assert "start_system.py --start-dependencies" in rows_by_key[
+        ("外部 Neo4j 匯入連線", "NEO4J_URI")
+    ]["維護動作"]
     assert rows_by_key[
         ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
     ]["狀態"] == "缺少"
     assert rows_by_key[
         ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
     ]["建議值"] == "<token>"
+    assert rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    ]["處理類型"] == "需人工密鑰"
+    assert "不由維護操作寫入" in rows_by_key[
+        ("MOPS/TWSE/TPEx 高風險文件 unlocker", "COMPANY_FILING_BROWSER_RENDER_TOKEN")
+    ]["維護動作"]
     assert rows_by_key[
         ("公司文件結構化 API 備援", "COMPANY_FILING_STRUCTURED_API_PROVIDER")
     ]["狀態"] == "缺少"

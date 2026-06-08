@@ -143,6 +143,7 @@ def external_deployment_env_key_rows(
             recommended_value = (
                 env_summary["recommended"].get(env_key) or hint.get("default") or "-"
             )
+            resolution_type = _external_env_resolution_type(env_key, recommended_value)
             rows.append(
                 {
                     "優先級": metadata["priority"],
@@ -153,6 +154,13 @@ def external_deployment_env_key_rows(
                     "建議值": recommended_value,
                     "用途": hint.get("scope") or metadata["impact"],
                     "來源": source,
+                    "處理類型": resolution_type,
+                    "維護動作": _external_env_maintenance_action(
+                        item,
+                        env_key,
+                        recommended_value,
+                        resolution_type,
+                    ),
                     "下一步": _external_env_key_next_step(item, env_key, status),
                     "驗證指令": verify_command,
                 }
@@ -379,6 +387,42 @@ def _external_env_key_next_step(item: dict, env_key: str, status: str) -> str:
     if remediation:
         return remediation
     return f"需要該能力時設定 {env_key}，再重跑 readiness checklist。"
+
+
+def _external_env_resolution_type(env_key: str, recommended_value: str) -> str:
+    if env_key.endswith("_TOKEN") or env_key.endswith("_PASSWORD") or "API_KEY" in env_key:
+        return "需人工密鑰"
+    if env_key == "COMPANY_FILING_STRUCTURED_API_PROVIDER":
+        return "外部資料源設定"
+    if env_key == "COMPANY_FILING_STRUCTURED_API_URL":
+        return "外部資料源設定"
+    if env_key == "COMPANY_FILING_PROXY_URLS":
+        return "外部服務選配"
+    if "<" in recommended_value and ">" in recommended_value:
+        return "需人工設定"
+    return "本機可套用"
+
+
+def _external_env_maintenance_action(
+    item: dict,
+    env_key: str,
+    recommended_value: str,
+    resolution_type: str,
+) -> str:
+    if resolution_type == "需人工密鑰":
+        return "手動補 .env 或 secret manager；不由維護操作寫入。"
+    if resolution_type in {"外部資料源設定", "外部服務選配", "需人工設定"}:
+        return "手動補 .env 或部署 secret 後重跑外部設定缺口診斷。"
+    capability = str(item.get("capability") or "")
+    if capability in {"neo4j_import", "graphrag_live_cypher_query"}:
+        return ".venv/bin/python scripts/start_system.py --start-dependencies"
+    if capability == "company_filing_high_risk_unlocker":
+        return ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker"
+    if capability == "company_filing_browser_or_proxy_fallback":
+        return ".venv/bin/python scripts/start_system.py --start-dependencies"
+    if "127.0.0.1" in recommended_value or "localhost" in recommended_value:
+        return ".venv/bin/python scripts/start_system.py --start-dependencies"
+    return "手動補 .env 或部署 secret 後重跑外部設定缺口診斷。"
 
 
 def _collect_named_string_lists(payload: object, keys: set[str]) -> list[str]:

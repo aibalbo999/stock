@@ -83,6 +83,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_external_deployment_domain_helpers_extracted"] is True
     assert status["frontend"]["ui_external_deployment_domain_helper_paths"] == [
         "app/ui/external_deployment_common.py",
+        "app/ui/external_deployment_env_keys.py",
         "app/ui/external_deployment_unlocker.py",
         "app/ui/external_deployment_neo4j.py",
         "app/ui/external_deployment_structured_api.py",

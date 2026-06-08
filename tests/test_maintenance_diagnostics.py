@@ -15,12 +15,18 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert catalog["execution_policy"] == "allowlisted_read_only_subprocess"
     assert action_ids == {
         "celery_inspect_ping",
+        "external_deployment_env_gaps",
         "external_integrations_smoke",
         "upgrade_audit",
     }
     assert all(action["read_only"] is True for action in catalog["actions"])
     assert all("display_command" in action for action in catalog["actions"])
     assert all("argv" not in action for action in catalog["actions"])
+    env_gap_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["external_deployment_env_gaps"]
+    assert "external_deployment_env_gaps.py --json" in env_gap_action["display_command"]
+    assert "需人工補密鑰" in env_gap_action["description"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(

@@ -29,6 +29,7 @@ from app.services.report_financial_assessment import (
 )
 from app.services.report_financial_narrative import financial_statement_summary
 from app.services import (
+    report_appendix,
     report_allocation,
     report_company_narrative,
     report_formatting,
@@ -2532,6 +2533,20 @@ def test_appendix_filters_sources_to_current_tickers_when_possible() -> None:
 
     assert "1303 南亞電子材料需求回升" in appendix
     assert "南亞科記憶體供給吃緊" not in appendix
+
+
+def test_appendix_logic_lives_outside_generator() -> None:
+    generator_source = Path("app/services/report_generator.py").read_text()
+    appendix_source = Path("app/services/report_appendix.py").read_text()
+    result = LLMResult(text="fallback status", fallback=True)
+
+    assert "report_appendix" in generator_source
+    assert "def render_appendix(" in appendix_source
+    assert "def appendix_documents_for_tickers(" in appendix_source
+    assert "def model_status(" in appendix_source
+    assert "模型補充分析未啟用" not in generator_source
+    assert "SOURCE_APPENDIX_LIMIT" not in generator_source
+    assert ReportGenerator._model_status(result) == report_appendix.model_status(result)
 
 
 def test_credibility_check_summarizes_traceability_and_company_limits() -> None:

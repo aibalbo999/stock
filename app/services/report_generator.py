@@ -63,6 +63,7 @@ from app.services.report_prompt_builder import (
     format_market_data,
 )
 from app.services import (
+    report_appendix,
     report_allocation,
     report_company_narrative,
     report_decision_rules,
@@ -86,7 +87,6 @@ from app.services.source_quality import (
 from app.services.whitelist import SupplyChainWhitelist
 
 
-SOURCE_APPENDIX_LIMIT = 80
 REPORT_READING_SORT_NOTE = (
     "排序：先依判斷結果分組（可研究、觀察、待補、避開），"
     "同組再依最新可取得收盤價由高到低；缺股價者排在同組後段。"
@@ -2180,17 +2180,11 @@ class ReportGenerator:
         documents: list[NewsDocument],
         tickers: list[str] | None,
     ) -> list[NewsDocument]:
-        target_tickers = {str(ticker) for ticker in tickers or [] if ticker}
-        if not target_tickers:
-            return documents
-        matched_documents = []
-        for document in documents:
-            metadata_tickers = {ticker for ticker in document.entity_tickers if ticker}
-            mapped_tickers = {match.ticker for match in self._document_matches(document)}
-            known_tickers = metadata_tickers or mapped_tickers
-            if known_tickers and not known_tickers.isdisjoint(target_tickers):
-                matched_documents.append(document)
-        return matched_documents or documents
+        return report_appendix.appendix_documents_for_tickers(
+            documents,
+            tickers,
+            document_match_resolver=self._document_matches,
+        )
 
     @staticmethod
     def _source_reference_line(document: NewsDocument) -> str:
@@ -3143,41 +3137,14 @@ class ReportGenerator:
         market_snapshots: list[MarketSnapshot],
         tickers: list[str] | None = None,
     ) -> str:
-        lines = ["### AI 補充分析"]
-        if llm_result.fallback:
-            lines.append("模型補充分析未啟用；本報告目前改用可追溯來源與資料規則生成，需人工覆核。")
-        else:
-            lines.append(
-                LLMSupplementValidator.render_markdown(
-                    llm_result.text,
-                    documents,
-                    market_snapshots,
-                    news_ticker_resolver=lambda document: [
-                        match.ticker for match in self._document_matches(document)
-                    ],
-                    claim_ticker_resolver=lambda claim: [
-                        match.ticker for match in self.mapper.match_text(claim)
-                    ],
-                )
-            )
-
-        lines.extend(["", "### 資料來源與時間戳記"])
-        if documents:
-            ordered_documents = self._ordered_source_documents(
-                self._appendix_documents_for_tickers(documents, tickers)
-            )
-            for document in ordered_documents[:SOURCE_APPENDIX_LIMIT]:
-                lines.append(self._source_reference_line(document))
-            if len(ordered_documents) > SOURCE_APPENDIX_LIMIT:
-                lines.append(
-                    f"- 其餘 {len(ordered_documents) - SOURCE_APPENDIX_LIMIT} 筆來源已存入資料庫，"
-                    f"本報告僅列前 {SOURCE_APPENDIX_LIMIT} 筆。"
-                )
-        else:
-            lines.append("- 目前無足夠數據判斷。")
-
-        lines.extend(["", "### 模型狀態", self._model_status(llm_result)])
-        return "\n".join(lines)
+        return report_appendix.render_appendix(
+            llm_result,
+            documents,
+            market_snapshots,
+            tickers=tickers,
+            document_match_resolver=self._document_matches,
+            claim_ticker_resolver=lambda claim: self.mapper.match_text(claim),
+        )
 
     @staticmethod
     def _is_international_source(document: NewsDocument) -> bool:
@@ -3832,6 +3799,4 @@ class ReportGenerator:
 
     @staticmethod
     def _model_status(result: LLMResult) -> str:
-        if result.fallback:
-            return result.text
-        return f"Gemini 已啟用；model={result.model}；key_pool_index={result.key_index}"
+        return report_appendix.model_status(result)

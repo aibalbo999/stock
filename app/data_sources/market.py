@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.data_sources import (
     market_finmind,
     market_fugle,
+    market_official_fallbacks,
     market_official_openapi,
     market_parsers,
     market_provider_runtime,
@@ -636,27 +637,13 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[MarketSnapshot]:
-        if not self.official_openapi_fallback_enabled:
-            return []
-        for endpoint, source, converter in (
-            (
-                self.TWSE_PRICE_ENDPOINT,
-                "TWSE OpenAPI STOCK_DAY_ALL",
-                self._twse_openapi_row_to_snapshot,
-            ),
-            (
-                self.TPEX_PRICE_ENDPOINT,
-                "TPEx OpenAPI tpex_mainboard_quotes",
-                self._tpex_openapi_row_to_snapshot,
-            ),
-        ):
-            row = self._find_official_row(await self._fetch_official_openapi_rows(endpoint), ticker)
-            if not row:
-                continue
-            snapshot = converter(row, ticker, self._latest_only_source(source))
-            if start_date <= snapshot.trade_date <= end_date:
-                return [snapshot]
-        return []
+        return await market_official_fallbacks.fetch_price_snapshot(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            fallback_enabled=self.official_openapi_fallback_enabled,
+            fetch_rows=self._fetch_official_openapi_rows,
+        )
 
     async def _fetch_official_openapi_monthly_revenue(
         self,
@@ -664,22 +651,13 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[MonthlyRevenue]:
-        if not self.official_openapi_fallback_enabled:
-            return []
-        for endpoint, source in (
-            (self.TWSE_MONTHLY_REVENUE_ENDPOINT, "TWSE OpenAPI t187ap05_L"),
-            (self.TPEX_MONTHLY_REVENUE_ENDPOINT, "TPEx OpenAPI mopsfin_t187ap05_O"),
-        ):
-            row = self._find_official_row(await self._fetch_official_openapi_rows(endpoint), ticker)
-            if not row:
-                continue
-            revenue = self._official_openapi_row_to_monthly_revenue(
-                row,
-                self._latest_only_source(source),
-            )
-            if start_date <= revenue.revenue_date <= end_date:
-                return [revenue]
-        return []
+        return await market_official_fallbacks.fetch_monthly_revenue(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            fallback_enabled=self.official_openapi_fallback_enabled,
+            fetch_rows=self._fetch_official_openapi_rows,
+        )
 
     async def _fetch_official_openapi_valuation(
         self,
@@ -687,27 +665,13 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[ValuationMetric]:
-        if not self.official_openapi_fallback_enabled:
-            return []
-        for endpoint, source, converter in (
-            (
-                self.TWSE_VALUATION_ENDPOINT,
-                "TWSE OpenAPI BWIBBU_ALL",
-                self._twse_openapi_row_to_valuation_metric,
-            ),
-            (
-                self.TPEX_VALUATION_ENDPOINT,
-                "TPEx OpenAPI tpex_mainboard_peratio_analysis",
-                self._tpex_openapi_row_to_valuation_metric,
-            ),
-        ):
-            row = self._find_official_row(await self._fetch_official_openapi_rows(endpoint), ticker)
-            if not row:
-                continue
-            valuation = converter(row, ticker, self._latest_only_source(source))
-            if start_date <= valuation.trade_date <= end_date:
-                return [valuation]
-        return []
+        return await market_official_fallbacks.fetch_valuation(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            fallback_enabled=self.official_openapi_fallback_enabled,
+            fetch_rows=self._fetch_official_openapi_rows,
+        )
 
     async def _fetch_official_openapi_financial_metrics(
         self,
@@ -715,53 +679,20 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[FinancialMetric]:
-        if not self.official_openapi_fallback_enabled:
-            return []
-        income_row, income_source = await self._find_first_official_statement_row(
-            ticker,
-            [(self.TWSE_OPENAPI_BASE_URL, endpoint) for endpoint in self.TWSE_INCOME_STATEMENT_ENDPOINTS]
-            + [(self.TPEX_OPENAPI_BASE_URL, endpoint) for endpoint in self.TPEX_INCOME_STATEMENT_ENDPOINTS],
+        return await market_official_fallbacks.fetch_financial_metrics(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            fallback_enabled=self.official_openapi_fallback_enabled,
+            fetch_rows=self._fetch_official_openapi_rows,
         )
-        balance_row, balance_source = await self._find_first_official_statement_row(
-            ticker,
-            [(self.TWSE_OPENAPI_BASE_URL, endpoint) for endpoint in self.TWSE_BALANCE_SHEET_ENDPOINTS]
-            + [(self.TPEX_OPENAPI_BASE_URL, endpoint) for endpoint in self.TPEX_BALANCE_SHEET_ENDPOINTS],
-        )
-        metrics: list[FinancialMetric] = []
-        if income_row:
-            report_date = self._official_statement_report_date(income_row)
-            if start_date <= report_date <= end_date:
-                metrics.extend(
-                    self._official_statement_metrics(
-                        income_row,
-                        report_date,
-                        statement_type="income_statement",
-                        metric_names=("營業收入", "本期淨利（淨損）", "淨利（淨損）歸屬於母公司業主", "基本每股盈餘（元）"),
-                        source=self._latest_only_source(income_source),
-                    )
-                )
-        if balance_row:
-            report_date = self._official_statement_report_date(balance_row)
-            if start_date <= report_date <= end_date:
-                metrics.extend(
-                    self._official_statement_metrics(
-                        balance_row,
-                        report_date,
-                        statement_type="balance_sheet",
-                        metric_names=("資產總額", "資產總計", "負債總額", "負債總計", "權益總額", "權益總計", "每股參考淨值"),
-                        source=self._latest_only_source(balance_source),
-                    )
-                )
-        return metrics
 
     @classmethod
     def _latest_only_source(cls, source: str) -> str:
-        source = str(source or "").strip()
-        if not source:
-            return cls.LATEST_ONLY_SOURCE_MARKER
-        if cls.LATEST_ONLY_SOURCE_MARKER in source.lower():
-            return source
-        return f"{source}; {cls.LATEST_ONLY_SOURCE_MARKER}"
+        return market_official_fallbacks.latest_only_source(
+            source,
+            marker=cls.LATEST_ONLY_SOURCE_MARKER,
+        )
 
     async def _find_first_official_statement_row(
         self,

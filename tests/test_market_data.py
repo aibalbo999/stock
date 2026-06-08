@@ -8,8 +8,14 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.data_sources import market_finmind, market_fugle, market_parsers, market_provider_runtime
-from app.data_sources import market_official_openapi
+from app.data_sources import (
+    market_finmind,
+    market_fugle,
+    market_official_fallbacks,
+    market_official_openapi,
+    market_parsers,
+    market_provider_runtime,
+)
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
 from app.db.models import Base
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
@@ -467,6 +473,22 @@ def test_official_openapi_provider_logic_lives_outside_client() -> None:
         "async def _fetch_official_openapi_rows(",
         maxsplit=1,
     )[1].split("@staticmethod", maxsplit=1)[0]
+
+
+def test_official_openapi_fallback_logic_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    fallback_source = Path("app/data_sources/market_official_fallbacks.py").read_text()
+
+    assert market_official_fallbacks.latest_only_source("TWSE OpenAPI STOCK_DAY_ALL").endswith(
+        "; latest-only"
+    )
+    assert "market_official_fallbacks.fetch_price_snapshot" in client_source
+    assert "market_official_fallbacks.fetch_financial_metrics" in client_source
+    assert "INCOME_STATEMENT_METRIC_NAMES" in fallback_source
+    assert "TWSE OpenAPI STOCK_DAY_ALL" not in client_source.split(
+        "async def _fetch_official_openapi_price_snapshot(",
+        maxsplit=1,
+    )[1].split("async def _fetch_official_openapi_monthly_revenue(", maxsplit=1)[0]
 
 
 def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> None:

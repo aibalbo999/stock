@@ -139,6 +139,7 @@ from app.data_sources.company_filing_structured_api import (
     structured_api_document_type as structured_api_document_type,
     structured_api_document_rows as structured_api_document_rows,
     structured_api_enriched_text as structured_api_enriched_text,
+    structured_api_provider_decision_matrix as structured_api_provider_decision_matrix,
     structured_api_provider_profile as structured_api_provider_profile,
     structured_api_request_contract as structured_api_request_contract,
     structured_api_row_to_company_filing_document as structured_api_row_to_company_filing_document,

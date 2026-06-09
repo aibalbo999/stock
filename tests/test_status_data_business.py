@@ -257,6 +257,12 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert "documents" in structured_api["evidence"]["response_row_aliases"]
     assert "ticker_or_company_mention" in structured_api["evidence"]["required_document_fields"]
     assert "scrapingbee_dataset" in structured_api["evidence"]["supported_provider_examples"]
+    decision_matrix = {
+        row["provider"]: row for row in structured_api["evidence"]["provider_decision_matrix"]
+    }
+    assert decision_matrix["tej"]["token_required"] is True
+    assert decision_matrix["custom"]["token_required"] is False
+    assert "TEJ" in structured_api["evidence"]["provider_selection_hint"]
     assert (
         structured_api["evidence"]["runtime"]["fallback_reason"]
         == "missing_structured_api_provider_or_url"

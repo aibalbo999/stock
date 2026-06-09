@@ -122,6 +122,12 @@ def company_filing_structured_api_status_payload(
             }
             for key, value in STRUCTURED_API_PROVIDER_PROFILES.items()
         },
+        "provider_decision_matrix": structured_api_provider_decision_matrix(),
+        "provider_selection_hint": (
+            "免費版先用 custom local fixture 驗證 HTTP/JSON contract；"
+            "若需要穩定法說會/重大訊息資料，再優先評估 TEJ；"
+            "若需求是反爬資料集或 managed scraping，再評估 ScrapingBee/BrightData。"
+        ),
         "url_configured": bool(endpoint),
         "token_configured": bool(token),
         "token_required": bool(configuration_check["token_required"]),
@@ -250,6 +256,49 @@ def structured_api_configuration_check(
         "auth_mode": str(profile.get("auth_mode") or "bearer_optional"),
         "token_location": str(profile.get("token_location") or "authorization_header"),
     }
+
+
+def structured_api_provider_decision_matrix() -> list[dict]:
+    rows: list[dict] = []
+    for provider_key, profile in STRUCTURED_API_PROVIDER_PROFILES.items():
+        token_required = _structured_api_token_required(profile)
+        query_param_keys = [str(key) for key in profile["request_param_keys"]]
+        rows.append(
+            {
+                "provider": provider_key,
+                "label": str(profile["label"]),
+                "auth_mode": str(profile["auth_mode"]),
+                "token_required": token_required,
+                "token_location": str(profile["token_location"]),
+                "document_type_param": str(profile["document_type_param"]),
+                "request_param_keys": query_param_keys,
+                "response_row_aliases": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
+                "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
+                "env_keys": _structured_api_provider_env_keys(token_required),
+                "recommended_when": _structured_api_provider_recommendation(provider_key),
+            }
+        )
+    return rows
+
+
+def _structured_api_provider_env_keys(token_required: bool) -> list[str]:
+    env_keys = [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+    ]
+    if token_required:
+        env_keys.append("COMPANY_FILING_STRUCTURED_API_TOKEN")
+    return env_keys
+
+
+def _structured_api_provider_recommendation(provider_key: str) -> str:
+    recommendations = {
+        "tej": "正式穩定取得台灣法說會、重大訊息或專業財經資料時優先評估。",
+        "scrapingbee_dataset": "已有 ScrapingBee dataset/API 或需要 managed scraping pipeline 時使用。",
+        "brightdata_dataset": "已有 BrightData dataset/API 或需要商用資料採集 SLA 時使用。",
+        "custom": "免費版、本機 fixture、內部資料湖或自行包裝資料商 API 時使用。",
+    }
+    return recommendations.get(provider_key, "依資料商 contract 設定。")
 
 
 def _structured_api_token_required(profile: dict) -> bool:

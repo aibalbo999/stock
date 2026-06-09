@@ -51,6 +51,12 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             ),
         },
         {
+            "項目": "Provider decision matrix",
+            "狀態": _structured_filing_provider_matrix_status(runtime),
+            "指令": structured_filing_env_hint(runtime),
+            "說明": _structured_filing_provider_matrix_detail(runtime),
+        },
+        {
             "項目": "Sample contract",
             "狀態": str(sample_contract.get("status") or "可執行"),
             "指令": structured_filing_sample_command(runtime),
@@ -163,6 +169,30 @@ def _structured_filing_provider_detail(
     )
     supported_text = "、".join(supported) if supported else "-"
     return f"provider={provider}；profile={profile}；supported={supported_text}。"
+
+
+def _structured_filing_provider_matrix_status(runtime: dict) -> str:
+    matrix = runtime.get("provider_decision_matrix")
+    if not isinstance(matrix, list) or not matrix:
+        return "未提供"
+    paid_count = sum(1 for row in matrix if isinstance(row, dict) and row.get("token_required"))
+    return f"{len(matrix)} profiles / {paid_count} token-required"
+
+
+def _structured_filing_provider_matrix_detail(runtime: dict) -> str:
+    matrix = runtime.get("provider_decision_matrix")
+    if not isinstance(matrix, list) or not matrix:
+        return "缺少 provider_decision_matrix；請重跑 /services/status。"
+    provider_summaries = []
+    for row in matrix[:4]:
+        if not isinstance(row, dict):
+            continue
+        provider = str(row.get("provider") or "-")
+        token = "token" if row.get("token_required") else "no-token"
+        document_param = str(row.get("document_type_param") or "-")
+        provider_summaries.append(f"{provider}:{token}/{document_param}")
+    hint = str(runtime.get("provider_selection_hint") or "").strip()
+    return "；".join(provider_summaries) + ("。" + hint if hint else "。")
 
 
 def _structured_filing_sample_contract_detail(sample_contract: dict) -> str:

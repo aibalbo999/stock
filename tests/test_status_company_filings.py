@@ -139,6 +139,17 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         ]["token_location"]
         == "query_param"
     )
+    structured_decision_matrix = {
+        row["provider"]: row
+        for row in status["company_filings"]["structured_api_runtime"][
+            "provider_decision_matrix"
+        ]
+    }
+    assert structured_decision_matrix["tej"]["token_required"] is True
+    assert structured_decision_matrix["custom"]["token_required"] is False
+    assert "TEJ" in status["company_filings"]["structured_api_runtime"][
+        "provider_selection_hint"
+    ]
     assert (
         "structured_company_filing_sample.json"
         in status["company_filings"]["structured_api_runtime"]["sample_contract_cli"]

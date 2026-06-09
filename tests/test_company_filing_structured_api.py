@@ -9,6 +9,7 @@ from app.data_sources.company_filings import (
     company_filing_structured_api_configured,
     company_filing_structured_api_status,
     structured_api_document_rows,
+    structured_api_provider_decision_matrix,
     structured_api_provider_profile,
     structured_api_request_contract,
 )
@@ -78,6 +79,14 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
         status["supported_provider_profiles"]["scrapingbee_dataset"]["token_location"]
         == "query_param"
     )
+    matrix = {row["provider"]: row for row in status["provider_decision_matrix"]}
+    assert set(matrix) == {"tej", "scrapingbee_dataset", "brightdata_dataset", "custom"}
+    assert matrix["tej"]["token_required"] is True
+    assert matrix["tej"]["document_type_param"] == "document_type"
+    assert "COMPANY_FILING_STRUCTURED_API_TOKEN" in matrix["tej"]["env_keys"]
+    assert matrix["custom"]["token_required"] is False
+    assert "COMPANY_FILING_STRUCTURED_API_TOKEN" not in matrix["custom"]["env_keys"]
+    assert "TEJ" in status["provider_selection_hint"]
     assert status["smoke_cli"].endswith(
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
@@ -211,6 +220,23 @@ def test_structured_api_provider_profiles_and_request_contracts() -> None:
     assert scrapingbee_contract["headers"] == {"Accept": "application/json"}
     assert scrapingbee_contract["params"]["api_key"] == bee_token
     assert scrapingbee_contract["params"]["document_types"] == "investor_presentation"
+
+
+def test_structured_api_provider_decision_matrix_summarizes_vendor_contracts() -> None:
+    matrix = {row["provider"]: row for row in structured_api_provider_decision_matrix()}
+
+    assert matrix["tej"]["recommended_when"].startswith("正式穩定取得台灣法說會")
+    assert matrix["tej"]["token_location"] == "authorization_header"
+    assert matrix["scrapingbee_dataset"]["token_location"] == "query_param"
+    assert matrix["scrapingbee_dataset"]["request_param_keys"][-1] == "api_key"
+    assert matrix["brightdata_dataset"]["token_required"] is True
+    assert matrix["custom"]["token_required"] is False
+    assert matrix["custom"]["env_keys"] == [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+        "COMPANY_FILING_STRUCTURED_API_URL",
+    ]
+    assert "documents" in matrix["custom"]["response_row_aliases"]
+    assert "document_type_match" in matrix["custom"]["required_document_fields"]
 
 
 def test_structured_api_document_rows_accepts_common_payload_shapes() -> None:

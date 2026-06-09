@@ -276,6 +276,12 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "supported_provider_examples": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("supported_provider_examples"),
+                "provider_decision_matrix": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("provider_decision_matrix"),
+                "provider_selection_hint": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("provider_selection_hint"),
                 "local_fixture_api": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("local_fixture_api"),

@@ -1656,6 +1656,31 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "provider": "custom",
                             "profile_key": "custom",
                         },
+                        "provider_decision_matrix": [
+                            {
+                                "provider": "tej",
+                                "token_required": True,
+                                "document_type_param": "document_type",
+                            },
+                            {
+                                "provider": "scrapingbee_dataset",
+                                "token_required": True,
+                                "document_type_param": "document_types",
+                            },
+                            {
+                                "provider": "brightdata_dataset",
+                                "token_required": True,
+                                "document_type_param": "document_types",
+                            },
+                            {
+                                "provider": "custom",
+                                "token_required": False,
+                                "document_type_param": "document_types",
+                            },
+                        ],
+                        "provider_selection_hint": (
+                            "免費版先用 custom local fixture 驗證 HTTP/JSON contract。"
+                        ),
                         "request_contract": {
                             "method": "GET",
                             "auth_mode": "bearer_optional",
@@ -1724,6 +1749,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert [row["項目"] for row in rows] == [
         "Configuration check",
         "Provider profile",
+        "Provider decision matrix",
         "Sample contract",
         "Local fixture HTTP",
         "Live smoke",
@@ -1737,23 +1763,27 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "endpoint=missing/invalid" in rows[0]["說明"]
     assert rows[1]["狀態"] == "待設定"
     assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[1]["說明"]
-    assert rows[2]["狀態"] == "ready"
-    assert "--sample-json examples/structured_company_filing_sample.json" in rows[2]["指令"]
-    assert "raw_rows=1；documents=1；errors=0" in rows[2]["說明"]
-    assert rows[3]["狀態"] == "可執行"
-    assert "structured_company_filing_fixture_smoke.py" in rows[3]["指令"]
-    assert "local_structured_company_filing_api.py" in rows[3]["指令"]
-    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[3]["指令"]
-    assert "http://127.0.0.1:8794/filings" in rows[3]["說明"]
-    assert "不需要付費資料商 token" in rows[3]["說明"]
-    assert rows[4]["狀態"] == "待設定"
-    assert "structured_company_filing_smoke.py" in rows[4]["指令"]
-    assert rows[5]["狀態"] == "GET"
-    assert "auth=bearer_optional" in rows[5]["說明"]
-    assert "ticker,company_name,limit,document_types" in rows[5]["說明"]
-    assert "title/name/headline/doc_title" in rows[6]["說明"]
-    assert rows[7]["狀態"] == "not_configured"
-    assert "missing_structured_api_provider_or_url" in rows[7]["說明"]
+    assert rows[2]["狀態"] == "4 profiles / 3 token-required"
+    assert "tej:token/document_type" in rows[2]["說明"]
+    assert "custom:no-token/document_types" in rows[2]["說明"]
+    assert "custom local fixture" in rows[2]["說明"]
+    assert rows[3]["狀態"] == "ready"
+    assert "--sample-json examples/structured_company_filing_sample.json" in rows[3]["指令"]
+    assert "raw_rows=1；documents=1；errors=0" in rows[3]["說明"]
+    assert rows[4]["狀態"] == "可執行"
+    assert "structured_company_filing_fixture_smoke.py" in rows[4]["指令"]
+    assert "local_structured_company_filing_api.py" in rows[4]["指令"]
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[4]["指令"]
+    assert "http://127.0.0.1:8794/filings" in rows[4]["說明"]
+    assert "不需要付費資料商 token" in rows[4]["說明"]
+    assert rows[5]["狀態"] == "待設定"
+    assert "structured_company_filing_smoke.py" in rows[5]["指令"]
+    assert rows[6]["狀態"] == "GET"
+    assert "auth=bearer_optional" in rows[6]["說明"]
+    assert "ticker,company_name,limit,document_types" in rows[6]["說明"]
+    assert "title/name/headline/doc_title" in rows[7]["說明"]
+    assert rows[8]["狀態"] == "not_configured"
+    assert "missing_structured_api_provider_or_url" in rows[8]["說明"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

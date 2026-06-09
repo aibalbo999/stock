@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import time
 from types import SimpleNamespace
 
@@ -35,6 +36,21 @@ def _settings(**overrides) -> SimpleNamespace:
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def test_llm_observability_cost_helpers_are_split_from_trace_module() -> None:
+    observability_source = Path("app/services/llm_observability.py").read_text()
+    costs_source = Path("app/services/llm_observability_costs.py").read_text()
+
+    assert "def estimate_token_count(" in costs_source
+    assert "def parse_model_cost_rate_card(" in costs_source
+    assert "def llm_cost_rates_for_model(" in costs_source
+    assert "def llm_cost_budget_status(" in costs_source
+    assert "from app.services.llm_observability_costs import" in observability_source
+    assert "def estimate_token_count(" not in observability_source
+    assert "def parse_model_cost_rate_card(" not in observability_source
+    assert "def llm_cost_rates_for_model(" not in observability_source
+    assert "def llm_cost_budget_status(" not in observability_source
 
 
 def test_langsmith_observability_sink_reports_ready_and_marks_trace_export(monkeypatch) -> None:

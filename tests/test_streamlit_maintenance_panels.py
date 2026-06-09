@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from app.services import external_deployment_items
 from app.services.external_deployment_env_gaps import (
     external_deployment_env_check_status_report,
+)
+from app.services.external_deployment_readiness import (
+    external_deployment_item_ready,
+    external_deployment_readiness_items,
+    external_smoke_commands_from_payload,
 )
 from app.ui.maintenance_deployment_panel import (
     external_deployment_effective_gap_rows,
@@ -13,6 +21,51 @@ from app.ui.maintenance_deployment_panel import (
 )
 from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from streamlit_ui_test_helpers import load_report_helpers
+
+
+def test_external_deployment_item_logic_lives_outside_readiness_facade() -> None:
+    readiness_source = Path("app/services/external_deployment_readiness.py").read_text()
+    item_source = Path("app/services/external_deployment_items.py").read_text()
+    audit = {
+        "checks": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "external_integration": True,
+                "deployment_check": True,
+                "severity": "pass",
+                "status": "ready",
+            },
+            {"capability": "internal_only", "external_integration": False},
+        ],
+        "optional_warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "external_integration": True,
+                "deployment_check": True,
+                "severity": "warn",
+                "optional": True,
+                "evidence": {"unlocker_provider_ready": True},
+            }
+        ],
+    }
+
+    assert external_deployment_items.external_deployment_item_ready is external_deployment_item_ready
+    assert [item["capability"] for item in external_deployment_readiness_items(audit)] == [
+        "company_filing_high_risk_unlocker",
+        "neo4j_import",
+    ]
+    assert external_deployment_item_ready(audit["optional_warnings"][0]) is True
+    assert external_smoke_commands_from_payload(
+        {"nested": {"smoke_cli": "cmd-a"}, "rows": [{"verify_smoke_command": "cmd-b"}]}
+    ) == ["cmd-a", "cmd-b"]
+    assert "def external_deployment_readiness_items(" not in readiness_source
+    assert "def external_deployment_readiness_items(" in item_source
+    assert "def _external_readiness_item_ready(" not in readiness_source
+    assert "def _external_readiness_item_ready(" in item_source
+    assert "def collect_external_smoke_commands(" not in readiness_source
+    assert "def collect_external_smoke_commands(" in item_source
 
 
 def test_maintenance_service_metrics_show_promotion_threshold() -> None:

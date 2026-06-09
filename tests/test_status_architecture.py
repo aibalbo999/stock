@@ -66,6 +66,10 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert status["security_scanning"]["gitleaks_json_report_supported"] is True
     assert status["security_scanning"]["baseline_read_only_default"] is True
     assert status["security_scanning"]["baseline_update_flag"] == "--update-baseline"
+    assert status["security_scanning"]["pre_commit_dependency_declared"] is True
+    assert status["security_scanning"]["pre_commit_config_present"] is True
+    assert status["security_scanning"]["pre_commit_ruff_hook_configured"] is True
+    assert status["security_scanning"]["pre_commit_secret_scan_gate_ready"] is True
     assert status["security_scanning"]["collector_path"] == "app/services/status_security.py"
     assert (
         "from app.services.status_security import security_scan_status as collect_security_scan_status"
@@ -284,9 +288,7 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     status_api_service_factory_source = Path(
         "app/services/status_api_architecture_service_factory.py"
     ).read_text()
-    status_api_tasking_source = Path(
-        "app/services/status_api_architecture_tasking.py"
-    ).read_text()
+    status_api_tasking_source = Path("app/services/status_api_architecture_tasking.py").read_text()
 
     assert thin_api["status"] == "ready"
     assert evidence["collector_path"] == "app/services/status_api_architecture.py"
@@ -294,13 +296,9 @@ def test_thin_api_controller_architecture_capability_evidence(service_status_sna
     assert evidence["api_source_context_path"] == (
         "app/services/status_api_architecture_sources.py"
     )
-    assert "def api_compatibility_architecture_status(" in (
-        status_api_compatibility_source
-    )
+    assert "def api_compatibility_architecture_status(" in (status_api_compatibility_source)
     assert "api_compatibility_architecture_status(source_context)" in status_api_source
-    assert "def api_service_factory_architecture_status(" in (
-        status_api_service_factory_source
-    )
+    assert "def api_service_factory_architecture_status(" in (status_api_service_factory_source)
     assert "api_service_factory_architecture_status(source_context)" in status_api_source
     assert "def api_tasking_architecture_status(" in status_api_tasking_source
     assert "api_tasking_architecture_status(source_context)" in status_api_source
@@ -439,9 +437,7 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     assert task_queue_arch["evidence"]["compose_runtime_env_passthrough_ready"] is True
     assert task_queue_arch["evidence"]["compose_runtime_env"]["missing_by_group"] == {}
     assert task_queue_arch["evidence"]["structured_task_submission_errors"] is True
-    assert (
-        task_queue_arch["evidence"]["background_task_submission_handlers_extracted"] is True
-    )
+    assert task_queue_arch["evidence"]["background_task_submission_handlers_extracted"] is True
     assert task_queue_arch["evidence"]["background_task_submission_helper_path"] == (
         "app/api/background_task_submission.py"
     )
@@ -506,6 +502,13 @@ def test_runtime_migration_and_secret_scanning_architecture_capabilities(
         architecture["secret_scanning"]["evidence"]["external_engine_structured_findings"] is True
     )
     assert architecture["secret_scanning"]["evidence"]["gitleaks_json_report_supported"] is True
+    assert architecture["secret_scanning"]["evidence"]["pre_commit_dependency_declared"] is True
+    assert architecture["secret_scanning"]["evidence"]["pre_commit_config_present"] is True
+    assert (
+        architecture["secret_scanning"]["evidence"]["pre_commit_security_scan_uses_detect_secrets"]
+        is True
+    )
+    assert architecture["secret_scanning"]["evidence"]["pre_commit_secret_scan_gate_ready"] is True
     assert (
         "detect-secrets"
         in architecture["secret_scanning"]["evidence"]["supported_external_engines"]

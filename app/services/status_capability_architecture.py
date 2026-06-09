@@ -282,11 +282,13 @@ def architecture_capabilities(
             and security_scan_status.get("external_engine_structured_findings")
             and security_scan_status.get("gitleaks_json_report_supported")
             and security_scan_status.get("local_regex_fallback_enabled")
+            and security_scan_status.get("pre_commit_dependency_declared")
+            and security_scan_status.get("pre_commit_secret_scan_gate_ready")
             else "degraded",
             evidence=security_scan_status,
             detail=(
-                "Secret scanning prefers external tools such as detect-secrets/gitleaks "
-                "and only treats local regex as a degraded fallback."
+                "Secret scanning prefers external tools such as detect-secrets/gitleaks, "
+                "runs through a pre-commit gate, and only treats local regex as a degraded fallback."
             ),
         ),
     }

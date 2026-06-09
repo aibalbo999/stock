@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: .venv/bin/ruff check
+        language: system
+        types_or: [python, pyi]
+      - id: security-scan
+        name: detect-secrets security scan
+        entry: .venv/bin/python scripts/security_scan.py --engine detect-secrets
+        language: system
+        pass_filenames: false
+        always_run: true

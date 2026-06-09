@@ -20,6 +20,7 @@ def security_scan_status(
     root = Path(__file__).resolve().parents[2]
     script_path = root / "scripts" / "security_scan.py"
     pyproject_path = root / "pyproject.toml"
+    pre_commit_path = root / ".pre-commit-config.yaml"
     try:
         pyproject_text = pyproject_path.read_text(encoding="utf-8")
     except OSError:
@@ -28,6 +29,10 @@ def security_scan_status(
         script_text = script_path.read_text(encoding="utf-8")
     except OSError:
         script_text = ""
+    try:
+        pre_commit_text = pre_commit_path.read_text(encoding="utf-8")
+    except OSError:
+        pre_commit_text = ""
     detect_secrets_command = _external_engine_command(DETECT_ENGINE_NAME)
     detect_secrets_hook_command = _external_engine_command(DETECT_HOOK_NAME)
     gitleaks_command = _external_engine_command("gitleaks")
@@ -45,6 +50,19 @@ def security_scan_status(
         "collector_path": "app/services/status_security.py",
         "script": str(script_path.relative_to(root)),
         "pyproject_command_configured": "scripts/security_scan.py" in pyproject_text,
+        "pre_commit_dependency_declared": "pre-commit" in pyproject_text,
+        "pre_commit_config_present": pre_commit_path.exists(),
+        "pre_commit_config_path": str(pre_commit_path.relative_to(root)),
+        "pre_commit_ruff_hook_configured": "id: ruff-check" in pre_commit_text
+        and "entry: .venv/bin/ruff check" in pre_commit_text,
+        "pre_commit_security_scan_hook_configured": "id: security-scan" in pre_commit_text
+        and ".venv/bin/python scripts/security_scan.py" in pre_commit_text,
+        "pre_commit_security_scan_uses_detect_secrets": "--engine detect-secrets"
+        in pre_commit_text,
+        "pre_commit_secret_scan_gate_ready": pre_commit_path.exists()
+        and "id: security-scan" in pre_commit_text
+        and ".venv/bin/python scripts/security_scan.py" in pre_commit_text
+        and "--engine detect-secrets" in pre_commit_text,
         "external_engine_integration": True,
         "supported_external_engines": [DETECT_ENGINE_NAME, "gitleaks"],
         "external_engine_structured_findings": True,

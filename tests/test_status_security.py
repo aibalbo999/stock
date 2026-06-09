@@ -28,6 +28,13 @@ def test_security_status_finds_detect_secrets_in_current_python_bin(monkeypatch,
     assert status["local_regex_active"] is False
     assert status["baseline_read_only_default"] is True
     assert status["baseline_update_flag"] == "--update-baseline"
+    assert status["pre_commit_dependency_declared"] is True
+    assert status["pre_commit_config_present"] is True
+    assert status["pre_commit_config_path"] == ".pre-commit-config.yaml"
+    assert status["pre_commit_ruff_hook_configured"] is True
+    assert status["pre_commit_security_scan_hook_configured"] is True
+    assert status["pre_commit_security_scan_uses_detect_secrets"] is True
+    assert status["pre_commit_secret_scan_gate_ready"] is True
 
 
 def test_security_status_marks_regex_as_active_only_when_external_engines_missing(

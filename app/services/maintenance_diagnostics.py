@@ -219,6 +219,33 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "structured_company_filing_sample_contract_smoke": {
+        "id": "structured_company_filing_sample_contract_smoke",
+        "label": "Structured filing sample contract smoke",
+        "description": "用 bundled sample JSON 驗證 TEJ/資料商結構化公司文件 API contract，不連外。",
+        "display_command": (
+            ".venv/bin/python scripts/structured_company_filing_smoke.py "
+            "--sample-json examples/structured_company_filing_sample.json "
+            "--ticker 2330 --company-name 台積電 --document-type investor_presentation "
+            "--json --strict"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/structured_company_filing_smoke.py",
+            "--sample-json",
+            "examples/structured_company_filing_sample.json",
+            "--ticker",
+            "2330",
+            "--company-name",
+            "台積電",
+            "--document-type",
+            "investor_presentation",
+            "--json",
+            "--strict",
+        ],
+        "timeout_seconds": 60,
+        "read_only": True,
+    },
     "high_risk_unlocker_smoke": {
         "id": "high_risk_unlocker_smoke",
         "label": "High-risk MOPS unlocker smoke",
@@ -335,6 +362,8 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _graphrag_smoke_summary_rows(payload)
     if action_id in {"company_filing_render_smoke", "high_risk_unlocker_smoke"}:
         return _company_filing_render_summary_rows(payload)
+    if action_id == "structured_company_filing_sample_contract_smoke":
+        return _structured_company_filing_smoke_summary_rows(payload)
     if action_id == "task_submission_smoke":
         return _task_submission_smoke_summary_rows(payload)
     return _generic_json_summary_rows(payload)
@@ -591,6 +620,72 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
                 _yes_no(runtime.get("configuration_ready")),
                 str(runtime.get("provider") or "-"),
                 runtime.get("fallback_reason") or "-",
+            )
+        )
+    return rows[:MAX_SUMMARY_ROWS]
+
+
+def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
+    rows = [
+        _summary_row(
+            "Structured filing contract",
+            payload.get("status") or "-",
+            _yes_no(payload.get("ready")),
+            _counts(
+                rows=payload.get("raw_row_count"),
+                documents=payload.get("document_count"),
+                errors=payload.get("error_count"),
+            ),
+            payload.get("sample_path") or payload.get("smoke_command") or "-",
+        )
+    ]
+    runtime = _dict_value(payload, "runtime")
+    if runtime:
+        rows.append(
+            _summary_row(
+                "Structured API runtime",
+                "configured" if runtime.get("configured") else "not_configured",
+                str(runtime.get("provider") or "-"),
+                _counts(
+                    url=runtime.get("url_configured"),
+                    token=runtime.get("token_configured"),
+                ),
+                runtime.get("fallback_reason") or "-",
+            )
+        )
+    request = _dict_value(payload, "request")
+    if request:
+        rows.append(
+            _summary_row(
+                "Structured API request",
+                str(request.get("ticker") or "-"),
+                str(request.get("company_name") or "-"),
+                ",".join(str(item) for item in request.get("document_types") or []) or "-",
+                _counts(limit=request.get("limit")),
+            )
+        )
+    for document in _list_value(payload, "documents"):
+        if not isinstance(document, dict):
+            continue
+        rows.append(
+            _summary_row(
+                document.get("title") or "Document sample",
+                document.get("document_type") or "-",
+                document.get("ticker") or "-",
+                _counts(text=document.get("text_length")),
+                document.get("url") or document.get("publisher") or "-",
+            )
+        )
+    for error in _list_value(payload, "errors"):
+        if not isinstance(error, dict):
+            continue
+        rows.append(
+            _summary_row(
+                "Structured API row error",
+                error.get("category") or "-",
+                error.get("row_index") if "row_index" in error else "-",
+                ",".join(str(item) for item in error.get("required_fields") or []) or "-",
+                error.get("message") or payload.get("remediation") or "-",
             )
         )
     return rows[:MAX_SUMMARY_ROWS]

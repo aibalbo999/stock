@@ -26,6 +26,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "local_neo4j_upgrade_audit",
         "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
+        "structured_company_filing_sample_contract_smoke",
         "task_submission_smoke",
         "upgrade_audit",
     }
@@ -79,6 +80,14 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         task_submission_action["display_command"]
     )
     assert "不送出 Celery 任務" in task_submission_action["description"]
+    structured_sample_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["structured_company_filing_sample_contract_smoke"]
+    assert "--sample-json examples/structured_company_filing_sample.json" in (
+        structured_sample_action["display_command"]
+    )
+    assert "--strict" in structured_sample_action["display_command"]
+    assert "不連外" in structured_sample_action["description"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
@@ -147,6 +156,42 @@ def test_run_maintenance_diagnostic_action_executes_task_submission_readiness_sm
     )
     assert captured["command"][1:] == ["scripts/task_submission_smoke.py", "--json"]
     assert captured["timeout"] == 30
+
+
+def test_run_maintenance_diagnostic_action_executes_structured_sample_smoke(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ready"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "structured_company_filing_sample_contract_smoke",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert "structured_company_filing_smoke.py" in result["display_command"]
+    assert captured["command"][1:] == [
+        "scripts/structured_company_filing_smoke.py",
+        "--sample-json",
+        "examples/structured_company_filing_sample.json",
+        "--ticker",
+        "2330",
+        "--company-name",
+        "台積電",
+        "--document-type",
+        "investor_presentation",
+        "--json",
+        "--strict",
+    ]
+    assert captured["timeout"] == 60
 
 
 def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
@@ -485,6 +530,77 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
     assert rows[4]["狀態"] == "finished"
     assert "successful=True" in rows[4]["Ready"]
     assert rows[4]["數量"] == "SUCCESS"
+
+
+def test_run_maintenance_diagnostic_action_summarizes_structured_sample_smoke_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "ready",
+        "ready": True,
+        "mode": "sample_json_contract",
+        "sample_path": "examples/structured_company_filing_sample.json",
+        "raw_row_count": 1,
+        "document_count": 1,
+        "error_count": 0,
+        "runtime": {
+            "configured": False,
+            "provider": None,
+            "url_configured": False,
+            "token_configured": False,
+            "fallback_reason": "missing_structured_api_provider_or_url",
+        },
+        "request": {
+            "ticker": "2330",
+            "company_name": "台積電",
+            "document_types": ["investor_presentation"],
+            "limit": 3,
+        },
+        "documents": [
+            {
+                "ticker": "2330",
+                "document_type": "investor_presentation",
+                "title": "2026 Q2 earnings materials",
+                "publisher": "sample_structured_api",
+                "url": "https://example.com/2330-investor-presentation.pdf",
+                "text_length": 128,
+            }
+        ],
+        "errors": [],
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "structured_company_filing_sample_contract_smoke",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "Structured filing contract"
+    assert rows[0]["狀態"] == "ready"
+    assert rows[0]["Ready"] == "是"
+    assert "documents=1" in rows[0]["數量"]
+    assert "structured_company_filing_sample.json" in rows[0]["下一步"]
+    assert rows[1]["項目"] == "Structured API runtime"
+    assert rows[1]["狀態"] == "not_configured"
+    assert "url=False" in rows[1]["數量"]
+    assert rows[2]["項目"] == "Structured API request"
+    assert rows[2]["狀態"] == "2330"
+    assert rows[2]["Ready"] == "台積電"
+    assert rows[3]["項目"] == "2026 Q2 earnings materials"
+    assert rows[3]["狀態"] == "investor_presentation"
+    assert rows[3]["Ready"] == "2330"
+    assert "text=128" in rows[3]["數量"]
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:

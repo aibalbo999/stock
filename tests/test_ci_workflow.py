@@ -54,3 +54,12 @@ def test_ci_workflow_runs_quality_gates_and_smoke_checks() -> None:
 def test_project_runtime_targets_python311() -> None:
     assert 'requires-python = ">=3.11"' in Path("pyproject.toml").read_text(encoding="utf-8")
     assert Path(".python-version").read_text(encoding="utf-8").strip() == "3.11"
+
+
+def test_generated_packaging_metadata_is_ignored() -> None:
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "*.egg-info/" in gitignore
+    assert "pyproject.toml" in readme
+    assert "*.egg-info/" in readme

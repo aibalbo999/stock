@@ -77,6 +77,9 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
+`pyproject.toml` 是專案依賴與 optional extras 的單一來源；`pip install -e ...` 產生的
+`*.egg-info/` 屬於本機 packaging metadata，已列入 `.gitignore`，不需要提交。
+
 本專案支援目標為 Python 3.11+；CI 與 Docker 均使用 Python 3.11。macOS 內建
 `python3` 常仍是 3.9，會觸發 Google/urllib3 的 EOL 與 LibreSSL 警告，建議用
 Homebrew、pyenv 或 uv 安裝 3.11 後重建 `.venv`。若想先檢查本機可用 interpreter

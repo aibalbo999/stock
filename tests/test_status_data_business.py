@@ -229,6 +229,19 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         "structured_company_filing_sample.json"
         in structured_api["evidence"]["runtime"]["sample_contract_cli"]
     )
+    assert structured_api["evidence"]["local_fixture_api"]["provider"] == "custom"
+    assert (
+        structured_api["evidence"]["local_fixture_api"]["url"]
+        == "http://127.0.0.1:8794/filings"
+    )
+    assert (
+        "local_structured_company_filing_api.py"
+        in structured_api["evidence"]["local_fixture_start_cli"]
+    )
+    assert (
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom"
+        in structured_api["evidence"]["local_fixture_smoke_cli"]
+    )
     assert structured_api["evidence"]["runtime"]["sample_contract_ready"] is True
     assert structured_api["evidence"]["runtime"]["sample_contract"]["status"] == "ready"
     assert structured_api["evidence"]["runtime"]["sample_contract"]["document_count"] >= 1

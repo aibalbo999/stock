@@ -83,6 +83,17 @@ STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND = (
     "--sample-json examples/structured_company_filing_sample.json "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
 )
+STRUCTURED_COMPANY_FILING_LOCAL_FIXTURE_START_COMMAND = (
+    ".venv/bin/python scripts/local_structured_company_filing_api.py "
+    "--sample-json examples/structured_company_filing_sample.json "
+    "--host 127.0.0.1 --port 8794"
+)
+STRUCTURED_COMPANY_FILING_LOCAL_FIXTURE_SMOKE_COMMAND = (
+    "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+    "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
+    ".venv/bin/python scripts/structured_company_filing_smoke.py "
+    "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+)
 STRUCTURED_COMPANY_FILING_SAMPLE_PATH = Path("examples/structured_company_filing_sample.json")
 COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
@@ -180,6 +191,7 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
     "company_filing_high_risk_unlocker": [HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND],
     "company_filing_structured_api_fallback": [
         STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
+        STRUCTURED_COMPANY_FILING_LOCAL_FIXTURE_SMOKE_COMMAND,
         STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
     ],
 }
@@ -271,6 +283,12 @@ def external_integration_report(
         "company_filing_render_provider_contract_command": COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND,
         "structured_company_filing_smoke_command": STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
+        "structured_company_filing_local_fixture_start_command": (
+            STRUCTURED_COMPANY_FILING_LOCAL_FIXTURE_START_COMMAND
+        ),
+        "structured_company_filing_local_fixture_smoke_command": (
+            STRUCTURED_COMPANY_FILING_LOCAL_FIXTURE_SMOKE_COMMAND
+        ),
         "structured_company_filing_sample_status": checks[-1]["status"],
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
         "local_neo4j_smoke_command": EXTERNAL_LOCAL_NEO4J_SMOKE_COMMAND,

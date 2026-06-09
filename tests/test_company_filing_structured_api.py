@@ -85,6 +85,12 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
         "--sample-json examples/structured_company_filing_sample.json "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
     )
+    assert status["local_fixture_api"]["provider"] == "custom"
+    assert status["local_fixture_api"]["token_required"] is False
+    assert status["local_fixture_api"]["url"] == "http://127.0.0.1:8794/filings"
+    assert "local_structured_company_filing_api.py" in status["local_fixture_start_cli"]
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in status["local_fixture_smoke_cli"]
+    assert "structured_company_filing_smoke.py" in status["local_fixture_smoke_cli"]
     assert status["sample_contract_ready"] is True
     assert status["sample_contract"]["status"] == "ready"
     assert status["sample_contract"]["raw_row_count"] >= 1

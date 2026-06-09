@@ -206,6 +206,10 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--sample-json examples/structured_company_filing_sample.json "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+        "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
+        ".venv/bin/python scripts/structured_company_filing_smoke.py "
+        "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]

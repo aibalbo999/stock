@@ -488,6 +488,8 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
             requirement.remediation,
             [
                 _first_nested_value(evidence, ("runtime", "sample_contract_cli")),
+                _first_nested_value(evidence, ("runtime", "local_fixture_start_cli")),
+                _first_nested_value(evidence, ("runtime", "local_fixture_smoke_cli")),
                 _first_nested_value(evidence, ("runtime", "smoke_cli")),
             ],
         )

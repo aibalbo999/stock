@@ -17,6 +17,25 @@ from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 
 
 STRUCTURED_API_SAMPLE_CONTRACT_PATH = Path("examples/structured_company_filing_sample.json")
+STRUCTURED_API_LOCAL_FIXTURE_HOST = "127.0.0.1"
+STRUCTURED_API_LOCAL_FIXTURE_PORT = 8794
+STRUCTURED_API_LOCAL_FIXTURE_PATH = "/filings"
+STRUCTURED_API_LOCAL_FIXTURE_URL = (
+    f"http://{STRUCTURED_API_LOCAL_FIXTURE_HOST}:"
+    f"{STRUCTURED_API_LOCAL_FIXTURE_PORT}{STRUCTURED_API_LOCAL_FIXTURE_PATH}"
+)
+STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI = (
+    ".venv/bin/python scripts/local_structured_company_filing_api.py "
+    "--sample-json examples/structured_company_filing_sample.json "
+    f"--host {STRUCTURED_API_LOCAL_FIXTURE_HOST} "
+    f"--port {STRUCTURED_API_LOCAL_FIXTURE_PORT}"
+)
+STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI = (
+    "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+    f"COMPANY_FILING_STRUCTURED_API_URL={STRUCTURED_API_LOCAL_FIXTURE_URL} "
+    ".venv/bin/python scripts/structured_company_filing_smoke.py "
+    "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+)
 STRUCTURED_API_PROVIDER_PROFILES = {
     "tej": {
         "label": "TEJ structured company filings",
@@ -130,6 +149,21 @@ def company_filing_structured_api_status_payload(
             "--sample-json examples/structured_company_filing_sample.json "
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
         ),
+        "local_fixture_api": {
+            "mode": "local_http_sample_contract",
+            "provider": "custom",
+            "url": STRUCTURED_API_LOCAL_FIXTURE_URL,
+            "token_required": False,
+            "sample_json": str(STRUCTURED_API_SAMPLE_CONTRACT_PATH),
+            "serve_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
+            "smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+            "purpose": (
+                "Run the existing live HTTP fetch path against the bundled sample contract "
+                "before a paid TEJ/professional API is configured."
+            ),
+        },
+        "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
+        "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
         "sample_contract": sample_contract,
         "sample_contract_ready": bool(sample_contract.get("ready")),
         "fallback_reason": configuration_check["fallback_reason"],

@@ -278,6 +278,15 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
                                 ".venv/bin/python scripts/structured_company_filing_smoke.py "
                                 "--sample-json examples/structured_company_filing_sample.json --json"
                             ),
+                            "local_fixture_start_cli": (
+                                ".venv/bin/python scripts/local_structured_company_filing_api.py "
+                                "--sample-json examples/structured_company_filing_sample.json"
+                            ),
+                            "local_fixture_smoke_cli": (
+                                "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+                                "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
+                                ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                            ),
                             "smoke_cli": (
                                 ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
                             ),
@@ -300,6 +309,8 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     assert warning["enablement_profile"]["deployment_profile"] == "paid_external"
     assert warning["enablement_profile"]["paid_service_required"] is True
     assert "structured_company_filing_sample.json" in warning["remediation"]
+    assert "local_structured_company_filing_api.py" in warning["remediation"]
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]
 
 

@@ -364,6 +364,9 @@ def _upgrade_audit_summary_rows(payload: dict) -> list[dict]:
     enablement = _dict_value(payload, "external_deployment_enablement")
     if enablement:
         rows.append(_enablement_summary_row(enablement))
+    gap_counts = _dict_value(payload, "external_deployment_pending_gap_action_counts")
+    if gap_counts:
+        rows.append(_pending_gap_action_summary_row(gap_counts))
     warnings = _list_value(payload, "all_warnings") or _list_value(payload, "warnings")
     rows.extend(_warning_rows(warnings))
     return rows[:MAX_SUMMARY_ROWS]
@@ -382,6 +385,9 @@ def _external_integrations_summary_rows(payload: dict) -> list[dict]:
     enablement = _dict_value(payload, "enablement_summary")
     if enablement:
         rows.append(_enablement_summary_row(enablement))
+    gap_counts = _dict_value(payload, "pending_gap_action_counts")
+    if gap_counts:
+        rows.append(_pending_gap_action_summary_row(gap_counts))
     checks = [
         item
         for item in _list_value(payload, "checks")
@@ -613,6 +619,52 @@ def _enablement_summary_row(enablement: dict) -> dict:
         ),
         enablement.get("primary_next_action") or "-",
     )
+
+
+def _pending_gap_action_summary_row(counts: dict) -> dict:
+    local_action = int(counts.get("local_action") or 0)
+    quota_or_external = int(counts.get("quota_or_external") or 0)
+    paid_external = int(counts.get("paid_external") or 0)
+    manual_configuration = int(counts.get("manual_configuration") or 0)
+    return _summary_row(
+        "外部缺口處理類型",
+        _counts(
+            local_action=local_action,
+            quota_or_external=quota_or_external,
+        ),
+        _counts(
+            local=local_action,
+            manual=manual_configuration,
+        ),
+        _counts(
+            paid=paid_external,
+            manual=manual_configuration,
+        ),
+        _pending_gap_next_action(
+            local_action=local_action,
+            quota_or_external=quota_or_external,
+            paid_external=paid_external,
+            manual_configuration=manual_configuration,
+        ),
+    )
+
+
+def _pending_gap_next_action(
+    *,
+    local_action: int,
+    quota_or_external: int,
+    paid_external: int,
+    manual_configuration: int,
+) -> str:
+    if local_action:
+        return "先執行本機啟動/驗證指令，再重跑 audit 或 smoke。"
+    if paid_external:
+        return "剩餘缺口需要外部資料 API 或服務合約。"
+    if quota_or_external:
+        return "剩餘缺口主要取決於 API 額度或外部模型設定。"
+    if manual_configuration:
+        return "依各項 remediation 手動補齊設定。"
+    return "目前沒有待處理外部缺口。"
 
 
 def _summary_row(item: object, status: object, ready: object, counts: object, next_step: object) -> dict:

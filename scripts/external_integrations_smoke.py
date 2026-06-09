@@ -8,6 +8,7 @@ from typing import Any
 from app.services.external_deployment_readiness import (
     external_deployment_enablement_profile,
     external_deployment_enablement_summary,
+    external_deployment_pending_gap_action_counts,
     external_deployment_pending_gap_rows,
 )
 from app.services.service_status import service_status
@@ -170,7 +171,9 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "checks": checks,
         "enablement_summary": external_deployment_enablement_summary({"checks": checks}),
         "pending_gap_rows": pending_gap_rows,
-        "pending_gap_action_counts": _pending_gap_action_counts(pending_gap_rows),
+        "pending_gap_action_counts": external_deployment_pending_gap_action_counts(
+            pending_gap_rows
+        ),
         "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
@@ -461,19 +464,6 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Structured filing sample: {report['structured_company_filing_sample_command']}")
     lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)
-
-
-def _pending_gap_action_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
-    counts = {
-        "local_action": 0,
-        "quota_or_external": 0,
-        "paid_external": 0,
-        "manual_configuration": 0,
-    }
-    for row in rows:
-        action_type = str(row.get("action_type") or "manual_configuration")
-        counts[action_type] = counts.get(action_type, 0) + 1
-    return counts
 
 
 def _pending_gap_row_for_check(report: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:

@@ -339,6 +339,19 @@ def external_deployment_pending_gap_display_rows(
     ]
 
 
+def external_deployment_pending_gap_action_counts(rows: list[dict]) -> dict[str, int]:
+    counts = {
+        "local_action": 0,
+        "quota_or_external": 0,
+        "paid_external": 0,
+        "manual_configuration": 0,
+    }
+    for row in rows:
+        action_type = str(row.get("action_type") or "manual_configuration")
+        counts[action_type] = counts.get(action_type, 0) + 1
+    return counts
+
+
 def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
     if not isinstance(upgrade_audit, dict):
         return []

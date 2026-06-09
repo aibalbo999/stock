@@ -7,6 +7,8 @@ from typing import Any
 from app.services.external_deployment_readiness import (
     external_deployment_enablement_profile,
     external_deployment_enablement_summary,
+    external_deployment_pending_gap_action_counts,
+    external_deployment_pending_gap_rows,
 )
 from app.services.service_status import service_status
 
@@ -397,6 +399,14 @@ def audit_upgrade_capabilities(
     audit["external_deployment_enablement"] = external_deployment_enablement_summary(
         audit,
         local_dependency_status=local_dependencies,
+    )
+    pending_gaps = external_deployment_pending_gap_rows(
+        audit,
+        local_dependency_status=local_dependencies,
+    )
+    audit["external_deployment_pending_gaps"] = pending_gaps
+    audit["external_deployment_pending_gap_action_counts"] = (
+        external_deployment_pending_gap_action_counts(pending_gaps)
     )
     return audit
 

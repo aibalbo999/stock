@@ -131,6 +131,12 @@ def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
             "paid_external_pending": 1,
             "primary_next_action": "先處理本機免費可補強項目。",
         },
+        "external_deployment_pending_gap_action_counts": {
+            "local_action": 3,
+            "quota_or_external": 0,
+            "paid_external": 1,
+            "manual_configuration": 0,
+        },
         "all_warnings": [
             {
                 "area": "ai_rag",
@@ -165,9 +171,74 @@ def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
     assert "warnings=4" in rows[0]["數量"]
     assert rows[1]["項目"] == "外部部署啟用"
     assert "free_local=3" in rows[1]["Ready"]
-    assert rows[2]["項目"] == "外部 Neo4j 匯入連線"
-    assert rows[2]["Ready"] == "否"
-    assert rows[2]["數量"] == "可本機免費啟用"
+    assert rows[2]["項目"] == "外部缺口處理類型"
+    assert "local_action=3" in rows[2]["狀態"]
+    assert "paid=1" in rows[2]["數量"]
+    assert "先執行本機啟動/驗證指令" in rows[2]["下一步"]
+    assert rows[3]["項目"] == "外部 Neo4j 匯入連線"
+    assert rows[3]["Ready"] == "否"
+    assert rows[3]["數量"] == "可本機免費啟用"
+
+
+def test_run_maintenance_diagnostic_action_summarizes_external_smoke_gap_actions(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "caution",
+        "ready_count": 5,
+        "check_count": 9,
+        "actionable_check_count": 9,
+        "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
+        "enablement_summary": {
+            "pending": 4,
+            "ready": 1,
+            "free_local_pending": 3,
+            "local_action_available": 3,
+            "quota_or_external_pending": 0,
+            "paid_external_pending": 1,
+            "primary_next_action": "先處理本機免費可補強項目。",
+        },
+        "pending_gap_action_counts": {
+            "local_action": 3,
+            "quota_or_external": 0,
+            "paid_external": 1,
+            "manual_configuration": 0,
+        },
+        "checks": [
+            {
+                "label": "Structured company filing API fallback",
+                "status": "not_configured",
+                "ready": False,
+                "remediation": "設定 TEJ 或專業資料 API。",
+                "enablement_profile": {"group_label": "需外部資料 API"},
+            }
+        ],
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "external_integrations_smoke",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "External integrations smoke"
+    assert rows[0]["Ready"] == "5/9"
+    assert rows[1]["項目"] == "外部部署啟用"
+    assert rows[2]["項目"] == "外部缺口處理類型"
+    assert "local_action=3" in rows[2]["狀態"]
+    assert "paid=1" in rows[2]["數量"]
+    assert rows[3]["項目"] == "Structured company filing API fallback"
 
 
 def test_run_maintenance_diagnostic_action_summarizes_graphrag_json(

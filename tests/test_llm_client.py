@@ -92,6 +92,18 @@ def test_llm_text_generation_workflows_are_split_from_client() -> None:
     assert "def _generate_with_litellm(" not in client_source
 
 
+def test_llm_vision_generation_workflows_are_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    generation_source = Path("app/services/llm_vision_generation_mixin.py").read_text()
+
+    assert "class LLMVisionGenerationMixin" in generation_source
+    assert "def _generate_vision_with_litellm(" in generation_source
+    assert "def _generate_vision_with_gemini_http(" in generation_source
+    assert "LLMVisionGenerationMixin" in client_source
+    assert "def _generate_vision_with_litellm(" not in client_source
+    assert "def _generate_vision_with_gemini_http(" not in client_source
+
+
 def test_llm_runtime_helpers_are_split_from_client() -> None:
     client_source = Path("app/services/llm_client.py").read_text()
     runtime_source = Path("app/services/llm_runtime.py").read_text()

@@ -44,6 +44,12 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "paid_external_pending": 0,
                 "primary_next_action": "先處理本機免費可補強項目，再評估 API 額度或付費資料商。",
             },
+            "external_deployment_pending_gap_action_counts": {
+                "local_action": 1,
+                "quota_or_external": 0,
+                "paid_external": 0,
+                "manual_configuration": 0,
+            },
             "checks": [
                 {
                     "severity": "pass",
@@ -97,6 +103,10 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
         "quota_or_external=0; paid_external=0"
     ) in output
     assert "External next action: 先處理本機免費可補強項目" in output
+    assert (
+        "External gap actions: local_action=1; quota_or_external=0; "
+        "paid_external=0; manual_configuration=0"
+    ) in output
     assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
     assert (
         "Local dependency last start: 已啟動 at 2026-06-09T01:02:03Z; "

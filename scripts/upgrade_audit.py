@@ -214,6 +214,19 @@ def _format_text(audit: dict) -> str:
             lines.append(
                 "External next action: " + str(enablement_summary["primary_next_action"])
             )
+    pending_gap_counts = (
+        audit.get("external_deployment_pending_gap_action_counts")
+        if isinstance(audit.get("external_deployment_pending_gap_action_counts"), dict)
+        else {}
+    )
+    if pending_gap_counts:
+        lines.append(
+            "External gap actions: "
+            f"local_action={int(pending_gap_counts.get('local_action') or 0)}; "
+            f"quota_or_external={int(pending_gap_counts.get('quota_or_external') or 0)}; "
+            f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
+            f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
+        )
     local_defaults = audit.get("local_dependency_defaults")
     if local_defaults:
         lines.append(

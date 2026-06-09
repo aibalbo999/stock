@@ -3,9 +3,22 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.report_query import ReportQueryNotFound, ReportQueryService
+
+
+def test_report_observability_summary_logic_lives_outside_report_query() -> None:
+    query_source = Path("app/services/report_query.py").read_text()
+    summary_source = Path("app/services/report_observability_summary.py").read_text()
+
+    assert "def report_observability_summary_row(" in summary_source
+    assert "def report_observability_totals(" in summary_source
+    assert "def _observability_summary_row(" not in query_source
+    assert "def _observability_totals(" not in query_source
+    assert "latency_distribution(" not in query_source
+    assert "latency_distribution(" in summary_source
 
 
 def test_report_query_service_builds_reader_payload_with_candidate_audit_and_follow_up() -> None:

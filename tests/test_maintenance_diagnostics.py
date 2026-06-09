@@ -26,6 +26,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "local_neo4j_upgrade_audit",
         "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
+        "task_submission_smoke",
         "upgrade_audit",
     }
     assert all(action["read_only"] is True for action in catalog["actions"])
@@ -71,6 +72,13 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         action["id"]: action for action in catalog["actions"]
     }["high_risk_unlocker_smoke"]
     assert "https://mops.twse.com.tw/" in mops_action["display_command"]
+    task_submission_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["task_submission_smoke"]
+    assert "task_submission_smoke.py --json" in (
+        task_submission_action["display_command"]
+    )
+    assert "不送出 Celery 任務" in task_submission_action["description"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
@@ -113,6 +121,32 @@ def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
     assert captured["check"] is False
     assert captured["text"] is True
     assert captured["capture_output"] is True
+
+
+def test_run_maintenance_diagnostic_action_executes_task_submission_readiness_smoke(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"passed"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "task_submission_smoke",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/task_submission_smoke.py --json"
+    )
+    assert captured["command"][1:] == ["scripts/task_submission_smoke.py", "--json"]
+    assert captured["timeout"] == 30
 
 
 def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
@@ -371,6 +405,75 @@ def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(
     assert "missing=2" in rows[2]["數量"]
     assert "COMPOSE_NEO4J_URI" in rows[2]["下一步"]
     assert "real-secret" not in str(rows)
+
+
+def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "caution",
+        "submit": True,
+        "wait": True,
+        "next_actions": ["重啟 FastAPI 與 Celery worker 後重跑 smoke。"],
+        "checks": [
+            {"status": "passed", "label": "Services status"},
+            {"status": "warning", "label": "Worker offline"},
+        ],
+        "task_queue": {
+            "ready": False,
+            "processing_ready": True,
+            "worker_online": False,
+            "legacy_status_shape": True,
+            "status_shape_warning": "目前 API runtime 回傳 legacy celery status。",
+        },
+        "submission": {
+            "ok": True,
+            "status_code": 202,
+            "url": "http://127.0.0.1:8000/tasks/data-operation",
+            "json": {"task_id": "abc-123"},
+        },
+        "task_poll": {
+            "status": "finished",
+            "ready": True,
+            "successful": True,
+            "task_status": "SUCCESS",
+        },
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "task_submission_smoke",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "Task submission smoke"
+    assert rows[0]["狀態"] == "caution"
+    assert "submit=True" in rows[0]["Ready"]
+    assert "warnings=1" in rows[0]["數量"]
+    assert "重啟 FastAPI" in rows[0]["下一步"]
+    assert rows[1]["項目"] == "Task queue"
+    assert rows[1]["狀態"] == "not_ready"
+    assert "worker=False" in rows[1]["Ready"]
+    assert "legacy_status_shape=True" in rows[1]["數量"]
+    assert rows[2]["項目"] == "Data operation submission"
+    assert rows[2]["狀態"] == "ok"
+    assert rows[2]["Ready"] == "202"
+    assert rows[2]["數量"] == "abc-123"
+    assert rows[3]["項目"] == "Task polling"
+    assert rows[3]["狀態"] == "finished"
+    assert "successful=True" in rows[3]["Ready"]
+    assert rows[3]["數量"] == "SUCCESS"
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:

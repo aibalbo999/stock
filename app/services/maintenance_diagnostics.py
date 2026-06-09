@@ -85,6 +85,18 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 20,
         "read_only": True,
     },
+    "task_submission_smoke": {
+        "id": "task_submission_smoke",
+        "label": "Task submission readiness smoke",
+        "description": (
+            "只讀檢查 /services/status 的 task_queue readiness 與背景任務提交 smoke 指令，"
+            "不送出 Celery 任務。"
+        ),
+        "display_command": ".venv/bin/python scripts/task_submission_smoke.py --json",
+        "argv": [sys.executable, "scripts/task_submission_smoke.py", "--json"],
+        "timeout_seconds": 30,
+        "read_only": True,
+    },
     "local_neo4j_upgrade_audit": {
         "id": "local_neo4j_upgrade_audit",
         "label": "Local Neo4j upgrade audit",
@@ -323,6 +335,8 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _graphrag_smoke_summary_rows(payload)
     if action_id in {"company_filing_render_smoke", "high_risk_unlocker_smoke"}:
         return _company_filing_render_summary_rows(payload)
+    if action_id == "task_submission_smoke":
+        return _task_submission_smoke_summary_rows(payload)
     return _generic_json_summary_rows(payload)
 
 
@@ -582,6 +596,70 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
     return rows[:MAX_SUMMARY_ROWS]
 
 
+def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
+    checks = _list_value(payload, "checks")
+    failed_checks = sum(
+        1
+        for item in checks
+        if isinstance(item, dict) and str(item.get("status") or "") == "failed"
+    )
+    warning_checks = sum(
+        1
+        for item in checks
+        if isinstance(item, dict) and str(item.get("status") or "") == "warning"
+    )
+    rows = [
+        _summary_row(
+            "Task submission smoke",
+            payload.get("status") or "-",
+            _counts(submit=payload.get("submit"), wait=payload.get("wait")),
+            _counts(failed=failed_checks, warnings=warning_checks),
+            _first_text(payload, "next_actions") or "背景任務提交 readiness 正常。",
+        )
+    ]
+    task_queue = _dict_value(payload, "task_queue")
+    if task_queue:
+        rows.append(
+            _summary_row(
+                "Task queue",
+                "ready" if task_queue.get("ready") else "not_ready",
+                _counts(
+                    processing=task_queue.get("processing_ready"),
+                    worker=task_queue.get("worker_online"),
+                ),
+                _counts(legacy_status_shape=task_queue.get("legacy_status_shape")),
+                task_queue.get("status_shape_warning") or "-",
+            )
+        )
+    submission = _dict_value(payload, "submission")
+    if submission:
+        body = _dict_value(submission, "json")
+        rows.append(
+            _summary_row(
+                "Data operation submission",
+                "ok" if submission.get("ok") else "failed",
+                submission.get("status_code") or "-",
+                body.get("task_id") or submission.get("error") or "-",
+                submission.get("url") or "-",
+            )
+        )
+    task_poll = _dict_value(payload, "task_poll")
+    if task_poll:
+        rows.append(
+            _summary_row(
+                "Task polling",
+                task_poll.get("status") or "-",
+                _counts(
+                    ready=task_poll.get("ready"),
+                    successful=task_poll.get("successful"),
+                ),
+                task_poll.get("task_status") or "-",
+                _first_text(task_poll, "poll_errors") or "-",
+            )
+        )
+    return rows[:MAX_SUMMARY_ROWS]
+
+
 def _generic_json_summary_rows(payload: dict) -> list[dict]:
     return [
         _summary_row(
@@ -726,6 +804,11 @@ def _dict_value(payload: dict, key: str) -> dict:
 def _list_value(payload: dict, key: str) -> list:
     value = payload.get(key)
     return value if isinstance(value, list) else []
+
+
+def _first_text(payload: dict, key: str) -> str:
+    values = _list_value(payload, key)
+    return str(values[0]) if values else ""
 
 
 def _shorten(value: object, *, limit: int = 120) -> str:

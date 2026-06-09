@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.services.llm_quota import (
+from app.services.llm_model_routing_policy import normalize_model_name
+from app.services.llm_quota_reference import (
     FREE_TIER_RATE_LIMIT_SOURCE,
     FREE_TIER_REQUEST_BUDGET_REFERENCES,
     PROJECT_CONFIGURED_MODEL_BUDGET_NOTES,
-    normalize_model_name,
+    quota_reference_note,
+    quota_reference_source,
 )
 
 BUDGET_ENV_KEY = "LLM_MODEL_DAILY_REQUEST_BUDGETS"
@@ -202,8 +204,15 @@ def _budget_rows(raw_value: str) -> list[dict[str, Any]]:
                 "model_key": model_key,
                 "configured_request_budget": budget,
                 "official_free_tier_request_budget_reference": official_reference,
-                "quota_reference_source": _quota_reference_source(model_key),
-                "quota_reference_note": _quota_reference_note(model_key),
+                "quota_reference_source": quota_reference_source(
+                    model_key,
+                    unreferenced_source="unreferenced_project_config",
+                ),
+                "quota_reference_note": quota_reference_note(
+                    model_key,
+                    free_tier_note=str(FREE_TIER_RATE_LIMIT_SOURCE["note"]),
+                    unreferenced_note="No public Free Tier reference is tracked for this model.",
+                ),
             }
         )
     return rows
@@ -233,23 +242,6 @@ def _budget_row_status(
             else "no_public_reference"
         )
     return "matches_reference" if configured_budget == official_reference else "drift"
-
-
-def _quota_reference_source(model_key: str) -> str:
-    if model_key in FREE_TIER_REQUEST_BUDGET_REFERENCES:
-        return "google_free_tier_reference"
-    if model_key in PROJECT_CONFIGURED_MODEL_BUDGET_NOTES:
-        return "project_configured_ai_studio_limit"
-    return "unreferenced_project_config"
-
-
-def _quota_reference_note(model_key: str) -> str:
-    if model_key in FREE_TIER_REQUEST_BUDGET_REFERENCES:
-        return str(FREE_TIER_RATE_LIMIT_SOURCE["note"])
-    return PROJECT_CONFIGURED_MODEL_BUDGET_NOTES.get(
-        model_key,
-        "No public Free Tier reference is tracked for this model.",
-    )
 
 
 def _rewrite_reference_budget_value(raw_value: str) -> tuple[str, list[str]]:

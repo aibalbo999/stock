@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from app.services.llm_quota import (
-    FREE_TIER_RATE_LIMIT_SOURCE,
-    FREE_TIER_REQUEST_BUDGET_REFERENCES,
-    normalize_model_name,
-    parse_model_budget_map,
-)
 from app.services.llm_model_routing_policy import (
     HIGH_QUOTA_TEXT_FALLBACK_MODEL,
     SMART_FIRST_FLASH_MODELS,
     configured_text_model_order,
     effective_fallback_models,
     llm_model_provider as _llm_model_provider,
+    normalize_model_name,
     report_route_media_or_live_models,
     split_config_values as _split_config_values,
+)
+from app.services.llm_quota_reference import (
+    FREE_TIER_RATE_LIMIT_SOURCE,
+    FREE_TIER_REQUEST_BUDGET_REFERENCES,
+    parse_model_budget_map,
 )
 
 _llm_effective_fallback_models = effective_fallback_models

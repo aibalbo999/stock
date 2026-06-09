@@ -6,14 +6,46 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.llm_quota import LLMQuotaGovernanceService, parse_model_budget_map
+from app.services.llm_quota_reference import (
+    FREE_TIER_REQUEST_BUDGET_REFERENCES,
+    parse_model_budget_map as reference_parse_model_budget_map,
+    quota_reference_note,
+    quota_reference_source,
+)
 from app.services.llm_quota_usage import quota_health_by_model, usage_by_model
 
 
 def test_parse_model_budget_map_normalizes_provider_prefixes() -> None:
-    assert parse_model_budget_map("models/gemini-3.5-flash=250,gemini/gemma-4-31b-it=14400,bad=x") == {
+    expected = {
         "gemini-3.5-flash": 250,
         "gemma-4-31b-it": 14400,
     }
+    assert (
+        parse_model_budget_map(
+            "models/gemini-3.5-flash=250,gemini/gemma-4-31b-it=14400,bad=x"
+        )
+        == reference_parse_model_budget_map(
+            "models/gemini-3.5-flash=250,gemini/gemma-4-31b-it=14400,bad=x"
+        )
+        == expected
+    )
+
+
+def test_llm_quota_reference_catalog_lives_outside_governance_service() -> None:
+    quota_source = Path("app/services/llm_quota.py").read_text()
+    reference_source = Path("app/services/llm_quota_reference.py").read_text()
+
+    assert "FREE_TIER_REQUEST_BUDGET_REFERENCES = {" not in quota_source
+    assert "FREE_TIER_REQUEST_BUDGET_REFERENCES = {" in reference_source
+    assert "def quota_reference_source(" not in quota_source
+    assert "def quota_reference_source(" in reference_source
+    assert FREE_TIER_REQUEST_BUDGET_REFERENCES["gemini-2.5-flash-lite"] == 1000
+    assert quota_reference_source("gemini-2.5-flash-lite") == "google_free_tier_reference"
+    assert (
+        quota_reference_source("custom-model", unreferenced_source="unreferenced_project_config")
+        == "unreferenced_project_config"
+    )
+    assert "Google Gemini API Free Tier" in quota_reference_note("gemini-2.5-flash-lite")
 
 
 def test_llm_quota_usage_helpers_live_outside_governance_service() -> None:

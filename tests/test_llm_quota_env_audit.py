@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from app.services.llm_quota_env_audit import (
     format_llm_quota_env_audit,
@@ -10,6 +11,8 @@ from scripts import llm_quota_env_audit as llm_quota_env_audit_cli
 
 
 def test_llm_quota_env_audit_reports_ready_without_exposing_secrets(tmp_path) -> None:
+    audit_source = Path("app/services/llm_quota_env_audit.py").read_text()
+    reference_source = Path("app/services/llm_quota_reference.py").read_text()
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(
@@ -46,6 +49,8 @@ def test_llm_quota_env_audit_reports_ready_without_exposing_secrets(tmp_path) ->
     )
     assert "plain" not in json.dumps(report, ensure_ascii=False)
     assert "plain" not in formatted
+    assert "def _quota_reference_source(" not in audit_source
+    assert "def quota_reference_source(" in reference_source
 
 
 def test_llm_quota_env_audit_detects_drift_and_strict_cli_exits_nonzero(

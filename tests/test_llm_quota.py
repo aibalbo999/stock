@@ -161,6 +161,89 @@ def test_llm_quota_service_counts_attempted_models_for_hard_routing() -> None:
     assert summary["totals"]["completion_count"] == 1
 
 
+def test_llm_quota_service_surfaces_quota_hits_and_active_cooldown() -> None:
+    settings = SimpleNamespace(
+        primary_llm_model="gemini-3.5-flash",
+        llm_fallback_models="gemini-2.5-flash,gemma-4-31b-it",
+        local_llm_model="",
+        llm_quota_window_timezone="America/Los_Angeles",
+        llm_quota_warning_ratio=0.8,
+        llm_model_daily_request_budgets="gemini-3.5-flash=250,gemini-2.5-flash=250,gemma-4-31b-it=14400",
+        llm_model_daily_token_budgets="",
+        llm_model_quota_cooldown_seconds=3600,
+    )
+
+    class FakeUsageRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def since(self, created_at: datetime):
+            return [SimpleNamespace(id=1)]
+
+        @staticmethod
+        def to_dict(record):
+            return {
+                "id": record.id,
+                "model": "gemini-2.5-flash",
+                "models_tried": ["gemini-3.5-flash", "gemini-2.5-flash"],
+                "attempts": [
+                    {
+                        "model": "gemini-3.5-flash",
+                        "outcome": "http_error",
+                        "status": 429,
+                        "retryable": True,
+                    },
+                    {
+                        "model": "gemini-3.5-flash",
+                        "outcome": "quota_cooldown",
+                        "retryable": True,
+                        "cooldown_seconds": 1800,
+                    },
+                    {
+                        "model": "gemini-2.5-flash",
+                        "outcome": "success",
+                    },
+                ],
+                "fallback": True,
+                "total_token_estimate": 400,
+                "estimated_cost_usd": 0.0,
+                "retryable_failure_count": 1,
+                "created_at": "2026-06-07T11:40:00",
+            }
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = LLMQuotaGovernanceService(
+        settings_provider=lambda: settings,
+        session_scope_factory=fake_session_scope,
+        llm_usage_repository_cls=FakeUsageRepository,
+        clock=lambda: datetime(2026, 6, 7, 12, 0, 0),
+    )
+
+    summary = service.summary()
+    primary, fallback = summary["models"][:2]
+
+    assert summary["recommended_model"] == "gemini-2.5-flash"
+    assert primary["status"] == "cooldown"
+    assert primary["risk_level"] == "cooldown"
+    assert primary["status_reason"] == "quota_cooldown_active"
+    assert primary["quota_hit_count"] == 1
+    assert primary["quota_skip_count"] == 1
+    assert primary["cooldown_skip_count"] == 1
+    assert primary["active_cooldown_seconds"] == 2400
+    assert primary["last_quota_hit_at"] == "2026-06-07T11:40:00"
+    assert primary["routing_reason"].startswith("Temporarily skipped")
+    assert fallback["status"] == "available"
+    assert summary["routing_policy"]["quota_hit_models"] == ["gemini-3.5-flash"]
+    assert summary["routing_policy"]["cooldown_models"] == ["gemini-3.5-flash"]
+    assert summary["alerts"][0]["code"] == "llm_quota_cooldown"
+    assert summary["alerts"][0]["active_cooldown_seconds"] == 2400
+    assert service.exhausted_model_keys() == {"gemini-3.5-flash"}
+    assert service.active_cooldown_seconds("gemini/gemini-3.5-flash") == 2400.0
+
+
 def test_llm_quota_service_warns_near_limit_without_degrading_model() -> None:
     settings = SimpleNamespace(
         primary_llm_model="gemini-3.5-flash",
@@ -235,6 +318,10 @@ def test_llm_quota_service_warns_near_limit_without_degrading_model() -> None:
             "tokens_used": 800,
             "token_budget": None,
             "tokens_remaining": None,
+            "quota_hit_count": 0,
+            "quota_skip_count": 0,
+            "active_cooldown_seconds": 0,
+            "last_quota_hit_at": None,
             "next_action": (
                 "Keep using this model until exhausted; defer large batch runs if you need "
                 "to preserve its remaining quota."

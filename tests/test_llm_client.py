@@ -254,6 +254,32 @@ def test_llm_quota_cooldown_runtime_tracks_shared_model_state() -> None:
     )
 
 
+def test_llm_client_model_cooldown_uses_persisted_quota_summary(monkeypatch) -> None:
+    class FakeQuotaService:
+        def __init__(self, *, settings_provider):
+            self.settings_provider = settings_provider
+
+        def summary(self):
+            assert self.settings_provider().llm_quota_hard_routing_enabled is True
+            return {
+                "models": [
+                    {
+                        "model_key": "gemini-3.5-flash",
+                        "active_cooldown_seconds": 123.0,
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(llm_module, "LLMQuotaGovernanceService", FakeQuotaService)
+
+    client = object.__new__(LLMClient)
+    client.settings = fake_settings(llm_quota_hard_routing_enabled=True)
+    client.rotator = APIKeyRotator(["key"])
+
+    assert client._model_quota_cooldown_remaining("gemini/gemini-3.5-flash") == 123.0
+    assert client._model_quota_cooldown_remaining("gemini/gemini-3.5-flash") == 123.0
+
+
 def test_llm_client_rotates_after_retryable_error(monkeypatch) -> None:
     client = object.__new__(LLMClient)
     client.settings = fake_settings()

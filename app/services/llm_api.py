@@ -271,5 +271,11 @@ def _quota_model_snapshot(model: dict) -> dict:
         "usage_ratio": model.get("usage_ratio"),
         "quota_warning": model.get("quota_warning"),
         "risk_level": model.get("risk_level"),
+        "quota_hit_count": model.get("quota_hit_count"),
+        "quota_skip_count": model.get("quota_skip_count"),
+        "daily_quota_skip_count": model.get("daily_quota_skip_count"),
+        "cooldown_skip_count": model.get("cooldown_skip_count"),
+        "active_cooldown_seconds": model.get("active_cooldown_seconds"),
+        "last_quota_hit_at": model.get("last_quota_hit_at"),
         "next_action": model.get("next_action"),
     }

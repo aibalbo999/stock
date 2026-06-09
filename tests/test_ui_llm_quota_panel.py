@@ -52,6 +52,12 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
                     "token_used_ratio": None,
                     "fallback_count": 0,
                     "retryable_failure_count": 3,
+                    "quota_hit_count": 2,
+                    "quota_skip_count": 1,
+                    "daily_quota_skip_count": 0,
+                    "cooldown_skip_count": 1,
+                    "active_cooldown_seconds": 1800,
+                    "last_quota_hit_at": "2026-06-07T11:40:00",
                     "next_action": "No action needed for routing.",
                 }
             ]
@@ -77,6 +83,12 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
             "token_used_pct": "-",
             "fallback_count": 0,
             "retryable_failure_count": 3,
+            "quota_hit_count": 2,
+            "quota_skip_count": 1,
+            "daily_quota_skip_count": 0,
+            "cooldown_skip_count": 1,
+            "active_cooldown": "30 分鐘",
+            "last_quota_hit_at": "2026-06-07T11:40:00",
             "next_action": "No action needed for routing.",
         }
     ]
@@ -132,6 +144,30 @@ def test_llm_quota_captions_surface_near_limit_alerts_without_changing_recommend
             "it has reached the 80% warning threshold."
         ),
         "額度提醒：gemini-3.5-flash warning（已用 80.0%）；Keep using this model until exhausted.",
+    ]
+
+
+def test_llm_quota_captions_surface_active_cooldown_alerts() -> None:
+    captions = llm_quota_captions(
+        {
+            "recommended_model": "gemini-2.5-flash",
+            "recommended_rank": 2,
+            "recommended_routing_tier": "fallback",
+            "window": {"reset_in_seconds": 600},
+            "alerts": [
+                {
+                    "model": "gemini-3.5-flash",
+                    "severity": "warning",
+                    "active_cooldown_seconds": 1800,
+                    "next_action": "No manual action needed.",
+                }
+            ],
+        }
+    )
+
+    assert captions == [
+        "目前推薦：gemini-2.5-flash｜順位 2｜tier=fallback｜約 10 分鐘 後重置",
+        "額度提醒：gemini-3.5-flash warning；cooldown 約 30 分鐘；No manual action needed.",
     ]
 
 

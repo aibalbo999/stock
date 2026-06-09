@@ -39,6 +39,12 @@ def llm_quota_model_rows(llm_quota: dict) -> list[dict]:
                 "token_used_pct": _format_ratio(model.get("token_used_ratio")),
                 "fallback_count": model.get("fallback_count"),
                 "retryable_failure_count": model.get("retryable_failure_count"),
+                "quota_hit_count": model.get("quota_hit_count"),
+                "quota_skip_count": model.get("quota_skip_count"),
+                "daily_quota_skip_count": model.get("daily_quota_skip_count"),
+                "cooldown_skip_count": model.get("cooldown_skip_count"),
+                "active_cooldown": _format_duration(model.get("active_cooldown_seconds")),
+                "last_quota_hit_at": model.get("last_quota_hit_at"),
                 "next_action": model.get("next_action"),
             }
         )
@@ -75,10 +81,13 @@ def _quota_alert_captions(llm_quota: dict) -> list[str]:
         model = str(alert.get("model") or "-")
         severity = str(alert.get("severity") or "warning")
         ratio = _format_ratio(alert.get("usage_ratio"))
+        cooldown = _format_duration(alert.get("active_cooldown_seconds"))
         next_action = str(alert.get("next_action") or "").strip()
         caption = f"額度提醒：{model} {severity}"
         if ratio != "-":
             caption += f"（已用 {ratio}）"
+        if cooldown:
+            caption += f"；cooldown 約 {cooldown}"
         if next_action:
             caption += f"；{next_action}"
         captions.append(caption)

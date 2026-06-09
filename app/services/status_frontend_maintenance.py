@@ -68,6 +68,9 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         and "def llm_quota_model_rows(" in llm_quota_panel_source
         and "def llm_quota_captions(" in llm_quota_panel_source
         and "額度重置" in llm_quota_panel_source
+        and "quota_hit_count" in llm_quota_panel_source
+        and "quota_skip_count" in llm_quota_panel_source
+        and "active_cooldown" in llm_quota_panel_source
         and "from app.ui.llm_quota_panel import (" in ui_source
         and "llm_quota_metric_values(llm_quota)" in ui_source
         and "llm_quota_model_rows(llm_quota)" in ui_source,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -43,19 +43,36 @@ class LLMQuotaGovernanceService:
         warning_ratio = _safe_warning_ratio(
             getattr(settings, "llm_quota_warning_ratio", DEFAULT_QUOTA_WARNING_RATIO)
         )
+        default_cooldown_seconds = max(
+            0.0,
+            float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0) or 0.0),
+        )
         model_order = self._model_order(settings)
         usage_records = self._usage_records(window["start_utc_naive"])
         usage_by_model = self._usage_by_model(usage_records)
+        quota_health_by_model = self._quota_health_by_model(
+            usage_records,
+            now_utc_naive=window["now_utc_naive"],
+            default_cooldown_seconds=default_cooldown_seconds,
+        )
         configured_by_key = {normalize_model_name(model): model for model in model_order}
-        for model_key in sorted(set(usage_by_model) - set(configured_by_key)):
-            configured_by_key[model_key] = usage_by_model[model_key].get("model") or model_key
+        for model_key in sorted(
+            (set(usage_by_model) | set(quota_health_by_model)) - set(configured_by_key)
+        ):
+            configured_by_key[model_key] = (
+                usage_by_model.get(model_key, {}).get("model")
+                or quota_health_by_model.get(model_key, {}).get("model")
+                or model_key
+            )
         rows = []
         for model_key, display_model in configured_by_key.items():
             usage = usage_by_model.get(model_key, {})
+            quota_health = quota_health_by_model.get(model_key, {})
             request_budget = request_budgets.get(model_key)
             token_budget = token_budgets.get(model_key)
             requests_used = int(usage.get("request_count") or 0)
             tokens_used = int(usage.get("total_token_estimate") or 0)
+            active_cooldown_seconds = int(quota_health.get("active_cooldown_seconds") or 0)
             request_remaining = _remaining(request_budget, requests_used)
             token_remaining = _remaining(token_budget, tokens_used)
             request_used_ratio = _used_ratio(request_budget, requests_used)
@@ -67,6 +84,8 @@ class LLMQuotaGovernanceService:
             status = (
                 "exhausted"
                 if request_exhausted or token_exhausted
+                else "cooldown"
+                if active_cooldown_seconds > 0
                 else "available"
                 if has_budget
                 else "tracking_only"
@@ -107,6 +126,14 @@ class LLMQuotaGovernanceService:
                     "estimated_cost_usd": round(float(usage.get("estimated_cost_usd") or 0.0), 6),
                     "fallback_count": int(usage.get("fallback_count") or 0),
                     "retryable_failure_count": int(usage.get("retryable_failure_count") or 0),
+                    "quota_hit_count": int(quota_health.get("quota_hit_count") or 0),
+                    "quota_skip_count": int(quota_health.get("quota_skip_count") or 0),
+                    "daily_quota_skip_count": int(
+                        quota_health.get("daily_quota_skip_count") or 0
+                    ),
+                    "cooldown_skip_count": int(quota_health.get("cooldown_skip_count") or 0),
+                    "active_cooldown_seconds": active_cooldown_seconds,
+                    "last_quota_hit_at": quota_health.get("last_quota_hit_at"),
                     "status": status,
                     "status_reason": _status_reason(
                         status=status,
@@ -115,6 +142,7 @@ class LLMQuotaGovernanceService:
                         request_warning=request_warning,
                         token_warning=token_warning,
                         has_budget=has_budget,
+                        active_cooldown_seconds=active_cooldown_seconds,
                     ),
                     "quota_warning": quota_warning,
                     "risk_level": risk_level,
@@ -125,16 +153,25 @@ class LLMQuotaGovernanceService:
                         model_order=model_order,
                         model=display_model,
                         request_budget=request_budget,
+                        active_cooldown_seconds=active_cooldown_seconds,
                     ),
                     "next_action": _next_action(
                         status=status,
                         risk_level=risk_level,
                         routing_tier=routing_tier,
+                        active_cooldown_seconds=active_cooldown_seconds,
                     ),
                 }
             )
         rows.sort(key=lambda item: (item["rank"] if item["rank"] is not None else 999, item["model"]))
-        recommended = next((item for item in rows if item["configured"] and item["status"] != "exhausted"), None)
+        recommended = next(
+            (
+                item
+                for item in rows
+                if item["configured"] and item["status"] not in {"exhausted", "cooldown"}
+            ),
+            None,
+        )
         exhausted_before_recommendation = [
             item["model"]
             for item in rows
@@ -182,6 +219,12 @@ class LLMQuotaGovernanceService:
                 "high_quota_fallback_models": [
                     item["model"] for item in rows if item.get("routing_tier") == "high_quota_fallback"
                 ],
+                "quota_hit_models": [
+                    item["model"] for item in rows if int(item.get("quota_hit_count") or 0)
+                ],
+                "cooldown_models": [
+                    item["model"] for item in rows if int(item.get("active_cooldown_seconds") or 0)
+                ],
             },
             "budget_source": {
                 "request_budgets_configured": bool(request_budgets),
@@ -203,8 +246,17 @@ class LLMQuotaGovernanceService:
         return {
             str(item.get("model_key") or "")
             for item in self.summary().get("models", [])
-            if item.get("status") == "exhausted" and item.get("model_key")
+            if item.get("status") in {"exhausted", "cooldown"} and item.get("model_key")
         }
+
+    def active_cooldown_seconds(self, model: str) -> float:
+        model_key = normalize_model_name(model)
+        if not model_key:
+            return 0.0
+        for item in self.summary().get("models", []):
+            if normalize_model_name(str(item.get("model_key") or item.get("model") or "")) == model_key:
+                return max(0.0, float(item.get("active_cooldown_seconds") or 0.0))
+        return 0.0
 
     def _usage_records(self, since_utc_naive: datetime) -> list[dict]:
         with self.session_scope_factory() as session:
@@ -237,6 +289,74 @@ class LLMQuotaGovernanceService:
         return usage
 
     @staticmethod
+    def _quota_health_by_model(
+        records: list[dict],
+        *,
+        now_utc_naive: datetime,
+        default_cooldown_seconds: float,
+    ) -> dict[str, dict]:
+        health: dict[str, dict] = {}
+        for record in records:
+            record_created_at = _parse_record_datetime(record.get("created_at"))
+            attempts = record.get("attempts")
+            if not isinstance(attempts, list):
+                continue
+            for attempt in attempts:
+                if not isinstance(attempt, dict):
+                    continue
+                model_key = normalize_model_name(str(attempt.get("model") or ""))
+                if not model_key:
+                    continue
+                bucket = health.setdefault(
+                    model_key,
+                    {
+                        "model": _display_model_for_key(model_key, record),
+                        "quota_hit_count": 0,
+                        "daily_quota_skip_count": 0,
+                        "cooldown_skip_count": 0,
+                        "quota_skip_count": 0,
+                        "active_cooldown_seconds": 0,
+                        "last_quota_hit_at": None,
+                    },
+                )
+                outcome = str(attempt.get("outcome") or "")
+                status = _safe_int(attempt.get("status"))
+                if status == 429:
+                    bucket["quota_hit_count"] += 1
+                    _record_last_quota_hit(bucket, record_created_at)
+                    cooldown = _attempt_cooldown_seconds(
+                        attempt,
+                        default_seconds=default_cooldown_seconds,
+                    )
+                    bucket["active_cooldown_seconds"] = max(
+                        int(bucket.get("active_cooldown_seconds") or 0),
+                        _cooldown_remaining_seconds(
+                            record_created_at,
+                            now_utc_naive=now_utc_naive,
+                            cooldown_seconds=cooldown,
+                        ),
+                    )
+                if outcome == "quota_daily_exhausted":
+                    bucket["daily_quota_skip_count"] += 1
+                    bucket["quota_skip_count"] += 1
+                elif outcome == "quota_cooldown":
+                    bucket["cooldown_skip_count"] += 1
+                    bucket["quota_skip_count"] += 1
+                    cooldown = _attempt_cooldown_seconds(
+                        attempt,
+                        default_seconds=default_cooldown_seconds,
+                    )
+                    bucket["active_cooldown_seconds"] = max(
+                        int(bucket.get("active_cooldown_seconds") or 0),
+                        _cooldown_remaining_seconds(
+                            record_created_at,
+                            now_utc_naive=now_utc_naive,
+                            cooldown_seconds=cooldown,
+                        ),
+                    )
+        return health
+
+    @staticmethod
     def _model_order(settings: Any) -> list[str]:
         models = [str(getattr(settings, "primary_llm_model", "") or "").strip()]
         models.extend(
@@ -265,6 +385,7 @@ class LLMQuotaGovernanceService:
         return {
             "timezone": timezone_name,
             "now_local": now_local,
+            "now_utc_naive": now_utc.replace(tzinfo=None),
             "start_local": start_local,
             "end_local": end_local,
             "reset_in_seconds": max(0, int((end_local - now_local).total_seconds())),
@@ -413,11 +534,14 @@ def _status_reason(
     request_warning: bool,
     token_warning: bool,
     has_budget: bool,
+    active_cooldown_seconds: int,
 ) -> str:
     if status == "exhausted" and request_exhausted:
         return "request_budget_exhausted"
     if status == "exhausted" and token_exhausted:
         return "token_budget_exhausted"
+    if status == "cooldown" and active_cooldown_seconds > 0:
+        return "quota_cooldown_active"
     if request_warning:
         return "request_budget_near_limit"
     if token_warning:
@@ -430,6 +554,8 @@ def _status_reason(
 def _risk_level(*, status: str, has_budget: bool, quota_warning: bool) -> str:
     if status == "exhausted":
         return "exhausted"
+    if status == "cooldown":
+        return "cooldown"
     if quota_warning:
         return "warning"
     if has_budget:
@@ -456,10 +582,16 @@ def _routing_reason(
     model_order: list[str],
     model: str,
     request_budget: int | None,
+    active_cooldown_seconds: int,
 ) -> str:
     tier = _routing_tier(model_order, model, request_budget)
     if status == "exhausted":
         return "Skipped until the next quota window because the configured daily budget is exhausted."
+    if status == "cooldown":
+        return (
+            "Temporarily skipped because a recent quota/rate-limit hit is still cooling down "
+            f"for about {active_cooldown_seconds} seconds."
+        )
     if quota_warning:
         return "Still eligible until exhausted; watch remaining quota before starting large batches."
     if tier == "primary":
@@ -471,9 +603,20 @@ def _routing_reason(
     return "Fallback candidate used only after earlier ranked models are exhausted or unavailable."
 
 
-def _next_action(*, status: str, risk_level: str, routing_tier: str) -> str:
+def _next_action(
+    *,
+    status: str,
+    risk_level: str,
+    routing_tier: str,
+    active_cooldown_seconds: int,
+) -> str:
     if status == "exhausted":
         return "No action needed for routing; this model is skipped until the quota window resets."
+    if status == "cooldown":
+        return (
+            "No manual action needed; this model is skipped until cooldown expires "
+            f"in about {active_cooldown_seconds} seconds."
+        )
     if risk_level == "warning":
         return "Keep using this model until exhausted; defer large batch runs if you need to preserve its remaining quota."
     if routing_tier == "high_quota_fallback":
@@ -508,9 +651,15 @@ def _quota_alerts(rows: list[dict]) -> list[dict]:
         if not row.get("configured"):
             continue
         risk_level = str(row.get("risk_level") or "")
-        if risk_level not in {"warning", "exhausted"}:
+        if risk_level not in {"warning", "exhausted", "cooldown"}:
             continue
-        code = "llm_quota_exhausted" if risk_level == "exhausted" else "llm_quota_near_limit"
+        code = (
+            "llm_quota_exhausted"
+            if risk_level == "exhausted"
+            else "llm_quota_cooldown"
+            if risk_level == "cooldown"
+            else "llm_quota_near_limit"
+        )
         severity = "critical" if risk_level == "exhausted" else "warning"
         alerts.append(
             {
@@ -528,6 +677,10 @@ def _quota_alerts(rows: list[dict]) -> list[dict]:
                 "tokens_used": row.get("tokens_used"),
                 "token_budget": row.get("token_budget"),
                 "tokens_remaining": row.get("tokens_remaining"),
+                "quota_hit_count": row.get("quota_hit_count"),
+                "quota_skip_count": row.get("quota_skip_count"),
+                "active_cooldown_seconds": row.get("active_cooldown_seconds"),
+                "last_quota_hit_at": row.get("last_quota_hit_at"),
                 "next_action": row.get("next_action"),
                 "message": _quota_alert_message(row),
             }
@@ -540,6 +693,9 @@ def _quota_alert_message(row: dict) -> str:
     status_reason = str(row.get("status_reason") or "")
     if row.get("risk_level") == "exhausted":
         return f"{model} is exhausted for the current configured quota window."
+    if row.get("risk_level") == "cooldown":
+        seconds = int(row.get("active_cooldown_seconds") or 0)
+        return f"{model} is cooling down after recent quota/rate-limit hits for about {seconds} seconds."
     if status_reason == "request_budget_near_limit":
         return f"{model} is near its configured daily request budget."
     if status_reason == "token_budget_near_limit":
@@ -555,3 +711,51 @@ def _safe_warning_ratio(value: object) -> float:
     if parsed <= 0 or parsed >= 1:
         return DEFAULT_QUOTA_WARNING_RATIO
     return parsed
+
+
+def _safe_int(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_record_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _record_last_quota_hit(bucket: dict, created_at: datetime | None) -> None:
+    if created_at is None:
+        return
+    previous = _parse_record_datetime(bucket.get("last_quota_hit_at"))
+    if previous is None or created_at >= previous:
+        bucket["last_quota_hit_at"] = created_at.isoformat()
+
+
+def _attempt_cooldown_seconds(attempt: dict, *, default_seconds: float) -> float:
+    value = attempt.get("cooldown_seconds")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = 0.0
+    return max(0.0, parsed if parsed > 0 else float(default_seconds or 0.0))
+
+
+def _cooldown_remaining_seconds(
+    created_at: datetime | None,
+    *,
+    now_utc_naive: datetime,
+    cooldown_seconds: float,
+) -> int:
+    if created_at is None or cooldown_seconds <= 0:
+        return 0
+    until = created_at + timedelta(seconds=float(cooldown_seconds))
+    return max(0, int((until - now_utc_naive).total_seconds()))

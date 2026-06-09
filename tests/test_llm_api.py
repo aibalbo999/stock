@@ -437,6 +437,12 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
         "usage_ratio": 1.0,
         "quota_warning": False,
         "risk_level": "exhausted",
+        "quota_hit_count": None,
+        "quota_skip_count": None,
+        "daily_quota_skip_count": None,
+        "cooldown_skip_count": None,
+        "active_cooldown_seconds": None,
+        "last_quota_hit_at": None,
         "next_action": "No action needed for routing.",
     }
     assert "estimated_cost_usd" not in quota["models"][0]
@@ -532,6 +538,12 @@ def test_llm_api_service_returns_usage_summary() -> None:
                         "usage_ratio": 0.004,
                         "quota_warning": False,
                         "risk_level": "normal",
+                        "quota_hit_count": None,
+                        "quota_skip_count": None,
+                        "daily_quota_skip_count": None,
+                        "cooldown_skip_count": None,
+                        "active_cooldown_seconds": None,
+                        "last_quota_hit_at": None,
                         "next_action": "No immediate action.",
                     }
                 ],
@@ -592,6 +604,12 @@ def test_llm_api_service_returns_usage_summary() -> None:
         "usage_ratio": 0.004,
         "quota_warning": False,
         "risk_level": "normal",
+        "quota_hit_count": None,
+        "quota_skip_count": None,
+        "daily_quota_skip_count": None,
+        "cooldown_skip_count": None,
+        "active_cooldown_seconds": None,
+        "last_quota_hit_at": None,
         "next_action": "No immediate action.",
     }
 

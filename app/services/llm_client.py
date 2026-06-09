@@ -19,6 +19,7 @@ from app.services.llm_models import (
     litellm_model_requires_api_key,
 )
 from app.services.llm_observability import attach_llm_observability as _attach_llm_observability
+from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
 from app.services.llm_provider_calls import (
     call_gemini as _call_gemini_provider,
     call_gemini_vision as _call_gemini_vision_provider,
@@ -75,6 +76,7 @@ class LLMClient:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.rotator = get_shared_rotator(self.settings.gemini_api_keys)
+        self._quota_summary_cache: dict[str, object] | None = None
 
     def generate(self, prompt: str) -> str:
         result = self.generate_with_metadata(prompt)
@@ -1029,7 +1031,37 @@ class LLMClient:
         )
 
     def _model_quota_cooldown_remaining(self, model: str) -> float:
-        return _runtime_model_quota_cooldown_remaining(model)
+        return max(
+            _runtime_model_quota_cooldown_remaining(model),
+            self._persisted_model_quota_cooldown_remaining(model),
+        )
+
+    def _persisted_model_quota_cooldown_remaining(self, model: str) -> float:
+        if not bool(getattr(self.settings, "llm_quota_hard_routing_enabled", True)):
+            return 0.0
+        model_key = normalize_model_name(model)
+        if not model_key:
+            return 0.0
+        summary = self._quota_summary()
+        for item in summary.get("models", []) if isinstance(summary.get("models"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            item_key = normalize_model_name(str(item.get("model_key") or item.get("model") or ""))
+            if item_key == model_key:
+                return max(0.0, float(item.get("active_cooldown_seconds") or 0.0))
+        return 0.0
+
+    def _quota_summary(self) -> dict:
+        quota_summary_cache = getattr(self, "_quota_summary_cache", None)
+        if quota_summary_cache is not None:
+            return quota_summary_cache
+        try:
+            self._quota_summary_cache = LLMQuotaGovernanceService(
+                settings_provider=lambda: self.settings
+            ).summary()
+        except Exception:
+            self._quota_summary_cache = {}
+        return self._quota_summary_cache
 
     def _start_model_quota_cooldown(
         self,

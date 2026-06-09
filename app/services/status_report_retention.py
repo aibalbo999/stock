@@ -17,9 +17,7 @@ def report_retention_status() -> dict:
     report_files_source = _read_text(root / "app" / "services" / "report_files.py")
     report_query_source = _read_text(root / "app" / "services" / "report_query.py")
     data_operations_source = _read_text(root / "app" / "services" / "data_operations_api.py")
-    maintenance_ui_source = _read_text(
-        root / "app" / "ui" / "system_settings_maintenance.py"
-    )
+    maintenance_ui_source = _read_text(root / "app" / "ui" / "system_settings_maintenance.py")
     maintenance_cleanup_source = _read_text(root / "app" / "ui" / "maintenance_cleanup_panel.py")
     report_routes_source = _read_text(root / "app" / "api" / "report_routes.py")
     schedule_config_source = _read_text(root / "app" / "services" / "schedule_config.py")
@@ -118,17 +116,20 @@ def report_retention_status() -> dict:
             "def clear_orphan_report_refs(" in persistence_source
             and ".values(report_id=None, output_path=None)" in persistence_source
         ),
-        "markdown_bulk_prune_available": "def prune_older_report_files_by_topic(" in report_files_source,
+        "markdown_bulk_prune_available": "def prune_older_report_files_by_topic("
+        in report_files_source,
         "report_artifact_bulk_prune_available": "def report_artifact_files(" in report_files_source
         and "def prune_older_report_files_by_topic(" in report_files_source,
         "report_retention_preview_available": "def report_retention_preview(" in report_files_source
         and "def retention_preview(" in report_query_source,
         "report_retention_preview_endpoint": '"/reports/retention/preview"' in report_routes_source
         and "def report_retention_preview(" in report_routes_source,
-        "settings_ui_retention_preview": '"/reports/retention/preview"' in maintenance_cleanup_source
+        "settings_ui_retention_preview": '"/reports/retention/preview"'
+        in maintenance_cleanup_source
         and "deletable_artifact_count" in maintenance_cleanup_source,
         "markdown_topic_key_parser_available": "def report_file_topic_key(" in report_files_source,
-        "report_artifact_topic_key_parser_available": "def report_file_topic_key(" in report_files_source
+        "report_artifact_topic_key_parser_available": "def report_file_topic_key("
+        in report_files_source
         and "REPORT_ARTIFACT_SUFFIXES" in report_files_source,
         "markdown_retention_smoke_passed": artifact_retention_smoke["passed"],
         "markdown_retention_smoke": artifact_retention_smoke,
@@ -164,7 +165,8 @@ def report_retention_status() -> dict:
         "scheduled_cleanup_task_registered": (
             'name="app.tasks.tasks.maintenance_cleanup_task"' in tasks_source
             and "def maintenance_cleanup_task(" in tasks_source
-            and ".data_operations_api().maintenance_cleanup(" in tasks_source
+            and ".data_operations_api()" in tasks_source
+            and ".maintenance_cleanup(" in tasks_source
         ),
         "scheduled_cleanup_beat_registered": (
             '"daily-maintenance-cleanup"' in celery_app_source
@@ -184,17 +186,17 @@ def report_retention_status() -> dict:
         ),
         "manual_delete_clears_run_links": ".values(report_id=None, output_path=None)"
         in persistence_source,
-        "manual_delete_prunes_markdown": "delete_report_markdown_files("
-        in report_query_source
+        "manual_delete_prunes_markdown": "delete_report_markdown_files(" in report_query_source
         and '"deleted_report_files"' in report_query_source,
         "manual_delete_prunes_report_artifacts": manual_delete_prunes_artifacts,
-        "manual_delete_markdown_guardrail": "def _safe_report_markdown_path("
-        in report_query_source
+        "manual_delete_markdown_guardrail": "def _safe_report_markdown_path(" in report_query_source
         and 'suffix.lower() != ".md"' in report_query_source
         and "report_dir not in resolved.parents" in report_query_source,
         "manual_delete_artifact_guardrail": manual_delete_artifact_guardrail,
-        "settings_ui_cleanup_action": '"latest_reports_only": True' in maintenance_ui_source
-        and '"orphan_report_refs": True' in maintenance_ui_source,
+        "settings_ui_cleanup_action": "render_maintenance_cleanup_panel()" in maintenance_ui_source
+        and '"/maintenance/cleanup"' in maintenance_cleanup_source
+        and '"latest_reports_only": True' in maintenance_cleanup_source
+        and '"orphan_report_refs": True' in maintenance_cleanup_source,
         "covered_paths": [
             "app/services/persistence.py",
             "app/services/report_files.py",

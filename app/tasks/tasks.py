@@ -26,12 +26,6 @@ from app.services.persistence import (
     ReportRepository,
 )
 from app.services.report_build import ReportBuildService
-from app.services.report_followup import (
-    candidate_audit_from_run_payload,
-    parse_run_payload,
-    plan_quality_from_quality_gate,
-    summarize_candidate_support_payload,
-)
 from app.services.report_followup_context import ReportFollowUpContextService
 from app.services.report_files import write_report_file_with_retention
 from app.services.task_cancellation import (
@@ -41,6 +35,7 @@ from app.services.task_cancellation import (
 )
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
+from app.tasks import after_close_report_update
 from app.tasks.celery_app import celery_app
 from app.tasks.data_operations import (
     cancellable_ingestion_pipeline,
@@ -153,93 +148,27 @@ async def _run_report_follow_up_payload(payload: dict, *, task_id: str | None = 
 
 
 def _latest_report_update_target(schedule_payload: dict) -> dict:
-    with session_scope() as session:
-        reports = ReportRepository(session).latest(1)
-        if not reports:
-            raise RuntimeError("after-close update requires at least one generated report")
-        report = reports[0]
-        run = AnalysisRunRepository(session).get_by_report_id(report.id)
-        run_payload = parse_run_payload(run.payload_json if run is not None else None)
-        report_tickers = _json_tickers(report.tickers_json)
-    context = ReportFollowUpContextService().load(report.id)
-    request = context["request"]
-    candidate_tickers = _normalize_tickers(
-        item.get("ticker")
-        for item in (
-            context.get("candidate_whitelist") or candidate_audit_from_run_payload(run_payload)
-        )
-        if isinstance(item, dict)
+    return after_close_report_update.latest_report_update_target(
+        schedule_payload,
+        session_scope_factory=session_scope,
+        report_repository_cls=ReportRepository,
+        analysis_run_repository_cls=AnalysisRunRepository,
+        context_service_factory=ReportFollowUpContextService,
+        normalize_tickers_func=_normalize_tickers,
+        json_tickers_func=_json_tickers,
     )
-    configured_tickers = _normalize_tickers(schedule_payload.get("tickers") or [])
-    tickers = configured_tickers or _normalize_tickers(
-        [
-            *report_tickers,
-            *getattr(request, "tickers", []),
-            *candidate_tickers,
-        ]
-    )
-    if not tickers:
-        raise RuntimeError(f"after-close update could not resolve tickers for report {report.id}")
-    lookback_days = int(
-        schedule_payload.get("lookback_days") or getattr(request, "lookback_days", None) or 120
-    )
-    return {
-        "report_id": report.id,
-        "topic": report.topic,
-        "generated_at": report.generated_at.isoformat(),
-        "run_payload": run_payload,
-        "context": context,
-        "request": request.model_copy(update={"tickers": tickers, "lookback_days": lookback_days}),
-        "tickers": tickers,
-    }
 
 
 async def _refresh_after_close_data(
     target: dict, schedule_payload: dict, *, run_id: int | None = None
 ) -> dict:
-    today = today_taipei()
-    request = target["request"]
-    tickers = target["tickers"]
-    lookback_days = max(int(getattr(request, "lookback_days", 120) or 120), 120)
-    pipeline = _cancellable_ingestion_pipeline(run_id)
-    market = await pipeline.refresh_market(
-        tickers,
-        today - timedelta(days=lookback_days),
-        today,
-        filter_allowed=False,
+    return await after_close_report_update.refresh_after_close_data(
+        target,
+        schedule_payload,
+        pipeline_factory=_cancellable_ingestion_pipeline,
+        today_func=today_taipei,
+        run_id=run_id,
     )
-    monthly_revenue = await pipeline.refresh_monthly_revenue(
-        tickers,
-        today - timedelta(days=450),
-        today,
-        filter_allowed=False,
-    )
-    financial_metrics = await pipeline.refresh_financial_metrics(
-        tickers,
-        today - timedelta(days=365 * 6),
-        today,
-        filter_allowed=False,
-    )
-    valuations = await pipeline.refresh_valuations(
-        tickers,
-        today - timedelta(days=max(lookback_days, 30)),
-        today,
-        filter_allowed=False,
-    )
-    company_filings = {"status": "skipped", "reason": "refresh_company_filings=false"}
-    if bool(schedule_payload.get("refresh_company_filings", True)):
-        company_filings = await pipeline.ingest_company_filings(
-            tickers,
-            limit_per_query=2,
-            filter_allowed=False,
-        )
-    return {
-        "market": market,
-        "monthly_revenue": monthly_revenue,
-        "financial_metrics": financial_metrics,
-        "valuations": valuations,
-        "company_filings": company_filings,
-    }
 
 
 def _count_sufficient_company_filings(tickers: list[str]) -> int:
@@ -247,77 +176,28 @@ def _count_sufficient_company_filings(tickers: list[str]) -> int:
 
 
 def _rerun_after_close_report(target: dict) -> dict:
-    request = target["request"]
-    context = target["context"]
-    candidates = context.get("candidate_whitelist") or []
-    whitelist = SupplyChainWhitelist.from_candidate_whitelist(candidates) if candidates else None
-    run_payload = context.get("run_payload") or target.get("run_payload") or {}
-    report_result = ReportBuildService().build(
-        request,
-        whitelist=whitelist,
-        company_filing_sufficient_count=_count_sufficient_company_filings(request.tickers),
-        candidate_support=summarize_candidate_support_payload(candidates),
-        plan_quality=(
-            run_payload.get("plan_quality")
-            or (run_payload.get("discovery") or {}).get("plan_quality")
-            or plan_quality_from_quality_gate(context.get("quality_gate") or {})
-        ),
+    return after_close_report_update.rerun_after_close_report(
+        target,
+        report_build_service_factory=ReportBuildService,
+        supply_chain_whitelist_cls=SupplyChainWhitelist,
+        count_sufficient_company_filings_func=_count_sufficient_company_filings,
+        create_report_with_retention_func=_create_report_with_retention,
+        write_report_file_with_retention_func=_write_report_file_with_retention,
+        combined_report_retention_func=_combined_report_retention,
+        record_llm_usage_func=record_llm_usage_from_report_execution,
     )
-    response = report_result["response"]
-    report_id, db_retention = _create_report_with_retention(request, response)
-    record_llm_usage_from_report_execution(
-        report_result.get("report_execution"),
-        operation="after_close_report_rerun",
-        report_id=report_id,
-    )
-    file_retention = _write_report_file_with_retention(request, response)
-    path = file_retention["path"]
-    retention = _combined_report_retention(db_retention, file_retention)
-    return {
-        "status": "generated",
-        "report_id": report_id,
-        "path": str(path),
-        "retention": retention,
-        "quality_gate": report_result["quality_gate"],
-        "report_execution": report_result["report_execution"],
-        "evidence_count": report_result["evidence_count"],
-    }
 
 
 def _coverage_after_close_update(target: dict) -> dict:
-    tickers = target["tickers"]
-    with session_scope() as session:
-        market = MarketRepository(session).latest_by_tickers(tickers)
-        monthly = MonthlyRevenueRepository(session).latest_by_tickers(tickers)
-        valuations = ValuationMetricRepository(session).latest_by_tickers(tickers)
-        financials = FinancialMetricRepository(session).by_tickers(tickers)
-        audit = audit_company_data(
-            session,
-            tickers,
-            markdown=target["context"].get("markdown") or "",
-            run_payload=target.get("run_payload") or {},
-        )
-    financial_latest: dict[str, str] = {}
-    for metric in financials:
-        current = financial_latest.get(metric.ticker)
-        report_date = metric.report_date.isoformat()
-        if current is None or report_date > current:
-            financial_latest[metric.ticker] = report_date
-    return {
-        "latest_dates": {
-            "market": {item.ticker: item.trade_date.isoformat() for item in market},
-            "monthly_revenue": {item.ticker: item.revenue_date.isoformat() for item in monthly},
-            "financial_metrics": financial_latest,
-            "valuations": {item.ticker: item.trade_date.isoformat() for item in valuations},
-        },
-        "coverage": {
-            "market": len(market) / len(tickers) if tickers else 0,
-            "monthly_revenue": len(monthly) / len(tickers) if tickers else 0,
-            "financial_metrics": len(financial_latest) / len(tickers) if tickers else 0,
-            "valuations": len(valuations) / len(tickers) if tickers else 0,
-        },
-        "company_data_audit": audit,
-    }
+    return after_close_report_update.coverage_after_close_update(
+        target,
+        session_scope_factory=session_scope,
+        market_repository_cls=MarketRepository,
+        monthly_revenue_repository_cls=MonthlyRevenueRepository,
+        valuation_metric_repository_cls=ValuationMetricRepository,
+        financial_metric_repository_cls=FinancialMetricRepository,
+        audit_company_data_func=audit_company_data,
+    )
 
 
 def _write_report_file(request: ReportRequest, response) -> Path:
@@ -346,23 +226,7 @@ def _create_report_with_retention(
 
 
 def _combined_report_retention(db_retention: dict | None, file_retention: dict | None) -> dict:
-    db_retention = dict(db_retention or {})
-    file_retention = dict(file_retention or {})
-    artifact_retention = {
-        key: str(value) if isinstance(value, Path) else value
-        for key, value in file_retention.items()
-    }
-    artifact_retention = {
-        **artifact_retention,
-        "path": artifact_retention.get("path"),
-    }
-    return {
-        "policy": "latest_per_topic",
-        "db": db_retention,
-        "artifacts": artifact_retention,
-        "old_report_versions_deleted": int(db_retention.get("old_report_versions_deleted") or 0),
-        "old_report_files_deleted": int(file_retention.get("old_report_files_deleted") or 0),
-    }
+    return after_close_report_update.combined_report_retention(db_retention, file_retention)
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
@@ -452,13 +316,17 @@ def maintenance_cleanup_task(self, payload: dict | None = None) -> dict:
         )
         run_id = run.id
     try:
-        result = _api_services_for_tasks().data_operations_api().maintenance_cleanup(
-            failed_runs=bool(cleanup_payload.get("failed_runs", False)),
-            orphan_report_refs=bool(cleanup_payload.get("orphan_report_refs", True)),
-            latest_reports_only=bool(cleanup_payload.get("latest_reports_only", True)),
-            stale_running_before=_maintenance_stale_running_before(cleanup_payload),
-            runs_before=_payload_datetime(cleanup_payload, "runs_before"),
-            reports_before=_payload_datetime(cleanup_payload, "reports_before"),
+        result = (
+            _api_services_for_tasks()
+            .data_operations_api()
+            .maintenance_cleanup(
+                failed_runs=bool(cleanup_payload.get("failed_runs", False)),
+                orphan_report_refs=bool(cleanup_payload.get("orphan_report_refs", True)),
+                latest_reports_only=bool(cleanup_payload.get("latest_reports_only", True)),
+                stale_running_before=_maintenance_stale_running_before(cleanup_payload),
+                runs_before=_payload_datetime(cleanup_payload, "runs_before"),
+                reports_before=_payload_datetime(cleanup_payload, "reports_before"),
+            )
         )
         with session_scope() as session:
             repository = AnalysisRunRepository(session)

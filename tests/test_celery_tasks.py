@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.models.schemas import ReportRequest, ReportResponse
-from app.tasks import data_operations, tasks
+from app.tasks import after_close_report_update, data_operations, tasks
 from app.tasks.tasks import build_run_payload
 
 
@@ -33,7 +33,9 @@ def test_data_operation_market_refresh_smoke_skips_market_provider(monkeypatch) 
             raise AssertionError("smoke payload must not call market data providers")
 
     monkeypatch.setattr(tasks, "_api_services_for_tasks", lambda: object())
-    monkeypatch.setattr(tasks, "_cancellable_ingestion_pipeline", lambda run_id=None: FakePipeline())
+    monkeypatch.setattr(
+        tasks, "_cancellable_ingestion_pipeline", lambda run_id=None: FakePipeline()
+    )
     monkeypatch.setattr(tasks, "today_taipei", lambda: date(2026, 6, 9))
 
     result = asyncio.run(
@@ -73,14 +75,35 @@ def test_data_operation_dispatch_logic_lives_outside_celery_tasks() -> None:
     assert "async def run_data_operation_payload(" in helper_source
     assert "unsupported data operation task" not in tasks_source
     assert "No external market data providers are called" not in tasks_source
-    assert "if operation == \"market_refresh\":" not in tasks_source
-    assert "if operation == \"market_refresh\":" in helper_source
+    assert 'if operation == "market_refresh":' not in tasks_source
+    assert 'if operation == "market_refresh":' in helper_source
     assert tasks._normalize_tickers(["2330", "2330", ""]) == data_operations.normalize_tickers(
         ["2330", "2330", ""]
     )
 
 
-def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monkeypatch, tmp_path) -> None:
+def test_after_close_report_update_logic_lives_outside_celery_tasks() -> None:
+    tasks_source = Path("app/tasks/tasks.py").read_text()
+    helper_source = Path("app/tasks/after_close_report_update.py").read_text()
+    file_retention = {"path": Path("reports/new.md"), "old_report_files_deleted": 2}
+    db_retention = {"old_report_versions_deleted": 1, "old_report_ids": [27]}
+
+    assert "from app.tasks import after_close_report_update" in tasks_source
+    assert "def latest_report_update_target(" in helper_source
+    assert "def refresh_after_close_data(" in helper_source
+    assert "def rerun_after_close_report(" in helper_source
+    assert "def coverage_after_close_update(" in helper_source
+    assert "def _latest_report_update_target(" in tasks_source
+    assert "ReportFollowUpContextService().load" not in tasks_source
+    assert "report_build_service_factory().build" in helper_source
+    assert tasks._combined_report_retention(
+        db_retention, file_retention
+    ) == after_close_report_update.combined_report_retention(db_retention, file_retention)
+
+
+def test_after_close_report_update_task_refreshes_latest_report_and_reruns(
+    monkeypatch, tmp_path
+) -> None:
     calls = []
 
     class FakeRun:
@@ -170,7 +193,9 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
         def load(self, report_id):
             assert report_id == 27
             return {
-                "request": tasks.ReportRequest(topic="機器人 產業鏈", tickers=["2308"], lookback_days=60),
+                "request": tasks.ReportRequest(
+                    topic="機器人 產業鏈", tickers=["2308"], lookback_days=60
+                ),
                 "candidate_whitelist": [{"ticker": "2359", "status": "evidence_supported"}],
                 "markdown": "# report",
                 "quality_gate": {"status": "ready"},
@@ -186,7 +211,9 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
             calls.append(("monthly", tickers, filter_allowed))
             return {"stored_count": 12, "errors": []}
 
-        async def refresh_financial_metrics(self, tickers, start_date, end_date, filter_allowed=True):
+        async def refresh_financial_metrics(
+            self, tickers, start_date, end_date, filter_allowed=True
+        ):
             calls.append(("financial", tickers, filter_allowed))
             return {"stored_count": 20, "errors": []}
 
@@ -219,13 +246,39 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
     monkeypatch.setattr(tasks, "ReportFollowUpContextService", FakeContextService)
     monkeypatch.setattr(tasks, "IngestionPipeline", FakeIngestionPipeline)
     monkeypatch.setattr(tasks, "ReportBuildService", FakeReportBuildService)
-    monkeypatch.setattr(tasks, "CandidateRevalidationService", lambda: SimpleNamespace(sufficient_company_filing_tickers=lambda tickers: set(tickers)))
-    monkeypatch.setattr(tasks, "SupplyChainWhitelist", SimpleNamespace(from_candidate_whitelist=lambda candidates: object()))
-    monkeypatch.setattr(tasks, "audit_company_data", lambda *args, **kwargs: {"status": "sufficient"})
-    monkeypatch.setattr(tasks, "MarketRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
-    monkeypatch.setattr(tasks, "MonthlyRevenueRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
-    monkeypatch.setattr(tasks, "ValuationMetricRepository", lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []))
-    monkeypatch.setattr(tasks, "FinancialMetricRepository", lambda session: SimpleNamespace(by_tickers=lambda tickers: []))
+    monkeypatch.setattr(
+        tasks,
+        "CandidateRevalidationService",
+        lambda: SimpleNamespace(sufficient_company_filing_tickers=lambda tickers: set(tickers)),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "SupplyChainWhitelist",
+        SimpleNamespace(from_candidate_whitelist=lambda candidates: object()),
+    )
+    monkeypatch.setattr(
+        tasks, "audit_company_data", lambda *args, **kwargs: {"status": "sufficient"}
+    )
+    monkeypatch.setattr(
+        tasks,
+        "MarketRepository",
+        lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "MonthlyRevenueRepository",
+        lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "ValuationMetricRepository",
+        lambda session: SimpleNamespace(latest_by_tickers=lambda tickers: []),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "FinancialMetricRepository",
+        lambda session: SimpleNamespace(by_tickers=lambda tickers: []),
+    )
     monkeypatch.setattr(tasks, "today_taipei", lambda: date(2026, 6, 3))
     monkeypatch.setattr(tasks, "get_settings", lambda: SimpleNamespace(report_dir=tmp_path))
     old_report_file = tmp_path / "20260602_153000_機器人 產業鏈.md"

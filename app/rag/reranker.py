@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from datetime import date
 from functools import lru_cache
 from importlib.util import find_spec
 import json
@@ -11,24 +10,22 @@ from typing import Any, Optional
 
 from app.core.config import get_settings
 from app.models.schemas import NewsDocument
-from app.rag.timeouts import RagOperationTimeout, run_with_timeout
-from app.services.entity_mapping import CONFUSING_ENTITY_PREFIXES, alias_matches_text
-from app.services.source_quality import is_low_quality_investor_forum_document
-
-
-TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_+.-]*|[\u4e00-\u9fff]+")
-OFFICIAL_SOURCE_HINTS = (
-    "公開資訊觀測站",
-    "mops",
-    "twse",
-    "tpex",
-    "investor",
-    "ir.",
-    "/ir",
-    "annual report",
-    "法說",
-    "法人說明",
+from app.rag.keyword_reranker import (
+    OFFICIAL_SOURCE_HINTS as _OFFICIAL_SOURCE_HINTS,
+    TOKEN_RE as _TOKEN_RE,
+    document_text,
+    exact_query_terms,
+    is_confusing_entity_prefix_token,
+    keyword_rerank,
+    keyword_score,
+    source_quality_adjustment,
+    tokenize,
 )
+from app.rag.timeouts import RagOperationTimeout, run_with_timeout
+
+
+TOKEN_RE = _TOKEN_RE
+OFFICIAL_SOURCE_HINTS = _OFFICIAL_SOURCE_HINTS
 DISABLED_RERANKER_PROVIDERS = {"", "none", "disabled", "off"}
 AUTO_RERANKER_PROVIDERS = {"auto", "model_auto", "auto_model"}
 KEYWORD_RERANKER_PROVIDERS = {"keyword", "hybrid"}
@@ -347,26 +344,12 @@ class RagReranker:
         documents: list[NewsDocument],
         n_results: int,
     ) -> list[NewsDocument]:
-        query_terms = self._tokenize(query)
-        exact_terms = self._exact_query_terms(query)
-        if not query_terms and not exact_terms:
-            return documents[:n_results]
-        query_counter = Counter(query_terms)
-        ranked = []
-        for index, document in enumerate(documents):
-            text = self._document_text(document)
-            title = document.title or ""
-            score = self._keyword_score(
-                query_counter,
-                exact_terms,
-                title=title,
-                text=text,
-            )
-            score += self._source_quality_adjustment(document)
-            recency = document.source.published_at if score > 0 and document.source.published_at else date.min
-            ranked.append((score, recency, -index, document))
-        ranked.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
-        return [document for _score, _recency, _index, document in ranked[:n_results]]
+        return keyword_rerank(
+            query,
+            documents,
+            n_results,
+            text_limit=self.text_limit,
+        )
 
     @classmethod
     def _keyword_score(
@@ -377,38 +360,16 @@ class RagReranker:
         title: str,
         text: str,
     ) -> float:
-        title_lower = title.lower()
-        text_lower = text.lower()
-        document_terms = Counter(cls._tokenize(f"{title}\n{text}"))
-        score = 0.0
-        for term, query_count in query_counter.items():
-            frequency = document_terms.get(term, 0)
-            if frequency <= 0:
-                continue
-            score += min(3, frequency) * query_count
-
-        for term in exact_terms:
-            term_lower = term.lower()
-            if alias_matches_text(title_lower, term_lower):
-                score += 4.0 if term_lower.isdigit() else 2.5
-            if alias_matches_text(text_lower, term_lower):
-                score += 2.0 if term_lower.isdigit() else 1.0
-        return score
+        return keyword_score(
+            query_counter,
+            exact_terms,
+            title=title,
+            text=text,
+        )
 
     @staticmethod
     def _source_quality_adjustment(document: NewsDocument) -> float:
-        if is_low_quality_investor_forum_document(document):
-            return -100.0
-        haystack = " ".join(
-            str(part or "")
-            for part in (
-                document.title,
-                document.source.title,
-                document.source.publisher,
-                document.source.url,
-            )
-        ).lower()
-        return 1.5 if any(hint.lower() in haystack for hint in OFFICIAL_SOURCE_HINTS) else 0.0
+        return source_quality_adjustment(document)
 
     def _cross_encoder_model(self):
         if not self.model_name:
@@ -469,10 +430,7 @@ class RagReranker:
         return ordered
 
     def _document_text(self, document: NewsDocument) -> str:
-        text = f"{document.title}\n{document.text}"
-        if self.text_limit <= 0:
-            return text
-        return text[: self.text_limit]
+        return document_text(document, self.text_limit)
 
     def _provider_key(self) -> str:
         return self.provider.lower().replace("-", "_")
@@ -822,41 +780,15 @@ class RagReranker:
 
     @staticmethod
     def _exact_query_terms(query: str) -> list[str]:
-        terms = []
-        seen = set()
-        for raw_term in str(query or "").split():
-            term = raw_term.strip()
-            if len(term) < 2:
-                continue
-            key = term.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            terms.append(term)
-        return terms
+        return exact_query_terms(query)
 
     @classmethod
     def _tokenize(cls, text: str) -> list[str]:
-        tokens: list[str] = []
-        for match in TOKEN_RE.findall(str(text or "").lower()):
-            if re.fullmatch(r"[\u4e00-\u9fff]+", match):
-                if len(match) <= 4:
-                    tokens.append(match)
-                for size in (2, 3, 4):
-                    if len(match) >= size:
-                        for index in range(len(match) - size + 1):
-                            token = match[index : index + size]
-                            if cls._is_confusing_entity_prefix_token(match, token, index):
-                                continue
-                            tokens.append(token)
-            elif len(match) >= 2:
-                tokens.append(match)
-        return tokens
+        return tokenize(text)
 
     @staticmethod
     def _is_confusing_entity_prefix_token(text: str, token: str, index: int) -> bool:
-        confusing_prefixes = CONFUSING_ENTITY_PREFIXES.get(token, ())
-        return any(text.startswith(prefix.lower(), index) for prefix in confusing_prefixes)
+        return is_confusing_entity_prefix_token(text, token, index)
 
 
 @lru_cache(maxsize=4)

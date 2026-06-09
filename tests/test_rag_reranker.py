@@ -1,7 +1,9 @@
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.data_sources.news import NewsFetcher
+from app.rag import keyword_reranker
 from app.rag.reranker import RagReranker
 from app.rag.timeouts import RagOperationTimeout
 
@@ -94,6 +96,20 @@ def test_keyword_reranker_status_explains_keyword_mode() -> None:
     assert status["model_reranker_gap"] == "keyword_provider_selected"
     assert status["model_checked"] is False
     assert status["fallback_reason"] is None
+
+
+def test_keyword_fallback_logic_lives_outside_rag_reranker() -> None:
+    reranker_source = Path("app/rag/reranker.py").read_text()
+    keyword_source = Path("app/rag/keyword_reranker.py").read_text()
+
+    assert "from app.rag.keyword_reranker import" in reranker_source
+    assert "def keyword_rerank(" in keyword_source
+    assert "def source_quality_adjustment(" in keyword_source
+    assert "def tokenize(" in keyword_source
+    assert "is_low_quality_investor_forum_document" not in reranker_source
+    assert "CONFUSING_ENTITY_PREFIXES" not in reranker_source
+    assert "def _keyword_rerank(" in reranker_source
+    assert RagReranker._tokenize("南亞科 DRAM") == keyword_reranker.tokenize("南亞科 DRAM")
 
 
 def test_auto_reranker_prefers_cross_encoder_model_when_available() -> None:

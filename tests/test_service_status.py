@@ -3,7 +3,9 @@ from app.services.service_status import _redact_url
 
 
 def test_redact_url_with_password() -> None:
-    assert _redact_url("redis://user:secret@localhost:6379/0") == "redis://user:***@localhost:6379/0"
+    assert (
+        _redact_url("redis://user:secret@localhost:6379/0") == "redis://user:***@localhost:6379/0"
+    )
 
 
 def test_service_status_shape(service_status_snapshot) -> None:
@@ -21,6 +23,16 @@ def test_service_status_shape(service_status_snapshot) -> None:
     assert "workflow_orchestration" in status
     assert "python_runtime" in status
     assert "task_queue" in status
+    assert "optimization_progress" in status
+    assert status["optimization_progress"]["collector_path"] == (
+        "app/services/optimization_progress.py"
+    )
+    assert {domain["id"] for domain in status["optimization_progress"]["domains"]} == {
+        "architecture_uiux",
+        "codebase_maintainability",
+        "data_pipeline_scraping",
+        "ai_rag_graphrag",
+    }
     assert status["candidate_confidence"]["high_threshold"] == HIGH_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["medium_threshold"] == MEDIUM_CONFIDENCE_THRESHOLD
     assert status["candidate_confidence"]["source_credibility_weights"]["official"] == 1.0

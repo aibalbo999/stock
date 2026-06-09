@@ -16,7 +16,9 @@ def maintenance_service_metrics(status: dict, service_snapshot: dict) -> dict:
         "背景任務": task_queue_label(task_queue),
         "AI Key": service_snapshot.get("gemini", {}).get("key_count", 0),
         "市場資料": "可用" if service_snapshot.get("finmind", {}).get("mode") else "檢查",
-        "升格門檻": format_confidence_score(float(high_threshold)) if high_threshold is not None else "未評估",
+        "升格門檻": format_confidence_score(float(high_threshold))
+        if high_threshold is not None
+        else "未評估",
     }
 
 
@@ -28,7 +30,9 @@ def upgrade_audit_html(audit: dict) -> str:
     implementation_status = str(
         implementation.get("status") or summary.get("implementation_status") or "unknown"
     )
-    deployment_status = str(deployment.get("status") or summary.get("deployment_status") or "unknown")
+    deployment_status = str(
+        deployment.get("status") or summary.get("deployment_status") or "unknown"
+    )
     deployment_blocking_status = str(
         deployment.get("blocking_status")
         or summary.get("deployment_blocking_status")
@@ -56,9 +60,7 @@ def upgrade_audit_html(audit: dict) -> str:
     deployment_ready = int(deployment.get("ready") or 0)
     deployment_total = int(deployment.get("total_checks") or 0)
     deployment_note = (
-        "；外部目前只剩選配項目，沒有 blocking deployment 缺口"
-        if deployment_optional_only
-        else ""
+        "；外部目前只剩選配項目，沒有 blocking deployment 缺口" if deployment_optional_only else ""
     )
     area_labels = {
         "ai_rag": "AI / RAG",
@@ -99,9 +101,13 @@ def upgrade_audit_html(audit: dict) -> str:
     """.format(
         status_label=escape(status_labels.get(status, status)),
         implementation_status_class=escape(
-            implementation_status if implementation_status in {"ready", "caution", "failed"} else "unknown"
+            implementation_status
+            if implementation_status in {"ready", "caution", "failed"}
+            else "unknown"
         ),
-        implementation_status_label=escape(status_labels.get(implementation_status, implementation_status)),
+        implementation_status_label=escape(
+            status_labels.get(implementation_status, implementation_status)
+        ),
         deployment_status_class=escape(
             deployment_status if deployment_status in {"ready", "caution", "failed"} else "unknown"
         ),
@@ -122,7 +128,8 @@ def upgrade_audit_html(audit: dict) -> str:
         optional_warnings=optional_warnings,
         failures=failures,
         deployment_note=escape(deployment_note),
-        areas="".join(area_cards) or "<div class='upgrade-audit-area'><strong>未評估</strong><span>尚無稽核資料</span></div>",
+        areas="".join(area_cards)
+        or "<div class='upgrade-audit-area'><strong>未評估</strong><span>尚無稽核資料</span></div>",
     )
 
 
@@ -144,3 +151,63 @@ def upgrade_audit_rows(audit: dict) -> list[dict]:
         }
         for check in audit.get("checks") or []
     ]
+
+
+def optimization_progress_rows(progress: dict) -> list[dict]:
+    status_labels = {
+        "ready": "完成",
+        "ready_with_optional_gaps": "核心完成/外部選配",
+        "degraded": "需處理",
+    }
+    return [
+        {
+            "主題": domain.get("label") or domain.get("id") or "-",
+            "狀態": status_labels.get(str(domain.get("status")), domain.get("status") or "-"),
+            "完成": f"{int(domain.get('ready_checks') or 0)}/{int(domain.get('total_checks') or 0)}",
+            "完成率": _format_progress_ratio(domain.get("completion_ratio")),
+            "Blocking": int(domain.get("blocking_gap_count") or 0),
+            "外部/選配": int(domain.get("optional_gap_count") or 0),
+            "下一步": domain.get("next_action") or "-",
+            "長期考量": domain.get("long_term_note") or "-",
+        }
+        for domain in progress.get("domains") or []
+        if isinstance(domain, dict)
+    ]
+
+
+def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
+    action_type_labels = {
+        "code_or_config": "程式/設定",
+        "free_local_or_external_config": "本機或外部設定",
+        "paid_external": "付費外部 API",
+        "quota_or_external": "額度/外部模型",
+        "local_dependency": "本機依賴",
+        "monitoring": "持續觀測",
+        "optional_review": "選配審視",
+    }
+    actions = progress.get("next_actions") or []
+    if not actions and isinstance(progress.get("primary_next_action"), dict):
+        actions = [progress["primary_next_action"]]
+    return [
+        {
+            "主題": action.get("domain_label") or "-",
+            "能力": action.get("label") or action.get("capability") or "-",
+            "狀態": action.get("status") or "-",
+            "類型": action_type_labels.get(
+                str(action.get("action_type")),
+                action.get("action_type") or "-",
+            ),
+            "是否選配": "是" if action.get("optional") else "否",
+            "是否外部": "是" if action.get("external") else "否",
+            "建議": action.get("next_action") or "-",
+        }
+        for action in actions
+        if isinstance(action, dict)
+    ]
+
+
+def _format_progress_ratio(value: object) -> str:
+    try:
+        return f"{float(value):.0%}"
+    except (TypeError, ValueError):
+        return "-"

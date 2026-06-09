@@ -38,7 +38,7 @@ FastAPI + Streamlit + Celery/Redis 的台股主題研究系統。系統會依分
 - 風險控制：資料不足時報告自動降級為研究草稿，並限制可投入資金上限。
 - 個股分析：包含商業模式、護城河、產業趨勢、財務健康、估值、情境分析、12-24 個月展望。
 - 前端介面：Streamlit 提供分析、報告、資料、設定頁；各 page 使用明確 import，API client、背景任務提交 helper、背景任務狀態面板、報告狀態 hydration、報告 markdown parsing、報告格式化 helper、報告內容區塊 renderer、候選審計 renderer、報告 HTML renderer、報告查核 panels、補強任務控制、補強狀態與維護稽核摘要都拆成獨立 UI helper。
-- 系統狀態檢查：`service_status` 負責彙整整體狀態，前端 MPA/背景任務 ready 條件、LLM 額度/降級路由、vector store/reranker runtime、市場資料快取/來源後援、GraphRAG/Neo4j runtime、Python runtime、最新版報告保留、security scanning 與公司文件爬蟲/PDF runtime 由獨立 status collector 掃描，`upgrade_capability_matrix` 由獨立 builder 組裝，避免單一 audit 檔案持續膨脹。
+- 系統狀態檢查：`service_status` 負責彙整整體狀態，前端 MPA/背景任務 ready 條件、LLM 額度/降級路由、vector store/reranker runtime、市場資料快取/來源後援、GraphRAG/Neo4j runtime、Python runtime、最新版報告保留、security scanning 與公司文件爬蟲/PDF runtime 由獨立 status collector 掃描，`upgrade_capability_matrix` 由獨立 builder 組裝；`optimization_progress` 會把原始優化方案彙整成「架構/UI、維護性、資料管線、AI/RAG」四大主題的完成率、blocking gap、外部選配與下一步，避免單一 audit 檔案持續膨脹。
 - 排程與背景任務：Celery + Redis 支援背景產報與定時排程。
 - 時區：系統顯示時間以 Asia/Taipei 為準。
 - LLM 韌性：Gemini 遇到 429/500/502/503/504 會依 `.env` 重試策略短暫重試，再輪調下一把 key；全部失敗才降級為規則引擎草稿。
@@ -146,7 +146,7 @@ DATABASE_INIT_MODE=alembic
 .venv/bin/alembic revision --autogenerate -m "describe change"
 ```
 
-`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。正式部署預設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。若要保留 SQLite 快速開發，可在 `.env` 明確設定 `DATABASE_URL=sqlite:///./stock_ai.db` 與 `DATABASE_INIT_MODE=create_all`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、免費額度感知模型路由、hybrid search、reranker、GraphRAG、API 分層、Streamlit MPA/背景任務輪詢、Python runtime、workflow、Alembic、Redis cache、最新版報告保留策略與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`。
+`DATABASE_INIT_MODE` 可設為 `create_all`、`alembic` 或 `none`。正式部署預設為 `alembic`，FastAPI 與 Celery 啟動時會執行 `alembic upgrade head`；若資料庫由外部部署流程管理，可設為 `none`。若要保留 SQLite 快速開發，可在 `.env` 明確設定 `DATABASE_URL=sqlite:///./stock_ai.db` 與 `DATABASE_INIT_MODE=create_all`。既有本機 SQLite 若原本由 `create_all` 建出且 schema 已存在，請先用 `.venv/bin/python -m alembic stamp head` 標記目前版本，再改用 Alembic 管理後續變更。可用 `GET /db/status` 或 `GET /services/status` 檢查 `database.init_mode`、`migration.current_revision`、`migration.head_revision` 與 `migration.up_to_date`，避免資料表存在但 schema 版本落後。`GET /services/status` 也會輸出 `upgrade_capability_matrix`，把 multilingual embedding、LLM SDK、免費額度感知模型路由、hybrid search、reranker、GraphRAG、API 分層、Streamlit MPA/背景任務輪詢、Python runtime、workflow、Alembic、Redis cache、最新版報告保留策略與公司文件抓取強化逐項標為 `ready`、`degraded` 或 `not_configured`；同一份 payload 的 `optimization_progress` 會把這些能力再彙整成原始優化計畫的四大主題與下一步，維護頁也會顯示相同摘要。
 若 `DATABASE_URL` 指向 PostgreSQL/MySQL 等非 SQLite 資料庫，系統會拒絕用 `create_all` 啟動，避免正式環境跳過 Alembic 欄位遷移；只有受控的一次性 bootstrap 才應暫時設定 `DATABASE_ALLOW_CREATE_ALL_NON_SQLITE=true`。
 初始 migration 以顯式 `op.create_table` / `op.create_index` 固定 schema 快照，測試會執行 `alembic upgrade head` 並用 autogenerate diff 確認 migration 結果與目前 SQLAlchemy metadata 對齊。
 

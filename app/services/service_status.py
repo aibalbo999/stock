@@ -19,6 +19,7 @@ from app.services.candidate_confidence import confidence_thresholds
 from app.services.llm_client import RETRYABLE_HTTP_STATUSES
 from app.services.llm_observability import llm_observability_status
 from app.services.local_dependency_diagnostics import local_dependency_runtime_status
+from app.services.optimization_progress import optimization_progress_status
 from app.services.source_quality import SOURCE_CREDIBILITY_LABELS, SOURCE_CREDIBILITY_WEIGHTS
 from app.services.status_company_filings import (
     company_filing_status as collect_company_filing_status,
@@ -145,6 +146,7 @@ def service_status() -> dict:
         },
     }
     status["upgrade_capability_matrix"] = build_upgrade_capability_matrix(status)
+    status["optimization_progress"] = optimization_progress_status(status)
     return status
 
 

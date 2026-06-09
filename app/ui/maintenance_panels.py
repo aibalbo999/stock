@@ -10,6 +10,8 @@ from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel
 from app.ui.maintenance_deployment_panel import render_external_deployment_panel
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
+    optimization_progress_next_action_rows,
+    optimization_progress_rows,
     upgrade_audit_html,
     upgrade_audit_rows,
 )
@@ -22,6 +24,7 @@ __all__ = [
     "render_background_task_observability_panel",
     "render_external_deployment_panel",
     "render_maintenance_cleanup_panel",
+    "render_optimization_progress_panel",
     "render_report_generation_observability_panel",
     "render_report_quality_panel",
     "render_service_details_panel",
@@ -34,6 +37,33 @@ def render_upgrade_audit_panel(upgrade_audit: dict) -> None:
     st.markdown(upgrade_audit_html(upgrade_audit), unsafe_allow_html=True)
     with st.expander("升級稽核明細"):
         st.dataframe(upgrade_audit_rows(upgrade_audit), width="stretch", hide_index=True)
+
+
+def render_optimization_progress_panel(service_snapshot: dict) -> None:
+    progress = (
+        service_snapshot.get("optimization_progress")
+        if isinstance(service_snapshot.get("optimization_progress"), dict)
+        else {}
+    )
+    rows = optimization_progress_rows(progress)
+    action_rows = optimization_progress_next_action_rows(progress)
+    expanded = progress.get("status") != "ready"
+    with st.expander("優化進度", expanded=expanded):
+        cols = st.columns(4)
+        cols[0].metric("狀態", progress.get("status") or "-")
+        cols[1].metric(
+            "完成",
+            f"{int(progress.get('ready_checks') or 0)}/{int(progress.get('total_checks') or 0)}",
+        )
+        cols[2].metric("Blocking", int(progress.get("blocking_gap_count") or 0))
+        cols[3].metric("外部/選配", int(progress.get("optional_gap_count") or 0))
+        if progress.get("status_note"):
+            st.caption(str(progress["status_note"]))
+        if rows:
+            st.dataframe(rows, width="stretch", hide_index=True)
+        if action_rows:
+            st.caption("下一步")
+            st.dataframe(action_rows, width="stretch", hide_index=True)
 
 
 def render_service_metrics_panel(status: dict, service_snapshot: dict) -> None:

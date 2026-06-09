@@ -10,6 +10,7 @@ from app.ui.maintenance_panels import (
     render_background_task_observability_panel,
     render_external_deployment_panel,
     render_maintenance_cleanup_panel,
+    render_optimization_progress_panel,
     render_report_generation_observability_panel,
     render_report_quality_panel,
     render_service_details_panel,
@@ -84,6 +85,7 @@ def render_maintenance_tab() -> None:
     )
 
     render_upgrade_audit_panel(upgrade_audit)
+    render_optimization_progress_panel(service_snapshot)
     render_service_metrics_panel(status, service_snapshot)
     render_external_deployment_panel(
         upgrade_audit,

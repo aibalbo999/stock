@@ -22,7 +22,10 @@ from app.services.report_quality_runtime import (
     summarize_llm_status,
 )
 from app.services.report_quality_llm_rules import llm_quality_notes
-from app.services.report_quality_market_rules import market_rescue_quality_notes
+from app.services.report_quality_market_rules import (
+    market_coverage_quality_notes,
+    market_rescue_quality_notes,
+)
 from app.services.report_quality_plan_rules import discovery_plan_quality_notes
 from app.services.report_quality_rag_rules import (
     normalized_rag_reranker_provider,
@@ -233,10 +236,15 @@ def build_report_quality_gate(
     plan_blockers, plan_warnings = discovery_plan_quality_notes(plan_quality)
     blockers.extend(plan_blockers)
     warnings.extend(plan_warnings)
-    if promoted_count and market_coverage < 0.5:
-        blockers.append("股價資料覆蓋率低於 50%")
-    elif promoted_count and market_coverage < 1:
-        warnings.append("部分股票缺少最新股價資料")
+    market_coverage_blockers, market_coverage_warnings = market_coverage_quality_notes(
+        promoted_count=promoted_count,
+        market_coverage=market_coverage,
+        monthly_coverage=monthly_coverage,
+        financial_metrics_count=financial_metrics_count,
+        valuation_coverage=valuation_coverage,
+    )
+    blockers.extend(market_coverage_blockers)
+    warnings.extend(market_coverage_warnings)
     market_trade_date_lag_days = (
         market_max_trade_date_lag_days
         if market_max_trade_date_lag_days is not None
@@ -271,12 +279,6 @@ def build_report_quality_gate(
             warnings.append(message)
         else:
             observations.append(message)
-    if promoted_count and monthly_coverage < 0.5:
-        warnings.append("月營收資料覆蓋偏低")
-    if promoted_count and financial_metrics_count < promoted_count * 8:
-        warnings.append("五年財務資料不足，個股財務判斷信心需下修")
-    if promoted_count and valuation_coverage < 0.5:
-        warnings.append("估值資料覆蓋偏低")
     market_rescue_warnings, market_rescue_observations = market_rescue_quality_notes(
         stale_market_dataset_count=stale_market_dataset_count,
         market_stale_count=market_stale_count,

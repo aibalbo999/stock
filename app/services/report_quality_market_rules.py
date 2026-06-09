@@ -1,6 +1,29 @@
 from __future__ import annotations
 
 
+def market_coverage_quality_notes(
+    *,
+    promoted_count: int,
+    market_coverage: float,
+    monthly_coverage: float,
+    financial_metrics_count: int,
+    valuation_coverage: float,
+) -> tuple[list[str], list[str]]:
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if promoted_count and market_coverage < 0.5:
+        blockers.append("股價資料覆蓋率低於 50%")
+    elif promoted_count and market_coverage < 1:
+        warnings.append("部分股票缺少最新股價資料")
+    if promoted_count and monthly_coverage < 0.5:
+        warnings.append("月營收資料覆蓋偏低")
+    if promoted_count and financial_metrics_count < promoted_count * 8:
+        warnings.append("五年財務資料不足，個股財務判斷信心需下修")
+    if promoted_count and valuation_coverage < 0.5:
+        warnings.append("估值資料覆蓋偏低")
+    return blockers, warnings
+
+
 def market_rescue_quality_notes(
     *,
     stale_market_dataset_count: int,

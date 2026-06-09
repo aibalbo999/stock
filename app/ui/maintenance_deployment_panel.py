@@ -403,6 +403,10 @@ def _render_maintenance_operation_result(result: dict) -> None:
     wait_lines = [str(line) for line in result.get("wait_lines") or [] if str(line).strip()]
     if wait_lines:
         st.code("\n".join(wait_lines), language="text")
+    st.caption(
+        "Runtime settings cache："
+        + ("已刷新" if result.get("runtime_settings_cache_cleared") else "未刷新")
+    )
     start_record = (
         result.get("start_record") if isinstance(result.get("start_record"), dict) else {}
     )

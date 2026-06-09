@@ -122,6 +122,11 @@ def test_run_maintenance_operation_starts_core_dependencies(monkeypatch, tmp_pat
     monkeypatch.setattr(
         maintenance_operations.startup, "write_local_dependency_start_status", fake_write
     )
+    monkeypatch.setattr(
+        maintenance_operations,
+        "clear_runtime_settings_cache",
+        lambda: captured.setdefault("cache_cleared", True),
+    )
 
     result = maintenance_operations.run_maintenance_operation(
         "start_local_dependencies",
@@ -137,6 +142,8 @@ def test_run_maintenance_operation_starts_core_dependencies(monkeypatch, tmp_pat
     assert "- Postgres 5432：尚未就緒" in result["wait_lines"]
     assert result["start_record"]["path"] == "data/local_dependency_start_status.json"
     assert result["applied_env_keys"] == ["NEO4J_URI"]
+    assert result["runtime_settings_cache_cleared"] is True
+    assert captured["cache_cleared"] is True
     assert any(
         "upgrade_audit.py --local-neo4j-defaults" in check["command"]
         for check in result["post_run_checks"]
@@ -208,6 +215,7 @@ def test_run_maintenance_operation_can_prefer_unlocker(monkeypatch, tmp_path) ->
         "write_local_dependency_start_status",
         fake_write,
     )
+    monkeypatch.setattr(maintenance_operations, "clear_runtime_settings_cache", lambda: True)
 
     result = maintenance_operations.run_maintenance_operation(
         "start_local_dependencies_with_unlocker",
@@ -216,6 +224,7 @@ def test_run_maintenance_operation_can_prefer_unlocker(monkeypatch, tmp_path) ->
     )
 
     assert result["status"] == "success"
+    assert result["runtime_settings_cache_cleared"] is True
     assert any(
         "mops.twse.com.tw" in check["command"]
         for check in result["post_run_checks"]

@@ -97,6 +97,8 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
+            and "runtime_settings_cache_cleared" in maintenance_deployment_panel_source
+            and "Runtime settings cache" in maintenance_deployment_panel_source
             and 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"'
             in maintenance_deployment_panel_source
             and 'LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY = "last_post_run_diagnostic_result"'

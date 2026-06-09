@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from app.core.config import get_settings
 from scripts import start_system as startup
 
 
@@ -194,6 +195,7 @@ def run_maintenance_operation(
             "wait_lines": [],
             "start_record": {},
             "applied_env_keys": [],
+            "runtime_settings_cache_cleared": False,
         }
     elapsed = time.monotonic() - started_at
     return {
@@ -213,6 +215,7 @@ def _run_local_dependency_start(operation: dict, *, root: Path) -> dict:
         prefer_browserless=not include_unlocker,
         prefer_unlocker=include_unlocker,
     )
+    runtime_settings_cache_cleared = clear_runtime_settings_cache()
     dependency_status = startup.start_dependency_services(
         root,
         allow_pull_missing_images=False,
@@ -246,6 +249,7 @@ def _run_local_dependency_start(operation: dict, *, root: Path) -> dict:
         "wait_lines": startup.dependency_wait_status_lines(dependency_wait_status),
         "start_record": start_record,
         "applied_env_keys": sorted(str(key) for key in local_dependency_env),
+        "runtime_settings_cache_cleared": runtime_settings_cache_cleared,
     }
 
 
@@ -292,6 +296,14 @@ def _operation_resolves_capabilities(operation: dict) -> list[dict]:
         for row in operation.get("resolves_capabilities") or ()
         if isinstance(row, dict) and row.get("capability")
     ]
+
+
+def clear_runtime_settings_cache() -> bool:
+    cache_clear = getattr(get_settings, "cache_clear", None)
+    if not callable(cache_clear):
+        return False
+    cache_clear()
+    return True
 
 
 def post_run_checks_for_operation(action_id: str) -> list[dict]:

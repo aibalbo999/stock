@@ -14,6 +14,7 @@ from app.services.market_repositories import (
 )
 from app.services.report_orchestrator import build_quality_recovery_plan
 from app.services.report_quality_action_policy import quality_gate_action_policy
+from app.services.report_quality_coverage_rules import coverage_quality_notes
 from app.services.report_quality_recovery import (
     quality_remediation_actions,
     should_recover_market_data_quality as should_recover_market_data_quality,
@@ -285,16 +286,13 @@ def build_report_quality_gate(
     )
     warnings.extend(market_rescue_warnings)
     observations.extend(market_rescue_observations)
-    if promoted_count and leading_signal_coverage is not None:
-        if leading_signal_coverage < 0.5:
-            warnings.append("近況訊號覆蓋偏低，目前情境升值/降值排序信心需下修")
-        elif leading_signal_coverage < 1:
-            observations.append("部分股票近況訊號不足，系統已降低排序信心")
-    if promoted_count and company_filing_coverage is not None:
-        if company_filing_coverage < 0.5:
-            warnings.append("公司公開文件覆蓋率低於 50%，正式投入前需補年報或法說會")
-        elif company_filing_coverage < 1:
-            warnings.append("部分股票缺少高品質公司公開文件")
+    coverage_warnings, coverage_observations = coverage_quality_notes(
+        promoted_count=promoted_count,
+        leading_signal_coverage=leading_signal_coverage,
+        company_filing_coverage=company_filing_coverage,
+    )
+    warnings.extend(coverage_warnings)
+    observations.extend(coverage_observations)
     llm_warnings, llm_observations = llm_quality_notes(llm_status)
     warnings.extend(llm_warnings)
     observations.extend(llm_observations)

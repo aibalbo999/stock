@@ -18,6 +18,7 @@ from app.services import report_quality_rag_rules
 from app.services import report_quality_relevance_rules
 from app.services import report_quality_sources
 from app.services import report_quality_action_policy
+from app.services import report_quality_coverage_rules
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -183,6 +184,21 @@ def test_report_quality_action_policy_lives_outside_quality_gate_module() -> Non
     assert "quality_gate_action_policy(" in report_quality_source
     assert "max_deployable_multiplier = 0.25" not in report_quality_source
     assert "deployable_base = max(" not in report_quality_source
+
+
+def test_report_quality_coverage_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    coverage_rules_source = Path("app/services/report_quality_coverage_rules.py").read_text()
+
+    assert (
+        report_quality.coverage_quality_notes
+        is report_quality_coverage_rules.coverage_quality_notes
+    )
+    assert "def coverage_quality_notes(" in coverage_rules_source
+    assert "近況訊號覆蓋偏低" in coverage_rules_source
+    assert "公司公開文件覆蓋率低於 50%" in coverage_rules_source
+    assert "近況訊號覆蓋偏低" not in report_quality_source
+    assert "公司公開文件覆蓋率低於 50%" not in report_quality_source
 
 
 def _quality_gate(

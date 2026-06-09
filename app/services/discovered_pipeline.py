@@ -195,47 +195,30 @@ class DiscoveredTopicPipelineService(DiscoveredPipelineCandidateMixin):
                 documents,
             )
             self._check_cancelled(run_id)
-            candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
-            source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(
-                candidate_payload
+            candidate_stage = self._finalize_candidate_revalidation_stage(
+                candidate_filing_ingestion=candidate_filing_ingestion,
+                candidate_payload=candidate_payload,
+                documents=documents,
+                source_audit=source_audit,
             )
-            promoted_tickers = [
-                candidate["ticker"]
-                for candidate in candidate_payload
-                if candidate["status"] == "evidence_supported"
-            ]
+            candidate_filing_ingestion = candidate_stage.candidate_filing_ingestion
+            candidate_payload = candidate_stage.candidate_payload
+            documents = candidate_stage.documents
+            source_audit = candidate_stage.source_audit
+            promoted_tickers = candidate_stage.promoted_tickers
+            company_filing_ingestion = candidate_stage.company_filing_ingestion
             dynamic_whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(
                 candidate_payload
             )
             workflow.complete_step(
                 run_id,
                 current_step,
-                {
-                    "candidate_count": len(candidate_payload),
-                    "promoted_count": len(promoted_tickers),
-                    "candidate_filing_attempted": candidate_filing_ingestion is not None,
-                },
-            )
-            company_filing_ingestion = self._promoted_company_filing_ingestion(promoted_tickers)
-            documents = self.dedupe_documents_func(
-                [
-                    *documents,
-                    *self._latest_company_filing_news_documents(
-                        promoted_tickers, limit_per_ticker=4
-                    ),
-                ]
+                candidate_stage.workflow_summary(),
             )
             self._checkpoint_stage_payload(
                 run_id,
                 workflow,
-                {
-                    "source_documents": self._documents_payload(documents),
-                    "candidate_filing_ingestion": candidate_filing_ingestion,
-                    "company_filing_ingestion": company_filing_ingestion,
-                    "source_audit": source_audit,
-                    "candidate_whitelist": candidate_payload,
-                    "promoted_tickers": promoted_tickers,
-                },
+                candidate_stage.checkpoint_updates(self._documents_payload),
             )
 
             current_step = "market_data_refresh"
@@ -724,40 +707,23 @@ class DiscoveredTopicPipelineService(DiscoveredPipelineCandidateMixin):
             candidate_payload,
             documents,
         )
-        candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
-        source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(
-            candidate_payload
+        candidate_stage = self._finalize_candidate_revalidation_stage(
+            candidate_filing_ingestion=candidate_filing_ingestion,
+            candidate_payload=candidate_payload,
+            documents=documents,
+            source_audit=source_audit,
         )
-        promoted_tickers = self._promoted_tickers_from_candidates(candidate_payload)
+        promoted_tickers = candidate_stage.promoted_tickers
         if not promoted_tickers:
             raise ReportExecutionError(
                 "ai_discovered_topic_pipeline resume produced no promoted_tickers"
             )
-        company_filing_ingestion = self._promoted_company_filing_ingestion(promoted_tickers)
-        documents = self.dedupe_documents_func(
-            [
-                *documents,
-                *self._latest_company_filing_news_documents(promoted_tickers, limit_per_ticker=4),
-            ]
-        )
         workflow.complete_step(
             run_id,
             current_step,
-            {
-                "candidate_count": len(candidate_payload),
-                "promoted_count": len(promoted_tickers),
-                "candidate_filing_attempted": candidate_filing_ingestion is not None,
-                "resumed": True,
-            },
+            candidate_stage.workflow_summary(resumed=True),
         )
-        updates = {
-            "source_documents": self._documents_payload(documents),
-            "candidate_filing_ingestion": candidate_filing_ingestion,
-            "company_filing_ingestion": company_filing_ingestion,
-            "source_audit": source_audit,
-            "candidate_whitelist": candidate_payload,
-            "promoted_tickers": promoted_tickers,
-        }
+        updates = candidate_stage.checkpoint_updates(self._documents_payload)
         self._checkpoint_stage_payload(run_id, workflow, updates)
         return {**checkpoint, **self._json_safe(updates)}
 

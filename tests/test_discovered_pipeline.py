@@ -201,8 +201,41 @@ def test_discovered_pipeline_candidate_revalidation_lives_outside_orchestrator()
     assert "class DiscoveredPipelineCandidateMixin" in candidate_source
     assert "def _revalidate_candidates(" not in pipeline_source
     assert "def _revalidate_candidates(" in candidate_source
+    assert "def _finalize_candidate_revalidation_stage(" not in pipeline_source
+    assert "def _finalize_candidate_revalidation_stage(" in candidate_source
     assert "def _latest_company_filing_news_documents(" not in pipeline_source
     assert "def _latest_company_filing_news_documents(" in candidate_source
+
+
+def test_candidate_revalidation_stage_result_builds_summary_and_checkpoint_payload() -> None:
+    stage = discovered_pipeline_candidates.CandidateRevalidationStageResult(
+        candidate_filing_ingestion={"stored_count": 0},
+        candidate_payload=[{"ticker": "2330", "status": "evidence_supported"}],
+        documents=["doc-a"],
+        source_audit={"total_stored_count": 2},
+        promoted_tickers=["2330"],
+        company_filing_ingestion={"requested_tickers": ["2330"]},
+    )
+
+    assert stage.workflow_summary() == {
+        "candidate_count": 1,
+        "promoted_count": 1,
+        "candidate_filing_attempted": True,
+    }
+    assert stage.workflow_summary(resumed=True) == {
+        "candidate_count": 1,
+        "promoted_count": 1,
+        "candidate_filing_attempted": True,
+        "resumed": True,
+    }
+    assert stage.checkpoint_updates(lambda documents: [{"document": document} for document in documents]) == {
+        "source_documents": [{"document": "doc-a"}],
+        "candidate_filing_ingestion": {"stored_count": 0},
+        "company_filing_ingestion": {"requested_tickers": ["2330"]},
+        "source_audit": {"total_stored_count": 2},
+        "candidate_whitelist": [{"ticker": "2330", "status": "evidence_supported"}],
+        "promoted_tickers": ["2330"],
+    }
 
 
 class FakeRun:

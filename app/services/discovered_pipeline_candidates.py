@@ -1,6 +1,41 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass(frozen=True)
+class CandidateRevalidationStageResult:
+    candidate_filing_ingestion: dict | None
+    candidate_payload: list[dict]
+    documents: list[Any]
+    source_audit: dict
+    promoted_tickers: list[str]
+    company_filing_ingestion: dict
+
+    def workflow_summary(self, *, resumed: bool = False) -> dict[str, Any]:
+        summary: dict[str, Any] = {
+            "candidate_count": len(self.candidate_payload),
+            "promoted_count": len(self.promoted_tickers),
+            "candidate_filing_attempted": self.candidate_filing_ingestion is not None,
+        }
+        if resumed:
+            summary["resumed"] = True
+        return summary
+
+    def checkpoint_updates(
+        self,
+        documents_payload_func: Callable[[list[Any]], list[dict]],
+    ) -> dict[str, Any]:
+        return {
+            "source_documents": documents_payload_func(self.documents),
+            "candidate_filing_ingestion": self.candidate_filing_ingestion,
+            "company_filing_ingestion": self.company_filing_ingestion,
+            "source_audit": self.source_audit,
+            "candidate_whitelist": self.candidate_payload,
+            "promoted_tickers": self.promoted_tickers,
+        }
 
 
 class DiscoveredPipelineCandidateMixin:
@@ -58,6 +93,38 @@ class DiscoveredPipelineCandidateMixin:
         }
         return candidate_filing_ingestion, candidate_payload, documents
 
+    def _finalize_candidate_revalidation_stage(
+        self,
+        *,
+        candidate_filing_ingestion: dict | None,
+        candidate_payload: list[dict],
+        documents: list[Any],
+        source_audit: dict,
+    ) -> CandidateRevalidationStageResult:
+        candidate_payload = self.apply_company_filing_gate_func(candidate_payload)
+        source_audit["candidate_support"] = self.summarize_candidate_support_payload_func(
+            candidate_payload
+        )
+        promoted_tickers = self._promoted_tickers_from_candidates(candidate_payload)
+        company_filing_ingestion = self._promoted_company_filing_ingestion(promoted_tickers)
+        documents = self.dedupe_documents_func(
+            [
+                *documents,
+                *self._latest_company_filing_news_documents(
+                    promoted_tickers,
+                    limit_per_ticker=4,
+                ),
+            ]
+        )
+        return CandidateRevalidationStageResult(
+            candidate_filing_ingestion=candidate_filing_ingestion,
+            candidate_payload=candidate_payload,
+            documents=documents,
+            source_audit=source_audit,
+            promoted_tickers=promoted_tickers,
+            company_filing_ingestion=company_filing_ingestion,
+        )
+
     def _promoted_company_filing_ingestion(self, promoted_tickers: list[str]) -> dict:
         if promoted_tickers:
             return self.company_filing_timeout_result_func(
@@ -90,4 +157,4 @@ class DiscoveredPipelineCandidateMixin:
             ]
 
 
-__all__ = ["DiscoveredPipelineCandidateMixin"]
+__all__ = ["CandidateRevalidationStageResult", "DiscoveredPipelineCandidateMixin"]

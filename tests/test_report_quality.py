@@ -14,6 +14,7 @@ from app.services import report_quality_recovery
 from app.services import report_quality_llm_rules
 from app.services import report_quality_plan_rules
 from app.services import report_quality_rag_rules
+from app.services import report_quality_sources
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -96,6 +97,20 @@ def test_report_quality_plan_rules_live_outside_quality_gate_module() -> None:
     assert "AI 拆解任務仍有缺口" in plan_rules_source
     assert "AI 拆解任務品質不足" not in report_quality_source
     assert "AI 拆解任務仍有缺口" not in report_quality_source
+
+
+def test_report_quality_source_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    source_rules_source = Path("app/services/report_quality_sources.py").read_text()
+
+    assert report_quality.source_quality_notes is report_quality_sources.source_quality_notes
+    assert "def source_quality_notes(" in source_rules_source
+    assert "來源時間戳覆蓋率低於 50%" in source_rules_source
+    assert "資料來源發布者過於單一" in source_rules_source
+    assert "高可信來源比例偏低" in source_rules_source
+    assert "來源時間戳覆蓋率低於 50%" not in report_quality_source
+    assert "資料來源發布者過於單一" not in report_quality_source
+    assert "高可信來源比例偏低" not in report_quality_source
 
 
 def _quality_gate(

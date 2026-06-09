@@ -59,6 +59,44 @@ def summarize_document_source_quality(documents: list[NewsDocument], lookback_da
     }
 
 
+def source_quality_notes(
+    source_quality: dict | None, source_count: int
+) -> tuple[list[str], list[str]]:
+    if not source_quality:
+        return [], []
+    blockers: list[str] = []
+    warnings: list[str] = []
+    unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
+    timestamp_coverage = float(source_quality.get("timestamp_coverage") or 0)
+    recent_coverage = float(source_quality.get("recent_coverage") or 0)
+    source_lookback_days = int(source_quality.get("lookback_days") or 90)
+    high_credibility_ratio = source_quality.get("high_credibility_ratio")
+    low_credibility_ratio = source_quality.get("low_credibility_ratio")
+    if timestamp_coverage < 0.5:
+        blockers.append("來源時間戳覆蓋率低於 50%")
+    elif timestamp_coverage < 0.8:
+        warnings.append("部分來源缺少發布日期，事實核查信心需下修")
+    if source_count >= 8 and unique_publishers < 2:
+        blockers.append("資料來源發布者過於單一")
+    elif source_count >= 8 and unique_publishers < 3:
+        warnings.append("資料來源多樣性偏低")
+    if source_count >= 8 and recent_coverage < 0.4:
+        warnings.append(f"近 {source_lookback_days} 天來源比例偏低，可能混入過舊產業假設")
+    if (
+        high_credibility_ratio is not None
+        and source_count >= 8
+        and float(high_credibility_ratio) < 0.35
+    ):
+        warnings.append("高可信來源比例偏低，正式結論需補官方文件或主流財經新聞")
+    if (
+        low_credibility_ratio is not None
+        and source_count >= 8
+        and float(low_credibility_ratio) > 0.35
+    ):
+        warnings.append("投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由")
+    return blockers, warnings
+
+
 def _source_credibility_quality(documents: list[NewsDocument]) -> dict:
     credibility = summarize_source_credibility(documents)
     return {

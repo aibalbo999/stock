@@ -38,6 +38,7 @@ from app.services.report_quality_sources import (
     latest_only_market_data_count as _latest_only_market_data_count,
     market_provider_summary,
     market_trade_date_summary,
+    source_quality_notes,
     stale_financial_metric_ticker_count as _stale_financial_metric_ticker_count,
     stale_market_data_count as _stale_market_data_count,
     summarize_document_source_quality,
@@ -197,13 +198,6 @@ def build_report_quality_gate(
     if adjusted_weak_subtopics:
         weak_subtopic_count = len(adjusted_weak_subtopics)
     unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
-    timestamp_coverage = (
-        float(source_quality.get("timestamp_coverage") or 0) if source_quality else 0
-    )
-    recent_coverage = float(source_quality.get("recent_coverage") or 0) if source_quality else 0
-    source_lookback_days = int(source_quality.get("lookback_days") or 90) if source_quality else 90
-    high_credibility_ratio = source_quality.get("high_credibility_ratio")
-    low_credibility_ratio = source_quality.get("low_credibility_ratio")
     rag_status = rag_status or {}
     llm_observability = (llm_status or {}).get("observability") or {}
     rag_embedding_status = rag_status.get("embedding_status") or {}
@@ -250,29 +244,9 @@ def build_report_quality_gate(
             )
         else:
             warnings.append(f"AI 拆解子題仍有 {weak_subtopic_count} 個來源或資料意圖不足")
-    if source_quality:
-        if timestamp_coverage < 0.5:
-            blockers.append("來源時間戳覆蓋率低於 50%")
-        elif timestamp_coverage < 0.8:
-            warnings.append("部分來源缺少發布日期，事實核查信心需下修")
-        if source_count >= 8 and unique_publishers < 2:
-            blockers.append("資料來源發布者過於單一")
-        elif source_count >= 8 and unique_publishers < 3:
-            warnings.append("資料來源多樣性偏低")
-        if source_count >= 8 and recent_coverage < 0.4:
-            warnings.append(f"近 {source_lookback_days} 天來源比例偏低，可能混入過舊產業假設")
-        if (
-            high_credibility_ratio is not None
-            and source_count >= 8
-            and float(high_credibility_ratio) < 0.35
-        ):
-            warnings.append("高可信來源比例偏低，正式結論需補官方文件或主流財經新聞")
-        if (
-            low_credibility_ratio is not None
-            and source_count >= 8
-            and float(low_credibility_ratio) > 0.35
-        ):
-            warnings.append("投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由")
+    source_blockers, source_warnings = source_quality_notes(source_quality, source_count)
+    blockers.extend(source_blockers)
+    warnings.extend(source_warnings)
     plan_blockers, plan_warnings = discovery_plan_quality_notes(plan_quality)
     blockers.extend(plan_blockers)
     warnings.extend(plan_warnings)

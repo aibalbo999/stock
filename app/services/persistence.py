@@ -30,6 +30,10 @@ from app.services.market_repositories import (
     ValuationMetricRepository as ValuationMetricRepository,
 )
 from app.services.report_integrity import assert_report_integrity
+from app.services.report_retention import (
+    empty_repository_retention_result,
+    repository_retention_result,
+)
 from app.services.source_quality import (
     is_formal_evidence_source,
     remove_low_quality_investor_forum_lines,
@@ -299,18 +303,13 @@ class ReportRepository:
         created_report_id = report.id
         old_report_versions_deleted = self.prune_older_for_topic(report.topic, report.id)
         retained_report_id = self._last_retained_report_id or created_report_id
-        self.last_retention_result = {
-            "policy": "latest_per_topic",
-            "topic": report.topic,
-            "report_id": retained_report_id,
-            "created_report_id": created_report_id,
-            "retained_report_id": retained_report_id,
-            "created_report_retained": created_report_id == retained_report_id,
-            "old_report_versions_deleted": old_report_versions_deleted,
-            "old_report_ids": list(self._last_pruned_report_ids),
-            "run_links_cleared": bool(old_report_versions_deleted),
-            "run_output_paths_cleared": bool(old_report_versions_deleted),
-        }
+        self.last_retention_result = repository_retention_result(
+            topic=report.topic,
+            created_report_id=created_report_id,
+            retained_report_id=retained_report_id,
+            old_report_versions_deleted=old_report_versions_deleted,
+            old_report_ids=self._last_pruned_report_ids,
+        )
         return self.session.get(GeneratedReport, retained_report_id) or report
 
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
@@ -423,18 +422,7 @@ class ReportRepository:
 
     @staticmethod
     def _empty_retention_result() -> dict:
-        return {
-            "policy": "latest_per_topic",
-            "topic": None,
-            "report_id": None,
-            "created_report_id": None,
-            "retained_report_id": None,
-            "created_report_retained": True,
-            "old_report_versions_deleted": 0,
-            "old_report_ids": [],
-            "run_links_cleared": False,
-            "run_output_paths_cleared": False,
-        }
+        return empty_repository_retention_result()
 
     def _clear_analysis_run_report_links(self, report_ids: list[int]) -> None:
         if not report_ids:

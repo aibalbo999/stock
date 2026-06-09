@@ -14,6 +14,7 @@ from app.services.report_files import (
 def report_retention_status() -> dict:
     root = Path(__file__).resolve().parents[2]
     persistence_source = _read_text(root / "app" / "services" / "persistence.py")
+    report_retention_source = _read_text(root / "app" / "services" / "report_retention.py")
     report_files_source = _read_text(root / "app" / "services" / "report_files.py")
     report_query_source = _read_text(root / "app" / "services" / "report_query.py")
     data_operations_source = _read_text(root / "app" / "services" / "data_operations_api.py")
@@ -47,15 +48,16 @@ def report_retention_status() -> dict:
     )
     repository_create_records_retention = (
         "self.last_retention_result" in persistence_source
-        and '"old_report_versions_deleted"' in persistence_source
-        and '"old_report_ids"' in persistence_source
+        and "repository_retention_result(" in persistence_source
+        and '"old_report_versions_deleted"' in report_retention_source
+        and '"old_report_ids"' in report_retention_source
     )
     repository_create_retains_latest_version = (
         "def _latest_report_id_for_topic(" in persistence_source
         and "GeneratedReport.generated_at.desc()" in persistence_source
-        and '"created_report_id"' in persistence_source
-        and '"retained_report_id"' in persistence_source
-        and '"created_report_retained"' in persistence_source
+        and '"created_report_id"' in report_retention_source
+        and '"retained_report_id"' in report_retention_source
+        and '"created_report_retained"' in report_retention_source
     )
     celery_combined_write_guard = (
         "def _create_report_with_retention(" in tasks_source

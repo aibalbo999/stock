@@ -14,6 +14,7 @@ from app.services.report_files import (
 def report_retention_status() -> dict:
     root = Path(__file__).resolve().parents[2]
     persistence_source = _read_text(root / "app" / "services" / "persistence.py")
+    report_repository_source = _read_text(root / "app" / "services" / "report_repository.py")
     report_retention_source = _read_text(root / "app" / "services" / "report_retention.py")
     report_files_source = _read_text(root / "app" / "services" / "report_files.py")
     report_query_source = _read_text(root / "app" / "services" / "report_query.py")
@@ -29,7 +30,9 @@ def report_retention_status() -> dict:
     task_exports_source = _read_text(root / "app" / "api" / "task_exports.py")
     task_queue_status_source = _read_text(root / "app" / "services" / "status_task_queue.py")
     schedule_ui_source = _read_text(root / "app" / "ui" / "system_settings_schedule.py")
-    write_prunes_db = "self.prune_older_for_topic(report.topic, report.id)" in persistence_source
+    write_prunes_db = (
+        "self.prune_older_for_topic(report.topic, report.id)" in report_repository_source
+    )
     report_file_write_prunes = (
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
         in report_files_source
@@ -47,14 +50,14 @@ def report_retention_status() -> dict:
         and '"written_file_retained"' in report_files_source
     )
     repository_create_records_retention = (
-        "self.last_retention_result" in persistence_source
-        and "repository_retention_result(" in persistence_source
+        "self.last_retention_result" in report_repository_source
+        and "repository_retention_result(" in report_repository_source
         and '"old_report_versions_deleted"' in report_retention_source
         and '"old_report_ids"' in report_retention_source
     )
     repository_create_retains_latest_version = (
-        "def _latest_report_id_for_topic(" in persistence_source
-        and "GeneratedReport.generated_at.desc()" in persistence_source
+        "def _latest_report_id_for_topic(" in report_repository_source
+        and "GeneratedReport.generated_at.desc()" in report_repository_source
         and '"created_report_id"' in report_retention_source
         and '"retained_report_id"' in report_retention_source
         and '"created_report_retained"' in report_retention_source
@@ -100,23 +103,25 @@ def report_retention_status() -> dict:
         "report_file_write_retains_latest_version": report_file_write_retains_latest_version,
         "repository_create_retains_latest_version": repository_create_retains_latest_version,
         "celery_report_write_uses_combined_retention_guard": celery_combined_write_guard,
-        "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
-        and "row_number()" in persistence_source
-        and "partition_by=GeneratedReport.topic" in persistence_source,
-        "repository_latest_tie_breaks_by_id": "GeneratedReport.id.desc()" in persistence_source,
-        "repository_bulk_prune_available": "def prune_older_by_topic(" in persistence_source,
-        "repository_topic_prune_available": "def prune_older_for_topic(" in persistence_source,
+        "repository_latest_by_topic_available": "def latest_by_topic(" in report_repository_source
+        and "row_number()" in report_repository_source
+        and "partition_by=GeneratedReport.topic" in report_repository_source,
+        "repository_latest_tie_breaks_by_id": "GeneratedReport.id.desc()"
+        in report_repository_source,
+        "repository_bulk_prune_available": "def prune_older_by_topic(" in report_repository_source,
+        "repository_topic_prune_available": "def prune_older_for_topic("
+        in report_repository_source,
         "run_links_cleared_for_pruned_reports": (
-            "def _clear_analysis_run_report_links(" in persistence_source
-            and "_clear_analysis_run_report_links(old_report_ids)" in persistence_source
+            "def _clear_analysis_run_report_links(" in report_repository_source
+            and "_clear_analysis_run_report_links(old_report_ids)" in report_repository_source
         ),
         "run_output_paths_cleared_for_pruned_reports": (
-            "def _clear_analysis_run_report_links(" in persistence_source
-            and ".values(report_id=None, output_path=None)" in persistence_source
+            "def _clear_analysis_run_report_links(" in report_repository_source
+            and ".values(report_id=None, output_path=None)" in report_repository_source
         ),
         "delete_before_clears_run_links": (
-            "def delete_before(self, before: datetime) -> int:" in persistence_source
-            and "_clear_analysis_run_report_links(old_report_ids)" in persistence_source
+            "def delete_before(self, before: datetime) -> int:" in report_repository_source
+            and "_clear_analysis_run_report_links(old_report_ids)" in report_repository_source
         ),
         "orphan_cleanup_clears_output_path": (
             "def clear_orphan_report_refs(" in persistence_source

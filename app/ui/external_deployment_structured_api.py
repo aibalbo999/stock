@@ -28,6 +28,11 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
     sample_contract = (
         runtime.get("sample_contract") if isinstance(runtime.get("sample_contract"), dict) else {}
     )
+    provider_setup_preview = (
+        runtime.get("provider_setup_preview")
+        if isinstance(runtime.get("provider_setup_preview"), dict)
+        else {}
+    )
     configuration_check = (
         runtime.get("configuration_check")
         if isinstance(runtime.get("configuration_check"), dict)
@@ -55,6 +60,15 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "狀態": _structured_filing_provider_matrix_status(runtime),
             "指令": structured_filing_env_hint(runtime),
             "說明": _structured_filing_provider_matrix_detail(runtime),
+        },
+        {
+            "項目": "Provider setup preview",
+            "狀態": _structured_filing_provider_setup_status(provider_setup_preview),
+            "指令": _structured_filing_provider_setup_command(
+                provider_setup_preview,
+                runtime,
+            ),
+            "說明": _structured_filing_provider_setup_detail(provider_setup_preview),
         },
         {
             "項目": "Sample contract",
@@ -96,7 +110,23 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
 
 
 def structured_filing_env_hint(runtime: dict) -> str:
-    provider = str(runtime.get("provider") or runtime.get("provider_profile_key") or "tej")
+    setup_preview = (
+        runtime.get("provider_setup_preview")
+        if isinstance(runtime.get("provider_setup_preview"), dict)
+        else {}
+    )
+    env_template = string_list(setup_preview.get("env_template"))
+    if env_template and not runtime.get("configured"):
+        return "\n".join(env_template)
+    provider = str(
+        runtime.get("provider")
+        or (
+            runtime.get("provider_profile_key")
+            if runtime.get("configured") or runtime.get("configuration_ready")
+            else ""
+        )
+        or "tej"
+    )
     configuration_check = (
         runtime.get("configuration_check")
         if isinstance(runtime.get("configuration_check"), dict)
@@ -109,6 +139,36 @@ def structured_filing_env_hint(runtime: dict) -> str:
     if configuration_check.get("token_required") or runtime.get("token_configured"):
         lines.append("COMPANY_FILING_STRUCTURED_API_TOKEN=<token>")
     return "\n".join(lines)
+
+
+def _structured_filing_provider_setup_status(preview: dict) -> str:
+    if not preview:
+        return "未提供"
+    provider = str(preview.get("profile_key") or preview.get("provider") or "-")
+    return f"{provider} / redacted" if preview.get("token_redacted") else provider
+
+
+def _structured_filing_provider_setup_command(preview: dict, runtime: dict) -> str:
+    env_template = string_list(preview.get("env_template"))
+    if env_template:
+        return "\n".join(env_template)
+    return structured_filing_env_hint(runtime)
+
+
+def _structured_filing_provider_setup_detail(preview: dict) -> str:
+    if not preview:
+        return "缺少 provider_setup_preview；請重跑 /services/status 或 upgrade audit。"
+    params = preview.get("params") if isinstance(preview.get("params"), dict) else {}
+    headers = preview.get("headers") if isinstance(preview.get("headers"), dict) else {}
+    param_keys = ",".join(str(key) for key in params)
+    header_keys = ",".join(str(key) for key in headers)
+    token_state = "redacted" if preview.get("token_redacted") else "not-required"
+    return (
+        f"{preview.get('method') or 'GET'} {preview.get('endpoint') or '-'}；"
+        f"provider={preview.get('profile_key') or preview.get('provider') or '-'}；"
+        f"auth={preview.get('auth_mode') or '-'}；token={token_state}；"
+        f"headers={header_keys or '-'}；params={param_keys or '-'}。"
+    )
 
 
 def structured_filing_sample_command(runtime: dict) -> str:

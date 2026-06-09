@@ -11,6 +11,7 @@ from app.data_sources.company_filings import (
     structured_api_document_rows,
     structured_api_provider_decision_matrix,
     structured_api_provider_profile,
+    structured_api_provider_setup_preview,
     structured_api_request_contract,
 )
 
@@ -62,6 +63,23 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["provider_profile"]["auth_mode"] == "bearer"
     assert status["request_contract"]["token_location"] == "authorization_header"
     assert status["request_contract"]["document_type_param"] == "document_type"
+    setup_preview = status["provider_setup_preview"]
+    assert setup_preview["profile_key"] == "tej"
+    assert setup_preview["endpoint"] == "https://api.tej.example/filings"
+    assert setup_preview["headers"]["Authorization"] == "Bearer <redacted>"
+    assert setup_preview["params"] == {
+        "ticker": "2330",
+        "company_name": "台積電",
+        "limit": 3,
+        "document_type": "investor_presentation",
+    }
+    assert setup_preview["token_redacted"] is True
+    assert token not in str(setup_preview)
+    assert setup_preview["env_template"] == [
+        "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej",
+        "COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>",
+        "COMPANY_FILING_STRUCTURED_API_TOKEN=<token>",
+    ]
     assert status["request_contract"]["response_rows"] == [
         "documents",
         "data",
@@ -220,6 +238,22 @@ def test_structured_api_provider_profiles_and_request_contracts() -> None:
     assert scrapingbee_contract["headers"] == {"Accept": "application/json"}
     assert scrapingbee_contract["params"]["api_key"] == bee_token
     assert scrapingbee_contract["params"]["document_types"] == "investor_presentation"
+
+    scrapingbee_preview = structured_api_provider_setup_preview(
+        provider="scrapingbee_dataset",
+        endpoint="https://app.scrapingbee.example/dataset",
+        token=bee_token,
+        ticker="2330",
+        company_name="台積電",
+        document_types=["investor_presentation"],
+    )
+
+    assert scrapingbee_preview["headers"] == {"Accept": "application/json"}
+    assert scrapingbee_preview["params"]["api_key"] == "<redacted>"
+    assert scrapingbee_preview["params"]["document_types"] == "investor_presentation"
+    assert scrapingbee_preview["token_location"] == "query_param"
+    assert scrapingbee_preview["token_redacted"] is True
+    assert bee_token not in str(scrapingbee_preview)
 
 
 def test_structured_api_provider_decision_matrix_summarizes_vendor_contracts() -> None:

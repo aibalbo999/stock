@@ -262,6 +262,11 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     }
     assert decision_matrix["tej"]["token_required"] is True
     assert decision_matrix["custom"]["token_required"] is False
+    setup_preview = structured_api["evidence"]["provider_setup_preview"]
+    assert setup_preview["profile_key"] == "tej"
+    assert setup_preview["headers"]["Authorization"] == "Bearer <redacted>"
+    assert setup_preview["params"]["document_type"] == "investor_presentation"
+    assert setup_preview["token_redacted"] is True
     assert "TEJ" in structured_api["evidence"]["provider_selection_hint"]
     assert (
         structured_api["evidence"]["runtime"]["fallback_reason"]

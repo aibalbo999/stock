@@ -39,6 +39,7 @@ STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI = (
 STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI = (
     ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"
 )
+STRUCTURED_API_RECOMMENDED_PAID_PROVIDER = "tej"
 STRUCTURED_API_PROVIDER_PROFILES = {
     "tej": {
         "label": "TEJ structured company filings",
@@ -144,6 +145,14 @@ def company_filing_structured_api_status_payload(
             "response_rows": list(STRUCTURED_API_RESPONSE_ROW_ALIASES),
             "required_document_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
         },
+        "provider_setup_preview": structured_api_provider_setup_preview(
+            provider=provider,
+            endpoint=endpoint,
+            token=token,
+            ticker="2330",
+            company_name="台積電",
+            document_types=("investor_presentation",),
+        ),
         "contract": (
             "GET JSON with documents/data/results/items/records/list rows; supported aliases include "
             "title/headline/doc_title, text/content/body/abstract, url/file_url/download_url, "
@@ -279,6 +288,68 @@ def structured_api_provider_decision_matrix() -> list[dict]:
             }
         )
     return rows
+
+
+def structured_api_provider_setup_preview(
+    *,
+    provider: str,
+    endpoint: str,
+    token: str = "",
+    ticker: str,
+    company_name: str = "",
+    limit: int = 3,
+    document_types: list[str] | tuple[str, ...] | None = None,
+) -> dict:
+    preview_provider = (
+        str(provider or "").strip().lower() or STRUCTURED_API_RECOMMENDED_PAID_PROVIDER
+    )
+    profile = structured_api_provider_profile(preview_provider)
+    token_required = _structured_api_token_required(profile)
+    preview_endpoint = str(endpoint or "").strip() or "<provider-json-endpoint>"
+    preview_token = str(token or "").strip()
+    if not preview_token and token_required:
+        preview_token = "<token>"
+    contract = structured_api_request_contract(
+        provider=preview_provider,
+        endpoint=preview_endpoint,
+        token=preview_token,
+        ticker=ticker,
+        company_name=company_name,
+        limit=limit,
+        document_types=document_types,
+    )
+    headers = dict(contract["headers"])
+    params = dict(contract["params"])
+    token_redacted = False
+    if "Authorization" in headers:
+        headers["Authorization"] = "Bearer <redacted>"
+        token_redacted = True
+    token_param = str(profile.get("token_param") or "api_key")
+    if token_param in params:
+        params[token_param] = "<redacted>"
+        token_redacted = True
+    env_template = [
+        f"COMPANY_FILING_STRUCTURED_API_PROVIDER={profile['profile_key']}",
+        "COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>",
+    ]
+    if token_required:
+        env_template.append("COMPANY_FILING_STRUCTURED_API_TOKEN=<token>")
+    return {
+        "recommended_provider": STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
+        "provider": profile["provider"],
+        "profile_key": profile["profile_key"],
+        "label": profile["label"],
+        "env_template": env_template,
+        "method": contract["method"],
+        "endpoint": contract["endpoint"],
+        "headers": headers,
+        "params": params,
+        "auth_mode": contract["auth_mode"],
+        "token_location": contract["token_location"],
+        "token_required": token_required,
+        "token_redacted": token_redacted,
+        "document_type_param": contract["document_type_param"],
+    }
 
 
 def _structured_api_provider_env_keys(token_required: bool) -> list[str]:

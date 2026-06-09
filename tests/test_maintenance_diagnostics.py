@@ -2,10 +2,22 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from app.services import maintenance_diagnostics
+
+
+def test_maintenance_diagnostic_action_catalog_lives_outside_runner() -> None:
+    runner_source = Path("app/services/maintenance_diagnostics.py").read_text()
+    action_source = Path("app/services/maintenance_diagnostic_actions.py").read_text()
+
+    assert "MAINTENANCE_DIAGNOSTIC_ACTIONS = {" not in runner_source
+    assert "MAINTENANCE_DIAGNOSTIC_ACTIONS = {" in action_source
+    assert "def maintenance_diagnostic_action_safe_to_run(" in action_source
+    assert "subprocess.run(" not in action_source
+    assert "subprocess.run(" in runner_source
 
 
 def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_actions() -> None:

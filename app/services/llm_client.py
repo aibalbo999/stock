@@ -8,7 +8,6 @@ import httpx
 
 from app.core.config import get_settings
 from app.services.api_key_rotation import APIKeyRotator, get_shared_rotator
-from app.services.llm_attempt_planning import iter_model_attempt_plans
 from app.services.llm_attempts import llm_attempt_failure_category, summarize_llm_attempts
 from app.services.llm_models import (
     gemini_model_candidates,
@@ -19,7 +18,8 @@ from app.services.llm_models import (
     litellm_model_requires_api_key,
 )
 from app.services.llm_observability import attach_llm_observability as _attach_llm_observability
-from app.services.llm_quota import LLMQuotaGovernanceService, normalize_model_name
+from app.services.llm_quota import LLMQuotaGovernanceService
+from app.services.llm_quota_routing import LLMQuotaRoutingMixin
 from app.services.llm_provider_calls import (
     call_gemini as _call_gemini_provider,
     call_gemini_vision as _call_gemini_vision_provider,
@@ -35,14 +35,12 @@ from app.services.llm_runtime import (
     DEFAULT_BASE_RETRY_DELAY_SECONDS,
     DEFAULT_MAX_RETRIES_PER_KEY,
     DEFAULT_MAX_RETRY_DELAY_SECONDS,
-    DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS,
     DEFAULT_TOTAL_TIMEOUT_SECONDS,
     LLMResult,
     RETRYABLE_HTTP_STATUSES as RETRYABLE_HTTP_STATUSES,
     ROTATABLE_HTTP_STATUSES as ROTATABLE_HTTP_STATUSES,
     _model_quota_cooldowns as _model_quota_cooldowns,
     _model_quota_cooldowns_lock as _model_quota_cooldowns_lock,
-    daily_quota_exhausted_model_keys as _runtime_daily_quota_exhausted_model_keys,
     exception_status_code as _exception_status_code,
     llm_attempt_record as _llm_attempt_record,
     llm_error_retryable as _llm_error_retryable,
@@ -51,9 +49,6 @@ from app.services.llm_runtime import (
     llm_should_retry_after_error as _llm_should_retry_after_error,
     llm_should_stop_after_status as _llm_should_stop_after_status,
     llm_success_result as _llm_success_result,
-    model_daily_quota_exhausted as _runtime_model_daily_quota_exhausted,
-    model_quota_cooldown_remaining as _runtime_model_quota_cooldown_remaining,
-    start_model_quota_cooldown as _runtime_start_model_quota_cooldown,
 )
 
 __all__ = [
@@ -66,7 +61,7 @@ __all__ = [
 ]
 
 
-class LLMClient:
+class LLMClient(LLMQuotaRoutingMixin):
     """Provider boundary for Gemini/Gemma analysis.
 
     The MVP keeps this adapter deliberately thin. In production, put provider-specific
@@ -1017,90 +1012,9 @@ class LLMClient:
             ),
         )
 
-    @property
-    def model_quota_cooldown_seconds(self) -> float:
-        return max(
-            0.0,
-            float(
-                getattr(
-                    self.settings,
-                    "llm_model_quota_cooldown_seconds",
-                    DEFAULT_MODEL_QUOTA_COOLDOWN_SECONDS,
-                )
-            ),
-        )
-
-    def _model_quota_cooldown_remaining(self, model: str) -> float:
-        return max(
-            _runtime_model_quota_cooldown_remaining(model),
-            self._persisted_model_quota_cooldown_remaining(model),
-        )
-
-    def _persisted_model_quota_cooldown_remaining(self, model: str) -> float:
-        if not bool(getattr(self.settings, "llm_quota_hard_routing_enabled", True)):
-            return 0.0
-        model_key = normalize_model_name(model)
-        if not model_key:
-            return 0.0
-        summary = self._quota_summary()
-        for item in summary.get("models", []) if isinstance(summary.get("models"), list) else []:
-            if not isinstance(item, dict):
-                continue
-            item_key = normalize_model_name(str(item.get("model_key") or item.get("model") or ""))
-            if item_key == model_key:
-                return max(0.0, float(item.get("active_cooldown_seconds") or 0.0))
-        return 0.0
-
-    def _quota_summary(self) -> dict:
-        quota_summary_cache = getattr(self, "_quota_summary_cache", None)
-        if quota_summary_cache is not None:
-            return quota_summary_cache
-        try:
-            self._quota_summary_cache = LLMQuotaGovernanceService(
-                settings_provider=lambda: self.settings
-            ).summary()
-        except Exception:
-            self._quota_summary_cache = {}
-        return self._quota_summary_cache
-
-    def _start_model_quota_cooldown(
-        self,
-        model: str,
-        response: Optional[httpx.Response],
-    ) -> None:
-        cooldown_seconds = self._retry_delay_seconds(response, 0) if response is not None else 0.0
-        if cooldown_seconds <= 0 or cooldown_seconds == self.base_retry_delay_seconds:
-            cooldown_seconds = self.model_quota_cooldown_seconds
-        if cooldown_seconds <= 0:
-            return
-        _runtime_start_model_quota_cooldown(model, cooldown_seconds)
-
-    def _daily_quota_exhausted_model_keys(self) -> set[str]:
-        return _runtime_daily_quota_exhausted_model_keys(self.settings)
-
     @staticmethod
-    def _model_daily_quota_exhausted(model: str, exhausted_model_keys: set[str]) -> bool:
-        return _runtime_model_daily_quota_exhausted(model, exhausted_model_keys)
-
-    def _iter_model_attempt_plans(
-        self,
-        models: list[str],
-        *,
-        provider: str,
-        use_model_fallback: bool,
-        key_candidates_func,
-        max_key_candidates: int | None = None,
-    ):
-        return iter_model_attempt_plans(
-            models,
-            provider=provider,
-            daily_exhausted_model_keys=self._daily_quota_exhausted_model_keys(),
-            cooldown_remaining_func=self._model_quota_cooldown_remaining,
-            key_candidates_func=key_candidates_func,
-            attempt_record_func=self._attempt_record,
-            use_model_fallback=use_model_fallback,
-            max_key_candidates=max_key_candidates,
-        )
+    def _quota_governance_service_cls() -> type[LLMQuotaGovernanceService]:
+        return LLMQuotaGovernanceService
 
     def healthcheck(self) -> LLMResult:
         return self.generate_with_metadata("請只回答 ok，不要輸出任何其他文字。")

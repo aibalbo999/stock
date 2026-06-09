@@ -237,6 +237,18 @@ def test_llm_observability_attachment_is_split_from_client() -> None:
     assert '"external_trace_dispatch"' not in client_source
 
 
+def test_llm_quota_routing_helpers_are_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    quota_routing_source = Path("app/services/llm_quota_routing.py").read_text()
+
+    assert "class LLMQuotaRoutingMixin" in quota_routing_source
+    assert "def _persisted_model_quota_cooldown_remaining(" in quota_routing_source
+    assert "def _iter_model_attempt_plans(" in quota_routing_source
+    assert "LLMQuotaGovernanceService(" not in client_source
+    assert "def _persisted_model_quota_cooldown_remaining(" not in client_source
+    assert "def _iter_model_attempt_plans(" not in client_source
+
+
 def test_llm_quota_cooldown_runtime_tracks_shared_model_state() -> None:
     with llm_runtime._model_quota_cooldowns_lock:
         llm_runtime._model_quota_cooldowns.clear()

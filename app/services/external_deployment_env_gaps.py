@@ -7,6 +7,9 @@ from app.services.external_deployment_env_templates import (
     format_external_deployment_env_template as format_external_deployment_env_template,
     format_external_deployment_env_check_report as format_external_deployment_env_check_report,
 )
+from app.services.external_deployment_env_resolution import (
+    external_deployment_env_resolution_rows_from_key_rows as build_external_deployment_env_resolution_rows,
+)
 from app.services.external_deployment_readiness import (
     external_deployment_command_summary,
     external_deployment_item_ready,
@@ -15,6 +18,7 @@ from app.services.external_deployment_readiness import (
     external_smoke_commands_from_payload,
     string_list,
 )
+
 EXTERNAL_ENV_KEY_HINTS = {
     "NEO4J_URI": {
         "default": "neo4j://localhost:7687",
@@ -119,6 +123,7 @@ EXTERNAL_CAPABILITY_ENV_DEFAULTS = {
     ),
 }
 EXTERNAL_ENV_CHECK_TARGETS = ("host", "compose")
+EXTERNAL_ENV_RESOLUTION_CONTRACT_COLUMNS = ("處理策略", "處理類型", "維護動作")
 
 
 def external_deployment_env_gap_report(
@@ -355,96 +360,7 @@ def external_deployment_env_resolution_rows(
 
 
 def external_deployment_env_resolution_rows_from_key_rows(rows: list[dict]) -> list[dict]:
-    grouped: dict[str, list[dict]] = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        capability = str(row.get("能力") or "-")
-        grouped.setdefault(capability, []).append(row)
-    return [
-        _external_env_resolution_row(capability, capability_rows)
-        for capability, capability_rows in sorted(
-            grouped.items(),
-            key=lambda item: _external_env_resolution_sort_key(item[1]),
-        )
-    ]
-
-
-def _external_env_resolution_row(capability: str, rows: list[dict]) -> dict:
-    local_rows = [row for row in rows if row.get("處理類型") == "本機可套用"]
-    manual_rows = [row for row in rows if row.get("處理類型") != "本機可套用"]
-    secret_rows = [row for row in rows if row.get("處理類型") == "需人工密鑰"]
-    missing_count = sum(1 for row in rows if row.get("狀態") == "缺少")
-    recommended_count = sum(1 for row in rows if row.get("狀態") == "建議")
-    local_commands = _ordered_unique(row.get("維護動作") for row in local_rows)
-    manual_keys = _ordered_unique(row.get("設定鍵") for row in manual_rows)
-    all_keys = _ordered_unique(row.get("設定鍵") for row in rows)
-    verify_commands = _ordered_unique(row.get("驗證指令") for row in rows)
-    return {
-        "優先級": _best_priority(rows),
-        "能力": capability,
-        "處理策略": _external_env_resolution_strategy(local_rows, manual_rows, secret_rows),
-        "缺口數": len(rows),
-        "缺少": missing_count,
-        "建議": recommended_count,
-        "本機可套用": len(local_rows),
-        "需人工處理": len(manual_rows),
-        "需人工密鑰": len(secret_rows),
-        "設定鍵": "、".join(all_keys) if all_keys else "-",
-        "本機指令": "\n".join(local_commands) if local_commands else "-",
-        "手動設定鍵": "、".join(manual_keys) if manual_keys else "-",
-        "建議動作": _external_env_resolution_action(local_commands, manual_rows, rows),
-        "驗證指令": "\n".join(verify_commands) if verify_commands else "-",
-    }
-
-
-def _external_env_resolution_strategy(
-    local_rows: list[dict],
-    manual_rows: list[dict],
-    secret_rows: list[dict],
-) -> str:
-    if local_rows and not manual_rows:
-        return "可用本機維護操作"
-    if local_rows and manual_rows:
-        return "先啟動本機依賴，再補外部設定"
-    if secret_rows:
-        return "需人工密鑰"
-    if manual_rows:
-        return "需人工設定"
-    return "已無缺口"
-
-
-def _external_env_resolution_action(
-    local_commands: list[str],
-    manual_rows: list[dict],
-    rows: list[dict],
-) -> str:
-    if local_commands and not manual_rows:
-        return local_commands[0]
-    if local_commands and manual_rows:
-        return f"{local_commands[0]}；再補 {', '.join(_ordered_unique(row.get('設定鍵') for row in manual_rows))}"
-    if manual_rows:
-        return str(manual_rows[0].get("維護動作") or "手動補 .env 或 secret manager。")
-    if rows:
-        return str(rows[0].get("下一步") or "-")
-    return "-"
-
-
-def _external_env_resolution_sort_key(rows: list[dict]) -> tuple[int, int, str]:
-    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-    best_priority = _best_priority(rows)
-    manual_count = sum(1 for row in rows if row.get("處理類型") != "本機可套用")
-    return (
-        priority_order.get(best_priority, 4),
-        -manual_count,
-        str(rows[0].get("能力") if rows else ""),
-    )
-
-
-def _best_priority(rows: list[dict]) -> str:
-    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-    priorities = [str(row.get("優先級") or "P2") for row in rows]
-    return min(priorities or ["P2"], key=lambda item: priority_order.get(item, 4))
+    return build_external_deployment_env_resolution_rows(rows)
 
 
 def _ordered_unique(values: object) -> list[str]:
@@ -466,9 +382,7 @@ def _service_snapshot_external_env_items(service_snapshot: dict) -> list[dict]:
         if isinstance(service_snapshot.get("supply_chain_graph"), dict)
         else {}
     )
-    neo4j_import = (
-        graph.get("neo4j_import") if isinstance(graph.get("neo4j_import"), dict) else {}
-    )
+    neo4j_import = graph.get("neo4j_import") if isinstance(graph.get("neo4j_import"), dict) else {}
     if neo4j_import and not neo4j_import.get("ready"):
         items.append(
             {
@@ -604,9 +518,7 @@ def _external_env_summary(item: dict) -> dict:
     return {
         "missing": set(_collect_named_string_lists(payload, {"missing_env_keys"})),
         "configured": set(_collect_named_string_lists(payload, {"configured_env_keys"})),
-        "required": set(
-            _collect_named_string_lists(payload, {"required_env_keys", "env_keys"})
-        ),
+        "required": set(_collect_named_string_lists(payload, {"required_env_keys", "env_keys"})),
         "recommended": _collect_env_recommendations(payload, {"recommended_env"}),
         "compose_recommended": _collect_env_recommendations(
             payload,
@@ -666,14 +578,10 @@ def _external_env_needs_default_keys(item: dict, env_summary: dict) -> bool:
         ("ai_rag", "neo4j_import"),
         ("ai_rag", "graphrag_live_cypher_query"),
     }:
-        return any(
-            str(reason).startswith("missing_settings:neo4j")
-            for reason in fallback_reasons
-        )
+        return any(str(reason).startswith("missing_settings:neo4j") for reason in fallback_reasons)
     if key == ("ai_rag", "visual_rag"):
         return any(
-            "missing_vision_llm_key_or_gateway" in str(reason)
-            for reason in fallback_reasons
+            "missing_vision_llm_key_or_gateway" in str(reason) for reason in fallback_reasons
         )
     return False
 

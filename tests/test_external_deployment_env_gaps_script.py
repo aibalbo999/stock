@@ -98,10 +98,7 @@ def test_external_deployment_env_gap_report_groups_resolution_plan() -> None:
         upgrade_audit=_audit_with_env_gaps(),
         service_snapshot={},
     )
-    resolution_by_capability = {
-        row["能力"]: row
-        for row in report["resolution_rows"]
-    }
+    resolution_by_capability = {row["能力"]: row for row in report["resolution_rows"]}
 
     neo4j = resolution_by_capability["外部 Neo4j 匯入連線"]
     assert neo4j["處理策略"] == "可用本機維護操作"
@@ -201,10 +198,7 @@ def test_external_deployment_env_gap_report_checks_env_values_without_secrets() 
             "COMPANY_FILING_STRUCTURED_API_URL": "<provider-json-endpoint>",
         },
     )
-    placeholder_rows_by_key = {
-        row["env_key"]: row
-        for row in placeholder_check["rows"]
-    }
+    placeholder_rows_by_key = {row["env_key"]: row for row in placeholder_check["rows"]}
 
     assert placeholder_check["status"] == "action_required"
     assert placeholder_rows_by_key[NEO4J_PW_ENV]["status"] == "missing"
@@ -333,9 +327,10 @@ def test_external_deployment_env_gap_script_prints_compose_env_template(
         },
     )
 
-    assert external_deployment_env_gaps.main(
-        ["--env-template", "--env-template-target", "compose"]
-    ) == 0
+    assert (
+        external_deployment_env_gaps.main(["--env-template", "--env-template-target", "compose"])
+        == 0
+    )
     output = capsys.readouterr().out
     assert "target=compose" in output
     assert "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1" in output
@@ -390,18 +385,19 @@ def test_external_deployment_env_gap_script_prints_env_check(
         },
     )
 
-    assert external_deployment_env_gaps.main(
-        ["--env-check", "--env-file", str(env_file)]
-    ) == 0
+    assert external_deployment_env_gaps.main(["--env-check", "--env-file", str(env_file)]) == 0
     output = capsys.readouterr().out
     assert "External deployment env check: ready" in output
     assert "NEO4J_URI :: expected=neo4j://localhost:7687 current=neo4j://localhost:7687" in output
     assert f"{NEO4J_PW_ENV} :: expected=<set-manually> current=<set>" in output
     assert "real-secret" not in output
 
-    assert external_deployment_env_gaps.main(
-        ["--strict", "--env-check", "--env-file", str(tmp_path / "missing.env")]
-    ) == 1
+    assert (
+        external_deployment_env_gaps.main(
+            ["--strict", "--env-check", "--env-file", str(tmp_path / "missing.env")]
+        )
+        == 1
+    )
     strict_output = capsys.readouterr().out
     assert "External deployment env check: action_required" in strict_output
 
@@ -454,9 +450,10 @@ def test_external_deployment_env_gap_script_prints_env_check_json(
         },
     )
 
-    assert external_deployment_env_gaps.main(
-        ["--env-check", "--json", "--env-file", str(env_file)]
-    ) == 0
+    assert (
+        external_deployment_env_gaps.main(["--env-check", "--json", "--env-file", str(env_file)])
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "ready"
@@ -531,9 +528,12 @@ def test_external_deployment_env_gap_script_prints_all_target_env_check(
         fake_status_report,
     )
 
-    assert external_deployment_env_gaps.main(
-        ["--env-check", "--env-check-target", "all", "--env-file", str(env_file)]
-    ) == 0
+    assert (
+        external_deployment_env_gaps.main(
+            ["--env-check", "--env-check-target", "all", "--env-file", str(env_file)]
+        )
+        == 0
+    )
     output = capsys.readouterr().out
     assert "External deployment env check: action_required (target=all; gaps=1)" in output
     assert "[host] ready" in output
@@ -592,9 +592,12 @@ def test_external_deployment_env_gap_script_prints_all_target_env_check_json(
         fake_status_report,
     )
 
-    assert external_deployment_env_gaps.main(
-        ["--env-check", "--env-check-target", "all", "--json", "--env-file", str(env_file)]
-    ) == 0
+    assert (
+        external_deployment_env_gaps.main(
+            ["--env-check", "--env-check-target", "all", "--json", "--env-file", str(env_file)]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "action_required"

@@ -21,6 +21,7 @@ from app.services.report_quality_runtime import (
     rag_runtime_status,
     summarize_llm_status,
 )
+from app.services.report_quality_llm_rules import llm_quality_notes
 from app.services.report_quality_rag_rules import (
     normalized_rag_reranker_provider,
     rag_quality_warnings,
@@ -360,16 +361,9 @@ def build_report_quality_gate(
             warnings.append("公司公開文件覆蓋率低於 50%，正式投入前需補年報或法說會")
         elif company_filing_coverage < 1:
             warnings.append("部分股票缺少高品質公司公開文件")
-    if llm_status:
-        llm_attempt_summary = llm_status.get("attempt_summary") or {}
-        if llm_fallback:
-            warnings.append("LLM 補充分析未啟用或呼叫失敗，個股結論需視為規則引擎草稿")
-        elif llm_attempt_summary.get("success_after_failure"):
-            observations.append(
-                "LLM 補充分析已完成，但曾經重試或切換備援模型；模型穩定性需持續觀察"
-            )
-        else:
-            observations.append("LLM 補充分析已完成，且仍受來源與白名單驗證約束")
+    llm_warnings, llm_observations = llm_quality_notes(llm_status)
+    warnings.extend(llm_warnings)
+    observations.extend(llm_observations)
     warnings.extend(rag_quality_warnings(rag_status))
 
     status = "ready"

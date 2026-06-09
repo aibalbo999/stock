@@ -13,6 +13,11 @@ from app.models.schemas import (
     RiskType,
     ValuationMetric,
 )
+from app.services import report_potential
+from app.services import report_potential_decisions
+from app.services import report_potential_estimation
+from app.services import report_potential_quality
+from app.services import report_potential_reasons
 from app.services.report_generator import ReportGenerator
 from app.services.report_potential import estimate_potential
 from report_generator_factories import make_financial_metrics, make_finding
@@ -33,6 +38,33 @@ def test_potential_scoring_logic_lives_outside_generator() -> None:
     assert "PotentialScoringEngine" not in generator_source
     assert "def _estimate_potential(" not in generator_source
     assert "def _data_quality_grade(" not in generator_source
+
+
+def test_potential_quality_and_decision_rules_live_outside_public_module() -> None:
+    potential_source = Path("app/services/report_potential.py").read_text()
+    quality_source = Path("app/services/report_potential_quality.py").read_text()
+    decisions_source = Path("app/services/report_potential_decisions.py").read_text()
+
+    assert report_potential.data_quality_grade_for is report_potential_quality.data_quality_grade_for
+    assert report_potential.decision_label_for is report_potential_decisions.decision_label_for
+    assert "缺近 {recent_source_days} 天公司文本" in quality_source
+    assert "避開 / 降低曝險" in decisions_source
+    assert "缺近 {recent_source_days} 天公司文本" not in potential_source
+    assert "避開 / 降低曝險" not in potential_source
+
+
+def test_potential_estimation_flow_lives_outside_public_module() -> None:
+    potential_source = Path("app/services/report_potential.py").read_text()
+    estimation_source = Path("app/services/report_potential_estimation.py").read_text()
+    reasons_source = Path("app/services/report_potential_reasons.py").read_text()
+
+    assert report_potential.estimate_potential_for is report_potential_estimation.estimate_potential_for
+    assert report_potential.scoring_text_for_document is report_potential_reasons.scoring_text_for_document
+    assert "長期/已揭露財務與目前估值加分" in estimation_source
+    assert "正向證據未達 >10 分情境門檻" in estimation_source
+    assert "新聞/RAG 未偵測到主要負向或瓶頸證據" in reasons_source
+    assert "長期/已揭露財務與目前估值加分" not in potential_source
+    assert "正向證據未達 >10 分情境門檻" not in potential_source
 
 
 def test_monthly_revenue_check_and_estimate_use_yoy() -> None:

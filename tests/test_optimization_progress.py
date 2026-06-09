@@ -118,6 +118,52 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert "TEJ" in data_domain["optional_gaps"][0]["next_action"]
 
 
+def test_optimization_progress_exposes_free_validation_for_paid_external_gap() -> None:
+    status = _ready_status()
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_structured_api_fallback"
+    ] = {
+        "status": "not_configured",
+        "detail": "paid external API not configured",
+        "evidence": {
+            "runtime": {
+                "sample_contract_cli": (
+                    ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                    "--sample-json examples/structured_company_filing_sample.json --json"
+                ),
+                "free_validation": {
+                    "local_fixture_http_smoke_cli": (
+                        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                        "--json --strict"
+                    ),
+                    "local_fixture_provider_profile_smoke_cli": (
+                        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                        "--provider-profile tej --json --strict"
+                    ),
+                    "local_fixture_smoke_cli": (
+                        "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+                        "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
+                        ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                    ),
+                },
+            },
+        },
+    }
+
+    progress = optimization_progress_status(status)
+    action = progress["next_actions"][0]
+    action_rows = optimization_progress_next_action_rows(progress)
+
+    assert action["capability"] == "company_filing_structured_api_fallback"
+    assert action["free_validation_available"] is True
+    assert action["free_validation_label"] == "sample + fixture + provider profile 可驗證"
+    assert len(action["free_validation_commands"]) == 4
+    assert "structured_company_filing_sample.json" in action["free_validation_commands"][0]
+    assert "structured_company_filing_fixture_smoke.py" in action_rows[0]["免費驗證指令"]
+    assert "--provider-profile tej" in action_rows[0]["免費驗證指令"]
+    assert "structured_company_filing_sample.json" in action_rows[0]["指令"]
+
+
 def test_optimization_progress_exposes_combined_local_defaults_command() -> None:
     status = _ready_status()
     status["upgrade_capability_matrix"]["ai_rag"]["neo4j_import"] = {

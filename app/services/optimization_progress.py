@@ -432,6 +432,7 @@ def _capability_check(
     ready = capability_status in READY_STATUSES
     local_match = _local_auto_default_match(ref, local_auto_defaults)
     locally_available = bool(local_match and not ready)
+    free_validation = _capability_free_validation(capability)
     return {
         "area": ref.area,
         "capability": ref.capability,
@@ -451,6 +452,9 @@ def _capability_check(
         "detail": capability.get("detail"),
         "locally_available": locally_available,
         "local_auto_default": local_match or {},
+        "free_validation_available": free_validation["available"],
+        "free_validation_label": free_validation["label"],
+        "free_validation_commands": free_validation["commands"],
     }
 
 
@@ -493,6 +497,9 @@ def _next_actions(domains: list[dict]) -> list[dict]:
                         "capability_status": gap.get("capability_status"),
                         "locally_available": gap.get("locally_available"),
                         "local_auto_default": gap.get("local_auto_default") or {},
+                        "free_validation_available": bool(gap.get("free_validation_available")),
+                        "free_validation_label": gap.get("free_validation_label") or "",
+                        "free_validation_commands": gap.get("free_validation_commands") or [],
                     }
                 )
     return actions
@@ -592,6 +599,61 @@ def _local_defaults_verify_command(local_actions: list[dict]) -> str:
     if has_browser_render:
         return LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND
     return AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND
+
+
+def _capability_free_validation(capability: dict[str, Any]) -> dict:
+    evidence = capability.get("evidence") if isinstance(capability.get("evidence"), dict) else {}
+    runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else {}
+    free_validation = (
+        runtime.get("free_validation") if isinstance(runtime.get("free_validation"), dict) else {}
+    )
+    commands = _ordered_unique(
+        [
+            runtime.get("sample_contract_cli"),
+            free_validation.get("sample_contract_cli"),
+            runtime.get("local_fixture_http_smoke_cli"),
+            free_validation.get("local_fixture_http_smoke_cli"),
+            runtime.get("local_fixture_provider_profile_smoke_cli"),
+            free_validation.get("local_fixture_provider_profile_smoke_cli"),
+            runtime.get("local_fixture_start_cli"),
+            free_validation.get("local_fixture_start_cli"),
+            runtime.get("local_fixture_smoke_cli"),
+            free_validation.get("local_fixture_smoke_cli"),
+        ]
+    )
+    return {
+        "available": bool(commands),
+        "label": _free_validation_label(commands),
+        "commands": commands,
+    }
+
+
+def _free_validation_label(commands: list[str]) -> str:
+    if not commands:
+        return ""
+    has_sample = any("--sample-json" in command for command in commands)
+    has_fixture = any(
+        "structured_company_filing_fixture_smoke.py" in command
+        or "local_structured_company_filing_api.py" in command
+        for command in commands
+    )
+    has_provider_profile = any("--provider-profile" in command for command in commands)
+    if has_sample and has_fixture and has_provider_profile:
+        return "sample + fixture + provider profile 可驗證"
+    if has_sample and has_fixture:
+        return "sample + fixture 可驗證"
+    if has_sample:
+        return "sample contract 可驗證"
+    return "免費驗證可用"
+
+
+def _ordered_unique(values: list[object]) -> list[str]:
+    items: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item and item not in items:
+            items.append(item)
+    return items
 
 
 def _local_default_verify_commands(

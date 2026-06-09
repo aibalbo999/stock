@@ -229,6 +229,8 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
             "是否外部": "是" if action.get("external") else "否",
             "決策": action.get("decision") or "-",
             "優先理由": action.get("priority_reason") or "-",
+            "免費驗證": action.get("free_validation_label") or "-",
+            "免費驗證指令": _action_free_validation_command_summary(action),
             "指令": _action_verify_command(action),
             "建議": action.get("next_action") or "-",
         }
@@ -246,7 +248,24 @@ def _action_verify_command(action: dict) -> str:
         local_command = str(local_default.get("verify_command") or "").strip()
         if local_command:
             return local_command
+    free_commands = _action_free_validation_commands(action)
+    if free_commands:
+        return free_commands[0]
     return "-"
+
+
+def _action_free_validation_command_summary(action: dict) -> str:
+    commands = _action_free_validation_commands(action)
+    if not commands:
+        return "-"
+    return "\n".join(commands)
+
+
+def _action_free_validation_commands(action: dict) -> list[str]:
+    commands = action.get("free_validation_commands")
+    if not isinstance(commands, list):
+        return []
+    return [str(command).strip() for command in commands if str(command).strip()]
 
 
 def _format_progress_ratio(value: object) -> str:

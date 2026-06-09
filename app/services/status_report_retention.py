@@ -23,6 +23,7 @@ def report_retention_status() -> dict:
     schedule_config_source = _read_text(root / "app" / "services" / "schedule_config.py")
     celery_app_source = _read_text(root / "app" / "tasks" / "celery_app.py")
     tasks_source = _read_text(root / "app" / "tasks" / "tasks.py")
+    report_generation_task_source = _read_text(root / "app" / "tasks" / "report_generation.py")
     task_exports_source = _read_text(root / "app" / "api" / "task_exports.py")
     task_queue_status_source = _read_text(root / "app" / "services" / "status_task_queue.py")
     schedule_ui_source = _read_text(root / "app" / "ui" / "system_settings_schedule.py")
@@ -59,7 +60,9 @@ def report_retention_status() -> dict:
         "def _create_report_with_retention(" in tasks_source
         and "def _write_report_file_with_retention(" in tasks_source
         and "def _combined_report_retention(" in tasks_source
-        and '"retention": retention' in tasks_source
+        and "combined_report_retention_func(db_retention, file_retention)"
+        in report_generation_task_source
+        and '"retention": retention' in report_generation_task_source
     )
     artifact_retention_smoke = _report_artifact_retention_smoke()
     report_file_write_prunes_artifacts = (
@@ -205,6 +208,7 @@ def report_retention_status() -> dict:
             "app/services/schedule_config.py",
             "app/tasks/celery_app.py",
             "app/tasks/tasks.py",
+            "app/tasks/report_generation.py",
             "app/api/task_exports.py",
             "app/services/status_task_queue.py",
             "app/ui/system_settings_maintenance.py",

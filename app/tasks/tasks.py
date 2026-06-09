@@ -35,13 +35,15 @@ from app.services.task_cancellation import (
 )
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
-from app.tasks import after_close_report_update
+from app.tasks import after_close_report_update, report_generation
 from app.tasks.celery_app import celery_app
 from app.tasks.data_operations import (
     cancellable_ingestion_pipeline,
     normalize_tickers as _normalize_tickers,
     run_data_operation_payload,
 )
+
+GENERATE_REPORT_PRE_REFRESH_OPERATION = "celery.generate_report.pre_report_refresh"
 
 
 def build_run_payload(
@@ -229,6 +231,31 @@ def _combined_report_retention(db_retention: dict | None, file_retention: dict |
     return after_close_report_update.combined_report_retention(db_retention, file_retention)
 
 
+def _run_generate_report_payload(payload: dict, *, task_id: str | None = None) -> dict:
+    return report_generation.run_generate_report_payload(
+        payload,
+        task_id=task_id,
+        session_scope_factory=session_scope,
+        analysis_run_repository_cls=AnalysisRunRepository,
+        report_request_cls=ReportRequest,
+        build_run_payload_func=build_run_payload,
+        workflow_factory=workflow_checkpoint_recorder,
+        workflow_steps=CELERY_REPORT_STEPS,
+        raise_if_cancelled_func=_raise_if_cancelled,
+        mark_cancelled_func=_mark_cancelled,
+        pipeline_factory=_cancellable_ingestion_pipeline,
+        run_async_func=run_async_from_sync,
+        pre_report_refresh_operation=GENERATE_REPORT_PRE_REFRESH_OPERATION,
+        report_build_service_factory=ReportBuildService,
+        follow_up_action_planner_factory=FollowUpActionPlanner,
+        execute_follow_up_actions_func=execute_follow_up_actions_sync,
+        create_report_with_retention_func=_create_report_with_retention,
+        record_llm_usage_func=record_llm_usage_from_report_execution,
+        write_report_file_with_retention_func=_write_report_file_with_retention,
+        combined_report_retention_func=_combined_report_retention,
+    )
+
+
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
 def discovered_report_task(self, payload: dict) -> dict:
     init_db()
@@ -369,157 +396,7 @@ def report_follow_up_task(self, payload: dict) -> dict:
 def generate_report_task(self, payload: dict) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    with session_scope() as session:
-        run = AnalysisRunRepository(session).start("celery", build_run_payload(payload, task_id))
-        run_id = run.id
-    request = ReportRequest.model_validate(payload)
-    workflow = workflow_checkpoint_recorder()
-    workflow.initialize(run_id, "celery_report_task", CELERY_REPORT_STEPS)
-    current_step = "pre_report_refresh"
-    try:
-        _raise_if_cancelled(run_id)
-        workflow.start_step(run_id, current_step)
-        ingestion_summary = run_async_from_sync(
-            _cancellable_ingestion_pipeline(run_id).pre_report_refresh(request),
-            operation="celery.generate_report.pre_report_refresh",
-        )
-        _raise_if_cancelled(run_id)
-        workflow.complete_step(
-            run_id,
-            current_step,
-            {
-                "news_count": (ingestion_summary.get("news") or {}).get("count", 0),
-                "company_filing_count": (ingestion_summary.get("company_filings") or {}).get(
-                    "stored_count", 0
-                ),
-            },
-        )
-        with session_scope() as session:
-            AnalysisRunRepository(session).update_payload(
-                run_id,
-                workflow.payload_with_current_workflow(
-                    run_id,
-                    build_run_payload(payload, task_id, ingestion_summary),
-                ),
-            )
-        current_step = "report_build"
-        _raise_if_cancelled(run_id)
-        workflow.start_step(run_id, current_step)
-        report_result = ReportBuildService().build(
-            request,
-            source_count=(ingestion_summary.get("news") or {}).get("count", 0),
-        )
-        _raise_if_cancelled(run_id)
-        response = report_result["response"]
-        quality_gate = report_result["quality_gate"]
-        workflow.complete_step(
-            run_id,
-            current_step,
-            {
-                "quality_gate_status": quality_gate.get("status"),
-                "evidence_count": report_result["evidence_count"],
-            },
-        )
-        follow_up_summary = None
-        if quality_gate.get("status") != "ready":
-            current_step = "follow_up_actions"
-            _raise_if_cancelled(run_id)
-            workflow.start_step(
-                run_id, current_step, {"quality_gate_status": quality_gate.get("status")}
-            )
-            follow_up_actions = FollowUpActionPlanner().plan(request, quality_gate=quality_gate)
-            if follow_up_actions:
-                follow_up_summary = execute_follow_up_actions_sync(follow_up_actions, request)
-                _raise_if_cancelled(run_id)
-                ingestion_summary = {
-                    **ingestion_summary,
-                    "follow_up": follow_up_summary,
-                }
-                report_result = ReportBuildService().build(
-                    request,
-                    source_count=(ingestion_summary.get("news") or {}).get("count", 0),
-                )
-                response = report_result["response"]
-                quality_gate = report_result["quality_gate"]
-                _raise_if_cancelled(run_id)
-            workflow.complete_step(
-                run_id,
-                current_step,
-                {
-                    "action_count": len(follow_up_actions),
-                    "stored_count": (follow_up_summary or {})
-                    .get("execution_summary", {})
-                    .get("stored_count"),
-                    "quality_gate_status_after": quality_gate.get("status"),
-                },
-            )
-        current_step = "report_persist"
-        _raise_if_cancelled(run_id)
-        workflow.start_step(
-            run_id, current_step, {"quality_gate_status": quality_gate.get("status")}
-        )
-        with session_scope() as session:
-            AnalysisRunRepository(session).update_payload(
-                run_id,
-                workflow.payload_with_current_workflow(
-                    run_id,
-                    {
-                        **build_run_payload(payload, task_id, ingestion_summary),
-                        "quality_gate": quality_gate,
-                        "follow_up": follow_up_summary,
-                        "report_execution": report_result["report_execution"],
-                    },
-                ),
-            )
-        _raise_if_cancelled(run_id)
-        report_id, db_retention = _create_report_with_retention(request, response)
-        record_llm_usage_from_report_execution(
-            report_result.get("report_execution"),
-            operation="celery_report_generation",
-            report_id=report_id,
-            run_id=run_id,
-        )
-        workflow.complete_step(run_id, current_step, {"report_id": report_id})
-        file_retention = _write_report_file_with_retention(request, response)
-        path = file_retention["path"]
-        retention = _combined_report_retention(db_retention, file_retention)
-        with session_scope() as session:
-            AnalysisRunRepository(session).update_payload(
-                run_id,
-                workflow.complete_workflow_payload(
-                    run_id,
-                    {
-                        **build_run_payload(payload, task_id, ingestion_summary),
-                        "quality_gate": quality_gate,
-                        "follow_up": follow_up_summary,
-                        "report_execution": report_result["report_execution"],
-                        "retention": retention,
-                    },
-                ),
-            )
-            AnalysisRunRepository(session).mark_success(run_id, report_id, str(path))
-        return {
-            "task_id": task_id,
-            "run_id": run_id,
-            "id": report_id,
-            "title": response.title,
-            "path": str(path),
-            "generated_at": response.generated_at.isoformat(),
-            "retention": retention,
-        }
-    except TaskCancelledError as exc:
-        workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})
-        _mark_cancelled(run_id)
-        return {
-            "task_id": task_id,
-            "run_id": run_id,
-            "cancelled": True,
-        }
-    except Exception as exc:
-        workflow.fail_step(run_id, current_step, str(exc))
-        with session_scope() as session:
-            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
-        raise
+    return _run_generate_report_payload(payload, task_id=task_id)
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.after_close_report_update_task")

@@ -17,19 +17,35 @@ def frontend_external_deployment_readiness_status(
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
     readiness_service_source = _read_text(readiness_service_path)
+    profile_catalog_path = root / "app" / "services" / "external_deployment_profiles.py"
+    profile_catalog_source = _read_text(profile_catalog_path)
     return {
         "frontend_external_deployment_readiness_status_extracted": True,
         "frontend_external_deployment_readiness_status_path": (
             "app/services/status_frontend_external_deployment_readiness.py"
+        ),
+        "ui_external_deployment_profile_catalog_extracted": (
+            profile_catalog_path.exists()
+            and "EXTERNAL_READINESS_METADATA = {" in profile_catalog_source
+            and "EXTERNAL_ENABLEMENT_METADATA = {" in profile_catalog_source
+            and "EXTERNAL_LOCAL_ACTION_METADATA = {" in profile_catalog_source
+            and "EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(" in profile_catalog_source
+            and "from app.services.external_deployment_profiles import"
+            in readiness_service_source
+        ),
+        "ui_external_deployment_profile_catalog_path": (
+            "app/services/external_deployment_profiles.py"
         ),
         "ui_external_deployment_readiness_checklist_enabled": (
             "def external_deployment_readiness_rows(" in external_deployment_source
             and "def external_deployment_readiness_rows(" in external_deployment_common_source
             and "from app.services.external_deployment_readiness import"
             in external_deployment_common_source
-            and "EXTERNAL_READINESS_METADATA" in readiness_service_source
-            and "EXTERNAL_ENABLEMENT_METADATA" in readiness_service_source
-            and "EXTERNAL_LOCAL_ACTION_METADATA" in readiness_service_source
+            and "EXTERNAL_READINESS_METADATA" in profile_catalog_source
+            and "EXTERNAL_ENABLEMENT_METADATA" in profile_catalog_source
+            and "EXTERNAL_LOCAL_ACTION_METADATA" in profile_catalog_source
+            and "from app.services.external_deployment_profiles import"
+            in readiness_service_source
             and "def external_deployment_enablement_profile(" in readiness_service_source
             and "def external_deployment_enablement_profile(" in external_deployment_common_source
             and "def external_deployment_local_action(" in readiness_service_source

@@ -26,6 +26,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     status_frontend_external_readiness_source = Path(
         "app/services/status_frontend_external_deployment_readiness.py"
     ).read_text()
+    external_deployment_profiles_source = Path(
+        "app/services/external_deployment_profiles.py"
+    ).read_text()
     status_frontend_report_rendering_source = Path(
         "app/services/status_frontend_report_rendering.py"
     ).read_text()
@@ -107,6 +110,10 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "frontend_external_deployment_readiness_status(source_context)" in (
         status_frontend_external_source
     )
+    assert "EXTERNAL_READINESS_METADATA = {" in external_deployment_profiles_source
+    assert "EXTERNAL_ENABLEMENT_METADATA = {" in external_deployment_profiles_source
+    assert "EXTERNAL_LOCAL_ACTION_METADATA = {" in external_deployment_profiles_source
+    assert "EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(" in external_deployment_profiles_source
     assert '"ui_external_deployment_diagnostics_enabled"' not in (
         status_frontend_external_source
     )
@@ -273,6 +280,10 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_external_deployment_diagnostics_enabled"] is True
     assert status["frontend"]["ui_external_deployment_readiness_checklist_enabled"] is True
+    assert status["frontend"]["ui_external_deployment_profile_catalog_extracted"] is True
+    assert status["frontend"]["ui_external_deployment_profile_catalog_path"] == (
+        "app/services/external_deployment_profiles.py"
+    )
     assert status["frontend"]["ui_external_deployment_diagnostics_extracted"] is True
     assert status["frontend"]["ui_local_dependency_start_history_enabled"] is True
     assert status["frontend"]["ui_local_dependency_repair_guidance_enabled"] is True
@@ -287,6 +298,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_external_deployment_domain_helper_paths"] == [
         "app/ui/external_deployment_common.py",
         "app/services/external_deployment_readiness.py",
+        "app/services/external_deployment_profiles.py",
         "app/ui/external_deployment_env_keys.py",
         "app/services/external_deployment_env_gaps.py",
         "app/ui/external_deployment_unlocker.py",
@@ -426,6 +438,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_maintenance_safe_noop_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_readiness_checklist_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_external_deployment_profile_catalog_extracted"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_operations_enabled"] is True

@@ -23,6 +23,8 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
     env_gap_service_source = _read_text(env_gap_service_path)
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
     readiness_service_source = _read_text(readiness_service_path)
+    profile_catalog_path = root / "app" / "services" / "external_deployment_profiles.py"
+    profile_catalog_source = _read_text(profile_catalog_path)
     return {
         "frontend_external_deployment_domain_status_extracted": True,
         "frontend_external_deployment_domain_status_path": (
@@ -100,6 +102,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             ui_dir / "external_deployment_common.py"
         ).exists()
         and readiness_service_path.exists()
+        and profile_catalog_path.exists()
         and (ui_dir / "external_deployment_env_keys.py").exists()
         and env_gap_service_path.exists()
         and (ui_dir / "external_deployment_unlocker.py").exists()
@@ -115,8 +118,10 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "from app.services.external_deployment_env_gaps import"
         in external_deployment_env_keys_source
         and "def external_deployment_env_gap_report(" in env_gap_service_source
-        and "EXTERNAL_READINESS_METADATA" in readiness_service_source
-        and "EXTERNAL_LOCAL_ACTION_METADATA" in readiness_service_source
+        and "from app.services.external_deployment_profiles import"
+        in readiness_service_source
+        and "EXTERNAL_READINESS_METADATA = {" in profile_catalog_source
+        and "EXTERNAL_LOCAL_ACTION_METADATA = {" in profile_catalog_source
         and "def high_risk_filing_unlocker_rows(" in external_deployment_unlocker_source
         and "def local_unlocker_operation_rows(" in external_deployment_unlocker_source
         and "def local_neo4j_operation_rows(" in external_deployment_neo4j_source
@@ -129,6 +134,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",
             "app/services/external_deployment_readiness.py",
+            "app/services/external_deployment_profiles.py",
             "app/ui/external_deployment_env_keys.py",
             "app/services/external_deployment_env_gaps.py",
             "app/ui/external_deployment_unlocker.py",

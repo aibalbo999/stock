@@ -29,6 +29,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     external_readiness_service_source = Path(
         "app/services/external_deployment_readiness.py"
     ).read_text()
+    external_profile_catalog_source = Path(
+        "app/services/external_deployment_profiles.py"
+    ).read_text()
     company_filing_runtime_rows_service_source = Path(
         "app/services/company_filing_runtime_rows.py"
     ).read_text()
@@ -213,8 +216,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"啟用分類"' in external_readiness_service_source
     assert '"成本/額度"' in external_readiness_service_source
     assert '"建議路徑"' in external_readiness_service_source
-    assert "EXTERNAL_ENABLEMENT_METADATA" in external_readiness_service_source
-    assert "EXTERNAL_LOCAL_ACTION_METADATA" in external_readiness_service_source
+    assert "from app.services.external_deployment_profiles import" in (
+        external_readiness_service_source
+    )
+    assert "EXTERNAL_ENABLEMENT_METADATA = {" in external_profile_catalog_source
+    assert "EXTERNAL_LOCAL_ACTION_METADATA = {" in external_profile_catalog_source
+    assert "EXTERNAL_ENABLEMENT_METADATA = {" not in external_readiness_service_source
+    assert "EXTERNAL_LOCAL_ACTION_METADATA = {" not in external_readiness_service_source
     assert "def external_deployment_env_key_rows(" in (
         ui.EXTERNAL_DEPLOYMENT_ENV_KEYS_SOURCE.read_text()
     )
@@ -461,7 +469,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"啟用分類"' in external_readiness_service_source
     assert '"成本/額度"' in external_readiness_service_source
     assert '"建議路徑"' in external_readiness_service_source
-    assert "EXTERNAL_ENABLEMENT_METADATA" in external_readiness_service_source
+    assert "EXTERNAL_ENABLEMENT_METADATA = {" in external_profile_catalog_source
+    assert "EXTERNAL_ENABLEMENT_METADATA = {" not in external_readiness_service_source
     assert "def external_deployment_enablement_profile(" in external_readiness_service_source
     assert "def external_deployment_enablement_summary(" in external_readiness_service_source
     assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source

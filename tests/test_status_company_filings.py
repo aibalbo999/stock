@@ -46,6 +46,8 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         status["company_filings"]["pdf_table_parser_available"]
         is status["company_filings"]["pdf_parser_dependencies"]["table_parser_available"]
     )
+    assert status["company_filings"]["pdf_table_quality_provenance_enabled"] is True
+    assert status["company_filings"]["pdf_table_quality_provenance_prefix"] == "[PDF 表格品質]"
     assert status["company_filings"]["html_extract_tables"] is True
     assert status["company_filings"]["cache_enabled"] is True
     assert status["company_filings"]["cache_available"] == bool(status["redis"]["ok"])

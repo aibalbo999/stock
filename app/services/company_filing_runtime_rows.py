@@ -30,11 +30,11 @@ def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
             "能力": "PDF 表格抽取",
             "狀態": _ready_label(bool(company_filings.get("pdf_table_parser_available"))),
             "目前": "enabled" if company_filings.get("pdf_extract_tables") else "disabled",
-            "細節": _runtime_detail(pdf_dependencies),
+            "細節": _pdf_table_runtime_detail(company_filings, pdf_dependencies),
             "下一步": (
                 "安裝 pdfplumber 或 unstructured[pdf]。"
                 if not company_filings.get("pdf_table_parser_available")
-                else "可抽取財報表格。"
+                else "可抽取財報表格，並標記表格品質風險。"
             ),
         },
         {
@@ -181,6 +181,18 @@ def _runtime_detail(runtime: dict) -> str:
     if runtime.get("enabled") is False:
         return "disabled"
     return "-"
+
+
+def _pdf_table_runtime_detail(company_filings: dict, pdf_dependencies: dict) -> str:
+    details = []
+    dependency_detail = _runtime_detail(pdf_dependencies)
+    if dependency_detail != "-":
+        details.append(dependency_detail)
+    if company_filings.get("pdf_table_quality_provenance_enabled"):
+        details.append(
+            f"quality={company_filings.get('pdf_table_quality_provenance_prefix') or 'enabled'}"
+        )
+    return "；".join(details) if details else "-"
 
 
 def _model_chain_row_key(row: dict) -> tuple[object, str, str]:

@@ -191,6 +191,11 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         pdf_parser_runtime["evidence"]["pdf_table_parser_available"]
         is status["company_filings"]["pdf_table_parser_available"]
     )
+    assert pdf_parser_runtime["evidence"]["pdf_table_quality_provenance_enabled"] is True
+    assert (
+        pdf_parser_runtime["evidence"]["pdf_table_quality_provenance_prefix"]
+        == "[PDF 表格品質]"
+    )
     assert "pymupdf_available" in pdf_parser_runtime["evidence"]["pdf_parser_dependencies"]
 
     filing_fallback = matrix["data_business_logic"]["company_filing_browser_or_proxy_fallback"]

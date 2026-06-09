@@ -12,6 +12,7 @@ from app.data_sources.news import NewsFetcher
 
 
 PDF_PARSER_PROVENANCE_PREFIX = "[PDF 解析資訊]"
+PDF_TABLE_QUALITY_PREFIX = "[PDF 表格品質]"
 PDF_IMPORT_MISSING_PYPDF_MESSAGE = "PDF 匯入需要安裝 pypdf，請先完成系統相依套件安裝後再重試。"
 PDF_IMPORT_MISSING_PDFPLUMBER_MESSAGE = "PDF 匯入設定為 pdfplumber，但尚未安裝 pdfplumber；請安裝 PDF 額外相依套件後再重試。"
 PDF_IMPORT_MISSING_UNSTRUCTURED_MESSAGE = "PDF 匯入設定為 unstructured，但尚未安裝 unstructured[pdf]；請安裝 PDF 額外相依套件後再重試。"
@@ -124,7 +125,13 @@ def _extract_pdf_text_with_visual_rag_fallback(content: bytes, error: ValueError
 def _maybe_augment_pdf_text_with_visual_rag(content: bytes, text: str) -> str:
     from app.services.visual_rag import maybe_augment_pdf_text_with_visual_rag
 
-    return maybe_augment_pdf_text_with_visual_rag(content, text)
+    quality_text = _with_pdf_table_quality_summary(text)
+    augmented = maybe_augment_pdf_text_with_visual_rag(content, text)
+    if augmented == text:
+        return quality_text
+    if augmented.startswith(text):
+        return f"{quality_text}{augmented[len(text):]}"
+    return _with_pdf_table_quality_summary(augmented)
 
 
 def _should_try_visual_rag_pdf_fallback(error: ValueError) -> bool:
@@ -150,6 +157,34 @@ def _with_pdf_parser_provenance(text: str, parser: str, auto: bool = False) -> s
     )
     if text.startswith(PDF_PARSER_PROVENANCE_PREFIX):
         return text
+    return f"{marker}\n{text}"
+
+
+def _with_pdf_table_quality_summary(text: str) -> str:
+    if PDF_TABLE_QUALITY_PREFIX in str(text or ""):
+        return text
+    try:
+        from app.services.visual_rag import assess_pdf_text_visual_rag_risk
+
+        assessment = assess_pdf_text_visual_rag_risk(text)
+    except Exception:
+        return text
+    signals = ",".join(assessment.signals) if assessment.signals else "none"
+    marker = (
+        f"{PDF_TABLE_QUALITY_PREFIX} risk_level={assessment.level}; "
+        f"risk_score={assessment.score}; "
+        f"should_visual_rag_augment={str(assessment.should_augment).lower()}; "
+        f"risk_reason={assessment.reason}; "
+        f"signals={signals}; "
+        f"table_blocks={assessment.table_block_count}; "
+        f"pipe_rows={assessment.pipe_table_row_count}; "
+        f"wide_rows={assessment.wide_table_row_count}; "
+        f"dense_numeric_financial_lines={assessment.dense_numeric_financial_line_count}; "
+        f"text_chars={assessment.text_char_count}"
+    )
+    lines = text.splitlines()
+    if lines and lines[0].startswith(PDF_PARSER_PROVENANCE_PREFIX):
+        return "\n".join([lines[0], marker, *lines[1:]])
     return f"{marker}\n{text}"
 
 

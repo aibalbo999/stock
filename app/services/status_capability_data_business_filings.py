@@ -130,6 +130,12 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "pdf_table_extraction_runtime_available": company_filing_status.get(
                     "pdf_table_extraction_runtime_available"
                 ),
+                "pdf_table_quality_provenance_enabled": company_filing_status.get(
+                    "pdf_table_quality_provenance_enabled"
+                ),
+                "pdf_table_quality_provenance_prefix": company_filing_status.get(
+                    "pdf_table_quality_provenance_prefix"
+                ),
                 "pdf_parser_dependencies": company_filing_status.get("pdf_parser_dependencies"),
             },
             detail=(

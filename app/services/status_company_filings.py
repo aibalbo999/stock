@@ -4,6 +4,7 @@ from importlib.util import find_spec
 from typing import Callable
 
 from app.data_sources.company_filing_http import COMPANY_FILING_RETRYABLE_HTTP_STATUSES
+from app.data_sources.company_filing_parsers import PDF_TABLE_QUALITY_PREFIX
 from app.data_sources.company_filing_render import (
     DEFAULT_COMPANY_FILING_USER_AGENTS,
     HIGH_RISK_COMPANY_FILING_SOURCE_DOMAINS,
@@ -83,6 +84,8 @@ def company_filing_status(
         "pdf_table_extraction_runtime_available": pdf_parser_status.get(
             "table_extraction_runtime_available"
         ),
+        "pdf_table_quality_provenance_enabled": True,
+        "pdf_table_quality_provenance_prefix": PDF_TABLE_QUALITY_PREFIX,
         "html_extract_tables": settings.company_filing_html_extract_tables,
         "cache_enabled": settings.company_filing_cache_enabled,
         "cache_available": bool(settings.company_filing_cache_enabled and redis_status.get("ok")),

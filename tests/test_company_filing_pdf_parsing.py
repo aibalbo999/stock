@@ -4,6 +4,7 @@ import sys
 from app.core.config import get_settings
 from app.data_sources.company_filings import (
     PDF_IMPORT_NO_TEXT_MESSAGE,
+    PDF_TABLE_QUALITY_PREFIX,
     extract_pdf_text,
 )
 
@@ -61,10 +62,58 @@ def test_company_filing_pdf_parser_extracts_tables_with_pdfplumber(monkeypatch) 
 
     assert "台積電 2026 年報" in text
     assert "[PDF 解析資訊] parser=pdfplumber; mode=configured; extract_tables=true" in text
+    assert PDF_TABLE_QUALITY_PREFIX in text
+    assert "risk_level=low" in text
+    assert "should_visual_rag_augment=false" in text
     assert "[PDF 表格抽取 p.1 #1]" in text
     assert "表格尺寸：2 列 x 2 欄" in text
     assert "年度 | 營收" in text
     assert "2026 | AI/HPC 需求成長" in text
+
+
+def test_company_filing_pdf_parser_flags_complex_table_quality_for_visual_review(
+    monkeypatch,
+) -> None:
+    table = [
+        ["年度", "營收", "毛利率", "EPS", "資本支出"],
+        ["2024", "營收 1,000", "毛利率 41.2%", "EPS 5.1", "資本支出 300"],
+        ["2025", "營收 1,250", "毛利率 42.1%", "EPS 5.8", "資本支出 360"],
+        ["2026", "營收 1,480", "毛利率 43.0%", "EPS 6.4", "資本支出 390"],
+    ]
+
+    class FakePdfPage:
+        def extract_text(self) -> str:
+            return "台積電 複雜財務表格"
+
+        def extract_tables(self):
+            return [table]
+
+    class FakePdf:
+        pages = [FakePdfPage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+    fake_pdfplumber = SimpleNamespace(open=lambda _content: FakePdf())
+    monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
+    monkeypatch.setenv("COMPANY_FILING_PDF_PARSER", "pdfplumber")
+    monkeypatch.setenv("COMPANY_FILING_PDF_EXTRACT_TABLES", "true")
+    monkeypatch.setenv("COMPANY_FILING_VISUAL_RAG_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        text = extract_pdf_text(b"%PDF fake")
+    finally:
+        get_settings.cache_clear()
+
+    assert PDF_TABLE_QUALITY_PREFIX in text
+    assert "risk_level=high" in text
+    assert "should_visual_rag_augment=true" in text
+    assert "risk_reason=complex_table_layout_detected" in text
+    assert "wide_table_rows" in text
+    assert "dense_numeric_financial_lines" in text
 
 
 def test_company_filing_pdf_parser_extracts_unstructured_tables_with_provenance(

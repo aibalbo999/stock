@@ -71,6 +71,7 @@ from app.data_sources.company_filing_parsers import (
     PDF_IMPORT_NO_TEXT_MESSAGE as PDF_IMPORT_NO_TEXT_MESSAGE,
     PDF_IMPORT_PARSE_ERROR_MESSAGE as PDF_IMPORT_PARSE_ERROR_MESSAGE,
     PDF_PARSER_PROVENANCE_PREFIX as PDF_PARSER_PROVENANCE_PREFIX,
+    PDF_TABLE_QUALITY_PREFIX as PDF_TABLE_QUALITY_PREFIX,
     extract_company_filing_html_text as extract_company_filing_html_text,
     extract_pdf_text as extract_pdf_text,
     is_pdf_response as is_pdf_response,

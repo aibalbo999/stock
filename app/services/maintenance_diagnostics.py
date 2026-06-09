@@ -869,10 +869,15 @@ def _summary_row(item: object, status: object, ready: object, counts: object, ne
 
 
 def _deployment_note(payload: dict, summary: dict) -> str:
-    return _counts(
+    note = _counts(
         implementation=summary.get("implementation_status") or payload.get("implementation_status"),
         deployment=summary.get("deployment_status") or payload.get("deployment_status"),
+        blocking=summary.get("deployment_blocking_status")
+        or payload.get("deployment_blocking_status"),
     )
+    if summary.get("deployment_optional_only") or payload.get("deployment_optional_only"):
+        return f"{note}; optional_external_only=True"
+    return note
 
 
 def _ready_count(ready: object, total: object) -> str:

@@ -20,9 +20,17 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "optional_warnings": 1,
                 "total_warnings": 1,
                 "failures": 0,
+                "deployment_blocking_status": "ready",
+                "deployment_optional_only": True,
             },
             "implementation": {"status": "ready", "ready": 1, "total_checks": 1},
-            "deployment": {"status": "caution", "ready": 0, "total_checks": 1},
+            "deployment": {
+                "status": "caution",
+                "blocking_status": "ready",
+                "optional_only": True,
+                "ready": 0,
+                "total_checks": 1,
+            },
             "local_dependencies": {
                 "status": "partial",
                 "open_services": ["redis"],
@@ -38,6 +46,8 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "total": 1,
                 "ready": 0,
                 "pending": 1,
+                "blocking_pending": 0,
+                "nonblocking_optional_pending": 1,
                 "free_local_pending": 1,
                 "local_action_available": 1,
                 "quota_or_external_pending": 0,
@@ -105,10 +115,15 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
     output = capsys.readouterr().out
     assert "Upgrade audit: ready" in output
     assert "Core implementation: ready (1/1 ready)" in output
-    assert "External integrations: caution (0/1 ready)" in output
+    assert "External integrations: caution (0/1 ready; blocking=ready)" in output
+    assert (
+        "Deployment note: no blocking deployment gaps; remaining warnings are optional external integrations."
+        in output
+    )
     assert "Checks: 1 ready, 0 warnings, 1 optional deployment warnings, 0 failures" in output
     assert (
-        "External enablement: pending=1; free_local=1; local_action=1; "
+        "External enablement: pending=1; blocking_pending=0; optional_pending=1; "
+        "free_local=1; local_action=1; "
         "quota_or_external=0; paid_external=0"
     ) in output
     assert "External next action: 先處理本機免費可補強項目" in output

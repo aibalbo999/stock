@@ -1722,6 +1722,8 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
             "failures": 0,
             "implementation_status": "ready",
             "deployment_status": "caution",
+            "deployment_blocking_status": "ready",
+            "deployment_optional_only": True,
         },
         "implementation": {
             "status": "ready",
@@ -1732,6 +1734,8 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
         },
         "deployment": {
             "status": "caution",
+            "blocking_status": "ready",
+            "optional_only": True,
             "ready": 0,
             "total_checks": 5,
             "warnings": 5,
@@ -1797,12 +1801,14 @@ def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:
     assert "升級稽核" in html
     assert "核心升級" in html
     assert "外部整合" in html
+    assert "外部選配" in html
     assert "注意" in html
     assert "通過" in html
     assert "一般檢查" in html
     assert "18/23" in html
-    assert "核心 18/18 通過，外部 0/5 通過" in html
+    assert "核心 18/18 通過，外部 0/5 通過，blocking 通過" in html
     assert "外部選配 5 項" in html
+    assert "沒有 blocking deployment 缺口" in html
     assert "AI / RAG" in html
     assert rows[0] == {
         "面向": "AI / RAG",

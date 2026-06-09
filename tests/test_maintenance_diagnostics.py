@@ -208,6 +208,8 @@ def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
             "ready": 28,
             "total_checks": 32,
             "total_warnings": 4,
+            "deployment_blocking_status": "ready",
+            "deployment_optional_only": True,
         },
         "external_deployment_enablement": {
             "pending": 4,
@@ -256,6 +258,8 @@ def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
     assert rows[0]["項目"] == "Upgrade audit"
     assert rows[0]["Ready"] == "28/32"
     assert "warnings=4" in rows[0]["數量"]
+    assert "blocking=ready" in rows[0]["下一步"]
+    assert "optional_external_only=True" in rows[0]["下一步"]
     assert rows[1]["項目"] == "外部部署啟用"
     assert "free_local=3" in rows[1]["Ready"]
     assert rows[2]["項目"] == "外部缺口處理類型"

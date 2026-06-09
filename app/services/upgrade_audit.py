@@ -373,6 +373,30 @@ def audit_upgrade_capabilities(
     deployment_checks = [check for check in checks if check.get("deployment_check")]
     implementation = _summarize_checks(implementation_checks)
     deployment = _summarize_checks(deployment_checks)
+    deployment_blocking_checks = [
+        check
+        for check in deployment_checks
+        if not _is_nonblocking_optional_deployment_warning(
+            check,
+            strict_external=strict_external,
+        )
+    ]
+    deployment_blocking = _summarize_checks(deployment_blocking_checks)
+    deployment_optional_only = bool(
+        deployment["status"] == "caution"
+        and deployment_blocking["status"] == "ready"
+        and optional_warnings
+    )
+    deployment.update(
+        {
+            "blocking_status": deployment_blocking["status"],
+            "blocking_ready": deployment_blocking["ready"],
+            "blocking_total_checks": deployment_blocking["total_checks"],
+            "blocking_warnings": deployment_blocking["warnings"],
+            "blocking_failures": deployment_blocking["failures"],
+            "optional_only": deployment_optional_only,
+        }
+    )
     areas = defaultdict(lambda: {"ready": 0, "warnings": 0, "failures": 0, "checks": 0})
     for check in checks:
         area = areas[check["area"]]
@@ -396,6 +420,10 @@ def audit_upgrade_capabilities(
             "failures": len(failures),
             "implementation_status": implementation["status"],
             "deployment_status": deployment["status"],
+            "deployment_blocking_status": deployment_blocking["status"],
+            "deployment_blocking_warnings": deployment_blocking["warnings"],
+            "deployment_blocking_failures": deployment_blocking["failures"],
+            "deployment_optional_only": deployment_optional_only,
         },
         "implementation": implementation,
         "deployment": deployment,

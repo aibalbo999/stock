@@ -114,8 +114,14 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
     assert audit["overall_status"] == "ready"
     assert audit["implementation"]["status"] == "ready"
     assert audit["deployment"]["status"] == "caution"
+    assert audit["deployment"]["blocking_status"] == "ready"
+    assert audit["deployment"]["optional_only"] is True
     assert audit["summary"]["implementation_status"] == "ready"
     assert audit["summary"]["deployment_status"] == "caution"
+    assert audit["summary"]["deployment_blocking_status"] == "ready"
+    assert audit["summary"]["deployment_blocking_warnings"] == 0
+    assert audit["summary"]["deployment_blocking_failures"] == 0
+    assert audit["summary"]["deployment_optional_only"] is True
     assert audit["summary"]["failures"] == 0
     assert audit["summary"]["warnings"] == 0
     assert audit["summary"]["optional_warnings"] == 1
@@ -123,6 +129,10 @@ def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None
     assert audit["warnings"] == []
     assert audit["external_deployment_enablement"]["total"] == 7
     assert audit["external_deployment_enablement"]["pending"] == 1
+    assert audit["external_deployment_enablement"]["blocking_pending"] == 0
+    assert audit["external_deployment_enablement"]["nonblocking_optional_pending"] == 1
+    assert audit["external_deployment_enablement"]["all_pending_optional"] is True
+    assert audit["external_deployment_enablement"]["paid_external_only_pending"] is False
     assert audit["external_deployment_enablement"]["free_local_pending"] == 1
     assert audit["external_deployment_enablement"]["local_action_available"] == 1
     assert audit["external_deployment_enablement"]["paid_external_pending"] == 0
@@ -154,6 +164,9 @@ def test_upgrade_audit_can_require_external_integrations_in_strict_mode() -> Non
     assert audit["overall_status"] == "failed"
     assert audit["implementation"]["status"] == "ready"
     assert audit["deployment"]["status"] == "failed"
+    assert audit["deployment"]["blocking_status"] == "failed"
+    assert audit["deployment"]["optional_only"] is False
+    assert audit["summary"]["deployment_optional_only"] is False
     assert audit["summary"]["failures"] == 1
     assert audit["failures"][0]["capability"] == "neo4j_import"
     assert audit["failures"][0]["optional"] is False
@@ -316,6 +329,43 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     assert "local_structured_company_filing_api.py" in warning["remediation"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]
+
+
+def test_upgrade_audit_marks_paid_external_only_gaps_as_nonblocking_optional() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "ai_rag.neo4j_import": {"status": "ready", "evidence": {}},
+                "data_business_logic.company_filing_structured_api_fallback": {
+                    "status": "not_configured",
+                    "evidence": {
+                        "configured": False,
+                        "runtime": {
+                            "smoke_cli": (
+                                ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                            ),
+                        },
+                    },
+                },
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "ready"
+    assert audit["deployment"]["status"] == "caution"
+    assert audit["deployment"]["blocking_status"] == "ready"
+    assert audit["deployment"]["optional_only"] is True
+    assert audit["summary"]["deployment_optional_only"] is True
+    assert audit["summary"]["deployment_blocking_status"] == "ready"
+    enablement = audit["external_deployment_enablement"]
+    assert enablement["pending"] == 1
+    assert enablement["blocking_pending"] == 0
+    assert enablement["nonblocking_optional_pending"] == 1
+    assert enablement["all_pending_optional"] is True
+    assert enablement["paid_external_only_pending"] is True
+    assert enablement["primary_next_action"] == (
+        "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持 sample contract。"
+    )
 
 
 def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:

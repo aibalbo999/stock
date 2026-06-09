@@ -333,7 +333,8 @@ def _format_text(audit: dict) -> str:
         ),
         (
             f"External integrations: {deployment.get('status', 'unknown')} "
-            f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} ready)"
+            f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} ready; "
+            f"blocking={deployment.get('blocking_status') or summary.get('deployment_blocking_status') or deployment.get('status', 'unknown')})"
         ),
         (
             f"Checks: {summary.get('ready', 0)} ready, "
@@ -341,6 +342,10 @@ def _format_text(audit: dict) -> str:
             f"{summary.get('failures', 0)} failures"
         ),
     ]
+    if summary.get("deployment_optional_only"):
+        lines.append(
+            "Deployment note: no blocking deployment gaps; remaining warnings are optional external integrations."
+        )
     enablement_summary = (
         audit.get("external_deployment_enablement")
         if isinstance(audit.get("external_deployment_enablement"), dict)
@@ -350,6 +355,8 @@ def _format_text(audit: dict) -> str:
         lines.append(
             "External enablement: "
             f"pending={int(enablement_summary.get('pending') or 0)}; "
+            f"blocking_pending={int(enablement_summary.get('blocking_pending') or 0)}; "
+            f"optional_pending={int(enablement_summary.get('nonblocking_optional_pending') or 0)}; "
             f"free_local={int(enablement_summary.get('free_local_pending') or 0)}; "
             f"local_action={int(enablement_summary.get('local_action_available') or 0)}; "
             f"quota_or_external={int(enablement_summary.get('quota_or_external_pending') or 0)}; "

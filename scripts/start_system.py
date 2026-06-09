@@ -303,6 +303,11 @@ def print_upgrade_capability_preflight(
     deployment = audit.get("deployment") or {}
     optional_warning_count = int(summary.get("optional_warnings") or 0)
     optional_warning_text = f"，外部選配 {optional_warning_count}" if optional_warning_count else ""
+    deployment_blocking_status = (
+        deployment.get("blocking_status")
+        or summary.get("deployment_blocking_status")
+        or deployment.get("status", "unknown")
+    )
     print("")
     print("升級能力檢查")
     if local_dependency_env:
@@ -321,8 +326,11 @@ def print_upgrade_capability_preflight(
         f"核心升級 {implementation.get('status', 'unknown')} "
         f"({implementation.get('ready', 0)}/{implementation.get('total_checks', 0)} 通過)；"
         f"外部整合 {deployment.get('status', 'unknown')} "
-        f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} 通過)。"
+        f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} 通過，"
+        f"blocking {deployment_blocking_status})。"
     )
+    if summary.get("deployment_optional_only") or deployment.get("optional_only"):
+        print("- 外部整合：目前只剩外部選配項目，沒有 blocking deployment 缺口。")
     if not failure_advice and not warning_advice:
         print("- AI/RAG、架構與資料可靠性能力目前沒有偵測到需處理項目。")
         return

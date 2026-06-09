@@ -448,6 +448,8 @@ def test_upgrade_preflight_uses_audit_and_keeps_optional_neo4j_as_warning(
     assert "狀態 ready" in output
     assert "核心升級 ready" in output
     assert "外部整合 caution" in output
+    assert "blocking ready" in output
+    assert "目前只剩外部選配項目" in output
     assert "選配或部署注意" in output
     assert "neo4j_import" in output
     assert "必須處理" not in output

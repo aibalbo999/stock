@@ -29,10 +29,20 @@ def upgrade_audit_html(audit: dict) -> str:
         implementation.get("status") or summary.get("implementation_status") or "unknown"
     )
     deployment_status = str(deployment.get("status") or summary.get("deployment_status") or "unknown")
+    deployment_blocking_status = str(
+        deployment.get("blocking_status")
+        or summary.get("deployment_blocking_status")
+        or deployment_status
+    )
+    deployment_optional_only = bool(
+        deployment.get("optional_only") or summary.get("deployment_optional_only")
+    )
+    deployment_display_status = "optional_only" if deployment_optional_only else deployment_status
     status_labels = {
         "ready": "通過",
         "caution": "注意",
         "failed": "需處理",
+        "optional_only": "外部選配",
         "unknown": "未評估",
     }
     strict_label = "正式部署" if audit.get("strict_external") else "一般檢查"
@@ -45,6 +55,11 @@ def upgrade_audit_html(audit: dict) -> str:
     implementation_total = int(implementation.get("total_checks") or 0)
     deployment_ready = int(deployment.get("ready") or 0)
     deployment_total = int(deployment.get("total_checks") or 0)
+    deployment_note = (
+        "；外部目前只剩選配項目，沒有 blocking deployment 缺口"
+        if deployment_optional_only
+        else ""
+    )
     area_labels = {
         "ai_rag": "AI / RAG",
         "architecture": "系統架構",
@@ -77,7 +92,7 @@ def upgrade_audit_html(audit: dict) -> str:
             <div class="upgrade-audit-tile"><span>通過項目</span><strong>{ready}/{total}</strong></div>
         </div>
         <div class="upgrade-audit-note">
-            整體狀態：{status_label}；核心 {implementation_ready}/{implementation_total} 通過，外部 {deployment_ready}/{deployment_total} 通過；注意 {warnings} 項、外部選配 {optional_warnings} 項、需處理 {failures} 項。
+            整體狀態：{status_label}；核心 {implementation_ready}/{implementation_total} 通過，外部 {deployment_ready}/{deployment_total} 通過，blocking {deployment_blocking_status}；注意 {warnings} 項、外部選配 {optional_warnings} 項、需處理 {failures} 項{deployment_note}。
         </div>
         <div class="upgrade-audit-areas">{areas}</div>
     </div>
@@ -90,7 +105,9 @@ def upgrade_audit_html(audit: dict) -> str:
         deployment_status_class=escape(
             deployment_status if deployment_status in {"ready", "caution", "failed"} else "unknown"
         ),
-        deployment_status_label=escape(status_labels.get(deployment_status, deployment_status)),
+        deployment_status_label=escape(
+            status_labels.get(deployment_display_status, deployment_display_status)
+        ),
         strict_label=escape(strict_label),
         ready=ready,
         total=total,
@@ -98,9 +115,13 @@ def upgrade_audit_html(audit: dict) -> str:
         implementation_total=implementation_total,
         deployment_ready=deployment_ready,
         deployment_total=deployment_total,
+        deployment_blocking_status=escape(
+            status_labels.get(deployment_blocking_status, deployment_blocking_status)
+        ),
         warnings=warnings,
         optional_warnings=optional_warnings,
         failures=failures,
+        deployment_note=escape(deployment_note),
         areas="".join(area_cards) or "<div class='upgrade-audit-area'><strong>未評估</strong><span>尚無稽核資料</span></div>",
     )
 

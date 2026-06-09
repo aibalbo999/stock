@@ -206,6 +206,10 @@ def external_deployment_enablement_summary(
         "quota_or_external_pending": 0,
         "paid_external_pending": 0,
         "manual_or_paid_pending": 0,
+        "blocking_pending": 0,
+        "nonblocking_optional_pending": 0,
+        "all_pending_optional": False,
+        "paid_external_only_pending": False,
         "groups": [],
         "primary_next_action": "",
     }
@@ -228,6 +232,10 @@ def external_deployment_enablement_summary(
         group["pending"] += 1
         item_label = str(item.get("label") or item.get("capability") or "-")
         group["pending_items"].append(item_label)
+        if item.get("optional") or item.get("_warning_source") == "optional_warnings":
+            summary["nonblocking_optional_pending"] += 1
+        else:
+            summary["blocking_pending"] += 1
         deployment_profile = str(enablement.get("deployment_profile") or "")
         if deployment_profile == "free_local":
             summary["free_local_pending"] += 1
@@ -245,6 +253,17 @@ def external_deployment_enablement_summary(
 
     summary["manual_or_paid_pending"] = (
         summary["quota_or_external_pending"] + summary["paid_external_pending"]
+    )
+    summary["all_pending_optional"] = bool(
+        summary["pending"] > 0
+        and summary["blocking_pending"] == 0
+        and summary["nonblocking_optional_pending"] == summary["pending"]
+    )
+    summary["paid_external_only_pending"] = bool(
+        summary["pending"] > 0
+        and summary["paid_external_pending"] == summary["pending"]
+        and summary["free_local_pending"] == 0
+        and summary["quota_or_external_pending"] == 0
     )
     summary["groups"] = _external_enablement_summary_groups(groups)
     summary["primary_next_action"] = _external_enablement_primary_next_action(summary)
@@ -762,6 +781,8 @@ def _external_enablement_primary_next_action(summary: dict) -> str:
         return "外部部署選配皆已就緒。"
     if int(summary.get("local_action_available") or 0) > 0:
         return "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
+    if summary.get("paid_external_only_pending"):
+        return "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持 sample contract。"
     if int(summary.get("paid_external_pending") or 0) > 0:
         return "剩餘項目需要外部資料 API 或服務合約，免費版可先保留 sample contract。"
     if int(summary.get("quota_or_external_pending") or 0) > 0:

@@ -15,6 +15,7 @@ from app.data_sources import (
     market_official_fallbacks,
     market_official_openapi,
     market_parsers,
+    market_provider_delegates,
     market_provider_runtime,
 )
 from app.data_sources.market import MarketDataClient, MarketDataProviderUnavailable
@@ -62,17 +63,21 @@ def test_finmind_public_fallback_can_be_disabled_without_token() -> None:
 
 def test_finmind_provider_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
+    delegate_source = Path("app/data_sources/market_provider_delegates.py").read_text()
     finmind_source = Path("app/data_sources/market_finmind.py").read_text()
 
     assert market_finmind.FINMIND_DATA_URL == "https://api.finmindtrade.com/api/v4/data"
-    assert "market_finmind.fetch_finmind_rows" in client_source
-    assert "market_finmind.fetch_price_history" in client_source
-    assert "market_finmind.fetch_financial_metrics" in client_source
+    assert market_provider_delegates.MarketProviderDelegateMixin is not object
+    assert "MarketProviderDelegateMixin" in client_source
+    assert "market_finmind.fetch_finmind_rows" not in client_source
+    assert "market_finmind.fetch_price_history" not in client_source
+    assert "market_finmind.fetch_finmind_rows" in delegate_source
+    assert "market_finmind.fetch_price_history" in delegate_source
     assert "FINMIND_DATA_URL" in finmind_source
     assert "FINANCIAL_DATASETS" in finmind_source
     assert (
         "client.get("
-        not in client_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
+        not in delegate_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
             "async def _fetch_price_history_uncached(",
             maxsplit=1,
         )[0]
@@ -100,6 +105,7 @@ def test_market_price_provider_order_logic_lives_outside_client() -> None:
 
 def test_official_openapi_provider_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
+    delegate_source = Path("app/data_sources/market_provider_delegates.py").read_text()
     official_source = Path("app/data_sources/market_official_openapi.py").read_text()
 
     assert (
@@ -110,12 +116,14 @@ def test_official_openapi_provider_logic_lives_outside_client() -> None:
         market_official_openapi.TPEX_PRICE_ENDPOINT
         == "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
     )
-    assert "market_official_openapi.fetch_official_openapi_rows" in client_source
-    assert "market_official_openapi.find_first_statement_row" in client_source
+    assert "market_official_openapi.fetch_official_openapi_rows" not in client_source
+    assert "market_official_openapi.find_first_statement_row" not in client_source
+    assert "market_official_openapi.fetch_official_openapi_rows" in delegate_source
+    assert "market_official_openapi.find_first_statement_row" in delegate_source
     assert "OFFICIAL_OPENAPI_USER_AGENT" in official_source
     assert (
         "client.get("
-        not in client_source.split(
+        not in delegate_source.split(
             "async def _fetch_official_openapi_rows(",
             maxsplit=1,
         )[1].split("@staticmethod", maxsplit=1)[0]
@@ -124,17 +132,20 @@ def test_official_openapi_provider_logic_lives_outside_client() -> None:
 
 def test_official_openapi_fallback_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
+    delegate_source = Path("app/data_sources/market_provider_delegates.py").read_text()
     fallback_source = Path("app/data_sources/market_official_fallbacks.py").read_text()
 
     assert market_official_fallbacks.latest_only_source("TWSE OpenAPI STOCK_DAY_ALL").endswith(
         "; latest-only"
     )
-    assert "market_official_fallbacks.fetch_price_snapshot" in client_source
-    assert "market_official_fallbacks.fetch_financial_metrics" in client_source
+    assert "market_official_fallbacks.fetch_price_snapshot" not in client_source
+    assert "market_official_fallbacks.fetch_financial_metrics" not in client_source
+    assert "market_official_fallbacks.fetch_price_snapshot" in delegate_source
+    assert "market_official_fallbacks.fetch_financial_metrics" in delegate_source
     assert "INCOME_STATEMENT_METRIC_NAMES" in fallback_source
     assert (
         "TWSE OpenAPI STOCK_DAY_ALL"
-        not in client_source.split(
+        not in delegate_source.split(
             "async def _fetch_official_openapi_price_snapshot(",
             maxsplit=1,
         )[1].split("async def _fetch_official_openapi_monthly_revenue(", maxsplit=1)[0]
@@ -324,26 +335,29 @@ def test_fugle_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> Non
 
 def test_fugle_provider_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
+    delegate_source = Path("app/data_sources/market_provider_delegates.py").read_text()
     fugle_source = Path("app/data_sources/market_fugle.py").read_text()
 
     assert (
         market_fugle.FUGLE_HISTORICAL_CANDLES_URL
         == "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/{ticker}"
     )
-    assert "market_fugle.fetch_fugle_json" in client_source
-    assert "market_fugle.fetch_price_history" in client_source
+    assert "market_fugle.fetch_fugle_json" not in client_source
+    assert "market_fugle.fetch_price_history" not in client_source
+    assert "market_fugle.fetch_fugle_json" in delegate_source
+    assert "market_fugle.fetch_price_history" in delegate_source
     assert "def fetch_historical_candle_rows(" in fugle_source
     assert "FUGLE_HISTORICAL_CANDLES_URL" in fugle_source
     assert (
         "client.get("
-        not in client_source.split("async def _fetch_fugle_json(", maxsplit=1)[1].split(
+        not in delegate_source.split("async def _fetch_fugle_json(", maxsplit=1)[1].split(
             "async def _fetch_official_openapi_price_snapshot(",
             maxsplit=1,
         )[0]
     )
     assert (
         "candle_error"
-        not in client_source.split(
+        not in delegate_source.split(
             "async def _fetch_fugle_price_history(",
             maxsplit=1,
         )[1].split("async def _fetch_fugle_historical_candle_rows(", maxsplit=1)[0]

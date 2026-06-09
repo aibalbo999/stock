@@ -435,6 +435,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "st.session_state[LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY] = result" in source
     assert "st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY)" in source
     assert "後續診斷結果" in source
+    assert "summary_rows" in source
+    assert "診斷摘要" in source
     assert 'f"/maintenance/operations/{selected_operation_id}/run"' in source
     assert '"confirmed": True' in source
     assert "timeout=300" in source

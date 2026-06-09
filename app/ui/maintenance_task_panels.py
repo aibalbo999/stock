@@ -210,6 +210,12 @@ def _render_maintenance_diagnostic_result(result: dict) -> None:
         st.warning(message)
     else:
         st.info(message)
+    summary_rows = (
+        result.get("summary_rows") if isinstance(result.get("summary_rows"), list) else []
+    )
+    if summary_rows:
+        st.caption("診斷摘要")
+        st.dataframe(summary_rows, width="stretch", hide_index=True)
     output = "\n".join(
         part
         for part in (

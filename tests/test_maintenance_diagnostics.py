@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -30,6 +31,10 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert all(action["read_only"] is True for action in catalog["actions"])
     assert all("display_command" in action for action in catalog["actions"])
     assert all("argv" not in action for action in catalog["actions"])
+    upgrade_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["upgrade_audit"]
+    assert "upgrade_audit.py --json" in upgrade_action["display_command"]
     env_gap_action = {
         action["id"]: action for action in catalog["actions"]
     }["external_deployment_env_gaps"]
@@ -92,13 +97,127 @@ def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
     assert result["returncode"] == 0
     assert result["stdout_tail"] == "ok\n"
     assert result["stderr_tail"] == ""
-    assert result["display_command"] == ".venv/bin/python scripts/upgrade_audit.py"
-    assert captured["command"][1:] == ["scripts/upgrade_audit.py"]
+    assert result["summary_rows"] == []
+    assert result["display_command"] == ".venv/bin/python scripts/upgrade_audit.py --json"
+    assert captured["command"][1:] == ["scripts/upgrade_audit.py", "--json"]
     assert captured["cwd"] == tmp_path
     assert captured["timeout"] == 90
     assert captured["check"] is False
     assert captured["text"] is True
     assert captured["capture_output"] is True
+
+
+def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "overall_status": "ready",
+        "summary": {
+            "deployment_status": "caution",
+            "failures": 0,
+            "implementation_status": "ready",
+            "optional_warnings": 4,
+            "ready": 28,
+            "total_checks": 32,
+            "total_warnings": 4,
+        },
+        "external_deployment_enablement": {
+            "pending": 4,
+            "ready": 3,
+            "free_local_pending": 3,
+            "local_action_available": 3,
+            "quota_or_external_pending": 0,
+            "paid_external_pending": 1,
+            "primary_next_action": "先處理本機免費可補強項目。",
+        },
+        "all_warnings": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+                "ready": False,
+                "status": "degraded",
+                "enablement_profile": {"group_label": "可本機免費啟用"},
+                "remediation": "啟動本機 Neo4j 後重跑 smoke。",
+            }
+        ],
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "upgrade_audit",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "Upgrade audit"
+    assert rows[0]["Ready"] == "28/32"
+    assert "warnings=4" in rows[0]["數量"]
+    assert rows[1]["項目"] == "外部部署啟用"
+    assert "free_local=3" in rows[1]["Ready"]
+    assert rows[2]["項目"] == "外部 Neo4j 匯入連線"
+    assert rows[2]["Ready"] == "否"
+    assert rows[2]["數量"] == "可本機免費啟用"
+
+
+def test_run_maintenance_diagnostic_action_summarizes_graphrag_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "ready",
+        "ready": True,
+        "import_first": False,
+        "local_contract": True,
+        "payload": {
+            "format": "neo4j_cypher_v1",
+            "ready": True,
+            "node_count": 4,
+            "structural_edge_count": 3,
+            "peer_edge_count": 0,
+            "statement_count": 5,
+        },
+        "query_result": {
+            "local_dry_run": {
+                "ready": True,
+                "row_count": 2,
+                "status": "executed_dry_run",
+            },
+            "plan": {
+                "cypher": "MATCH path = shortestPath((source)-[*..3]-(target)) RETURN path",
+                "intent": "shortest_path_between_companies",
+            },
+        },
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "graphrag_local_contract_smoke",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "GraphRAG smoke"
+    assert rows[0]["Ready"] == "是"
+    assert "local_contract=True" in rows[0]["數量"]
+    assert rows[1]["項目"] == "Neo4j payload"
+    assert "nodes=4" in rows[1]["數量"]
+    assert rows[2]["項目"] == "Cypher query"
+    assert "rows=2" in rows[2]["數量"]
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:
@@ -142,4 +261,5 @@ def test_run_maintenance_diagnostic_action_reports_timeout(monkeypatch, tmp_path
     assert result["returncode"] is None
     assert result["stdout_tail"] == "partial"
     assert result["stderr_tail"] == "late stderr"
+    assert result["summary_rows"] == []
     assert result["message"] == "診斷逾時：20s"

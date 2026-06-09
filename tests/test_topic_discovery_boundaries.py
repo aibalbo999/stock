@@ -9,6 +9,7 @@ from app.services import (
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
     topic_discovery_gap_queries,
+    topic_discovery_generic_fallback,
     topic_discovery_memory_fallback,
     topic_discovery_models,
     topic_discovery_news_queries,
@@ -462,6 +463,7 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     service_source = Path("app/services/topic_discovery.py").read_text()
     fallback_source = Path("app/services/topic_discovery_fallbacks.py").read_text()
     ai_fallback_source = Path("app/services/topic_discovery_ai_fallback.py").read_text()
+    generic_fallback_source = Path("app/services/topic_discovery_generic_fallback.py").read_text()
     memory_fallback_source = Path("app/services/topic_discovery_memory_fallback.py").read_text()
     robotics_fallback_source = Path("app/services/topic_discovery_robotics_fallback.py").read_text()
 
@@ -473,6 +475,9 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     assert TopicDiscoveryService._generic_anchor_candidates(
         "量子運算"
     ) == topic_discovery_fallbacks.generic_anchor_candidates("量子運算")
+    assert topic_discovery_fallbacks.generic_anchor_candidates(
+        "量子運算"
+    ) == topic_discovery_generic_fallback.generic_anchor_candidates("量子運算")
     assert TopicDiscoveryService._is_robotics_topic(
         "humanoid robot"
     ) is topic_discovery_fallbacks.is_robotics_topic("humanoid robot")
@@ -488,10 +493,17 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     assert topic_discovery_fallbacks.fallback_plan("機器人 產業鏈") == (
         topic_discovery_robotics_fallback.robotics_fallback_plan("機器人 產業鏈")
     )
+    assert topic_discovery_fallbacks.fallback_plan("量子運算") == (
+        topic_discovery_generic_fallback.generic_exploration_plan("量子運算")
+    )
     assert "AI 伺服器需求" not in service_source
     assert "AI 伺服器需求" not in fallback_source
     assert "AI 伺服器需求" in ai_fallback_source
     assert "def ai_fallback_plan(" in ai_fallback_source
+    assert "主題定義與範圍收斂" not in fallback_source
+    assert "主題定義與範圍收斂" in generic_fallback_source
+    assert "def generic_exploration_plan(" in generic_fallback_source
+    assert "def generic_anchor_candidates(" in generic_fallback_source
     assert "需求與庫存循環" not in fallback_source
     assert "需求與庫存循環" in memory_fallback_source
     assert "def memory_fallback_plan(" in memory_fallback_source

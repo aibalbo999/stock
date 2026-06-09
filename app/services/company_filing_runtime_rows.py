@@ -9,6 +9,10 @@ def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
     visual_rag_runtime = _nested_dict(company_filings, "visual_rag_runtime")
     browser_runtime = _nested_dict(company_filings, "browser_render_runtime")
     playwright_runtime = _nested_dict(company_filings, "playwright_render_runtime")
+    material_openapi_runtime = _nested_dict(
+        company_filings,
+        "official_material_information_openapi_runtime",
+    )
     structured_runtime = _nested_dict(company_filings, "structured_api_runtime")
     return [
         {
@@ -69,6 +73,21 @@ def company_filing_runtime_rows(service_snapshot: dict) -> list[dict]:
                 "設定 Browserless、FlareSolverr、ScrapingBee 或 BrightData render URL。"
                 if not company_filings.get("browser_render_configured")
                 else "可作為反爬蟲/登入頁後援。"
+            ),
+        },
+        {
+            "能力": "重大訊息 OpenAPI",
+            "狀態": _ready_label(
+                bool(company_filings.get("official_material_information_openapi_ready"))
+            ),
+            "目前": str(
+                company_filings.get("official_material_information_openapi_provider") or "-"
+            ),
+            "細節": _runtime_detail(material_openapi_runtime),
+            "下一步": (
+                "檢查 TWSE/TPEx 官方 OpenAPI endpoint。"
+                if not company_filings.get("official_material_information_openapi_ready")
+                else "可補近期官方重大訊息。"
             ),
         },
         {

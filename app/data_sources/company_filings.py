@@ -6,7 +6,7 @@ import importlib
 from urllib.parse import quote_plus
 
 from app.core.config import get_settings
-from app.core.time import utc_now_naive
+from app.core.time import today_taipei, utc_now_naive
 from app.data_sources.company_filing_discovery import (
     BLOCKED_OR_PLACEHOLDER_PAGE_PATTERNS as BLOCKED_OR_PLACEHOLDER_PAGE_PATTERNS,
     DISCLOSURE_TERMS as DISCLOSURE_TERMS,
@@ -77,9 +77,13 @@ from app.data_sources.company_filing_parsers import (
     pdf_title_from_url as pdf_title_from_url,
 )
 from app.data_sources.company_filing_providers import (
+    fetch_material_information_company_filing_documents as fetch_material_information_company_filing_documents,
     fetch_mops_annual_report_company_filing_documents as fetch_mops_annual_report_company_filing_documents,
     fetch_official_website_company_filing_documents as fetch_official_website_company_filing_documents,
     fetch_web_search_company_filing_documents as fetch_web_search_company_filing_documents,
+    material_information_row_matches_company as material_information_row_matches_company,
+    material_information_row_to_company_filing_document as material_information_row_to_company_filing_document,
+    parse_material_information_date as parse_material_information_date,
 )
 from app.data_sources.company_filing_render import (
     BROWSER_RENDER_PROVIDERS as BROWSER_RENDER_PROVIDERS,
@@ -110,12 +114,16 @@ from app.data_sources.company_filing_render import (
 from app.data_sources.company_filing_sources import (
     MAX_FETCHED_DOCUMENT_BYTES as MAX_FETCHED_DOCUMENT_BYTES,
     OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS as OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS,
+    TPEX_MATERIAL_INFORMATION_URL as TPEX_MATERIAL_INFORMATION_URL,
+    TWSE_MATERIAL_INFORMATION_URL as TWSE_MATERIAL_INFORMATION_URL,
     company_profile_from_rows as company_profile_from_rows,
     download_mops_pdf as download_mops_pdf,
     duckduckgo_company_filing_search as duckduckgo_company_filing_search,
     fetch_company_filing_url_text as fetch_company_filing_url_text,
     fetch_company_filing_url_text_with_final_url as fetch_company_filing_url_text_with_final_url,
+    fetch_tpex_material_information_rows as fetch_tpex_material_information_rows,
     fetch_tpex_company_profiles as fetch_tpex_company_profiles,
+    fetch_twse_material_information_rows as fetch_twse_material_information_rows,
     fetch_twse_company_profiles as fetch_twse_company_profiles,
 )
 from app.data_sources.company_filing_structured_api import (
@@ -163,9 +171,34 @@ def company_filing_structured_api_status() -> dict:
     )
 
 
+def company_filing_material_information_openapi_status() -> dict:
+    return {
+        "ready": True,
+        "configured": True,
+        "provider": "twse_tpex_official_openapi",
+        "document_type": "material_information",
+        "source_urls": {
+            "twse": TWSE_MATERIAL_INFORMATION_URL,
+            "tpex": TPEX_MATERIAL_INFORMATION_URL,
+        },
+        "fetcher_method": "CompanyFilingFetcher.fetch_material_information_documents",
+        "discovery_order": [
+            "structured_api",
+            "official_material_information_openapi",
+            "google_news_rss",
+        ],
+        "requires_api_key": False,
+        "network_contract": "GET JSON list from TWSE/TPEx official OpenAPI daily material information endpoints",
+    }
+
+
 class CompanyFilingFetcher:
     _twse_profile_cache: list[dict] | None = None
     _tpex_profile_cache: list[dict] | None = None
+    _twse_material_information_cache: list[dict] | None = None
+    _tpex_material_information_cache: list[dict] | None = None
+    _twse_material_information_cache_date: date | None = None
+    _tpex_material_information_cache_date: date | None = None
 
     def __init__(self, cache: RedisCompanyFilingCache | None = None) -> None:
         self.news_fetcher = NewsFetcher()
@@ -461,6 +494,14 @@ class CompanyFilingFetcher:
         )
         documents.extend(structured_documents)
         errors.extend(structured_errors)
+        material_documents, material_errors = await self.fetch_material_information_documents(
+            ticker,
+            company_name,
+            limit=limit_per_query,
+            document_types=document_types,
+        )
+        documents.extend(material_documents)
+        errors.extend(material_errors)
         for url in self.google_news_urls(ticker, company_name, document_types=document_types):
             try:
                 feed_documents = await self.news_fetcher.fetch_feed(
@@ -582,6 +623,23 @@ class CompanyFilingFetcher:
             document_types=document_types,
         )
 
+    async def fetch_material_information_documents(
+        self,
+        ticker: str,
+        company_name: str = "",
+        limit: int = 3,
+        document_types: list[str] | tuple[str, ...] | None = None,
+    ) -> tuple[list[CompanyFilingDocument], list[dict]]:
+        return await fetch_material_information_company_filing_documents(
+            ticker=ticker,
+            company_name=company_name,
+            limit=limit,
+            document_types=document_types,
+            fetch_twse_rows_func=self.twse_material_information_rows,
+            fetch_tpex_rows_func=self.tpex_material_information_rows,
+            build_manual_document_func=self.from_manual_text,
+        )
+
     async def fetch_web_search_documents(
         self,
         ticker: str,
@@ -679,6 +737,28 @@ class CompanyFilingFetcher:
             twse_rows=[],
             tpex_rows=cls._tpex_profile_cache,
         )
+
+    @classmethod
+    async def twse_material_information_rows(cls) -> list[dict]:
+        cache_date = today_taipei()
+        if (
+            cls._twse_material_information_cache is None
+            or cls._twse_material_information_cache_date != cache_date
+        ):
+            cls._twse_material_information_cache = await fetch_twse_material_information_rows()
+            cls._twse_material_information_cache_date = cache_date
+        return cls._twse_material_information_cache
+
+    @classmethod
+    async def tpex_material_information_rows(cls) -> list[dict]:
+        cache_date = today_taipei()
+        if (
+            cls._tpex_material_information_cache is None
+            or cls._tpex_material_information_cache_date != cache_date
+        ):
+            cls._tpex_material_information_cache = await fetch_tpex_material_information_rows()
+            cls._tpex_material_information_cache_date = cache_date
+        return cls._tpex_material_information_cache
 
     @staticmethod
     async def _duckduckgo_search(query_text: str, limit: int = 5) -> list[dict]:

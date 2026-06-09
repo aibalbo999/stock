@@ -272,6 +272,17 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     ),
     UpgradeAuditRequirement(
         "data_business_logic",
+        "company_filing_official_material_information_openapi",
+        "TWSE/TPEx 官方重大訊息 OpenAPI fallback",
+        (
+            "upgrade_capability_matrix",
+            "data_business_logic",
+            "company_filing_official_material_information_openapi",
+        ),
+        remediation="確認公司文件 discovery 先接 TWSE/TPEx t187ap04 官方重大訊息 OpenAPI，再退回 Google News/網站搜尋。",
+    ),
+    UpgradeAuditRequirement(
+        "data_business_logic",
         "company_filing_structured_api_fallback",
         "公司文件結構化 API 備援",
         (

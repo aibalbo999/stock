@@ -35,6 +35,10 @@ def ready_upgrade_matrix(overrides: dict | None = None) -> dict:
             "company_filing_render_provider_contract": {"status": "ready", "evidence": {}},
             "company_filing_pdf_table_parser_runtime": {"status": "ready", "evidence": {}},
             "company_filing_browser_or_proxy_fallback": {"status": "ready", "evidence": {}},
+            "company_filing_official_material_information_openapi": {
+                "status": "ready",
+                "evidence": {},
+            },
             "company_filing_structured_api_fallback": {"status": "ready", "evidence": {}},
             "company_filing_structured_api_sample_contract": {"status": "ready", "evidence": {}},
             "company_filing_cache": {"status": "ready", "evidence": {}},

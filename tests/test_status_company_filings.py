@@ -141,6 +141,23 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         "structured_company_filing_sample.json"
         in status["company_filings"]["structured_api_runtime"]["sample_contract_cli"]
     )
+    assert status["company_filings"]["official_material_information_openapi_ready"] is True
+    assert status["company_filings"]["official_material_information_openapi_configured"] is True
+    assert (
+        status["company_filings"]["official_material_information_openapi_provider"]
+        == "twse_tpex_official_openapi"
+    )
+    material_openapi_runtime = status["company_filings"][
+        "official_material_information_openapi_runtime"
+    ]
+    assert material_openapi_runtime["requires_api_key"] is False
+    assert material_openapi_runtime["source_urls"]["twse"].endswith("/opendata/t187ap04_L")
+    assert material_openapi_runtime["source_urls"]["tpex"].endswith("/mopsfin_t187ap04_O")
+    assert material_openapi_runtime["discovery_order"] == [
+        "structured_api",
+        "official_material_information_openapi",
+        "google_news_rss",
+    ]
     assert status["company_filings"]["playwright_render_enabled"] is True
     assert status["company_filings"]["playwright_render_configured"] is bool(
         status["company_filings"]["playwright_render_browser_available"]

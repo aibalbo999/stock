@@ -125,6 +125,14 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert filing_hardening["high_risk_source_policy"]["configured_provider"] == "browserless"
     assert filing_hardening["high_risk_captcha_unlocker_ready"] is False
     assert filing_hardening["structured_api_configured"] is False
+    assert filing_hardening["official_material_information_openapi_ready"] is True
+    assert (
+        filing_hardening["official_material_information_openapi_provider"]
+        == "twse_tpex_official_openapi"
+    )
+    assert filing_hardening["official_material_information_openapi_source_urls"][
+        "twse"
+    ].endswith("/opendata/t187ap04_L")
     assert "browser_render_runtime" in filing_hardening
     assert filing_hardening["playwright_render_enabled"] is True
     assert (
@@ -211,6 +219,20 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         is status["company_filings"]["playwright_render_configured"]
     )
     assert "playwright_render_runtime" in filing_fallback["evidence"]
+
+    material_openapi = matrix["data_business_logic"][
+        "company_filing_official_material_information_openapi"
+    ]
+    assert material_openapi["status"] == "ready"
+    assert material_openapi["evidence"]["requires_api_key"] is False
+    assert material_openapi["evidence"]["source_urls"]["tpex"].endswith(
+        "/mopsfin_t187ap04_O"
+    )
+    assert material_openapi["evidence"]["discovery_order"] == [
+        "structured_api",
+        "official_material_information_openapi",
+        "google_news_rss",
+    ]
 
     structured_api = matrix["data_business_logic"]["company_filing_structured_api_fallback"]
     assert structured_api["status"] == "not_configured"

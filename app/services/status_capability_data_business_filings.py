@@ -39,6 +39,15 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 ),
                 "structured_api_configured": company_filing_status.get("structured_api_configured"),
                 "structured_api_provider": company_filing_status.get("structured_api_provider"),
+                "official_material_information_openapi_ready": company_filing_status.get(
+                    "official_material_information_openapi_ready"
+                ),
+                "official_material_information_openapi_provider": company_filing_status.get(
+                    "official_material_information_openapi_provider"
+                ),
+                "official_material_information_openapi_source_urls": company_filing_status.get(
+                    "official_material_information_openapi_source_urls"
+                ),
                 "http_retries": company_filing_status.get("http_retries"),
                 "retryable_http_statuses": company_filing_status.get("retryable_http_statuses"),
                 "pdf_parser": company_filing_status.get("pdf_parser"),
@@ -213,6 +222,19 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
             detail=(
                 "Optional deployment hardening for blocked, placeholder, or dynamic filing pages. "
                 "Core fetch remains usable through browser-like User-Agent rotation and retries."
+            ),
+        ),
+        "company_filing_official_material_information_openapi": _capability(
+            "ready"
+            if company_filing_status.get("official_material_information_openapi_ready")
+            else "degraded",
+            evidence=company_filing_status.get(
+                "official_material_information_openapi_runtime"
+            )
+            or {},
+            detail=(
+                "Built-in TWSE/TPEx official OpenAPI fallback for daily material information rows. "
+                "This covers recent major announcements without an external paid filing API key."
             ),
         ),
         "company_filing_structured_api_fallback": _capability(

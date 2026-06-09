@@ -13,6 +13,7 @@ from app.data_sources.company_filing_render import (
     company_filing_playwright_browser_status,
 )
 from app.data_sources.company_filings import (
+    company_filing_material_information_openapi_status,
     company_filing_structured_api_status,
 )
 from app.services.company_filing_cache import RedisCompanyFilingCache
@@ -32,6 +33,9 @@ def company_filing_status(
         [str | None], dict
     ] = company_filing_playwright_browser_status,
     structured_api_status_func: Callable[[], dict] = company_filing_structured_api_status,
+    material_information_openapi_status_func: Callable[
+        [], dict
+    ] = company_filing_material_information_openapi_status,
 ) -> dict:
     module_available = module_available or _module_available
     user_agent_status = _company_filing_user_agent_status(settings.company_filing_user_agents)
@@ -52,6 +56,7 @@ def company_filing_status(
         settings.company_filing_playwright_render_enabled and playwright_browser_available
     )
     structured_api_runtime = structured_api_status_func()
+    material_information_openapi_runtime = material_information_openapi_status_func()
     high_risk_source_policy = _company_filing_high_risk_source_policy(
         browser_render_runtime=browser_render_runtime,
         playwright_configured=playwright_configured,
@@ -137,6 +142,19 @@ def company_filing_status(
         "structured_api_url_configured": structured_api_runtime.get("url_configured"),
         "structured_api_token_configured": structured_api_runtime.get("token_configured"),
         "structured_api_runtime": structured_api_runtime,
+        "official_material_information_openapi_ready": material_information_openapi_runtime.get(
+            "ready"
+        ),
+        "official_material_information_openapi_configured": (
+            material_information_openapi_runtime.get("configured")
+        ),
+        "official_material_information_openapi_provider": (
+            material_information_openapi_runtime.get("provider")
+        ),
+        "official_material_information_openapi_source_urls": (
+            material_information_openapi_runtime.get("source_urls")
+        ),
+        "official_material_information_openapi_runtime": material_information_openapi_runtime,
         "visual_rag_enabled": visual_rag_runtime.get("enabled"),
         "visual_rag_mode": visual_rag_runtime.get("mode"),
         "visual_rag_mode_supported": visual_rag_runtime.get("mode_supported"),

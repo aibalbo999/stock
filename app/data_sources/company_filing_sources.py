@@ -22,6 +22,8 @@ OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS = 8
 MOPS_DOCUMENT_ENTRY_URL = "https://doc.twse.com.tw/server-java/t57sb01"
 TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+TWSE_MATERIAL_INFORMATION_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+TPEX_MATERIAL_INFORMATION_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O"
 
 
 async def fetch_company_filing_url_text(
@@ -114,6 +116,28 @@ async def fetch_tpex_company_profiles() -> list[dict]:
     response = await company_filing_fetch_response_with_retries(
         "GET",
         TPEX_COMPANY_PROFILE_URL,
+        timeout=20,
+        follow_redirects=True,
+    )
+    payload = response.json()
+    return payload if isinstance(payload, list) else []
+
+
+async def fetch_twse_material_information_rows() -> list[dict]:
+    response = await company_filing_fetch_response_with_retries(
+        "GET",
+        TWSE_MATERIAL_INFORMATION_URL,
+        timeout=20,
+        follow_redirects=True,
+    )
+    payload = response.json()
+    return payload if isinstance(payload, list) else []
+
+
+async def fetch_tpex_material_information_rows() -> list[dict]:
+    response = await company_filing_fetch_response_with_retries(
+        "GET",
+        TPEX_MATERIAL_INFORMATION_URL,
         timeout=20,
         follow_redirects=True,
     )

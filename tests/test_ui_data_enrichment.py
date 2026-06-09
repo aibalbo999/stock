@@ -24,6 +24,9 @@ def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks()
                 "browser_render_configured": False,
                 "browser_render_provider": "flaresolverr",
                 "browser_render_runtime": {"fallback_reason": "browser_render_disabled"},
+                "official_material_information_openapi_ready": True,
+                "official_material_information_openapi_provider": "twse_tpex_official_openapi",
+                "official_material_information_openapi_runtime": {"ready": True},
                 "structured_api_configured": False,
                 "structured_api_provider": None,
                 "structured_api_runtime": {"fallback_reason": "missing_structured_api_provider_or_url"},
@@ -66,6 +69,13 @@ def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks()
             "目前": "flaresolverr",
             "細節": "browser_render_disabled",
             "下一步": "設定 Browserless、FlareSolverr、ScrapingBee 或 BrightData render URL。",
+        },
+        {
+            "能力": "重大訊息 OpenAPI",
+            "狀態": "ready",
+            "目前": "twse_tpex_official_openapi",
+            "細節": "-",
+            "下一步": "可補近期官方重大訊息。",
         },
         {
             "能力": "結構化文件 API",

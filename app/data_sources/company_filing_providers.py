@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import date
 from hashlib import sha1
+import re
 
 from bs4 import BeautifulSoup
 
@@ -20,7 +21,11 @@ from app.data_sources.company_filing_discovery import (
 )
 from app.data_sources.company_filing_http import company_filing_error
 from app.data_sources.company_filing_parsers import extract_pdf_text
-from app.data_sources.company_filing_sources import OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS
+from app.data_sources.company_filing_sources import (
+    OFFICIAL_WEBSITE_FETCH_TIMEOUT_SECONDS,
+    TPEX_MATERIAL_INFORMATION_URL,
+    TWSE_MATERIAL_INFORMATION_URL,
+)
 from app.data_sources.news import NewsFetcher
 from app.models.schemas import CompanyFilingDocument, NewsDocument, Source
 
@@ -32,6 +37,34 @@ FetchTextWithFinalUrl = Callable[..., Awaitable[tuple[str, str]]]
 DownloadMopsPdf = Callable[[str, str, str], Awaitable[tuple[str, bytes]]]
 SearchCompanyFilings = Callable[[str, int], Awaitable[list[dict]]]
 CompanyProfileLookup = Callable[[str], Awaitable[dict]]
+FetchMaterialInformationRows = Callable[[], Awaitable[list[dict]]]
+
+
+_MATERIAL_INFORMATION_TICKER_ALIASES = (
+    "公司代號",
+    "公司代碼",
+    "SecuritiesCompanyCode",
+    "CompanyCode",
+    "ticker",
+)
+_MATERIAL_INFORMATION_COMPANY_ALIASES = (
+    "公司名稱",
+    "CompanyName",
+    "CompanyAbbreviation",
+    "company_name",
+)
+_MATERIAL_INFORMATION_SUBJECT_ALIASES = ("主旨", "Subject", "headline", "title")
+_MATERIAL_INFORMATION_DESCRIPTION_ALIASES = ("說明", "Description", "content", "text")
+_MATERIAL_INFORMATION_DATE_ALIASES = (
+    "發言日期",
+    "Date",
+    "出表日期",
+    "AnnouncementDate",
+    "published_at",
+)
+_MATERIAL_INFORMATION_TIME_ALIASES = ("發言時間", "Time", "AnnouncementTime")
+_MATERIAL_INFORMATION_EVENT_DATE_ALIASES = ("事實發生日", "EventDate")
+_MATERIAL_INFORMATION_CLAUSE_ALIASES = ("符合條款", "Clause", "Article")
 
 
 async def fetch_web_search_company_filing_documents(
@@ -132,6 +165,176 @@ async def fetch_mops_annual_report_company_filing_documents(
         if documents:
             break
     return documents, errors
+
+
+async def fetch_material_information_company_filing_documents(
+    *,
+    ticker: str,
+    company_name: str = "",
+    limit: int = 3,
+    document_types: list[str] | tuple[str, ...] | None = None,
+    fetch_twse_rows_func: FetchMaterialInformationRows,
+    fetch_tpex_rows_func: FetchMaterialInformationRows,
+    build_manual_document_func: BuildManualDocument,
+) -> tuple[list[CompanyFilingDocument], list[dict]]:
+    if document_types and "material_information" not in set(document_types):
+        return [], []
+
+    documents: list[CompanyFilingDocument] = []
+    errors = []
+    source_specs = (
+        (
+            "twse_material_information_openapi",
+            "臺灣證券交易所 OpenAPI",
+            TWSE_MATERIAL_INFORMATION_URL,
+            fetch_twse_rows_func,
+        ),
+        (
+            "tpex_material_information_openapi",
+            "櫃買中心 OpenAPI",
+            TPEX_MATERIAL_INFORMATION_URL,
+            fetch_tpex_rows_func,
+        ),
+    )
+    for stage, publisher, url, fetch_rows in source_specs:
+        try:
+            rows = await fetch_rows()
+        except Exception as exc:
+            errors.append(company_filing_error(url, exc, stage=stage))
+            continue
+        for row in rows:
+            if not material_information_row_matches_company(row, ticker, company_name):
+                continue
+            document = material_information_row_to_company_filing_document(
+                row,
+                ticker=ticker,
+                company_name=company_name,
+                publisher=publisher,
+                url=url,
+                build_manual_document_func=build_manual_document_func,
+            )
+            if document is None:
+                errors.append(
+                    company_filing_error(
+                        url,
+                        "material information row missing subject or description",
+                        stage=stage,
+                    )
+                )
+                continue
+            documents.append(document)
+            if len(documents) >= max(1, int(limit)):
+                return _sort_material_information_documents(documents), errors
+    return _sort_material_information_documents(documents), errors
+
+
+def material_information_row_matches_company(
+    row: dict,
+    ticker: str,
+    company_name: str = "",
+) -> bool:
+    row_ticker = _material_information_row_value(row, _MATERIAL_INFORMATION_TICKER_ALIASES)
+    if row_ticker:
+        return row_ticker == ticker
+    if not company_name:
+        return False
+    haystack = "\n".join(str(value or "") for value in row.values())
+    return company_name in haystack
+
+
+def material_information_row_to_company_filing_document(
+    row: dict,
+    *,
+    ticker: str,
+    company_name: str = "",
+    publisher: str,
+    url: str,
+    build_manual_document_func: BuildManualDocument,
+) -> CompanyFilingDocument | None:
+    row_ticker = _material_information_row_value(row, _MATERIAL_INFORMATION_TICKER_ALIASES)
+    row_company_name = _material_information_row_value(row, _MATERIAL_INFORMATION_COMPANY_ALIASES)
+    subject = _material_information_row_value(row, _MATERIAL_INFORMATION_SUBJECT_ALIASES)
+    description = _material_information_row_value(row, _MATERIAL_INFORMATION_DESCRIPTION_ALIASES)
+    if not subject and not description:
+        return None
+    speech_date = _material_information_row_value(row, _MATERIAL_INFORMATION_DATE_ALIASES)
+    speech_time = _material_information_row_value(row, _MATERIAL_INFORMATION_TIME_ALIASES)
+    event_date = _material_information_row_value(row, _MATERIAL_INFORMATION_EVENT_DATE_ALIASES)
+    clause = _material_information_row_value(row, _MATERIAL_INFORMATION_CLAUSE_ALIASES)
+    effective_company_name = company_name or row_company_name
+    title_company = row_company_name or effective_company_name or row_ticker or ticker
+    title = f"{row_ticker or ticker} {title_company} 重大訊息"
+    if subject:
+        title = f"{title}：{subject}"
+    text = "\n".join(
+        part
+        for part in (
+            f"股票代號：{row_ticker or ticker}",
+            f"公司名稱：{effective_company_name}" if effective_company_name else "",
+            "文件類型：重大訊息 material information",
+            f"發言日期：{speech_date}" if speech_date else "",
+            f"發言時間：{speech_time}" if speech_time else "",
+            f"符合條款：{clause}" if clause else "",
+            f"事實發生日：{event_date}" if event_date else "",
+            f"主旨：{subject}" if subject else "",
+            f"說明：{description}" if description else "",
+        )
+        if part
+    )
+    return build_manual_document_func(
+        ticker=ticker,
+        company_name=effective_company_name,
+        document_type="material_information",
+        title=title,
+        text=text,
+        publisher=publisher,
+        published_at=parse_material_information_date(speech_date),
+        url=url,
+    )
+
+
+def parse_material_information_date(value: str) -> date | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = (
+        raw.replace("民國", "")
+        .replace("年", "/")
+        .replace("月", "/")
+        .replace("日", "")
+        .strip()
+    )
+    parsed = parse_mops_roc_datetime(normalized)
+    if parsed:
+        return parsed
+    digits = re.sub(r"\D", "", raw)
+    try:
+        if len(digits) == 7:
+            return date(int(digits[:3]) + 1911, int(digits[3:5]), int(digits[5:7]))
+        if len(digits) == 8 and int(digits[:4]) >= 1912:
+            return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8]))
+    except ValueError:
+        return None
+    return None
+
+
+def _material_information_row_value(row: dict, aliases: tuple[str, ...]) -> str:
+    normalized_row = {str(key).strip().lower(): value for key, value in row.items()}
+    for alias in aliases:
+        value = normalized_row.get(alias.strip().lower())
+        if value is not None:
+            return str(value or "").strip()
+    return ""
+
+
+def _sort_material_information_documents(
+    documents: list[CompanyFilingDocument],
+) -> list[CompanyFilingDocument]:
+    return sorted(
+        documents,
+        key=lambda document: document.source.published_at or date.min,
+        reverse=True,
+    )
 
 
 async def fetch_official_website_company_filing_documents(

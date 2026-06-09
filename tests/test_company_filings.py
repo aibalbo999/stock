@@ -24,8 +24,11 @@ from app.data_sources.company_filings import (
     infer_document_type,
     is_retryable_company_filing_error_category,
     is_relevant_company_filing_result,
+    material_information_row_matches_company,
+    material_information_row_to_company_filing_document,
     normalize_search_result_url,
     normalize_tpex_company_profile,
+    parse_material_information_date,
     parse_mops_annual_report_rows,
     parse_mops_roc_datetime,
     validate_fetched_company_filing_document,
@@ -422,6 +425,202 @@ def test_company_profile_falls_back_to_tpex_cache() -> None:
 
     assert profile["公司簡稱"] == "台燿"
     assert profile["網址"] == "www.tuc.com.tw"
+
+
+def test_material_information_rows_accept_twse_and_tpex_aliases() -> None:
+    twse_row = {
+        "發言日期": "1150608",
+        "發言時間": "90621",
+        "公司代號": "2330",
+        "公司名稱": "台積電",
+        "主旨 ": "公告本公司取得機器設備",
+        "符合條款": "第20款",
+        "事實發生日": "1150607",
+        "說明": "1.事實發生日:115/06/07\n2.公司名稱:台灣積體電路製造股份有限公司",
+    }
+    tpex_row = {
+        "Date": "1150608",
+        "發言日期": "1150607",
+        "發言時間": "70003",
+        "SecuritiesCompanyCode": "6274",
+        "CompanyName": "台燿",
+        "主旨": "公告本公司董事會重要決議",
+        "說明": "1.事實發生日：民國115年06月07日\r\n2.公司名稱：台燿科技股份有限公司",
+    }
+
+    assert material_information_row_matches_company(twse_row, "2330", "台積電") is True
+    assert material_information_row_matches_company(twse_row, "6274", "台燿") is False
+    assert parse_material_information_date("1150608") == date(2026, 6, 8)
+    assert parse_material_information_date("民國115年06月07日") == date(2026, 6, 7)
+
+    twse_document = material_information_row_to_company_filing_document(
+        twse_row,
+        ticker="2330",
+        company_name="台積電",
+        publisher="臺灣證券交易所 OpenAPI",
+        url="https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+        build_manual_document_func=CompanyFilingFetcher.from_manual_text,
+    )
+    tpex_document = material_information_row_to_company_filing_document(
+        tpex_row,
+        ticker="6274",
+        company_name="台燿",
+        publisher="櫃買中心 OpenAPI",
+        url="https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap04_O",
+        build_manual_document_func=CompanyFilingFetcher.from_manual_text,
+    )
+
+    assert twse_document is not None
+    assert twse_document.document_type == "material_information"
+    assert twse_document.source.published_at == date(2026, 6, 8)
+    assert "文件類型：重大訊息 material information" in twse_document.text
+    assert "公告本公司取得機器設備" in twse_document.title
+    assert filing_quality_score(twse_document, "2330", "台積電") >= 70
+    assert tpex_document is not None
+    assert tpex_document.source.published_at == date(2026, 6, 7)
+    assert "台燿科技股份有限公司" in tpex_document.text
+
+
+def test_fetch_material_information_documents_uses_official_openapi_cache(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.today_taipei",
+        lambda: date(2026, 6, 9),
+    )
+    CompanyFilingFetcher._twse_material_information_cache = [
+        {
+            "發言日期": "1150608",
+            "公司代號": "2330",
+            "公司名稱": "台積電",
+            "主旨 ": "公告台積電重大訊息",
+            "說明": "1.事實發生日:115/06/08\n2.公司名稱:台積電",
+        }
+    ]
+    CompanyFilingFetcher._tpex_material_information_cache = [
+        {
+            "發言日期": "1150608",
+            "SecuritiesCompanyCode": "6274",
+            "CompanyName": "台燿",
+            "主旨": "公告台燿重大訊息",
+            "說明": "1.公司名稱:台燿",
+        }
+    ]
+    CompanyFilingFetcher._twse_material_information_cache_date = date(2026, 6, 9)
+    CompanyFilingFetcher._tpex_material_information_cache_date = date(2026, 6, 9)
+    try:
+        documents, errors = asyncio.run(
+            CompanyFilingFetcher().fetch_material_information_documents(
+                "2330",
+                "台積電",
+                document_types=["material_information"],
+            )
+        )
+    finally:
+        CompanyFilingFetcher._twse_material_information_cache = None
+        CompanyFilingFetcher._tpex_material_information_cache = None
+        CompanyFilingFetcher._twse_material_information_cache_date = None
+        CompanyFilingFetcher._tpex_material_information_cache_date = None
+
+    assert errors == []
+    assert len(documents) == 1
+    assert documents[0].document_type == "material_information"
+    assert documents[0].source.publisher == "臺灣證券交易所 OpenAPI"
+
+
+def test_material_information_openapi_cache_refreshes_by_taipei_date(monkeypatch) -> None:
+    calls = []
+
+    async def fake_fetch_twse_material_information_rows():
+        calls.append("fetch")
+        return [{"公司代號": "2330", "主旨": "new"}]
+
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.today_taipei",
+        lambda: date(2026, 6, 9),
+    )
+    monkeypatch.setattr(
+        "app.data_sources.company_filings.fetch_twse_material_information_rows",
+        fake_fetch_twse_material_information_rows,
+    )
+    CompanyFilingFetcher._twse_material_information_cache = [{"公司代號": "2330", "主旨": "old"}]
+    CompanyFilingFetcher._twse_material_information_cache_date = date(2026, 6, 8)
+    try:
+        rows = asyncio.run(CompanyFilingFetcher.twse_material_information_rows())
+    finally:
+        CompanyFilingFetcher._twse_material_information_cache = None
+        CompanyFilingFetcher._twse_material_information_cache_date = None
+
+    assert calls == ["fetch"]
+    assert rows == [{"公司代號": "2330", "主旨": "new"}]
+
+
+def test_company_filing_discovery_uses_material_information_before_news(monkeypatch) -> None:
+    events = []
+
+    async def fake_fetch_material_information_documents(
+        self,
+        ticker,
+        company_name="",
+        limit=3,
+        document_types=None,
+    ):
+        events.append(("material", ticker, tuple(document_types or ())))
+        return [
+            CompanyFilingFetcher.from_manual_text(
+                ticker=ticker,
+                company_name=company_name,
+                document_type="material_information",
+                title="台積電 重大訊息",
+                text="台積電 重大訊息 material information 說明 AI/HPC 需求。" * 4,
+                publisher="臺灣證券交易所 OpenAPI",
+                published_at=date(2026, 6, 8),
+                url="https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+            )
+        ], []
+
+    async def fake_fetch_structured_api_documents(
+        self,
+        ticker,
+        company_name="",
+        limit=3,
+        document_types=None,
+    ):
+        events.append(("structured", ticker, tuple(document_types or ())))
+        return [], []
+
+    class FakeNewsFetcher:
+        async def fetch_feed(self, url, publisher=None, limit=3):
+            events.append(("news", url, limit))
+            return []
+
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_structured_api_documents",
+        fake_fetch_structured_api_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "fetch_material_information_documents",
+        fake_fetch_material_information_documents,
+    )
+    monkeypatch.setattr(
+        CompanyFilingFetcher,
+        "google_news_urls",
+        classmethod(lambda cls, *args, **kwargs: ["https://news.example/rss"]),
+    )
+    fetcher = CompanyFilingFetcher()
+    fetcher.news_fetcher = FakeNewsFetcher()
+
+    documents, errors = asyncio.run(
+        fetcher.fetch_discovery_documents(
+            "2330",
+            "台積電",
+            document_types=["material_information"],
+        )
+    )
+
+    assert errors == []
+    assert documents[0].document_type == "material_information"
+    assert [event[0] for event in events] == ["structured", "material", "news"]
 
 
 def test_official_website_missing_profile_error_is_categorized(monkeypatch) -> None:

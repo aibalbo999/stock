@@ -32,6 +32,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     external_enablement_service_source = Path(
         "app/services/external_deployment_enablement.py"
     ).read_text()
+    external_local_dependency_service_source = Path(
+        "app/services/external_deployment_local_dependencies.py"
+    ).read_text()
     external_profile_catalog_source = Path(
         "app/services/external_deployment_profiles.py"
     ).read_text()
@@ -484,6 +487,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source
     assert "def external_deployment_pending_gap_rows(" in external_readiness_service_source
     assert "def external_deployment_pending_gap_display_rows(" in external_readiness_service_source
+    assert "def local_dependency_status_rows(" not in external_readiness_service_source
+    assert "def local_dependency_status_rows(" in external_local_dependency_service_source
+    assert "def local_dependency_last_start_rows(" not in external_readiness_service_source
+    assert "def local_dependency_last_start_rows(" in external_local_dependency_service_source
+    assert "def local_dependency_repair_rows(" not in external_readiness_service_source
+    assert "def local_dependency_repair_rows(" in external_local_dependency_service_source
     assert "待處理缺口分類" in source
     assert '"本機動作"' in external_readiness_service_source
     assert '"本機指令"' in external_readiness_service_source

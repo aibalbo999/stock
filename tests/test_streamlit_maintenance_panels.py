@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.services import external_deployment_enablement, external_deployment_items
+from app.services import (
+    external_deployment_enablement,
+    external_deployment_items,
+    external_deployment_local_dependencies,
+)
 from app.services.external_deployment_env_gaps import (
     external_deployment_env_check_status_report,
 )
@@ -12,6 +16,9 @@ from app.services.external_deployment_readiness import (
     external_deployment_local_projection,
     external_deployment_readiness_items,
     external_smoke_commands_from_payload,
+    local_dependency_last_start_rows,
+    local_dependency_repair_rows,
+    local_dependency_status_rows,
 )
 from app.ui.maintenance_deployment_panel import (
     external_deployment_effective_gap_rows,
@@ -29,6 +36,9 @@ def test_external_deployment_item_logic_lives_outside_readiness_facade() -> None
     readiness_source = Path("app/services/external_deployment_readiness.py").read_text()
     item_source = Path("app/services/external_deployment_items.py").read_text()
     enablement_source = Path("app/services/external_deployment_enablement.py").read_text()
+    local_dependency_source = Path(
+        "app/services/external_deployment_local_dependencies.py"
+    ).read_text()
     audit = {
         "checks": [
             {
@@ -63,6 +73,18 @@ def test_external_deployment_item_logic_lives_outside_readiness_facade() -> None
         external_deployment_enablement.external_deployment_local_projection
         is external_deployment_local_projection
     )
+    assert (
+        external_deployment_local_dependencies.local_dependency_status_rows
+        is local_dependency_status_rows
+    )
+    assert (
+        external_deployment_local_dependencies.local_dependency_last_start_rows
+        is local_dependency_last_start_rows
+    )
+    assert (
+        external_deployment_local_dependencies.local_dependency_repair_rows
+        is local_dependency_repair_rows
+    )
     assert [item["capability"] for item in external_deployment_readiness_items(audit)] == [
         "company_filing_high_risk_unlocker",
         "neo4j_import",
@@ -81,6 +103,12 @@ def test_external_deployment_item_logic_lives_outside_readiness_facade() -> None
     assert "def external_deployment_enablement_profile(" in enablement_source
     assert "def external_deployment_local_projection(" not in readiness_source
     assert "def external_deployment_local_projection(" in enablement_source
+    assert "def local_dependency_status_rows(" not in readiness_source
+    assert "def local_dependency_status_rows(" in local_dependency_source
+    assert "def local_dependency_last_start_rows(" not in readiness_source
+    assert "def local_dependency_last_start_rows(" in local_dependency_source
+    assert "def local_dependency_repair_rows(" not in readiness_source
+    assert "def local_dependency_repair_rows(" in local_dependency_source
 
 
 def test_maintenance_service_metrics_show_promotion_threshold() -> None:

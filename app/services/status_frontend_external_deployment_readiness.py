@@ -19,6 +19,10 @@ def frontend_external_deployment_readiness_status(
     readiness_service_source = _read_text(readiness_service_path)
     enablement_service_path = root / "app" / "services" / "external_deployment_enablement.py"
     enablement_service_source = _read_text(enablement_service_path)
+    local_dependency_service_path = (
+        root / "app" / "services" / "external_deployment_local_dependencies.py"
+    )
+    local_dependency_service_source = _read_text(local_dependency_service_path)
     profile_catalog_path = root / "app" / "services" / "external_deployment_profiles.py"
     profile_catalog_source = _read_text(profile_catalog_path)
     return {
@@ -54,12 +58,17 @@ def frontend_external_deployment_readiness_status(
             and "def external_deployment_enablement_profile(" in external_deployment_common_source
             and "def external_deployment_local_projection(" in enablement_service_source
             and "def external_deployment_local_action(" in readiness_service_source
+            and "from app.services.external_deployment_local_dependencies import"
+            in readiness_service_source
             and "def local_dependency_status_rows(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_source
+            and "def local_dependency_status_rows(" in local_dependency_service_source
             and "def local_dependency_last_start_rows(" in external_deployment_common_source
             and "def local_dependency_last_start_rows(" in external_deployment_source
+            and "def local_dependency_last_start_rows(" in local_dependency_service_source
             and "def local_dependency_repair_rows(" in external_deployment_common_source
             and "def local_dependency_repair_rows(" in external_deployment_source
+            and "def local_dependency_repair_rows(" in local_dependency_service_source
             and "local_dependency_wait" in readiness_service_source
             and "local_dependency_status_rows(service_snapshot)" in ui_source
             and "local_dependency_last_start_rows(service_snapshot)" in ui_source
@@ -80,16 +89,16 @@ def frontend_external_deployment_readiness_status(
         ),
         "ui_local_dependency_start_history_enabled": (
             "def local_dependency_last_start_rows(" in external_deployment_common_source
-            and "def local_dependency_last_start_rows(" in readiness_service_source
+            and "def local_dependency_last_start_rows(" in local_dependency_service_source
             and "def local_dependency_last_start_rows(" in external_deployment_source
             and "local_dependency_last_start_rows(service_snapshot)" in ui_source
             and "最近本機依賴啟動" in ui_source
         ),
         "ui_local_dependency_repair_guidance_enabled": (
             "def local_dependency_repair_rows(" in external_deployment_common_source
-            and "def local_dependency_repair_rows(" in readiness_service_source
+            and "def local_dependency_repair_rows(" in local_dependency_service_source
             and "def local_dependency_repair_rows(" in external_deployment_source
-            and '"repair_plan"' in readiness_service_source
+            and '"repair_plan"' in local_dependency_service_source
             and "local_dependency_repair_rows(service_snapshot)" in ui_source
             and "本機依賴修復指引" in ui_source
         ),

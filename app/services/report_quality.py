@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from importlib.util import find_spec
 
-from app.core.config import get_settings
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument, ReportRequest
-from app.rag.reranker import RagReranker
-from app.rag.vector_store import VectorStore
 from app.services.entity_mapping import EntityMapper
 from app.services.leading_signals import LeadingSignalAnalyzer
-from app.services.llm_attempts import summarize_llm_attempts
 from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
@@ -21,6 +16,10 @@ from app.services.report_orchestrator import build_quality_recovery_plan
 from app.services.report_quality_recovery import (
     quality_remediation_actions,
     should_recover_market_data_quality as should_recover_market_data_quality,
+)
+from app.services.report_quality_runtime import (
+    rag_runtime_status,
+    summarize_llm_status,
 )
 from app.services.report_quality_sources import (
     LATEST_ONLY_MARKET_SOURCE_MARKER,
@@ -701,61 +700,3 @@ def build_quality_gate_for_request(
         ],
         market_max_trade_date_lag_days=market_date_summary["max_trade_date_lag_days"],
     )
-
-
-def summarize_llm_status(llm_result: object | None) -> dict | None:
-    if llm_result is None:
-        return None
-    attempts = getattr(llm_result, "attempts", ())
-    return {
-        "fallback": bool(getattr(llm_result, "fallback", False)),
-        "model": getattr(llm_result, "model", None),
-        "key_index": getattr(llm_result, "key_index", None),
-        "provider": getattr(llm_result, "provider", None),
-        "attempt_summary": summarize_llm_attempts(attempts),
-        "attempts": list(attempts[-10:]) if isinstance(attempts, (tuple, list)) else [],
-        "observability": getattr(llm_result, "observability", {}) or {},
-    }
-
-
-def rag_runtime_status() -> dict:
-    settings = get_settings()
-    embedding_status = VectorStore.runtime_embedding_provider_status(settings)
-    retrieval_status = VectorStore.retrieval_runtime_status(settings)
-    chroma_available = _module_available("chromadb")
-    persistent_collection_enabled = _rag_persistent_collection_enabled(
-        settings,
-        embedding_status,
-        chroma_available,
-    )
-    reranker_status = RagReranker().status()
-    return {
-        "use_chroma": bool(settings.use_chroma),
-        "chroma_available": chroma_available,
-        "persistent_collection_enabled": persistent_collection_enabled,
-        "retrieval_mode": "chroma_hybrid" if persistent_collection_enabled else "memory_hybrid",
-        "retrieval_status": retrieval_status,
-        "embedding_status": embedding_status,
-        "reranker_status": reranker_status,
-    }
-
-
-def _rag_persistent_collection_enabled(
-    settings, embedding_status: dict, chroma_available: bool
-) -> bool:
-    if not settings.use_chroma:
-        return False
-    if not chroma_available:
-        return False
-    if not embedding_status.get("custom_embedding_requested"):
-        return True
-    if embedding_status.get("custom_embedding_enabled"):
-        return True
-    return bool(settings.rag_allow_chroma_default_embedding_fallback)
-
-
-def _module_available(module_name: str) -> bool:
-    try:
-        return find_spec(module_name) is not None
-    except (ImportError, ValueError):
-        return False

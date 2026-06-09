@@ -9,6 +9,7 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.services.llm_client import LLMResult
+from app.services import report_quality, report_quality_runtime
 from app.services import report_quality_recovery
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -35,6 +36,24 @@ def test_quality_recovery_rules_live_outside_quality_gate_module() -> None:
     assert "def quality_remediation_actions" not in report_quality_source
     assert "def should_recover_market_data_quality" in recovery_source
     assert "def quality_remediation_actions" in recovery_source
+
+
+def test_report_quality_runtime_helpers_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    runtime_source = Path("app/services/report_quality_runtime.py").read_text()
+
+    assert report_quality.summarize_llm_status is report_quality_runtime.summarize_llm_status
+    assert report_quality.rag_runtime_status is report_quality_runtime.rag_runtime_status
+    for helper in [
+        "def summarize_llm_status(",
+        "def rag_runtime_status(",
+        "def _rag_persistent_collection_enabled(",
+        "def _module_available(",
+    ]:
+        assert helper not in report_quality_source
+        assert helper in runtime_source
+    assert "RagReranker" not in report_quality_source
+    assert "VectorStore.runtime_embedding_provider_status(" not in report_quality_source
 
 
 def _quality_gate(

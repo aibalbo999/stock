@@ -14,6 +14,7 @@ from app.services.candidate_revalidation import CandidateRevalidationService
 from app.services.company_data_audit import audit_company_data
 from app.services.followup_actions import FollowUpActionPlanner, execute_follow_up_actions_sync
 from app.services.ingestion import IngestionPipeline
+from app.services.analysis_run_repository import AnalysisRunRepository
 from app.services.llm_usage import record_llm_usage_from_report_execution
 from app.services.market_repositories import (
     FinancialMetricRepository,
@@ -22,7 +23,6 @@ from app.services.market_repositories import (
     ValuationMetricRepository,
 )
 from app.services.persistence import (
-    AnalysisRunRepository,
     ReportRepository,
 )
 from app.services.report_build import ReportBuildService

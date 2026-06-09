@@ -8,7 +8,7 @@ from typing import Any
 from app.core.time import utc_now_naive
 from app.models.schemas import ReportRequest
 from app.services.entity_mapping import EntityMapper
-from app.services.persistence import AnalysisRunRepository
+from app.services.analysis_run_repository import AnalysisRunRepository
 from app.services.report_followup import serialize_run
 from app.services.run_task_api_summary import (
     alert_severity_for_category as _alert_severity_for_category,

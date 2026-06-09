@@ -12,7 +12,8 @@ from app.services.candidate_revalidation import CandidateRevalidationService
 from app.services.company_data_audit import audit_company_data
 from app.services.followup_actions import FollowUpAction
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import AnalysisRunRepository, ReportRepository
+from app.services.analysis_run_repository import AnalysisRunRepository
+from app.services.persistence import ReportRepository
 from app.services.report_followup import (
     append_candidate_audit_if_missing,
     candidate_audit_from_run_payload,
@@ -49,8 +50,9 @@ class ReportFollowUpContextService:
         self.analysis_run_repository_cls = analysis_run_repository_cls
         self.audit_company_data_func = audit_company_data_func
         self.parse_quality_gate_func = parse_quality_gate_func
-        self.candidate_revalidation_service = candidate_revalidation_service or CandidateRevalidationService(
-            session_scope_factory=session_scope_factory
+        self.candidate_revalidation_service = (
+            candidate_revalidation_service
+            or CandidateRevalidationService(session_scope_factory=session_scope_factory)
         )
         self.supply_chain_whitelist_cls = supply_chain_whitelist_cls
         self.ingestion_pipeline_cls = ingestion_pipeline_cls
@@ -90,7 +92,9 @@ class ReportFollowUpContextService:
             "source_report_id": report_id,
             "source_report_topic": topic,
             "source_report_tickers": tickers,
-            "source_report_generated_at": datetime_iso_or_none(getattr(report, "generated_at", None)),
+            "source_report_generated_at": datetime_iso_or_none(
+                getattr(report, "generated_at", None)
+            ),
             "source_report_created_at": datetime_iso_or_none(getattr(report, "created_at", None)),
             "request": request,
             "markdown": markdown,
@@ -109,7 +113,8 @@ class ReportFollowUpContextService:
     ) -> dict:
         candidates = context.get("candidate_whitelist") or []
         should_revalidate = bool(candidates) and any(
-            action.action_type in {"ingest_news", "rerun_discovery"} and action.purpose == "required"
+            action.action_type in {"ingest_news", "rerun_discovery"}
+            and action.purpose == "required"
             for action in actions
         )
         if should_revalidate:
@@ -148,7 +153,11 @@ class ReportFollowUpContextService:
         rerun_request = request.model_copy(update={"tickers": promoted_tickers})
         if revalidation.get("changed") and promoted_tickers:
             await self.refresh_market_data_func(rerun_request)
-        whitelist = self.supply_chain_whitelist_cls.from_candidate_whitelist(candidate_payload) if candidate_payload else None
+        whitelist = (
+            self.supply_chain_whitelist_cls.from_candidate_whitelist(candidate_payload)
+            if candidate_payload
+            else None
+        )
         return {
             "request": rerun_request,
             "whitelist": whitelist,

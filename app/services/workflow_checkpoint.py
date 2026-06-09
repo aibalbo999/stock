@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.core.time import utc_now_naive
 from app.db.session import session_scope
-from app.services.persistence import AnalysisRunRepository
+from app.services.analysis_run_repository import AnalysisRunRepository
 
 
 DISCOVERED_PIPELINE_STEPS = [
@@ -213,15 +213,17 @@ class WorkflowCheckpointRecorder:
     @classmethod
     def resume_state(cls, workflow: dict) -> dict:
         steps = [step for step in workflow.get("steps") or [] if isinstance(step, dict)]
-        completed_steps = [str(step.get("name")) for step in steps if step.get("status") == "success"]
+        completed_steps = [
+            str(step.get("name")) for step in steps if step.get("status") == "success"
+        ]
         failed_steps = [str(step.get("name")) for step in steps if step.get("status") == "failed"]
         running_steps = [str(step.get("name")) for step in steps if step.get("status") == "running"]
         pending_steps = [
-            str(step.get("name"))
-            for step in steps
-            if step.get("status") in {None, "", "pending"}
+            str(step.get("name")) for step in steps if step.get("status") in {None, "", "pending"}
         ]
-        current_step = str(workflow.get("current_step") or "") or (running_steps[0] if running_steps else None)
+        current_step = str(workflow.get("current_step") or "") or (
+            running_steps[0] if running_steps else None
+        )
         next_incomplete_step = next(
             (
                 str(step.get("name"))
@@ -232,11 +234,7 @@ class WorkflowCheckpointRecorder:
         )
         status = str(workflow.get("status") or "running")
         resume_from_step = current_step or (
-            failed_steps[0]
-            if failed_steps
-            else pending_steps[0]
-            if pending_steps
-            else None
+            failed_steps[0] if failed_steps else pending_steps[0] if pending_steps else None
         )
         if status in {"success", "cancelled"}:
             resume_from_step = None
@@ -350,7 +348,11 @@ def workflow_run_summary(workflow: dict | None) -> dict | None:
     failed_count = sum(1 for step in steps if step.get("status") == "failed")
     running_count = sum(1 for step in steps if step.get("status") == "running")
     pending_count = sum(1 for step in steps if step.get("status") in {None, "", "pending"})
-    resume = workflow.get("resume") if isinstance(workflow.get("resume"), dict) else WorkflowCheckpointRecorder.resume_state(workflow)
+    resume = (
+        workflow.get("resume")
+        if isinstance(workflow.get("resume"), dict)
+        else WorkflowCheckpointRecorder.resume_state(workflow)
+    )
     resume_from_step = resume.get("resume_from_step")
     status = str(workflow.get("status") or "running")
     if resume.get("resumable"):

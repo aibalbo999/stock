@@ -4,8 +4,9 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 
 from app.models.schemas import ReportRequest, ReportResponse
+from app.services.analysis_run_repository import AnalysisRunRepository
 from app.services.llm_usage import record_llm_usage_from_report_execution
-from app.services.persistence import AnalysisRunRepository, ReportRepository
+from app.services.persistence import ReportRepository
 from app.services.report_generator import ReportExecutionError
 from app.services.report_quality import should_recover_market_data_quality
 
@@ -23,7 +24,9 @@ class SyncReportGenerationApiService:
         quality_recovery_pipeline_cls: type | None = None,
         sync_pre_refresh_requested: bool = False,
         sync_quality_recovery_requested: bool = False,
-        market_quality_recovery_required_func: Callable[[dict | None], bool] = should_recover_market_data_quality,
+        market_quality_recovery_required_func: Callable[
+            [dict | None], bool
+        ] = should_recover_market_data_quality,
     ) -> None:
         self.session_scope_factory = session_scope_factory
         self.analysis_run_repository_cls = analysis_run_repository_cls
@@ -48,7 +51,9 @@ class SyncReportGenerationApiService:
         try:
             ingestion_summary = self._pre_report_refresh(request)
             build_kwargs = {
-                "company_filing_sufficient_count": self.count_sufficient_company_filings_func(request.tickers),
+                "company_filing_sufficient_count": self.count_sufficient_company_filings_func(
+                    request.tickers
+                ),
             }
             news_count = (ingestion_summary.get("news") or {}).get("count")
             if news_count is not None:

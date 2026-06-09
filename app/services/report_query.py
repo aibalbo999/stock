@@ -12,7 +12,8 @@ from app.services.candidate_audit import (
     render_candidate_audit_markdown,
 )
 from app.services.candidate_revalidation import sanitize_candidate_low_quality_sources
-from app.services.persistence import AnalysisRunRepository, ReportRepository
+from app.services.analysis_run_repository import AnalysisRunRepository
+from app.services.persistence import ReportRepository
 from app.services.report_observability_summary import (
     report_observability_alerts,
     report_observability_bottleneck_rows,
@@ -50,7 +51,9 @@ def _quality_gate_refresh_kwargs(metrics: dict, promoted_count: int) -> dict:
     if company_filing_coverage is not None:
         kwargs["company_filing_sufficient_count"] = round(company_filing_coverage * promoted_count)
 
-    candidate_supported_ratio = _metric_float(metrics.get("candidate_supported_ratio"), 1.0 if promoted_count else 0.0)
+    candidate_supported_ratio = _metric_float(
+        metrics.get("candidate_supported_ratio"), 1.0 if promoted_count else 0.0
+    )
     exploration_supported_ratio = _metric_float(
         metrics.get("exploration_candidate_supported_ratio"),
         candidate_supported_ratio,
@@ -75,7 +78,9 @@ def _quality_gate_refresh_kwargs(metrics: dict, promoted_count: int) -> dict:
     return kwargs
 
 
-def _quality_gate_from_report(report: Any, markdown: str, parse_quality_gate_func: Callable[[str], dict]) -> dict | None:
+def _quality_gate_from_report(
+    report: Any, markdown: str, parse_quality_gate_func: Callable[[str], dict]
+) -> dict | None:
     stored_payload = getattr(report, "quality_gate_json", None)
     if stored_payload:
         try:
@@ -117,17 +122,35 @@ class ReportQueryService:
         report_repository_cls: type[ReportRepository] = ReportRepository,
         analysis_run_repository_cls: type[AnalysisRunRepository] = AnalysisRunRepository,
         parse_run_payload_func: Callable[[str | None], dict] = parse_run_payload,
-        candidate_audit_from_run_payload_func: Callable[[dict], list[dict]] = candidate_audit_from_run_payload,
-        latest_follow_up_run_for_report_func: Callable[[Any, Any, Any | None], dict | None] = latest_follow_up_run_for_report,
-        remove_low_quality_lines_func: Callable[[str], str] = remove_low_quality_investor_forum_lines,
-        append_candidate_audit_func: Callable[[str, list[dict], list[str]], str] = append_candidate_audit_if_missing,
-        sync_candidate_audit_func: Callable[[str, list[dict], list[str]], str] = sync_candidate_audit_section,
-        sanitize_candidates_func: Callable[[list[dict]], list[dict]] = sanitize_candidate_low_quality_sources,
+        candidate_audit_from_run_payload_func: Callable[
+            [dict], list[dict]
+        ] = candidate_audit_from_run_payload,
+        latest_follow_up_run_for_report_func: Callable[
+            [Any, Any, Any | None], dict | None
+        ] = latest_follow_up_run_for_report,
+        remove_low_quality_lines_func: Callable[
+            [str], str
+        ] = remove_low_quality_investor_forum_lines,
+        append_candidate_audit_func: Callable[
+            [str, list[dict], list[str]], str
+        ] = append_candidate_audit_if_missing,
+        sync_candidate_audit_func: Callable[
+            [str, list[dict], list[str]], str
+        ] = sync_candidate_audit_section,
+        sanitize_candidates_func: Callable[
+            [list[dict]], list[dict]
+        ] = sanitize_candidate_low_quality_sources,
         parse_quality_gate_func: Callable[[str], dict] = parse_quality_gate_from_markdown,
         build_quality_gate_for_request_func: Callable[..., dict] = build_quality_gate_for_request,
-        attach_quality_gate_to_report_func: Callable[[ReportResponse, dict], ReportResponse] = attach_quality_gate_to_report,
-        candidate_audit_summary_func: Callable[[list[dict], list[str]], dict] = candidate_audit_summary,
-        render_candidate_audit_markdown_func: Callable[[list[dict], list[str]], str] = render_candidate_audit_markdown,
+        attach_quality_gate_to_report_func: Callable[
+            [ReportResponse, dict], ReportResponse
+        ] = attach_quality_gate_to_report,
+        candidate_audit_summary_func: Callable[
+            [list[dict], list[str]], dict
+        ] = candidate_audit_summary,
+        render_candidate_audit_markdown_func: Callable[
+            [list[dict], list[str]], str
+        ] = render_candidate_audit_markdown,
         report_tickers_func: Callable[[Any], list[str]] = report_tickers,
         settings_provider: Callable[[], Any] = get_settings,
     ) -> None:
@@ -153,7 +176,9 @@ class ReportQueryService:
         with self.session_scope_factory() as session:
             repository = self.report_repository_cls(session)
             latest_by_topic = getattr(repository, "latest_by_topic", None)
-            reports = latest_by_topic(limit) if callable(latest_by_topic) else repository.latest(limit)
+            reports = (
+                latest_by_topic(limit) if callable(latest_by_topic) else repository.latest(limit)
+            )
         return [
             {
                 "id": report.id,
@@ -170,7 +195,11 @@ class ReportQueryService:
         with self.session_scope_factory() as session:
             repository = self.report_repository_cls(session)
             latest_by_topic = getattr(repository, "latest_by_topic", None)
-            reports = latest_by_topic(safe_limit) if callable(latest_by_topic) else repository.latest(safe_limit)
+            reports = (
+                latest_by_topic(safe_limit)
+                if callable(latest_by_topic)
+                else repository.latest(safe_limit)
+            )
         rows = [self._quality_summary_row(report) for report in reports]
         status_counts = _count_values(rows, "status")
         blocker_count = sum(int(row.get("blocker_count") or 0) for row in rows)
@@ -200,7 +229,9 @@ class ReportQueryService:
                 "unknown_count": int(status_counts.get("unknown") or 0),
                 "blocker_count": blocker_count,
                 "warning_count": warning_count,
-                "avg_formal_confidence_min": round(sum(confidence_values) / len(confidence_values), 2)
+                "avg_formal_confidence_min": round(
+                    sum(confidence_values) / len(confidence_values), 2
+                )
                 if confidence_values
                 else None,
             },
@@ -239,7 +270,9 @@ class ReportQueryService:
                         "run_finished_at": getattr(run, "finished_at", None).isoformat()
                         if run is not None and getattr(run, "finished_at", None) is not None
                         else None,
-                        "run_payload": getattr(run, "payload_json", None) if run is not None else None,
+                        "run_payload": getattr(run, "payload_json", None)
+                        if run is not None
+                        else None,
                     }
                 )
         rows = [
@@ -249,9 +282,7 @@ class ReportQueryService:
         totals = report_observability_totals(rows)
         bottlenecks = report_observability_bottleneck_rows(rows)
         totals["bottleneck_count"] = len(bottlenecks)
-        totals["highest_bottleneck_score"] = (
-            bottlenecks[0]["score"] if bottlenecks else 0.0
-        )
+        totals["highest_bottleneck_score"] = bottlenecks[0]["score"] if bottlenecks else 0.0
         recommendations = report_observability_recommendations(rows, totals, bottlenecks)
         totals["recommendation_count"] = len(recommendations)
         status = report_observability_status(rows, totals)
@@ -279,7 +310,9 @@ class ReportQueryService:
             run_repository = self.analysis_run_repository_cls(session)
             run = run_repository.get_by_report_id(report_id)
             run_payload = self.parse_run_payload_func(run.payload_json if run is not None else None)
-            candidates = self.sanitize_candidates_func(self.candidate_audit_from_run_payload_func(run_payload))
+            candidates = self.sanitize_candidates_func(
+                self.candidate_audit_from_run_payload_func(run_payload)
+            )
             auto_follow_up = self.latest_follow_up_run_for_report_func(
                 run_repository,
                 report,
@@ -287,8 +320,12 @@ class ReportQueryService:
             )
         promoted_tickers = self.report_tickers_func(report)
         markdown = self.remove_low_quality_lines_func(report.markdown)
-        request = request_from_report_record(report.topic, promoted_tickers, run.payload_json if run is not None else None)
-        parsed_quality_gate = _quality_gate_from_report(report, markdown, self.parse_quality_gate_func)
+        request = request_from_report_record(
+            report.topic, promoted_tickers, run.payload_json if run is not None else None
+        )
+        parsed_quality_gate = _quality_gate_from_report(
+            report, markdown, self.parse_quality_gate_func
+        )
         quality_gate = self._refresh_quality_gate(request, parsed_quality_gate)
         if quality_gate:
             markdown = self._attach_quality_gate(markdown, report, quality_gate)
@@ -301,7 +338,9 @@ class ReportQueryService:
             "markdown": self.sync_candidate_audit_func(markdown, candidates, promoted_tickers),
             "quality_gate": quality_gate,
             "request": request.model_dump(mode="json"),
-            "workflow": run_payload.get("workflow") if isinstance(run_payload.get("workflow"), dict) else None,
+            "workflow": run_payload.get("workflow")
+            if isinstance(run_payload.get("workflow"), dict)
+            else None,
             "auto_follow_up": auto_follow_up,
             "candidate_whitelist": candidates,
             "candidate_audit": {
@@ -319,7 +358,9 @@ class ReportQueryService:
                 raise ReportQueryNotFound("report not found")
             run = self.analysis_run_repository_cls(session).get_by_report_id(report_id)
             run_payload = self.parse_run_payload_func(run.payload_json if run is not None else None)
-            candidates = self.sanitize_candidates_func(self.candidate_audit_from_run_payload_func(run_payload))
+            candidates = self.sanitize_candidates_func(
+                self.candidate_audit_from_run_payload_func(run_payload)
+            )
         promoted_tickers = self.report_tickers_func(report)
         return {
             "report_id": report_id,
@@ -348,7 +389,10 @@ class ReportQueryService:
             return parsed_quality_gate
 
     def _attach_quality_gate(self, markdown: str, report: Any, quality_gate: dict) -> str:
-        response_payload: dict[str, Any] = {"title": getattr(report, "title", ""), "markdown": markdown}
+        response_payload: dict[str, Any] = {
+            "title": getattr(report, "title", ""),
+            "markdown": markdown,
+        }
         generated_at = getattr(report, "generated_at", None)
         if generated_at is not None:
             response_payload["generated_at"] = generated_at

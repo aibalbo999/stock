@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 from typing import Any
 
 from app.db.session import session_scope
-from app.services.persistence import AnalysisRunRepository
+from app.services.analysis_run_repository import AnalysisRunRepository
 
 
 class TaskCancelledError(RuntimeError):

@@ -35,7 +35,7 @@ from app.services.task_cancellation import (
 )
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
-from app.tasks import after_close_report_update, report_generation
+from app.tasks import after_close_report_update, maintenance_cleanup, report_generation
 from app.tasks.celery_app import celery_app
 from app.tasks.data_operations import (
     cancellable_ingestion_pipeline,
@@ -256,6 +256,18 @@ def _run_generate_report_payload(payload: dict, *, task_id: str | None = None) -
     )
 
 
+def _run_maintenance_cleanup_payload(payload: dict | None, *, task_id: str | None = None) -> dict:
+    return maintenance_cleanup.run_maintenance_cleanup_payload(
+        payload,
+        task_id=task_id,
+        session_scope_factory=session_scope,
+        analysis_run_repository_cls=AnalysisRunRepository,
+        api_services_factory=_api_services_for_tasks,
+        stale_running_before_func=_maintenance_stale_running_before,
+        payload_datetime_func=_payload_datetime,
+    )
+
+
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
 def discovered_report_task(self, payload: dict) -> dict:
     init_db()
@@ -331,51 +343,7 @@ def data_operation_task(self, payload: dict) -> dict:
 def maintenance_cleanup_task(self, payload: dict | None = None) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
-    cleanup_payload = payload or {}
-    with session_scope() as session:
-        run = AnalysisRunRepository(session).start(
-            "celery_maintenance_cleanup",
-            {
-                "task": "maintenance_cleanup",
-                "payload": cleanup_payload,
-                "celery_task_id": task_id,
-            },
-        )
-        run_id = run.id
-    try:
-        result = (
-            _api_services_for_tasks()
-            .data_operations_api()
-            .maintenance_cleanup(
-                failed_runs=bool(cleanup_payload.get("failed_runs", False)),
-                orphan_report_refs=bool(cleanup_payload.get("orphan_report_refs", True)),
-                latest_reports_only=bool(cleanup_payload.get("latest_reports_only", True)),
-                stale_running_before=_maintenance_stale_running_before(cleanup_payload),
-                runs_before=_payload_datetime(cleanup_payload, "runs_before"),
-                reports_before=_payload_datetime(cleanup_payload, "reports_before"),
-            )
-        )
-        with session_scope() as session:
-            repository = AnalysisRunRepository(session)
-            repository.update_payload(
-                run_id,
-                {
-                    "task": "maintenance_cleanup",
-                    "payload": cleanup_payload,
-                    "celery_task_id": task_id,
-                    "result": result,
-                },
-            )
-            repository.mark_success(run_id, report_id=None)
-        return {
-            "task_id": task_id,
-            "run_id": run_id,
-            "result": result,
-        }
-    except Exception as exc:
-        with session_scope() as session:
-            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
-        raise
+    return _run_maintenance_cleanup_payload(payload, task_id=task_id)
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.report_follow_up_task")

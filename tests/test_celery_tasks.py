@@ -6,7 +6,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.models.schemas import ReportRequest, ReportResponse
-from app.tasks import after_close_report_update, data_operations, report_generation, tasks
+from app.tasks import (
+    after_close_report_update,
+    data_operations,
+    maintenance_cleanup,
+    report_generation,
+    tasks,
+)
 from app.tasks.tasks import build_run_payload
 
 
@@ -105,7 +111,10 @@ def test_generate_report_workflow_lives_outside_celery_tasks() -> None:
     tasks_source = Path("app/tasks/tasks.py").read_text()
     helper_source = Path("app/tasks/report_generation.py").read_text()
 
-    assert "from app.tasks import after_close_report_update, report_generation" in tasks_source
+    assert (
+        "from app.tasks import after_close_report_update, maintenance_cleanup, report_generation"
+        in tasks_source
+    )
     assert "def run_generate_report_payload(" in helper_source
     assert "def _run_generate_report_payload(" in tasks_source
     assert "workflow.start_step(" not in tasks_source
@@ -116,6 +125,23 @@ def test_generate_report_workflow_lives_outside_celery_tasks() -> None:
         tasks.GENERATE_REPORT_PRE_REFRESH_OPERATION == "celery.generate_report.pre_report_refresh"
     )
     assert callable(report_generation.run_generate_report_payload)
+
+
+def test_maintenance_cleanup_logic_lives_outside_celery_tasks() -> None:
+    tasks_source = Path("app/tasks/tasks.py").read_text()
+    helper_source = Path("app/tasks/maintenance_cleanup.py").read_text()
+
+    assert (
+        "from app.tasks import after_close_report_update, maintenance_cleanup, report_generation"
+        in tasks_source
+    )
+    assert "def run_maintenance_cleanup_payload(" in helper_source
+    assert "def _run_maintenance_cleanup_payload(" in tasks_source
+    assert "celery_maintenance_cleanup" in helper_source
+    assert ".data_operations_api()" not in tasks_source
+    assert ".maintenance_cleanup(" not in tasks_source
+    assert ".maintenance_cleanup(" in helper_source
+    assert callable(maintenance_cleanup.run_maintenance_cleanup_payload)
 
 
 def test_after_close_report_update_task_refreshes_latest_report_and_reruns(

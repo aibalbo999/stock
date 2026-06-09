@@ -24,6 +24,7 @@ def report_retention_status() -> dict:
     celery_app_source = _read_text(root / "app" / "tasks" / "celery_app.py")
     tasks_source = _read_text(root / "app" / "tasks" / "tasks.py")
     report_generation_task_source = _read_text(root / "app" / "tasks" / "report_generation.py")
+    maintenance_cleanup_task_source = _read_text(root / "app" / "tasks" / "maintenance_cleanup.py")
     task_exports_source = _read_text(root / "app" / "api" / "task_exports.py")
     task_queue_status_source = _read_text(root / "app" / "services" / "status_task_queue.py")
     schedule_ui_source = _read_text(root / "app" / "ui" / "system_settings_schedule.py")
@@ -168,8 +169,9 @@ def report_retention_status() -> dict:
         "scheduled_cleanup_task_registered": (
             'name="app.tasks.tasks.maintenance_cleanup_task"' in tasks_source
             and "def maintenance_cleanup_task(" in tasks_source
-            and ".data_operations_api()" in tasks_source
-            and ".maintenance_cleanup(" in tasks_source
+            and "def _run_maintenance_cleanup_payload(" in tasks_source
+            and ".data_operations_api()" in maintenance_cleanup_task_source
+            and ".maintenance_cleanup(" in maintenance_cleanup_task_source
         ),
         "scheduled_cleanup_beat_registered": (
             '"daily-maintenance-cleanup"' in celery_app_source
@@ -209,6 +211,7 @@ def report_retention_status() -> dict:
             "app/tasks/celery_app.py",
             "app/tasks/tasks.py",
             "app/tasks/report_generation.py",
+            "app/tasks/maintenance_cleanup.py",
             "app/api/task_exports.py",
             "app/services/status_task_queue.py",
             "app/ui/system_settings_maintenance.py",

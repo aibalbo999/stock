@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.core.config import get_settings
 from app.core.time import utc_now_naive
 from app.db.session import session_scope
+from app.services.llm_model_routing_policy import configured_text_model_order
 from app.services.persistence import LLMUsageRepository
 
 NON_REQUEST_ATTEMPT_OUTCOMES = {
@@ -100,7 +101,7 @@ class LLMQuotaGovernanceService:
             0.0,
             float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0) or 0.0),
         )
-        model_order = self._model_order(settings)
+        model_order = configured_text_model_order(settings)
         usage_records = self._usage_records(window["start_utc_naive"])
         usage_by_model = self._usage_by_model(usage_records)
         quota_health_by_model = self._quota_health_by_model(
@@ -422,19 +423,6 @@ class LLMQuotaGovernanceService:
                         ),
                     )
         return health
-
-    @staticmethod
-    def _model_order(settings: Any) -> list[str]:
-        models = [str(getattr(settings, "primary_llm_model", "") or "").strip()]
-        models.extend(
-            model.strip()
-            for model in str(getattr(settings, "llm_fallback_models", "") or "").split(",")
-            if model.strip()
-        )
-        local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-        if local_model:
-            models.append(local_model)
-        return list(dict.fromkeys(model for model in models if model))
 
     def _quota_window(self, settings: Any) -> dict:
         timezone_name = str(getattr(settings, "llm_quota_window_timezone", "") or "America/Los_Angeles")

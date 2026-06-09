@@ -6,15 +6,17 @@ from app.services.llm_quota import (
     normalize_model_name,
     parse_model_budget_map,
 )
-
-SMART_FIRST_FLASH_MODELS = (
-    "gemini-3.5-flash",
-    "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
+from app.services.llm_model_routing_policy import (
+    HIGH_QUOTA_TEXT_FALLBACK_MODEL,
+    SMART_FIRST_FLASH_MODELS,
+    configured_text_model_order,
+    effective_fallback_models,
+    llm_model_provider as _llm_model_provider,
+    report_route_media_or_live_models,
+    split_config_values as _split_config_values,
 )
-HIGH_QUOTA_TEXT_FALLBACK_MODEL = "gemma-4-31b-it"
-REPORT_ROUTE_MEDIA_MODEL_MARKERS = ("imagen", "live")
+
+_llm_effective_fallback_models = effective_fallback_models
 
 
 def _llm_fallback_readiness(fallback_models: list[str], provider_keys: dict) -> list[dict]:
@@ -32,44 +34,11 @@ def _llm_fallback_readiness(fallback_models: list[str], provider_keys: dict) -> 
     return rows
 
 
-def _llm_model_provider(model: str) -> str:
-    normalized = str(model or "").strip().lower()
-    if normalized.startswith(("gemini", "gemma")) or normalized.startswith("google/"):
-        return "gemini"
-    if normalized.startswith("anthropic/") or normalized.startswith("claude"):
-        return "anthropic"
-    if normalized.startswith("openai/") or normalized.startswith("gpt-"):
-        return "openai"
-    if normalized.startswith(("ollama/", "lm_studio/", "local/")):
-        return "local"
-    return "unknown"
-
-
-def _llm_effective_fallback_models(settings) -> list[str]:
-    models = [
-        model.strip()
-        for model in str(settings.llm_fallback_models or "").split(",")
-        if model.strip()
-    ]
-    provider = str(getattr(settings, "llm_provider", "") or "").lower().replace("-", "_")
-    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-    if provider == "litellm" and local_model:
-        models.append(local_model)
-    primary = str(getattr(settings, "primary_llm_model", "") or "").strip()
-    return list(dict.fromkeys(model for model in models if model and model != primary))
-
-
 def _llm_quota_routing_status(settings) -> dict:
     primary_model = str(getattr(settings, "primary_llm_model", "") or "").strip()
     fallback_models = _split_config_values(str(getattr(settings, "llm_fallback_models", "") or ""))
     local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-    model_order = list(
-        dict.fromkeys(
-            model
-            for model in [primary_model, *fallback_models, local_model]
-            if str(model or "").strip()
-        )
-    )
+    model_order = configured_text_model_order(settings)
     normalized_order = [normalize_model_name(model) for model in model_order]
     smart_order = [normalize_model_name(model) for model in SMART_FIRST_FLASH_MODELS]
     high_quota_model_key = normalize_model_name(HIGH_QUOTA_TEXT_FALLBACK_MODEL)
@@ -116,11 +85,10 @@ def _llm_quota_routing_status(settings) -> dict:
     cooldown_seconds = max(0.0, float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)))
     quota_timezone = str(getattr(settings, "llm_quota_window_timezone", "") or "").strip()
     quota_warning_ratio = _safe_warning_ratio(getattr(settings, "llm_quota_warning_ratio", 0.8))
-    media_or_live_models = [
-        model
-        for model in model_order
-        if any(marker in normalize_model_name(model) for marker in REPORT_ROUTE_MEDIA_MODEL_MARKERS)
-    ]
+    media_or_live_models = report_route_media_or_live_models(
+        model_order,
+        normalize_model_name,
+    )
     embedding_model_key = normalize_model_name(getattr(settings, "rag_embedding_model", ""))
     checks = {
         "primary_model_preserved": normalized_order[:1] == smart_order[:1],
@@ -181,11 +149,6 @@ def _llm_quota_routing_status(settings) -> dict:
         "readiness_checks": checks,
         "failed_checks": failed_checks,
     }
-
-
-def _split_config_values(value: str) -> list[str]:
-    return [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
-
 
 def _safe_warning_ratio(value: object) -> float:
     try:

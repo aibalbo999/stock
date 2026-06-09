@@ -3,6 +3,11 @@ from pathlib import Path
 from app.core.config import Settings
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
 from app.services.llm_quota import parse_model_budget_map
+from app.services.llm_model_routing_policy import (
+    configured_text_model_order,
+    effective_fallback_models,
+    llm_model_provider,
+)
 from app.services.status_llm import (
     _llm_fallback_readiness,
     _llm_model_provider,
@@ -14,6 +19,8 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
     status = service_status_snapshot
     service_status_source = Path("app/services/service_status.py").read_text()
     status_llm_source = Path("app/services/status_llm.py").read_text()
+    routing_policy_source = Path("app/services/llm_model_routing_policy.py").read_text()
+    quota_source = Path("app/services/llm_quota.py").read_text()
 
     assert status["gemini"]["retryable_http_statuses"] == sorted(RETRYABLE_HTTP_STATUSES)
     assert status["gemini"]["max_retries_per_key"] == DEFAULT_MAX_RETRIES_PER_KEY
@@ -25,6 +32,13 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
     assert "from app.services.status_llm import (" in service_status_source
     assert "def _llm_quota_routing_status(" not in service_status_source
     assert "def _llm_quota_routing_status(" in status_llm_source
+    assert "def configured_text_model_order(" in routing_policy_source
+    assert "def effective_fallback_models(" in routing_policy_source
+    assert "def llm_model_provider(" in routing_policy_source
+    assert "def _llm_effective_fallback_models(" not in status_llm_source
+    assert "def _llm_model_provider(" not in status_llm_source
+    assert "configured_text_model_order(settings)" in status_llm_source
+    assert "configured_text_model_order(settings)" in quota_source
     assert status["llm_quota_routing"]["strategy"] == "smartest_first_then_budget_degrade"
     assert status["llm_quota_routing"]["model_order"][:4] == [
         "gemini-3.5-flash",
@@ -209,6 +223,7 @@ def test_llm_quota_routing_status_requires_smart_first_order_and_reference_budge
 
 
 def test_llm_model_provider_classifies_fallback_models() -> None:
+    assert _llm_model_provider is llm_model_provider
     assert _llm_model_provider("gemini-2.5-flash") == "gemini"
     assert _llm_model_provider("gemini/gemini-2.5-flash") == "gemini"
     assert _llm_model_provider("claude-3-5-haiku") == "anthropic"
@@ -218,6 +233,32 @@ def test_llm_model_provider_classifies_fallback_models() -> None:
     assert _llm_model_provider("gemma-4-31b-it") == "gemini"
     assert _llm_model_provider("ollama/gemma3:27b") == "local"
     assert _llm_model_provider("custom/provider") == "unknown"
+
+
+def test_llm_model_routing_policy_builds_shared_order_and_fallbacks() -> None:
+    settings = Settings(
+        _env_file=None,
+        llm_provider="litellm",
+        primary_llm_model="gemini-3.5-flash",
+        llm_fallback_models="gemini-2.5-flash,gemini-2.5-flash,gemma-4-31b-it",
+        local_llm_model="gemini-2.5-flash-lite",
+    )
+
+    assert _llm_model_provider is llm_model_provider
+    assert _llm_fallback_readiness(["gemini-2.5-flash"], {"gemini": True}) == [
+        {"model": "gemini-2.5-flash", "provider": "gemini", "key_configured": True}
+    ]
+    assert effective_fallback_models(settings) == [
+        "gemini-2.5-flash",
+        "gemma-4-31b-it",
+        "gemini-2.5-flash-lite",
+    ]
+    assert configured_text_model_order(settings) == [
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+        "gemma-4-31b-it",
+        "gemini-2.5-flash-lite",
+    ]
 
 
 def test_llm_fallback_readiness_requires_matching_provider_key() -> None:

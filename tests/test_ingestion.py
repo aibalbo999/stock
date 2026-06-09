@@ -8,6 +8,7 @@ from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.models.schemas import MarketSnapshot, ReportRequest
 from app.services import ingestion as ingestion_module
+from app.services import ingestion_company_filing_cache
 from app.services import ingestion_documents
 from app.services.ingestion import (
     IngestionPipeline,
@@ -49,6 +50,25 @@ def test_ingestion_company_filing_fetch_sequence_is_split_from_pipeline() -> Non
     assert "retry_after_source_error" not in ingestion_source
     assert "official_company_website" not in ingestion_source
     assert "official_web_search" not in ingestion_source
+
+
+def test_ingestion_company_filing_cache_helpers_are_split_from_pipeline() -> None:
+    ingestion_source = Path("app/services/ingestion.py").read_text()
+    cache_source = Path("app/services/ingestion_company_filing_cache.py").read_text()
+
+    assert (
+        IngestionPipeline._company_name_from_cached_evidence
+        is ingestion_company_filing_cache.company_name_from_cached_evidence
+    )
+    assert (
+        IngestionPipeline._cached_company_filings_by_ticker
+        is ingestion_company_filing_cache.cached_company_filings_by_ticker
+    )
+    assert "def company_name_from_cached_evidence(" in cache_source
+    assert "def cached_company_filings_by_ticker(" in cache_source
+    assert "select(NewsArticle.entity_matches_json)" not in ingestion_source
+    assert "latest_by_tickers(tickers" not in ingestion_source
+    assert "is_high_quality_company_filing(" not in ingestion_source
 
 
 def test_ingestion_market_refresh_helpers_are_split_from_pipeline() -> None:
@@ -460,6 +480,13 @@ def test_ingest_company_filings_reports_per_ticker_gaps(monkeypatch) -> None:
     )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
     monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.CompanyFilingRepository",
+        FakeCompanyFilingRepository,
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.session_scope", fake_session_scope
+    )
+    monkeypatch.setattr(
         CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
     )
     monkeypatch.setattr(
@@ -563,6 +590,13 @@ def test_ingest_company_filings_counts_cached_official_documents(monkeypatch) ->
     )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
     monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.CompanyFilingRepository",
+        FakeCompanyFilingRepository,
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.session_scope", fake_session_scope
+    )
+    monkeypatch.setattr(
         CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
     )
 
@@ -662,6 +696,13 @@ def test_ingest_company_filings_focuses_missing_recommended_type_after_cached_an
     )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
     monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.CompanyFilingRepository",
+        FakeCompanyFilingRepository,
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.session_scope", fake_session_scope
+    )
+    monkeypatch.setattr(
         CompanyFilingFetcher,
         "fetch_mops_annual_report_documents",
         fake_fetch_mops_annual_report_documents,
@@ -758,6 +799,13 @@ def test_ingest_company_filings_broadens_when_targeted_type_has_no_results(monke
         "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
     )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.CompanyFilingRepository",
+        FakeCompanyFilingRepository,
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.session_scope", fake_session_scope
+    )
     monkeypatch.setattr(
         CompanyFilingFetcher, "fetch_discovery_documents", fake_fetch_discovery_documents
     )
@@ -875,6 +923,13 @@ def test_ingest_company_filings_uses_web_search_when_news_discovery_is_empty(mon
         "app.services.ingestion.CompanyFilingRepository", FakeCompanyFilingRepository
     )
     monkeypatch.setattr("app.services.ingestion.session_scope", fake_session_scope)
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.CompanyFilingRepository",
+        FakeCompanyFilingRepository,
+    )
+    monkeypatch.setattr(
+        "app.services.ingestion_company_filing_cache.session_scope", fake_session_scope
+    )
     monkeypatch.setattr(
         IngestionPipeline, "_company_name_from_cached_evidence", staticmethod(lambda ticker: "川湖")
     )

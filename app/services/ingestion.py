@@ -2,22 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-import json
 from datetime import date, timedelta
 
-from sqlalchemy import select
-
 from app.core.time import today_taipei
-from app.data_sources.company_filing_discovery import (
-    REQUIRED_CORE_DOCUMENT_TYPES,
-    is_high_quality_company_filing,
-)
+from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
 )
 from app.data_sources.market import MarketDataClient
 from app.data_sources.news import NewsFetcher, NewsSourceStore
-from app.db.models import NewsArticle
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
 from app.rag.vector_store import VectorStore
@@ -67,6 +60,10 @@ from app.services.ingestion_documents import (
     stale_market_source_count as _stale_market_source_count,
 )
 from app.services.news_repository import NewsRepository
+from app.services.ingestion_company_filing_cache import (
+    cached_company_filings_by_ticker,
+    company_name_from_cached_evidence,
+)
 from app.services.ingestion_company_filings import fetch_company_filing_ticker_documents
 from app.services.ingestion_market import (
     refresh_financial_metric_history,
@@ -666,51 +663,8 @@ class IngestionPipeline:
             "source": "MOPS annual report direct discovery",
         }
 
-    @staticmethod
-    def _company_name_from_cached_evidence(ticker: str) -> str:
-        try:
-            with session_scope() as session:
-                rows = session.scalars(
-                    select(NewsArticle.entity_matches_json)
-                    .where(NewsArticle.entity_matches_json.like(f"%{ticker}%"))
-                    .limit(50)
-                )
-                names = []
-                for raw in rows:
-                    for match in json.loads(raw or "[]"):
-                        if str(match.get("ticker") or "") == ticker and match.get("name"):
-                            names.append(str(match["name"]))
-                if names:
-                    return max(set(names), key=names.count)
-        except Exception:
-            return ""
-        return ""
-
-    @staticmethod
-    def _cached_company_filings_by_ticker(
-        tickers: list[str],
-        limit_per_ticker: int = 8,
-    ) -> dict[str, list]:
-        if not tickers:
-            return {}
-        cached: dict[str, list] = {ticker: [] for ticker in tickers}
-        try:
-            with session_scope() as session:
-                repository = CompanyFilingRepository(session)
-                latest_by_tickers = getattr(repository, "latest_by_tickers", None)
-                if latest_by_tickers is None:
-                    return cached
-                documents = latest_by_tickers(tickers, limit_per_ticker=limit_per_ticker)
-        except Exception:
-            return cached
-        for document in documents:
-            ticker = str(getattr(document, "ticker", "") or "")
-            if ticker not in cached:
-                continue
-            company_name = str(getattr(document, "company_name", "") or "")
-            if is_high_quality_company_filing(document, ticker, company_name):
-                cached[ticker].append(document)
-        return cached
+    _company_name_from_cached_evidence = staticmethod(company_name_from_cached_evidence)
+    _cached_company_filings_by_ticker = staticmethod(cached_company_filings_by_ticker)
 
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
         self._check_cancelled()

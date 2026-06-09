@@ -186,13 +186,22 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
         "monitoring": "持續觀測",
         "optional_review": "選配審視",
     }
-    actions = progress.get("next_actions") or []
+    cost_profile_labels = {
+        "code_or_config": "程式/設定",
+        "free_local_available": "本機免費可驗證",
+        "free_local_or_external": "本機或外部",
+        "local_dependency": "本機依賴",
+        "quota_or_external": "額度/外部",
+        "paid_external": "付費外部",
+    }
+    actions = progress.get("prioritized_next_actions") or progress.get("next_actions") or []
     if not actions and isinstance(progress.get("primary_next_action"), dict):
         actions = [progress["primary_next_action"]]
     return [
         {
             "主題": action.get("domain_label") or "-",
             "能力": action.get("label") or action.get("capability") or "-",
+            "優先分數": action.get("priority_score") or "-",
             "狀態": action.get("status") or "-",
             "能力狀態": action.get("capability_status") or action.get("status") or "-",
             "本機": "可用" if action.get("locally_available") else "-",
@@ -200,8 +209,14 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
                 str(action.get("action_type")),
                 action.get("action_type") or "-",
             ),
+            "成本/額度": cost_profile_labels.get(
+                str(action.get("cost_profile")),
+                action.get("cost_profile") or "-",
+            ),
             "是否選配": "是" if action.get("optional") else "否",
             "是否外部": "是" if action.get("external") else "否",
+            "決策": action.get("decision") or "-",
+            "優先理由": action.get("priority_reason") or "-",
             "建議": action.get("next_action") or "-",
         }
         for action in actions

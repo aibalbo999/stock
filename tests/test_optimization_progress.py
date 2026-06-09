@@ -146,6 +146,55 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert progress["local_auto_defaults"]["local_action_available_count"] == 3
 
 
+def test_optimization_progress_prioritizes_high_roi_next_actions() -> None:
+    status = _ready_status()
+    status["upgrade_capability_matrix"]["architecture"]["background_task_queue"] = {
+        "status": "degraded",
+        "detail": "worker offline",
+    }
+    status["upgrade_capability_matrix"]["ai_rag"]["visual_rag"] = {
+        "status": "not_configured",
+        "detail": "vision-capable model not configured",
+    }
+    status["upgrade_capability_matrix"]["ai_rag"]["neo4j_import"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_structured_api_fallback"
+    ] = {
+        "status": "not_configured",
+        "detail": "paid external API not configured",
+    }
+    status["local_dependency_auto_defaults"] = {
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            }
+        ]
+    }
+
+    progress = optimization_progress_status(status)
+    prioritized = progress["prioritized_next_actions"]
+
+    assert prioritized[0]["capability"] == "background_task_queue"
+    assert prioritized[0]["priority_band"] == "blocking"
+    assert prioritized[0]["priority_score"] == 100
+    assert progress["primary_next_action"]["capability"] == "background_task_queue"
+
+    positions = {action["capability"]: index for index, action in enumerate(prioritized)}
+    assert positions["neo4j_import"] < positions["visual_rag"]
+    assert positions["visual_rag"] < positions["company_filing_structured_api_fallback"]
+    assert prioritized[positions["neo4j_import"]]["cost_profile"] == "free_local_available"
+    assert prioritized[positions["visual_rag"]]["cost_profile"] == "quota_or_external"
+    assert prioritized[positions["company_filing_structured_api_fallback"]][
+        "cost_profile"
+    ] == "paid_external"
+
+
 def test_optimization_progress_ui_rows_summarize_domains_and_actions() -> None:
     status = _ready_status()
     status["upgrade_capability_matrix"]["data_business_logic"][
@@ -164,5 +213,8 @@ def test_optimization_progress_ui_rows_summarize_domains_and_actions() -> None:
 
     assert action_rows[0]["能力"] == "公司文件結構化 API 備援"
     assert action_rows[0]["類型"] == "付費外部 API"
+    assert action_rows[0]["成本/額度"] == "付費外部"
+    assert action_rows[0]["優先分數"] == 30
+    assert action_rows[0]["決策"]
     assert action_rows[0]["是否選配"] == "是"
     assert action_rows[0]["是否外部"] == "是"

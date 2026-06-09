@@ -178,6 +178,9 @@ def external_deployment_readiness_rows(
                 "部署決策": external_deployment_readiness_decision(item),
                 "啟用分類": enablement["group_label"],
                 "免費驗證": enablement["free_validation_label"],
+                "免費驗證指令": external_deployment_command_summary(
+                    enablement["free_validation_commands"]
+                ),
                 "成本/額度": enablement["cost_label"],
                 "建議路徑": enablement["recommended_path"],
                 "本機動作": local_action["state"],
@@ -327,6 +330,7 @@ def external_deployment_pending_gap_rows(
                 "free_local_available": enablement["free_local_available"],
                 "free_validation_available": enablement["free_validation_available"],
                 "free_validation_label": enablement["free_validation_label"],
+                "free_validation_commands": enablement["free_validation_commands"],
                 "paid_service_required": enablement["paid_service_required"],
                 "local_action_state": local_action["state"],
                 "local_action_command": local_action["command"],
@@ -353,6 +357,9 @@ def external_deployment_pending_gap_display_rows(
             "部署決策": row["decision"],
             "啟用分類": row["enablement_label"],
             "免費驗證": row["free_validation_label"],
+            "免費驗證指令": external_deployment_command_summary(
+                row["free_validation_commands"]
+            ),
             "本機動作": row["local_action_state"],
             "本機指令": row["local_action_command"],
             "成本/額度": row["cost_label"],
@@ -422,7 +429,10 @@ def external_deployment_enablement_profile(item: dict) -> dict:
     metadata = EXTERNAL_ENABLEMENT_METADATA.get(key, {})
     free_local_available = bool(metadata.get("free_local_available"))
     paid_service_required = bool(metadata.get("paid_service_required"))
-    free_validation = _external_free_validation_profile(item)
+    free_validation = _external_free_validation_profile(
+        item,
+        free_local_available=free_local_available,
+    )
     return {
         "group": str(metadata.get("group") or "external_configuration"),
         "group_label": str(metadata.get("group_label") or "需外部設定"),
@@ -446,12 +456,19 @@ def external_deployment_enablement_profile(item: dict) -> dict:
     }
 
 
-def _external_free_validation_profile(item: dict) -> dict:
+def _external_free_validation_profile(
+    item: dict,
+    *,
+    free_local_available: bool = False,
+) -> dict:
     if (
         str(item.get("area") or ""),
         str(item.get("capability") or ""),
     ) != ("data_business_logic", "company_filing_structured_api_fallback"):
-        return {"available": False, "label": "-", "commands": []}
+        return _external_free_local_validation_profile(
+            item,
+            free_local_available=free_local_available,
+        )
     evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
     runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else evidence
     free_validation = (
@@ -487,6 +504,33 @@ def _external_free_validation_profile(item: dict) -> dict:
     return {
         "available": available,
         "label": "sample + fixture 可驗證" if available else "-",
+        "commands": command_texts,
+    }
+
+
+def _external_free_local_validation_profile(
+    item: dict,
+    *,
+    free_local_available: bool,
+) -> dict:
+    if not free_local_available:
+        return {"available": False, "label": "-", "commands": []}
+    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
+    local_metadata = EXTERNAL_LOCAL_ACTION_METADATA.get(key) or {}
+    commands = [
+        str(local_metadata.get("verify_command") or "").strip(),
+        *external_smoke_commands_from_payload(item),
+    ]
+    command_texts: list[str] = []
+    seen: set[str] = set()
+    for command in commands:
+        if not command or command in seen:
+            continue
+        seen.add(command)
+        command_texts.append(command)
+    return {
+        "available": bool(command_texts),
+        "label": "本機 smoke 可驗證" if command_texts else "-",
         "commands": command_texts,
     }
 

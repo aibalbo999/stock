@@ -176,9 +176,22 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     ]
     assert checks["neo4j_import"]["enablement_profile"]["deployment_profile"] == "free_local"
     assert checks["neo4j_import"]["enablement_profile"]["group_label"] == "可本機免費啟用"
+    assert checks["neo4j_import"]["enablement_profile"]["free_validation_available"] is True
+    assert checks["neo4j_import"]["enablement_profile"]["free_validation_label"] == (
+        "本機 smoke 可驗證"
+    )
+    assert any(
+        "upgrade_audit.py --local-neo4j-defaults" in command
+        for command in checks["neo4j_import"]["enablement_profile"][
+            "free_validation_commands"
+        ]
+    )
     assert checks["graphrag_live_cypher_query"]["smoke_commands"][0].endswith(
         "scripts.import_supply_chain_graph_neo4j --dry-run"
     )
+    assert checks["graphrag_live_cypher_query"]["enablement_profile"][
+        "free_validation_available"
+    ] is True
     assert checks["company_filing_browser_or_proxy_fallback"]["smoke_commands"] == [
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     ]
@@ -192,6 +205,15 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert checks["company_filing_high_risk_unlocker"]["enablement_profile"][
         "free_local_available"
     ] is True
+    assert checks["company_filing_high_risk_unlocker"]["enablement_profile"][
+        "free_validation_available"
+    ] is True
+    assert any(
+        "--prefer-unlocker" in command
+        for command in checks["company_filing_high_risk_unlocker"][
+            "enablement_profile"
+        ]["free_validation_commands"]
+    )
     assert "FlareSolverr 本機免費" in checks["company_filing_high_risk_unlocker"][
         "enablement_profile"
     ]["cost_label"]

@@ -49,6 +49,8 @@ def frontend_external_deployment_readiness_status(
             and "本機依賴狀態" in ui_source
             and '"部署決策"' in readiness_service_source
             and '"啟用分類"' in readiness_service_source
+            and '"免費驗證"' in readiness_service_source
+            and '"免費驗證指令"' in readiness_service_source
             and '"成本/額度"' in readiness_service_source
             and '"建議路徑"' in readiness_service_source
             and '"本機動作"' in readiness_service_source

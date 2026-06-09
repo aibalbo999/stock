@@ -273,9 +273,13 @@ def test_monitoring_checklist_logic_lives_outside_generator() -> None:
     generator = object.__new__(ReportGenerator)
     request = ReportRequest(tickers=[])
     generator_source = Path("app/services/report_generator.py").read_text()
+    decision_views_mixin_source = Path("app/services/report_generator_decision_views.py").read_text()
     monitoring_source = Path("app/services/report_monitoring_checklist.py").read_text()
 
-    assert "report_monitoring_checklist" in generator_source
+    assert "report_monitoring_checklist" not in generator_source
+    assert "report_monitoring_checklist" in decision_views_mixin_source
+    assert "def _render_monitoring_checklist(" not in generator_source
+    assert "def _render_monitoring_checklist(" in decision_views_mixin_source
     assert "def render_monitoring_checklist(" in monitoring_source
     assert "這張表把觀察與避開名單轉成" not in generator_source
     assert generator._render_monitoring_checklist(request, [], [], [], []) == (

@@ -9,10 +9,13 @@ from app.models.schemas import (
     ValuationMetric,
 )
 from app.services import (
+    report_action_checklist,
     report_company_matrix,
     report_executive_snapshot,
     report_investment_recommendations,
+    report_monitoring_checklist,
 )
+from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
 from app.services.leading_signals import LeadingSignal
 from app.services.report_reading import REPORT_READING_SORT_NOTE
 
@@ -132,6 +135,103 @@ class ReportGeneratorDecisionViewsMixin:
             REPORT_READING_SORT_NOTE,
             lambda related_documents: self._representative_sources(related_documents, limit=2),
         )
+
+    def _render_action_checklist(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> str:
+        if not tickers:
+            return report_action_checklist.render_action_checklist([], self._downside_gate(request))
+
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
+        )
+        return report_action_checklist.render_action_checklist(
+            contexts, self._downside_gate(request)
+        )
+
+    def _render_monitoring_checklist(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> str:
+        if not tickers:
+            return report_monitoring_checklist.render_monitoring_checklist(
+                [], self._downside_gate(request)
+            )
+        downside_gate = self._downside_gate(request)
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
+        )
+        return report_monitoring_checklist.render_monitoring_checklist(contexts, downside_gate)
+
+    def _render_follow_up_actions(
+        self,
+        request: ReportRequest,
+        tickers: list[str],
+        documents: list[NewsDocument],
+        findings,
+        market_snapshots: list[MarketSnapshot],
+        monthly_revenues: list[MonthlyRevenue] | None = None,
+        financial_metrics: list[FinancialMetric] | None = None,
+        valuation_metrics: list[ValuationMetric] | None = None,
+        leading_signals: dict[str, LeadingSignal] | None = None,
+    ) -> str:
+        contexts = self._sort_decision_contexts(
+            self._decision_contexts(
+                request,
+                tickers,
+                documents,
+                findings,
+                market_snapshots,
+                monthly_revenues,
+                financial_metrics,
+                valuation_metrics,
+                leading_signals,
+            )
+        )
+        downside_gate = self._downside_gate(request)
+        for context in contexts:
+            context["downside_gate"] = downside_gate
+            context["recheck_trigger"] = self._recheck_trigger_text(context, downside_gate)
+            context["avoid_trigger"] = self._avoid_trigger_text(context, downside_gate)
+        actions = FollowUpActionPlanner().plan(request, contexts=contexts)
+        return render_follow_up_actions_markdown(actions)
 
     @staticmethod
     def _company_matrix_reminder(

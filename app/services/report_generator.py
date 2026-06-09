@@ -13,7 +13,6 @@ from app.models.schemas import (
 from app.rag.vector_store import VectorStore
 from app.services.candidate_audit import render_candidate_audit_markdown
 from app.services.entity_mapping import EntityMapper
-from app.services.followup_actions import FollowUpActionPlanner, render_follow_up_actions_markdown
 from app.services.llm_client import LLMClient, LLMResult
 from app.services.llm_analysis import LLMSupplementValidator
 from app.services.leading_signals import LeadingSignal
@@ -31,7 +30,6 @@ from app.services.report_generator_prompt_appendix import ReportGeneratorPromptA
 from app.services.report_generator_report_sections import ReportGeneratorReportSectionsMixin
 from app.services.report_integrity import ReportIntegrityError, assert_report_integrity
 from app.services import (
-    report_action_checklist,
     report_beginner_portfolio,
     report_company_analysis,
     report_credibility_check,
@@ -43,7 +41,6 @@ from app.services import (
     report_leading_signal,
     report_investment_thesis,
     report_markdown_sections,
-    report_monitoring_checklist,
 )
 from app.services.report_reading import REPORT_READING_SORT_NOTE
 from app.services.report_source_references import (
@@ -304,103 +301,6 @@ class ReportGenerator(
             valuation_metrics,
             leading_signals,
         )
-
-    def _render_action_checklist(
-        self,
-        request: ReportRequest,
-        tickers: list[str],
-        documents: list[NewsDocument],
-        findings,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-        leading_signals: dict[str, LeadingSignal] | None = None,
-    ) -> str:
-        if not tickers:
-            return report_action_checklist.render_action_checklist([], self._downside_gate(request))
-
-        contexts = self._sort_decision_contexts(
-            self._decision_contexts(
-                request,
-                tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
-            )
-        )
-        return report_action_checklist.render_action_checklist(
-            contexts, self._downside_gate(request)
-        )
-
-    def _render_monitoring_checklist(
-        self,
-        request: ReportRequest,
-        tickers: list[str],
-        documents: list[NewsDocument],
-        findings,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-        leading_signals: dict[str, LeadingSignal] | None = None,
-    ) -> str:
-        if not tickers:
-            return report_monitoring_checklist.render_monitoring_checklist(
-                [], self._downside_gate(request)
-            )
-        downside_gate = self._downside_gate(request)
-        contexts = self._sort_decision_contexts(
-            self._decision_contexts(
-                request,
-                tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
-            )
-        )
-        return report_monitoring_checklist.render_monitoring_checklist(contexts, downside_gate)
-
-    def _render_follow_up_actions(
-        self,
-        request: ReportRequest,
-        tickers: list[str],
-        documents: list[NewsDocument],
-        findings,
-        market_snapshots: list[MarketSnapshot],
-        monthly_revenues: list[MonthlyRevenue] | None = None,
-        financial_metrics: list[FinancialMetric] | None = None,
-        valuation_metrics: list[ValuationMetric] | None = None,
-        leading_signals: dict[str, LeadingSignal] | None = None,
-    ) -> str:
-        contexts = self._sort_decision_contexts(
-            self._decision_contexts(
-                request,
-                tickers,
-                documents,
-                findings,
-                market_snapshots,
-                monthly_revenues,
-                financial_metrics,
-                valuation_metrics,
-                leading_signals,
-            )
-        )
-        downside_gate = self._downside_gate(request)
-        for context in contexts:
-            context["downside_gate"] = downside_gate
-            context["recheck_trigger"] = self._recheck_trigger_text(context, downside_gate)
-            context["avoid_trigger"] = self._avoid_trigger_text(context, downside_gate)
-        actions = FollowUpActionPlanner().plan(request, contexts=contexts)
-        return render_follow_up_actions_markdown(actions)
 
     def _render_candidate_audit(self, promoted_tickers: list[str]) -> str:
         return render_candidate_audit_markdown(self.whitelist.candidate_audit(), promoted_tickers)

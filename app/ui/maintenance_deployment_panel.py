@@ -23,6 +23,8 @@ from app.ui.external_deployment_diagnostics import (
     structured_filing_api_operation_rows,
 )
 
+LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"
+
 
 def render_external_deployment_panel(
     upgrade_audit: dict,
@@ -324,7 +326,10 @@ def _render_maintenance_operations(
             error_message="維護操作執行失敗",
         )
         if isinstance(result, dict):
-            _render_maintenance_operation_result(result)
+            st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result
+    last_result = st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)
+    if isinstance(last_result, dict):
+        _render_maintenance_operation_result(last_result)
 
 
 def _render_maintenance_operation_result(result: dict) -> None:

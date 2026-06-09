@@ -92,6 +92,12 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
+            and 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"'
+            in maintenance_deployment_panel_source
+            and "st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result"
+            in maintenance_deployment_panel_source
+            and "st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)"
+            in maintenance_deployment_panel_source
             and 'f"/maintenance/operations/{selected_operation_id}/run"'
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source

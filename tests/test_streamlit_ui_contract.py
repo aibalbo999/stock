@@ -419,6 +419,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def maintenance_operation_rows(" in source
     assert "def maintenance_operation_post_run_check_rows(" in source
     assert "def maintenance_operation_post_run_diagnostic_action_ids(" in source
+    assert 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"' in source
     assert "本機依賴操作" in source
     assert "選擇維護操作" in source
     assert "後續驗證" in source
@@ -428,6 +429,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'f"/maintenance/diagnostics/{action_id}/run"' in source
     assert "confirm_maintenance_operation" in source
     assert "maintenance_run_operation" in source
+    assert "st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result" in source
+    assert "st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)" in source
     assert 'f"/maintenance/operations/{selected_operation_id}/run"' in source
     assert '"confirmed": True' in source
     assert "timeout=300" in source

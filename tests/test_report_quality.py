@@ -14,6 +14,7 @@ from app.services import report_quality_recovery
 from app.services import report_quality_llm_rules
 from app.services import report_quality_plan_rules
 from app.services import report_quality_rag_rules
+from app.services import report_quality_relevance_rules
 from app.services import report_quality_sources
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -111,6 +112,26 @@ def test_report_quality_source_rules_live_outside_quality_gate_module() -> None:
     assert "來源時間戳覆蓋率低於 50%" not in report_quality_source
     assert "資料來源發布者過於單一" not in report_quality_source
     assert "高可信來源比例偏低" not in report_quality_source
+
+
+def test_report_quality_relevance_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    relevance_rules_source = Path("app/services/report_quality_relevance_rules.py").read_text()
+
+    assert (
+        report_quality.adjusted_source_relevance_counts
+        is report_quality_relevance_rules.adjusted_source_relevance_counts
+    )
+    assert (
+        report_quality.source_relevance_notes
+        is report_quality_relevance_rules.source_relevance_notes
+    )
+    assert "def adjusted_source_relevance_counts(" in relevance_rules_source
+    assert "def source_relevance_notes(" in relevance_rules_source
+    assert "AI 拆解子題仍有" in relevance_rules_source
+    assert "主題拆解仍有" in relevance_rules_source
+    assert "is_financial_subtopic" not in report_quality_source
+    assert "AI 拆解子題仍有" not in report_quality_source
 
 
 def _quality_gate(

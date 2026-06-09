@@ -127,6 +127,9 @@ from app.data_sources.company_filing_sources import (
     fetch_twse_material_information_rows as fetch_twse_material_information_rows,
     fetch_twse_company_profiles as fetch_twse_company_profiles,
 )
+from app.data_sources.company_filing_structured_api_client import (
+    fetch_configured_structured_api_documents,
+)
 from app.data_sources.company_filing_structured_api import (
     STRUCTURED_API_PROVIDER_PROFILES as STRUCTURED_API_PROVIDER_PROFILES,
     STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS as STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS,
@@ -530,115 +533,20 @@ class CompanyFilingFetcher:
         limit: int = 3,
         document_types: list[str] | tuple[str, ...] | None = None,
     ) -> tuple[list[CompanyFilingDocument], list[dict]]:
-        if not company_filing_structured_api_configured():
-            return [], []
         settings = get_settings()
-        endpoint = str(settings.company_filing_structured_api_url or "").strip()
-        provider = str(settings.company_filing_structured_api_provider or "").strip().lower()
-        token = str(settings.company_filing_structured_api_token or "").strip()
-        configuration_check = structured_api_configuration_check(
-            provider=provider,
-            endpoint=endpoint,
-            token=token,
-            profile=structured_api_provider_profile(provider),
-        )
-        if not configuration_check["ready"]:
-            reason = str(
-                configuration_check.get("fallback_reason") or "invalid_structured_api_configuration"
-            )
-            return [], [
-                company_filing_error(
-                    endpoint or provider or "structured_api_configuration",
-                    reason,
-                    stage="structured_api_configuration",
-                )
-            ]
-        request_contract = structured_api_request_contract(
-            provider=provider,
-            endpoint=endpoint,
-            token=token,
+        result = await fetch_configured_structured_api_documents(
+            settings=settings,
             ticker=ticker,
             company_name=company_name,
             limit=limit,
             document_types=document_types,
+            fetch_response_func=company_filing_fetch_response_with_retries,
+            error_func=company_filing_error,
+            row_to_document_func=self._structured_api_row_to_document,
         )
-        try:
-            response = await company_filing_fetch_response_with_retries(
-                request_contract["method"],
-                request_contract["endpoint"],
-                timeout=max(1.0, float(settings.company_filing_structured_api_timeout_seconds)),
-                follow_redirects=True,
-                headers=request_contract["headers"],
-                params=request_contract["params"],
-            )
-            payload = response.json()
-            rows = structured_api_document_rows(payload)
-            if not rows:
-                self.last_structured_api_contract_diagnostics = (
-                    structured_api_payload_contract_diagnostics(
-                        payload,
-                        ticker=ticker,
-                        company_name=company_name,
-                        document_types=document_types,
-                    )
-                )
-                return [], [
-                    company_filing_error(
-                        endpoint,
-                        (
-                            "structured API response did not contain document rows; "
-                            f"expected one of {', '.join(STRUCTURED_API_RESPONSE_ROW_ALIASES)}"
-                        ),
-                        stage="structured_api",
-                    )
-                ]
-            documents = [
-                document
-                for row in rows
-                if (
-                    document := self._structured_api_row_to_document(
-                        row,
-                        ticker=ticker,
-                        company_name=company_name,
-                        provider=provider,
-                        document_types=document_types,
-                    )
-                )
-            ]
-            row_errors = []
-            if rows and not documents:
-                row_errors = [
-                    {
-                        "row_index": index,
-                        "category": "row_not_convertible",
-                        "required_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
-                    }
-                    for index, _row in enumerate(rows)
-                ]
-            self.last_structured_api_contract_diagnostics = (
-                structured_api_payload_contract_diagnostics(
-                    payload,
-                    ticker=ticker,
-                    company_name=company_name,
-                    document_types=document_types,
-                    documents=documents,
-                    row_errors=row_errors,
-                )
-            )
-            if rows and not documents:
-                return [], [
-                    company_filing_error(
-                        endpoint,
-                        (
-                            "structured API rows were not convertible; required fields are "
-                            f"{', '.join(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS)}"
-                        ),
-                        stage="structured_api",
-                    )
-                ]
-            return documents[: max(1, int(limit))], []
-        except Exception as exc:
-            return [], [company_filing_error(endpoint, exc, stage="structured_api")]
+        if result.contract_diagnostics is not None:
+            self.last_structured_api_contract_diagnostics = result.contract_diagnostics
+        return result.documents, result.errors
 
     def _structured_api_row_to_document(
         self,

@@ -6,6 +6,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.data_sources import company_filing_structured_api as structured_api_module
+from app.data_sources import company_filing_structured_api_client as structured_api_client
 from app.data_sources import company_filing_structured_api_documents as structured_api_documents
 from app.data_sources import company_filing_structured_api_profiles as structured_api_profiles
 from app.data_sources.company_filings import (
@@ -443,6 +444,23 @@ def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypat
     assert diagnostics["row_container"] == "documents"
     assert diagnostics["convertible_document_count"] == 1
     assert diagnostics["field_coverage"]["ticker_or_company_mention"] == 1
+
+
+def test_structured_api_live_fetch_logic_lives_outside_company_fetcher() -> None:
+    fetcher_source = Path("app/data_sources/company_filings.py").read_text()
+    client_source = Path("app/data_sources/company_filing_structured_api_client.py").read_text()
+
+    assert "from app.data_sources.company_filing_structured_api_client import" in fetcher_source
+    assert "async def fetch_configured_structured_api_documents(" in client_source
+    assert "request_contract = structured_api_request_contract(" not in fetcher_source
+    assert "structured API response did not contain document rows" not in fetcher_source
+    assert "structured API rows were not convertible" not in fetcher_source
+    assert "request_contract = structured_api_request_contract(" in client_source
+    assert "structured API response did not contain document rows" in client_source
+    assert "structured API rows were not convertible" in client_source
+    assert structured_api_client.structured_api_row_to_company_filing_document is (
+        structured_api_documents.structured_api_row_to_company_filing_document
+    )
 
 
 def test_fetch_structured_api_documents_reports_contract_error_when_response_has_no_rows(

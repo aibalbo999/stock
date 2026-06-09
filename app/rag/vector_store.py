@@ -4,10 +4,19 @@ from datetime import date
 from importlib.util import find_spec
 from time import monotonic
 from typing import Any, Callable
-from urllib.parse import urlparse
 
 from app.core.config import get_settings
 from app.models.schemas import NewsDocument
+from app.rag.chroma_vector_adapter import (
+    chroma_client,
+    collection_get,
+    collection_query,
+    collection_upsert,
+    documents_from_get_result,
+    documents_from_query_result,
+    get_or_create_collection,
+    timeout_seconds,
+)
 from app.rag.embedding_provider_config import (
     build_embedding_function,
     collection_name_for_settings,
@@ -71,21 +80,12 @@ class VectorStore:
                 self.settings,
                 embedding_function_available=embedding_function is not None,
             )
-            client = self._chroma_client(chromadb)
-            self.collection = client.get_or_create_collection(
+            self.collection = get_or_create_collection(
+                self._chroma_client(chromadb),
                 self.collection_name,
-                embedding_function=embedding_function,
-                metadata={
-                    "embedding_provider": (
-                        self.settings.rag_embedding_provider if embedding_function else "chroma_default"
-                    ),
-                    "embedding_model": (
-                        self.settings.rag_embedding_model if embedding_function else "chroma_default"
-                    ),
-                    "search": "hybrid-vector-bm25",
-                    "index_schema_version": self._index_schema_version(self.settings),
-                    "document_identity_header": "title_source_date_company_body",
-                },
+                self.settings,
+                embedding_function,
+                self._index_schema_version(self.settings),
             )
         except Exception:
             self.collection = None
@@ -233,42 +233,10 @@ class VectorStore:
             return list(self._fallback_docs)
         except Exception:
             return []
-        documents = []
-        ids = result.get("ids") or []
-        texts = result.get("documents") or []
-        metadatas = result.get("metadatas") or []
-        for idx, text in enumerate(texts):
-            metadata = (
-                metadatas[idx]
-                if idx < len(metadatas) and isinstance(metadatas[idx], dict)
-                else {}
-            )
-            documents.append(
-                self._document_from_metadata(ids[idx] if idx < len(ids) else "", text, metadata)
-            )
-        return documents
+        return documents_from_get_result(result, self._document_from_metadata)
 
     def _documents_from_query_result(self, result: dict) -> list[tuple[NewsDocument, float]]:
-        texts = (result.get("documents") or [[]])[0]
-        metadatas = (result.get("metadatas") or [[]])[0]
-        ids = (result.get("ids") or [[]])[0]
-        distances = (result.get("distances") or [[]])[0]
-        documents: list[tuple[NewsDocument, float]] = []
-        for idx, text in enumerate(texts):
-            metadata = (
-                metadatas[idx]
-                if idx < len(metadatas) and isinstance(metadatas[idx], dict)
-                else {}
-            )
-            distance = distances[idx] if idx < len(distances) and distances[idx] is not None else idx
-            score = 1.0 / (1.0 + max(0.0, float(distance)))
-            documents.append(
-                (
-                    self._document_from_metadata(ids[idx] if idx < len(ids) else "", text, metadata),
-                    score,
-                )
-            )
-        return documents
+        return documents_from_query_result(result, self._document_from_metadata)
 
     @staticmethod
     def _document_from_metadata(document_id: str, text: str, metadata: dict) -> NewsDocument:
@@ -510,22 +478,7 @@ class VectorStore:
 
     @staticmethod
     def _chroma_client(chromadb_module: Any, settings: Any | None = None) -> Any:
-        settings = settings or get_settings()
-        api_url = str(getattr(settings, "chroma_api_url", "") or "").strip()
-        if not api_url:
-            return chromadb_module.PersistentClient(path=str(settings.vector_db_path))
-        parsed = urlparse(api_url if "://" in api_url else f"http://{api_url}")
-        host = parsed.hostname or parsed.netloc or parsed.path
-        if not host:
-            raise ValueError("CHROMA_API_URL must include a host")
-        port = parsed.port or (443 if parsed.scheme == "https" else 8000)
-        return chromadb_module.HttpClient(
-            host=host,
-            port=port,
-            ssl=parsed.scheme == "https",
-            tenant=str(getattr(settings, "chroma_tenant", "default_tenant") or "default_tenant"),
-            database=str(getattr(settings, "chroma_database", "default_database") or "default_database"),
-        )
+        return chroma_client(chromadb_module, settings)
 
     @staticmethod
     def retrieval_runtime_status(settings: Any | None = None) -> dict:
@@ -570,29 +523,20 @@ class VectorStore:
         }
 
     def _collection_query(self, **kwargs):
-        return run_with_timeout(
-            lambda: self.collection.query(**kwargs),
-            self._timeout_seconds("rag_chroma_query_timeout_seconds"),
-            "chroma_query",
-        )
+        settings = getattr(self, "settings", None) or get_settings()
+        return collection_query(self.collection, settings, run_with_timeout, **kwargs)
 
     def _collection_get(self, **kwargs):
-        return run_with_timeout(
-            lambda: self.collection.get(**kwargs),
-            self._timeout_seconds("rag_chroma_get_timeout_seconds"),
-            "chroma_get",
-        )
+        settings = getattr(self, "settings", None) or get_settings()
+        return collection_get(self.collection, settings, run_with_timeout, **kwargs)
 
     def _collection_upsert(self, **kwargs) -> None:
-        run_with_timeout(
-            lambda: self.collection.upsert(**kwargs),
-            self._timeout_seconds("rag_chroma_upsert_timeout_seconds"),
-            "chroma_upsert",
-        )
+        settings = getattr(self, "settings", None) or get_settings()
+        collection_upsert(self.collection, settings, run_with_timeout, **kwargs)
 
     def _timeout_seconds(self, name: str) -> float:
         settings = getattr(self, "settings", None) or get_settings()
-        return max(0.0, float(getattr(settings, name, 0.0)))
+        return timeout_seconds(settings, name)
 
     @classmethod
     def embedding_provider_status(

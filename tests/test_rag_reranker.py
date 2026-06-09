@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.data_sources.news import NewsFetcher
-from app.rag import keyword_reranker, llm_reranker
+from app.rag import keyword_reranker, llm_reranker, reranker_status
 from app.rag.reranker import RagReranker
 from app.rag.timeouts import RagOperationTimeout
 
@@ -135,6 +135,32 @@ def test_llm_rerank_logic_lives_outside_rag_reranker() -> None:
         "排序：[1, 0]",
         2,
     )
+
+
+def test_provider_status_logic_lives_outside_rag_reranker() -> None:
+    reranker_source = Path("app/rag/reranker.py").read_text()
+    status_source = Path("app/rag/reranker_status.py").read_text()
+    status = {
+        "normalized_provider": "cohere",
+        "execution_mode": "cohere_api",
+        "quality_tier": "api_model_reranker",
+        "model": "rerank-v3.5",
+        "model_reranker_ready": True,
+        "dependency_available": True,
+        "api_key_configured": True,
+        "model_available": True,
+        "fallback_reason": None,
+    }
+
+    assert "from app.rag.reranker_status import" in reranker_source
+    assert "class RerankerStatusBuilder" in status_source
+    assert "def status_for_provider(" in status_source
+    assert "def auto_status_from_result(" in status_source
+    assert "def llm_status(" in status_source
+    assert "unsupported_provider:" not in reranker_source
+    assert "missing_dependency:sentence_transformers" not in reranker_source
+    assert "llm_reranker_disabled" not in reranker_source
+    assert RagReranker._auto_candidate_summary(status) == reranker_status.auto_candidate_summary(status)
 
 
 def test_auto_reranker_prefers_cross_encoder_model_when_available() -> None:

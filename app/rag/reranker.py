@@ -20,23 +20,22 @@ from app.rag.keyword_reranker import (
     tokenize,
 )
 from app.rag.llm_reranker import apply_llm_ranked_indexes, llm_rerank_prompt, parse_llm_ranked_indexes
+from app.rag.reranker_status import (
+    AUTO_RERANKER_PROVIDERS,
+    COHERE_RERANKER_PROVIDERS,
+    CROSS_ENCODER_RERANKER_PROVIDERS,
+    DISABLED_RERANKER_PROVIDERS,
+    KEYWORD_RERANKER_PROVIDERS,
+    LLM_RERANKER_PROVIDERS,
+    MODEL_NOT_PROVIDED as _MODEL_NOT_PROVIDED,
+    RerankerStatusBuilder,
+    auto_candidate_summary,
+)
 from app.rag.timeouts import RagOperationTimeout, run_with_timeout
 
 
 TOKEN_RE = _TOKEN_RE
 OFFICIAL_SOURCE_HINTS = _OFFICIAL_SOURCE_HINTS
-DISABLED_RERANKER_PROVIDERS = {"", "none", "disabled", "off"}
-AUTO_RERANKER_PROVIDERS = {"auto", "model_auto", "auto_model"}
-KEYWORD_RERANKER_PROVIDERS = {"keyword", "hybrid"}
-CROSS_ENCODER_RERANKER_PROVIDERS = {
-    "sentence_transformers",
-    "sentence_transformer",
-    "cross_encoder",
-    "bge",
-}
-COHERE_RERANKER_PROVIDERS = {"cohere", "cohere_rerank", "cohere_reranker"}
-LLM_RERANKER_PROVIDERS = {"llm", "llm_rerank", "llm_reranker"}
-_MODEL_NOT_PROVIDED = object()
 
 
 class RagReranker:
@@ -434,27 +433,24 @@ class RagReranker:
             return "rerank-v3.5"
         return model_name
 
+    def _status_builder(self) -> RerankerStatusBuilder:
+        return RerankerStatusBuilder(
+            configured_provider=self.provider,
+            normalized_provider=self._provider_key(),
+            model_name=self.model_name,
+            cohere_model_name=self._cohere_model_name(),
+            cohere_api_key=self.cohere_api_key,
+            llm_reranker_enabled=self.llm_reranker_enabled,
+            cross_encoder_factory_configured=self.cross_encoder_factory is not None,
+            cohere_client_factory_configured=self.cohere_client_factory is not None,
+            llm_client_factory_configured=self.llm_client_factory is not None,
+            module_available=self._module_available,
+            load_cross_encoder_model=lambda: self._run_external("cross_encoder_model_load", self._cross_encoder_model),
+            load_cohere_client=self._cohere_client,
+        )
+
     def _base_status(self, provider: str | None = None) -> dict:
-        provider = provider or self._provider_key()
-        return {
-            "provider": provider,
-            "normalized_provider": provider,
-            "model": self.model_name,
-            "available": False,
-            "execution_mode": "input_order",
-            "quality_tier": "none",
-            "is_model_reranker": False,
-            "model_reranker_ready": False,
-            "keyword_fallback": False,
-            "dependency": None,
-            "dependency_available": None,
-            "api_key_required": False,
-            "api_key_configured": None,
-            "model_checked": False,
-            "model_available": None,
-            "model_reranker_gap": None,
-            "fallback_reason": None,
-        }
+        return self._status_builder().base_status(provider or self._provider_key())
 
     def _status_for_provider(
         self,
@@ -464,88 +460,12 @@ class RagReranker:
         model: Any = _MODEL_NOT_PROVIDED,
         prediction_error: str | None = None,
     ) -> dict:
-        base = self._base_status(provider)
-        if provider in DISABLED_RERANKER_PROVIDERS:
-            return {
-                **base,
-                "execution_mode": "input_order",
-                "model_reranker_gap": "reranker_disabled",
-                "fallback_reason": "reranker_disabled",
-            }
-        if provider in AUTO_RERANKER_PROVIDERS:
-            return self._auto_status(model_checked=model_checked)
-        if provider in KEYWORD_RERANKER_PROVIDERS:
-            return {
-                **base,
-                "available": True,
-                "execution_mode": "keyword",
-                "quality_tier": "lexical_fallback",
-                "keyword_fallback": True,
-                "model_checked": False,
-                "model_reranker_gap": "keyword_provider_selected",
-                "fallback_reason": None,
-            }
-        if provider not in CROSS_ENCODER_RERANKER_PROVIDERS:
-            if provider in COHERE_RERANKER_PROVIDERS:
-                return self._cohere_status(
-                    base,
-                    model_checked=model_checked,
-                    model=model,
-                    prediction_error=prediction_error,
-                )
-            if provider in LLM_RERANKER_PROVIDERS:
-                return self._llm_status(
-                    base,
-                    model_checked=model_checked,
-                    model=model,
-                    prediction_error=prediction_error,
-                )
-            return {
-                **base,
-                "execution_mode": "input_order",
-                "model_reranker_gap": f"unsupported_provider:{provider}",
-                "fallback_reason": f"unsupported_provider:{provider}",
-            }
-
-        dependency = "sentence_transformers"
-        dependency_available = True if self.cross_encoder_factory is not None else self._module_available(dependency)
-        fallback_reason = None
-        model_available = None
-        if not self.model_name:
-            fallback_reason = "missing_model"
-            model_available = False if model_checked else None
-        elif not dependency_available:
-            fallback_reason = f"missing_dependency:{dependency}"
-            model_available = False if model_checked else None
-        elif model_checked:
-            if model is _MODEL_NOT_PROVIDED:
-                try:
-                    model = self._run_external("cross_encoder_model_load", self._cross_encoder_model)
-                except RagOperationTimeout:
-                    model = None
-                    fallback_reason = "timeout:cross_encoder_model_load"
-            model_available = model is not None
-            if model is None and fallback_reason is None:
-                fallback_reason = "model_unavailable"
-        if prediction_error:
-            fallback_reason = f"prediction_failed:{prediction_error}"
-            model_available = model is not None
-
-        available = fallback_reason is None
-        return {
-            **base,
-            "available": available,
-            "execution_mode": "cross_encoder" if available else "input_order_fallback",
-            "quality_tier": "model_reranker" if available else "model_reranker_unavailable",
-            "is_model_reranker": True,
-            "model_reranker_ready": available,
-            "dependency": dependency,
-            "dependency_available": dependency_available,
-            "model_checked": model_checked,
-            "model_available": model_available,
-            "model_reranker_gap": None if available else fallback_reason,
-            "fallback_reason": fallback_reason,
-        }
+        return self._status_builder().status_for_provider(
+            provider,
+            model_checked=model_checked,
+            model=model,
+            prediction_error=prediction_error,
+        )
 
     def _cohere_status(
         self,
@@ -555,108 +475,22 @@ class RagReranker:
         model: Any = _MODEL_NOT_PROVIDED,
         prediction_error: str | None = None,
     ) -> dict:
-        dependency = "cohere"
-        dependency_available = True if self.cohere_client_factory is not None else self._module_available(dependency)
-        api_key_configured = bool(self.cohere_api_key)
-        cohere_model_name = self._cohere_model_name()
-        fallback_reason = None
-        model_available = None
-        if not cohere_model_name:
-            fallback_reason = "missing_model"
-            model_available = False if model_checked else None
-        elif not api_key_configured:
-            fallback_reason = "missing_api_key"
-            model_available = False if model_checked else None
-        elif not dependency_available:
-            fallback_reason = f"missing_dependency:{dependency}"
-            model_available = False if model_checked else None
-        elif model_checked:
-            if model is _MODEL_NOT_PROVIDED:
-                model = self._cohere_client()
-            model_available = model is not None
-            if model is None:
-                fallback_reason = "client_unavailable"
-        if prediction_error:
-            fallback_reason = f"prediction_failed:{prediction_error}"
-            model_available = model is not None
-
-        available = fallback_reason is None
-        return {
-            **base,
-            "model": cohere_model_name,
-            "available": available,
-            "execution_mode": "cohere_api" if available else "input_order_fallback",
-            "quality_tier": "api_model_reranker" if available else "model_reranker_unavailable",
-            "is_model_reranker": True,
-            "model_reranker_ready": available,
-            "dependency": dependency,
-            "dependency_available": dependency_available,
-            "api_key_required": True,
-            "api_key_configured": api_key_configured,
-            "model_checked": model_checked,
-            "model_available": model_available,
-            "model_reranker_gap": None if available else fallback_reason,
-            "fallback_reason": fallback_reason,
-        }
-
-    def _auto_status(self, *, model_checked: bool) -> dict:
-        cross_status = self._status_for_provider("bge", model_checked=model_checked)
-        if cross_status.get("model_reranker_ready"):
-            return self._auto_status_from_result(cross_status, candidate_statuses=[cross_status])
-
-        cohere_status = self._status_for_provider("cohere", model_checked=model_checked)
-        if cohere_status.get("model_reranker_ready"):
-            return self._auto_status_from_result(
-                cohere_status,
-                candidate_statuses=[cross_status, cohere_status],
-            )
-
-        llm_status = self._status_for_provider("llm", model_checked=model_checked)
-        if llm_status.get("model_reranker_ready"):
-            return self._auto_status_from_result(
-                llm_status,
-                candidate_statuses=[cross_status, cohere_status, llm_status],
-            )
-
-        keyword_status = self._status_for_provider("keyword", model_checked=False)
-        return self._auto_status_from_result(
-            keyword_status,
-            candidate_statuses=[cross_status, cohere_status, llm_status, keyword_status],
+        return self._status_builder().cohere_status(
+            base,
+            model_checked=model_checked,
+            model=model,
+            prediction_error=prediction_error,
         )
 
+    def _auto_status(self, *, model_checked: bool) -> dict:
+        return self._status_builder().auto_status(model_checked=model_checked)
+
     def _auto_status_from_result(self, result_status: dict, *, candidate_statuses: list[dict]) -> dict:
-        provider = self._provider_key()
-        selected = str(result_status.get("normalized_provider") or result_status.get("provider") or "")
-        model_gap = result_status.get("model_reranker_gap")
-        if selected in KEYWORD_RERANKER_PROVIDERS:
-            model_gap = "auto_model_reranker_unavailable:" + ";".join(
-                str(status.get("model_reranker_gap") or status.get("fallback_reason") or "not_ready")
-                for status in candidate_statuses
-                if status.get("is_model_reranker")
-            )
-        return {
-            **result_status,
-            "provider": self.provider,
-            "normalized_provider": provider,
-            "configured_provider": self.provider,
-            "resolved_provider": selected,
-            "auto_candidates": [self._auto_candidate_summary(status) for status in candidate_statuses],
-            "model_reranker_gap": model_gap,
-        }
+        return self._status_builder().auto_status_from_result(result_status, candidate_statuses=candidate_statuses)
 
     @staticmethod
     def _auto_candidate_summary(status: dict) -> dict:
-        return {
-            "provider": status.get("normalized_provider") or status.get("provider"),
-            "execution_mode": status.get("execution_mode"),
-            "quality_tier": status.get("quality_tier"),
-            "model": status.get("model"),
-            "model_reranker_ready": status.get("model_reranker_ready"),
-            "dependency_available": status.get("dependency_available"),
-            "api_key_configured": status.get("api_key_configured"),
-            "model_available": status.get("model_available"),
-            "fallback_reason": status.get("fallback_reason"),
-        }
+        return auto_candidate_summary(status)
 
     def _llm_status(
         self,
@@ -666,61 +500,12 @@ class RagReranker:
         model: Any = _MODEL_NOT_PROVIDED,
         prediction_error: str | None = None,
     ) -> dict:
-        settings = get_settings()
-        provider = str(getattr(settings, "llm_provider", "gemini_http") or "gemini_http").lower().replace("-", "_")
-        dependency = "litellm" if provider == "litellm" else "google.genai" if provider == "google_genai" else None
-        dependency_available = (
-            None
-            if dependency is None
-            else True
-            if self.llm_client_factory is not None
-            else self._module_available(dependency)
+        return self._status_builder().llm_status(
+            base,
+            model_checked=model_checked,
+            model=model,
+            prediction_error=prediction_error,
         )
-        api_key_configured = bool(
-            self.llm_client_factory is not None
-            or getattr(settings, "gemini_api_keys", [])
-            or getattr(settings, "openai_api_key", None)
-            or getattr(settings, "anthropic_api_key", None)
-        )
-        fallback_reason = None
-        model_available = None
-        if not self.llm_reranker_enabled:
-            fallback_reason = "llm_reranker_disabled"
-            model_available = False if model_checked else None
-        elif dependency_available is False and not getattr(settings, "gemini_api_keys", []):
-            fallback_reason = f"missing_dependency:{dependency}"
-            model_available = False if model_checked else None
-        elif not api_key_configured:
-            fallback_reason = "missing_api_key"
-            model_available = False if model_checked else None
-        elif model_checked:
-            if model is _MODEL_NOT_PROVIDED:
-                model = True
-            model_available = model is not None
-            if model is None:
-                fallback_reason = "client_unavailable"
-        if prediction_error:
-            fallback_reason = f"prediction_failed:{prediction_error}"
-            model_available = model is not None
-
-        available = fallback_reason is None
-        return {
-            **base,
-            "model": str(getattr(settings, "primary_llm_model", "") or "llm"),
-            "available": available,
-            "execution_mode": "llm_rerank" if available else "input_order_fallback",
-            "quality_tier": "llm_model_reranker" if available else "model_reranker_unavailable",
-            "is_model_reranker": True,
-            "model_reranker_ready": available,
-            "dependency": dependency,
-            "dependency_available": dependency_available,
-            "api_key_required": True,
-            "api_key_configured": api_key_configured,
-            "model_checked": model_checked,
-            "model_available": model_available,
-            "model_reranker_gap": None if available else fallback_reason,
-            "fallback_reason": fallback_reason,
-        }
 
     def _llm_rerank_prompt(self, query: str, documents: list[NewsDocument]) -> str:
         return llm_rerank_prompt(query, documents, text_limit=self.text_limit)

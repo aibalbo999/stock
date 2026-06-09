@@ -1,5 +1,6 @@
 import asyncio
 from datetime import date
+from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
@@ -7,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
+from app.data_sources import company_filing_discovery_flow, company_filings
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     PDF_IMPORT_NO_TEXT_MESSAGE,
@@ -102,6 +104,20 @@ def test_company_filing_search_plan_can_target_document_type() -> None:
     assert not any("法人說明會" in query for query in plan["queries"])
 
 
+def test_company_filing_discovery_flow_lives_outside_fetcher_module() -> None:
+    fetcher_source = Path("app/data_sources/company_filings.py").read_text()
+    flow_source = Path("app/data_sources/company_filing_discovery_flow.py").read_text()
+
+    assert (
+        company_filings.fetch_company_filing_discovery_documents
+        is company_filing_discovery_flow.fetch_company_filing_discovery_documents
+    )
+    assert "async def fetch_company_filing_discovery_documents(" in flow_source
+    assert "Google News company filings" in flow_source
+    assert "await fetch_company_filing_discovery_documents(" in fetcher_source
+    assert "Google News company filings" not in fetcher_source
+
+
 def test_company_filing_client_options_use_configured_identity(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A")
     monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy.example:8080")
@@ -124,11 +140,17 @@ def test_company_filing_client_options_use_configured_identity(monkeypatch) -> N
 
 def test_company_filing_identity_rotates_by_retry_attempt(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A,UA-B")
-    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080")
+    monkeypatch.setenv(
+        "COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080"
+    )
     get_settings.cache_clear()
     try:
-        first = company_filing_identity_for_url("https://doc.twse.com.tw/server-java/t57sb01", attempt=0)
-        second = company_filing_identity_for_url("https://doc.twse.com.tw/server-java/t57sb01", attempt=1)
+        first = company_filing_identity_for_url(
+            "https://doc.twse.com.tw/server-java/t57sb01", attempt=0
+        )
+        second = company_filing_identity_for_url(
+            "https://doc.twse.com.tw/server-java/t57sb01", attempt=1
+        )
     finally:
         get_settings.cache_clear()
 
@@ -158,7 +180,9 @@ def test_company_filing_request_retries_retryable_status(monkeypatch) -> None:
     get_settings.cache_clear()
     client = FakeRetryClient()
     try:
-        response = asyncio.run(company_filing_request_with_retries(client, "GET", "https://example.com"))
+        response = asyncio.run(
+            company_filing_request_with_retries(client, "GET", "https://example.com")
+        )
     finally:
         get_settings.cache_clear()
 
@@ -191,7 +215,9 @@ def test_company_filing_fetch_response_recreates_client_with_rotating_proxy(monk
             return httpx.Response(status_code, request=request, text="ok")
 
     monkeypatch.setenv("COMPANY_FILING_USER_AGENTS", "UA-A,UA-B")
-    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080")
+    monkeypatch.setenv(
+        "COMPANY_FILING_PROXY_URLS", "http://proxy-a.example:8080,http://proxy-b.example:8080"
+    )
     monkeypatch.setenv("COMPANY_FILING_HTTP_RETRIES", "1")
     monkeypatch.setenv("COMPANY_FILING_BASE_RETRY_DELAY_SECONDS", "0")
     monkeypatch.setenv("COMPANY_FILING_MAX_RETRY_DELAY_SECONDS", "0")
@@ -233,7 +259,9 @@ def test_company_filing_request_does_not_retry_non_retryable_status(monkeypatch)
     client = FakeRetryClient()
     try:
         try:
-            asyncio.run(company_filing_request_with_retries(client, "GET", "https://example.com/missing"))
+            asyncio.run(
+                company_filing_request_with_retries(client, "GET", "https://example.com/missing")
+            )
         except httpx.HTTPStatusError:
             pass
         else:
@@ -273,7 +301,9 @@ def test_company_filing_error_classifies_http_status_and_retryability() -> None:
         response=httpx.Response(404, request=request),
     )
 
-    error = company_filing_error("https://mops.twse.com.tw/report", rate_limited, stage="mops_query")
+    error = company_filing_error(
+        "https://mops.twse.com.tw/report", rate_limited, stage="mops_query"
+    )
 
     assert error["category"] == "rate_limited"
     assert error["retryable"] is True
@@ -284,15 +314,22 @@ def test_company_filing_error_classifies_http_status_and_retryability() -> None:
 
 def test_company_filing_error_classifies_validation_and_pdf_failures() -> None:
     assert (
-        categorize_company_filing_error("company filing content does not mention the target company")
+        categorize_company_filing_error(
+            "company filing content does not mention the target company"
+        )
         == "company_mismatch"
     )
     assert (
-        categorize_company_filing_error("company filing content looks like a blocked, login, or placeholder page")
+        categorize_company_filing_error(
+            "company filing content looks like a blocked, login, or placeholder page"
+        )
         == "blocked_or_placeholder"
     )
     assert categorize_company_filing_error(PDF_IMPORT_NO_TEXT_MESSAGE) == "pdf_no_text"
-    assert categorize_company_filing_error("MOPS did not return a PDF download link") == "missing_pdf_link"
+    assert (
+        categorize_company_filing_error("MOPS did not return a PDF download link")
+        == "missing_pdf_link"
+    )
     assert categorize_company_filing_error("company website not found") == "website_not_found"
     assert (
         categorize_company_filing_error(
@@ -927,8 +964,12 @@ def test_fetched_company_filing_content_validation() -> None:
     cases = [
         NewsFetcher.from_manual_text(title="短頁", text="台積電 年報"),
         NewsFetcher.from_manual_text(title="登入頁", text="請登入後查看文件內容。" * 20),
-        NewsFetcher.from_manual_text(title="台積電 年報", text="台積電 年報 請啟用 JavaScript 後查看內容。" * 8),
-        NewsFetcher.from_manual_text(title="台積電 新聞", text="台積電 今日股價上漲，市場關注短線表現。" * 8),
+        NewsFetcher.from_manual_text(
+            title="台積電 年報", text="台積電 年報 請啟用 JavaScript 後查看內容。" * 8
+        ),
+        NewsFetcher.from_manual_text(
+            title="台積電 新聞", text="台積電 今日股價上漲，市場關注短線表現。" * 8
+        ),
     ]
     for document in cases:
         try:

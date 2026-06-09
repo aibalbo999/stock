@@ -38,6 +38,9 @@ from app.data_sources.company_filing_discovery import (
     validate_fetched_company_filing_document as validate_fetched_company_filing_document,
     validate_public_document_url as validate_public_document_url,
 )
+from app.data_sources.company_filing_discovery_flow import (
+    fetch_company_filing_discovery_documents,
+)
 from app.data_sources.company_filing_http import (
     COMPANY_FILING_RETRYABLE_HTTP_STATUSES as COMPANY_FILING_RETRYABLE_HTTP_STATUSES,
     RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES as RETRYABLE_COMPANY_FILING_ERROR_CATEGORIES,
@@ -234,7 +237,9 @@ class CompanyFilingFetcher:
         urls = []
         for query_text in cls.official_search_queries(ticker, name, limit, document_types):
             query = quote_plus(query_text)
-            urls.append(f"https://news.google.com/rss/search?q={query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant")
+            urls.append(
+                f"https://news.google.com/rss/search?q={query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            )
         return urls
 
     @classmethod
@@ -278,7 +283,9 @@ class CompanyFilingFetcher:
         document_type: str | None = None,
     ) -> CompanyFilingDocument:
         inferred_type = document_type or infer_document_type(f"{document.title}\n{document.text}")
-        digest = sha1(f"{ticker}:{inferred_type}:{document.source.url or document.id}".encode("utf-8")).hexdigest()
+        digest = sha1(
+            f"{ticker}:{inferred_type}:{document.source.url or document.id}".encode("utf-8")
+        ).hexdigest()
         return CompanyFilingDocument(
             id=digest,
             ticker=ticker,
@@ -300,7 +307,9 @@ class CompanyFilingFetcher:
         published_at: date | None = None,
         url: str | None = None,
     ) -> CompanyFilingDocument:
-        digest = sha1(f"{ticker}:{document_type}:{url or title}:{text[:80]}".encode("utf-8")).hexdigest()
+        digest = sha1(
+            f"{ticker}:{document_type}:{url or title}:{text[:80]}".encode("utf-8")
+        ).hexdigest()
         return CompanyFilingDocument(
             id=digest,
             ticker=ticker,
@@ -339,7 +348,9 @@ class CompanyFilingFetcher:
             self._store_cached_url_document(url, document)
         else:
             try:
-                validate_fetched_company_filing_document(document, ticker, company_name, document_type)
+                validate_fetched_company_filing_document(
+                    document, ticker, company_name, document_type
+                )
             except ValueError:
                 document = await self._fetch_valid_url_as_document(
                     url,
@@ -492,39 +503,17 @@ class CompanyFilingFetcher:
         limit_per_query: int = 3,
         document_types: list[str] | tuple[str, ...] | None = None,
     ) -> tuple[list[CompanyFilingDocument], list[dict]]:
-        documents: list[CompanyFilingDocument] = []
-        errors = []
-        structured_documents, structured_errors = await self.fetch_structured_api_documents(
-            ticker,
-            company_name,
-            limit=limit_per_query,
+        return await fetch_company_filing_discovery_documents(
+            ticker=ticker,
+            company_name=company_name,
+            limit_per_query=limit_per_query,
             document_types=document_types,
+            fetch_structured_api_documents_func=self.fetch_structured_api_documents,
+            fetch_material_information_documents_func=self.fetch_material_information_documents,
+            google_news_urls_func=self.google_news_urls,
+            fetch_feed_func=self.news_fetcher.fetch_feed,
+            build_news_document_func=self.from_news_document,
         )
-        documents.extend(structured_documents)
-        errors.extend(structured_errors)
-        material_documents, material_errors = await self.fetch_material_information_documents(
-            ticker,
-            company_name,
-            limit=limit_per_query,
-            document_types=document_types,
-        )
-        documents.extend(material_documents)
-        errors.extend(material_errors)
-        for url in self.google_news_urls(ticker, company_name, document_types=document_types):
-            try:
-                feed_documents = await self.news_fetcher.fetch_feed(
-                    url,
-                    publisher="Google News company filings",
-                    limit=limit_per_query,
-                )
-            except Exception as exc:
-                errors.append(company_filing_error(url, exc, stage="discovery_feed"))
-                continue
-            for document in feed_documents:
-                if not is_relevant_company_filing_result(document, ticker, company_name):
-                    continue
-                documents.append(self.from_news_document(document, ticker, company_name))
-        return documents, errors
 
     async def fetch_structured_api_documents(
         self,
@@ -592,7 +581,9 @@ class CompanyFilingFetcher:
         return await fetch_web_search_company_filing_documents(
             ticker=ticker,
             company_name=company_name,
-            queries=self.official_search_queries(ticker, company_name, document_types=document_types),
+            queries=self.official_search_queries(
+                ticker, company_name, document_types=document_types
+            ),
             limit_per_query=limit_per_query,
             document_types=document_types,
             search_func=self._duckduckgo_search,

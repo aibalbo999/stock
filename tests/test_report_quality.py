@@ -17,6 +17,7 @@ from app.services import report_quality_plan_rules
 from app.services import report_quality_rag_rules
 from app.services import report_quality_relevance_rules
 from app.services import report_quality_sources
+from app.services import report_quality_action_policy
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -166,6 +167,22 @@ def test_report_quality_market_rescue_rules_live_outside_quality_gate_module() -
     assert "月營收資料覆蓋偏低" not in report_quality_source
     assert "部分市場或財務資料使用快取救援" not in report_quality_source
     assert "部分市場或財務資料只使用官方最新救援資料" not in report_quality_source
+
+
+def test_report_quality_action_policy_lives_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    action_policy_source = Path("app/services/report_quality_action_policy.py").read_text()
+
+    assert (
+        report_quality.quality_gate_action_policy
+        is report_quality_action_policy.quality_gate_action_policy
+    )
+    assert "def quality_gate_action_policy(" in action_policy_source
+    assert "僅供研究，不允許投入資金" in action_policy_source
+    assert "需人工覆核，最多只可動用可投入資金的 25%" in action_policy_source
+    assert "quality_gate_action_policy(" in report_quality_source
+    assert "max_deployable_multiplier = 0.25" not in report_quality_source
+    assert "deployable_base = max(" not in report_quality_source
 
 
 def _quality_gate(

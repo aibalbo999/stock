@@ -13,6 +13,7 @@ from app.services.market_repositories import (
     ValuationMetricRepository,
 )
 from app.services.report_orchestrator import build_quality_recovery_plan
+from app.services.report_quality_action_policy import quality_gate_action_policy
 from app.services.report_quality_recovery import (
     quality_remediation_actions,
     should_recover_market_data_quality as should_recover_market_data_quality,
@@ -299,27 +300,12 @@ def build_report_quality_gate(
     observations.extend(llm_observations)
     warnings.extend(rag_quality_warnings(rag_status))
 
-    status = "ready"
-    if blockers:
-        status = "insufficient"
-    elif warnings:
-        status = "caution"
-    if status == "insufficient":
-        action_policy = "research_only"
-        max_deployable_multiplier = 0.0
-        action_label = "僅供研究，不允許投入資金"
-    elif status == "caution":
-        action_policy = "manual_review_required"
-        max_deployable_multiplier = 0.25
-        action_label = "需人工覆核，最多只可動用可投入資金的 25%"
-    else:
-        action_policy = "actionable"
-        max_deployable_multiplier = 1.0
-        action_label = "品質門檻通過，可進入個股研究；是否投入仍以後續投資建議與風險控管為準"
-    deployable_amount = None
-    if investor_capital is not None and cash_reserve_pct is not None:
-        deployable_base = max(0, int(investor_capital * (1 - cash_reserve_pct)))
-        deployable_amount = int(deployable_base * max_deployable_multiplier)
+    status, action_policy = quality_gate_action_policy(
+        blockers=blockers,
+        warnings=warnings,
+        investor_capital=investor_capital,
+        cash_reserve_pct=cash_reserve_pct,
+    )
     remediation_actions = quality_remediation_actions(blockers, warnings)
     quality_gate = {
         "status": status,
@@ -327,12 +313,7 @@ def build_report_quality_gate(
         "warnings": warnings,
         "observations": observations,
         "remediation_actions": remediation_actions,
-        "action_policy": {
-            "policy": action_policy,
-            "label": action_label,
-            "max_deployable_multiplier": max_deployable_multiplier,
-            "max_deployable_amount": deployable_amount,
-        },
+        "action_policy": action_policy,
         "metrics": {
             "promoted_count": promoted_count,
             "candidate_supported_ratio": formal_supported_ratio,

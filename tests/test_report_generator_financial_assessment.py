@@ -2,6 +2,9 @@ from datetime import date
 from pathlib import Path
 
 from app.models.schemas import FinancialMetric, MarketSnapshot, MonthlyRevenue, ValuationMetric
+from app.services import report_financial_assessment
+from app.services import report_financial_assessment_rules
+from app.services import report_valuation_position
 from app.services.report_financial_assessment import (
     financial_valuation_assessment,
     valuation_position_label,
@@ -286,3 +289,24 @@ def test_financial_assessment_logic_lives_outside_generator() -> None:
     assert "def financial_valuation_assessment(" in assessment_source
     assert "def valuation_position_label(" in assessment_source
     assert "財務資料為快取救援" not in generator_source
+
+
+def test_financial_assessment_rules_live_outside_public_facade() -> None:
+    assessment_source = Path("app/services/report_financial_assessment.py").read_text()
+    rules_source = Path("app/services/report_financial_assessment_rules.py").read_text()
+    valuation_source = Path("app/services/report_valuation_position.py").read_text()
+
+    assert (
+        report_financial_assessment.financial_valuation_assessment_payload
+        is report_financial_assessment_rules.financial_valuation_assessment_payload
+    )
+    assert (
+        report_financial_assessment.valuation_position_label_for
+        is report_valuation_position.valuation_position_label_for
+    )
+    assert "最新財報期間淨利為負或接近虧損" in rules_source
+    assert "營收與淨利同步大幅下滑" in rules_source
+    assert "目前估值低於同業" in valuation_source
+    assert "最新財報期間淨利為負或接近虧損" not in assessment_source
+    assert "營收與淨利同步大幅下滑" not in assessment_source
+    assert "目前估值低於同業" not in assessment_source

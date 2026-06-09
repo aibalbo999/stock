@@ -68,6 +68,50 @@ def render_schedule_tab(settings_tickers: list[str]) -> None:
         "刷新後重新產生報告",
         value=bool(schedule_config.get("rerun_report", True)),
     )
+    with st.expander("進階：自動維護清理"):
+        maintenance_cleanup_enabled = st.toggle(
+            "每日自動清理舊版報告與失效連結",
+            value=bool(schedule_config.get("maintenance_cleanup_enabled", True)),
+        )
+        maintenance_col_hour, maintenance_col_minute = st.columns(2)
+        with maintenance_col_hour:
+            maintenance_cleanup_hour = st.number_input(
+                "維護小時",
+                min_value=0,
+                max_value=23,
+                value=int(schedule_config.get("maintenance_cleanup_hour") or 3),
+                disabled=not maintenance_cleanup_enabled,
+            )
+        with maintenance_col_minute:
+            maintenance_cleanup_minute = st.number_input(
+                "維護分鐘",
+                min_value=0,
+                max_value=59,
+                value=int(schedule_config.get("maintenance_cleanup_minute") or 20),
+                disabled=not maintenance_cleanup_enabled,
+            )
+        maintenance_cleanup_stale_minutes = st.number_input(
+            "逾時任務分鐘",
+            min_value=0,
+            max_value=10080,
+            value=int(schedule_config.get("maintenance_cleanup_stale_running_minutes") or 240),
+            disabled=not maintenance_cleanup_enabled,
+        )
+        maintenance_cleanup_latest = st.toggle(
+            "只保留每個主題最新版報告",
+            value=bool(schedule_config.get("maintenance_cleanup_latest_reports_only", True)),
+            disabled=not maintenance_cleanup_enabled,
+        )
+        maintenance_cleanup_orphans = st.toggle(
+            "修復失效報告連結",
+            value=bool(schedule_config.get("maintenance_cleanup_orphan_report_refs", True)),
+            disabled=not maintenance_cleanup_enabled,
+        )
+        maintenance_cleanup_failed = st.toggle(
+            "清除失敗紀錄",
+            value=bool(schedule_config.get("maintenance_cleanup_failed_runs", False)),
+            disabled=not maintenance_cleanup_enabled,
+        )
     schedule_ready = (
         (not schedule_enabled)
         or schedule_task == "latest_report_update"
@@ -87,6 +131,13 @@ def render_schedule_tab(settings_tickers: list[str]) -> None:
             force_refresh=schedule_force_refresh,
             rerun_report=schedule_rerun_report,
             refresh_company_filings=schedule_refresh_filings,
+            maintenance_cleanup_enabled=maintenance_cleanup_enabled,
+            maintenance_cleanup_hour=int(maintenance_cleanup_hour),
+            maintenance_cleanup_minute=int(maintenance_cleanup_minute),
+            maintenance_cleanup_failed_runs=maintenance_cleanup_failed,
+            maintenance_cleanup_orphan_report_refs=maintenance_cleanup_orphans,
+            maintenance_cleanup_latest_reports_only=maintenance_cleanup_latest,
+            maintenance_cleanup_stale_running_minutes=int(maintenance_cleanup_stale_minutes),
         )
     with st.expander("進階：背景服務啟動指令"):
         st.info("使用一鍵啟動時會自動帶起背景排程服務；單獨啟動時可用以下指令。")
@@ -112,6 +163,13 @@ def _load_schedule_config() -> dict:
             "force_refresh": False,
             "refresh_company_filings": True,
             "rerun_report": True,
+            "maintenance_cleanup_enabled": True,
+            "maintenance_cleanup_hour": 3,
+            "maintenance_cleanup_minute": 20,
+            "maintenance_cleanup_failed_runs": False,
+            "maintenance_cleanup_orphan_report_refs": True,
+            "maintenance_cleanup_latest_reports_only": True,
+            "maintenance_cleanup_stale_running_minutes": 240,
             "timezone": "Asia/Taipei",
         },
         error_message="讀取排程設定失敗",
@@ -130,6 +188,13 @@ def _save_schedule_config(
     force_refresh: bool,
     rerun_report: bool,
     refresh_company_filings: bool,
+    maintenance_cleanup_enabled: bool,
+    maintenance_cleanup_hour: int,
+    maintenance_cleanup_minute: int,
+    maintenance_cleanup_failed_runs: bool,
+    maintenance_cleanup_orphan_report_refs: bool,
+    maintenance_cleanup_latest_reports_only: bool,
+    maintenance_cleanup_stale_running_minutes: int,
 ) -> None:
     payload = {
         "enabled": enabled,
@@ -143,6 +208,13 @@ def _save_schedule_config(
         "force_refresh": force_refresh,
         "rerun_report": rerun_report,
         "refresh_company_filings": refresh_company_filings,
+        "maintenance_cleanup_enabled": maintenance_cleanup_enabled,
+        "maintenance_cleanup_hour": maintenance_cleanup_hour,
+        "maintenance_cleanup_minute": maintenance_cleanup_minute,
+        "maintenance_cleanup_failed_runs": maintenance_cleanup_failed_runs,
+        "maintenance_cleanup_orphan_report_refs": maintenance_cleanup_orphan_report_refs,
+        "maintenance_cleanup_latest_reports_only": maintenance_cleanup_latest_reports_only,
+        "maintenance_cleanup_stale_running_minutes": maintenance_cleanup_stale_running_minutes,
     }
     saved = run_api_action_or_none(
         lambda: api_put("/schedule", payload),

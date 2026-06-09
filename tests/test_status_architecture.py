@@ -196,6 +196,7 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
         "discovered_report_task",
         "data_operation_task",
         "report_follow_up_task",
+        "maintenance_cleanup_task",
     ]
     assert status["task_queue"]["missing_task_exports"] == []
     assert status["task_queue"]["task_names_match_expected"] is True

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
 from app.core.async_bridge import run_async_from_sync
 from app.core.config import get_settings
-from app.core.time import today_taipei
+from app.core.time import today_taipei, utc_now_naive
 from app.db.session import init_db, session_scope
 from app.models.schemas import ReportRequest
 from app.services.candidate_revalidation import CandidateRevalidationService
@@ -105,6 +105,25 @@ def _payload_date(payload: dict, key: str) -> date | None:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
+
+
+def _payload_datetime(payload: dict, key: str) -> datetime | None:
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
+
+
+def _maintenance_stale_running_before(payload: dict) -> datetime | None:
+    explicit_before = _payload_datetime(payload, "stale_running_before")
+    if explicit_before is not None:
+        return explicit_before
+    stale_minutes = int(payload.get("stale_running_minutes") or 0)
+    if stale_minutes <= 0:
+        return None
+    return utc_now_naive() - timedelta(minutes=stale_minutes)
 
 
 async def _run_discovered_report_payload(payload: dict, *, task_id: str | None = None) -> dict:
@@ -432,6 +451,53 @@ def data_operation_task(self, payload: dict) -> dict:
             "run_id": run_id,
             "operation": operation,
             "cancelled": True,
+        }
+    except Exception as exc:
+        with session_scope() as session:
+            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
+        raise
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.maintenance_cleanup_task")
+def maintenance_cleanup_task(self, payload: dict | None = None) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    cleanup_payload = payload or {}
+    with session_scope() as session:
+        run = AnalysisRunRepository(session).start(
+            "celery_maintenance_cleanup",
+            {
+                "task": "maintenance_cleanup",
+                "payload": cleanup_payload,
+                "celery_task_id": task_id,
+            },
+        )
+        run_id = run.id
+    try:
+        result = _api_services_for_tasks().data_operations_api().maintenance_cleanup(
+            failed_runs=bool(cleanup_payload.get("failed_runs", False)),
+            orphan_report_refs=bool(cleanup_payload.get("orphan_report_refs", True)),
+            latest_reports_only=bool(cleanup_payload.get("latest_reports_only", True)),
+            stale_running_before=_maintenance_stale_running_before(cleanup_payload),
+            runs_before=_payload_datetime(cleanup_payload, "runs_before"),
+            reports_before=_payload_datetime(cleanup_payload, "reports_before"),
+        )
+        with session_scope() as session:
+            repository = AnalysisRunRepository(session)
+            repository.update_payload(
+                run_id,
+                {
+                    "task": "maintenance_cleanup",
+                    "payload": cleanup_payload,
+                    "celery_task_id": task_id,
+                    "result": result,
+                },
+            )
+            repository.mark_success(run_id, report_id=None)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "result": result,
         }
     except Exception as exc:
         with session_scope() as session:

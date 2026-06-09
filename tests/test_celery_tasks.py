@@ -274,6 +274,85 @@ def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path
     assert payload["quality_gate"] == {"status": "ready"}
 
 
+def test_maintenance_cleanup_task_records_result(monkeypatch) -> None:
+    captured = {}
+
+    class FakeRun:
+        id = 909
+        payload_json = "{}"
+        status = "running"
+        report_id = None
+        output_path = None
+        error = None
+
+    class FakeAnalysisRunRepository:
+        run = FakeRun()
+
+        def __init__(self, session):
+            self.session = session
+
+        def start(self, source, payload):
+            assert source == "celery_maintenance_cleanup"
+            captured["start_payload"] = payload
+            return self.run
+
+        def update_payload(self, run_id, payload):
+            assert run_id == self.run.id
+            self.run.payload_json = json.dumps(payload, ensure_ascii=False)
+            return self.run
+
+        def mark_success(self, run_id, report_id, output_path=None):
+            assert run_id == self.run.id
+            assert report_id is None
+            self.run.status = "success"
+            return self.run
+
+        def mark_failed(self, run_id, error):
+            self.run.status = "failed"
+            self.run.error = error
+            return self.run
+
+    class FakeDataOperations:
+        def maintenance_cleanup(self, **kwargs):
+            captured["cleanup_kwargs"] = kwargs
+            return {"old_report_files_deleted": 2, "old_report_versions_deleted": 1}
+
+    class FakeServices:
+        def data_operations_api(self):
+            return FakeDataOperations()
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr(tasks, "init_db", lambda: None)
+    monkeypatch.setattr(tasks, "session_scope", fake_session_scope)
+    monkeypatch.setattr(tasks, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(tasks, "_api_services_for_tasks", lambda: FakeServices())
+    monkeypatch.setattr(tasks, "utc_now_naive", lambda: datetime(2026, 6, 9, 4, 0, 0))
+
+    result = tasks.maintenance_cleanup_task.run(
+        {
+            "failed_runs": False,
+            "orphan_report_refs": True,
+            "latest_reports_only": True,
+            "stale_running_minutes": 240,
+        }
+    )
+
+    assert result["run_id"] == 909
+    assert result["result"] == {"old_report_files_deleted": 2, "old_report_versions_deleted": 1}
+    assert captured["cleanup_kwargs"] == {
+        "failed_runs": False,
+        "orphan_report_refs": True,
+        "latest_reports_only": True,
+        "stale_running_before": datetime(2026, 6, 9, 0, 0, 0),
+        "runs_before": None,
+        "reports_before": None,
+    }
+    assert FakeAnalysisRunRepository.run.status == "success"
+
+
 def test_write_report_file_prunes_older_files_for_same_topic(monkeypatch, tmp_path) -> None:
     old_same_topic = tmp_path / "20260606_120000_記憶體產業鏈.md"
     old_numeric_same_topic = tmp_path / "010_記憶體產業鏈.md"

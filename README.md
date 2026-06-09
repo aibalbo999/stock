@@ -382,7 +382,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 專案已設定 Streamlit 監聽 `0.0.0.0:8501`。同一個區域網路內的手機可用電腦 IP 開啟，例如 `http://192.168.1.117:8501`。
 若手機仍無法連線，請確認啟動指令沒有覆蓋成 `--server.address 127.0.0.1`，並允許 macOS 防火牆讓 Python/Streamlit 接受傳入連線。
 
-一鍵啟動會依 `data/schedule_config.json` 自動啟動 Celery worker + beat；預設排程為台北時間每日 16:30 執行 `latest_report_update`，會針對最新報告與候選名單股票強制刷新收盤後市場資料、月營收、五年財務、估值與公司公開文件，並在刷新後重新產生報告。若只需要單獨啟動背景排程，可使用：
+一鍵啟動會依 `data/schedule_config.json` 自動啟動 Celery worker + beat；預設排程為台北時間每日 16:30 執行 `latest_report_update`，會針對最新報告與候選名單股票強制刷新收盤後市場資料、月營收、五年財務、估值與公司公開文件，並在刷新後重新產生報告。Celery beat 也會依同一份設定執行 `daily-maintenance-cleanup`，預設台北時間每日 03:20 清失效報告連結、標記超過 240 分鐘的 running 任務，並套用 latest-per-topic 報告保留策略，讓報告中心與 `reports/` 長期只維持最新版。若只需要單獨啟動背景排程，可使用：
 
 ```bash
 .venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker -B --loglevel=INFO --pool=solo

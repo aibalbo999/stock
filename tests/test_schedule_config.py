@@ -1,8 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app.services.schedule_config import ScheduleConfig, ScheduleConfigStore
+from app.tasks.celery_app import build_beat_schedule
 
 
 def test_schedule_config_filters_non_whitelist_tickers() -> None:
@@ -58,3 +60,41 @@ def test_schedule_config_store_roundtrip(tmp_path: Path, monkeypatch) -> None:
         "refresh_company_filings": True,
         "news_limit": 30,
     }
+    assert store.maintenance_cleanup_payload() == {
+        "failed_runs": False,
+        "orphan_report_refs": True,
+        "latest_reports_only": True,
+        "stale_running_minutes": 240,
+    }
+
+
+def test_schedule_config_can_disable_maintenance_cleanup() -> None:
+    config = ScheduleConfig(maintenance_cleanup_enabled=False)
+
+    assert config.maintenance_cleanup_enabled is False
+    assert config.maintenance_cleanup_hour == 3
+    assert config.maintenance_cleanup_minute == 20
+
+
+def test_celery_beat_schedule_includes_daily_maintenance_cleanup() -> None:
+    store = SimpleNamespace(
+        celery_payload=lambda: {"task": "latest_report_update"},
+        maintenance_cleanup_payload=lambda: {
+            "orphan_report_refs": True,
+            "latest_reports_only": True,
+            "stale_running_minutes": 240,
+        },
+    )
+    schedule = build_beat_schedule(ScheduleConfig(), store)
+
+    assert schedule["daily-stock-report-update"]["task"] == (
+        "app.tasks.tasks.after_close_report_update_task"
+    )
+    assert schedule["daily-maintenance-cleanup"]["task"] == "app.tasks.tasks.maintenance_cleanup_task"
+    assert schedule["daily-maintenance-cleanup"]["args"] == (
+        {
+            "orphan_report_refs": True,
+            "latest_reports_only": True,
+            "stale_running_minutes": 240,
+        },
+    )

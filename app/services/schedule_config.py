@@ -22,6 +22,13 @@ class ScheduleConfig(BaseModel):
     rerun_report: bool = True
     refresh_company_filings: bool = True
     news_limit: int = Field(default=30, ge=0, le=100)
+    maintenance_cleanup_enabled: bool = True
+    maintenance_cleanup_hour: int = Field(default=3, ge=0, le=23)
+    maintenance_cleanup_minute: int = Field(default=20, ge=0, le=59)
+    maintenance_cleanup_failed_runs: bool = False
+    maintenance_cleanup_orphan_report_refs: bool = True
+    maintenance_cleanup_latest_reports_only: bool = True
+    maintenance_cleanup_stale_running_minutes: int = Field(default=240, ge=0, le=10080)
 
     @field_validator("tickers")
     @classmethod
@@ -66,4 +73,13 @@ class ScheduleConfigStore:
             "rerun_report": config.rerun_report,
             "refresh_company_filings": config.refresh_company_filings,
             "news_limit": config.news_limit,
+        }
+
+    def maintenance_cleanup_payload(self) -> dict:
+        config = self.load()
+        return {
+            "failed_runs": config.maintenance_cleanup_failed_runs,
+            "orphan_report_refs": config.maintenance_cleanup_orphan_report_refs,
+            "latest_reports_only": config.maintenance_cleanup_latest_reports_only,
+            "stale_running_minutes": config.maintenance_cleanup_stale_running_minutes,
         }

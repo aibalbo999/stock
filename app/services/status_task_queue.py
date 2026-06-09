@@ -12,6 +12,7 @@ REQUIRED_TASK_EXPORTS = (
     "discovered_report_task",
     "data_operation_task",
     "report_follow_up_task",
+    "maintenance_cleanup_task",
 )
 
 EXPECTED_TASK_NAMES = {
@@ -19,6 +20,7 @@ EXPECTED_TASK_NAMES = {
     "discovered_report_task": "app.tasks.tasks.discovered_report_task",
     "data_operation_task": "app.tasks.tasks.data_operation_task",
     "report_follow_up_task": "app.tasks.tasks.report_follow_up_task",
+    "maintenance_cleanup_task": "app.tasks.tasks.maintenance_cleanup_task",
 }
 TASK_QUEUE_REPAIR_COMMANDS = {
     "inspect_ping": ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",

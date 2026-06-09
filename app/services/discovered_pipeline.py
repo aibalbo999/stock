@@ -21,7 +21,11 @@ from app.services.discovered_pipeline_checkpoints import (
 )
 from app.services.discovered_pipeline_candidates import DiscoveredPipelineCandidateMixin
 from app.services.discovered_pipeline_results import discovered_pipeline_result_payload
-from app.services.discovered_pipeline_report_stage import DiscoveredPipelineReportStageMixin
+from app.services.discovered_pipeline_report_stage import (
+    DiscoveredAutoFollowUpInput,
+    DiscoveredPipelineReportStageMixin,
+    DiscoveredReportStageInput,
+)
 from app.services.discovered_pipeline_run_state import DiscoveredPipelineRunStateMixin
 from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
@@ -255,87 +259,48 @@ class DiscoveredTopicPipelineService(
             current_step = "report_build"
             self._check_cancelled(run_id)
             workflow.start_step(run_id, current_step, {"promoted_count": len(promoted_tickers)})
-            report_result = self.discovered_report_builder_service_factory().build_and_store_report(
-                payload=payload,
-                promoted_tickers=promoted_tickers,
-                dynamic_whitelist=dynamic_whitelist,
-                documents=documents,
-                evidence_limit=evidence_limit,
-                source_audit=source_audit,
-                discovery=discovery,
-                urls=urls,
-                ingestion_results=ingestion_results,
-                fixed_source_ingestion=fixed_source_ingestion,
-                dynamic_query_ingestion=dynamic_query_ingestion,
-                candidate_filing_ingestion=candidate_filing_ingestion,
-                company_filing_ingestion=company_filing_ingestion,
-                candidate_payload=candidate_payload,
-                market_data=market_data,
-                run_id=run_id,
+            report_stage = self._build_report_stage(
+                DiscoveredReportStageInput(
+                    run_id=run_id,
+                    payload=payload,
+                    promoted_tickers=promoted_tickers,
+                    dynamic_whitelist=dynamic_whitelist,
+                    documents=documents,
+                    evidence_limit=evidence_limit,
+                    source_audit=source_audit,
+                    discovery=discovery,
+                    urls=urls,
+                    ingestion_results=ingestion_results,
+                    fixed_source_ingestion=fixed_source_ingestion,
+                    dynamic_query_ingestion=dynamic_query_ingestion,
+                    candidate_filing_ingestion=candidate_filing_ingestion,
+                    company_filing_ingestion=company_filing_ingestion,
+                    candidate_payload=candidate_payload,
+                    market_data=market_data,
+                )
             )
             self._check_cancelled(run_id)
-            response = report_result["response"]
-            request = report_result.get("request") or payload
-            report_id = report_result["report_id"]
-            quality_gate = report_result["quality_gate"]
-            report_execution = report_result["report_execution"]
-            run_payload = report_result["run_payload"]
-            run_payload = {**run_payload, "report_id": report_id}
-            workflow.complete_step(
-                run_id,
-                current_step,
-                {
-                    "report_id": report_id,
-                    "quality_gate_status": quality_gate.get("status"),
-                    "evidence_count": report_execution.get("evidence_count"),
-                },
-            )
-            self._checkpoint_report_build_payload(run_id, workflow, run_payload)
+            workflow.complete_step(run_id, current_step, report_stage.workflow_summary())
+            self._checkpoint_report_build_payload(run_id, workflow, report_stage.run_payload)
             current_step = "auto_follow_up"
             self._check_cancelled(run_id)
-            workflow.start_step(run_id, current_step, {"report_id": report_id})
-            run_payload = workflow.complete_workflow_payload(run_id, run_payload)
-            run_record_updated = self.safe_update_run_success_func(run_id, run_payload, report_id)
-            auto_follow_up = await self.auto_follow_up_func(report_id)
-            self._check_cancelled(run_id)
-            active_report_id = (
-                matching_follow_up_rerun_report_id(
-                    auto_follow_up,
-                    report_id,
-                    source_topic=payload.topic,
-                    source_tickers=promoted_tickers,
+            workflow.start_step(run_id, current_step, {"report_id": report_stage.report_id})
+            return await self._complete_report_auto_follow_up_stage(
+                DiscoveredAutoFollowUpInput(
+                    run_id=run_id,
+                    workflow=workflow,
+                    pipeline_payload=payload,
+                    report_stage=report_stage,
+                    discovery=discovery,
+                    queries=urls,
+                    fixed_source_ingestion=fixed_source_ingestion,
+                    dynamic_query_ingestion=dynamic_query_ingestion,
+                    candidate_filing_ingestion=candidate_filing_ingestion,
+                    company_filing_ingestion=company_filing_ingestion,
+                    source_audit=source_audit,
+                    candidate_payload=candidate_payload,
+                    promoted_tickers=promoted_tickers,
                 )
-                or report_id
-            )
-            workflow.complete_step(
-                run_id,
-                current_step,
-                {
-                    "status": auto_follow_up.get("status"),
-                    "rerun_report_id": active_report_id if active_report_id != report_id else None,
-                },
-            )
-            return discovered_pipeline_result_payload(
-                run_id=run_id,
-                run_record_updated=run_record_updated,
-                report_id=report_id,
-                active_report_id=active_report_id,
-                auto_follow_up=auto_follow_up,
-                discovery=discovery,
-                queries=urls,
-                fixed_source_ingestion=fixed_source_ingestion,
-                dynamic_query_ingestion=dynamic_query_ingestion,
-                candidate_filing_ingestion=candidate_filing_ingestion,
-                company_filing_ingestion=company_filing_ingestion,
-                source_audit=source_audit,
-                candidate_whitelist=candidate_payload,
-                promoted_tickers=promoted_tickers,
-                run_payload=run_payload,
-                quality_gate=quality_gate,
-                report_execution=report_execution,
-                request=request.model_dump(mode="json"),
-                topic=request.topic,
-                report=response.model_dump(mode="json"),
             )
         except TaskCancelledError as exc:
             workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})

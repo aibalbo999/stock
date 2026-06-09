@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from app.services.discovered_pipeline_results import discovered_pipeline_result_payload
@@ -7,7 +8,151 @@ from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import matching_follow_up_rerun_report_id
 
 
+@dataclass(frozen=True)
+class DiscoveredReportStageInput:
+    run_id: int
+    payload: Any
+    promoted_tickers: list[str]
+    dynamic_whitelist: Any
+    documents: list[Any]
+    evidence_limit: int
+    source_audit: dict
+    discovery: dict
+    urls: list
+    ingestion_results: list
+    fixed_source_ingestion: dict
+    dynamic_query_ingestion: list
+    candidate_filing_ingestion: dict | None
+    company_filing_ingestion: dict
+    candidate_payload: list[dict]
+    market_data: dict
+
+
+@dataclass(frozen=True)
+class DiscoveredReportStageResult:
+    response: Any
+    request: Any
+    report_id: int
+    quality_gate: dict
+    report_execution: dict
+    run_payload: dict
+
+    def workflow_summary(self) -> dict:
+        return {
+            "report_id": self.report_id,
+            "quality_gate_status": self.quality_gate.get("status"),
+            "evidence_count": self.report_execution.get("evidence_count"),
+        }
+
+
+@dataclass(frozen=True)
+class DiscoveredAutoFollowUpInput:
+    run_id: int
+    workflow: Any
+    pipeline_payload: Any
+    report_stage: DiscoveredReportStageResult
+    discovery: dict
+    queries: list
+    fixed_source_ingestion: dict
+    dynamic_query_ingestion: list
+    candidate_filing_ingestion: dict | None
+    company_filing_ingestion: dict
+    source_audit: dict
+    candidate_payload: list[dict]
+    promoted_tickers: list[str]
+
+
 class DiscoveredPipelineReportStageMixin:
+    def _build_report_stage(
+        self,
+        stage: DiscoveredReportStageInput,
+    ) -> DiscoveredReportStageResult:
+        report_result = self.discovered_report_builder_service_factory().build_and_store_report(
+            payload=stage.payload,
+            promoted_tickers=stage.promoted_tickers,
+            dynamic_whitelist=stage.dynamic_whitelist,
+            documents=stage.documents,
+            evidence_limit=stage.evidence_limit,
+            source_audit=stage.source_audit,
+            discovery=stage.discovery,
+            urls=stage.urls,
+            ingestion_results=stage.ingestion_results,
+            fixed_source_ingestion=stage.fixed_source_ingestion,
+            dynamic_query_ingestion=stage.dynamic_query_ingestion,
+            candidate_filing_ingestion=stage.candidate_filing_ingestion,
+            company_filing_ingestion=stage.company_filing_ingestion,
+            candidate_payload=stage.candidate_payload,
+            market_data=stage.market_data,
+            run_id=stage.run_id,
+        )
+        report_id = report_result["report_id"]
+        return DiscoveredReportStageResult(
+            response=report_result["response"],
+            request=report_result.get("request") or stage.payload,
+            report_id=report_id,
+            quality_gate=report_result["quality_gate"],
+            report_execution=report_result["report_execution"],
+            run_payload={**report_result["run_payload"], "report_id": report_id},
+        )
+
+    async def _complete_report_auto_follow_up_stage(
+        self,
+        stage: DiscoveredAutoFollowUpInput,
+    ) -> dict:
+        report_stage = stage.report_stage
+        run_payload = stage.workflow.complete_workflow_payload(
+            stage.run_id,
+            report_stage.run_payload,
+        )
+        run_record_updated = self.safe_update_run_success_func(
+            stage.run_id,
+            run_payload,
+            report_stage.report_id,
+        )
+        auto_follow_up = await self.auto_follow_up_func(report_stage.report_id)
+        self._check_cancelled(stage.run_id)
+        active_report_id = (
+            matching_follow_up_rerun_report_id(
+                auto_follow_up,
+                report_stage.report_id,
+                source_topic=stage.pipeline_payload.topic,
+                source_tickers=stage.promoted_tickers,
+            )
+            or report_stage.report_id
+        )
+        stage.workflow.complete_step(
+            stage.run_id,
+            "auto_follow_up",
+            {
+                "status": auto_follow_up.get("status"),
+                "rerun_report_id": (
+                    active_report_id if active_report_id != report_stage.report_id else None
+                ),
+            },
+        )
+        return discovered_pipeline_result_payload(
+            run_id=stage.run_id,
+            run_record_updated=run_record_updated,
+            report_id=report_stage.report_id,
+            active_report_id=active_report_id,
+            auto_follow_up=auto_follow_up,
+            discovery=stage.discovery,
+            queries=stage.queries,
+            fixed_source_ingestion=stage.fixed_source_ingestion,
+            dynamic_query_ingestion=stage.dynamic_query_ingestion,
+            candidate_filing_ingestion=stage.candidate_filing_ingestion,
+            company_filing_ingestion=stage.company_filing_ingestion,
+            source_audit=stage.source_audit,
+            candidate_whitelist=stage.candidate_payload,
+            promoted_tickers=stage.promoted_tickers,
+            run_payload=run_payload,
+            quality_gate=report_stage.quality_gate,
+            report_execution=report_stage.report_execution,
+            request=report_stage.request.model_dump(mode="json"),
+            topic=report_stage.request.topic,
+            report=report_stage.response.model_dump(mode="json"),
+        )
+
     async def _resume_report_build(
         self,
         run_id: int,
@@ -161,4 +306,9 @@ class DiscoveredPipelineReportStageMixin:
         )
 
 
-__all__ = ["DiscoveredPipelineReportStageMixin"]
+__all__ = [
+    "DiscoveredAutoFollowUpInput",
+    "DiscoveredPipelineReportStageMixin",
+    "DiscoveredReportStageInput",
+    "DiscoveredReportStageResult",
+]

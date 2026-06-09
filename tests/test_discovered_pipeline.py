@@ -245,8 +245,16 @@ def test_discovered_pipeline_report_resume_stage_lives_outside_orchestrator() ->
         discovered_pipeline_report_stage.DiscoveredPipelineReportStageMixin,
     )
     assert "class DiscoveredPipelineReportStageMixin" in report_stage_source
+    assert "class DiscoveredReportStageInput" in report_stage_source
+    assert "class DiscoveredAutoFollowUpInput" in report_stage_source
+    assert "def _build_report_stage(" not in pipeline_source
+    assert "def _build_report_stage(" in report_stage_source
+    assert "def _complete_report_auto_follow_up_stage(" not in pipeline_source
+    assert "def _complete_report_auto_follow_up_stage(" in report_stage_source
     assert "def _resume_report_build(" not in pipeline_source
     assert "def _resume_report_build(" in report_stage_source
+    assert "build_and_store_report(" not in pipeline_source
+    assert "build_and_store_report(" in report_stage_source
     assert "resume requires checkpointed market_data" not in pipeline_source
     assert "resume requires checkpointed market_data" in report_stage_source
 

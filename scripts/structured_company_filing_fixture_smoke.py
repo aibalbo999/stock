@@ -203,6 +203,7 @@ def structured_company_filing_fixture_smoke_report(
         "runtime": smoke_payload.get("runtime") or {},
         "document_count": int(smoke_payload.get("document_count") or 0),
         "error_count": int(smoke_payload.get("error_count") or len(errors)),
+        "contract_diagnostics": smoke_payload.get("contract_diagnostics") or {},
         "documents": _list_value(smoke_payload, "documents"),
         "errors": errors,
         "serve_command": _display_command(serve_argv),

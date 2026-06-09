@@ -269,7 +269,40 @@ def _structured_filing_sample_contract_detail(sample_contract: dict) -> str:
     documents = int(sample_contract.get("document_count") or 0)
     errors = int(sample_contract.get("error_count") or 0)
     mode = str(sample_contract.get("mode") or "sample_json_contract")
-    return f"{mode}；raw_rows={raw_rows}；documents={documents}；errors={errors}。"
+    diagnostics = (
+        sample_contract.get("contract_diagnostics")
+        if isinstance(sample_contract.get("contract_diagnostics"), dict)
+        else {}
+    )
+    diagnostics_text = _structured_filing_contract_diagnostics_detail(diagnostics)
+    return (
+        f"{mode}；raw_rows={raw_rows}；documents={documents}；errors={errors}"
+        f"{diagnostics_text}。"
+    )
+
+
+def _structured_filing_contract_diagnostics_detail(diagnostics: dict) -> str:
+    if not diagnostics:
+        return ""
+    coverage = (
+        diagnostics.get("field_coverage")
+        if isinstance(diagnostics.get("field_coverage"), dict)
+        else {}
+    )
+    coverage_keys = (
+        "title",
+        "text",
+        "ticker_or_company_mention",
+        "requested_document_type_match",
+    )
+    coverage_text = ",".join(
+        f"{key}={coverage.get(key, 0)}" for key in coverage_keys if key in coverage
+    )
+    return (
+        f"；row_container={diagnostics.get('row_container') or '-'}"
+        f"；conversion_ratio={diagnostics.get('conversion_ratio', 0)}"
+        + (f"；coverage={coverage_text}" if coverage_text else "")
+    )
 
 
 def _structured_filing_local_fixture_status(runtime: dict) -> str:

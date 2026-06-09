@@ -9,6 +9,7 @@ from app.data_sources.company_filings import (
     company_filing_structured_api_configured,
     company_filing_structured_api_status,
     structured_api_document_rows,
+    structured_api_payload_contract_diagnostics,
     structured_api_provider_decision_matrix,
     structured_api_provider_profile,
     structured_api_provider_setup_preview,
@@ -151,6 +152,11 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["sample_contract"]["raw_row_count"] >= 1
     assert status["sample_contract"]["document_count"] >= 1
     assert status["sample_contract"]["mode"] == "sample_json_contract"
+    sample_diagnostics = status["sample_contract"]["contract_diagnostics"]
+    assert sample_diagnostics["row_container"] == "items"
+    assert sample_diagnostics["conversion_ratio"] == 1.0
+    assert sample_diagnostics["field_coverage"]["title"] >= 1
+    assert sample_diagnostics["field_coverage"]["ticker_or_company_mention"] >= 1
     assert status["fallback_reason"] is None
 
 
@@ -290,6 +296,47 @@ def test_structured_api_document_rows_accepts_common_payload_shapes() -> None:
     assert structured_api_document_rows([{"title": "C"}]) == [{"title": "C"}]
 
 
+def test_structured_api_payload_contract_diagnostics_summarizes_field_coverage() -> None:
+    payload = {
+        "documents": [
+            {
+                "headline": "2330 台積電 2026 法說會簡報",
+                "abstract": "2330 台積電 investor presentation 說明 AI/HPC 需求。",
+                "document_type": "investor_presentation",
+                "report_date": "2026-05-01",
+                "source": {"publisher": "TEJ"},
+                "file": {"url": "https://api.tej.example/2330.pdf"},
+            },
+            "bad-row",
+        ]
+    }
+
+    diagnostics = structured_api_payload_contract_diagnostics(
+        payload,
+        ticker="2330",
+        company_name="台積電",
+        document_types=["investor_presentation"],
+        documents=[object()],
+        row_errors=[],
+    )
+
+    assert diagnostics["row_container"] == "documents"
+    assert diagnostics["raw_row_count"] == 2
+    assert diagnostics["object_row_count"] == 1
+    assert diagnostics["non_object_row_count"] == 1
+    assert diagnostics["convertible_document_count"] == 1
+    assert diagnostics["conversion_ratio"] == 1.0
+    assert diagnostics["field_coverage"] == {
+        "title": 1,
+        "text": 1,
+        "url": 1,
+        "publisher": 1,
+        "published_at": 1,
+        "ticker_or_company_mention": 1,
+        "requested_document_type_match": 1,
+    }
+
+
 def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypatch) -> None:
     captured = {}
     token = "tej-" + "token"
@@ -324,8 +371,9 @@ def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypat
     )
     get_settings.cache_clear()
     try:
+        fetcher = CompanyFilingFetcher()
         documents, errors = asyncio.run(
-            CompanyFilingFetcher().fetch_structured_api_documents(
+            fetcher.fetch_structured_api_documents(
                 "2330",
                 "台積電",
                 limit=2,
@@ -346,6 +394,10 @@ def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypat
         "limit": 2,
         "document_type": "investor_presentation",
     }
+    diagnostics = fetcher.last_structured_api_contract_diagnostics
+    assert diagnostics["row_container"] == "documents"
+    assert diagnostics["convertible_document_count"] == 1
+    assert diagnostics["field_coverage"]["ticker_or_company_mention"] == 1
 
 
 def test_fetch_structured_api_documents_reports_contract_error_when_response_has_no_rows(
@@ -369,8 +421,9 @@ def test_fetch_structured_api_documents_reports_contract_error_when_response_has
     )
     get_settings.cache_clear()
     try:
+        fetcher = CompanyFilingFetcher()
         documents, errors = asyncio.run(
-            CompanyFilingFetcher().fetch_structured_api_documents("2330", "台積電")
+            fetcher.fetch_structured_api_documents("2330", "台積電")
         )
     finally:
         get_settings.cache_clear()
@@ -380,6 +433,8 @@ def test_fetch_structured_api_documents_reports_contract_error_when_response_has
     assert errors[0]["category"] == "structured_api_no_rows"
     assert errors[0]["retryable"] is False
     assert "documents, data, results" in errors[0]["error"]
+    assert fetcher.last_structured_api_contract_diagnostics["row_container"] is None
+    assert fetcher.last_structured_api_contract_diagnostics["raw_row_count"] == 0
 
 
 def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_convert(
@@ -403,8 +458,9 @@ def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_
     )
     get_settings.cache_clear()
     try:
+        fetcher = CompanyFilingFetcher()
         documents, errors = asyncio.run(
-            CompanyFilingFetcher().fetch_structured_api_documents(
+            fetcher.fetch_structured_api_documents(
                 "2330",
                 "台積電",
                 document_types=["investor_presentation"],
@@ -416,6 +472,11 @@ def test_fetch_structured_api_documents_reports_contract_error_when_rows_do_not_
     assert documents == []
     assert errors[0]["category"] == "structured_api_no_convertible_rows"
     assert "ticker_or_company_mention" in errors[0]["error"]
+    diagnostics = fetcher.last_structured_api_contract_diagnostics
+    assert diagnostics["row_container"] == "documents"
+    assert diagnostics["object_row_count"] == 1
+    assert diagnostics["convertible_document_count"] == 0
+    assert diagnostics["row_error_count"] == 1
 
 
 def test_structured_api_row_to_document_accepts_provider_alias_fields() -> None:

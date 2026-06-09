@@ -138,6 +138,7 @@ from app.data_sources.company_filing_structured_api import (
     structured_api_configuration_check as structured_api_configuration_check,
     structured_api_document_type as structured_api_document_type,
     structured_api_document_rows as structured_api_document_rows,
+    structured_api_payload_contract_diagnostics as structured_api_payload_contract_diagnostics,
     structured_api_enriched_text as structured_api_enriched_text,
     structured_api_provider_decision_matrix as structured_api_provider_decision_matrix,
     structured_api_provider_setup_preview as structured_api_provider_setup_preview,
@@ -206,6 +207,7 @@ class CompanyFilingFetcher:
     def __init__(self, cache: RedisCompanyFilingCache | None = None) -> None:
         self.news_fetcher = NewsFetcher()
         self.cache = cache or RedisCompanyFilingCache()
+        self.last_structured_api_contract_diagnostics: dict = {}
 
     @staticmethod
     def official_search_queries(
@@ -569,8 +571,17 @@ class CompanyFilingFetcher:
                 headers=request_contract["headers"],
                 params=request_contract["params"],
             )
-            rows = structured_api_document_rows(response.json())
+            payload = response.json()
+            rows = structured_api_document_rows(payload)
             if not rows:
+                self.last_structured_api_contract_diagnostics = (
+                    structured_api_payload_contract_diagnostics(
+                        payload,
+                        ticker=ticker,
+                        company_name=company_name,
+                        document_types=document_types,
+                    )
+                )
                 return [], [
                     company_filing_error(
                         endpoint,
@@ -594,6 +605,26 @@ class CompanyFilingFetcher:
                     )
                 )
             ]
+            row_errors = []
+            if rows and not documents:
+                row_errors = [
+                    {
+                        "row_index": index,
+                        "category": "row_not_convertible",
+                        "required_fields": list(STRUCTURED_API_REQUIRED_DOCUMENT_FIELDS),
+                    }
+                    for index, _row in enumerate(rows)
+                ]
+            self.last_structured_api_contract_diagnostics = (
+                structured_api_payload_contract_diagnostics(
+                    payload,
+                    ticker=ticker,
+                    company_name=company_name,
+                    document_types=document_types,
+                    documents=documents,
+                    row_errors=row_errors,
+                )
+            )
             if rows and not documents:
                 return [], [
                     company_filing_error(

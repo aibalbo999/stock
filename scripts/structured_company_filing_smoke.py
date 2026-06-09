@@ -7,7 +7,10 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from app.data_sources.company_filing_structured_api import structured_api_document_rows
+from app.data_sources.company_filing_structured_api import (
+    structured_api_document_rows,
+    structured_api_payload_contract_diagnostics,
+)
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     company_filing_structured_api_status,
@@ -72,6 +75,11 @@ async def structured_company_filing_smoke_report(
         limit=max(1, int(limit)),
         document_types=requested_types,
     )
+    contract_diagnostics = getattr(
+        selected_fetcher,
+        "last_structured_api_contract_diagnostics",
+        {},
+    ) or {}
     samples = [document_sample(document) for document in documents[:3]]
     status = "ready" if documents and not errors else "failed" if errors else "degraded"
     remediation = None
@@ -94,6 +102,7 @@ async def structured_company_filing_smoke_report(
         },
         "document_count": len(documents),
         "error_count": len(errors),
+        "contract_diagnostics": contract_diagnostics,
         "documents": samples,
         "errors": errors,
         "smoke_command": SMOKE_COMMAND,
@@ -180,6 +189,14 @@ def structured_company_filing_sample_report(
     else:
         status = "failed"
         remediation = "Sample JSON did not contain documents/data/results rows."
+    contract_diagnostics = structured_api_payload_contract_diagnostics(
+        payload,
+        ticker=ticker,
+        company_name=company_name,
+        document_types=requested_types,
+        documents=documents,
+        row_errors=row_errors,
+    )
 
     return {
         "status": status,
@@ -196,6 +213,7 @@ def structured_company_filing_sample_report(
         "raw_row_count": len(rows),
         "document_count": len(documents),
         "error_count": len(row_errors),
+        "contract_diagnostics": contract_diagnostics,
         "documents": [document_sample(document) for document in documents[: max(1, int(limit))]],
         "errors": row_errors[:10],
         "smoke_command": smoke_command,
@@ -280,6 +298,16 @@ def format_structured_company_filing_smoke(report: dict[str, Any]) -> str:
     if "document_count" in report:
         lines.append(f"- documents: {report.get('document_count', 0)}")
         lines.append(f"- errors: {report.get('error_count', 0)}")
+    diagnostics = report.get("contract_diagnostics") or {}
+    if diagnostics:
+        lines.append(f"- row container: {diagnostics.get('row_container') or '-'}")
+        lines.append(f"- conversion ratio: {diagnostics.get('conversion_ratio', 0)}")
+        field_coverage = diagnostics.get("field_coverage") or {}
+        if field_coverage:
+            lines.append(
+                "- field coverage: "
+                + ", ".join(f"{key}={value}" for key, value in field_coverage.items())
+            )
     if report.get("remediation"):
         lines.append(f"- remediation: {report['remediation']}")
     if report.get("smoke_command"):

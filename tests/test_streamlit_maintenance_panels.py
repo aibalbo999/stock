@@ -1835,6 +1835,16 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "raw_row_count": 1,
                             "document_count": 1,
                             "error_count": 0,
+                            "contract_diagnostics": {
+                                "row_container": "documents",
+                                "conversion_ratio": 1.0,
+                                "field_coverage": {
+                                    "title": 1,
+                                    "text": 1,
+                                    "ticker_or_company_mention": 1,
+                                    "requested_document_type_match": 1,
+                                },
+                            },
                         },
                         "free_validation": {
                             "sample_contract_ready": True,
@@ -1896,6 +1906,9 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert rows[4]["狀態"] == "ready"
     assert "--sample-json examples/structured_company_filing_sample.json" in rows[4]["指令"]
     assert "raw_rows=1；documents=1；errors=0" in rows[4]["說明"]
+    assert "row_container=documents" in rows[4]["說明"]
+    assert "conversion_ratio=1.0" in rows[4]["說明"]
+    assert "coverage=title=1,text=1" in rows[4]["說明"]
     assert rows[5]["狀態"] == "可執行"
     assert "structured_company_filing_fixture_smoke.py" in rows[5]["指令"]
     assert "--provider-profile tej" in rows[5]["指令"]

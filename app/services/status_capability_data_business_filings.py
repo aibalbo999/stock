@@ -4,6 +4,14 @@ from app.services.status_capability_helpers import capability as _capability
 
 
 def company_filing_capabilities(*, company_filing_status: dict) -> dict:
+    structured_api_runtime = company_filing_status.get("structured_api_runtime") or {}
+    structured_sample_contract = structured_api_runtime.get("sample_contract") or {}
+    structured_sample_diagnostics = structured_sample_contract.get("contract_diagnostics") or {}
+    structured_sample_diagnostics_ready = bool(
+        structured_sample_diagnostics.get("row_container")
+        and structured_sample_diagnostics.get("field_coverage")
+        and "conversion_ratio" in structured_sample_diagnostics
+    )
     return {
         "company_filing_fetch_hardening": _capability(
             "ready"
@@ -258,49 +266,33 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "provider": company_filing_status.get("structured_api_provider"),
                 "url_configured": company_filing_status.get("structured_api_url_configured"),
                 "token_configured": company_filing_status.get("structured_api_token_configured"),
-                "provider_profile_key": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("provider_profile_key"),
-                "request_contract": (company_filing_status.get("structured_api_runtime") or {}).get(
-                    "request_contract"
+                "provider_profile_key": structured_api_runtime.get("provider_profile_key"),
+                "request_contract": structured_api_runtime.get("request_contract"),
+                "retry_policy": structured_api_runtime.get("retry_policy"),
+                "response_row_aliases": structured_api_runtime.get("response_row_aliases"),
+                "required_document_fields": structured_api_runtime.get(
+                    "required_document_fields"
                 ),
-                "retry_policy": (company_filing_status.get("structured_api_runtime") or {}).get(
-                    "retry_policy"
+                "supported_provider_examples": structured_api_runtime.get(
+                    "supported_provider_examples"
                 ),
-                "response_row_aliases": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("response_row_aliases"),
-                "required_document_fields": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("required_document_fields"),
-                "supported_provider_examples": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("supported_provider_examples"),
-                "provider_decision_matrix": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("provider_decision_matrix"),
-                "provider_selection_hint": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("provider_selection_hint"),
-                "provider_setup_preview": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("provider_setup_preview"),
-                "local_fixture_api": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("local_fixture_api"),
-                "local_fixture_start_cli": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("local_fixture_start_cli"),
-                "local_fixture_smoke_cli": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("local_fixture_smoke_cli"),
-                "local_fixture_http_smoke_cli": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("local_fixture_http_smoke_cli"),
-                "local_fixture_provider_profile_smoke_cli": (
-                    company_filing_status.get("structured_api_runtime") or {}
-                ).get("local_fixture_provider_profile_smoke_cli"),
-                "runtime": company_filing_status.get("structured_api_runtime"),
+                "provider_decision_matrix": structured_api_runtime.get(
+                    "provider_decision_matrix"
+                ),
+                "provider_selection_hint": structured_api_runtime.get(
+                    "provider_selection_hint"
+                ),
+                "provider_setup_preview": structured_api_runtime.get("provider_setup_preview"),
+                "local_fixture_api": structured_api_runtime.get("local_fixture_api"),
+                "local_fixture_start_cli": structured_api_runtime.get("local_fixture_start_cli"),
+                "local_fixture_smoke_cli": structured_api_runtime.get("local_fixture_smoke_cli"),
+                "local_fixture_http_smoke_cli": structured_api_runtime.get(
+                    "local_fixture_http_smoke_cli"
+                ),
+                "local_fixture_provider_profile_smoke_cli": structured_api_runtime.get(
+                    "local_fixture_provider_profile_smoke_cli"
+                ),
+                "runtime": structured_api_runtime,
             },
             detail=(
                 "Optional paid/professional company filing source for investor presentations, "
@@ -309,20 +301,14 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
         ),
         "company_filing_structured_api_sample_contract": _capability(
             "ready"
-            if (company_filing_status.get("structured_api_runtime") or {}).get(
-                "sample_contract_ready"
-            )
+            if structured_api_runtime.get("sample_contract_ready")
+            and structured_sample_diagnostics_ready
             else "degraded",
             evidence={
-                "ready": (company_filing_status.get("structured_api_runtime") or {}).get(
-                    "sample_contract_ready"
-                ),
-                "smoke_cli": (company_filing_status.get("structured_api_runtime") or {}).get(
-                    "sample_contract_cli"
-                ),
-                "contract": (company_filing_status.get("structured_api_runtime") or {}).get(
-                    "sample_contract"
-                ),
+                "ready": structured_api_runtime.get("sample_contract_ready"),
+                "contract_diagnostics_ready": structured_sample_diagnostics_ready,
+                "smoke_cli": structured_api_runtime.get("sample_contract_cli"),
+                "contract": structured_sample_contract,
             },
             detail=(
                 "Offline sample contract check that keeps structured filing JSON "

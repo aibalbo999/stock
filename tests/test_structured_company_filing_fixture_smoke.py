@@ -53,6 +53,10 @@ def test_fixture_smoke_starts_fixture_runs_live_smoke_and_cleans_up(tmp_path) ->
             },
             "document_count": 1,
             "error_count": 0,
+            "contract_diagnostics": {
+                "row_container": "documents",
+                "conversion_ratio": 1.0,
+            },
             "documents": [{"title": "2330 台積電 法說會", "text_length": 128}],
             "errors": [],
         }
@@ -80,6 +84,10 @@ def test_fixture_smoke_starts_fixture_runs_live_smoke_and_cleans_up(tmp_path) ->
     assert report["fixture_started"] is True
     assert report["reused_existing_fixture"] is False
     assert report["document_count"] == 1
+    assert report["contract_diagnostics"] == {
+        "row_container": "documents",
+        "conversion_ratio": 1.0,
+    }
     assert process.terminated is True
     assert process.killed is False
     assert captured["serve_command"][1:] == [

@@ -97,12 +97,18 @@ def test_structured_company_filing_smoke_validates_sample_json_without_live_conf
     assert report["sample_path"] == str(sample_path)
     assert report["raw_row_count"] == 1
     assert report["document_count"] == 1
+    assert report["contract_diagnostics"]["row_container"] == "documents"
+    assert report["contract_diagnostics"]["conversion_ratio"] == 1.0
+    assert report["contract_diagnostics"]["field_coverage"]["title"] == 1
+    assert report["contract_diagnostics"]["field_coverage"]["text"] == 1
     assert report["documents"][0]["publisher"] == "TEJ"
     assert report["documents"][0]["published_at"] == "2026-05-01"
     assert f"--sample-json {sample_path}" in report["smoke_command"]
     formatted = smoke.format_structured_company_filing_smoke(report)
     assert "sample_json_contract" in formatted
     assert "raw rows: 1" in formatted
+    assert "row container: documents" in formatted
+    assert "conversion ratio: 1.0" in formatted
     assert smoke.smoke_exit_code(report, strict=True) == 0
 
 
@@ -130,6 +136,8 @@ def test_structured_company_filing_smoke_reports_degraded_for_bad_sample_json(
     assert report["ready"] is False
     assert report["raw_row_count"] == 1
     assert report["document_count"] == 0
+    assert report["contract_diagnostics"]["row_container"] == "documents"
+    assert report["contract_diagnostics"]["conversion_ratio"] == 0.0
     assert report["errors"][0]["category"] == "row_not_convertible"
     assert "none converted" in report["remediation"]
     assert f"--sample-json {sample_path}" in report["smoke_command"]
@@ -140,6 +148,11 @@ def test_structured_company_filing_smoke_reports_ready(monkeypatch) -> None:
     monkeypatch.setattr(smoke, "company_filing_structured_api_status", lambda: _runtime())
 
     class FakeFetcher:
+        last_structured_api_contract_diagnostics = {
+            "row_container": "documents",
+            "conversion_ratio": 1.0,
+        }
+
         async def fetch_structured_api_documents(self, **kwargs):
             self.kwargs = kwargs
             return [_document()], []
@@ -160,6 +173,10 @@ def test_structured_company_filing_smoke_reports_ready(monkeypatch) -> None:
     assert report["ready"] is True
     assert report["document_count"] == 1
     assert report["error_count"] == 0
+    assert report["contract_diagnostics"] == {
+        "row_container": "documents",
+        "conversion_ratio": 1.0,
+    }
     assert report["documents"][0]["publisher"] == "TEJ"
     assert report["documents"][0]["published_at"] == "2026-05-01"
     assert report["documents"][0]["text_length"] > 0

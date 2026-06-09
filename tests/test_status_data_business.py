@@ -304,18 +304,36 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert structured_api["evidence"]["runtime"]["sample_contract_ready"] is True
     assert structured_api["evidence"]["runtime"]["sample_contract"]["status"] == "ready"
     assert structured_api["evidence"]["runtime"]["sample_contract"]["document_count"] >= 1
+    structured_runtime_diagnostics = structured_api["evidence"]["runtime"]["sample_contract"][
+        "contract_diagnostics"
+    ]
+    assert structured_runtime_diagnostics["row_container"] in {
+        "documents",
+        "data",
+        "results",
+        "items",
+        "records",
+        "list",
+        "root_list",
+    }
+    assert structured_runtime_diagnostics["conversion_ratio"] > 0
 
     structured_sample_contract = matrix["data_business_logic"][
         "company_filing_structured_api_sample_contract"
     ]
     assert structured_sample_contract["status"] == "ready"
     assert structured_sample_contract["evidence"]["ready"] is True
+    assert structured_sample_contract["evidence"]["contract_diagnostics_ready"] is True
     assert (
         "structured_company_filing_sample.json"
         in structured_sample_contract["evidence"]["smoke_cli"]
     )
     assert structured_sample_contract["evidence"]["contract"]["status"] == "ready"
     assert structured_sample_contract["evidence"]["contract"]["document_count"] >= 1
+    assert (
+        structured_sample_contract["evidence"]["contract"]["contract_diagnostics"]
+        == structured_runtime_diagnostics
+    )
     assert matrix["data_business_logic"]["source_quality_weighting"]["status"] == "ready"
 
 

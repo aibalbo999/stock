@@ -21,6 +21,10 @@ from app.services.report_quality_runtime import (
     rag_runtime_status,
     summarize_llm_status,
 )
+from app.services.report_quality_rag_rules import (
+    normalized_rag_reranker_provider,
+    rag_quality_warnings,
+)
 from app.services.report_quality_sources import (
     LATEST_ONLY_MARKET_SOURCE_MARKER,
     STALE_MARKET_SOURCE_MARKER,
@@ -202,15 +206,7 @@ def build_report_quality_gate(
     llm_observability = (llm_status or {}).get("observability") or {}
     rag_embedding_status = rag_status.get("embedding_status") or {}
     rag_reranker_status = rag_status.get("reranker_status") or {}
-    rag_reranker_provider = (
-        str(
-            rag_reranker_status.get("normalized_provider")
-            or rag_reranker_status.get("provider")
-            or ""
-        )
-        .lower()
-        .replace("-", "_")
-    )
+    rag_reranker_provider = normalized_rag_reranker_provider(rag_reranker_status)
     rag_retrieval_status = rag_status.get("retrieval_status") or {}
     market_provider_summary = market_provider_summary or {}
     stale_market_dataset_count = (
@@ -374,40 +370,7 @@ def build_report_quality_gate(
             )
         else:
             observations.append("LLM 補充分析已完成，且仍受來源與白名單驗證約束")
-    if rag_status:
-        if rag_status.get("use_chroma") and not rag_status.get("chroma_available"):
-            warnings.append("RAG 向量庫套件不可用，檢索已退回本輪資料與關鍵字排序")
-        if (
-            rag_status.get("use_chroma")
-            and rag_embedding_status.get("custom_embedding_requested")
-            and not rag_embedding_status.get("custom_embedding_enabled")
-        ):
-            if rag_embedding_status.get("chroma_default_fallback_allowed"):
-                warnings.append(
-                    "RAG 自訂 embedding 未啟用，已退回 Chroma 預設模型，繁中檢索信心需下修"
-                )
-            else:
-                warnings.append("RAG 自訂 embedding 未啟用，已停用持久化向量庫並退回關鍵字檢索")
-        if rag_reranker_status and rag_reranker_provider in {"keyword", "hybrid"}:
-            warnings.append(
-                "RAG reranker 目前僅使用關鍵字排序，尚未啟用模型級重排序，來源排序信心需人工覆核"
-            )
-        elif (
-            rag_reranker_status
-            and rag_reranker_status.get("keyword_fallback")
-            and not rag_reranker_status.get("model_reranker_ready")
-        ):
-            warnings.append(
-                "RAG reranker auto 模式已退回關鍵字排序，模型級重排序尚未可用，來源排序信心需人工覆核"
-            )
-        elif (
-            rag_reranker_status
-            and rag_reranker_provider not in {"", "none", "disabled", "off"}
-            and not rag_reranker_status.get(
-                "model_reranker_ready", rag_reranker_status.get("available")
-            )
-        ):
-            warnings.append("RAG reranker 未啟用或推論失敗，檢索排序信心需人工覆核")
+    warnings.extend(rag_quality_warnings(rag_status))
 
     status = "ready"
     if blockers:

@@ -11,6 +11,7 @@ from app.models.schemas import (
 from app.services.llm_client import LLMResult
 from app.services import report_quality, report_quality_runtime
 from app.services import report_quality_recovery
+from app.services import report_quality_rag_rules
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -54,6 +55,18 @@ def test_report_quality_runtime_helpers_live_outside_quality_gate_module() -> No
         assert helper in runtime_source
     assert "RagReranker" not in report_quality_source
     assert "VectorStore.runtime_embedding_provider_status(" not in report_quality_source
+
+
+def test_report_quality_rag_warning_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    rag_rules_source = Path("app/services/report_quality_rag_rules.py").read_text()
+
+    assert report_quality.rag_quality_warnings is report_quality_rag_rules.rag_quality_warnings
+    assert "def rag_quality_warnings(" in rag_rules_source
+    assert "RAG reranker 目前僅使用關鍵字排序" in rag_rules_source
+    assert "RAG 自訂 embedding 未啟用" in rag_rules_source
+    assert "RAG reranker 目前僅使用關鍵字排序" not in report_quality_source
+    assert "RAG 自訂 embedding 未啟用" not in report_quality_source
 
 
 def _quality_gate(

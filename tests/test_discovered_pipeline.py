@@ -15,6 +15,7 @@ from app.services.topic_discovery import TopicDiscoveryService
 from app.services import (
     discovered_candidate_filings,
     discovered_market_payload,
+    discovered_pipeline_candidates,
     discovered_pipeline_checkpoints,
     discovered_pipeline_results,
 )
@@ -179,6 +180,29 @@ def test_discovered_pipeline_result_payload_lives_outside_pipeline_orchestrator(
     assert result["resumed_from_step"] == "report_build"
     assert '"market_history_count": run_payload' not in pipeline_source
     assert '"market_history_count": run_payload' in results_source
+
+
+def test_discovered_pipeline_candidate_revalidation_lives_outside_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    candidate_source = Path("app/services/discovered_pipeline_candidates.py").read_text()
+    candidates = [
+        {"ticker": "2330", "status": "evidence_supported"},
+        {"ticker": "1504", "status": "weak_evidence"},
+        {"ticker": "", "status": "evidence_supported"},
+    ]
+
+    assert (
+        DiscoveredTopicPipelineService._promoted_tickers_from_candidates(candidates)
+        == discovered_pipeline_candidates.DiscoveredPipelineCandidateMixin._promoted_tickers_from_candidates(
+            candidates
+        )
+        == ["2330"]
+    )
+    assert "class DiscoveredPipelineCandidateMixin" in candidate_source
+    assert "def _revalidate_candidates(" not in pipeline_source
+    assert "def _revalidate_candidates(" in candidate_source
+    assert "def _latest_company_filing_news_documents(" not in pipeline_source
+    assert "def _latest_company_filing_news_documents(" in candidate_source
 
 
 class FakeRun:

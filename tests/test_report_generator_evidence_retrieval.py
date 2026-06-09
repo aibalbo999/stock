@@ -89,6 +89,11 @@ def test_generate_includes_graphrag_reasoning_context_in_llm_prompt(monkeypatch)
     assert "3324" in captured["prompt"]
     assert "2382" in captured["prompt"]
     assert generator.last_graph_reasoning_plan["status"] == "ready"
+    assert generator.last_graph_reasoning_plan["requested_ticker_count"] == 1
+    assert generator.last_graph_reasoning_plan["covered_ticker_count"] == 1
+    assert generator.last_graph_reasoning_plan["missing_ticker_count"] == 0
+    assert generator.last_graph_reasoning_plan["path_count"] > 0
+    assert generator.last_graph_reasoning_plan["coverage_ratio"] == 1.0
 
 
 def test_retrieve_evidence_passes_target_tickers_to_vector_search(monkeypatch) -> None:

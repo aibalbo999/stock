@@ -36,6 +36,12 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         and 'summary.get("recommendations")' in report_observability_panel_source
         and "建議處理順序" in report_observability_panel_source
         and "render_report_observability_panel(report_observability_summary)" in ui_source,
+        "ui_report_observability_graphrag_metrics_enabled": (
+            "graph_reasoning_path_count" in report_observability_panel_source
+            and "graph_reasoning_coverage_ratio" in report_observability_panel_source
+            and "GraphRAG paths" in report_observability_panel_source
+            and "Graph 覆蓋率" in report_observability_panel_source
+        ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"
         ).exists()
@@ -43,6 +49,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         and "def report_observability_bottleneck_rows(" in report_observability_panel_source
         and "def report_observability_recommendation_rows("
         in report_observability_panel_source
+        and "graph_reasoning_path_count" in report_observability_panel_source
         and "def render_report_observability_panel(" in report_observability_panel_source
         and "from app.ui.report_observability_panel import render_report_observability_panel"
         in ui_source

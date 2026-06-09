@@ -479,6 +479,26 @@ class ReportQueryService:
             ),
             "graph_reasoning_status": graph_reasoning.get("status"),
             "graph_reasoning_strategy": graph_reasoning.get("strategy"),
+            "graph_reasoning_requested_ticker_count": _metric_int(
+                graph_reasoning.get("requested_ticker_count"),
+                default=0,
+            ),
+            "graph_reasoning_covered_ticker_count": _metric_int(
+                graph_reasoning.get("covered_ticker_count"),
+                default=0,
+            ),
+            "graph_reasoning_missing_ticker_count": _metric_int(
+                graph_reasoning.get("missing_ticker_count"),
+                default=0,
+            ),
+            "graph_reasoning_path_count": _metric_int(
+                graph_reasoning.get("path_count"),
+                default=0,
+            ),
+            "graph_reasoning_coverage_ratio": _metric_float(
+                graph_reasoning.get("coverage_ratio"),
+                default=0.0,
+            ),
             "graph_reasoning_max_paths": graph_reasoning.get("max_paths"),
             "trace_captured": bool(llm_observability or retrieval_trace or graph_reasoning),
         }
@@ -538,6 +558,25 @@ class ReportQueryService:
                     "severity": "info",
                     "code": "report_reranker_keyword_fallback",
                     "message": "Some latest reports used keyword reranking instead of a model/API reranker.",
+                }
+            )
+        if int(totals.get("graph_reasoning_missing_count") or 0):
+            alerts.append(
+                {
+                    "severity": "info",
+                    "code": "report_graphrag_reasoning_missing",
+                    "message": "Some latest reports do not have GraphRAG reasoning trace.",
+                }
+            )
+        if int(totals.get("graph_reasoning_partial_count") or 0):
+            alerts.append(
+                {
+                    "severity": "info",
+                    "code": "report_graphrag_reasoning_partial",
+                    "message": (
+                        "Some latest reports have GraphRAG reasoning but incomplete graph "
+                        "path coverage."
+                    ),
                 }
             )
         return alerts[:10]
@@ -674,6 +713,30 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         "graph_reasoning_ready_count": sum(
             1 for row in rows if row.get("graph_reasoning_status") == "ready"
         ),
+        "graph_reasoning_missing_count": sum(
+            1 for row in rows if row.get("graph_reasoning_status") != "ready"
+        ),
+        "graph_reasoning_partial_count": sum(
+            1
+            for row in rows
+            if row.get("graph_reasoning_status") == "ready"
+            and (
+                (_metric_int(row.get("graph_reasoning_missing_ticker_count"), default=0) or 0)
+                > 0
+                or (_metric_int(row.get("graph_reasoning_path_count"), default=0) or 0)
+                <= 0
+            )
+        ),
+        "graph_reasoning_path_count": sum(
+            row.get("graph_reasoning_path_count") or 0 for row in rows
+        ),
+        "graph_reasoning_covered_ticker_count": sum(
+            row.get("graph_reasoning_covered_ticker_count") or 0 for row in rows
+        ),
+        "graph_reasoning_requested_ticker_count": sum(
+            row.get("graph_reasoning_requested_ticker_count") or 0 for row in rows
+        ),
+        "graph_reasoning_coverage_ratio": _graph_reasoning_coverage_ratio(rows),
         "avg_llm_latency_ms": llm_latency["avg"],
         "p95_llm_latency_ms": llm_latency["p95"],
         "max_llm_latency_ms": llm_latency["max"],
@@ -681,6 +744,14 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         "p95_retrieval_latency_ms": retrieval_latency["p95"],
         "max_retrieval_latency_ms": retrieval_latency["max"],
     }
+
+
+def _graph_reasoning_coverage_ratio(rows: list[dict]) -> float:
+    requested = sum(row.get("graph_reasoning_requested_ticker_count") or 0 for row in rows)
+    if requested <= 0:
+        return 0.0
+    covered = sum(row.get("graph_reasoning_covered_ticker_count") or 0 for row in rows)
+    return round(covered / requested, 4)
 
 
 def _observability_bottleneck_rows(rows: list[dict], limit: int = 10) -> list[dict[str, Any]]:
@@ -869,6 +940,26 @@ def _observability_recommendations(
                 affected_reports=keyword_fallback,
                 evidence=f"keyword_fallback={keyword_fallback}",
                 next_action="啟用本機 cross-encoder、Cohere 或 LLM reranker，降低只靠關鍵字排序的風險。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    graph_missing = int(totals.get("graph_reasoning_missing_count") or 0)
+    graph_partial = int(totals.get("graph_reasoning_partial_count") or 0)
+    if graph_missing or graph_partial:
+        recommendations.append(
+            _observability_recommendation(
+                priority=45,
+                severity="info",
+                code="graphrag_reasoning_coverage",
+                affected_reports=max(graph_missing + graph_partial, 1),
+                evidence=(
+                    f"missing_trace={graph_missing}; partial_or_zero_path={graph_partial}; "
+                    f"coverage={totals.get('graph_reasoning_coverage_ratio')}"
+                ),
+                next_action=(
+                    "檢查候選白名單 segment/ticker mapping 與 GraphRAG taxonomy；"
+                    "缺路徑的股票先補同業/上下游 edge，再重產報告。"
+                ),
                 top_bottleneck=top_bottleneck,
             )
         )

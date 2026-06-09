@@ -324,6 +324,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_observability_summary_enabled"] is True
     assert status["frontend"]["ui_report_observability_bottlenecks_enabled"] is True
     assert status["frontend"]["ui_report_observability_recommendations_enabled"] is True
+    assert status["frontend"]["ui_report_observability_graphrag_metrics_enabled"] is True
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
     assert status["frontend"]["ui_report_state_extracted"] is True
     assert status["frontend"]["ui_report_state_path"] == "app/ui/report_state.py"
@@ -440,6 +441,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_llm_quota_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_observability_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_observability_recommendations_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_report_observability_graphrag_metrics_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_visual_rag_model_chain_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_data_enrichment_tabs_extracted"] is True

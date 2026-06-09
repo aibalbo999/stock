@@ -639,6 +639,11 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
             "graph_reasoning": {
                 "status": "ready",
                 "strategy": "shortest_path_context",
+                "requested_ticker_count": 1,
+                "covered_ticker_count": 1,
+                "missing_ticker_count": 0,
+                "path_count": 2,
+                "coverage_ratio": 1.0,
                 "max_paths": 8,
             },
             "llm": {
@@ -723,6 +728,10 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["totals"]["degraded_from_primary_count"] == 1
     assert summary["totals"]["keyword_fallback_count"] == 1
     assert summary["totals"]["graph_reasoning_ready_count"] == 1
+    assert summary["totals"]["graph_reasoning_missing_count"] == 0
+    assert summary["totals"]["graph_reasoning_partial_count"] == 0
+    assert summary["totals"]["graph_reasoning_path_count"] == 2
+    assert summary["totals"]["graph_reasoning_coverage_ratio"] == 1.0
     assert summary["totals"]["avg_llm_latency_ms"] == 1200.25
     assert summary["totals"]["p95_llm_latency_ms"] == 1200.25
     assert summary["totals"]["max_llm_latency_ms"] == 1200.25
@@ -741,6 +750,8 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["reports"][0]["degraded_from_primary"] is True
     assert summary["reports"][0]["retrieval_latency_ms"] == 18.5
     assert summary["reports"][0]["reranker_fallback_reason"] == "keyword_provider_selected"
+    assert summary["reports"][0]["graph_reasoning_path_count"] == 2
+    assert summary["reports"][0]["graph_reasoning_coverage_ratio"] == 1.0
     assert summary["bottlenecks"][0]["id"] == 8
     assert summary["bottlenecks"][0]["severity"] == "warning"
     assert summary["bottlenecks"][0]["dominant_factor"] == "llm_fallback"
@@ -830,6 +841,8 @@ def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
     assert summary["status"] == "ready"
     assert summary["totals"]["trace_captured_count"] == 1
     assert summary["totals"]["trace_missing_count"] == 0
+    assert summary["totals"]["graph_reasoning_missing_count"] == 1
+    assert summary["totals"]["graph_reasoning_coverage_ratio"] == 0.0
     assert summary["totals"]["p95_llm_latency_ms"] == 800.0
     assert summary["totals"]["max_retrieval_latency_ms"] == 9.5
     assert summary["reports"][0]["run_source"] == "celery_after_close"
@@ -837,4 +850,6 @@ def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
     assert summary["reports"][0]["total_token_estimate"] == 2048
     assert summary["bottlenecks"][0]["dominant_factor"] == "token_volume"
     assert "壓縮 prompt" in summary["bottlenecks"][0]["next_action"]
-    assert summary["recommendations"] == []
+    assert [row["code"] for row in summary["recommendations"]] == [
+        "graphrag_reasoning_coverage"
+    ]

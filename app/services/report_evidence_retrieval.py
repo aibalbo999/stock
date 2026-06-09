@@ -204,12 +204,46 @@ def graph_reasoning_context(
                 "reason": str(exc),
             },
         )
+    requested_tickers = [
+        str(ticker)
+        for ticker in (plan.get("tickers") or plan.get("requested_tickers") or tickers)
+        if str(ticker or "").strip()
+    ]
+    paths_by_ticker = (
+        plan.get("paths_by_ticker")
+        if isinstance(plan.get("paths_by_ticker"), dict)
+        else {}
+    )
+    path_count_by_ticker = {
+        str(ticker): len(paths) if isinstance(paths, list) else 0
+        for ticker, paths in paths_by_ticker.items()
+    }
+    covered_tickers = [
+        ticker
+        for ticker in requested_tickers
+        if int(path_count_by_ticker.get(ticker) or 0) > 0
+    ]
+    missing_tickers = [
+        ticker
+        for ticker in requested_tickers
+        if int(path_count_by_ticker.get(ticker) or 0) <= 0
+    ]
+    requested_count = len(requested_tickers)
+    covered_count = len(covered_tickers)
     reasoning_plan = {
         "status": "ready",
         "strategy": plan.get("strategy"),
-        "requested_tickers": plan.get("requested_tickers") or tickers,
+        "requested_tickers": requested_tickers,
+        "requested_ticker_count": requested_count,
+        "covered_ticker_count": covered_count,
+        "missing_ticker_count": len(missing_tickers),
+        "missing_tickers": missing_tickers[:10],
+        "path_count": sum(path_count_by_ticker.values()),
+        "path_count_by_ticker": path_count_by_ticker,
+        "coverage_ratio": round(covered_count / requested_count, 4) if requested_count else 0.0,
         "max_depth": plan.get("max_depth"),
         "max_paths": plan.get("max_paths"),
+        "target_ticker": plan.get("target_ticker"),
         "evidence_policy": plan.get("evidence_policy"),
         "cypher_templates": plan.get("cypher_templates"),
     }

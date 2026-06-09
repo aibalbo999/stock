@@ -11,6 +11,8 @@ def report_observability_metric_values(summary: dict[str, Any]) -> dict[str, obj
         "狀態": summary.get("status") or "-",
         "最新版報告": int(totals.get("report_count") or 0),
         "Trace 覆蓋": int(totals.get("trace_captured_count") or 0),
+        "GraphRAG paths": int(totals.get("graph_reasoning_path_count") or 0),
+        "Graph 覆蓋率": _ratio_percent(totals.get("graph_reasoning_coverage_ratio")),
         "平均 LLM ms": totals.get("avg_llm_latency_ms") or "-",
         "P95 LLM ms": totals.get("p95_llm_latency_ms") or "-",
         "P95 Retrieval ms": totals.get("p95_retrieval_latency_ms") or "-",
@@ -18,6 +20,13 @@ def report_observability_metric_values(summary: dict[str, Any]) -> dict[str, obj
         "Quota skip": int(totals.get("quota_skip_count") or 0),
         "模型降級": int(totals.get("degraded_from_primary_count") or 0),
     }
+
+
+def _ratio_percent(value: Any) -> str:
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return "-"
 
 
 def report_observability_alert_rows(summary: dict[str, Any]) -> list[dict]:

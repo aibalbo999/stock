@@ -509,7 +509,7 @@ def test_upgrade_audit_fails_llm_quota_routing_regression() -> None:
                     "evidence": {
                         "failed_checks": [
                             "smart_model_order",
-                            "flash_models_share_request_budget",
+                            "official_free_tier_request_budgets_match",
                         ]
                     },
                 }

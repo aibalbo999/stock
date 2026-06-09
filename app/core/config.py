@@ -130,7 +130,7 @@ class Settings(BaseSettings):
         "gemini-3.5-flash=250,"
         "gemini-2.5-flash=250,"
         "gemini-3.1-flash-lite=250,"
-        "gemini-2.5-flash-lite=250,"
+        "gemini-2.5-flash-lite=1000,"
         "gemma-4-31b-it=14400"
     )
     llm_model_daily_token_budgets: str = ""

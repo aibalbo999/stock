@@ -19,6 +19,59 @@ NON_REQUEST_ATTEMPT_OUTCOMES = {
     "timeout",
 }
 DEFAULT_QUOTA_WARNING_RATIO = 0.8
+FREE_TIER_RATE_LIMIT_SOURCE = {
+    "provider": "Google Gemini API rate limits",
+    "url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+    "last_reviewed": "2026-06-09",
+    "tier": "Free",
+    "scope": "project_level",
+    "reset_timezone": "America/Los_Angeles",
+    "note": (
+        "Published limits are references only; the active project limits shown in "
+        "Google AI Studio remain authoritative."
+    ),
+}
+FREE_TIER_REQUEST_BUDGET_REFERENCES = {
+    "gemini-2.5-flash": 250,
+    "gemini-2.5-flash-preview": 250,
+    "gemini-2.5-flash-lite": 1000,
+    "gemini-2.5-flash-lite-preview": 1000,
+    "gemini-2.0-flash": 200,
+    "gemini-2.0-flash-lite": 200,
+    "gemini-embedding-2": 1000,
+    "gemini-embedding": 1000,
+    "gemma-3": 14400,
+    "gemma-3n": 14400,
+}
+FREE_TIER_TOKEN_BUDGET_REFERENCES = {
+    "gemini-2.5-flash": 250_000,
+    "gemini-2.5-flash-preview": 250_000,
+    "gemini-2.5-flash-lite": 250_000,
+    "gemini-2.5-flash-lite-preview": 250_000,
+    "gemini-2.0-flash": 1_000_000,
+    "gemini-2.0-flash-lite": 1_000_000,
+    "gemini-embedding-2": 30_000,
+    "gemini-embedding": 30_000,
+    "gemma-3": 15_000,
+    "gemma-3n": 15_000,
+}
+PROJECT_CONFIGURED_MODEL_BUDGET_NOTES = {
+    "gemini-3.5-flash": (
+        "Preserved as the user-confirmed smartest first model; no public Free Tier row was "
+        "found in the reviewed Gemini API rate-limit table, so the configured budget should "
+        "match this project in Google AI Studio."
+    ),
+    "gemini-3.1-flash-lite": (
+        "Preserved as a user-confirmed fallback model; no public Free Tier row was found in "
+        "the reviewed Gemini API rate-limit table, so the configured budget should match "
+        "this project in Google AI Studio."
+    ),
+    "gemma-4-31b-it": (
+        "Preserved as the high-volume Gemma fallback configured for this project. Public "
+        "Gemini API Free Tier tables list Gemma 3/3n at 14,400 RPD; confirm this exact "
+        "model's active limit in Google AI Studio."
+    ),
+}
 
 
 class LLMQuotaGovernanceService:
@@ -116,6 +169,14 @@ class LLMQuotaGovernanceService:
                     "completion_count": int(usage.get("completion_count") or 0),
                     "requests_used": requests_used,
                     "request_budget": request_budget,
+                    "free_tier_request_budget_reference": (
+                        FREE_TIER_REQUEST_BUDGET_REFERENCES.get(model_key)
+                    ),
+                    "free_tier_token_budget_reference": (
+                        FREE_TIER_TOKEN_BUDGET_REFERENCES.get(model_key)
+                    ),
+                    "quota_reference_source": _quota_reference_source(model_key),
+                    "quota_reference_note": _quota_reference_note(model_key),
                     "requests_remaining": request_remaining,
                     "request_used_ratio": request_used_ratio,
                     "tokens_used": tokens_used,
@@ -232,6 +293,12 @@ class LLMQuotaGovernanceService:
                 "settings": {
                     "llm_model_daily_request_budgets": getattr(settings, "llm_model_daily_request_budgets", ""),
                     "llm_model_daily_token_budgets": getattr(settings, "llm_model_daily_token_budgets", ""),
+                },
+                "free_tier_reference": {
+                    **FREE_TIER_RATE_LIMIT_SOURCE,
+                    "request_budgets": FREE_TIER_REQUEST_BUDGET_REFERENCES,
+                    "token_budgets": FREE_TIER_TOKEN_BUDGET_REFERENCES,
+                    "project_configured_model_notes": PROJECT_CONFIGURED_MODEL_BUDGET_NOTES,
                 },
                 "note": (
                     "Gemini API free-tier limits are project-level and can vary by model/version; "
@@ -701,6 +768,23 @@ def _quota_alert_message(row: dict) -> str:
     if status_reason == "token_budget_near_limit":
         return f"{model} is near its configured daily token budget."
     return f"{model} is near a configured quota limit."
+
+
+def _quota_reference_source(model_key: str) -> str:
+    if model_key in FREE_TIER_REQUEST_BUDGET_REFERENCES:
+        return "google_free_tier_reference"
+    if model_key in PROJECT_CONFIGURED_MODEL_BUDGET_NOTES:
+        return "project_configured_ai_studio_limit"
+    return "configured_budget_only"
+
+
+def _quota_reference_note(model_key: str) -> str:
+    if model_key in FREE_TIER_REQUEST_BUDGET_REFERENCES:
+        return "Published Google Gemini API Free Tier reference for this model family."
+    return PROJECT_CONFIGURED_MODEL_BUDGET_NOTES.get(
+        model_key,
+        "No built-in Free Tier reference is available; keep the configured budget aligned with Google AI Studio.",
+    )
 
 
 def _safe_warning_ratio(value: object) -> float:

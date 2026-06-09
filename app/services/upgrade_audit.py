@@ -46,7 +46,8 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         ("upgrade_capability_matrix", "ai_rag", "llm_quota_routing"),
         remediation=(
             "確認 PRIMARY_LLM_MODEL、LLM_FALLBACK_MODELS、LLM_QUOTA_HARD_ROUTING_ENABLED、"
-            "LLM_MODEL_QUOTA_COOLDOWN_SECONDS 與 LLM_MODEL_DAILY_REQUEST_BUDGETS 符合智慧優先與同級額度策略。"
+            "LLM_MODEL_QUOTA_COOLDOWN_SECONDS 與 LLM_MODEL_DAILY_REQUEST_BUDGETS 符合智慧優先、"
+            "官方 Free Tier 參考值與 Gemma 高額度保底策略。"
         ),
     ),
     UpgradeAuditRequirement(

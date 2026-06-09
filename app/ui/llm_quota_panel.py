@@ -31,6 +31,8 @@ def llm_quota_model_rows(llm_quota: dict) -> list[dict]:
                 "routing_reason": model.get("routing_reason"),
                 "requests_used": model.get("requests_used"),
                 "request_budget": model.get("request_budget"),
+                "free_tier_request_budget": model.get("free_tier_request_budget_reference"),
+                "quota_reference": model.get("quota_reference_source"),
                 "requests_remaining": model.get("requests_remaining"),
                 "request_used_pct": _format_ratio(model.get("request_used_ratio")),
                 "tokens_used": model.get("tokens_used"),
@@ -62,6 +64,7 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
     budget_source = _dict_value(llm_quota.get("budget_source"))
     if budget_source.get("note"):
         captions.append(str(budget_source["note"]))
+    captions.extend(_quota_reference_drift_captions(llm_quota))
     routing_policy = _dict_value(llm_quota.get("routing_policy"))
     high_quota_models = [
         str(model)
@@ -71,6 +74,34 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
     if high_quota_models:
         captions.append("高額度保底模型：" + "、".join(high_quota_models))
     return captions
+
+
+def _quota_reference_drift_captions(llm_quota: dict) -> list[str]:
+    drift_rows = []
+    for model in llm_quota.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        configured = model.get("request_budget")
+        reference = model.get("free_tier_request_budget_reference")
+        if configured in {None, ""} or reference in {None, ""}:
+            continue
+        try:
+            configured_int = int(configured)
+            reference_int = int(reference)
+        except (TypeError, ValueError):
+            continue
+        if configured_int == reference_int:
+            continue
+        drift_rows.append(
+            f"{model.get('model')}: configured {configured_int} / official {reference_int}"
+        )
+    if not drift_rows:
+        return []
+    return [
+        "Free Tier 參考差異："
+        + "；".join(drift_rows[:3])
+        + "。實際仍以 Google AI Studio project limit 為準。"
+    ]
 
 
 def _quota_alert_captions(llm_quota: dict) -> list[str]:

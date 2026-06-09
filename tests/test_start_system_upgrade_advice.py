@@ -22,7 +22,12 @@ def test_upgrade_dependency_advice_points_to_missing_rag_and_llm_dependencies() 
             },
             "llm_quota_routing": {
                 "status": "degraded",
-                "evidence": {"failed_checks": ["smart_model_order", "flash_models_share_request_budget"]},
+                "evidence": {
+                    "failed_checks": [
+                        "smart_model_order",
+                        "official_free_tier_request_budgets_match",
+                    ]
+                },
             },
             "neo4j_import": {
                 "status": "not_configured",

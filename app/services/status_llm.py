@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.services.llm_quota import normalize_model_name, parse_model_budget_map
+from app.services.llm_quota import (
+    FREE_TIER_RATE_LIMIT_SOURCE,
+    FREE_TIER_REQUEST_BUDGET_REFERENCES,
+    normalize_model_name,
+    parse_model_budget_map,
+)
 
 SMART_FIRST_FLASH_MODELS = (
     "gemini-3.5-flash",
@@ -72,13 +77,23 @@ def _llm_quota_routing_status(settings) -> dict:
         getattr(settings, "llm_model_daily_request_budgets", "")
     )
     smart_request_budgets = {model: request_budgets.get(model) for model in smart_order}
-    smart_budget_values = [budget for budget in smart_request_budgets.values() if budget is not None]
-    flash_equal_request_budgets = (
+    smart_budget_values = [
+        int(budget) for budget in smart_request_budgets.values() if budget is not None
+    ]
+    smart_model_request_budgets_configured = (
         len(smart_budget_values) == len(smart_order)
-        and len(set(smart_budget_values)) == 1
-        and smart_budget_values[0] > 0
+        and all(budget > 0 for budget in smart_budget_values)
     )
-    smart_budget = smart_budget_values[0] if flash_equal_request_budgets else None
+    official_smart_request_budgets = {
+        model: FREE_TIER_REQUEST_BUDGET_REFERENCES[model]
+        for model in smart_order
+        if model in FREE_TIER_REQUEST_BUDGET_REFERENCES
+    }
+    official_smart_request_budgets_match = all(
+        request_budgets.get(model) == official_budget
+        for model, official_budget in official_smart_request_budgets.items()
+    )
+    max_smart_budget = max(smart_budget_values) if smart_budget_values else None
     high_quota_budget = request_budgets.get(high_quota_model_key)
     smart_model_order_ready = normalized_order[: len(smart_order)] == smart_order
     high_quota_fallback_present = high_quota_model_key in normalized_order
@@ -93,8 +108,8 @@ def _llm_quota_routing_status(settings) -> dict:
         high_quota_after_smart_models = False
     high_quota_budget_ready = bool(
         high_quota_budget is not None
-        and smart_budget is not None
-        and high_quota_budget > smart_budget
+        and max_smart_budget is not None
+        and high_quota_budget > max_smart_budget
         and high_quota_budget >= 1000
     )
     hard_routing_enabled = bool(getattr(settings, "llm_quota_hard_routing_enabled", True))
@@ -113,7 +128,7 @@ def _llm_quota_routing_status(settings) -> dict:
         "required_text_models_configured": all(
             model in normalized_order for model in [*smart_order, high_quota_model_key]
         ),
-        "flash_models_share_request_budget": flash_equal_request_budgets,
+        "smart_model_request_budgets_configured": smart_model_request_budgets_configured,
         "high_quota_fallback_after_smart_models": high_quota_after_smart_models,
         "high_quota_fallback_budget_ready": high_quota_budget_ready,
         "hard_routing_enabled": hard_routing_enabled,
@@ -142,7 +157,18 @@ def _llm_quota_routing_status(settings) -> dict:
         "quota_cooldown_seconds": cooldown_seconds,
         "quota_window_timezone": quota_timezone,
         "quota_warning_ratio": quota_warning_ratio,
-        "same_tier_flash_request_budgets": smart_request_budgets,
+        "smart_model_request_budgets": smart_request_budgets,
+        "official_free_tier_request_budget_references": official_smart_request_budgets,
+        "official_free_tier_request_budgets_match": official_smart_request_budgets_match,
+        "official_free_tier_budget_drift": {
+            model: {
+                "configured": request_budgets.get(model),
+                "official_free_tier_reference": official_budget,
+            }
+            for model, official_budget in official_smart_request_budgets.items()
+            if request_budgets.get(model) != official_budget
+        },
+        "free_tier_rate_limit_source": FREE_TIER_RATE_LIMIT_SOURCE,
         "high_quota_fallback_request_budget": high_quota_budget,
         "configured_request_budget_models": sorted(request_budgets),
         "budget_source": "LLM_MODEL_DAILY_REQUEST_BUDGETS",

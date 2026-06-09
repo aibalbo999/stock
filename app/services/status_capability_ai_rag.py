@@ -73,9 +73,9 @@ def ai_rag_capabilities(
             "ready" if llm_quota_routing.get("ready") else "degraded",
             evidence=llm_quota_routing,
             detail=(
-                "Quota governance keeps the smartest configured report model first, tracks same-tier "
-                "Flash request budgets, skips exhausted models through hard routing/cooldown, and keeps "
-                "high-volume Gemma as the last text fallback."
+                "Quota governance keeps the smartest configured report model first, tracks official or "
+                "project-configured request budgets, skips exhausted models through hard routing/cooldown, "
+                "and keeps high-volume Gemma as the last text fallback."
             ),
         ),
         "hybrid_search": _capability(

@@ -63,10 +63,18 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert summary["recommended_routing_tier"] == "fallback"
     assert summary["recommended_status"] == "available"
     primary = summary["models"][0]
+    fallback = summary["models"][1]
     assert primary["model"] == "gemini-3.5-flash"
+    assert fallback["model"] == "gemini-2.5-flash"
+    assert fallback["free_tier_request_budget_reference"] == 250
+    assert fallback["free_tier_token_budget_reference"] == 250000
+    assert fallback["quota_reference_source"] == "google_free_tier_reference"
     assert primary["requests_used"] == 2
     assert primary["requests_remaining"] == 0
     assert primary["request_used_ratio"] == 1.0
+    assert primary["free_tier_request_budget_reference"] is None
+    assert primary["quota_reference_source"] == "project_configured_ai_studio_limit"
+    assert "user-confirmed smartest first model" in primary["quota_reference_note"]
     assert primary["status"] == "exhausted"
     assert primary["status_reason"] == "request_budget_exhausted"
     assert primary["risk_level"] == "exhausted"
@@ -86,6 +94,16 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert summary["routing_policy"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert summary["totals"]["request_count"] == 2
     assert summary["totals"]["completion_count"] == 2
+    assert summary["budget_source"]["free_tier_reference"]["scope"] == "project_level"
+    assert summary["budget_source"]["free_tier_reference"]["request_budgets"][
+        "gemini-2.5-flash"
+    ] == 250
+    assert summary["budget_source"]["free_tier_reference"]["request_budgets"][
+        "gemini-2.5-flash-lite"
+    ] == 1000
+    assert "gemini-3.5-flash" in summary["budget_source"]["free_tier_reference"][
+        "project_configured_model_notes"
+    ]
     assert summary["window"]["timezone"] == "America/Los_Angeles"
     assert summary["window"]["now"] == "2026-06-07T05:00:00-07:00"
     assert summary["window"]["reset_in_seconds"] == 68399

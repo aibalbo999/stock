@@ -96,7 +96,7 @@ def test_visual_rag_status_exposes_quota_aware_vision_model_chain(monkeypatch) -
         local_llm_model="gemma-4-31b-it",
         llm_model_daily_request_budgets=(
             "gemini-3.5-flash=250,gemini-2.5-flash=250,"
-            "gemini-2.5-flash-lite=250,gemma-4-31b-it=14400"
+            "gemini-2.5-flash-lite=1000,gemma-4-31b-it=14400"
         ),
     )
 
@@ -119,6 +119,7 @@ def test_visual_rag_status_exposes_quota_aware_vision_model_chain(monkeypatch) -
     ]
     assert chain["vision_candidates"][0]["model_key"] == "gemini-3.5-flash"
     assert chain["vision_candidates"][0]["request_budget"] == 250
+    assert chain["vision_candidates"][2]["request_budget"] == 1000
     assert chain["vision_candidates"][0]["key_configured"] is True
     assert status["runtime_model"] == "models/gemini-3.5-flash"
     assert status["runtime_model_selection_reason"] == "preferred_visual_rag_model"

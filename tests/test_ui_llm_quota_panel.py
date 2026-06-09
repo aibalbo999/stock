@@ -44,6 +44,8 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
                     "routing_reason": "Skipped until the next quota window.",
                     "requests_used": 250,
                     "request_budget": 250,
+                    "free_tier_request_budget_reference": None,
+                    "quota_reference_source": "project_configured_ai_studio_limit",
                     "requests_remaining": 0,
                     "request_used_ratio": 1.0,
                     "tokens_used": 1000,
@@ -75,6 +77,8 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
             "routing_reason": "Skipped until the next quota window.",
             "requests_used": 250,
             "request_budget": 250,
+            "free_tier_request_budget": None,
+            "quota_reference": "project_configured_ai_studio_limit",
             "requests_remaining": 0,
             "request_used_pct": "100.0%",
             "tokens_used": 1000,
@@ -112,6 +116,31 @@ def test_llm_quota_captions_summarize_recommendation_budget_note_and_gemma_fallb
         "Earlier model(s) exhausted.",
         "Limits are project-level.",
         "高額度保底模型：gemma-4-31b-it",
+    ]
+
+
+def test_llm_quota_captions_surface_free_tier_reference_drift() -> None:
+    captions = llm_quota_captions(
+        {
+            "recommended_model": "gemini-3.5-flash",
+            "recommended_rank": 1,
+            "recommended_routing_tier": "primary",
+            "models": [
+                {
+                    "model": "gemini-2.5-flash-lite",
+                    "request_budget": 250,
+                    "free_tier_request_budget_reference": 1000,
+                }
+            ],
+        }
+    )
+
+    assert captions == [
+        "目前推薦：gemini-3.5-flash｜順位 1｜tier=primary",
+        (
+            "Free Tier 參考差異：gemini-2.5-flash-lite: configured 250 / official 1000。"
+            "實際仍以 Google AI Studio project limit 為準。"
+        ),
     ]
 
 

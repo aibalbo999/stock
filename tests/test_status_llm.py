@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.services.llm_client import DEFAULT_MAX_RETRIES_PER_KEY, RETRYABLE_HTTP_STATUSES
+from app.services.llm_quota import parse_model_budget_map
 from app.services.status_llm import (
     _llm_fallback_readiness,
     _llm_model_provider,
@@ -31,12 +32,19 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
         "gemini-3.1-flash-lite",
         "gemini-2.5-flash-lite",
     ]
-    assert status["llm_quota_routing"]["same_tier_flash_request_budgets"] == {
-        "gemini-3.5-flash": 250,
-        "gemini-2.5-flash": 250,
-        "gemini-3.1-flash-lite": 250,
-        "gemini-2.5-flash-lite": 250,
+    current_request_budgets = parse_model_budget_map(Settings().llm_model_daily_request_budgets)
+    assert status["llm_quota_routing"]["smart_model_request_budgets"] == {
+        "gemini-3.5-flash": current_request_budgets.get("gemini-3.5-flash"),
+        "gemini-2.5-flash": current_request_budgets.get("gemini-2.5-flash"),
+        "gemini-3.1-flash-lite": current_request_budgets.get("gemini-3.1-flash-lite"),
+        "gemini-2.5-flash-lite": current_request_budgets.get("gemini-2.5-flash-lite"),
     }
+    assert status["llm_quota_routing"]["official_free_tier_request_budget_references"] == {
+        "gemini-2.5-flash": 250,
+        "gemini-2.5-flash-lite": 1000,
+    }
+    assert isinstance(status["llm_quota_routing"]["official_free_tier_budget_drift"], dict)
+    assert status["llm_quota_routing"]["free_tier_rate_limit_source"]["scope"] == "project_level"
     assert status["llm_quota_routing"]["high_quota_fallback_request_budget"] == 14400
     assert status["llm_quota_routing"]["readiness_checks"]["hard_routing_enabled"] is True
     assert status["llm_quota_routing"]["quota_warning_ratio"] == 0.8
@@ -104,7 +112,14 @@ def test_ai_rag_llm_capability_matrix_evidence(service_status_snapshot) -> None:
     )
     quota_routing = matrix["ai_rag"]["llm_quota_routing"]
     assert quota_routing["status"] == "ready"
-    assert quota_routing["evidence"]["readiness_checks"]["flash_models_share_request_budget"] is True
+    assert (
+        quota_routing["evidence"]["readiness_checks"][
+            "smart_model_request_budgets_configured"
+        ]
+        is True
+    )
+    assert "official_free_tier_request_budgets_match" in quota_routing["evidence"]
+    assert "official_free_tier_budget_drift" in quota_routing["evidence"]
     assert (
         quota_routing["evidence"]["readiness_checks"]["high_quota_fallback_after_smart_models"]
         is True
@@ -128,20 +143,23 @@ def test_llm_retry_settings_defaults() -> None:
     assert settings.llm_quota_window_timezone == "America/Los_Angeles"
     assert settings.llm_quota_warning_ratio == 0.8
     assert "gemini-3.5-flash=250" in settings.llm_model_daily_request_budgets
+    assert "gemini-2.5-flash-lite=1000" in settings.llm_model_daily_request_budgets
     assert settings.llm_model_cost_rate_card_usd == ""
     assert settings.llm_daily_cost_budget_usd == 0.0
     assert settings.llm_cost_warning_ratio == 0.8
     assert settings.task_observability_stale_minutes == 60
 
 
-def test_llm_quota_routing_status_requires_smart_first_order_and_equal_budgets() -> None:
+def test_llm_quota_routing_status_requires_smart_first_order_and_reference_budgets() -> None:
     ready = _llm_quota_routing_status(Settings(_env_file=None))
 
     assert ready["ready"] is True
     assert ready["collector_path"] == "app/services/status_llm.py"
     assert ready["failed_checks"] == []
     assert ready["readiness_checks"]["smart_model_order"] is True
-    assert ready["readiness_checks"]["flash_models_share_request_budget"] is True
+    assert ready["readiness_checks"]["smart_model_request_budgets_configured"] is True
+    assert ready["official_free_tier_request_budgets_match"] is True
+    assert ready["official_free_tier_budget_drift"] == {}
     assert ready["readiness_checks"]["high_quota_fallback_budget_ready"] is True
     assert ready["readiness_checks"]["quota_warning_ratio_configured"] is True
 
@@ -158,18 +176,36 @@ def test_llm_quota_routing_status_requires_smart_first_order_and_equal_budgets()
     assert "smart_model_order" in misordered["failed_checks"]
     assert "high_quota_fallback_after_smart_models" in misordered["failed_checks"]
 
-    unequal_budget = _llm_quota_routing_status(
+    missing_budget = _llm_quota_routing_status(
         Settings(
             _env_file=None,
             llm_model_daily_request_budgets=(
                 "gemini-3.5-flash=250,gemini-2.5-flash=250,"
-                "gemini-3.1-flash-lite=100,gemini-2.5-flash-lite=250,"
+                "gemini-2.5-flash-lite=1000,gemma-4-31b-it=14400"
+            ),
+        )
+    )
+    assert missing_budget["ready"] is False
+    assert "smart_model_request_budgets_configured" in missing_budget["failed_checks"]
+
+    stale_official_budget = _llm_quota_routing_status(
+        Settings(
+            _env_file=None,
+            llm_model_daily_request_budgets=(
+                "gemini-3.5-flash=250,gemini-2.5-flash=250,"
+                "gemini-3.1-flash-lite=250,gemini-2.5-flash-lite=250,"
                 "gemma-4-31b-it=14400"
             ),
         )
     )
-    assert unequal_budget["ready"] is False
-    assert "flash_models_share_request_budget" in unequal_budget["failed_checks"]
+    assert stale_official_budget["ready"] is True
+    assert stale_official_budget["official_free_tier_request_budgets_match"] is False
+    assert stale_official_budget["official_free_tier_budget_drift"] == {
+        "gemini-2.5-flash-lite": {
+            "configured": 250,
+            "official_free_tier_reference": 1000,
+        }
+    }
 
 
 def test_llm_model_provider_classifies_fallback_models() -> None:

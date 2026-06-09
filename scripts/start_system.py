@@ -1057,7 +1057,8 @@ def upgrade_dependency_advice(matrix: dict, *, python: Path, root: Path) -> list
                     "gemini-2.5-flash-lite,gemma-4-31b-it，"
                     "LLM_QUOTA_HARD_ROUTING_ENABLED=true，"
                     "LLM_MODEL_QUOTA_COOLDOWN_SECONDS=3600，並用 "
-                    "LLM_MODEL_DAILY_REQUEST_BUDGETS 維護 Flash 同級額度與 Gemma 高額度保底"
+                    "LLM_MODEL_DAILY_REQUEST_BUDGETS 維護官方 Free Tier 參考額度、"
+                    "AI Studio 專案實際額度與 Gemma 高額度保底"
                 ),
             }
         )

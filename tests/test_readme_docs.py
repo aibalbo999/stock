@@ -55,3 +55,20 @@ def test_readme_documents_llm_retry_statuses() -> None:
     assert f"LLM_MAX_RETRIES_PER_KEY={DEFAULT_MAX_RETRIES_PER_KEY}" in readme
     assert "LLM_BASE_RETRY_DELAY_SECONDS=0.5" in readme
     assert "LLM_MAX_RETRY_DELAY_SECONDS=5.0" in readme
+
+
+def test_readme_links_deployment_runbook_for_external_details() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    runbook_path = Path("docs/runbooks/deployment-readiness.md")
+    runbook = runbook_path.read_text(encoding="utf-8")
+
+    assert runbook_path.exists()
+    assert "docs/runbooks/deployment-readiness.md" in readme
+    assert len(readme.splitlines()) < 540
+    assert "Browserless/generic：POST JSON" not in readme
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" not in readme
+    assert "Browserless/generic：POST JSON" in runbook
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in runbook
+    assert ".venv/bin/python scripts/external_integrations_smoke.py --strict --json" in runbook
+    assert ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json" in runbook
+    assert "external_deployment_local_projection" in runbook

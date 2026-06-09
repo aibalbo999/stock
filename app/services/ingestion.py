@@ -70,6 +70,12 @@ from app.services.ingestion_documents import (
     stale_market_source_count as _stale_market_source_count,
 )
 from app.services.ingestion_company_filings import fetch_company_filing_ticker_documents
+from app.services.ingestion_market import (
+    refresh_financial_metric_history,
+    refresh_market_snapshots,
+    refresh_monthly_revenue_history,
+    refresh_valuation_metrics,
+)
 from app.services.task_cancellation import TaskCancelledError
 
 __all__ = [
@@ -398,34 +404,19 @@ class IngestionPipeline:
         end_date: date,
         filter_allowed: bool = True,
     ) -> dict:
-        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
-        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        self._check_cancelled()
-        histories, errors = await self._market_client().get_price_histories_with_errors(
-            allowed,
-            start_date,
-            end_date,
-            force_refresh=True,
+        return await refresh_market_snapshots(
+            mapper=self.mapper,
+            market_client=self._market_client(),
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+            filter_allowed=filter_allowed,
+            check_cancelled=self._check_cancelled,
+            session_scope_func=session_scope,
+            market_repository_cls=MarketRepository,
+            market_sources_func=self._market_sources,
+            stale_source_count_func=self._stale_market_source_count,
         )
-        self._check_cancelled()
-        all_snapshots = [snapshot for history in histories.values() for snapshot in history]
-        latest_snapshots = [
-            sorted(history, key=lambda snapshot: snapshot.trade_date)[-1]
-            for history in histories.values()
-            if history
-        ]
-        sources = self._market_sources(all_snapshots)
-        with session_scope() as session:
-            MarketRepository(session).upsert_snapshots(all_snapshots)
-        return {
-            "requested_tickers": allowed,
-            "stored": [snapshot.model_dump(mode="json") for snapshot in latest_snapshots],
-            "stored_history_count": len(all_snapshots),
-            "stale_source_count": self._stale_market_source_count(all_snapshots),
-            "errors": [error.model_dump() for error in errors],
-            "source": ", ".join(sources) if sources else "market data providers",
-            "sources": sources,
-        }
 
     async def refresh_monthly_revenue(
         self,
@@ -434,27 +425,18 @@ class IngestionPipeline:
         end_date: date,
         filter_allowed: bool = True,
     ) -> dict:
-        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
-        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        self._check_cancelled()
-        revenues, errors = await self._market_client().get_monthly_revenue_histories_with_errors(
-            allowed,
-            start_date,
-            end_date,
+        return await refresh_monthly_revenue_history(
+            mapper=self.mapper,
+            market_client=self._market_client(),
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+            filter_allowed=filter_allowed,
+            check_cancelled=self._check_cancelled,
+            session_scope_func=session_scope,
+            monthly_revenue_repository_cls=MonthlyRevenueRepository,
+            stale_source_count_func=self._stale_market_source_count,
         )
-        self._check_cancelled()
-        with session_scope() as session:
-            repository = MonthlyRevenueRepository(session)
-            repository.upsert_revenues(revenues)
-            latest = repository.latest_by_tickers(allowed)
-        return {
-            "requested_tickers": allowed,
-            "stored_count": len(revenues),
-            "latest": [revenue.model_dump(mode="json") for revenue in latest],
-            "stale_source_count": self._stale_market_source_count(revenues),
-            "errors": [error.model_dump() for error in errors],
-            "source": "FinMind TaiwanStockMonthRevenue",
-        }
 
     async def refresh_financial_metrics(
         self,
@@ -463,24 +445,18 @@ class IngestionPipeline:
         end_date: date,
         filter_allowed: bool = True,
     ) -> dict:
-        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
-        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        self._check_cancelled()
-        metrics, errors = await self._market_client().get_financial_metrics_histories_with_errors(
-            allowed,
-            start_date,
-            end_date,
+        return await refresh_financial_metric_history(
+            mapper=self.mapper,
+            market_client=self._market_client(),
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+            filter_allowed=filter_allowed,
+            check_cancelled=self._check_cancelled,
+            session_scope_func=session_scope,
+            financial_metric_repository_cls=FinancialMetricRepository,
+            stale_source_count_func=self._stale_market_source_count,
         )
-        self._check_cancelled()
-        with session_scope() as session:
-            FinancialMetricRepository(session).upsert_metrics(metrics)
-        return {
-            "requested_tickers": allowed,
-            "stored_count": len(metrics),
-            "stale_source_count": self._stale_market_source_count(metrics),
-            "errors": [error.model_dump() for error in errors],
-            "source": "FinMind financial statements",
-        }
 
     async def refresh_valuations(
         self,
@@ -489,24 +465,18 @@ class IngestionPipeline:
         end_date: date,
         filter_allowed: bool = True,
     ) -> dict:
-        requested = tickers or sorted(self.mapper.whitelist.allowed_tickers())
-        allowed = self.mapper.filter_allowed_tickers(requested) if filter_allowed else requested
-        self._check_cancelled()
-        valuations, errors = await self._market_client().get_latest_valuations_with_errors(
-            allowed,
-            start_date,
-            end_date,
+        return await refresh_valuation_metrics(
+            mapper=self.mapper,
+            market_client=self._market_client(),
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+            filter_allowed=filter_allowed,
+            check_cancelled=self._check_cancelled,
+            session_scope_func=session_scope,
+            valuation_metric_repository_cls=ValuationMetricRepository,
+            stale_source_count_func=self._stale_market_source_count,
         )
-        self._check_cancelled()
-        with session_scope() as session:
-            ValuationMetricRepository(session).upsert_valuations(valuations)
-        return {
-            "requested_tickers": allowed,
-            "stored": [valuation.model_dump(mode="json") for valuation in valuations],
-            "stale_source_count": self._stale_market_source_count(valuations),
-            "errors": [error.model_dump() for error in errors],
-            "source": "FinMind TaiwanStockPER",
-        }
 
     _stale_market_source_count = staticmethod(_stale_market_source_count)
     _market_sources = staticmethod(_market_sources)

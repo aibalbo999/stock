@@ -51,6 +51,25 @@ def test_ingestion_company_filing_fetch_sequence_is_split_from_pipeline() -> Non
     assert "official_web_search" not in ingestion_source
 
 
+def test_ingestion_market_refresh_helpers_are_split_from_pipeline() -> None:
+    ingestion_source = Path("app/services/ingestion.py").read_text()
+    market_source = Path("app/services/ingestion_market.py").read_text()
+
+    assert "async def refresh_market_snapshots(" in market_source
+    assert "async def refresh_monthly_revenue_history(" in market_source
+    assert "async def refresh_financial_metric_history(" in market_source
+    assert "async def refresh_valuation_metrics(" in market_source
+    assert "get_price_histories_with_errors(" in market_source
+    assert "get_monthly_revenue_histories_with_errors(" in market_source
+    assert "get_financial_metrics_histories_with_errors(" in market_source
+    assert "get_latest_valuations_with_errors(" in market_source
+    assert "refresh_market_snapshots(" in ingestion_source
+    assert "get_price_histories_with_errors(" not in ingestion_source
+    assert "get_monthly_revenue_histories_with_errors(" not in ingestion_source
+    assert "get_financial_metrics_histories_with_errors(" not in ingestion_source
+    assert "get_latest_valuations_with_errors(" not in ingestion_source
+
+
 def test_source_category_counts_sum_stored_documents() -> None:
     assert IngestionPipeline._source_category_counts(
         [

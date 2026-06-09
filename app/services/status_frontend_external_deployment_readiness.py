@@ -17,6 +17,8 @@ def frontend_external_deployment_readiness_status(
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
     readiness_service_source = _read_text(readiness_service_path)
+    enablement_service_path = root / "app" / "services" / "external_deployment_enablement.py"
+    enablement_service_source = _read_text(enablement_service_path)
     profile_catalog_path = root / "app" / "services" / "external_deployment_profiles.py"
     profile_catalog_source = _read_text(profile_catalog_path)
     return {
@@ -46,8 +48,11 @@ def frontend_external_deployment_readiness_status(
             and "EXTERNAL_LOCAL_ACTION_METADATA" in profile_catalog_source
             and "from app.services.external_deployment_profiles import"
             in readiness_service_source
-            and "def external_deployment_enablement_profile(" in readiness_service_source
+            and "from app.services.external_deployment_enablement import"
+            in readiness_service_source
+            and "def external_deployment_enablement_profile(" in enablement_service_source
             and "def external_deployment_enablement_profile(" in external_deployment_common_source
+            and "def external_deployment_local_projection(" in enablement_service_source
             and "def external_deployment_local_action(" in readiness_service_source
             and "def local_dependency_status_rows(" in external_deployment_common_source
             and "def local_dependency_status_rows(" in external_deployment_source

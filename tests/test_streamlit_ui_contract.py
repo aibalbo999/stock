@@ -29,6 +29,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     external_readiness_service_source = Path(
         "app/services/external_deployment_readiness.py"
     ).read_text()
+    external_enablement_service_source = Path(
+        "app/services/external_deployment_enablement.py"
+    ).read_text()
     external_profile_catalog_source = Path(
         "app/services/external_deployment_profiles.py"
     ).read_text()
@@ -471,7 +474,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"建議路徑"' in external_readiness_service_source
     assert "EXTERNAL_ENABLEMENT_METADATA = {" in external_profile_catalog_source
     assert "EXTERNAL_ENABLEMENT_METADATA = {" not in external_readiness_service_source
-    assert "def external_deployment_enablement_profile(" in external_readiness_service_source
+    assert "from app.services.external_deployment_enablement import (" in (
+        external_readiness_service_source
+    )
+    assert "def external_deployment_enablement_profile(" not in external_readiness_service_source
+    assert "def external_deployment_enablement_profile(" in external_enablement_service_source
+    assert "def external_deployment_local_projection(" in external_enablement_service_source
     assert "def external_deployment_enablement_summary(" in external_readiness_service_source
     assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source
     assert "def external_deployment_pending_gap_rows(" in external_readiness_service_source

@@ -236,14 +236,36 @@ READY_STATUSES = frozenset({"ready"})
 AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND = (
     ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
 )
+LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --wait-local-neo4j 20 --json"
+)
+LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py "
+    "--wait-local-browserless 20 --local-browser-render-defaults --json"
+)
+LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py "
+    "--prefer-unlocker --wait-local-flaresolverr 20 "
+    "--local-browser-render-defaults --json"
+)
+EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py "
+    "--local-neo4j-defaults --wait-local-neo4j 20 "
+    "--wait-local-browserless 20 --local-browser-render-defaults --json"
+)
+EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py "
+    "--local-neo4j-defaults --prefer-unlocker "
+    "--wait-local-neo4j 20 --wait-local-flaresolverr 20 "
+    "--local-browser-render-defaults --json"
+)
 
 
 def optimization_progress_status(status: dict) -> dict:
     matrix = status.get("upgrade_capability_matrix") or {}
     local_auto_defaults = _local_auto_defaults(status)
     domains = [
-        _domain_status(domain, matrix, local_auto_defaults)
-        for domain in OPTIMIZATION_DOMAINS
+        _domain_status(domain, matrix, local_auto_defaults) for domain in OPTIMIZATION_DOMAINS
     ]
     blocking_gap_count = sum(int(domain["blocking_gap_count"]) for domain in domains)
     optional_gap_count = sum(int(domain["optional_gap_count"]) for domain in domains)
@@ -273,9 +295,7 @@ def optimization_progress_status(status: dict) -> dict:
         projected_count=projected_optional_gap_count,
         local_resolvable_gap_count=local_resolvable_gap_count,
     )
-    effective_status = (
-        projected_status if local_resolvable_gap_count > 0 else overall_status
-    )
+    effective_status = projected_status if local_resolvable_gap_count > 0 else overall_status
     next_actions = _next_actions(domains)
     prioritized_next_actions = prioritized_optimization_next_actions(next_actions)
     local_projection = _local_resolution_projection(
@@ -291,6 +311,9 @@ def optimization_progress_status(status: dict) -> dict:
         optional_gap_count=optional_gap_count,
         local_resolvable_gap_count=local_resolvable_gap_count,
         projected_optional_gap_count=projected_optional_gap_count,
+        local_defaults_verify_command=str(
+            local_projection.get("local_defaults_verify_command") or ""
+        ),
     )
     completion_ratio = _ratio(ready_checks, total_checks)
     return {
@@ -333,6 +356,12 @@ def optimization_progress_status(status: dict) -> dict:
         "primary_next_action": primary_next_action,
         "next_actions": next_actions,
         "prioritized_next_actions": prioritized_next_actions,
+        "local_defaults_verify_command": (
+            local_projection.get("local_defaults_verify_command") or ""
+        ),
+        "local_default_verify_commands": (
+            local_projection.get("local_default_verify_commands") or []
+        ),
         "local_resolution_projection": local_projection,
         "status_note": _status_note(overall_status),
         "effective_gap_note": _effective_gap_note(
@@ -351,10 +380,7 @@ def _domain_status(
     matrix: dict,
     local_auto_defaults: dict,
 ) -> dict:
-    checks = [
-        _capability_check(ref, matrix, local_auto_defaults)
-        for ref in domain.capability_refs
-    ]
+    checks = [_capability_check(ref, matrix, local_auto_defaults) for ref in domain.capability_refs]
     ready_checks = sum(1 for check in checks if check["ready"])
     blocking_gaps = [check for check in checks if not check["ready"] and not check["optional"]]
     optional_gaps = [check for check in checks if not check["ready"] and check["optional"]]
@@ -481,15 +507,16 @@ def _local_resolution_projection(
     prioritized_next_actions: list[dict],
 ) -> dict:
     remaining_actions = [
-        action
-        for action in prioritized_next_actions
-        if not bool(action.get("locally_available"))
+        action for action in prioritized_next_actions if not bool(action.get("locally_available"))
     ]
     local_actions = [
-        action
-        for action in prioritized_next_actions
-        if bool(action.get("locally_available"))
+        action for action in prioritized_next_actions if bool(action.get("locally_available"))
     ]
+    local_defaults_verify_command = _local_defaults_verify_command(local_actions)
+    local_default_verify_commands = _local_default_verify_commands(
+        local_defaults_verify_command,
+        local_actions,
+    )
     if local_resolvable_gap_count <= 0:
         next_action = "沒有偵測到可用本機 defaults；依一般優先隊列處理剩餘缺口。"
     elif projected_blocking_gap_count == 0 and projected_optional_gap_count == 0:
@@ -512,15 +539,96 @@ def _local_resolution_projection(
         "local_resolvable_gap_count": local_resolvable_gap_count,
         "projected_blocking_gap_count": projected_blocking_gap_count,
         "projected_optional_gap_count": projected_optional_gap_count,
+        "remaining_paid_external_pending": sum(
+            1 for action in remaining_actions if action.get("action_type") == "paid_external"
+        ),
+        "local_defaults_verify_command": local_defaults_verify_command,
+        "compatible_auto_defaults_verify_command": AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND,
+        "local_default_verify_commands": local_default_verify_commands,
         "local_action_capabilities": [
             action.get("capability") for action in local_actions if action.get("capability")
         ],
+        "local_default_capabilities": _local_default_capabilities(local_actions),
         "remaining_action_capabilities": [
             action.get("capability") for action in remaining_actions if action.get("capability")
         ],
         "remaining_actions": remaining_actions,
         "next_action": next_action,
     }
+
+
+def _local_defaults_verify_command(local_actions: list[dict]) -> str:
+    if not local_actions:
+        return ""
+    capabilities = {
+        str(action.get("capability") or "").strip()
+        for action in local_actions
+        if str(action.get("capability") or "").strip()
+    }
+    groups = {
+        str((action.get("local_auto_default") or {}).get("group") or "").strip()
+        for action in local_actions
+        if isinstance(action.get("local_auto_default") or {}, dict)
+    }
+    has_neo4j = bool(
+        groups.intersection({"neo4j"})
+        or capabilities.intersection({"neo4j_import", "graphrag_live_cypher_query"})
+    )
+    has_unlocker = bool(
+        groups.intersection({"flaresolverr"}) or "company_filing_high_risk_unlocker" in capabilities
+    )
+    has_browser_render = bool(
+        groups.intersection({"browserless"})
+        or "company_filing_browser_or_proxy_fallback" in capabilities
+    )
+    if has_neo4j and has_unlocker:
+        return EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND
+    if has_neo4j and has_browser_render:
+        return EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND
+    if has_neo4j:
+        return LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND
+    if has_unlocker:
+        return LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND
+    if has_browser_render:
+        return LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND
+    return AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND
+
+
+def _local_default_verify_commands(
+    primary_command: str,
+    local_actions: list[dict],
+) -> list[str]:
+    commands: list[str] = []
+    for command in [
+        primary_command,
+        *[
+            str((action.get("local_auto_default") or {}).get("verify_command") or "")
+            for action in local_actions
+            if isinstance(action.get("local_auto_default") or {}, dict)
+        ],
+        AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND if local_actions else "",
+    ]:
+        command = command.strip()
+        if command and command not in commands:
+            commands.append(command)
+    return commands
+
+
+def _local_default_capabilities(local_actions: list[dict]) -> list[dict]:
+    capabilities: list[dict] = []
+    for action in local_actions:
+        capability = str(action.get("capability") or "").strip()
+        if not capability:
+            continue
+        local_default = action.get("local_auto_default") or {}
+        capabilities.append(
+            {
+                "capability": capability,
+                "label": action.get("label") or capability,
+                "group": local_default.get("group") if isinstance(local_default, dict) else "",
+            }
+        )
+    return capabilities
 
 
 def _progress_summary(
@@ -556,18 +664,13 @@ def _progress_summary(
         "effective_optional_gap_count_after_available_local_defaults": (
             effective_optional_gap_count
         ),
-        "projected_blocking_gap_count_after_local_defaults": (
-            projected_blocking_gap_count
-        ),
-        "projected_optional_gap_count_after_local_defaults": (
-            projected_optional_gap_count
-        ),
+        "projected_blocking_gap_count_after_local_defaults": (projected_blocking_gap_count),
+        "projected_optional_gap_count_after_local_defaults": (projected_optional_gap_count),
         "primary_next_action_label": primary_next_action.get("label") or "",
         "primary_next_action_capability": primary_next_action.get("capability"),
         "primary_next_action_type": primary_next_action.get("action_type") or "",
-        "primary_next_action_cost_profile": (
-            primary_next_action.get("cost_profile") or ""
-        ),
+        "primary_next_action_cost_profile": (primary_next_action.get("cost_profile") or ""),
+        "primary_next_action_verify_command": (primary_next_action.get("verify_command") or ""),
     }
 
 
@@ -595,11 +698,13 @@ def _primary_next_action(
     optional_gap_count: int,
     local_resolvable_gap_count: int,
     projected_optional_gap_count: int,
+    local_defaults_verify_command: str,
 ) -> dict:
     if overall_status == "degraded" and next_actions:
         return next_actions[0]
     if overall_status == "ready_with_optional_gaps":
         if local_resolvable_gap_count > 0:
+            command = local_defaults_verify_command or AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND
             return {
                 "domain_id": None,
                 "domain_label": "全部",
@@ -615,10 +720,12 @@ def _primary_next_action(
                 "cost_profile": "free_local_available",
                 "decision": "先用本機免費服務驗證；正式部署時再固化到 .env。",
                 "priority_reason": "本機服務已偵測到，可用一條 audit 指令驗證多個選配缺口。",
+                "verify_command": command,
                 "next_action": (
-                    f"先執行 `{AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND}`；可用本機 defaults "
+                    f"先執行 `{command}`；可用本機 defaults "
                     f"驗證 {local_resolvable_gap_count} 項缺口，之後剩餘 "
                     f"{projected_optional_gap_count} 項外部/付費選配。"
+                    f" 相容自動偵測入口：`{AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND}`。"
                 ),
             }
         return {

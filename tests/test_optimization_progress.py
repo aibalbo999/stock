@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.optimization_progress import (
+    EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND,
     OPTIMIZATION_DOMAINS,
     optimization_progress_status,
 )
@@ -21,6 +22,38 @@ def _ready_status() -> dict:
     return {"upgrade_capability_matrix": matrix}
 
 
+def _local_auto_defaults_preview() -> dict:
+    return {
+        "mode": "status_preview",
+        "compatible_audit_command": (
+            ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        ),
+        "detected": {"neo4j": True, "flaresolverr": True},
+        "would_apply_groups": ["flaresolverr", "neo4j"],
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "group": "flaresolverr",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+        ],
+        "local_action_available_count": 3,
+    }
+
+
 def test_optimization_progress_reports_all_domains_ready() -> None:
     progress = optimization_progress_status(_ready_status())
 
@@ -31,22 +64,13 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
     assert progress["optional_gap_count"] == 0
     assert progress["local_resolvable_gap_count"] == 0
     assert progress["effective_status_after_available_local_defaults"] == "ready"
-    assert (
-        progress["effective_blocking_gap_count_after_available_local_defaults"]
-        == 0
-    )
-    assert (
-        progress["effective_optional_gap_count_after_available_local_defaults"]
-        == 0
-    )
+    assert progress["effective_blocking_gap_count_after_available_local_defaults"] == 0
+    assert progress["effective_optional_gap_count_after_available_local_defaults"] == 0
     assert progress["effective_gap_note"] == ""
     assert progress["projected_status_after_local_defaults"] == "ready"
     assert progress["completion_ratio"] == 1.0
     assert progress["summary"]["status"] == "ready"
-    assert (
-        progress["summary"]["effective_status_after_available_local_defaults"]
-        == "ready"
-    )
+    assert progress["summary"]["effective_status_after_available_local_defaults"] == "ready"
     assert progress["summary"]["completion_ratio"] == 1.0
     assert progress["summary"]["primary_next_action_type"] == "monitoring"
     assert progress["primary_next_action"]["action_type"] == "monitoring"
@@ -73,14 +97,8 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert progress["blocking_gap_count"] == 0
     assert progress["optional_gap_count"] == 1
     assert progress["local_resolvable_gap_count"] == 0
-    assert (
-        progress["effective_optional_gap_count_after_available_local_defaults"]
-        == 1
-    )
-    assert (
-        progress["effective_status_after_available_local_defaults"]
-        == "ready_with_optional_gaps"
-    )
+    assert progress["effective_optional_gap_count_after_available_local_defaults"] == 1
+    assert progress["effective_status_after_available_local_defaults"] == "ready_with_optional_gaps"
     assert progress["effective_gap_note"] == ""
     assert progress["projected_optional_gap_count_after_local_defaults"] == 1
     assert progress["primary_next_action"]["action_type"] == "optional_review"
@@ -98,6 +116,91 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert data_domain["status"] == "ready_with_optional_gaps"
     assert data_domain["optional_gaps"][0]["external"] is True
     assert "TEJ" in data_domain["optional_gaps"][0]["next_action"]
+
+
+def test_optimization_progress_exposes_combined_local_defaults_command() -> None:
+    status = _ready_status()
+    status["upgrade_capability_matrix"]["ai_rag"]["neo4j_import"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["ai_rag"]["graphrag_live_cypher_query"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_high_risk_unlocker"
+    ] = {
+        "status": "not_configured",
+        "detail": "missing unlocker env",
+    }
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_structured_api_fallback"
+    ] = {
+        "status": "not_configured",
+        "detail": "paid external API not configured",
+    }
+    status["local_dependency_auto_defaults"] = _local_auto_defaults_preview()
+
+    progress = optimization_progress_status(status)
+    projection = progress["local_resolution_projection"]
+    action_rows = optimization_progress_next_action_rows(progress)
+
+    assert progress["status"] == "ready_with_optional_gaps"
+    assert progress["optional_gap_count"] == 4
+    assert progress["local_resolvable_gap_count"] == 3
+    assert progress["effective_optional_gap_count_after_available_local_defaults"] == 1
+    assert progress["projected_optional_gap_count_after_local_defaults"] == 1
+    assert projection["remaining_paid_external_pending"] == 1
+    assert projection["local_defaults_verify_command"] == (EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND)
+    assert projection["local_default_verify_commands"][0] == (EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND)
+    assert "--auto-local-defaults" in projection["local_default_verify_commands"][1]
+    assert progress["primary_next_action"]["verify_command"] == (
+        EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND
+    )
+    assert "剩餘 1 項外部/付費選配" in progress["primary_next_action"]["next_action"]
+    assert action_rows[0]["能力"] == "本機 defaults 可驗證"
+    assert action_rows[0]["指令"] == EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND
+    assert action_rows[1]["能力"] == "MOPS/TWSE/TPEx 高風險文件 unlocker"
+
+
+def test_optimization_progress_combines_browserless_and_neo4j_defaults() -> None:
+    status = _ready_status()
+    status["upgrade_capability_matrix"]["ai_rag"]["neo4j_import"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_browser_or_proxy_fallback"
+    ] = {
+        "status": "not_configured",
+        "detail": "missing browser render env",
+    }
+    status["local_dependency_auto_defaults"] = {
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_browser_or_proxy_fallback",
+                "group": "browserless",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+        ],
+    }
+
+    progress = optimization_progress_status(status)
+    command = progress["local_resolution_projection"]["local_defaults_verify_command"]
+
+    assert "--local-neo4j-defaults" in command
+    assert "--wait-local-neo4j 20" in command
+    assert "--wait-local-browserless 20" in command
+    assert "--local-browser-render-defaults" in command
+    assert "--prefer-unlocker" not in command
 
 
 def test_optimization_progress_marks_core_capability_gap_as_blocking() -> None:
@@ -138,35 +241,7 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
         "status": "not_configured",
         "detail": "missing unlocker env",
     }
-    status["local_dependency_auto_defaults"] = {
-        "mode": "status_preview",
-        "compatible_audit_command": (
-            ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
-        ),
-        "detected": {"neo4j": True, "flaresolverr": True},
-        "would_apply_groups": ["flaresolverr", "neo4j"],
-        "capability_matches": [
-            {
-                "area": "ai_rag",
-                "capability": "neo4j_import",
-                "group": "neo4j",
-                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
-            },
-            {
-                "area": "ai_rag",
-                "capability": "graphrag_live_cypher_query",
-                "group": "neo4j",
-                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
-            },
-            {
-                "area": "data_business_logic",
-                "capability": "company_filing_high_risk_unlocker",
-                "group": "flaresolverr",
-                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
-            },
-        ],
-        "local_action_available_count": 3,
-    }
+    status["local_dependency_auto_defaults"] = _local_auto_defaults_preview()
 
     progress = optimization_progress_status(status)
 
@@ -175,14 +250,8 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert progress["optional_gap_count"] == 3
     assert progress["local_resolvable_gap_count"] == 3
     assert progress["effective_status_after_available_local_defaults"] == "ready"
-    assert (
-        progress["effective_blocking_gap_count_after_available_local_defaults"]
-        == 0
-    )
-    assert (
-        progress["effective_optional_gap_count_after_available_local_defaults"]
-        == 0
-    )
+    assert progress["effective_blocking_gap_count_after_available_local_defaults"] == 0
+    assert progress["effective_optional_gap_count_after_available_local_defaults"] == 0
     assert "原始缺口為 0 blocking / 3 選配" in progress["effective_gap_note"]
     assert "有效剩餘 0 blocking / 0 選配" in progress["effective_gap_note"]
     assert progress["projected_status_after_local_defaults"] == "ready"
@@ -202,10 +271,7 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert progress["primary_next_action"]["status"] == "local_ready"
     assert progress["primary_next_action"]["locally_available"] is True
     assert progress["summary"]["primary_next_action_capability"] == "auto_local_defaults"
-    assert (
-        progress["summary"]["primary_next_action_cost_profile"]
-        == "free_local_available"
-    )
+    assert progress["summary"]["primary_next_action_cost_profile"] == "free_local_available"
     assert "--auto-local-defaults" in progress["primary_next_action"]["next_action"]
     assert "驗證 3 項缺口" in progress["primary_next_action"]["next_action"]
     assert "剩餘 0 項外部/付費選配" in progress["primary_next_action"]["next_action"]
@@ -262,14 +328,12 @@ def test_optimization_progress_prioritizes_high_roi_next_actions() -> None:
     assert positions["visual_rag"] < positions["company_filing_structured_api_fallback"]
     assert prioritized[positions["neo4j_import"]]["cost_profile"] == "free_local_available"
     assert prioritized[positions["visual_rag"]]["cost_profile"] == "quota_or_external"
-    assert prioritized[positions["company_filing_structured_api_fallback"]][
-        "cost_profile"
-    ] == "paid_external"
-    assert progress["local_resolution_projection"]["projected_blocking_gap_count"] == 1
     assert (
-        progress["effective_blocking_gap_count_after_available_local_defaults"]
-        == 1
+        prioritized[positions["company_filing_structured_api_fallback"]]["cost_profile"]
+        == "paid_external"
     )
+    assert progress["local_resolution_projection"]["projected_blocking_gap_count"] == 1
+    assert progress["effective_blocking_gap_count_after_available_local_defaults"] == 1
     assert progress["local_resolution_projection"]["remaining_action_capabilities"] == [
         "background_task_queue",
         "visual_rag",

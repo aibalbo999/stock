@@ -229,11 +229,24 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
             "是否外部": "是" if action.get("external") else "否",
             "決策": action.get("decision") or "-",
             "優先理由": action.get("priority_reason") or "-",
+            "指令": _action_verify_command(action),
             "建議": action.get("next_action") or "-",
         }
         for action in actions
         if isinstance(action, dict)
     ]
+
+
+def _action_verify_command(action: dict) -> str:
+    verify_command = str(action.get("verify_command") or "").strip()
+    if verify_command:
+        return verify_command
+    local_default = action.get("local_auto_default") or {}
+    if isinstance(local_default, dict):
+        local_command = str(local_default.get("verify_command") or "").strip()
+        if local_command:
+            return local_command
+    return "-"
 
 
 def _format_progress_ratio(value: object) -> str:

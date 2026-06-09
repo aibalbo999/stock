@@ -71,4 +71,9 @@ def test_readme_links_deployment_runbook_for_external_details() -> None:
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in runbook
     assert ".venv/bin/python scripts/external_integrations_smoke.py --strict --json" in runbook
     assert ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json" in runbook
+    assert (
+        ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults "
+        "--prefer-unlocker --wait-local-neo4j 20 --wait-local-flaresolverr 20 "
+        "--local-browser-render-defaults --json"
+    ) in runbook
     assert "external_deployment_local_projection" in runbook

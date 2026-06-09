@@ -197,6 +197,7 @@ COMPANY_FILING_STRUCTURED_API_PROVIDER=custom COMPANY_FILING_STRUCTURED_API_URL=
 .venv/bin/python scripts/upgrade_audit.py
 .venv/bin/python scripts/upgrade_audit.py --json
 .venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json
+.venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --prefer-unlocker --wait-local-neo4j 20 --wait-local-flaresolverr 20 --local-browser-render-defaults --json
 .venv/bin/python scripts/upgrade_audit.py --strict-external
 .venv/bin/python scripts/upgrade_audit.py --strict-external --local-neo4j-defaults --wait-local-neo4j 20
 ```
@@ -205,7 +206,7 @@ COMPANY_FILING_STRUCTURED_API_PROVIDER=custom COMPANY_FILING_STRUCTURED_API_URL=
 
 本機 Docker 開發時，可先用 `--auto-local-defaults --json` 自動偵測已開啟的 localhost Neo4j、Chroma、Browserless 或 FlareSolverr，並只在本次稽核程序套用對應預設值；它不會啟動服務、不會改寫 `.env`。若要指定等待時間，可加 `--wait-local-neo4j 20`、`--wait-local-chroma 20`、`--wait-local-browserless 20` 或 `--wait-local-flaresolverr 20`。
 
-`GET /services/status` 會同步輸出 `local_dependency_auto_defaults` preview，列出目前 localhost 服務可讓 `--auto-local-defaults` 套用哪些程序內 defaults、對應哪些 optional capability、以及驗證指令。維護頁會用它把 Neo4j/FlareSolverr 這類「服務已啟動但尚未寫入 env」的 optional gap 標成「本機可驗證」。
+`GET /services/status` 會同步輸出 `local_dependency_auto_defaults` preview，列出目前 localhost 服務可讓 `--auto-local-defaults` 套用哪些程序內 defaults、對應哪些 optional capability、以及驗證指令。`optimization_progress.local_defaults_verify_command` 會再挑出目前最適合的一條顯式本機驗證命令；例如 Neo4j + FlareSolverr 都已可用時，會建議上方包含 `--local-neo4j-defaults --prefer-unlocker` 的命令。維護頁會用它把 Neo4j/FlareSolverr 這類「服務已啟動但尚未寫入 env」的 optional gap 標成「本機可驗證」。
 
 ## Maintenance UI
 

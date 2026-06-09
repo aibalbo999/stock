@@ -410,6 +410,99 @@ def test_upgrade_audit_marks_paid_external_only_gaps_as_nonblocking_optional() -
     assert enablement["primary_next_action"] == (
         "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持 sample contract。"
     )
+    projection = audit["external_deployment_local_projection"]
+    assert projection["available_local_default_gap_count"] == 0
+    assert projection["remaining_pending"] == 1
+    assert projection["remaining_paid_external_pending"] == 1
+    assert projection["next_action"] == "目前有效剩餘 1 項付費外部資料 API 選配。"
+
+
+def test_upgrade_audit_projects_effective_external_gaps_after_local_defaults() -> None:
+    status = _fake_status(
+        {
+            "ai_rag.neo4j_import": {
+                "status": "degraded",
+                "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
+            "ai_rag.graphrag_live_cypher_query": {
+                "status": "degraded",
+                "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
+            "data_business_logic.company_filing_high_risk_unlocker": {
+                "status": "not_configured",
+                "evidence": {},
+            },
+            "data_business_logic.company_filing_structured_api_fallback": {
+                "status": "not_configured",
+                "evidence": {},
+            },
+        }
+    )
+    status["local_dependency_auto_defaults"] = {
+        "mode": "status_preview",
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "group": "neo4j",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "group": "flaresolverr",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+        ],
+    }
+
+    audit = audit_upgrade_capabilities(status)
+
+    projection = audit["external_deployment_local_projection"]
+    assert projection["status_after_available_local_defaults"] == "caution"
+    assert projection["current_pending"] == 4
+    assert projection["current_blocking_pending"] == 0
+    assert projection["current_optional_pending"] == 4
+    assert projection["available_local_default_gap_count"] == 3
+    assert projection["remaining_pending"] == 1
+    assert projection["remaining_blocking_pending"] == 0
+    assert projection["remaining_optional_pending"] == 1
+    assert projection["remaining_paid_external_pending"] == 1
+    assert projection["remaining_action_counts"] == {
+        "local_action": 0,
+        "quota_or_external": 0,
+        "paid_external": 1,
+        "manual_configuration": 0,
+    }
+    assert {row["capability"] for row in projection["local_default_capabilities"]} == {
+        "neo4j_import",
+        "graphrag_live_cypher_query",
+        "company_filing_high_risk_unlocker",
+    }
+    assert projection["remaining_capabilities"] == [
+        {
+            "area": "data_business_logic",
+            "capability": "company_filing_structured_api_fallback",
+            "label": "公司文件結構化 API 備援",
+            "action_type": "paid_external",
+        }
+    ]
+    assert projection["local_default_verify_commands"] == [
+        ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+    ]
+    assert "有效剩餘 1 項付費外部資料 API 選配" in projection["next_action"]
 
 
 def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:

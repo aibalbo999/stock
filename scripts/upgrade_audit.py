@@ -365,6 +365,23 @@ def _format_text(audit: dict) -> str:
             f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
             f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
         )
+    local_projection = (
+        audit.get("external_deployment_local_projection")
+        if isinstance(audit.get("external_deployment_local_projection"), dict)
+        else {}
+    )
+    if local_projection:
+        lines.append(
+            "Effective external gaps: "
+            f"pending={int(local_projection.get('current_pending') or 0)} -> "
+            f"{int(local_projection.get('remaining_pending') or 0)} after available local defaults; "
+            f"blocking={int(local_projection.get('remaining_blocking_pending') or 0)}; "
+            f"optional={int(local_projection.get('remaining_optional_pending') or 0)}; "
+            f"paid_external={int(local_projection.get('remaining_paid_external_pending') or 0)}; "
+            f"local_defaults={int(local_projection.get('available_local_default_gap_count') or 0)}"
+        )
+        if local_projection.get("next_action"):
+            lines.append("Effective next action: " + str(local_projection["next_action"]))
     auto_defaults = audit.get("local_dependency_auto_defaults")
     if auto_defaults:
         detected = auto_defaults.get("detected") or {}

@@ -322,6 +322,9 @@ def external_deployment_pending_gap_rows(
                 "label": str(item.get("label") or item.get("capability") or "-"),
                 "status": str(item.get("status") or "-"),
                 "severity": str(item.get("severity") or "warn"),
+                "optional": bool(
+                    item.get("optional") or item.get("_warning_source") == "optional_warnings"
+                ),
                 "decision": external_deployment_readiness_decision(item),
                 "action_type": _external_gap_action_type(enablement, local_action),
                 "deployment_profile": enablement["deployment_profile"],

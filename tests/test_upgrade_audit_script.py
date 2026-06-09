@@ -60,6 +60,15 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "paid_external": 0,
                 "manual_configuration": 0,
             },
+            "external_deployment_local_projection": {
+                "current_pending": 1,
+                "remaining_pending": 0,
+                "remaining_blocking_pending": 0,
+                "remaining_optional_pending": 0,
+                "remaining_paid_external_pending": 0,
+                "available_local_default_gap_count": 1,
+                "next_action": "套用已偵測本機 defaults 可消除 1 項外部選配缺口。",
+            },
             "external_deployment_pending_gaps": [
                 {
                     "capability": "neo4j_import",
@@ -131,6 +140,11 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
         "External gap actions: local_action=1; quota_or_external=0; "
         "paid_external=0; manual_configuration=0"
     ) in output
+    assert (
+        "Effective external gaps: pending=1 -> 0 after available local defaults; "
+        "blocking=0; optional=0; paid_external=0; local_defaults=1"
+    ) in output
+    assert "Effective next action: 套用已偵測本機 defaults 可消除 1 項外部選配缺口。" in output
     assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
     assert (
         "Local dependency last start: 已啟動 at 2026-06-09T01:02:03Z; "

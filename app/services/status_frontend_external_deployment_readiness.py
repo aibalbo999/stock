@@ -94,10 +94,17 @@ def frontend_external_deployment_readiness_status(
             and "maintenance_run_operation" in maintenance_deployment_panel_source
             and 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"'
             in maintenance_deployment_panel_source
+            and 'LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY = "last_post_run_diagnostic_result"'
+            in maintenance_deployment_panel_source
             and "st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result"
             in maintenance_deployment_panel_source
             and "st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)"
             in maintenance_deployment_panel_source
+            and "st.session_state[LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY] = result"
+            in maintenance_deployment_panel_source
+            and "st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY)"
+            in maintenance_deployment_panel_source
+            and "後續診斷結果" in maintenance_deployment_panel_source
             and 'f"/maintenance/operations/{selected_operation_id}/run"'
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source

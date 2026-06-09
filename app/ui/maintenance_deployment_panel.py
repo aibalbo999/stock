@@ -24,6 +24,7 @@ from app.ui.external_deployment_diagnostics import (
 )
 
 LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"
+LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY = "last_post_run_diagnostic_result"
 
 
 def render_external_deployment_panel(
@@ -380,12 +381,17 @@ def _render_post_run_diagnostic_actions(post_run_rows: list[dict]) -> None:
                 error_message="後續診斷執行失敗",
             )
             if isinstance(result, dict):
-                _render_post_run_diagnostic_result(result)
+                st.session_state[LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY] = result
+    last_result = st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY)
+    if isinstance(last_result, dict):
+        _render_post_run_diagnostic_result(last_result)
 
 
 def _render_post_run_diagnostic_result(result: dict) -> None:
     status = str(result.get("status") or "")
     message = str(result.get("message") or status or "診斷完成")
+    label = str(result.get("label") or result.get("id") or "後續診斷")
+    st.caption(f"後續診斷結果：{label}")
     if status == "success":
         st.success(message)
     elif status in {"failed", "timeout"}:

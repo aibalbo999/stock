@@ -9,6 +9,7 @@ from app.services import (
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
     topic_discovery_gap_queries,
+    topic_discovery_memory_fallback,
     topic_discovery_models,
     topic_discovery_news_queries,
     topic_discovery_prompts,
@@ -460,6 +461,7 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     service_source = Path("app/services/topic_discovery.py").read_text()
     fallback_source = Path("app/services/topic_discovery_fallbacks.py").read_text()
     ai_fallback_source = Path("app/services/topic_discovery_ai_fallback.py").read_text()
+    memory_fallback_source = Path("app/services/topic_discovery_memory_fallback.py").read_text()
 
     for topic in ["AI 產業鏈", "機器人 產業鏈", "記憶體產業鏈", "量子運算"]:
         assert TopicDiscoveryService._fallback_plan(
@@ -478,9 +480,15 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     assert topic_discovery_fallbacks.fallback_plan("AI 產業鏈") == (
         topic_discovery_ai_fallback.ai_fallback_plan()
     )
+    assert topic_discovery_fallbacks.fallback_plan("記憶體產業鏈") == (
+        topic_discovery_memory_fallback.memory_fallback_plan("記憶體產業鏈")
+    )
     assert "AI 伺服器需求" not in service_source
     assert "AI 伺服器需求" not in fallback_source
     assert "AI 伺服器需求" in ai_fallback_source
     assert "def ai_fallback_plan(" in ai_fallback_source
+    assert "需求與庫存循環" not in fallback_source
+    assert "需求與庫存循環" in memory_fallback_source
+    assert "def memory_fallback_plan(" in memory_fallback_source
     assert "協作與人形機器人需求" in fallback_source
     assert "def fallback_plan(" in fallback_source

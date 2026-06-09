@@ -22,6 +22,19 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution path
     from neo4j_graphrag_smoke import apply_local_neo4j_defaults
 
 try:
+    from scripts.upgrade_audit import (
+        LOCAL_BROWSERLESS_PORT,
+        LOCAL_FLARESOLVERR_PORT,
+        apply_local_browser_render_env_defaults,
+    )
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    from upgrade_audit import (
+        LOCAL_BROWSERLESS_PORT,
+        LOCAL_FLARESOLVERR_PORT,
+        apply_local_browser_render_env_defaults,
+    )
+
+try:
     from scripts.company_filing_render_smoke import (
         company_filing_render_provider_contract_report,
     )
@@ -90,6 +103,15 @@ EXTERNAL_LOCAL_NEO4J_SMOKE_COMMAND = (
 EXTERNAL_LOCAL_NEO4J_WAIT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/external_integrations_smoke.py "
     "--local-neo4j-defaults --wait-local-neo4j 20 --json"
+)
+EXTERNAL_LOCAL_BROWSER_RENDER_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/external_integrations_smoke.py "
+    "--local-browser-render-defaults --wait-local-browserless 20 --json"
+)
+EXTERNAL_LOCAL_UNLOCKER_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/external_integrations_smoke.py "
+    "--local-browser-render-defaults --prefer-unlocker "
+    "--wait-local-flaresolverr 20 --json"
 )
 
 EXTERNAL_CHECKS = (
@@ -180,6 +202,7 @@ def external_integration_report(
     status: dict[str, Any] | None = None,
     *,
     local_neo4j_defaults: dict[str, Any] | None = None,
+    local_browser_render_defaults: dict[str, Any] | None = None,
     local_dependency_wait: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     snapshot = status or service_status()
@@ -252,9 +275,13 @@ def external_integration_report(
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
         "local_neo4j_smoke_command": EXTERNAL_LOCAL_NEO4J_SMOKE_COMMAND,
         "local_neo4j_wait_smoke_command": EXTERNAL_LOCAL_NEO4J_WAIT_SMOKE_COMMAND,
+        "local_browser_render_smoke_command": EXTERNAL_LOCAL_BROWSER_RENDER_SMOKE_COMMAND,
+        "local_unlocker_smoke_command": EXTERNAL_LOCAL_UNLOCKER_SMOKE_COMMAND,
     }
     if local_neo4j_defaults:
         report["local_neo4j_defaults"] = local_neo4j_defaults
+    if local_browser_render_defaults:
+        report["local_browser_render_defaults"] = local_browser_render_defaults
     if local_dependency_wait:
         report["local_dependency_wait"] = local_dependency_wait
     return report
@@ -531,6 +558,21 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             + applied_text
             + " (current process only)"
         )
+    browser_defaults = (
+        report.get("local_browser_render_defaults")
+        if isinstance(report.get("local_browser_render_defaults"), dict)
+        else {}
+    )
+    if browser_defaults:
+        applied_keys = [str(key) for key in browser_defaults.get("applied_env_keys") or []]
+        applied_text = ", ".join(applied_keys) if applied_keys else str(
+            browser_defaults.get("reason") or "none; existing env used"
+        )
+        lines.append(
+            "Local browser render defaults: "
+            + ("applied " if applied_keys else "")
+            + applied_text
+        )
     local_wait = (
         report.get("local_dependency_wait")
         if isinstance(report.get("local_dependency_wait"), dict)
@@ -540,6 +582,16 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         lines.append(
             f"Local Neo4j wait: {'ready' if local_wait.get('neo4j') else 'not ready'} "
             f"within {local_wait.get('neo4j_timeout_seconds')}s"
+        )
+    if "browserless" in local_wait:
+        lines.append(
+            f"Local Browserless wait: {'ready' if local_wait.get('browserless') else 'not ready'} "
+            f"within {local_wait.get('browserless_timeout_seconds')}s"
+        )
+    if "flaresolverr" in local_wait:
+        lines.append(
+            f"Local FlareSolverr wait: {'ready' if local_wait.get('flaresolverr') else 'not ready'} "
+            f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
         )
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
@@ -618,6 +670,33 @@ def main(argv: list[str] | None = None) -> int:
         metavar="SECONDS",
         help="Wait for localhost Neo4j port before checking local Neo4j status.",
     )
+    parser.add_argument(
+        "--local-browser-render-defaults",
+        action="store_true",
+        help=(
+            "Apply local Browserless/FlareSolverr/Playwright render defaults for this "
+            "smoke process without editing .env."
+        ),
+    )
+    parser.add_argument(
+        "--prefer-unlocker",
+        action="store_true",
+        help="Prefer local FlareSolverr over Browserless when applying render defaults.",
+    )
+    parser.add_argument(
+        "--wait-local-browserless",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait for localhost Browserless port before checking render fallback status.",
+    )
+    parser.add_argument(
+        "--wait-local-flaresolverr",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait for localhost FlareSolverr port before checking high-risk unlocker status.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(argv)
 
@@ -631,20 +710,67 @@ def main(argv: list[str] | None = None) -> int:
             "note": "Defaults apply only to this smoke process; .env is unchanged.",
         }
 
-    wait_report = None
+    wait_report = {}
     if int(args.wait_local_neo4j or 0) > 0:
-        wait_report = {
-            "neo4j": wait_for_port(
-                "127.0.0.1",
-                7687,
-                timeout_seconds=int(args.wait_local_neo4j),
+        wait_report["neo4j"] = wait_for_port(
+            "127.0.0.1",
+            7687,
+            timeout_seconds=int(args.wait_local_neo4j),
+        )
+        wait_report["neo4j_timeout_seconds"] = int(args.wait_local_neo4j)
+    browserless_wait_ready = None
+    if int(args.wait_local_browserless or 0) > 0:
+        browserless_wait_ready = wait_for_port(
+            "127.0.0.1",
+            LOCAL_BROWSERLESS_PORT,
+            timeout_seconds=int(args.wait_local_browserless),
+        )
+        wait_report["browserless"] = browserless_wait_ready
+        wait_report["browserless_timeout_seconds"] = int(args.wait_local_browserless)
+    flaresolverr_wait_ready = None
+    if int(args.wait_local_flaresolverr or 0) > 0:
+        flaresolverr_wait_ready = wait_for_port(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
+            timeout_seconds=int(args.wait_local_flaresolverr),
+        )
+        wait_report["flaresolverr"] = flaresolverr_wait_ready
+        wait_report["flaresolverr_timeout_seconds"] = int(args.wait_local_flaresolverr)
+
+    browser_defaults_report = None
+    if args.local_browser_render_defaults:
+        browserless_port_available = bool(browserless_wait_ready) or is_port_open(
+            "127.0.0.1",
+            LOCAL_BROWSERLESS_PORT,
+        )
+        flaresolverr_port_available = bool(flaresolverr_wait_ready) or is_port_open(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
+        )
+        browser_defaults = apply_local_browser_render_env_defaults(
+            prefer_browserless=bool(browserless_wait_ready),
+            prefer_unlocker=bool(args.prefer_unlocker and flaresolverr_port_available),
+        )
+        clear_settings_cache()
+        browser_defaults_report = {
+            "requested": True,
+            "preferred_unlocker": bool(args.prefer_unlocker),
+            "browserless_port_available": browserless_port_available,
+            "flaresolverr_port_available": flaresolverr_port_available,
+            "applied_env_keys": sorted(browser_defaults),
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+            "reason": None
+            if browser_defaults
+            else (
+                "flaresolverr_or_browserless_port_or_playwright_dependency_missing_"
+                "or_existing_render_fallback_configured"
             ),
-            "neo4j_timeout_seconds": int(args.wait_local_neo4j),
         }
 
     report = external_integration_report(
         local_neo4j_defaults=local_defaults_report,
-        local_dependency_wait=wait_report,
+        local_browser_render_defaults=browser_defaults_report,
+        local_dependency_wait=wait_report or None,
     )
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

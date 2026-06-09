@@ -11,6 +11,14 @@ from scripts.external_integrations_smoke import (
     format_external_integration_report,
 )
 
+LOCAL_BROWSER_RENDER_ENV_KEYS = (
+    "COMPANY_FILING_PROXY_URLS",
+    "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+    "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+    "COMPANY_FILING_BROWSER_RENDER_URL",
+    "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+)
+
 
 def test_external_integration_report_summarizes_optional_deployment_checks() -> None:
     report = external_integration_report(
@@ -334,6 +342,86 @@ def test_external_integration_report_can_use_local_neo4j_smoke_commands() -> Non
     assert "Neo4j GraphRAG smoke: .venv/bin/python scripts/neo4j_graphrag_smoke.py --local-neo4j-defaults" in output
 
 
+def test_external_integration_report_surfaces_local_browser_render_defaults() -> None:
+    report = external_integration_report(
+        {
+            "upgrade_capability_matrix": {
+                "ai_rag": {
+                    "neo4j_payload_export": {
+                        "status": "ready",
+                        "evidence": {
+                            "payload_export_ready": True,
+                            "payload_format": "neo4j_cypher_v1",
+                            "payload_node_count": 27,
+                            "payload_statement_count": 5,
+                        },
+                    },
+                    "graphrag_agentic_cypher": {
+                        "status": "ready",
+                        "evidence": {
+                            "local_dry_run_enabled": True,
+                            "local_dry_run_status": "executed_dry_run",
+                            "agentic_cypher_plan_example": {
+                                "validation": {"valid": True, "read_only": True},
+                            },
+                        },
+                    },
+                    "neo4j_import": {"status": "degraded", "evidence": {}},
+                    "graphrag_live_cypher_query": {"status": "degraded", "evidence": {}},
+                },
+                "data_business_logic": {
+                    "company_filing_browser_or_proxy_fallback": {
+                        "status": "ready",
+                        "evidence": {},
+                    },
+                    "company_filing_high_risk_unlocker": {
+                        "status": "ready",
+                        "evidence": {
+                            "configured_provider": "flaresolverr",
+                            "smoke_cli": (
+                                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                "--url https://mops.twse.com.tw/ --json"
+                            ),
+                        },
+                    },
+                    "company_filing_structured_api_fallback": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                },
+            }
+        },
+        local_browser_render_defaults={
+            "requested": True,
+            "preferred_unlocker": True,
+            "browserless_port_available": False,
+            "flaresolverr_port_available": True,
+            "applied_env_keys": [
+                "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+                "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+                "COMPANY_FILING_BROWSER_RENDER_URL",
+            ],
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+            "reason": None,
+        },
+        local_dependency_wait={
+            "flaresolverr": True,
+            "flaresolverr_timeout_seconds": 20,
+        },
+    )
+
+    assert report["local_browser_render_defaults"]["preferred_unlocker"] is True
+    assert report["local_unlocker_smoke_command"].endswith(
+        "--local-browser-render-defaults --prefer-unlocker --wait-local-flaresolverr 20 --json"
+    )
+
+    output = format_external_integration_report(report)
+
+    assert "Local browser render defaults: applied COMPANY_FILING_BROWSER_RENDER_ENABLED" in output
+    assert "Local FlareSolverr wait: ready within 20s" in output
+    assert "MOPS/TWSE/TPEx high-risk filing unlocker: ready" in output
+
+
 def test_external_integrations_smoke_main_applies_local_neo4j_defaults(
     monkeypatch,
     capsys,
@@ -407,3 +495,98 @@ def test_external_integrations_smoke_main_applies_local_neo4j_defaults(
         LOCAL_NEO4J_ENV_DEFAULTS
     )
     assert "--local-neo4j-defaults" in report["neo4j_graphrag_smoke_command"]
+
+
+def test_external_integrations_smoke_main_applies_local_unlocker_defaults(
+    monkeypatch,
+    capsys,
+) -> None:
+    old_env = {key: os.environ.get(key) for key in LOCAL_BROWSER_RENDER_ENV_KEYS}
+    for key in LOCAL_BROWSER_RENDER_ENV_KEYS:
+        os.environ.pop(key, None)
+    get_settings.cache_clear()
+
+    def fake_wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
+        return port == smoke.LOCAL_FLARESOLVERR_PORT
+
+    def fake_is_port_open(host: str, port: int) -> bool:
+        return port == smoke.LOCAL_FLARESOLVERR_PORT
+
+    def fake_service_status() -> dict:
+        settings = get_settings()
+        assert settings.company_filing_browser_render_enabled is True
+        assert settings.company_filing_browser_render_provider == "flaresolverr"
+        assert settings.company_filing_browser_render_url == "http://127.0.0.1:8191/v1"
+        return {
+            "upgrade_capability_matrix": {
+                "ai_rag": {
+                    "neo4j_payload_export": {
+                        "status": "ready",
+                        "evidence": {
+                            "payload_export_ready": True,
+                            "payload_format": "neo4j_cypher_v1",
+                            "payload_node_count": 27,
+                            "payload_statement_count": 5,
+                        },
+                    },
+                    "graphrag_agentic_cypher": {
+                        "status": "ready",
+                        "evidence": {
+                            "local_dry_run_enabled": True,
+                            "local_dry_run_status": "executed_dry_run",
+                            "agentic_cypher_plan_example": {
+                                "validation": {"valid": True, "read_only": True},
+                            },
+                        },
+                    },
+                    "neo4j_import": {"status": "ready", "evidence": {}},
+                    "graphrag_live_cypher_query": {"status": "ready", "evidence": {}},
+                },
+                "data_business_logic": {
+                    "company_filing_browser_or_proxy_fallback": {
+                        "status": "ready",
+                        "evidence": {},
+                    },
+                    "company_filing_high_risk_unlocker": {
+                        "status": "ready",
+                        "evidence": {},
+                    },
+                    "company_filing_structured_api_fallback": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                },
+            }
+        }
+
+    monkeypatch.setattr(smoke, "wait_for_port", fake_wait_for_port)
+    monkeypatch.setattr(smoke, "is_port_open", fake_is_port_open)
+    monkeypatch.setattr(smoke, "service_status", fake_service_status)
+    try:
+        exit_code = smoke.main(
+            [
+                "--local-browser-render-defaults",
+                "--prefer-unlocker",
+                "--wait-local-flaresolverr",
+                "3",
+                "--json",
+            ]
+        )
+        report = json.loads(capsys.readouterr().out)
+    finally:
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()
+
+    assert exit_code == 0
+    assert report["local_browser_render_defaults"]["preferred_unlocker"] is True
+    assert report["local_browser_render_defaults"]["flaresolverr_port_available"] is True
+    assert report["local_browser_render_defaults"]["applied_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+    ]
+    assert report["local_dependency_wait"]["flaresolverr"] is True

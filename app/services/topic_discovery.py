@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import json
-import re
-
-from pydantic import ValidationError
-
 from app.models.schemas import NewsDocument
 from app.services import (
     topic_discovery_candidates,
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
+    topic_discovery_parser,
     topic_discovery_prompts,
     topic_discovery_quality,
     topic_discovery_queries,
@@ -39,7 +35,9 @@ class TopicDiscoveryService:
                 "message": result.text,
                 "plan": fallback_plan.model_dump(),
                 "plan_quality": fallback_quality.model_dump(),
-                "initial_plan_quality": self.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+                "initial_plan_quality": self.evaluate_plan_quality(
+                    TopicDiscoveryPlan()
+                ).model_dump(),
                 "repair_attempted": False,
                 "repair_applied": False,
                 "fallback_plan_applied": True,
@@ -56,7 +54,9 @@ class TopicDiscoveryService:
                 "raw_preview": result.text[:500],
                 "plan": fallback_plan.model_dump(),
                 "plan_quality": fallback_quality.model_dump(),
-                "initial_plan_quality": self.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+                "initial_plan_quality": self.evaluate_plan_quality(
+                    TopicDiscoveryPlan()
+                ).model_dump(),
                 "repair_attempted": False,
                 "repair_applied": False,
                 "fallback_plan_applied": True,
@@ -540,13 +540,7 @@ class TopicDiscoveryService:
 
     @staticmethod
     def parse_plan(raw_text: str) -> TopicDiscoveryPlan:
-        json_text = TopicDiscoveryService._extract_json(raw_text)
-        try:
-            return TopicDiscoveryService.enrich_plan(
-                TopicDiscoveryPlan.model_validate_json(json_text)
-            )
-        except (ValidationError, ValueError) as exc:
-            raise ValueError("invalid topic discovery json") from exc
+        return topic_discovery_parser.parse_plan(raw_text)
 
     @staticmethod
     def enrich_plan(plan: TopicDiscoveryPlan, topic: str | None = None) -> TopicDiscoveryPlan:
@@ -580,16 +574,7 @@ class TopicDiscoveryService:
 
     @staticmethod
     def _extract_json(raw_text: str) -> str:
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
-        if fenced:
-            return fenced.group(1)
-        start = raw_text.find("{")
-        end = raw_text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ValueError("json object not found")
-        candidate = raw_text[start : end + 1]
-        json.loads(candidate)
-        return candidate
+        return topic_discovery_parser.extract_json(raw_text)
 
     @staticmethod
     def _prompt(topic: str) -> str:

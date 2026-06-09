@@ -22,6 +22,7 @@ from app.services.report_quality_runtime import (
     summarize_llm_status,
 )
 from app.services.report_quality_llm_rules import llm_quality_notes
+from app.services.report_quality_plan_rules import discovery_plan_quality_notes
 from app.services.report_quality_rag_rules import (
     normalized_rag_reranker_provider,
     rag_quality_warnings,
@@ -272,17 +273,9 @@ def build_report_quality_gate(
             and float(low_credibility_ratio) > 0.35
         ):
             warnings.append("投資網誌或社群型來源比例偏高，不能直接支撐高可信投資理由")
-    if plan_quality:
-        plan_status = str(plan_quality.get("status") or "unknown")
-        plan_score = int(plan_quality.get("score") or 0)
-        missing = plan_quality.get("missing") or []
-        missing_summary = "、".join(str(item) for item in missing[:3])
-        if plan_status == "insufficient" or plan_score < 55:
-            detail = f"：{missing_summary}" if missing_summary else ""
-            blockers.append(f"AI 拆解任務品質不足{detail}")
-        elif plan_status == "caution" or plan_score < 80:
-            detail = f"：{missing_summary}" if missing_summary else ""
-            warnings.append(f"AI 拆解任務仍有缺口{detail}")
+    plan_blockers, plan_warnings = discovery_plan_quality_notes(plan_quality)
+    blockers.extend(plan_blockers)
+    warnings.extend(plan_warnings)
     if promoted_count and market_coverage < 0.5:
         blockers.append("股價資料覆蓋率低於 50%")
     elif promoted_count and market_coverage < 1:

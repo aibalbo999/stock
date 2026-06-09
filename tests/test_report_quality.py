@@ -12,6 +12,7 @@ from app.services.llm_client import LLMResult
 from app.services import report_quality, report_quality_runtime
 from app.services import report_quality_recovery
 from app.services import report_quality_llm_rules
+from app.services import report_quality_plan_rules
 from app.services import report_quality_rag_rules
 from app.services.report_quality import (
     attach_quality_gate_to_report,
@@ -80,6 +81,21 @@ def test_report_quality_llm_warning_rules_live_outside_quality_gate_module() -> 
     assert "LLM 補充分析已完成，但曾經重試或切換備援模型" in llm_rules_source
     assert "LLM 補充分析未啟用或呼叫失敗" not in report_quality_source
     assert "LLM 補充分析已完成，但曾經重試或切換備援模型" not in report_quality_source
+
+
+def test_report_quality_plan_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    plan_rules_source = Path("app/services/report_quality_plan_rules.py").read_text()
+
+    assert (
+        report_quality.discovery_plan_quality_notes
+        is report_quality_plan_rules.discovery_plan_quality_notes
+    )
+    assert "def discovery_plan_quality_notes(" in plan_rules_source
+    assert "AI 拆解任務品質不足" in plan_rules_source
+    assert "AI 拆解任務仍有缺口" in plan_rules_source
+    assert "AI 拆解任務品質不足" not in report_quality_source
+    assert "AI 拆解任務仍有缺口" not in report_quality_source
 
 
 def _quality_gate(

@@ -272,6 +272,73 @@ def external_deployment_enablement_summary_rows(
     return rows
 
 
+def external_deployment_pending_gap_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    rows: list[dict] = []
+    for item in external_deployment_readiness_items(upgrade_audit):
+        if external_deployment_item_ready(item):
+            continue
+        metadata = external_deployment_readiness_metadata(item)
+        enablement = external_deployment_enablement_profile(item)
+        local_action = external_deployment_local_action(
+            item,
+            upgrade_audit,
+            local_dependency_status=local_dependency_status,
+        )
+        rows.append(
+            {
+                "priority": metadata["priority"],
+                "area": str(item.get("area") or ""),
+                "area_label": _external_area_label(item),
+                "capability": str(item.get("capability") or ""),
+                "label": str(item.get("label") or item.get("capability") or "-"),
+                "status": str(item.get("status") or "-"),
+                "severity": str(item.get("severity") or "warn"),
+                "decision": external_deployment_readiness_decision(item),
+                "action_type": _external_gap_action_type(enablement, local_action),
+                "deployment_profile": enablement["deployment_profile"],
+                "enablement_group": enablement["group"],
+                "enablement_label": enablement["group_label"],
+                "free_local_available": enablement["free_local_available"],
+                "paid_service_required": enablement["paid_service_required"],
+                "local_action_state": local_action["state"],
+                "local_action_command": local_action["command"],
+                "cost_label": enablement["cost_label"],
+                "recommended_path": enablement["recommended_path"],
+                "remediation": item.get("remediation") or "-",
+                "detail": _external_warning_detail(item),
+                "smoke_commands": external_smoke_commands_from_payload(item),
+            }
+        )
+    return sorted(rows, key=_external_pending_gap_sort_key)
+
+
+def external_deployment_pending_gap_display_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return [
+        {
+            "優先級": row["priority"],
+            "能力": row["label"],
+            "處理類型": _external_gap_action_label(row["action_type"]),
+            "狀態": row["status"],
+            "部署決策": row["decision"],
+            "啟用分類": row["enablement_label"],
+            "本機動作": row["local_action_state"],
+            "本機指令": row["local_action_command"],
+            "成本/額度": row["cost_label"],
+            "建議路徑": row["recommended_path"],
+        }
+        for row in external_deployment_pending_gap_rows(
+            upgrade_audit,
+            local_dependency_status=local_dependency_status,
+        )
+    ]
+
+
 def external_deployment_readiness_items(upgrade_audit: dict) -> list[dict]:
     if not isinstance(upgrade_audit, dict):
         return []
@@ -684,6 +751,44 @@ def _external_enablement_primary_next_action(summary: dict) -> str:
     if int(summary.get("quota_or_external_pending") or 0) > 0:
         return "剩餘項目主要取決於模型/API 額度，建議只在高價值文件啟用。"
     return "依 readiness checklist 逐項補齊設定。"
+
+
+def _external_gap_action_type(enablement: dict, local_action: dict) -> str:
+    if (
+        enablement.get("deployment_profile") == "free_local"
+        and str(local_action.get("command") or "-") != "-"
+    ):
+        return "local_action"
+    if enablement.get("paid_service_required"):
+        return "paid_external"
+    if enablement.get("deployment_profile") == "quota_or_external":
+        return "quota_or_external"
+    return "manual_configuration"
+
+
+def _external_gap_action_label(action_type: object) -> str:
+    labels = {
+        "local_action": "本機可修",
+        "quota_or_external": "額度/外部選配",
+        "paid_external": "付費外部 API",
+        "manual_configuration": "手動設定",
+    }
+    return labels.get(str(action_type or ""), str(action_type or "-"))
+
+
+def _external_pending_gap_sort_key(row: dict) -> tuple[int, int, str]:
+    action_order = {
+        "local_action": 0,
+        "quota_or_external": 1,
+        "paid_external": 2,
+        "manual_configuration": 3,
+    }
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    return (
+        action_order.get(str(row.get("action_type") or ""), 4),
+        priority_order.get(str(row.get("priority") or ""), 4),
+        str(row.get("label") or ""),
+    )
 
 
 def _local_dependency_port_state(local_dependency_status: dict | None, service: str) -> bool | None:

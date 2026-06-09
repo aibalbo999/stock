@@ -8,6 +8,7 @@ from typing import Any
 from app.services.external_deployment_readiness import (
     external_deployment_enablement_profile,
     external_deployment_enablement_summary,
+    external_deployment_pending_gap_rows,
 )
 from app.services.service_status import service_status
 
@@ -161,12 +162,15 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
     checks.extend(local_graphrag_contract_checks(matrix))
     checks.append(company_filing_render_provider_contract_check())
     checks.append(structured_company_filing_sample_contract_check())
+    pending_gap_rows = external_deployment_pending_gap_rows({"checks": checks})
     return {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
         "ready_count": sum(1 for check in checks if check["ready"]),
         "check_count": len(checks),
         "checks": checks,
         "enablement_summary": external_deployment_enablement_summary({"checks": checks}),
+        "pending_gap_rows": pending_gap_rows,
+        "pending_gap_action_counts": _pending_gap_action_counts(pending_gap_rows),
         "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
         "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
@@ -400,6 +404,19 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             lines.append(
                 "Next action: " + str(enablement_summary["primary_next_action"])
             )
+    pending_gap_counts = (
+        report.get("pending_gap_action_counts")
+        if isinstance(report.get("pending_gap_action_counts"), dict)
+        else {}
+    )
+    if pending_gap_counts:
+        lines.append(
+            "Pending gap actions: "
+            f"local_action={int(pending_gap_counts.get('local_action') or 0)}; "
+            f"quota_or_external={int(pending_gap_counts.get('quota_or_external') or 0)}; "
+            f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
+            f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
+        )
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
         lines.append(f"- [{marker}] {check['label']}: {check['status']}")
@@ -415,6 +432,13 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             )
         if not check.get("ready"):
             lines.append(f"  fix: {check['remediation']}")
+            gap_row = _pending_gap_row_for_check(report, check)
+            if gap_row:
+                lines.append(
+                    "  action: "
+                    f"{gap_row.get('action_type')} "
+                    f"({gap_row.get('decision')}; {gap_row.get('local_action_state')})"
+                )
         smoke_commands = [
             str(command)
             for command in check.get("smoke_commands") or []
@@ -437,6 +461,27 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Structured filing sample: {report['structured_company_filing_sample_command']}")
     lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)
+
+
+def _pending_gap_action_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {
+        "local_action": 0,
+        "quota_or_external": 0,
+        "paid_external": 0,
+        "manual_configuration": 0,
+    }
+    for row in rows:
+        action_type = str(row.get("action_type") or "manual_configuration")
+        counts[action_type] = counts.get(action_type, 0) + 1
+    return counts
+
+
+def _pending_gap_row_for_check(report: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
+    capability = str(check.get("capability") or "")
+    for row in report.get("pending_gap_rows") or []:
+        if isinstance(row, dict) and row.get("capability") == capability:
+            return row
+    return {}
 
 
 def main(argv: list[str] | None = None) -> int:

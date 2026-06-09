@@ -687,6 +687,8 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     readiness_rows = helpers["external_deployment_readiness_rows"](audit)
     enablement_summary = helpers["external_deployment_enablement_summary"](audit)
     enablement_summary_rows = helpers["external_deployment_enablement_summary_rows"](audit)
+    pending_gap_rows = helpers["external_deployment_pending_gap_rows"](audit)
+    pending_gap_display_rows = helpers["external_deployment_pending_gap_display_rows"](audit)
     commands = helpers["external_deployment_smoke_commands"](audit)
 
     assert [row["能力"] for row in rows] == [
@@ -730,6 +732,24 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert "外部 Neo4j 匯入連線" in enablement_summary_rows[0]["待處理項目"]
     assert enablement_summary_rows[1]["待處理"] == 1
     assert "TEJ" in enablement_summary_rows[1]["成本/額度"]
+    assert {
+        row["capability"]: row["action_type"] for row in pending_gap_rows
+    } == {
+        "company_filing_browser_or_proxy_fallback": "local_action",
+        "graphrag_live_cypher_query": "local_action",
+        "neo4j_import": "local_action",
+        "company_filing_structured_api_fallback": "paid_external",
+    }
+    assert pending_gap_rows[-1]["capability"] == "company_filing_structured_api_fallback"
+    assert [row["處理類型"] for row in pending_gap_display_rows].count("本機可修") == 3
+    assert pending_gap_display_rows[-1]["處理類型"] == "付費外部 API"
+    browser_gap = next(
+        row
+        for row in pending_gap_display_rows
+        if row["能力"] == "公司文件 Proxy / Browser render / Playwright 後援"
+    )
+    assert "start_system.py --start-dependencies" in browser_gap["本機指令"]
+    assert "TEJ" in pending_gap_display_rows[-1]["成本/額度"]
     assert [row["項目"] for row in readiness_rows] == [
         "外部 Neo4j 匯入連線",
         "公司文件 Proxy / Browser render / Playwright 後援",

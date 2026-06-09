@@ -452,6 +452,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def external_deployment_enablement_profile(" in external_readiness_service_source
     assert "def external_deployment_enablement_summary(" in external_readiness_service_source
     assert "def external_deployment_enablement_summary_rows(" in external_readiness_service_source
+    assert "def external_deployment_pending_gap_rows(" in external_readiness_service_source
+    assert "def external_deployment_pending_gap_display_rows(" in external_readiness_service_source
+    assert "待處理缺口分類" in source
     assert '"本機動作"' in external_readiness_service_source
     assert '"本機指令"' in external_readiness_service_source
     assert "端口已啟動，需驗證" in external_readiness_service_source

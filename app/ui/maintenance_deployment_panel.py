@@ -11,6 +11,7 @@ from app.ui.external_deployment_diagnostics import (
     external_deployment_env_check_summary_rows,
     external_deployment_env_key_rows,
     external_deployment_env_resolution_rows,
+    external_deployment_pending_gap_display_rows,
     external_deployment_readiness_rows,
     external_deployment_smoke_commands,
     external_deployment_warning_rows,
@@ -48,6 +49,10 @@ def render_external_deployment_panel(
         local_dependency_status,
     )
     external_enablement_summary_rows = external_deployment_enablement_summary_rows(
+        upgrade_audit,
+        local_dependency_status,
+    )
+    external_pending_gap_rows = external_deployment_pending_gap_display_rows(
         upgrade_audit,
         local_dependency_status,
     )
@@ -105,6 +110,9 @@ def render_external_deployment_panel(
         if external_enablement_summary_rows:
             st.caption("外部部署啟用摘要")
             st.dataframe(external_enablement_summary_rows, width="stretch", hide_index=True)
+        if external_pending_gap_rows:
+            st.caption("待處理缺口分類")
+            st.dataframe(external_pending_gap_rows, width="stretch", hide_index=True)
         if external_readiness_rows:
             st.caption("外部部署 readiness checklist")
             st.dataframe(external_readiness_rows, width="stretch", hide_index=True)

@@ -89,6 +89,30 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert report["enablement_summary"]["primary_next_action"] == (
         "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
     )
+    assert report["pending_gap_action_counts"] == {
+        "local_action": 3,
+        "quota_or_external": 0,
+        "paid_external": 1,
+        "manual_configuration": 0,
+    }
+    assert [row["capability"] for row in report["pending_gap_rows"]] == [
+        "company_filing_high_risk_unlocker",
+        "graphrag_live_cypher_query",
+        "neo4j_import",
+        "company_filing_structured_api_fallback",
+    ]
+    assert [row["action_type"] for row in report["pending_gap_rows"]] == [
+        "local_action",
+        "local_action",
+        "local_action",
+        "paid_external",
+    ]
+    assert report["pending_gap_rows"][0]["local_action_state"] == "可啟動"
+    assert "start_system.py --start-dependencies" in report["pending_gap_rows"][0][
+        "local_action_command"
+    ]
+    assert report["pending_gap_rows"][-1]["deployment_profile"] == "paid_external"
+    assert "TEJ" in report["pending_gap_rows"][-1]["cost_label"]
     assert {check["capability"] for check in report["checks"]} == {
         "neo4j_payload_export_contract",
         "graphrag_local_cypher_dry_run",
@@ -196,6 +220,12 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "quota_or_external=0; paid_external=1"
     ) in output
     assert "Next action: 先處理本機免費可補強項目" in output
+    assert (
+        "Pending gap actions: local_action=3; quota_or_external=0; "
+        "paid_external=1; manual_configuration=0"
+    ) in output
+    assert "action: local_action" in output
+    assert "action: paid_external" in output
     assert "enablement: 可本機免費啟用" in output
     assert "enablement: 需外部資料 API" in output
     assert "Neo4j payload local contract: ready" in output

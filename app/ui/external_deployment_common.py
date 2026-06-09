@@ -15,6 +15,8 @@ from app.services.external_deployment_readiness import (
     external_deployment_item_by_capability as _external_deployment_item_by_capability,
     external_deployment_item_ready as _external_deployment_item_ready,
     external_deployment_local_action as _external_deployment_local_action,
+    external_deployment_pending_gap_display_rows as _external_deployment_pending_gap_display_rows,
+    external_deployment_pending_gap_rows as _external_deployment_pending_gap_rows,
     external_deployment_readiness_decision as _external_deployment_readiness_decision,
     external_deployment_readiness_items as _external_deployment_readiness_items,
     external_deployment_readiness_metadata as _external_deployment_readiness_metadata,
@@ -64,6 +66,20 @@ def external_deployment_enablement_summary_rows(
     local_dependency_status: dict | None = None,
 ) -> list[dict]:
     return _external_deployment_enablement_summary_rows(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_pending_gap_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_pending_gap_rows(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_pending_gap_display_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_pending_gap_display_rows(upgrade_audit, local_dependency_status)
 
 
 def external_deployment_local_action(

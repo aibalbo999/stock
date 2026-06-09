@@ -3,6 +3,8 @@ from __future__ import annotations
 from app.ui.external_deployment_common import (
     external_deployment_enablement_summary as _external_deployment_enablement_summary,
     external_deployment_enablement_summary_rows as _external_deployment_enablement_summary_rows,
+    external_deployment_pending_gap_display_rows as _external_deployment_pending_gap_display_rows,
+    external_deployment_pending_gap_rows as _external_deployment_pending_gap_rows,
     external_deployment_readiness_rows as _external_deployment_readiness_rows,
     external_deployment_smoke_commands as _external_deployment_smoke_commands,
     external_deployment_warning_rows as _external_deployment_warning_rows,
@@ -51,6 +53,20 @@ def external_deployment_enablement_summary_rows(
     local_dependency_status: dict | None = None,
 ) -> list[dict]:
     return _external_deployment_enablement_summary_rows(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_pending_gap_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_pending_gap_rows(upgrade_audit, local_dependency_status)
+
+
+def external_deployment_pending_gap_display_rows(
+    upgrade_audit: dict,
+    local_dependency_status: dict | None = None,
+) -> list[dict]:
+    return _external_deployment_pending_gap_display_rows(upgrade_audit, local_dependency_status)
 
 
 def external_deployment_env_key_rows(

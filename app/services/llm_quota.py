@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import get_settings
 from app.core.time import utc_now_naive
 from app.db.session import session_scope
-from app.services.llm_model_routing_policy import configured_text_model_order
+from app.services.llm_model_routing_policy import (
+    configured_text_model_order,
+    normalize_model_name as normalize_model_name,
+)
+from app.services.llm_quota_usage import (
+    NON_REQUEST_ATTEMPT_OUTCOMES as NON_REQUEST_ATTEMPT_OUTCOMES,
+    quota_health_by_model,
+    usage_by_model,
+)
 from app.services.persistence import LLMUsageRepository
 
-NON_REQUEST_ATTEMPT_OUTCOMES = {
-    "dependency_unavailable",
-    "missing_api_key",
-    "missing_model",
-    "quota_cooldown",
-    "quota_daily_exhausted",
-    "timeout",
-}
 DEFAULT_QUOTA_WARNING_RATIO = 0.8
 FREE_TIER_RATE_LIMIT_SOURCE = {
     "provider": "Google Gemini API rate limits",
@@ -103,30 +103,32 @@ class LLMQuotaGovernanceService:
         )
         model_order = configured_text_model_order(settings)
         usage_records = self._usage_records(window["start_utc_naive"])
-        usage_by_model = self._usage_by_model(usage_records)
-        quota_health_by_model = self._quota_health_by_model(
+        usage = usage_by_model(usage_records)
+        quota_health = quota_health_by_model(
             usage_records,
             now_utc_naive=window["now_utc_naive"],
             default_cooldown_seconds=default_cooldown_seconds,
         )
         configured_by_key = {normalize_model_name(model): model for model in model_order}
         for model_key in sorted(
-            (set(usage_by_model) | set(quota_health_by_model)) - set(configured_by_key)
+            (set(usage) | set(quota_health)) - set(configured_by_key)
         ):
             configured_by_key[model_key] = (
-                usage_by_model.get(model_key, {}).get("model")
-                or quota_health_by_model.get(model_key, {}).get("model")
+                usage.get(model_key, {}).get("model")
+                or quota_health.get(model_key, {}).get("model")
                 or model_key
             )
         rows = []
         for model_key, display_model in configured_by_key.items():
-            usage = usage_by_model.get(model_key, {})
-            quota_health = quota_health_by_model.get(model_key, {})
+            usage_record = usage.get(model_key, {})
+            quota_health_record = quota_health.get(model_key, {})
             request_budget = request_budgets.get(model_key)
             token_budget = token_budgets.get(model_key)
-            requests_used = int(usage.get("request_count") or 0)
-            tokens_used = int(usage.get("total_token_estimate") or 0)
-            active_cooldown_seconds = int(quota_health.get("active_cooldown_seconds") or 0)
+            requests_used = int(usage_record.get("request_count") or 0)
+            tokens_used = int(usage_record.get("total_token_estimate") or 0)
+            active_cooldown_seconds = int(
+                quota_health_record.get("active_cooldown_seconds") or 0
+            )
             request_remaining = _remaining(request_budget, requests_used)
             token_remaining = _remaining(token_budget, tokens_used)
             request_used_ratio = _used_ratio(request_budget, requests_used)
@@ -167,7 +169,7 @@ class LLMQuotaGovernanceService:
                     "model_key": model_key,
                     "configured": model_key in {normalize_model_name(model) for model in model_order},
                     "rank": _rank_for_model(model_order, display_model),
-                    "completion_count": int(usage.get("completion_count") or 0),
+                    "completion_count": int(usage_record.get("completion_count") or 0),
                     "requests_used": requests_used,
                     "request_budget": request_budget,
                     "free_tier_request_budget_reference": (
@@ -185,17 +187,23 @@ class LLMQuotaGovernanceService:
                     "tokens_remaining": token_remaining,
                     "token_used_ratio": token_used_ratio,
                     "usage_ratio": usage_ratio,
-                    "estimated_cost_usd": round(float(usage.get("estimated_cost_usd") or 0.0), 6),
-                    "fallback_count": int(usage.get("fallback_count") or 0),
-                    "retryable_failure_count": int(usage.get("retryable_failure_count") or 0),
-                    "quota_hit_count": int(quota_health.get("quota_hit_count") or 0),
-                    "quota_skip_count": int(quota_health.get("quota_skip_count") or 0),
-                    "daily_quota_skip_count": int(
-                        quota_health.get("daily_quota_skip_count") or 0
+                    "estimated_cost_usd": round(
+                        float(usage_record.get("estimated_cost_usd") or 0.0), 6
                     ),
-                    "cooldown_skip_count": int(quota_health.get("cooldown_skip_count") or 0),
+                    "fallback_count": int(usage_record.get("fallback_count") or 0),
+                    "retryable_failure_count": int(
+                        usage_record.get("retryable_failure_count") or 0
+                    ),
+                    "quota_hit_count": int(quota_health_record.get("quota_hit_count") or 0),
+                    "quota_skip_count": int(quota_health_record.get("quota_skip_count") or 0),
+                    "daily_quota_skip_count": int(
+                        quota_health_record.get("daily_quota_skip_count") or 0
+                    ),
+                    "cooldown_skip_count": int(
+                        quota_health_record.get("cooldown_skip_count") or 0
+                    ),
                     "active_cooldown_seconds": active_cooldown_seconds,
-                    "last_quota_hit_at": quota_health.get("last_quota_hit_at"),
+                    "last_quota_hit_at": quota_health_record.get("last_quota_hit_at"),
                     "status": status,
                     "status_reason": _status_reason(
                         status=status,
@@ -332,98 +340,6 @@ class LLMQuotaGovernanceService:
             records = repository.since(since_utc_naive)
             return [repository.to_dict(record) for record in records]
 
-    @staticmethod
-    def _usage_by_model(records: list[dict]) -> dict[str, dict]:
-        usage: dict[str, dict] = {}
-        for record in records:
-            model = str(record.get("model") or "unknown")
-            model_key = normalize_model_name(model)
-            request_counts = _model_request_counts(record)
-            if not request_counts:
-                request_counts = {model_key: 1}
-            retryable_failures = _retryable_failures_by_model(record)
-            for attempted_model_key, request_count in request_counts.items():
-                bucket = _usage_bucket(usage, attempted_model_key, _display_model_for_key(attempted_model_key, record))
-                bucket["request_count"] += int(request_count)
-                bucket["retryable_failure_count"] += int(retryable_failures.get(attempted_model_key, 0))
-
-            final_bucket = _usage_bucket(usage, model_key, model)
-            final_bucket["completion_count"] += 1
-            final_bucket["total_token_estimate"] += int(record.get("total_token_estimate") or 0)
-            final_bucket["estimated_cost_usd"] += float(record.get("estimated_cost_usd") or 0.0)
-            final_bucket["fallback_count"] += 1 if record.get("fallback") else 0
-            if not retryable_failures:
-                final_bucket["retryable_failure_count"] += int(record.get("retryable_failure_count") or 0)
-        return usage
-
-    @staticmethod
-    def _quota_health_by_model(
-        records: list[dict],
-        *,
-        now_utc_naive: datetime,
-        default_cooldown_seconds: float,
-    ) -> dict[str, dict]:
-        health: dict[str, dict] = {}
-        for record in records:
-            record_created_at = _parse_record_datetime(record.get("created_at"))
-            attempts = record.get("attempts")
-            if not isinstance(attempts, list):
-                continue
-            for attempt in attempts:
-                if not isinstance(attempt, dict):
-                    continue
-                model_key = normalize_model_name(str(attempt.get("model") or ""))
-                if not model_key:
-                    continue
-                bucket = health.setdefault(
-                    model_key,
-                    {
-                        "model": _display_model_for_key(model_key, record),
-                        "quota_hit_count": 0,
-                        "daily_quota_skip_count": 0,
-                        "cooldown_skip_count": 0,
-                        "quota_skip_count": 0,
-                        "active_cooldown_seconds": 0,
-                        "last_quota_hit_at": None,
-                    },
-                )
-                outcome = str(attempt.get("outcome") or "")
-                status = _safe_int(attempt.get("status"))
-                if status == 429:
-                    bucket["quota_hit_count"] += 1
-                    _record_last_quota_hit(bucket, record_created_at)
-                    cooldown = _attempt_cooldown_seconds(
-                        attempt,
-                        default_seconds=default_cooldown_seconds,
-                    )
-                    bucket["active_cooldown_seconds"] = max(
-                        int(bucket.get("active_cooldown_seconds") or 0),
-                        _cooldown_remaining_seconds(
-                            record_created_at,
-                            now_utc_naive=now_utc_naive,
-                            cooldown_seconds=cooldown,
-                        ),
-                    )
-                if outcome == "quota_daily_exhausted":
-                    bucket["daily_quota_skip_count"] += 1
-                    bucket["quota_skip_count"] += 1
-                elif outcome == "quota_cooldown":
-                    bucket["cooldown_skip_count"] += 1
-                    bucket["quota_skip_count"] += 1
-                    cooldown = _attempt_cooldown_seconds(
-                        attempt,
-                        default_seconds=default_cooldown_seconds,
-                    )
-                    bucket["active_cooldown_seconds"] = max(
-                        int(bucket.get("active_cooldown_seconds") or 0),
-                        _cooldown_remaining_seconds(
-                            record_created_at,
-                            now_utc_naive=now_utc_naive,
-                            cooldown_seconds=cooldown,
-                        ),
-                    )
-        return health
-
     def _quota_window(self, settings: Any) -> dict:
         timezone_name = str(getattr(settings, "llm_quota_window_timezone", "") or "America/Los_Angeles")
         try:
@@ -462,96 +378,6 @@ def parse_model_budget_map(raw: str | None) -> dict[str, int]:
         if model_key and parsed > 0:
             budgets[model_key] = parsed
     return budgets
-
-
-def normalize_model_name(model: str) -> str:
-    normalized = str(model or "").strip().lower()
-    for prefix in ("models/", "gemini/", "google/"):
-        if normalized.startswith(prefix):
-            normalized = normalized.removeprefix(prefix)
-    return normalized
-
-
-def _usage_bucket(usage: dict[str, dict], model_key: str, display_model: str) -> dict:
-    return usage.setdefault(
-        model_key,
-        {
-            "model": display_model or model_key,
-            "completion_count": 0,
-            "request_count": 0,
-            "total_token_estimate": 0,
-            "estimated_cost_usd": 0.0,
-            "fallback_count": 0,
-            "retryable_failure_count": 0,
-        },
-    )
-
-
-def _model_request_counts(record: dict) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    attempts = record.get("attempts")
-    if isinstance(attempts, list):
-        for attempt in attempts:
-            if not isinstance(attempt, dict):
-                continue
-            outcome = str(attempt.get("outcome") or "")
-            if outcome in NON_REQUEST_ATTEMPT_OUTCOMES:
-                continue
-            model_key = normalize_model_name(str(attempt.get("model") or ""))
-            if model_key:
-                counts[model_key] = counts.get(model_key, 0) + 1
-    if counts:
-        return counts
-
-    models_tried = record.get("models_tried")
-    if isinstance(models_tried, list):
-        for model in models_tried:
-            model_key = normalize_model_name(str(model or ""))
-            if model_key and model_key not in counts:
-                counts[model_key] = 1
-    return counts
-
-
-def _retryable_failures_by_model(record: dict) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    attempts = record.get("attempts")
-    if not isinstance(attempts, list):
-        return counts
-    for attempt in attempts:
-        if not isinstance(attempt, dict) or attempt.get("retryable") is not True:
-            continue
-        outcome = str(attempt.get("outcome") or "")
-        if outcome in {"quota_cooldown", "quota_daily_exhausted"}:
-            continue
-        model_key = normalize_model_name(str(attempt.get("model") or ""))
-        if model_key:
-            counts[model_key] = counts.get(model_key, 0) + 1
-    return counts
-
-
-def _display_model_for_key(model_key: str, record: dict) -> str:
-    for value in _record_model_values(record):
-        if normalize_model_name(value) == model_key:
-            return value
-    return model_key
-
-
-def _record_model_values(record: dict) -> list[str]:
-    values: list[str] = []
-    model = str(record.get("model") or "").strip()
-    if model:
-        values.append(model)
-    models_tried = record.get("models_tried")
-    if isinstance(models_tried, list):
-        values.extend(str(item or "").strip() for item in models_tried if str(item or "").strip())
-    attempts = record.get("attempts")
-    if isinstance(attempts, list):
-        values.extend(
-            str(attempt.get("model") or "").strip()
-            for attempt in attempts
-            if isinstance(attempt, dict) and str(attempt.get("model") or "").strip()
-        )
-    return list(dict.fromkeys(values))
 
 
 def _remaining(budget: int | None, used: int) -> int | None:
@@ -783,51 +609,3 @@ def _safe_warning_ratio(value: object) -> float:
     if parsed <= 0 or parsed >= 1:
         return DEFAULT_QUOTA_WARNING_RATIO
     return parsed
-
-
-def _safe_int(value: object) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_record_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    if parsed.tzinfo is not None:
-        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
-    return parsed
-
-
-def _record_last_quota_hit(bucket: dict, created_at: datetime | None) -> None:
-    if created_at is None:
-        return
-    previous = _parse_record_datetime(bucket.get("last_quota_hit_at"))
-    if previous is None or created_at >= previous:
-        bucket["last_quota_hit_at"] = created_at.isoformat()
-
-
-def _attempt_cooldown_seconds(attempt: dict, *, default_seconds: float) -> float:
-    value = attempt.get("cooldown_seconds")
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        parsed = 0.0
-    return max(0.0, parsed if parsed > 0 else float(default_seconds or 0.0))
-
-
-def _cooldown_remaining_seconds(
-    created_at: datetime | None,
-    *,
-    now_utc_naive: datetime,
-    cooldown_seconds: float,
-) -> int:
-    if created_at is None or cooldown_seconds <= 0:
-        return 0
-    until = created_at + timedelta(seconds=float(cooldown_seconds))
-    return max(0, int((until - now_utc_naive).total_seconds()))

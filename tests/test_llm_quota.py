@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.llm_quota import LLMQuotaGovernanceService, parse_model_budget_map
+from app.services.llm_quota_usage import quota_health_by_model, usage_by_model
 
 
 def test_parse_model_budget_map_normalizes_provider_prefixes() -> None:
@@ -12,6 +14,55 @@ def test_parse_model_budget_map_normalizes_provider_prefixes() -> None:
         "gemini-3.5-flash": 250,
         "gemma-4-31b-it": 14400,
     }
+
+
+def test_llm_quota_usage_helpers_live_outside_governance_service() -> None:
+    quota_source = Path("app/services/llm_quota.py").read_text()
+    usage_source = Path("app/services/llm_quota_usage.py").read_text()
+    records = [
+        {
+            "model": "gemini-2.5-flash",
+            "models_tried": ["gemini-3.5-flash", "gemini-2.5-flash"],
+            "attempts": [
+                {
+                    "model": "gemini-3.5-flash",
+                    "outcome": "http_error",
+                    "status": 429,
+                    "retryable": True,
+                },
+                {
+                    "model": "gemini-3.5-flash",
+                    "outcome": "quota_cooldown",
+                    "cooldown_seconds": 1800,
+                    "retryable": True,
+                },
+                {"model": "gemini-2.5-flash", "outcome": "success"},
+            ],
+            "fallback": True,
+            "total_token_estimate": 400,
+            "estimated_cost_usd": 0.01,
+            "created_at": "2026-06-07T11:40:00",
+        }
+    ]
+
+    usage = usage_by_model(records)
+    health = quota_health_by_model(
+        records,
+        now_utc_naive=datetime(2026, 6, 7, 12, 0, 0),
+        default_cooldown_seconds=3600,
+    )
+
+    assert "def usage_by_model(" not in quota_source
+    assert "def usage_by_model(" in usage_source
+    assert "def quota_health_by_model(" not in quota_source
+    assert "def quota_health_by_model(" in usage_source
+    assert usage["gemini-3.5-flash"]["request_count"] == 1
+    assert usage["gemini-3.5-flash"]["retryable_failure_count"] == 1
+    assert usage["gemini-2.5-flash"]["completion_count"] == 1
+    assert usage["gemini-2.5-flash"]["fallback_count"] == 1
+    assert health["gemini-3.5-flash"]["quota_hit_count"] == 1
+    assert health["gemini-3.5-flash"]["cooldown_skip_count"] == 1
+    assert health["gemini-3.5-flash"]["active_cooldown_seconds"] == 2400
 
 
 def test_llm_quota_service_recommends_next_available_model() -> None:

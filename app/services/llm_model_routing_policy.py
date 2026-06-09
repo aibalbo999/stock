@@ -62,6 +62,14 @@ def split_config_values(value: str) -> list[str]:
     return [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
 
 
+def normalize_model_name(model: str) -> str:
+    normalized = str(model or "").strip().lower()
+    for prefix in ("models/", "gemini/", "google/"):
+        if normalized.startswith(prefix):
+            normalized = normalized.removeprefix(prefix)
+    return normalized
+
+
 __all__ = [
     "HIGH_QUOTA_TEXT_FALLBACK_MODEL",
     "REPORT_ROUTE_MEDIA_MODEL_MARKERS",
@@ -69,6 +77,7 @@ __all__ = [
     "configured_text_model_order",
     "effective_fallback_models",
     "llm_model_provider",
+    "normalize_model_name",
     "report_route_media_or_live_models",
     "split_config_values",
 ]

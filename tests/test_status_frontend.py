@@ -86,9 +86,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert '"ui_company_filing_runtime_panel_enabled"' not in status_frontend_source
     assert '"ui_data_enrichment_tabs_extracted"' not in status_frontend_source
-    assert '"ui_data_enrichment_tabs_extracted"' not in (
-        status_frontend_data_enrichment_source
-    )
+    assert '"ui_data_enrichment_tabs_extracted"' not in (status_frontend_data_enrichment_source)
     assert '"ui_company_filing_runtime_panel_enabled"' not in (
         status_frontend_data_enrichment_source
     )
@@ -114,9 +112,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "EXTERNAL_ENABLEMENT_METADATA = {" in external_deployment_profiles_source
     assert "EXTERNAL_LOCAL_ACTION_METADATA = {" in external_deployment_profiles_source
     assert "EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(" in external_deployment_profiles_source
-    assert '"ui_external_deployment_diagnostics_enabled"' not in (
-        status_frontend_external_source
-    )
+    assert '"ui_external_deployment_diagnostics_enabled"' not in (status_frontend_external_source)
     assert '"ui_external_deployment_readiness_checklist_enabled"' not in (
         status_frontend_external_source
     )
@@ -289,7 +285,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert status["frontend"]["ui_maintenance_operations_enabled"] is True
     assert status["frontend"]["ui_maintenance_operations_path"] == (
-        "app/ui/maintenance_deployment_panel.py"
+        "app/ui/maintenance_deployment_presenter.py"
     )
     assert status["frontend"]["ui_external_deployment_diagnostics_path"] == (
         "app/ui/external_deployment_diagnostics.py"
@@ -410,16 +406,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_tabs_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_data_enrichment_runtime_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"] is True
     assert (
-        frontend_arch["evidence"]["frontend_data_enrichment_runtime_status_extracted"] is True
-    )
-    assert (
-        frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"]
-        is True
-    )
-    assert (
-        frontend_arch["evidence"]["frontend_external_deployment_readiness_status_extracted"]
-        is True
+        frontend_arch["evidence"]["frontend_external_deployment_readiness_status_extracted"] is True
     )
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
@@ -438,10 +428,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_maintenance_safe_noop_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_readiness_checklist_enabled"] is True
-    assert (
-        frontend_arch["evidence"]["ui_external_deployment_profile_catalog_extracted"]
-        is True
-    )
+    assert frontend_arch["evidence"]["ui_external_deployment_profile_catalog_extracted"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_operations_enabled"] is True
@@ -460,10 +447,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_llm_quota_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_observability_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_observability_recommendations_enabled"] is True
-    assert (
-        frontend_arch["evidence"]["ui_report_observability_graphrag_metrics_enabled"]
-        is True
-    )
+    assert frontend_arch["evidence"]["ui_report_observability_graphrag_metrics_enabled"] is True
     assert frontend_arch["evidence"]["ui_company_filing_runtime_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_visual_rag_model_chain_panel_enabled"] is True
     assert frontend_arch["evidence"]["ui_data_enrichment_tabs_extracted"] is True

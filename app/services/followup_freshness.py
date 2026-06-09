@@ -8,14 +8,12 @@ from typing import Protocol
 from app.core.time import today_taipei
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.market_repositories import (
     FinancialMetricRepository,
     MarketRepository,
     MonthlyRevenueRepository,
     ValuationMetricRepository,
-)
-from app.services.persistence import (
-    CompanyFilingRepository,
 )
 from app.services.report_quality import is_stale_market_data_source
 

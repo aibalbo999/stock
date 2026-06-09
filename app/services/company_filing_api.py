@@ -10,10 +10,10 @@ from app.data_sources.company_filing_discovery import (
     filing_source_tier,
 )
 from app.data_sources.company_filings import CompanyFilingFetcher
+from app.rag.vector_store import VectorStore
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import CompanyFilingRepository
-from app.rag.vector_store import VectorStore
 
 
 class CompanyFilingApiService:
@@ -99,7 +99,9 @@ class CompanyFilingApiService:
     def list_company_filings(self, tickers: str = "", limit_per_ticker: int = 5) -> list[dict]:
         requested = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
         mapper = self.entity_mapper_cls()
-        allowed = mapper.filter_allowed_tickers(requested or sorted(mapper.whitelist.allowed_tickers()))
+        allowed = mapper.filter_allowed_tickers(
+            requested or sorted(mapper.whitelist.allowed_tickers())
+        )
         with self.session_scope_factory() as session:
             documents = self.company_filing_repository_cls(session).latest_by_tickers(
                 allowed,

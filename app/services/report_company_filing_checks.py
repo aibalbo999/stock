@@ -9,8 +9,8 @@ from app.data_sources.company_filing_discovery import (
 )
 from app.models.schemas import NewsDocument
 from app.services import report_company_narrative
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.entity_mapping import company_filing_owner_ticker
-from app.services.persistence import CompanyFilingRepository
 from app.services.whitelist import SupplyChainWhitelist
 
 
@@ -34,7 +34,10 @@ def company_filing_missing(
         if not is_company_filing_document(ticker, document):
             continue
         document_type = news_document_filing_type(document)
-        if document_type and filing_quality_score(document, ticker, company_name) >= HIGH_QUALITY_FILING_SCORE:
+        if (
+            document_type
+            and filing_quality_score(document, ticker, company_name) >= HIGH_QUALITY_FILING_SCORE
+        ):
             high_quality_types.add(document_type)
 
     missing_required = [
@@ -44,7 +47,9 @@ def company_filing_missing(
     ]
     if not missing_required:
         return []
-    return ["缺公司公開文件（" + "、".join(filing_type_label(item) for item in missing_required) + "）"]
+    return [
+        "缺公司公開文件（" + "、".join(filing_type_label(item) for item in missing_required) + "）"
+    ]
 
 
 def filing_type_label(document_type: str) -> str:

@@ -4,8 +4,9 @@ from collections.abc import Callable
 from typing import Any
 
 from app.models.schemas import NewsDocument, ReportRequest
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.entity_mapping import EntityMapper, alias_matches_text
-from app.services.persistence import CompanyFilingRepository, NewsRepository
+from app.services.news_repository import NewsRepository
 from app.services.source_quality import (
     filter_formal_evidence_documents,
     is_formal_evidence_document,
@@ -210,23 +211,17 @@ def graph_reasoning_context(
         if str(ticker or "").strip()
     ]
     paths_by_ticker = (
-        plan.get("paths_by_ticker")
-        if isinstance(plan.get("paths_by_ticker"), dict)
-        else {}
+        plan.get("paths_by_ticker") if isinstance(plan.get("paths_by_ticker"), dict) else {}
     )
     path_count_by_ticker = {
         str(ticker): len(paths) if isinstance(paths, list) else 0
         for ticker, paths in paths_by_ticker.items()
     }
     covered_tickers = [
-        ticker
-        for ticker in requested_tickers
-        if int(path_count_by_ticker.get(ticker) or 0) > 0
+        ticker for ticker in requested_tickers if int(path_count_by_ticker.get(ticker) or 0) > 0
     ]
     missing_tickers = [
-        ticker
-        for ticker in requested_tickers
-        if int(path_count_by_ticker.get(ticker) or 0) <= 0
+        ticker for ticker in requested_tickers if int(path_count_by_ticker.get(ticker) or 0) <= 0
     ]
     requested_count = len(requested_tickers)
     covered_count = len(covered_tickers)
@@ -355,7 +350,9 @@ def rank_evidence_documents(
             continue
         lowered_text = text.lower()
         metadata_hits = len(metadata_tickers & requested_set) if requested_set else 0
-        entity_hits = sum(1 for term in entity_terms if term and alias_matches_text(lowered_text, term))
+        entity_hits = sum(
+            1 for term in entity_terms if term and alias_matches_text(lowered_text, term)
+        )
         evidence_hits = sum(1 for term in evidence_terms if term and term in text)
         topic_hits = sum(1 for term in topic_terms if term and term in text)
         risk_hits = sum(

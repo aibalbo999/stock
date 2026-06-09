@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from app.db.session import session_scope
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.followup_completion import _matched_target_item_count
 from app.services.followup_evidence_queries import dedupe_terms
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import CompanyFilingRepository, NewsRepository
+from app.services.news_repository import NewsRepository
 
 
 def cached_follow_up_news_items(
@@ -81,7 +82,9 @@ def filter_follow_up_target_items(
     ]
 
 
-def has_follow_up_target_match(items: list[dict], target_tickers: list[str], target_terms: list[str]) -> bool:
+def has_follow_up_target_match(
+    items: list[dict], target_tickers: list[str], target_terms: list[str]
+) -> bool:
     if not items:
         return False
     if not target_tickers and not target_terms:

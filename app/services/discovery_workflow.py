@@ -13,7 +13,7 @@ from app.services.candidate_confidence import is_low_formal_confidence
 from app.services.candidate_revalidation import CandidateRevalidationService
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import NewsRepository
+from app.services.news_repository import NewsRepository
 from app.services.source_relevance import SourceRelevanceAnalyzer
 from app.services.topic_discovery import TopicDiscoveryService
 from app.services.topic_discovery_models import TopicDiscoveryPlan
@@ -58,11 +58,19 @@ def discovery_document_limit(payload: Any, evidence_limit: int) -> int:
 
 
 def discovery_market_history_days(payload: Any) -> int:
-    return max(payload.lookback_days, 720) if is_deep_discovery(payload) else max(payload.lookback_days, 240)
+    return (
+        max(payload.lookback_days, 720)
+        if is_deep_discovery(payload)
+        else max(payload.lookback_days, 240)
+    )
 
 
 def discovery_valuation_history_days(payload: Any) -> int:
-    return max(payload.lookback_days, 180) if is_deep_discovery(payload) else max(payload.lookback_days, 30)
+    return (
+        max(payload.lookback_days, 180)
+        if is_deep_discovery(payload)
+        else max(payload.lookback_days, 30)
+    )
 
 
 def summarize_ingestion_stage(results: list[dict]) -> dict:
@@ -143,12 +151,10 @@ def build_source_audit(
         source_intent = str(item.get("source_intent") or "unknown")
         query_intent_counts[source_intent] = query_intent_counts.get(source_intent, 0) + 1
     query_type_labels = {
-        source_type: query_type_label(source_type)
-        for source_type in query_type_counts
+        source_type: query_type_label(source_type) for source_type in query_type_counts
     }
     query_intent_labels = {
-        source_intent: query_intent_label(source_intent)
-        for source_intent in query_intent_counts
+        source_intent: query_intent_label(source_intent) for source_intent in query_intent_counts
     }
     return {
         "topic": payload.topic,
@@ -180,9 +186,15 @@ def query_type_label(source_type: str) -> dict:
         "subtopic": ("子題查詢", "由 AI 原始子題搜尋 query 產生。"),
         "subtopic_international": ("子題國際查詢", "由子題 query 延伸的國際市場搜尋。"),
         "candidate": ("候選公司查詢", "用於驗證候選公司與主題證據是否同時存在。"),
-        "candidate_international": ("候選公司國際查詢", "用於查核台股候選公司在國際供應鏈中的證據。"),
+        "candidate_international": (
+            "候選公司國際查詢",
+            "用於查核台股候選公司在國際供應鏈中的證據。",
+        ),
         "coverage_gap": ("缺口補強查詢", "系統依拆解品質缺口自動補上的搜尋。"),
-        "query_quality_gap": ("查詢品質補強", "系統依籠統、未對齊或缺國際資料的 query 自動補上的搜尋。"),
+        "query_quality_gap": (
+            "查詢品質補強",
+            "系統依籠統、未對齊或缺國際資料的 query 自動補上的搜尋。",
+        ),
         "international_context": ("國際背景查詢", "系統固定加入的國際供應鏈背景搜尋。"),
         "supplemental": ("補抓查詢", "第一次抓取後因證據不足自動追加的搜尋。"),
         "unknown": ("未分類查詢", "尚未分類的查詢來源。"),
@@ -230,9 +242,13 @@ def summarize_candidate_support(candidates) -> dict:
         "supported_ratio": exploration_supported_ratio,
         "exploration_supported_ratio": exploration_supported_ratio,
         "formal_supported_ratio": 1.0 if supported else 0,
-        "formal_confidence_avg": round(sum(supported_scores) / len(supported_scores), 1) if supported_scores else None,
+        "formal_confidence_avg": round(sum(supported_scores) / len(supported_scores), 1)
+        if supported_scores
+        else None,
         "formal_confidence_min": min(supported_scores) if supported_scores else None,
-        "formal_low_confidence_count": sum(1 for score in supported_scores if is_low_formal_confidence(score)),
+        "formal_low_confidence_count": sum(
+            1 for score in supported_scores if is_low_formal_confidence(score)
+        ),
     }
 
 
@@ -261,14 +277,36 @@ def should_supplement_discovery_sources(source_audit: dict, candidate_support: d
     return source_audit["dynamic_queries"]["stored_count"] < 12
 
 
-def discovery_query_budget(max_queries: int, analysis_mode: str = "standard", deep_analysis: bool = False) -> dict:
+def discovery_query_budget(
+    max_queries: int, analysis_mode: str = "standard", deep_analysis: bool = False
+) -> dict:
     mode = "deep" if deep_analysis else analysis_mode
     settings = {
-        "fast": {"initial_floor": 8, "initial_ratio": 0.65, "rounds": 1, "batch": 6, "no_gain_stop": 1},
-        "standard": {"initial_floor": 12, "initial_ratio": 0.55, "rounds": 3, "batch": 10, "no_gain_stop": 2},
-        "deep": {"initial_floor": 24, "initial_ratio": 0.45, "rounds": 4, "batch": 12, "no_gain_stop": 2},
+        "fast": {
+            "initial_floor": 8,
+            "initial_ratio": 0.65,
+            "rounds": 1,
+            "batch": 6,
+            "no_gain_stop": 1,
+        },
+        "standard": {
+            "initial_floor": 12,
+            "initial_ratio": 0.55,
+            "rounds": 3,
+            "batch": 10,
+            "no_gain_stop": 2,
+        },
+        "deep": {
+            "initial_floor": 24,
+            "initial_ratio": 0.45,
+            "rounds": 4,
+            "batch": 12,
+            "no_gain_stop": 2,
+        },
     }.get(mode, {})
-    initial_queries = max(settings.get("initial_floor", 12), int(max_queries * settings.get("initial_ratio", 0.55)))
+    initial_queries = max(
+        settings.get("initial_floor", 12), int(max_queries * settings.get("initial_ratio", 0.55))
+    )
     return {
         "initial_queries": min(max_queries, initial_queries),
         "supplemental_queries": max(0, max_queries - initial_queries),
@@ -296,7 +334,10 @@ def should_escalate_discovery_budget(
         return True
     if int(source_relevance.get("weak_subtopic_count") or 0) >= 3:
         return True
-    if int(candidate_support.get("total") or 0) > 0 and float(candidate_support.get("supported_ratio") or 0) < 0.35:
+    if (
+        int(candidate_support.get("total") or 0) > 0
+        and float(candidate_support.get("supported_ratio") or 0) < 0.35
+    ):
         return True
     return False
 
@@ -331,7 +372,9 @@ def source_selection_context(topic: str, plan: TopicDiscoveryPlan | None = None)
                 ]
             )
         for candidate in plan.candidate_companies:
-            terms.extend([candidate.name, candidate.segment, " ".join(candidate.evidence_keywords[:4])])
+            terms.extend(
+                [candidate.name, candidate.segment, " ".join(candidate.evidence_keywords[:4])]
+            )
     return " ".join(term for term in terms if term)
 
 
@@ -354,9 +397,12 @@ class DiscoveryWorkflowService:
         self.entity_mapper_cls = entity_mapper_cls
         self.vector_store_cls = vector_store_cls
         self.source_relevance_analyzer_cls = source_relevance_analyzer_cls
-        self.candidate_revalidation_service = candidate_revalidation_service or CandidateRevalidationService(
-            session_scope_factory=session_scope_factory,
-            news_repository_cls=news_repository_cls,
+        self.candidate_revalidation_service = (
+            candidate_revalidation_service
+            or CandidateRevalidationService(
+                session_scope_factory=session_scope_factory,
+                news_repository_cls=news_repository_cls,
+            )
         )
 
     async def ingest_dynamic_news_urls(
@@ -394,11 +440,7 @@ class DiscoveryWorkflowService:
 
         fetched_results = await asyncio.gather(*(fetch_one(url) for url in urls))
         all_documents = self.ingestion_pipeline_cls._dedupe_documents(
-            [
-                document
-                for result in fetched_results
-                for document in result["documents"]
-            ]
+            [document for result in fetched_results for document in result["documents"]]
         )
         matches_by_id = {}
         if all_documents:
@@ -487,7 +529,13 @@ class DiscoveryWorkflowService:
         no_gain_rounds = 0
         remediation_stop_reason = "coverage_sufficient"
         candidates = []
-        candidate_support = {"total": 0, "supported": 0, "weak": 0, "unsupported": 0, "supported_ratio": 0}
+        candidate_support = {
+            "total": 0,
+            "supported": 0,
+            "weak": 0,
+            "unsupported": 0,
+            "supported_ratio": 0,
+        }
         source_audit = build_source_audit(
             payload,
             urls,
@@ -502,7 +550,9 @@ class DiscoveryWorkflowService:
 
         for round_index in range(budget["supplemental_rounds"] + 1):
             with self.session_scope_factory() as session:
-                documents = self.news_repository_cls(session).latest_documents(limit=max(document_limit, evidence_limit))
+                documents = self.news_repository_cls(session).latest_documents(
+                    limit=max(document_limit, evidence_limit)
+                )
             documents = self.ingestion_pipeline_cls._filter_documents(
                 documents,
                 start_date,
@@ -510,11 +560,15 @@ class DiscoveryWorkflowService:
                 quality_filter=True,
             )
             candidates = service.validate_candidates(plan, documents)
-            source_relevance = self.source_relevance_analyzer_cls(service).analyze(plan, documents, limit=document_limit)
-            dynamic_entity_backfill = self.candidate_revalidation_service.persist_candidate_entity_matches(
-                plan,
-                candidates,
-                documents,
+            source_relevance = self.source_relevance_analyzer_cls(service).analyze(
+                plan, documents, limit=document_limit
+            )
+            dynamic_entity_backfill = (
+                self.candidate_revalidation_service.persist_candidate_entity_matches(
+                    plan,
+                    candidates,
+                    documents,
+                )
             )
             candidate_support = summarize_candidate_support(candidates)
             source_audit = build_source_audit(
@@ -594,11 +648,16 @@ class DiscoveryWorkflowService:
             "supplemented": bool(remediation_rounds),
             "reason": remediation_stop_reason,
             "rounds": remediation_rounds,
-            "supplemental_query_count": sum(round_item["query_count"] for round_item in remediation_rounds),
-            "supplemental_stored_count": sum(round_item["stored_count"] for round_item in remediation_rounds),
+            "supplemental_query_count": sum(
+                round_item["query_count"] for round_item in remediation_rounds
+            ),
+            "supplemental_stored_count": sum(
+                round_item["stored_count"] for round_item in remediation_rounds
+            ),
             "stopped_by_no_gain": bool(
                 remediation_rounds
-                and remediation_rounds[-1].get("no_gain_rounds", 0) >= int(budget.get("no_gain_stop_rounds") or 2)
+                and remediation_rounds[-1].get("no_gain_rounds", 0)
+                >= int(budget.get("no_gain_stop_rounds") or 2)
             ),
         }
         source_audit["query_budget"] = budget
@@ -624,7 +683,9 @@ class DiscoveryWorkflowService:
         fallback_plan = TopicDiscoveryService._fallback_plan(topic)
         fallback_quality = service.evaluate_plan_quality(fallback_plan)
         try:
-            discovery = await asyncio.wait_for(asyncio.to_thread(service.discover, topic), timeout=timeout)
+            discovery = await asyncio.wait_for(
+                asyncio.to_thread(service.discover, topic), timeout=timeout
+            )
         except Exception as exc:
             return {
                 "topic": topic,
@@ -632,7 +693,9 @@ class DiscoveryWorkflowService:
                 "message": f"AI topic discovery timed out or failed; deterministic fallback was applied: {exc}",
                 "plan": fallback_plan.model_dump(),
                 "plan_quality": fallback_quality.model_dump(),
-                "initial_plan_quality": service.evaluate_plan_quality(TopicDiscoveryPlan()).model_dump(),
+                "initial_plan_quality": service.evaluate_plan_quality(
+                    TopicDiscoveryPlan()
+                ).model_dump(),
                 "repair_attempted": False,
                 "repair_applied": False,
                 "fallback_plan_applied": True,

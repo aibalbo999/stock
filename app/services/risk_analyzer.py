@@ -9,7 +9,7 @@ from app.db.session import session_scope
 from app.models.schemas import NewsDocument, RiskFinding, RiskType
 from app.services.entity_mapping import EntityMapper, company_filing_owner_ticker
 from app.services.llm_client import LLMClient
-from app.services.persistence import RiskClassificationRepository
+from app.services.risk_classification_repository import RiskClassificationRepository
 from app.services.source_quality import is_formal_evidence_document
 from app.services.whitelist import SupplyChainWhitelist
 
@@ -237,8 +237,12 @@ class RiskAnalyzer:
 
         for document in documents:
             text = f"{document.title}\n{document.text}"
-            structural_hits = self._hits(text, self.whitelist.risk_keywords["structural_bottleneck"])
-            volatility_hits = self._hits(text, self.whitelist.risk_keywords["short_term_volatility"])
+            structural_hits = self._hits(
+                text, self.whitelist.risk_keywords["structural_bottleneck"]
+            )
+            volatility_hits = self._hits(
+                text, self.whitelist.risk_keywords["short_term_volatility"]
+            )
             causal_hits = self._hits(text, self.whitelist.risk_keywords["causal_checks"])
             all_hits = keyword_map.get(
                 document.id,
@@ -246,9 +250,13 @@ class RiskAnalyzer:
             )
             companies = self.mapper.match_document(document)
 
-            classification = ai_classifications.get(document.id) or self._classify_with_ai(document, all_hits)
+            classification = ai_classifications.get(document.id) or self._classify_with_ai(
+                document, all_hits
+            )
             if classification:
-                finding = self._finding_from_classification(document, classification, companies, text)
+                finding = self._finding_from_classification(
+                    document, classification, companies, text
+                )
                 if finding:
                     findings.append(finding)
                 continue
@@ -323,7 +331,9 @@ class RiskAnalyzer:
             return None
         return RiskFinding(
             risk_type=risk_type,
-            topic=RiskAnalyzer._normalized_topic(classification.topic, classification.classification),
+            topic=RiskAnalyzer._normalized_topic(
+                classification.topic, classification.classification
+            ),
             evidence=evidence[:240],
             source=document.source,
             related_companies=companies,
@@ -341,7 +351,13 @@ class RiskAnalyzer:
         if not RiskAnalyzer._validated_evidence(classification.evidence, text):
             return False
         topic = RiskAnalyzer._normalized_topic(classification.topic, classification.classification)
-        return topic not in {"structural_bottleneck", "short_term_volatility", "insufficient_data", "風險", "機會"}
+        return topic not in {
+            "structural_bottleneck",
+            "short_term_volatility",
+            "insufficient_data",
+            "風險",
+            "機會",
+        }
 
     @staticmethod
     def _is_usable_ai_opportunity_classification(
@@ -523,7 +539,9 @@ class RiskAnalyzer:
         return ""
 
     @staticmethod
-    def _is_generic_company_filing_risk(document: NewsDocument, evidence: str, hits: list[str]) -> bool:
+    def _is_generic_company_filing_risk(
+        document: NewsDocument, evidence: str, hits: list[str]
+    ) -> bool:
         if not company_filing_owner_ticker(document):
             return False
         lowered = evidence.lower()

@@ -21,6 +21,7 @@ from app.db.models import NewsArticle
 from app.db.session import session_scope
 from app.models.schemas import ReportRequest
 from app.rag.vector_store import VectorStore
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.entity_mapping import EntityMapper
 from app.services.company_filing_results import (
     COMPANY_FILING_BROWSER_RECOVERY_CATEGORIES,
@@ -54,10 +55,6 @@ from app.services.market_repositories import (
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
-from app.services.persistence import (
-    CompanyFilingRepository,
-    NewsRepository,
-)
 from app.services.ingestion_documents import (
     dedupe_documents as _dedupe_documents,
     filter_documents as _filter_documents,
@@ -69,6 +66,7 @@ from app.services.ingestion_documents import (
     source_selection_limit as _source_selection_limit,
     stale_market_source_count as _stale_market_source_count,
 )
+from app.services.news_repository import NewsRepository
 from app.services.ingestion_company_filings import fetch_company_filing_ticker_documents
 from app.services.ingestion_market import (
     refresh_financial_metric_history,

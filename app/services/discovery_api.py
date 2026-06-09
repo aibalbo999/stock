@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.time import today_taipei
 from app.services.ingestion import IngestionPipeline
-from app.services.persistence import NewsRepository
+from app.services.news_repository import NewsRepository
 from app.services.topic_discovery import TopicDiscoveryService
 from app.services.topic_discovery_models import TopicDiscoveryPlan
 
@@ -83,7 +83,9 @@ class DiscoveryApiService:
         end_date = self.today_func()
         start_date = end_date - timedelta(days=payload.lookback_days)
         with self.session_scope_factory() as session:
-            documents = self.news_repository_cls(session).latest_documents(limit=max(200, payload.evidence_limit))
+            documents = self.news_repository_cls(session).latest_documents(
+                limit=max(200, payload.evidence_limit)
+            )
         documents = self.ingestion_pipeline_cls._filter_documents(
             documents,
             start_date,

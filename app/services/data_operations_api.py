@@ -10,6 +10,7 @@ from app.core.time import today_taipei
 from app.data_sources.news import NewsFetcher, NewsSourceStore
 from app.rag.vector_store import VectorStore
 from app.services.analysis_run_repository import AnalysisRunRepository
+from app.services.company_filing_repository import CompanyFilingRepository
 from app.services.entity_mapping import EntityMapper
 from app.services.ingestion import IngestionPipeline
 from app.services.market_repositories import (
@@ -17,12 +18,9 @@ from app.services.market_repositories import (
     MarketRepository,
     ValuationMetricRepository,
 )
-from app.services.persistence import (
-    CompanyFilingRepository,
-    NewsRepository,
-)
-from app.services.report_repository import ReportRepository
+from app.services.news_repository import NewsRepository
 from app.services.report_files import prune_older_report_files_by_topic
+from app.services.report_repository import ReportRepository
 from app.services.schedule_config import ScheduleConfigStore
 
 

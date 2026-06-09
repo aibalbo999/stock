@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES, filing_quality_score
+from app.data_sources.company_filing_discovery import (
+    REQUIRED_CORE_DOCUMENT_TYPES,
+    filing_quality_score,
+)
 from app.db.session import session_scope
 from app.models.schemas import NewsDocument
 from app.services.candidate_audit import (
@@ -10,7 +13,8 @@ from app.services.candidate_audit import (
     candidate_evidence_age_days,
     dedupe_reason_fragments,
 )
-from app.services.persistence import CompanyFilingRepository, NewsRepository
+from app.services.company_filing_repository import CompanyFilingRepository
+from app.services.news_repository import NewsRepository
 from app.services.source_quality import (
     filter_formal_evidence_documents,
     is_formal_evidence_source,
@@ -44,10 +48,19 @@ class CandidateRevalidationService:
                 limit_per_ticker=8,
             )
         high_quality_types_by_ticker: dict[str, set[str]] = {ticker: set() for ticker in tickers}
-        company_names = {company.ticker: company.name for company in self.whitelist_cls().companies()}
+        company_names = {
+            company.ticker: company.name for company in self.whitelist_cls().companies()
+        }
         for document in documents:
-            if filing_quality_score(document, document.ticker, company_names.get(document.ticker, "")) >= 70:
-                high_quality_types_by_ticker.setdefault(document.ticker, set()).add(document.document_type)
+            if (
+                filing_quality_score(
+                    document, document.ticker, company_names.get(document.ticker, "")
+                )
+                >= 70
+            ):
+                high_quality_types_by_ticker.setdefault(document.ticker, set()).add(
+                    document.document_type
+                )
         return {
             ticker
             for ticker in tickers
@@ -83,7 +96,9 @@ class CandidateRevalidationService:
             "candidate_companies": fallback_candidates,
         }
         plan = TopicDiscoveryPlan.model_validate(plan_payload)
-        topic = ((run_payload.get("request") or {}).get("topic") or run_payload.get("topic") or "").strip()
+        topic = (
+            (run_payload.get("request") or {}).get("topic") or run_payload.get("topic") or ""
+        ).strip()
         queries = candidate_revalidation_queries(plan, topic)
         with self.session_scope_factory() as session:
             repository = self.news_repository_cls(session)
@@ -105,8 +120,12 @@ class CandidateRevalidationService:
         candidate_payload = self.apply_company_filing_gate_to_candidate_payload(
             [candidate.model_dump() for candidate in candidates]
         )
-        candidate_payload = mark_unavailable_candidates_after_revalidation(candidate_payload, len(documents))
-        candidate_payload = preserve_previous_supported_candidates(candidate_payload, fallback_candidates)
+        candidate_payload = mark_unavailable_candidates_after_revalidation(
+            candidate_payload, len(documents)
+        )
+        candidate_payload = preserve_previous_supported_candidates(
+            candidate_payload, fallback_candidates
+        )
         candidate_payload = sanitize_candidate_low_quality_sources(candidate_payload)
         promoted_tickers = [
             candidate["ticker"]
@@ -226,7 +245,9 @@ def apply_company_filing_gate_to_candidate_payload(
             reason = row.get("validation_reason") or "通過新聞與市場證據門檻"
             row["status"] = "weak_evidence"
             row["promotion_eligible"] = False
-            row["evidence_confidence_score"] = min(int(row.get("evidence_confidence_score") or 0), 74)
+            row["evidence_confidence_score"] = min(
+                int(row.get("evidence_confidence_score") or 0), 74
+            )
             row["evidence_confidence_label"] = "中"
             row["validation_reason"] = (
                 f"{reason}；系統尚未取得或解析到可用官方年報/法說文字，先降回候選觀察；"
@@ -260,24 +281,22 @@ def sanitize_candidate_low_quality_sources(candidates: list[dict]) -> list[dict]
         raw_sources = row.get("evidence_sources") or []
         evidence_sources = raw_sources if isinstance(raw_sources, list) else []
         formal_sources = [
-            source
-            for source in evidence_sources
-            if _candidate_source_is_formal(source)
+            source for source in evidence_sources if _candidate_source_is_formal(source)
         ]
         removed_count = len(evidence_sources) - len(formal_sources)
         raw_titles = row.get("evidence_titles") or []
         evidence_titles = raw_titles if isinstance(raw_titles, list) else []
         formal_titles = [
-            title
-            for title in evidence_titles
-            if is_formal_evidence_source(title=title, text=title)
+            title for title in evidence_titles if is_formal_evidence_source(title=title, text=title)
         ]
         removed_title_count = len(evidence_titles) - len(formal_titles)
         if removed_title_count:
             row["evidence_titles"] = formal_titles
         if removed_count:
             row["evidence_sources"] = formal_sources
-            row["low_quality_source_removed_count"] = int(row.get("low_quality_source_removed_count") or 0) + removed_count
+            row["low_quality_source_removed_count"] = (
+                int(row.get("low_quality_source_removed_count") or 0) + removed_count
+            )
             existing_evidence_count = int(row.get("evidence_count") or 0)
             if existing_evidence_count <= len(evidence_sources):
                 row["evidence_count"] = min(existing_evidence_count, len(formal_sources))
@@ -297,7 +316,9 @@ def sanitize_candidate_low_quality_sources(candidates: list[dict]) -> list[dict]
             ):
                 row["status"] = "weak_evidence"
                 row["promotion_eligible"] = False
-                row["evidence_confidence_score"] = min(int(row.get("evidence_confidence_score") or 0), 74)
+                row["evidence_confidence_score"] = min(
+                    int(row.get("evidence_confidence_score") or 0), 74
+                )
                 row["evidence_confidence_label"] = "中"
                 reason = row.get("validation_reason") or "原始候選證據含低品質來源"
                 row["validation_reason"] = dedupe_reason_fragments(
@@ -363,7 +384,9 @@ def preserve_previous_supported_candidates(
             f"{reason}；本次補強重驗證未穩定重建既有正式證據，先保留上一版正式分析，"
             "後續再用更多公司層級來源確認是否調整。"
         )
-        restored["next_action"] = restored.get("next_action") or "持續補抓公司層級來源與官方文件，確認是否維持正式分析。"
+        restored["next_action"] = (
+            restored.get("next_action") or "持續補抓公司層級來源與官方文件，確認是否維持正式分析。"
+        )
         current_by_ticker[ticker] = restored
     ordered = []
     seen = set()
@@ -378,7 +401,9 @@ def preserve_previous_supported_candidates(
     return ordered
 
 
-def mark_unavailable_candidates_after_revalidation(candidates: list[dict], document_count: int) -> list[dict]:
+def mark_unavailable_candidates_after_revalidation(
+    candidates: list[dict], document_count: int
+) -> list[dict]:
     if document_count < 200:
         return candidates
     updated = []
@@ -407,7 +432,9 @@ def mark_unavailable_candidates_after_revalidation(candidates: list[dict], docum
     return updated
 
 
-def candidate_revalidation_queries(plan: TopicDiscoveryPlan, topic: str = "", limit: int = 80) -> list[str]:
+def candidate_revalidation_queries(
+    plan: TopicDiscoveryPlan, topic: str = "", limit: int = 80
+) -> list[str]:
     queries = []
     for candidate in plan.candidate_companies:
         keywords = " ".join(candidate.evidence_keywords[:4])
@@ -425,11 +452,15 @@ def candidate_revalidation_queries(plan: TopicDiscoveryPlan, topic: str = "", li
     for subtopic in plan.subtopics:
         evidence_terms = " ".join(subtopic.required_evidence[:2])
         if subtopic.name or evidence_terms:
-            queries.append(" ".join(term for term in [topic, subtopic.name, evidence_terms] if term))
+            queries.append(
+                " ".join(term for term in [topic, subtopic.name, evidence_terms] if term)
+            )
     return dedupe_strings(queries, limit)
 
 
-def collect_revalidation_documents(repository: NewsRepository, queries: list[str], limit: int) -> list:
+def collect_revalidation_documents(
+    repository: NewsRepository, queries: list[str], limit: int
+) -> list:
     documents = []
     per_query_limit = max(10, min(40, limit // max(1, len(queries)))) if queries else limit
     for query in queries:

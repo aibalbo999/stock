@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
@@ -9,6 +8,7 @@ from typing import Any
 
 from app.core.time import utc_now_naive
 from app.db.session import session_scope
+from app.services.latency_metrics import latency_distribution
 from app.services.llm_observability import llm_cost_budget_status, llm_observability_status
 from app.services.persistence import LLMUsageRepository
 
@@ -157,7 +157,7 @@ def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
 
 def _usage_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
     latency_values = [row["latency_ms"] for row in rows if row["latency_ms"] is not None]
-    latency_summary = _latency_summary(latency_values)
+    latency_summary = latency_distribution(latency_values)
     return {
         "request_count": len(rows),
         "total_token_estimate": sum(row["total_token_estimate"] or 0 for row in rows),
@@ -251,25 +251,6 @@ def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observabi
             }
         )
     return alerts
-
-
-def _latency_summary(values: list[float]) -> dict[str, float | None]:
-    if not values:
-        return {"avg": None, "p95": None, "max": None}
-    sorted_values = sorted(float(value) for value in values)
-    return {
-        "avg": round(sum(sorted_values) / len(sorted_values), 2),
-        "p95": round(_percentile_nearest_rank(sorted_values, 95), 2),
-        "max": round(sorted_values[-1], 2),
-    }
-
-
-def _percentile_nearest_rank(sorted_values: list[float], percentile: int) -> float:
-    if not sorted_values:
-        return 0.0
-    rank = max(1, math.ceil((max(0, min(percentile, 100)) / 100.0) * len(sorted_values)))
-    return sorted_values[min(rank - 1, len(sorted_values) - 1)]
-
 
 def _int(value: Any) -> int | None:
     try:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -13,6 +12,7 @@ from app.services.candidate_audit import (
     render_candidate_audit_markdown,
 )
 from app.services.candidate_revalidation import sanitize_candidate_low_quality_sources
+from app.services.latency_metrics import latency_distribution
 from app.services.persistence import AnalysisRunRepository, ReportRepository
 from app.services.report_followup import (
     append_candidate_audit_if_missing,
@@ -650,8 +650,8 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         for row in rows
         if row.get("retrieval_latency_ms") is not None
     ]
-    llm_latency = _latency_distribution(latency_values)
-    retrieval_latency = _latency_distribution(retrieval_latency_values)
+    llm_latency = latency_distribution(latency_values)
+    retrieval_latency = latency_distribution(retrieval_latency_values)
     return {
         "report_count": len(rows),
         "trace_captured_count": sum(1 for row in rows if row.get("trace_captured")),
@@ -808,25 +808,6 @@ def _observability_status(rows: list[dict], totals: dict[str, Any]) -> str:
     if int(totals.get("fallback_path_count") or 0) or int(totals.get("retryable_failure_count") or 0):
         return "caution"
     return "ready"
-
-
-def _latency_distribution(values: list[float]) -> dict[str, float | None]:
-    if not values:
-        return {"avg": None, "p95": None, "max": None}
-    sorted_values = sorted(float(value) for value in values)
-    return {
-        "avg": round(sum(sorted_values) / len(sorted_values), 2),
-        "p95": round(_percentile_nearest_rank(sorted_values, 95), 2),
-        "max": round(sorted_values[-1], 2),
-    }
-
-
-def _percentile_nearest_rank(sorted_values: list[float], percentile: int) -> float:
-    if not sorted_values:
-        return 0.0
-    rank = max(1, math.ceil((max(0, min(percentile, 100)) / 100.0) * len(sorted_values)))
-    return sorted_values[min(rank - 1, len(sorted_values) - 1)]
-
 
 def _metric_int(value: Any, default: int | None = None) -> int | None:
     if value is None:

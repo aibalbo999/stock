@@ -24,6 +24,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "graphrag_local_contract_smoke",
         "high_risk_unlocker_smoke",
         "llm_quota_env_audit",
+        "local_chroma_upgrade_audit",
         "local_neo4j_upgrade_audit",
         "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
@@ -66,6 +67,13 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         llm_quota_action["display_command"]
     )
     assert "不顯示密鑰" in llm_quota_action["description"]
+    chroma_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["local_chroma_upgrade_audit"]
+    assert "--local-chroma-defaults --wait-local-chroma 20 --json" in (
+        chroma_action["display_command"]
+    )
+    assert "Chroma" in chroma_action["description"]
     neo4j_action = {
         action["id"]: action for action in catalog["actions"]
     }["local_neo4j_upgrade_audit"]
@@ -220,6 +228,39 @@ def test_run_maintenance_diagnostic_action_executes_llm_quota_env_audit(
         "--json",
     ]
     assert captured["timeout"] == 30
+
+
+def test_run_maintenance_diagnostic_action_executes_local_chroma_upgrade_audit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"overall_status":"ready"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "local_chroma_upgrade_audit",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/upgrade_audit.py "
+        "--local-chroma-defaults --wait-local-chroma 20 --json"
+    )
+    assert captured["command"][1:] == [
+        "scripts/upgrade_audit.py",
+        "--local-chroma-defaults",
+        "--wait-local-chroma",
+        "20",
+        "--json",
+    ]
+    assert captured["timeout"] == 90
 
 
 def test_run_maintenance_diagnostic_action_executes_task_submission_noop_smoke(

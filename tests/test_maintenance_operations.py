@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services import maintenance_operations
+from app.services import maintenance_diagnostics, maintenance_operations
 
 
 def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_operations() -> None:
@@ -61,6 +61,21 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
         check["diagnostic_action_id"] == "local_unlocker_upgrade_audit"
         for check in checks_by_id["start_local_dependencies_with_unlocker"]
     )
+
+
+def test_maintenance_operation_post_run_diagnostic_ids_are_allowlisted() -> None:
+    operation_catalog = maintenance_operations.maintenance_operation_catalog()
+    diagnostic_catalog = maintenance_diagnostics.maintenance_diagnostic_action_catalog()
+    diagnostic_action_ids = {action["id"] for action in diagnostic_catalog["actions"]}
+    referenced_action_ids = {
+        check["diagnostic_action_id"]
+        for operation in operation_catalog["operations"]
+        for check in operation["post_run_checks"]
+        if check["diagnostic_action_id"]
+    }
+
+    assert referenced_action_ids
+    assert referenced_action_ids <= diagnostic_action_ids
 
 
 def test_run_maintenance_operation_requires_confirmation() -> None:

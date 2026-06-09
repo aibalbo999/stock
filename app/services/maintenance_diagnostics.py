@@ -162,6 +162,25 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "local_chroma_upgrade_audit": {
+        "id": "local_chroma_upgrade_audit",
+        "label": "Local Chroma upgrade audit",
+        "description": "套用本機 Chroma 預設值後檢查 RAG / vector store integration 狀態。",
+        "display_command": (
+            ".venv/bin/python scripts/upgrade_audit.py "
+            "--local-chroma-defaults --wait-local-chroma 20 --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/upgrade_audit.py",
+            "--local-chroma-defaults",
+            "--wait-local-chroma",
+            "20",
+            "--json",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
     "local_unlocker_upgrade_audit": {
         "id": "local_unlocker_upgrade_audit",
         "label": "Local Neo4j + unlocker upgrade audit",
@@ -425,6 +444,7 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return []
     if action_id in {
         "upgrade_audit",
+        "local_chroma_upgrade_audit",
         "local_neo4j_upgrade_audit",
         "local_unlocker_upgrade_audit",
     }:

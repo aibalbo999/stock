@@ -26,7 +26,7 @@ from app.services.llm_quota_usage import (
     quota_health_by_model,
     usage_by_model,
 )
-from app.services.persistence import LLMUsageRepository
+from app.services.llm_usage_repository import LLMUsageRepository
 
 DEFAULT_QUOTA_WARNING_RATIO = 0.8
 
@@ -48,8 +48,12 @@ class LLMQuotaGovernanceService:
     def summary(self) -> dict:
         settings = self.settings_provider()
         window = self._quota_window(settings)
-        request_budgets = parse_model_budget_map(getattr(settings, "llm_model_daily_request_budgets", ""))
-        token_budgets = parse_model_budget_map(getattr(settings, "llm_model_daily_token_budgets", ""))
+        request_budgets = parse_model_budget_map(
+            getattr(settings, "llm_model_daily_request_budgets", "")
+        )
+        token_budgets = parse_model_budget_map(
+            getattr(settings, "llm_model_daily_token_budgets", "")
+        )
         warning_ratio = _safe_warning_ratio(
             getattr(settings, "llm_quota_warning_ratio", DEFAULT_QUOTA_WARNING_RATIO)
         )
@@ -66,9 +70,7 @@ class LLMQuotaGovernanceService:
             default_cooldown_seconds=default_cooldown_seconds,
         )
         configured_by_key = {normalize_model_name(model): model for model in model_order}
-        for model_key in sorted(
-            (set(usage) | set(quota_health)) - set(configured_by_key)
-        ):
+        for model_key in sorted((set(usage) | set(quota_health)) - set(configured_by_key)):
             configured_by_key[model_key] = (
                 usage.get(model_key, {}).get("model")
                 or quota_health.get(model_key, {}).get("model")
@@ -82,16 +84,20 @@ class LLMQuotaGovernanceService:
             token_budget = token_budgets.get(model_key)
             requests_used = int(usage_record.get("request_count") or 0)
             tokens_used = int(usage_record.get("total_token_estimate") or 0)
-            active_cooldown_seconds = int(
-                quota_health_record.get("active_cooldown_seconds") or 0
-            )
+            active_cooldown_seconds = int(quota_health_record.get("active_cooldown_seconds") or 0)
             request_remaining = _remaining(request_budget, requests_used)
             token_remaining = _remaining(token_budget, tokens_used)
             request_used_ratio = _used_ratio(request_budget, requests_used)
             token_used_ratio = _used_ratio(token_budget, tokens_used)
             usage_ratio = _max_ratio(request_used_ratio, token_used_ratio)
-            request_exhausted = request_budget is not None and request_remaining is not None and request_remaining <= 0
-            token_exhausted = token_budget is not None and token_remaining is not None and token_remaining <= 0
+            request_exhausted = (
+                request_budget is not None
+                and request_remaining is not None
+                and request_remaining <= 0
+            )
+            token_exhausted = (
+                token_budget is not None and token_remaining is not None and token_remaining <= 0
+            )
             has_budget = request_budget is not None or token_budget is not None
             status = (
                 "exhausted"
@@ -123,7 +129,8 @@ class LLMQuotaGovernanceService:
                 {
                     "model": display_model,
                     "model_key": model_key,
-                    "configured": model_key in {normalize_model_name(model) for model in model_order},
+                    "configured": model_key
+                    in {normalize_model_name(model) for model in model_order},
                     "rank": _rank_for_model(model_order, display_model),
                     "completion_count": int(usage_record.get("completion_count") or 0),
                     "requests_used": requests_used,
@@ -155,9 +162,7 @@ class LLMQuotaGovernanceService:
                     "daily_quota_skip_count": int(
                         quota_health_record.get("daily_quota_skip_count") or 0
                     ),
-                    "cooldown_skip_count": int(
-                        quota_health_record.get("cooldown_skip_count") or 0
-                    ),
+                    "cooldown_skip_count": int(quota_health_record.get("cooldown_skip_count") or 0),
                     "active_cooldown_seconds": active_cooldown_seconds,
                     "last_quota_hit_at": quota_health_record.get("last_quota_hit_at"),
                     "status": status,
@@ -189,7 +194,9 @@ class LLMQuotaGovernanceService:
                     ),
                 }
             )
-        rows.sort(key=lambda item: (item["rank"] if item["rank"] is not None else 999, item["model"]))
+        rows.sort(
+            key=lambda item: (item["rank"] if item["rank"] is not None else 999, item["model"])
+        )
         recommended = next(
             (
                 item
@@ -201,13 +208,17 @@ class LLMQuotaGovernanceService:
         exhausted_before_recommendation = [
             item["model"]
             for item in rows
-            if recommended and item.get("configured") and int(item.get("rank") or 999) < int(recommended.get("rank") or 999)
+            if recommended
+            and item.get("configured")
+            and int(item.get("rank") or 999) < int(recommended.get("rank") or 999)
         ]
         totals = {
             "request_count": sum(int(item.get("requests_used") or 0) for item in rows),
             "completion_count": sum(int(item.get("completion_count") or 0) for item in rows),
             "total_token_estimate": sum(int(item.get("tokens_used") or 0) for item in rows),
-            "estimated_cost_usd": round(sum(float(item.get("estimated_cost_usd") or 0.0) for item in rows), 6),
+            "estimated_cost_usd": round(
+                sum(float(item.get("estimated_cost_usd") or 0.0) for item in rows), 6
+            ),
         }
         return {
             "window": {
@@ -221,9 +232,7 @@ class LLMQuotaGovernanceService:
             "recommended_model": recommended["model"] if recommended else None,
             "recommended_model_key": recommended["model_key"] if recommended else None,
             "recommended_rank": recommended["rank"] if recommended else None,
-            "recommended_routing_tier": (
-                recommended["routing_tier"] if recommended else None
-            ),
+            "recommended_routing_tier": (recommended["routing_tier"] if recommended else None),
             "recommended_status": recommended["status"] if recommended else None,
             "recommended_reason": _recommended_reason(
                 recommended,
@@ -243,7 +252,9 @@ class LLMQuotaGovernanceService:
                 ),
                 "exhausted_before_recommendation": exhausted_before_recommendation,
                 "high_quota_fallback_models": [
-                    item["model"] for item in rows if item.get("routing_tier") == "high_quota_fallback"
+                    item["model"]
+                    for item in rows
+                    if item.get("routing_tier") == "high_quota_fallback"
                 ],
                 "quota_hit_models": [
                     item["model"] for item in rows if int(item.get("quota_hit_count") or 0)
@@ -256,8 +267,12 @@ class LLMQuotaGovernanceService:
                 "request_budgets_configured": bool(request_budgets),
                 "token_budgets_configured": bool(token_budgets),
                 "settings": {
-                    "llm_model_daily_request_budgets": getattr(settings, "llm_model_daily_request_budgets", ""),
-                    "llm_model_daily_token_budgets": getattr(settings, "llm_model_daily_token_budgets", ""),
+                    "llm_model_daily_request_budgets": getattr(
+                        settings, "llm_model_daily_request_budgets", ""
+                    ),
+                    "llm_model_daily_token_budgets": getattr(
+                        settings, "llm_model_daily_token_budgets", ""
+                    ),
                 },
                 "free_tier_reference": {
                     **FREE_TIER_RATE_LIMIT_SOURCE,
@@ -286,7 +301,10 @@ class LLMQuotaGovernanceService:
         if not model_key:
             return 0.0
         for item in self.summary().get("models", []):
-            if normalize_model_name(str(item.get("model_key") or item.get("model") or "")) == model_key:
+            if (
+                normalize_model_name(str(item.get("model_key") or item.get("model") or ""))
+                == model_key
+            ):
                 return max(0.0, float(item.get("active_cooldown_seconds") or 0.0))
         return 0.0
 
@@ -297,7 +315,9 @@ class LLMQuotaGovernanceService:
             return [repository.to_dict(record) for record in records]
 
     def _quota_window(self, settings: Any) -> dict:
-        timezone_name = str(getattr(settings, "llm_quota_window_timezone", "") or "America/Los_Angeles")
+        timezone_name = str(
+            getattr(settings, "llm_quota_window_timezone", "") or "America/Los_Angeles"
+        )
         try:
             tz = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError:
@@ -407,14 +427,18 @@ def _routing_reason(
 ) -> str:
     tier = _routing_tier(model_order, model, request_budget)
     if status == "exhausted":
-        return "Skipped until the next quota window because the configured daily budget is exhausted."
+        return (
+            "Skipped until the next quota window because the configured daily budget is exhausted."
+        )
     if status == "cooldown":
         return (
             "Temporarily skipped because a recent quota/rate-limit hit is still cooling down "
             f"for about {active_cooldown_seconds} seconds."
         )
     if quota_warning:
-        return "Still eligible until exhausted; watch remaining quota before starting large batches."
+        return (
+            "Still eligible until exhausted; watch remaining quota before starting large batches."
+        )
     if tier == "primary":
         return "First choice while quota remains."
     if tier == "high_quota_fallback":

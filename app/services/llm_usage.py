@@ -10,7 +10,7 @@ from app.core.time import utc_now_naive
 from app.db.session import session_scope
 from app.services.latency_metrics import latency_distribution
 from app.services.llm_observability import llm_cost_budget_status, llm_observability_status
-from app.services.persistence import LLMUsageRepository
+from app.services.llm_usage_repository import LLMUsageRepository
 
 
 LOGGER = logging.getLogger(__name__)
@@ -95,7 +95,9 @@ def summarize_llm_usage_records(
 def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
     created_at = str(record.get("created_at") or "")
     date = created_at[:10] if len(created_at) >= 10 else "unknown"
-    observability = record.get("observability") if isinstance(record.get("observability"), dict) else {}
+    observability = (
+        record.get("observability") if isinstance(record.get("observability"), dict) else {}
+    )
     routing_decision = (
         observability.get("routing_decision")
         if isinstance(observability.get("routing_decision"), dict)
@@ -125,8 +127,7 @@ def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
             or routing_decision.get("selected_routing_tier")
         ),
         "routing_reason": (
-            routing_decision.get("routing_reason")
-            or observability.get("routing_reason")
+            routing_decision.get("routing_reason") or observability.get("routing_reason")
         ),
         "quota_skip_count": _int(
             observability.get("quota_skip_count")
@@ -199,7 +200,9 @@ def _aggregate_usage(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any
     )
 
 
-def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observability: dict[str, Any]) -> list[dict[str, str]]:
+def _usage_alerts(
+    totals: dict[str, Any], cost_budget: dict[str, Any], observability: dict[str, Any]
+) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
     budget_status = str(cost_budget.get("status") or "")
     if budget_status == "exceeded":
@@ -251,6 +254,7 @@ def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observabi
             }
         )
     return alerts
+
 
 def _int(value: Any) -> int | None:
     try:

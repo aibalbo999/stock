@@ -10,7 +10,7 @@ from app.services.llm_client import LLMClient
 from app.services.llm_observability import llm_observability_status
 from app.services.llm_quota import LLMQuotaGovernanceService
 from app.services.llm_usage import list_llm_usage_records, summarize_llm_usage_records
-from app.services.persistence import LLMUsageRepository
+from app.services.llm_usage_repository import LLMUsageRepository
 
 
 class LLMApiService:

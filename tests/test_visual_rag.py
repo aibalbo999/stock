@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.core.config import Settings
 from app.services.llm_client import LLMResult
+from app.services import visual_rag as visual_rag_module
+from app.services import visual_rag_models
 from app.services.visual_rag import (
     VISUAL_RAG_PROVENANCE_PREFIX,
     VISUAL_RAG_UNSUPPORTED_MODEL_MESSAGE,
@@ -16,6 +19,30 @@ from app.services.visual_rag import (
     visual_rag_model_chain,
     visual_rag_status,
 )
+
+
+def test_visual_rag_model_routing_lives_outside_runtime_module() -> None:
+    runtime_source = Path("app/services/visual_rag.py").read_text()
+    models_source = Path("app/services/visual_rag_models.py").read_text()
+
+    assert visual_rag_module.visual_rag_model_chain is visual_rag_models.visual_rag_model_chain
+    assert visual_rag_module.visual_rag_model is visual_rag_models.visual_rag_model
+    assert (
+        visual_rag_module._is_visual_rag_model_candidate
+        is visual_rag_models.is_visual_rag_model_candidate
+    )
+    for helper in [
+        "def visual_rag_model(",
+        "def visual_rag_model_chain(",
+        "def vision_model_key_configured(",
+        "def visual_rag_runtime_candidate(",
+        "def visual_rag_provider_can_call_model(",
+        "def is_visual_rag_model_candidate(",
+        "def visual_rag_model_rejection_reason(",
+        "def visual_rag_routing_tier(",
+    ]:
+        assert helper not in runtime_source
+        assert helper in models_source
 
 
 def test_visual_rag_status_reports_disabled_when_config_disabled() -> None:
@@ -374,11 +401,14 @@ def test_visual_rag_augment_policy_skips_low_risk_text_to_save_quota(monkeypatch
 
     text = "台積電 2026 年報\nAI/HPC 需求與風險因素"
 
-    assert maybe_augment_pdf_text_with_visual_rag(
-        b"%PDF fake",
-        text,
-        settings=settings,
-    ) == text
+    assert (
+        maybe_augment_pdf_text_with_visual_rag(
+            b"%PDF fake",
+            text,
+            settings=settings,
+        )
+        == text
+    )
 
 
 def test_visual_rag_augment_policy_runs_for_complex_table_layout(monkeypatch) -> None:

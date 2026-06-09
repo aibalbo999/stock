@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.services.llm_client import LLMClient
-from app.services.llm_quota import normalize_model_name, parse_model_budget_map
+from app.services import visual_rag_models as _visual_rag_models
 
 
 VISUAL_RAG_PROVENANCE_PREFIX = "[Visual RAG 解析資訊]"
@@ -16,7 +16,7 @@ SUPPORTED_VISUAL_RAG_MODES = {"fallback", "augment"}
 SUPPORTED_VISUAL_RAG_AUGMENT_POLICIES = {"always", "risk_only"}
 VISUAL_RAG_TABLE_RISK_MIN_SCORE = 3
 VISUAL_RAG_MISSING_RENDERER_MESSAGE = (
-    "Visual RAG PDF 轉圖需要安裝 PyMuPDF；請安裝 pip install -e \".[visual]\" 後再重試。"
+    'Visual RAG PDF 轉圖需要安裝 PyMuPDF；請安裝 pip install -e ".[visual]" 後再重試。'
 )
 VISUAL_RAG_DISABLED_MESSAGE = "Visual RAG 尚未啟用；請設定 COMPANY_FILING_VISUAL_RAG_ENABLED=true。"
 VISUAL_RAG_UNSUPPORTED_MODE_MESSAGE = "Visual RAG 模式不支援；請使用 fallback 或 augment。"
@@ -52,9 +52,18 @@ _FINANCIAL_TABLE_TERMS = (
     "存貨",
     "應收",
 )
-_NUMERIC_TOKEN_RE = re.compile(
-    r"(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?%?|\(\d+(?:\.\d+)?\))"
-)
+_NUMERIC_TOKEN_RE = re.compile(r"(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?%?|\(\d+(?:\.\d+)?\))")
+
+visual_rag_model = _visual_rag_models.visual_rag_model
+visual_rag_model_chain = _visual_rag_models.visual_rag_model_chain
+_vision_model_key_configured = _visual_rag_models.vision_model_key_configured
+_visual_rag_runtime_candidate = _visual_rag_models.visual_rag_runtime_candidate
+_visual_rag_provider_can_call_model = _visual_rag_models.visual_rag_provider_can_call_model
+_is_visual_rag_model_candidate = _visual_rag_models.is_visual_rag_model_candidate
+_canonical_visual_rag_model_name = _visual_rag_models.canonical_visual_rag_model_name
+_split_model_list = _visual_rag_models._split_model_list
+_visual_rag_model_rejection_reason = _visual_rag_models.visual_rag_model_rejection_reason
+_visual_rag_routing_tier = _visual_rag_models.visual_rag_routing_tier
 
 
 @dataclass(frozen=True)
@@ -173,9 +182,7 @@ def visual_rag_status(settings: Settings | None = None) -> dict:
             "augment_policy": augment_policy,
             "table_risk_min_score": VISUAL_RAG_TABLE_RISK_MIN_SCORE,
             "table_risk_signals": list(VISUAL_RAG_TABLE_RISK_SIGNALS),
-            "quota_aware_model_fallback": bool(
-                model_chain.get("quota_hard_routing_enabled")
-            ),
+            "quota_aware_model_fallback": bool(model_chain.get("quota_hard_routing_enabled")),
             "vision_model_filtering": (
                 "preferred_visual_model_then_llm_fallbacks_filtered_to_vision_capable"
             ),
@@ -208,129 +215,24 @@ def normalized_visual_rag_augment_policy(policy: str) -> str:
     return normalized or "risk_only"
 
 
-def visual_rag_model(settings: Settings | None = None) -> str:
-    settings = settings or get_settings()
-    configured_model = str(settings.company_filing_visual_rag_model or "").strip()
-    return configured_model or str(settings.primary_llm_model)
-
-
-def visual_rag_model_chain(settings: Settings | None = None) -> dict[str, Any]:
-    settings = settings or get_settings()
-    preferred_model = visual_rag_model(settings)
-    fallback_models = _split_model_list(getattr(settings, "llm_fallback_models", ""))
-    local_model = str(getattr(settings, "local_llm_model", "") or "").strip()
-    configured_models = list(
-        dict.fromkeys(
-            model
-            for model in [preferred_model, *fallback_models, local_model]
-            if str(model or "").strip()
-        )
-    )
-    request_budgets = parse_model_budget_map(
-        getattr(settings, "llm_model_daily_request_budgets", "")
-    )
-    token_budgets = parse_model_budget_map(
-        getattr(settings, "llm_model_daily_token_budgets", "")
-    )
-    rows: list[dict[str, Any]] = []
-    vision_candidates: list[dict[str, Any]] = []
-    rejected_candidates: list[dict[str, Any]] = []
-    for rank, configured_model in enumerate(configured_models, start=1):
-        model_key = normalize_model_name(configured_model)
-        request_budget = request_budgets.get(model_key)
-        vision_supported = _is_visual_rag_model_candidate(configured_model)
-        row: dict[str, Any] = {
-            "rank": rank,
-            "model": configured_model,
-            "model_key": model_key,
-            "vision_supported": vision_supported,
-            "key_configured": (
-                _vision_model_key_configured(configured_model, settings)
-                if vision_supported
-                else None
-            ),
-            "request_budget": request_budget,
-            "token_budget": token_budgets.get(model_key),
-            "routing_tier": _visual_rag_routing_tier(
-                rank=rank,
-                model_key=model_key,
-                request_budget=request_budget,
-            ),
-        }
-        rows.append(row)
-        if vision_supported:
-            vision_candidates.append(row)
-        else:
-            rejected_row = {
-                **row,
-                "rejection_reason": _visual_rag_model_rejection_reason(configured_model),
-            }
-            rejected_candidates.append(rejected_row)
-
-    provider = str(settings.llm_provider or "gemini_http").strip().lower().replace("-", "_")
-    provider_compatible_vision_candidates = [
-        {
-            **candidate,
-            "provider_compatible": True,
-            "selection_reason": (
-                "preferred_visual_rag_model"
-                if int(candidate.get("rank") or 0) == 1
-                else "fallback_visual_rag_model"
-            ),
-        }
-        for candidate in vision_candidates
-        if _visual_rag_provider_can_call_model(
-            str(candidate.get("model") or ""),
-            provider=provider,
-        )
-    ]
-
-    return {
-        "strategy": "smartest_first_then_budget_degrade_for_vision_capable_models",
-        "selection_rule": (
-            "Use the configured Visual RAG model first, then LLM fallbacks in order, "
-            "excluding text-only/media/embedding/live models before runtime attempts."
-        ),
-        "quota_hard_routing_enabled": bool(
-            getattr(settings, "llm_quota_hard_routing_enabled", True)
-        ),
-        "quota_cooldown_seconds": max(
-            0.0,
-            float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)),
-        ),
-        "quota_endpoint": "GET /llm/quota",
-        "budget_source": "LLM_MODEL_DAILY_REQUEST_BUDGETS",
-        "configured_models": configured_models,
-        "candidate_rows": rows,
-        "vision_candidates": vision_candidates,
-        "vision_candidate_models": [item["model"] for item in vision_candidates],
-        "provider_compatible_vision_candidates": provider_compatible_vision_candidates,
-        "provider_compatible_vision_candidate_models": [
-            item["model"] for item in provider_compatible_vision_candidates
-        ],
-        "rejected_candidates": rejected_candidates,
-        "excluded_non_vision_models": [
-            item["model"] for item in rejected_candidates
-        ],
-    }
-
-
 def visual_rag_enabled(settings: Settings | None = None) -> bool:
     return bool((settings or get_settings()).company_filing_visual_rag_enabled)
 
 
 def visual_rag_fallback_enabled(settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
-    return visual_rag_enabled(settings) and normalized_visual_rag_mode(
-        settings.company_filing_visual_rag_mode
-    ) == "fallback"
+    return (
+        visual_rag_enabled(settings)
+        and normalized_visual_rag_mode(settings.company_filing_visual_rag_mode) == "fallback"
+    )
 
 
 def visual_rag_augment_enabled(settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
-    return visual_rag_enabled(settings) and normalized_visual_rag_mode(
-        settings.company_filing_visual_rag_mode
-    ) == "augment"
+    return (
+        visual_rag_enabled(settings)
+        and normalized_visual_rag_mode(settings.company_filing_visual_rag_mode) == "augment"
+    )
 
 
 def extract_visual_pdf_text(
@@ -435,9 +337,7 @@ def assess_pdf_text_visual_rag_risk(text: str) -> VisualRAGTextRiskAssessment:
     table_block_count = sum(1 for line in lines if line.startswith("[PDF 表格抽取"))
     pipe_rows = [line for line in lines if "|" in line and not line.startswith("[")]
     wide_pipe_rows = [
-        line
-        for line in pipe_rows
-        if len([cell for cell in line.split("|") if cell.strip()]) >= 5
+        line for line in pipe_rows if len([cell for cell in line.split("|") if cell.strip()]) >= 5
     ]
     dense_numeric_financial_lines = [
         line
@@ -559,102 +459,6 @@ def with_visual_rag_provenance(
     if token_estimate is not None:
         marker += f"; total_token_estimate={token_estimate}"
     return f"{marker}\n{text.strip()}"
-
-
-def _vision_model_key_configured(model: str, settings: Settings) -> bool:
-    normalized = _canonical_visual_rag_model_name(model)
-    if not normalized:
-        return False
-    if normalized.startswith(("gemini", "gemma", "google/")):
-        return len(settings.gemini_api_keys) > 0
-    if normalized.startswith(("openai/", "gpt-")):
-        return bool(settings.openai_api_key)
-    if normalized.startswith(("anthropic/", "claude")):
-        return bool(settings.anthropic_api_key)
-    if normalized.startswith(("ollama/", "lm_studio/", "local/")):
-        return True
-    return bool(
-        len(settings.gemini_api_keys) > 0
-        or settings.openai_api_key
-        or settings.anthropic_api_key
-    )
-
-
-def _visual_rag_runtime_candidate(
-    *,
-    model_chain: dict[str, Any],
-) -> dict[str, Any]:
-    compatible_candidates = [
-        candidate
-        for candidate in model_chain.get("provider_compatible_vision_candidates") or []
-        if isinstance(candidate, dict)
-    ]
-    for candidate in compatible_candidates:
-        if candidate.get("key_configured"):
-            return candidate
-    return {
-        "model": None,
-        "key_configured": False,
-        "provider_compatible": False,
-        "selection_reason": "no_provider_compatible_vision_model_with_key",
-    }
-
-
-def _visual_rag_provider_can_call_model(model: str, *, provider: str) -> bool:
-    normalized_provider = str(provider or "").strip().lower().replace("-", "_")
-    normalized_model = _canonical_visual_rag_model_name(model)
-    if normalized_provider == "litellm":
-        return True
-    if normalized_provider in {"gemini_http", "google_genai"}:
-        return normalized_model.startswith("gemini")
-    return normalized_model.startswith(("ollama/", "lm_studio/", "local/"))
-
-
-def _is_visual_rag_model_candidate(model: str) -> bool:
-    normalized = _canonical_visual_rag_model_name(model)
-    if normalized.startswith("gemma"):
-        return False
-    if not normalized.startswith(("gemini", "gpt-", "openai/", "claude", "anthropic/")):
-        return False
-    return not any(
-        blocked in normalized
-        for blocked in ("embedding", "imagen", "image", "live", "tts", "audio")
-    )
-
-
-def _canonical_visual_rag_model_name(model: str) -> str:
-    normalized = str(model or "").strip().lower()
-    if normalized.startswith(("models/", "gemini/", "google/")):
-        return normalized.split("/", 1)[1]
-    return normalized
-
-
-def _split_model_list(value: str) -> list[str]:
-    return [item.strip() for item in str(value or "").replace("\n", ",").split(",") if item.strip()]
-
-
-def _visual_rag_model_rejection_reason(model: str) -> str:
-    normalized = normalize_model_name(model)
-    if normalized.startswith("gemma"):
-        return "text_only_gemma_fallback"
-    if any(marker in normalized for marker in ("embedding", "imagen", "image", "live", "tts", "audio")):
-        return "non_vision_media_embedding_or_live_model"
-    return "unsupported_vision_provider_or_model_family"
-
-
-def _visual_rag_routing_tier(
-    *,
-    rank: int,
-    model_key: str,
-    request_budget: int | None,
-) -> str:
-    if rank == 1:
-        return "preferred_visual_rag_model"
-    if model_key.startswith("gemma") and (request_budget or 0) >= 1000:
-        return "high_quota_text_fallback_excluded_from_vision"
-    if model_key.startswith(("ollama/", "lm_studio/", "local/")):
-        return "local_fallback"
-    return "fallback"
 
 
 def _line_has_financial_term(line: str) -> bool:

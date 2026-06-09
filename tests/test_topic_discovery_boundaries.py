@@ -4,6 +4,7 @@ from pathlib import Path
 from app.data_sources.news import NewsFetcher
 from app.services import (
     topic_discovery_candidate_queries,
+    topic_discovery_ai_fallback,
     topic_discovery_candidates,
     topic_discovery_enrichment,
     topic_discovery_fallbacks,
@@ -50,9 +51,9 @@ def test_topic_discovery_prompts_live_outside_service_module() -> None:
         recommendation="補候選",
     )
 
-    assert TopicDiscoveryService._prompt("AI 產業鏈") == topic_discovery_prompts.topic_discovery_prompt(
+    assert TopicDiscoveryService._prompt(
         "AI 產業鏈"
-    )
+    ) == topic_discovery_prompts.topic_discovery_prompt("AI 產業鏈")
     assert TopicDiscoveryService._repair_prompt(
         "AI 產業鏈", plan, quality
     ) == topic_discovery_prompts.topic_discovery_repair_prompt("AI 產業鏈", plan, quality)
@@ -175,10 +176,13 @@ def test_topic_discovery_candidate_queries_live_outside_query_planner() -> None:
         include_international=True,
     )
 
-    assert TopicDiscoveryService._candidate_query_items(
-        candidate,
-        include_international=True,
-    ) == candidate_items
+    assert (
+        TopicDiscoveryService._candidate_query_items(
+            candidate,
+            include_international=True,
+        )
+        == candidate_items
+    )
     assert topic_discovery_queries.supplemental_candidate_query_items(
         candidate,
         include_international=False,
@@ -229,18 +233,26 @@ def test_topic_discovery_supplemental_subtopic_queries_live_outside_query_planne
         missing_subtopics=["出口管制"],
     )
 
-    assert topic_discovery_queries.supplemental_subtopic_query_metadata(
-        plan,
-        missing_subtopics=["出口管制"],
-    ) == metadata
-    assert TopicDiscoveryService().supplemental_google_news_query_metadata(
-        plan,
-        validated_candidates=[],
-        include_international=False,
-        missing_subtopics=["出口管制"],
-    ) == metadata
+    assert (
+        topic_discovery_queries.supplemental_subtopic_query_metadata(
+            plan,
+            missing_subtopics=["出口管制"],
+        )
+        == metadata
+    )
+    assert (
+        TopicDiscoveryService().supplemental_google_news_query_metadata(
+            plan,
+            validated_candidates=[],
+            include_international=False,
+            missing_subtopics=["出口管制"],
+        )
+        == metadata
+    )
     assert metadata
-    assert all("出口管制" in item["query"] or "export control" in item["query"] for item in metadata)
+    assert all(
+        "出口管制" in item["query"] or "export control" in item["query"] for item in metadata
+    )
     assert "target_names" not in queries_source
     assert "subtopic.search_queries[:2]" not in queries_source
     assert "target_names" in supplemental_source
@@ -342,8 +354,12 @@ def test_topic_discovery_quality_lives_outside_service_module() -> None:
         """
     )
 
-    assert TopicDiscoveryService.evaluate_plan_quality(plan) == topic_discovery_quality.evaluate_plan_quality(plan)
-    assert TopicDiscoveryService._plan_query_quality(plan) == topic_discovery_quality.plan_query_quality(plan)
+    assert TopicDiscoveryService.evaluate_plan_quality(
+        plan
+    ) == topic_discovery_quality.evaluate_plan_quality(plan)
+    assert TopicDiscoveryService._plan_query_quality(
+        plan
+    ) == topic_discovery_quality.plan_query_quality(plan)
     assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" not in service_source
     assert "容易漏掉伺服器、散熱、PCB、電源與設備環節" in quality_source
     assert "def plan_query_quality(" in quality_source
@@ -384,7 +400,9 @@ def test_topic_discovery_candidate_validation_lives_outside_service_module() -> 
         ),
     ]
 
-    assert service.validate_candidates(plan, documents) == topic_discovery_candidates.validate_candidates(
+    assert service.validate_candidates(
+        plan, documents
+    ) == topic_discovery_candidates.validate_candidates(
         plan,
         documents,
     )
@@ -430,10 +448,9 @@ def test_topic_discovery_enrichment_lives_outside_service_module() -> None:
         plan,
         topic="AI 產業鏈",
     ) == topic_discovery_enrichment.enrich_plan(plan, topic="AI 產業鏈")
-    assert (
-        TopicDiscoveryService.infer_source_intents(plan.subtopics[0])
-        == topic_discovery_enrichment.infer_source_intents(plan.subtopics[0])
-    )
+    assert TopicDiscoveryService.infer_source_intents(
+        plan.subtopics[0]
+    ) == topic_discovery_enrichment.infer_source_intents(plan.subtopics[0])
     assert "補查矽晶圓、電子級化學品" not in service_source
     assert "補查矽晶圓、電子級化學品" in enrichment_source
     assert "def enrich_plan(" in enrichment_source
@@ -442,6 +459,7 @@ def test_topic_discovery_enrichment_lives_outside_service_module() -> None:
 def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     service_source = Path("app/services/topic_discovery.py").read_text()
     fallback_source = Path("app/services/topic_discovery_fallbacks.py").read_text()
+    ai_fallback_source = Path("app/services/topic_discovery_ai_fallback.py").read_text()
 
     for topic in ["AI 產業鏈", "機器人 產業鏈", "記憶體產業鏈", "量子運算"]:
         assert TopicDiscoveryService._fallback_plan(
@@ -457,7 +475,12 @@ def test_topic_discovery_fallbacks_live_outside_service_module() -> None:
     assert TopicDiscoveryService._is_memory_topic(
         "DRAM memory"
     ) is topic_discovery_fallbacks.is_memory_topic("DRAM memory")
+    assert topic_discovery_fallbacks.fallback_plan("AI 產業鏈") == (
+        topic_discovery_ai_fallback.ai_fallback_plan()
+    )
     assert "AI 伺服器需求" not in service_source
-    assert "AI 伺服器需求" in fallback_source
+    assert "AI 伺服器需求" not in fallback_source
+    assert "AI 伺服器需求" in ai_fallback_source
+    assert "def ai_fallback_plan(" in ai_fallback_source
     assert "協作與人形機器人需求" in fallback_source
     assert "def fallback_plan(" in fallback_source

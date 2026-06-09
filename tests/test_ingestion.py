@@ -11,6 +11,7 @@ from app.services import ingestion as ingestion_module
 from app.services import ingestion_company_filing_cache
 from app.services import ingestion_documents
 from app.services import ingestion_pre_report
+from app.services import ingestion_web_search
 from app.services.ingestion import (
     IngestionPipeline,
     classify_company_filing_error,
@@ -107,6 +108,24 @@ def test_pre_report_refresh_orchestration_is_split_from_pipeline() -> None:
     assert "today_taipei()" not in pre_report_method_source
     assert "await self.refresh_market(" not in pre_report_method_source
     assert "await self.ingest_company_filings(" not in pre_report_method_source
+
+
+def test_ingestion_web_search_orchestration_is_split_from_pipeline() -> None:
+    ingestion_source = Path("app/services/ingestion.py").read_text()
+    web_search_source = Path("app/services/ingestion_web_search.py").read_text()
+
+    assert "async def ingest_web_search_for_pipeline(" in web_search_source
+    assert "DuckDuckGo targeted web search" in web_search_source
+    assert ingestion_module.ingest_web_search_for_pipeline is (
+        ingestion_web_search.ingest_web_search_for_pipeline
+    )
+    assert "await ingest_web_search_for_pipeline(" in ingestion_source
+    web_search_method_source = ingestion_source.split(
+        "async def ingest_web_search(",
+        maxsplit=1,
+    )[1].split("_source_selection_limit = staticmethod", maxsplit=1)[0]
+    assert "asyncio.gather" not in web_search_method_source
+    assert "VectorStore().upsert_documents" not in web_search_method_source
 
 
 def test_source_category_counts_sum_stored_documents() -> None:

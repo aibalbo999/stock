@@ -71,6 +71,7 @@ from app.services.ingestion_market import (
     refresh_valuation_metrics,
 )
 from app.services.ingestion_pre_report import pre_report_refresh_for_pipeline
+from app.services.ingestion_web_search import ingest_web_search_for_pipeline
 from app.services.task_cancellation import TaskCancelledError
 
 __all__ = [
@@ -273,119 +274,24 @@ class IngestionPipeline:
         target_terms: list[str] | None = None,
         quality_filter: bool = True,
     ) -> dict:
-        fetcher = NewsFetcher()
-        documents = []
-        errors = []
-        query_results = [{"query": query, "count": 0, "errors": []} for query in queries]
-        seen_urls: set[str] = set()
-        search_timeout = 10
-        fetch_timeout = 8
-        fetch_semaphore = asyncio.Semaphore(12)
-
-        async def search_query(index: int, query: str) -> tuple[int, str, list[dict], str | None]:
-            try:
-                search_results = await asyncio.wait_for(
-                    CompanyFilingFetcher._duckduckgo_search(query, limit_per_query),
-                    timeout=search_timeout,
-                )
-            except Exception as exc:
-                return index, query, [], str(exc) or exc.__class__.__name__
-            return index, query, search_results, None
-
-        async def fetch_result(
-            index: int, result: dict, preview: object
-        ) -> tuple[int, object | None, dict | None]:
-            url = result.get("url") or ""
-            async with fetch_semaphore:
-                try:
-                    document = await asyncio.wait_for(
-                        fetcher.fetch_url(url, publisher=result.get("publisher") or "web search"),
-                        timeout=fetch_timeout,
-                    )
-                except Exception as exc:
-                    error = {"source": url, "error": str(exc) or exc.__class__.__name__}
-                    document = preview
-                else:
-                    error = None
-            if not self._matches_target_terms(document, target_terms):
-                return index, None, error
-            return index, document, error
-
-        search_payloads = await asyncio.gather(
-            *(search_query(index, query) for index, query in enumerate(queries))
+        return await ingest_web_search_for_pipeline(
+            queries=queries,
+            topic=topic,
+            limit_per_query=limit_per_query,
+            start_date=start_date,
+            end_date=end_date,
+            target_terms=target_terms,
+            quality_filter=quality_filter,
+            mapper=self.mapper,
+            search_func=CompanyFilingFetcher._duckduckgo_search,
+            matches_target_terms_func=self._matches_target_terms,
+            dedupe_documents_func=self._dedupe_documents,
+            filter_documents_func=self._filter_documents,
+            news_fetcher_cls=NewsFetcher,
+            vector_store_cls=VectorStore,
+            session_scope_func=session_scope,
+            news_repository_cls=NewsRepository,
         )
-        fetch_tasks = []
-        for index, query, search_results, search_error in search_payloads:
-            if search_error:
-                error = {"source": query, "error": search_error}
-                errors.append(error)
-                query_results[index]["errors"].append(search_error)
-                continue
-            for result in search_results:
-                url = result.get("url") or ""
-                if not url or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                preview = NewsFetcher.from_manual_text(
-                    title=result.get("title") or url,
-                    text=result.get("snippet") or result.get("title") or url,
-                    publisher=result.get("publisher") or "web search",
-                    url=url,
-                )
-                if not self._matches_target_terms(preview, target_terms):
-                    continue
-                fetch_tasks.append(fetch_result(index, result, preview))
-
-        for index, document, error in await asyncio.gather(*fetch_tasks):
-            if error:
-                errors.append(error)
-                query_results[index]["errors"].append(error)
-            if document is None:
-                continue
-            documents.append(document)
-            query_results[index]["count"] += 1
-
-        documents = self._filter_documents(
-            self._dedupe_documents(documents),
-            start_date,
-            end_date,
-            quality_filter,
-        )
-        VectorStore().upsert_documents(documents)
-        ingested = []
-        with session_scope() as session:
-            repository = NewsRepository(session)
-            for document in documents:
-                matches = self.mapper.match_document(document)
-                repository.upsert_document(
-                    document,
-                    [match.model_dump(mode="json") for match in matches],
-                )
-                ingested.append(
-                    {
-                        "id": document.id,
-                        "title": document.title,
-                        "publisher": document.source.publisher,
-                        "published_at": document.source.published_at.isoformat()
-                        if document.source.published_at
-                        else None,
-                        "url": document.source.url,
-                        "entity_matches": [match.model_dump(mode="json") for match in matches],
-                    }
-                )
-        return {
-            "count": len(ingested),
-            "items": ingested,
-            "errors": errors,
-            "queries": query_results,
-            "target_terms": target_terms or [],
-            "source": "DuckDuckGo targeted web search",
-            "source_selection": {
-                "mode": "targeted_web_search",
-                "topic": topic,
-                "selected_count": len(queries),
-            },
-        }
 
     _source_selection_limit = staticmethod(_source_selection_limit)
     _select_diverse_sources = staticmethod(_select_diverse_sources)

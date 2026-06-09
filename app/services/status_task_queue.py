@@ -30,6 +30,10 @@ TASK_QUEUE_REPAIR_COMMANDS = {
         "-B --loglevel=INFO --pool=solo"
     ),
     "upgrade_audit": ".venv/bin/python scripts/upgrade_audit.py",
+    "task_submission_smoke": (
+        ".venv/bin/python scripts/task_submission_smoke.py "
+        "--submit --wait --timeout 30 --json"
+    ),
 }
 
 
@@ -119,6 +123,7 @@ def task_queue_status(
         "repair_commands": dict(TASK_QUEUE_REPAIR_COMMANDS),
         "smoke_commands": [
             TASK_QUEUE_REPAIR_COMMANDS["inspect_ping"],
+            TASK_QUEUE_REPAIR_COMMANDS["task_submission_smoke"],
             TASK_QUEUE_REPAIR_COMMANDS["start_dependencies"],
         ],
     }

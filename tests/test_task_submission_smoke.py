@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import json
+
+from app.services import task_submission_smoke as smoke
+
+
+class FakeResponse:
+    def __init__(self, payload: dict, status: int = 200) -> None:
+        self.payload = payload
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self, _limit: int) -> bytes:
+        return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+    def getcode(self) -> int:
+        return self.status
+
+
+def test_task_submission_smoke_posts_noop_market_refresh_payload() -> None:
+    captured = []
+
+    def fake_opener(request, timeout):
+        captured.append(
+            {
+                "method": request.get_method(),
+                "url": request.full_url,
+                "body": json.loads((request.data or b"{}").decode("utf-8")),
+                "timeout": timeout,
+            }
+        )
+        if request.full_url.endswith("/services/status"):
+            return FakeResponse(
+                {
+                    "task_queue": {
+                        "ready": True,
+                        "processing_ready": True,
+                        "submission_contract_ready": True,
+                        "worker_online": True,
+                    }
+                }
+            )
+        return FakeResponse(
+            {"task_id": "task-1", "status": "queued", "operation": "market_refresh"}
+        )
+
+    report = smoke.run_task_submission_smoke(
+        api_url="http://api.test",
+        submit=True,
+        opener=fake_opener,
+        timeout_seconds=3,
+    )
+
+    assert report["status"] == "passed"
+    assert captured[0]["method"] == "GET"
+    assert captured[1]["method"] == "POST"
+    assert captured[1]["url"] == "http://api.test/tasks/data-operation"
+    assert captured[1]["body"]["operation"] == "market_refresh"
+    assert captured[1]["body"]["payload"]["tickers"] == ["2330"]
+    assert captured[1]["body"]["payload"]["smoke"] is True
+    assert captured[1]["body"]["payload"]["task_submission_smoke"] is True
+    assert report["submission"]["json"]["task_id"] == "task-1"
+    assert report["next_actions"] == ["背景任務提交路徑正常。"]
+
+
+def test_task_submission_smoke_polls_until_task_success() -> None:
+    responses = [
+        FakeResponse(
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "submission_contract_ready": True,
+                    "worker_online": True,
+                }
+            }
+        ),
+        FakeResponse({"task_id": "task-1", "status": "queued", "operation": "market_refresh"}),
+        FakeResponse({"task_id": "task-1", "status": "PENDING", "ready": False}),
+        FakeResponse(
+            {
+                "task_id": "task-1",
+                "status": "SUCCESS",
+                "ready": True,
+                "successful": True,
+                "result": {"smoke": True},
+            }
+        ),
+    ]
+    sleeps = []
+
+    def fake_opener(_request, timeout):
+        return responses.pop(0)
+
+    report = smoke.run_task_submission_smoke(
+        submit=True,
+        wait=True,
+        opener=fake_opener,
+        clock=lambda: 0.0,
+        sleeper=lambda seconds: sleeps.append(seconds),
+        poll_interval_seconds=0.2,
+    )
+
+    assert report["status"] == "passed"
+    assert report["task_poll"]["status"] == "completed"
+    assert report["task_poll"]["attempts"] == 2
+    assert sleeps == [0.2]
+
+
+def test_task_submission_smoke_reports_api_submission_failure() -> None:
+    def fake_opener(request, timeout):
+        if request.full_url.endswith("/services/status"):
+            return FakeResponse(
+                {
+                    "task_queue": {
+                        "ready": True,
+                        "processing_ready": True,
+                        "submission_contract_ready": True,
+                    }
+                }
+            )
+        return FakeResponse(
+            {"detail": {"error": "background_task_submission_failed"}},
+            status=500,
+        )
+
+    report = smoke.run_task_submission_smoke(submit=True, opener=fake_opener)
+
+    assert report["status"] == "failed"
+    assert report["submission"]["status_code"] == 500
+    assert "background_task_submission_failed" in report["submission"]["error"]
+    assert any(
+        "檢查 /tasks/data-operation structured error detail" in action
+        for action in report["next_actions"]
+    )
+
+
+def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -> None:
+    def fake_opener(request, timeout):
+        return FakeResponse(
+            {
+                "celery": {
+                    "ready": True,
+                    "submission_contract_ready": True,
+                    "broker_url": "redis://localhost:6379/0",
+                }
+            }
+        )
+
+    report = smoke.run_task_submission_smoke(opener=fake_opener)
+
+    assert report["status"] == "caution"
+    assert report["task_queue"]["legacy_status_shape"] is True
+    assert "重啟 FastAPI" in report["next_actions"][0]
+    assert {
+        check["name"]: check["status"]
+        for check in report["checks"]
+    }["task_queue_status_shape"] == "warning"

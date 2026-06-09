@@ -107,6 +107,35 @@ def _payload_date(payload: dict, key: str) -> date | None:
     return date.fromisoformat(str(value))
 
 
+def _payload_smoke(payload: dict) -> bool:
+    return bool(payload.get("smoke") or payload.get("task_submission_smoke"))
+
+
+def _market_refresh_smoke_result(
+    *,
+    tickers: list[str],
+    start_date: date | None,
+    end_date: date | None,
+) -> dict:
+    resolved_end_date = end_date or today_taipei()
+    resolved_start_date = start_date or resolved_end_date
+    return {
+        "smoke": True,
+        "operation": "market_refresh",
+        "mode": "task_submission_contract",
+        "requested_tickers": tickers,
+        "start_date": resolved_start_date.isoformat(),
+        "end_date": resolved_end_date.isoformat(),
+        "stored": [],
+        "stored_history_count": 0,
+        "stale_source_count": 0,
+        "errors": [],
+        "sources": [],
+        "source": "task submission smoke no-op",
+        "note": "No external market data providers are called when payload.smoke is true.",
+    }
+
+
 def _payload_datetime(payload: dict, key: str) -> datetime | None:
     value = payload.get(key)
     if value is None or value == "":
@@ -150,6 +179,12 @@ async def _run_data_operation_payload(
     start_date = _payload_date(payload, "start_date")
     end_date = _payload_date(payload, "end_date")
     if operation == "market_refresh":
+        if _payload_smoke(payload):
+            return _market_refresh_smoke_result(
+                tickers=tickers,
+                start_date=start_date,
+                end_date=end_date,
+            )
         resolved_end_date = end_date or today_taipei()
         resolved_start_date = start_date or resolved_end_date - timedelta(days=14)
         return await pipeline.refresh_market(

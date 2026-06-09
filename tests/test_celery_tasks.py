@@ -1,4 +1,5 @@
 import json
+import asyncio
 from contextlib import contextmanager
 from datetime import date, datetime
 from types import SimpleNamespace
@@ -23,6 +24,44 @@ def test_build_run_payload_omits_empty_optional_fields() -> None:
     payload = {"topic": "AI 產業鏈"}
 
     assert build_run_payload(payload) == {"request": payload}
+
+
+def test_data_operation_market_refresh_smoke_skips_market_provider(monkeypatch) -> None:
+    class FakePipeline:
+        async def refresh_market(self, *_args, **_kwargs):
+            raise AssertionError("smoke payload must not call market data providers")
+
+    monkeypatch.setattr(tasks, "_api_services_for_tasks", lambda: object())
+    monkeypatch.setattr(tasks, "_cancellable_ingestion_pipeline", lambda run_id=None: FakePipeline())
+    monkeypatch.setattr(tasks, "today_taipei", lambda: date(2026, 6, 9))
+
+    result = asyncio.run(
+        tasks._run_data_operation_payload(
+            "market_refresh",
+            {
+                "tickers": ["2330"],
+                "start_date": "2026-06-09",
+                "end_date": "2026-06-09",
+                "smoke": True,
+            },
+        )
+    )
+
+    assert result == {
+        "smoke": True,
+        "operation": "market_refresh",
+        "mode": "task_submission_contract",
+        "requested_tickers": ["2330"],
+        "start_date": "2026-06-09",
+        "end_date": "2026-06-09",
+        "stored": [],
+        "stored_history_count": 0,
+        "stale_source_count": 0,
+        "errors": [],
+        "sources": [],
+        "source": "task submission smoke no-op",
+        "note": "No external market data providers are called when payload.smoke is true.",
+    }
 
 
 def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monkeypatch, tmp_path) -> None:

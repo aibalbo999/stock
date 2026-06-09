@@ -24,12 +24,16 @@ def test_task_queue_status_reports_worker_ping_online(monkeypatch) -> None:
     assert status["worker_nodes"] == ["celery@worker-1"]
     assert status["worker_ping_timeout_seconds"] == 1.0
     assert status["repair_commands"]["inspect_ping"].endswith("inspect ping")
+    assert "task_submission_smoke.py --submit --wait" in (
+        status["repair_commands"]["task_submission_smoke"]
+    )
     assert (
         "scripts/start_system.py --start-dependencies"
         in status["repair_commands"]["start_dependencies"]
     )
     assert "worker -B --loglevel=INFO --pool=solo" in status["repair_commands"]["start_worker"]
     assert status["smoke_commands"][0] == status["repair_commands"]["inspect_ping"]
+    assert status["smoke_commands"][1] == status["repair_commands"]["task_submission_smoke"]
     assert status["repair_plan"] == []
 
 

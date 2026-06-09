@@ -164,6 +164,25 @@ def company_filing_structured_api_status_payload(
         },
         "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
         "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+        "free_validation": {
+            "status": "ready" if sample_contract.get("ready") else "degraded",
+            "sample_contract_ready": bool(sample_contract.get("ready")),
+            "local_fixture_available": True,
+            "live_paid_provider_configured": bool(configuration_check["ready"]),
+            "local_fixture_url": STRUCTURED_API_LOCAL_FIXTURE_URL,
+            "sample_contract_cli": (
+                ".venv/bin/python scripts/structured_company_filing_smoke.py "
+                "--sample-json examples/structured_company_filing_sample.json "
+                "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+            ),
+            "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
+            "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+            "purpose": (
+                "Free-tier validation covers JSON mapping plus the live HTTP fetch path "
+                "against a local fixture; paid/provider credentials are required only for "
+                "production TEJ or professional data feeds."
+            ),
+        },
         "sample_contract": sample_contract,
         "sample_contract_ready": bool(sample_contract.get("ready")),
         "fallback_reason": configuration_check["fallback_reason"],

@@ -1658,6 +1658,16 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "--sample-json examples/structured_company_filing_sample.json "
                             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
                         ),
+                        "local_fixture_start_cli": (
+                            ".venv/bin/python scripts/local_structured_company_filing_api.py "
+                            "--sample-json examples/structured_company_filing_sample.json "
+                            "--host 127.0.0.1 --port 8794"
+                        ),
+                        "local_fixture_smoke_cli": (
+                            "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
+                            "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
+                            ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
+                        ),
                         "sample_contract": {
                             "status": "ready",
                             "ready": True,
@@ -1665,6 +1675,12 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "raw_row_count": 1,
                             "document_count": 1,
                             "error_count": 0,
+                        },
+                        "free_validation": {
+                            "sample_contract_ready": True,
+                            "local_fixture_available": True,
+                            "local_fixture_url": "http://127.0.0.1:8794/filings",
+                            "purpose": "用本機 fixture 驗證 live HTTP fetch path，不需要付費資料商 token。",
                         },
                         "smoke_cli": (
                             ".venv/bin/python scripts/structured_company_filing_smoke.py "
@@ -1683,6 +1699,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
         "Configuration check",
         "Provider profile",
         "Sample contract",
+        "Local fixture HTTP",
         "Live smoke",
         "Request contract",
         "Required fields",
@@ -1697,14 +1714,19 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert rows[2]["狀態"] == "ready"
     assert "--sample-json examples/structured_company_filing_sample.json" in rows[2]["指令"]
     assert "raw_rows=1；documents=1；errors=0" in rows[2]["說明"]
-    assert rows[3]["狀態"] == "待設定"
-    assert "structured_company_filing_smoke.py" in rows[3]["指令"]
-    assert rows[4]["狀態"] == "GET"
-    assert "auth=bearer_optional" in rows[4]["說明"]
-    assert "ticker,company_name,limit,document_types" in rows[4]["說明"]
-    assert "title/name/headline/doc_title" in rows[5]["說明"]
-    assert rows[6]["狀態"] == "not_configured"
-    assert "missing_structured_api_provider_or_url" in rows[6]["說明"]
+    assert rows[3]["狀態"] == "可執行"
+    assert "local_structured_company_filing_api.py" in rows[3]["指令"]
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[3]["指令"]
+    assert "http://127.0.0.1:8794/filings" in rows[3]["說明"]
+    assert "不需要付費資料商 token" in rows[3]["說明"]
+    assert rows[4]["狀態"] == "待設定"
+    assert "structured_company_filing_smoke.py" in rows[4]["指令"]
+    assert rows[5]["狀態"] == "GET"
+    assert "auth=bearer_optional" in rows[5]["說明"]
+    assert "ticker,company_name,limit,document_types" in rows[5]["說明"]
+    assert "title/name/headline/doc_title" in rows[6]["說明"]
+    assert rows[7]["狀態"] == "not_configured"
+    assert "missing_structured_api_provider_or_url" in rows[7]["說明"]
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

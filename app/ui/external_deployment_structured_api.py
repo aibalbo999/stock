@@ -57,6 +57,12 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": _structured_filing_sample_contract_detail(sample_contract),
         },
         {
+            "項目": "Local fixture HTTP",
+            "狀態": _structured_filing_local_fixture_status(runtime),
+            "指令": structured_filing_local_fixture_command(runtime),
+            "說明": _structured_filing_local_fixture_detail(runtime),
+        },
+        {
             "項目": "Live smoke",
             "狀態": "可執行" if runtime.get("configured") else "待設定",
             "指令": structured_filing_live_smoke_command(runtime),
@@ -120,6 +126,26 @@ def structured_filing_live_smoke_command(runtime: dict) -> str:
     )
 
 
+def structured_filing_local_fixture_command(runtime: dict) -> str:
+    free_validation = (
+        runtime.get("free_validation")
+        if isinstance(runtime.get("free_validation"), dict)
+        else {}
+    )
+    start_cli = str(
+        free_validation.get("local_fixture_start_cli")
+        or runtime.get("local_fixture_start_cli")
+        or ""
+    ).strip()
+    smoke_cli = str(
+        free_validation.get("local_fixture_smoke_cli")
+        or runtime.get("local_fixture_smoke_cli")
+        or ""
+    ).strip()
+    commands = [command for command in (start_cli, smoke_cli) if command]
+    return "\n".join(commands) if commands else "-"
+
+
 def _structured_filing_provider_detail(
     evidence: dict,
     runtime: dict,
@@ -142,6 +168,41 @@ def _structured_filing_sample_contract_detail(sample_contract: dict) -> str:
     errors = int(sample_contract.get("error_count") or 0)
     mode = str(sample_contract.get("mode") or "sample_json_contract")
     return f"{mode}；raw_rows={raw_rows}；documents={documents}；errors={errors}。"
+
+
+def _structured_filing_local_fixture_status(runtime: dict) -> str:
+    free_validation = (
+        runtime.get("free_validation")
+        if isinstance(runtime.get("free_validation"), dict)
+        else {}
+    )
+    if free_validation.get("sample_contract_ready") or runtime.get("sample_contract_ready"):
+        return "可執行"
+    return "需先修 sample"
+
+
+def _structured_filing_local_fixture_detail(runtime: dict) -> str:
+    free_validation = (
+        runtime.get("free_validation")
+        if isinstance(runtime.get("free_validation"), dict)
+        else {}
+    )
+    fixture = (
+        runtime.get("local_fixture_api")
+        if isinstance(runtime.get("local_fixture_api"), dict)
+        else {}
+    )
+    url = (
+        free_validation.get("local_fixture_url")
+        or fixture.get("url")
+        or "http://127.0.0.1:8794/filings"
+    )
+    purpose = (
+        free_validation.get("purpose")
+        or fixture.get("purpose")
+        or "用本機 fixture 驗證 live HTTP fetch path，不需要付費資料商 token。"
+    )
+    return f"url={url}；{purpose}"
 
 
 def _structured_filing_configuration_status(configuration_check: dict) -> str:

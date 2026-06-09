@@ -177,6 +177,7 @@ def external_deployment_readiness_rows(
                 "狀態": external_deployment_readiness_state(item),
                 "部署決策": external_deployment_readiness_decision(item),
                 "啟用分類": enablement["group_label"],
+                "免費驗證": enablement["free_validation_label"],
                 "成本/額度": enablement["cost_label"],
                 "建議路徑": enablement["recommended_path"],
                 "本機動作": local_action["state"],
@@ -324,6 +325,8 @@ def external_deployment_pending_gap_rows(
                 "enablement_group": enablement["group"],
                 "enablement_label": enablement["group_label"],
                 "free_local_available": enablement["free_local_available"],
+                "free_validation_available": enablement["free_validation_available"],
+                "free_validation_label": enablement["free_validation_label"],
                 "paid_service_required": enablement["paid_service_required"],
                 "local_action_state": local_action["state"],
                 "local_action_command": local_action["command"],
@@ -349,6 +352,7 @@ def external_deployment_pending_gap_display_rows(
             "狀態": row["status"],
             "部署決策": row["decision"],
             "啟用分類": row["enablement_label"],
+            "免費驗證": row["free_validation_label"],
             "本機動作": row["local_action_state"],
             "本機指令": row["local_action_command"],
             "成本/額度": row["cost_label"],
@@ -418,6 +422,7 @@ def external_deployment_enablement_profile(item: dict) -> dict:
     metadata = EXTERNAL_ENABLEMENT_METADATA.get(key, {})
     free_local_available = bool(metadata.get("free_local_available"))
     paid_service_required = bool(metadata.get("paid_service_required"))
+    free_validation = _external_free_validation_profile(item)
     return {
         "group": str(metadata.get("group") or "external_configuration"),
         "group_label": str(metadata.get("group_label") or "需外部設定"),
@@ -427,6 +432,9 @@ def external_deployment_enablement_profile(item: dict) -> dict:
             metadata.get("recommended_path") or item.get("remediation") or "-"
         ),
         "free_local_available": free_local_available,
+        "free_validation_available": free_validation["available"],
+        "free_validation_label": free_validation["label"],
+        "free_validation_commands": free_validation["commands"],
         "paid_service_required": paid_service_required,
         "deployment_profile": (
             "free_local"
@@ -435,6 +443,48 @@ def external_deployment_enablement_profile(item: dict) -> dict:
             if paid_service_required
             else "quota_or_external"
         ),
+    }
+
+
+def _external_free_validation_profile(item: dict) -> dict:
+    if (
+        str(item.get("area") or ""),
+        str(item.get("capability") or ""),
+    ) != ("data_business_logic", "company_filing_structured_api_fallback"):
+        return {"available": False, "label": "-", "commands": []}
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else evidence
+    free_validation = (
+        runtime.get("free_validation")
+        if isinstance(runtime.get("free_validation"), dict)
+        else {}
+    )
+    sample_contract = (
+        runtime.get("sample_contract")
+        if isinstance(runtime.get("sample_contract"), dict)
+        else {}
+    )
+    sample_ready = bool(
+        free_validation.get("sample_contract_ready")
+        or runtime.get("sample_contract_ready")
+        or sample_contract.get("ready")
+    )
+    local_fixture_available = bool(
+        free_validation.get("local_fixture_available")
+        or runtime.get("local_fixture_start_cli")
+        or runtime.get("local_fixture_smoke_cli")
+    )
+    commands = [
+        free_validation.get("sample_contract_cli") or runtime.get("sample_contract_cli"),
+        free_validation.get("local_fixture_start_cli") or runtime.get("local_fixture_start_cli"),
+        free_validation.get("local_fixture_smoke_cli") or runtime.get("local_fixture_smoke_cli"),
+    ]
+    command_texts = [str(command).strip() for command in commands if str(command or "").strip()]
+    available = bool(sample_ready and local_fixture_available)
+    return {
+        "available": available,
+        "label": "sample + fixture 可驗證" if available else "-",
+        "commands": command_texts,
     }
 
 

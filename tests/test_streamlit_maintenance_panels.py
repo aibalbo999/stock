@@ -1668,6 +1668,10 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
                             ".venv/bin/python scripts/structured_company_filing_smoke.py --json"
                         ),
+                        "local_fixture_http_smoke_cli": (
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                            "--json --strict"
+                        ),
                         "sample_contract": {
                             "status": "ready",
                             "ready": True,
@@ -1715,6 +1719,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "--sample-json examples/structured_company_filing_sample.json" in rows[2]["指令"]
     assert "raw_rows=1；documents=1；errors=0" in rows[2]["說明"]
     assert rows[3]["狀態"] == "可執行"
+    assert "structured_company_filing_fixture_smoke.py" in rows[3]["指令"]
     assert "local_structured_company_filing_api.py" in rows[3]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[3]["指令"]
     assert "http://127.0.0.1:8794/filings" in rows[3]["說明"]

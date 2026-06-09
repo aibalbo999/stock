@@ -471,11 +471,14 @@ def _external_free_validation_profile(item: dict) -> dict:
     )
     local_fixture_available = bool(
         free_validation.get("local_fixture_available")
+        or runtime.get("local_fixture_http_smoke_cli")
         or runtime.get("local_fixture_start_cli")
         or runtime.get("local_fixture_smoke_cli")
     )
     commands = [
         free_validation.get("sample_contract_cli") or runtime.get("sample_contract_cli"),
+        free_validation.get("local_fixture_http_smoke_cli")
+        or runtime.get("local_fixture_http_smoke_cli"),
         free_validation.get("local_fixture_start_cli") or runtime.get("local_fixture_start_cli"),
         free_validation.get("local_fixture_smoke_cli") or runtime.get("local_fixture_smoke_cli"),
     ]

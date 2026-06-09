@@ -246,6 +246,23 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 60,
         "read_only": True,
     },
+    "structured_company_filing_fixture_http_smoke": {
+        "id": "structured_company_filing_fixture_http_smoke",
+        "label": "Structured filing fixture HTTP smoke",
+        "description": "臨時啟動本機 fixture 並跑 live HTTP fetch path，不連外且不需要 token。",
+        "display_command": (
+            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+            "--json --strict"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/structured_company_filing_fixture_smoke.py",
+            "--json",
+            "--strict",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
     "high_risk_unlocker_smoke": {
         "id": "high_risk_unlocker_smoke",
         "label": "High-risk MOPS unlocker smoke",
@@ -362,7 +379,10 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _graphrag_smoke_summary_rows(payload)
     if action_id in {"company_filing_render_smoke", "high_risk_unlocker_smoke"}:
         return _company_filing_render_summary_rows(payload)
-    if action_id == "structured_company_filing_sample_contract_smoke":
+    if action_id in {
+        "structured_company_filing_sample_contract_smoke",
+        "structured_company_filing_fixture_http_smoke",
+    }:
         return _structured_company_filing_smoke_summary_rows(payload)
     if action_id == "task_submission_smoke":
         return _task_submission_smoke_summary_rows(payload)
@@ -636,7 +656,7 @@ def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
                 documents=payload.get("document_count"),
                 errors=payload.get("error_count"),
             ),
-            payload.get("sample_path") or payload.get("smoke_command") or "-",
+            payload.get("sample_path") or payload.get("fixture_url") or payload.get("smoke_command") or "-",
         )
     ]
     runtime = _dict_value(payload, "runtime")

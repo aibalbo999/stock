@@ -36,6 +36,9 @@ STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI = (
     ".venv/bin/python scripts/structured_company_filing_smoke.py "
     "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
 )
+STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI = (
+    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"
+)
 STRUCTURED_API_PROVIDER_PROFILES = {
     "tej": {
         "label": "TEJ structured company filings",
@@ -157,6 +160,7 @@ def company_filing_structured_api_status_payload(
             "sample_json": str(STRUCTURED_API_SAMPLE_CONTRACT_PATH),
             "serve_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
             "smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+            "http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
             "purpose": (
                 "Run the existing live HTTP fetch path against the bundled sample contract "
                 "before a paid TEJ/professional API is configured."
@@ -164,6 +168,7 @@ def company_filing_structured_api_status_payload(
         },
         "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
         "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+        "local_fixture_http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
         "free_validation": {
             "status": "ready" if sample_contract.get("ready") else "degraded",
             "sample_contract_ready": bool(sample_contract.get("ready")),
@@ -177,6 +182,7 @@ def company_filing_structured_api_status_payload(
             ),
             "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
             "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
+            "local_fixture_http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
             "purpose": (
                 "Free-tier validation covers JSON mapping plus the live HTTP fetch path "
                 "against a local fixture; paid/provider credentials are required only for "

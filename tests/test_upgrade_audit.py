@@ -306,6 +306,10 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
                                 ".venv/bin/python scripts/local_structured_company_filing_api.py "
                                 "--sample-json examples/structured_company_filing_sample.json"
                             ),
+                            "local_fixture_http_smoke_cli": (
+                                ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                                "--json --strict"
+                            ),
                             "local_fixture_smoke_cli": (
                                 "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
                                 "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
@@ -320,6 +324,10 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
                                 "local_fixture_start_cli": (
                                     ".venv/bin/python scripts/local_structured_company_filing_api.py "
                                     "--sample-json examples/structured_company_filing_sample.json"
+                                ),
+                                "local_fixture_http_smoke_cli": (
+                                    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                                    "--json --strict"
                                 ),
                                 "local_fixture_smoke_cli": (
                                     "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
@@ -347,8 +355,9 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     assert warning["enablement_profile"]["paid_service_required"] is True
     assert warning["enablement_profile"]["free_validation_available"] is True
     assert warning["enablement_profile"]["free_validation_label"] == "sample + fixture 可驗證"
-    assert len(warning["enablement_profile"]["free_validation_commands"]) == 3
+    assert len(warning["enablement_profile"]["free_validation_commands"]) == 4
     assert "structured_company_filing_sample.json" in warning["remediation"]
+    assert "structured_company_filing_fixture_smoke.py" in warning["remediation"]
     assert "local_structured_company_filing_api.py" in warning["remediation"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]

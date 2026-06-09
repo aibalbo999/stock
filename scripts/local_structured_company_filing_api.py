@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import socket
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,6 +24,19 @@ DEFAULT_PATH = "/filings"
 DEFAULT_TICKER = "2330"
 DEFAULT_COMPANY_NAME = "台積電"
 DEFAULT_DOCUMENT_TYPES = ("investor_presentation",)
+
+
+class LocalStructuredCompanyFilingHTTPServer(ThreadingHTTPServer):
+    def server_bind(self) -> None:
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if getattr(self, "allow_reuse_port", False) and hasattr(socket, "SO_REUSEPORT"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.socket.bind(self.server_address)
+        self.server_address = self.socket.getsockname()
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 def load_fixture_payload(sample_json_path: str | Path) -> object:
@@ -178,7 +192,7 @@ def run_server(
 ) -> None:
     handler = make_handler(sample_json_path=sample_json_path, api_path=path, quiet=quiet)
     endpoint = f"http://{host}:{int(port)}{_normalized_api_path(path)}"
-    server = ThreadingHTTPServer((host, int(port)), handler)
+    server = LocalStructuredCompanyFilingHTTPServer((host, int(port)), handler)
     print(f"Local structured company filing API fixture listening at {endpoint}", flush=True)
     print("Use these env vars in another shell:", flush=True)
     for line in local_fixture_env_lines(host=host, port=port, path=path):

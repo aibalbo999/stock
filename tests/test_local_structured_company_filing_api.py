@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import threading
-from http.server import ThreadingHTTPServer
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -66,7 +65,7 @@ def test_local_structured_company_filing_http_handler_serves_health_and_filings(
     sample_path = tmp_path / "structured_api_sample.json"
     sample_path.write_text(json.dumps(_sample_payload(), ensure_ascii=False), encoding="utf-8")
     handler = fixture.make_handler(sample_json_path=sample_path, quiet=True)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = fixture.LocalStructuredCompanyFilingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
@@ -92,6 +91,18 @@ def test_local_structured_company_filing_http_handler_serves_health_and_filings(
     assert health["api_path"] == "/filings"
     assert payload["meta"]["matched_row_count"] == 1
     assert payload["documents"][0]["publisher"] == "Local fixture"
+
+
+def test_local_structured_company_filing_server_bind_skips_reverse_dns(tmp_path) -> None:
+    sample_path = tmp_path / "structured_api_sample.json"
+    sample_path.write_text(json.dumps(_sample_payload(), ensure_ascii=False), encoding="utf-8")
+    handler = fixture.make_handler(sample_json_path=sample_path, quiet=True)
+    server = fixture.LocalStructuredCompanyFilingHTTPServer(("127.0.0.1", 0), handler)
+    try:
+        assert server.server_name == "127.0.0.1"
+        assert isinstance(server.server_port, int)
+    finally:
+        server.server_close()
 
 
 def test_local_fixture_env_and_smoke_commands_point_to_custom_provider() -> None:

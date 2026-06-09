@@ -104,6 +104,9 @@ jobs:
             --json \
             --strict
 
+      - name: Structured filing fixture HTTP smoke
+        run: python scripts/structured_company_filing_fixture_smoke.py --json --strict
+
       - name: GraphRAG reasoning golden eval
         run: |
           python scripts/evaluate_graphrag_reasoning.py \

@@ -132,6 +132,11 @@ def structured_filing_local_fixture_command(runtime: dict) -> str:
         if isinstance(runtime.get("free_validation"), dict)
         else {}
     )
+    one_shot_cli = str(
+        free_validation.get("local_fixture_http_smoke_cli")
+        or runtime.get("local_fixture_http_smoke_cli")
+        or ""
+    ).strip()
     start_cli = str(
         free_validation.get("local_fixture_start_cli")
         or runtime.get("local_fixture_start_cli")
@@ -142,7 +147,7 @@ def structured_filing_local_fixture_command(runtime: dict) -> str:
         or runtime.get("local_fixture_smoke_cli")
         or ""
     ).strip()
-    commands = [command for command in (start_cli, smoke_cli) if command]
+    commands = [command for command in (one_shot_cli, start_cli, smoke_cli) if command]
     return "\n".join(commands) if commands else "-"
 
 

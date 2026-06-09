@@ -84,6 +84,9 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and "def maintenance_operation_post_run_diagnostic_action_ids("
             in maintenance_deployment_panel_source
+            and "local_resolution_projection" in maintenance_deployment_panel_source
+            and "resolves_capabilities" in maintenance_deployment_panel_source
+            and '"可處理能力"' in maintenance_deployment_panel_source
             and "本機依賴操作" in maintenance_deployment_panel_source
             and "選擇維護操作" in maintenance_deployment_panel_source
             and "後續驗證" in maintenance_deployment_panel_source

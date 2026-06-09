@@ -73,6 +73,16 @@ def render_external_deployment_panel(
     local_dependency_rows = local_dependency_status_rows(service_snapshot)
     local_dependency_start_rows = local_dependency_last_start_rows(service_snapshot)
     local_dependency_repair_plan_rows = local_dependency_repair_rows(service_snapshot)
+    optimization_progress = (
+        service_snapshot.get("optimization_progress")
+        if isinstance(service_snapshot.get("optimization_progress"), dict)
+        else {}
+    )
+    local_resolution_projection = (
+        optimization_progress.get("local_resolution_projection")
+        if isinstance(optimization_progress.get("local_resolution_projection"), dict)
+        else {}
+    )
     with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
         deploy = (
             upgrade_audit.get("deployment")
@@ -148,6 +158,7 @@ def render_external_deployment_panel(
             recommended_operation_id=recommended_maintenance_operation_id(
                 maintenance_operations or {},
                 external_env_resolution_rows,
+                local_resolution_projection,
             ),
         )
         if local_dependency_rows:
@@ -190,6 +201,7 @@ def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
             "操作": operation.get("label") or operation.get("id") or "-",
             "狀態": "需確認" if operation.get("requires_confirmation") else "可執行",
             "作用範圍": operation.get("scope") or "-",
+            "可處理能力": _maintenance_operation_capability_summary(operation),
             "說明": operation.get("description") or "-",
             "指令": operation.get("display_command") or "-",
             "Timeout": int(operation.get("timeout_seconds") or 0),
@@ -228,6 +240,7 @@ def maintenance_operation_post_run_diagnostic_action_ids(rows: list[dict]) -> li
 def recommended_maintenance_operation_id(
     maintenance_operations: dict,
     resolution_rows: list[dict],
+    local_resolution_projection: dict | None = None,
 ) -> str:
     operation_ids = {
         str(operation.get("id") or "")
@@ -236,6 +249,22 @@ def recommended_maintenance_operation_id(
         and operation.get("id")
         and operation.get("mutates_local_state")
     }
+    projected_capabilities = _projection_local_action_capabilities(
+        local_resolution_projection or {}
+    )
+    if projected_capabilities:
+        if (
+            "start_local_dependencies_with_unlocker" in operation_ids
+            and "company_filing_high_risk_unlocker" in projected_capabilities
+        ):
+            return "start_local_dependencies_with_unlocker"
+        if (
+            "start_local_dependencies" in operation_ids
+            and projected_capabilities.intersection(
+                {"neo4j_import", "graphrag_live_cypher_query"}
+            )
+        ):
+            return "start_local_dependencies"
     local_rows = [
         row
         for row in resolution_rows
@@ -255,6 +284,25 @@ def recommended_maintenance_operation_id(
     if "start_local_dependencies" in operation_ids:
         return "start_local_dependencies"
     return ""
+
+
+def _projection_local_action_capabilities(local_resolution_projection: dict) -> set[str]:
+    capabilities = local_resolution_projection.get("local_action_capabilities")
+    if not isinstance(capabilities, list):
+        return set()
+    return {str(capability) for capability in capabilities if str(capability).strip()}
+
+
+def _maintenance_operation_capability_summary(operation: dict) -> str:
+    capabilities = operation.get("resolves_capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        return "-"
+    labels = [
+        str(row.get("label") or row.get("capability") or "").strip()
+        for row in capabilities
+        if isinstance(row, dict) and str(row.get("label") or row.get("capability") or "").strip()
+    ]
+    return "、".join(labels) if labels else "-"
 
 
 def maintenance_operation_recommendation_caption(

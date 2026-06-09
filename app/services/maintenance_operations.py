@@ -20,6 +20,18 @@ MAINTENANCE_OPERATIONS = {
         "scope": "Docker services and current API process env defaults",
         "include_unlocker": False,
         "wait_seconds": DEFAULT_DEPENDENCY_WAIT_SECONDS,
+        "resolves_capabilities": (
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "label": "GraphRAG guarded live Cypher query",
+            },
+        ),
     },
     "start_local_dependencies_with_unlocker": {
         "id": "start_local_dependencies_with_unlocker",
@@ -36,6 +48,23 @@ MAINTENANCE_OPERATIONS = {
         "scope": "Docker services and current API process env defaults",
         "include_unlocker": True,
         "wait_seconds": DEFAULT_DEPENDENCY_WAIT_SECONDS,
+        "resolves_capabilities": (
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "label": "外部 Neo4j 匯入連線",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "label": "GraphRAG guarded live Cypher query",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+            },
+        ),
     },
 }
 
@@ -245,8 +274,24 @@ def _operation_catalog_row(operation: dict) -> dict:
         "requires_confirmation": bool(operation["requires_confirmation"]),
         "mutates_local_state": bool(operation["mutates_local_state"]),
         "scope": str(operation["scope"]),
+        "resolves_capabilities": _operation_resolves_capabilities(operation),
+        "resolves_capability_ids": [
+            row["capability"] for row in _operation_resolves_capabilities(operation)
+        ],
         "post_run_checks": post_run_checks_for_operation(str(operation["id"])),
     }
+
+
+def _operation_resolves_capabilities(operation: dict) -> list[dict]:
+    return [
+        {
+            "area": str(row.get("area") or ""),
+            "capability": str(row.get("capability") or ""),
+            "label": str(row.get("label") or row.get("capability") or ""),
+        }
+        for row in operation.get("resolves_capabilities") or ()
+        if isinstance(row, dict) and row.get("capability")
+    ]
 
 
 def post_run_checks_for_operation(action_id: str) -> list[dict]:

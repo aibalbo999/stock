@@ -73,6 +73,48 @@ def test_maintenance_operation_recommendation_prefers_unlocker_when_plan_needs_i
     )
 
 
+def test_maintenance_operation_recommendation_uses_projection_before_env_rows() -> None:
+    catalog = {
+        "operations": [
+            {
+                "id": "start_local_dependencies",
+                "label": "啟動本機核心依賴",
+                "display_command": "docker compose up -d redis neo4j browserless",
+                "mutates_local_state": True,
+            },
+            {
+                "id": "start_local_dependencies_with_unlocker",
+                "label": "啟動本機依賴與 unlocker",
+                "display_command": "docker compose --profile unlocker up -d flaresolverr",
+                "mutates_local_state": True,
+            },
+        ]
+    }
+
+    assert (
+        recommended_maintenance_operation_id(
+            catalog,
+            [],
+            {
+                "local_action_capabilities": [
+                    "neo4j_import",
+                    "graphrag_live_cypher_query",
+                    "company_filing_high_risk_unlocker",
+                ]
+            },
+        )
+        == "start_local_dependencies_with_unlocker"
+    )
+    assert (
+        recommended_maintenance_operation_id(
+            catalog,
+            [],
+            {"local_action_capabilities": ["neo4j_import"]},
+        )
+        == "start_local_dependencies"
+    )
+
+
 def test_maintenance_operation_recommendation_uses_core_dependencies_for_local_plan() -> None:
     catalog = {
         "operations": [
@@ -406,6 +448,12 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
                     "requires_confirmation": True,
                     "mutates_local_state": True,
                     "scope": "Docker services and current API process env defaults",
+                    "resolves_capabilities": [
+                        {
+                            "capability": "neo4j_import",
+                            "label": "外部 Neo4j 匯入連線",
+                        }
+                    ],
                 },
                 {
                     "id": "inspect_only",
@@ -426,6 +474,7 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
             "操作": "啟動本機核心依賴",
             "狀態": "需確認",
             "作用範圍": "Docker services and current API process env defaults",
+            "可處理能力": "外部 Neo4j 匯入連線",
             "說明": "啟動 Redis、Postgres、Neo4j、Browserless 與 Chroma。",
             "指令": "docker compose up -d redis postgres neo4j browserless chroma",
             "Timeout": 240,
@@ -434,6 +483,7 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
             "操作": "Inspect only",
             "狀態": "可執行",
             "作用範圍": "-",
+            "可處理能力": "-",
             "說明": "-",
             "指令": "-",
             "Timeout": 0,

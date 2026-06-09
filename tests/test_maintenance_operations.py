@@ -20,6 +20,18 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
     assert all(operation["requires_confirmation"] is True for operation in catalog["operations"])
     assert all(operation["mutates_local_state"] is True for operation in catalog["operations"])
     assert all("display_command" in operation for operation in catalog["operations"])
+    operation_by_id = {operation["id"]: operation for operation in catalog["operations"]}
+    assert operation_by_id["start_local_dependencies"]["resolves_capability_ids"] == [
+        "neo4j_import",
+        "graphrag_live_cypher_query",
+    ]
+    assert operation_by_id["start_local_dependencies_with_unlocker"][
+        "resolves_capability_ids"
+    ] == [
+        "neo4j_import",
+        "graphrag_live_cypher_query",
+        "company_filing_high_risk_unlocker",
+    ]
     assert all(operation["post_run_checks"] for operation in catalog["operations"])
     assert all("argv" not in operation for operation in catalog["operations"])
     checks_by_id = {operation["id"]: operation["post_run_checks"] for operation in catalog["operations"]}

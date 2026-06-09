@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import json
+
+from app.services.maintenance_diagnostic_summaries import diagnostic_summary_rows
+
+
+def test_diagnostic_summary_rows_extracts_json_from_noisy_stdout() -> None:
+    rows = diagnostic_summary_rows(
+        "external_deployment_env_check",
+        "log before json\n"
+        + json.dumps(
+            {
+                "status": "action_required",
+                "target": "all",
+                "targets": ["host"],
+                "env_file": ".env",
+                "gap_count": 1,
+                "checks": {
+                    "host": {
+                        "status": "action_required",
+                        "target": "host",
+                        "env_file_exists": True,
+                        "checked_count": 2,
+                        "set_count": 1,
+                        "missing_count": 1,
+                        "different_count": 0,
+                        "rows": [
+                            {
+                                "status": "missing",
+                                "env_key": "COMPOSE_NEO4J_URI",
+                                "action": "加入 COMPOSE_NEO4J_URI=neo4j://neo4j:7687。",
+                            }
+                        ],
+                    }
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\ntrailing log",
+    )
+
+    assert rows[0] == {
+        "項目": "External env check",
+        "狀態": "action_required",
+        "Ready": "target=all；gaps=1",
+        "數量": "targets=1；env_file=.env",
+        "下一步": "補齊 missing；確認 different；密鑰只顯示是否已設定。",
+    }
+    assert rows[1]["項目"] == "host env"
+    assert rows[1]["Ready"] == "1/2"
+    assert "missing=1" in rows[1]["數量"]
+    assert "COMPOSE_NEO4J_URI" in rows[1]["下一步"]
+
+
+def test_diagnostic_summary_rows_summarizes_task_submission_smoke() -> None:
+    rows = diagnostic_summary_rows(
+        "task_submission_noop_smoke",
+        {
+            "status": "caution",
+            "submit": True,
+            "wait": True,
+            "next_actions": ["重啟 FastAPI 與 Celery worker 後重跑 smoke。"],
+            "checks": [
+                {"status": "passed"},
+                {"status": "warning"},
+                {"status": "failed"},
+            ],
+            "runtime_identity": {
+                "status": "failed",
+                "expected_commit_short": "new",
+                "actual_commit_short": "old",
+                "reason": "api_runtime_commit_mismatch",
+            },
+            "task_queue": {
+                "ready": False,
+                "processing_ready": True,
+                "worker_online": False,
+                "legacy_status_shape": True,
+                "status_shape_warning": "legacy celery status",
+            },
+        },
+    )
+
+    assert rows[0]["項目"] == "Task submission smoke"
+    assert rows[0]["Ready"] == "submit=True；wait=True"
+    assert "failed=1" in rows[0]["數量"]
+    assert "warnings=1" in rows[0]["數量"]
+    assert rows[1]["項目"] == "API runtime identity"
+    assert rows[1]["Ready"] == "new"
+    assert rows[1]["數量"] == "old"
+    assert rows[2]["項目"] == "Task queue"
+    assert rows[2]["狀態"] == "not_ready"

@@ -78,6 +78,20 @@ def test_llm_provider_payload_helpers_are_split_from_client() -> None:
     assert "inlineData" not in client_source
 
 
+def test_llm_text_generation_workflows_are_split_from_client() -> None:
+    client_source = Path("app/services/llm_client.py").read_text()
+    generation_source = Path("app/services/llm_text_generation_mixin.py").read_text()
+
+    assert "class LLMTextGenerationMixin" in generation_source
+    assert "def _generate_with_gemini_http(" in generation_source
+    assert "def _generate_with_google_genai(" in generation_source
+    assert "def _generate_with_litellm(" in generation_source
+    assert "LLMTextGenerationMixin" in client_source
+    assert "def _generate_with_gemini_http(" not in client_source
+    assert "def _generate_with_google_genai(" not in client_source
+    assert "def _generate_with_litellm(" not in client_source
+
+
 def test_llm_runtime_helpers_are_split_from_client() -> None:
     client_source = Path("app/services/llm_client.py").read_text()
     runtime_source = Path("app/services/llm_runtime.py").read_text()

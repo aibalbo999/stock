@@ -66,6 +66,26 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "llm_quota_env_audit": {
+        "id": "llm_quota_env_audit",
+        "label": "LLM quota env audit",
+        "description": (
+            "檢查 .env 的 LLM_MODEL_DAILY_REQUEST_BUDGETS 是否符合追蹤中的 "
+            "Free Tier / AI Studio 參考額度，不顯示密鑰。"
+        ),
+        "display_command": (
+            ".venv/bin/python scripts/llm_quota_env_audit.py --env-file .env --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/llm_quota_env_audit.py",
+            "--env-file",
+            ".env",
+            "--json",
+        ],
+        "timeout_seconds": 30,
+        "read_only": True,
+    },
     "celery_inspect_ping": {
         "id": "celery_inspect_ping",
         "label": "Celery inspect ping",
@@ -415,6 +435,8 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _external_env_gap_summary_rows(payload)
     if action_id == "external_deployment_env_check":
         return _external_env_check_summary_rows(payload)
+    if action_id == "llm_quota_env_audit":
+        return _llm_quota_env_audit_summary_rows(payload)
     if action_id == "neo4j_payload_dry_run":
         return _neo4j_payload_summary_rows(payload)
     if action_id in {"graphrag_local_contract_smoke", "graphrag_live_query_smoke"}:
@@ -586,6 +608,41 @@ def _external_env_check_next_action(check: dict) -> str:
         if row:
             return row.get("action") or row.get("env_key") or "-"
     return "目前 target 的外部部署 env 已可用。"
+
+
+def _llm_quota_env_audit_summary_rows(payload: dict) -> list[dict]:
+    rows = [
+        _summary_row(
+            "LLM quota env audit",
+            payload.get("status") or "-",
+            _yes_no(payload.get("ready")),
+            _counts(
+                models=payload.get("model_count"),
+                drift=payload.get("drift_count"),
+                invalid=payload.get("invalid_count"),
+            ),
+            payload.get("next_action") or "-",
+        )
+    ]
+    for row in _list_value(payload, "rows"):
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "")
+        if status not in {"drift", "invalid"}:
+            continue
+        rows.append(
+            _summary_row(
+                row.get("model_key") or f"token {row.get('token_index') or '-'}",
+                status,
+                row.get("configured_request_budget") or "-",
+                _counts(
+                    official=row.get("official_free_tier_request_budget_reference"),
+                    source=row.get("quota_reference_source"),
+                ),
+                row.get("reason") or row.get("quota_reference_note") or "-",
+            )
+        )
+    return rows[:MAX_SUMMARY_ROWS]
 
 
 def _neo4j_payload_summary_rows(payload: dict) -> list[dict]:

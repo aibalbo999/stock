@@ -23,6 +23,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "graphrag_live_query_smoke",
         "graphrag_local_contract_smoke",
         "high_risk_unlocker_smoke",
+        "llm_quota_env_audit",
         "local_neo4j_upgrade_audit",
         "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
@@ -58,6 +59,13 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         env_check_action["display_command"]
     )
     assert "遮蔽密鑰" in env_check_action["description"]
+    llm_quota_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["llm_quota_env_audit"]
+    assert "llm_quota_env_audit.py --env-file .env --json" in (
+        llm_quota_action["display_command"]
+    )
+    assert "不顯示密鑰" in llm_quota_action["description"]
     neo4j_action = {
         action["id"]: action for action in catalog["actions"]
     }["local_neo4j_upgrade_audit"]
@@ -180,6 +188,37 @@ def test_run_maintenance_diagnostic_action_executes_task_submission_readiness_sm
         ".venv/bin/python scripts/task_submission_smoke.py --json"
     )
     assert captured["command"][1:] == ["scripts/task_submission_smoke.py", "--json"]
+    assert captured["timeout"] == 30
+
+
+def test_run_maintenance_diagnostic_action_executes_llm_quota_env_audit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ready"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "llm_quota_env_audit",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/llm_quota_env_audit.py --env-file .env --json"
+    )
+    assert captured["command"][1:] == [
+        "scripts/llm_quota_env_audit.py",
+        "--env-file",
+        ".env",
+        "--json",
+    ]
     assert captured["timeout"] == 30
 
 
@@ -542,6 +581,62 @@ def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(
     assert "missing=2" in rows[2]["數量"]
     assert "COMPOSE_NEO4J_URI" in rows[2]["下一步"]
     assert "real-secret" not in str(rows)
+
+
+def test_run_maintenance_diagnostic_action_summarizes_llm_quota_env_audit_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "drift_detected",
+        "ready": False,
+        "model_count": 2,
+        "drift_count": 1,
+        "invalid_count": 0,
+        "next_action": "更新 gemini-2.5-flash-lite=1000。",
+        "rows": [
+            {
+                "status": "project_configured_reference",
+                "model_key": "gemini-3.5-flash",
+                "configured_request_budget": 250,
+                "official_free_tier_request_budget_reference": None,
+                "quota_reference_source": "project_configured_ai_studio_limit",
+            },
+            {
+                "status": "drift",
+                "model_key": "gemini-2.5-flash-lite",
+                "configured_request_budget": 250,
+                "official_free_tier_request_budget_reference": 1000,
+                "quota_reference_source": "google_free_tier_reference",
+                "quota_reference_note": "AI Studio remains authoritative.",
+            },
+        ],
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "llm_quota_env_audit",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "LLM quota env audit"
+    assert rows[0]["狀態"] == "drift_detected"
+    assert rows[0]["Ready"] == "否"
+    assert "drift=1" in rows[0]["數量"]
+    assert rows[1]["項目"] == "gemini-2.5-flash-lite"
+    assert rows[1]["狀態"] == "drift"
+    assert "official=1000" in rows[1]["數量"]
+    assert "gemini-3.5-flash" not in str(rows[1:])
 
 
 def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json(

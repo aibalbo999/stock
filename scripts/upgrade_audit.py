@@ -5,15 +5,25 @@ import json
 import os
 import socket
 import time
+import urllib.error
+import urllib.request
 
 from app.core.config import get_settings
 from app.data_sources.company_filing_render import company_filing_playwright_browser_status
-from app.services.local_dependency_diagnostics import local_docker_image_status
+from app.services.local_dependency_diagnostics import (
+    LOCAL_DOCKER_DEPENDENCY_IMAGES,
+    local_docker_image_status,
+)
 from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 from app.services.upgrade_audit import audit_upgrade_capabilities
 
 LOCAL_BROWSERLESS_PORT = 3000
 LOCAL_FLARESOLVERR_PORT = 8191
+LOCAL_CHROMA_PORT = 8001
+LOCAL_CHROMA_ENV_DEFAULTS = {
+    "USE_CHROMA": "true",
+    "CHROMA_API_URL": f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
+}
 LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
     "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
     "COMPANY_FILING_BROWSER_RENDER_URL": (
@@ -51,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--local-chroma-defaults",
+        action="store_true",
+        help="Apply local docker-compose Chroma HTTP defaults for this audit process without editing .env.",
+    )
+    parser.add_argument(
         "--prefer-unlocker",
         action="store_true",
         help="Prefer local FlareSolverr over Browserless when applying local browser render defaults.",
@@ -77,6 +92,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Wait for localhost FlareSolverr port before applying local browser render defaults.",
     )
     parser.add_argument(
+        "--wait-local-chroma",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait for localhost Chroma heartbeat before auditing when local Chroma settings are active.",
+    )
+    parser.add_argument(
         "--check-local-docker-images",
         action="store_true",
         help="Check whether docker-compose Neo4j/Browserless images are already available locally.",
@@ -87,6 +109,16 @@ def main(argv: list[str] | None = None) -> int:
     applied_defaults = {}
     if args.local_neo4j_defaults:
         applied_defaults.update(apply_local_neo4j_env_defaults())
+    chroma_default_status = None
+    if args.local_chroma_defaults:
+        chroma_defaults = apply_local_chroma_env_defaults()
+        applied_defaults.update(chroma_defaults)
+        chroma_default_status = {
+            "requested": True,
+            "url": os.environ.get("CHROMA_API_URL") or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"],
+            "applied_env_keys": sorted(chroma_defaults),
+            "reason": None if chroma_defaults else "existing_chroma_env_configured",
+        }
 
     wait_result = {}
     if int(args.wait_local_neo4j or 0) > 0 and is_local_neo4j_uri(os.environ.get("NEO4J_URI", "")):
@@ -114,6 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         wait_result["flaresolverr"] = flaresolverr_wait_ready
         wait_result["flaresolverr_timeout_seconds"] = int(args.wait_local_flaresolverr)
+    if int(args.wait_local_chroma or 0) > 0:
+        chroma_api_url = os.environ.get("CHROMA_API_URL") or LOCAL_CHROMA_ENV_DEFAULTS[
+            "CHROMA_API_URL"
+        ]
+        wait_result["chroma"] = wait_for_http_ok(
+            chroma_health_url(chroma_api_url),
+            timeout_seconds=int(args.wait_local_chroma),
+        )
+        wait_result["chroma_timeout_seconds"] = int(args.wait_local_chroma)
 
     browser_default_status = None
     if args.local_browser_render_defaults:
@@ -154,14 +195,15 @@ def main(argv: list[str] | None = None) -> int:
         }
     if browser_default_status is not None:
         audit["local_browser_render_defaults"] = browser_default_status
+    if chroma_default_status is not None:
+        audit["local_chroma_defaults"] = chroma_default_status
     if wait_result:
         audit["local_dependency_wait"] = wait_result
     if args.check_local_docker_images:
         images = None
         if args.prefer_unlocker:
             images = {
-                "neo4j": "neo4j:5-community",
-                "browserless": "ghcr.io/browserless/chromium:latest",
+                **LOCAL_DOCKER_DEPENDENCY_IMAGES,
                 "flaresolverr": LOCAL_FLARESOLVERR_IMAGE,
             }
         audit["local_docker_images"] = local_docker_image_status(images)
@@ -245,6 +287,17 @@ def _format_text(audit: dict) -> str:
                 else str(browser_defaults.get("reason") or "not applied")
             )
         )
+    chroma_defaults = audit.get("local_chroma_defaults")
+    if chroma_defaults:
+        applied = chroma_defaults.get("applied_env_keys") or []
+        lines.append(
+            "Local Chroma defaults: "
+            + (
+                "applied " + ", ".join(applied)
+                if applied
+                else str(chroma_defaults.get("reason") or "not applied")
+            )
+        )
     local_wait = audit.get("local_dependency_wait")
     if local_wait:
         wait_lines = []
@@ -262,6 +315,11 @@ def _format_text(audit: dict) -> str:
             wait_lines.append(
                 f"Local FlareSolverr wait: {'ready' if local_wait.get('flaresolverr') else 'not ready'} "
                 f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
+            )
+        if "chroma" in local_wait:
+            wait_lines.append(
+                f"Local Chroma wait: {'ready' if local_wait.get('chroma') else 'not ready'} "
+                f"within {local_wait.get('chroma_timeout_seconds')}s"
             )
         lines.extend(wait_lines)
     local_runtime = audit.get("local_dependencies")
@@ -353,6 +411,16 @@ def apply_local_neo4j_env_defaults() -> dict[str, str]:
     return applied
 
 
+def apply_local_chroma_env_defaults() -> dict[str, str]:
+    if os.environ.get("USE_CHROMA") or os.environ.get("CHROMA_API_URL"):
+        return {}
+    applied = {}
+    for key, value in LOCAL_CHROMA_ENV_DEFAULTS.items():
+        os.environ[key] = value
+        applied[key] = value
+    return applied
+
+
 def apply_local_browser_render_env_defaults(
     *,
     prefer_browserless: bool = False,
@@ -408,6 +476,29 @@ def wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
             return True
         time.sleep(0.5)
     return is_port_open(host, port)
+
+
+def wait_for_http_ok(url: str, timeout_seconds: int) -> bool:
+    deadline = time.time() + max(0, timeout_seconds)
+    while time.time() < deadline:
+        if http_ok(url):
+            return True
+        time.sleep(0.5)
+    return http_ok(url)
+
+
+def http_ok(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=1.0) as response:
+            return 200 <= int(response.getcode()) < 300
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return False
+
+
+def chroma_health_url(api_url: str) -> str:
+    return str(api_url or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"]).rstrip(
+        "/"
+    ) + "/api/v2/heartbeat"
 
 
 def is_port_open(host: str, port: int) -> bool:

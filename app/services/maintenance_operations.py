@@ -78,6 +78,15 @@ POST_RUN_CHECKS = {
             ),
         },
         {
+            "item": "Chroma / RAG HTTP vector store 稽核",
+            "purpose": "確認本機 Chroma HTTP server 與 RAG 設定可由目前程序使用。",
+            "diagnostic_action_id": "local_chroma_upgrade_audit",
+            "command": (
+                ".venv/bin/python scripts/upgrade_audit.py "
+                "--local-chroma-defaults --wait-local-chroma 20 --json"
+            ),
+        },
+        {
             "item": "公司文件 render fallback smoke",
             "purpose": "確認 Browserless 或 Playwright 後援可解析一般 HTML。",
             "diagnostic_action_id": "company_filing_render_smoke",

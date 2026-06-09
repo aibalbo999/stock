@@ -128,6 +128,10 @@ def test_local_dependency_runtime_status_builds_service_repair_plan(tmp_path) ->
     )
 
     repair_by_item = {row["item"]: row for row in status["repair_plan"]}
+    assert status["commands"]["verify_chroma"] == (
+        ".venv/bin/python scripts/upgrade_audit.py "
+        "--local-chroma-defaults --wait-local-chroma 20 --json"
+    )
     assert repair_by_item["Neo4j"] == {
         "item": "Neo4j",
         "state": "未偵測",

@@ -34,6 +34,10 @@ LOCAL_DEPENDENCY_COMMANDS = {
         ".venv/bin/python scripts/upgrade_audit.py "
         "--wait-local-browserless 20 --local-browser-render-defaults --json"
     ),
+    "verify_chroma": (
+        ".venv/bin/python scripts/upgrade_audit.py "
+        "--local-chroma-defaults --wait-local-chroma 20 --json"
+    ),
     "verify_flaresolverr": (
         ".venv/bin/python scripts/upgrade_audit.py "
         "--prefer-unlocker --wait-local-flaresolverr 20 --local-browser-render-defaults --json"
@@ -248,6 +252,7 @@ def _local_dependency_verify_command(service: str, commands: dict[str, str]) -> 
     service_commands = {
         "neo4j": commands.get("verify_neo4j"),
         "browserless": commands.get("verify_browserless"),
+        "chroma": commands.get("verify_chroma"),
     }
     return str(service_commands.get(service) or ".venv/bin/python scripts/upgrade_audit.py --json")
 

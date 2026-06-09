@@ -215,6 +215,110 @@ def test_upgrade_audit_script_can_apply_local_browser_render_defaults(monkeypatc
     os.environ.pop("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", None)
 
 
+def test_upgrade_audit_script_can_apply_local_chroma_defaults(monkeypatch, capsys) -> None:
+    for key in ("USE_CHROMA", "CHROMA_API_URL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    captured = {}
+
+    def fake_audit(strict_external=False):
+        captured["use_chroma"] = os.environ.get("USE_CHROMA")
+        captured["chroma_api_url"] = os.environ.get("CHROMA_API_URL")
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--local-chroma-defaults", "--json"])
+
+    assert exit_code == 0
+    assert captured == {
+        "use_chroma": "true",
+        "chroma_api_url": "http://127.0.0.1:8001",
+    }
+    output = capsys.readouterr().out
+    assert '"local_chroma_defaults"' in output
+    assert "CHROMA_API_URL" in output
+    os.environ.pop("USE_CHROMA", None)
+    os.environ.pop("CHROMA_API_URL", None)
+
+
+def test_upgrade_audit_script_waits_for_local_chroma(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("USE_CHROMA", "true")
+    monkeypatch.setenv("CHROMA_API_URL", "http://127.0.0.1:8001")
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    monkeypatch.setattr(upgrade_audit, "wait_for_http_ok", lambda url, timeout_seconds: True)
+
+    def fake_audit(strict_external=False):
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--wait-local-chroma", "7"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "Local Chroma wait: ready within 7s" in output
+    os.environ.pop("USE_CHROMA", None)
+    os.environ.pop("CHROMA_API_URL", None)
+
+
+def test_upgrade_audit_script_checks_core_images_plus_unlocker(monkeypatch, capsys) -> None:
+    captured = {}
+
+    def fake_local_docker_image_status(images=None):
+        captured["services"] = sorted((images or {}).keys())
+        return {
+            "images": [
+                {"service": service, "present": True}
+                for service in captured["services"]
+            ],
+            "remediation": None,
+        }
+
+    def fake_audit(strict_external=False):
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "local_docker_image_status", fake_local_docker_image_status)
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--check-local-docker-images", "--prefer-unlocker"])
+
+    assert exit_code == 0
+    assert captured["services"] == [
+        "browserless",
+        "chroma",
+        "flaresolverr",
+        "neo4j",
+        "postgres",
+        "redis",
+    ]
+    output = capsys.readouterr().out
+    assert "Local docker images: browserless=present" in output
+    assert "chroma=present" in output
+    assert "flaresolverr=present" in output
+
+
 def test_upgrade_audit_script_can_apply_local_browserless_defaults(monkeypatch, capsys) -> None:
     for key in (
         "COMPANY_FILING_PROXY_URLS",

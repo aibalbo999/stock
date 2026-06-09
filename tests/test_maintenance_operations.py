@@ -31,6 +31,11 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
         check["diagnostic_action_id"] == "graphrag_local_contract_smoke"
         for check in checks_by_id["start_local_dependencies"]
     )
+    assert any(
+        check["diagnostic_action_id"] == "local_chroma_upgrade_audit"
+        and "--local-chroma-defaults --wait-local-chroma 20" in check["command"]
+        for check in checks_by_id["start_local_dependencies"]
+    )
     assert all(
         check["diagnostic_action_id"] != "graphrag_live_query_smoke"
         for check in checks_by_id["start_local_dependencies"]
@@ -130,6 +135,10 @@ def test_run_maintenance_operation_starts_core_dependencies(monkeypatch, tmp_pat
     )
     assert any(
         "neo4j_graphrag_smoke.py" in check["command"]
+        for check in result["post_run_checks"]
+    )
+    assert any(
+        "--local-chroma-defaults --wait-local-chroma 20" in check["command"]
         for check in result["post_run_checks"]
     )
     assert captured["root"] == tmp_path

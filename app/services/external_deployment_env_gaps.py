@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.external_deployment_env_actions import (
+    external_env_key_actions,
+    external_env_key_next_step,
+    external_env_maintenance_action,
+    external_env_resolution_type,
+    external_env_summary,
+)
 from app.services.external_deployment_env_catalog import (
     EXTERNAL_ENV_CHECK_TARGETS,
-    external_capability_env_defaults,
     external_env_compose_recommended_value,
     external_env_key_hint,
 )
@@ -25,7 +31,6 @@ from app.services.external_deployment_readiness import (
     external_deployment_readiness_items,
     external_deployment_readiness_metadata,
     external_smoke_commands_from_payload,
-    string_list,
 )
 
 EXTERNAL_ENV_RESOLUTION_CONTRACT_COLUMNS = ("處理策略", "處理類型", "維護動作")
@@ -209,13 +214,13 @@ def external_deployment_env_key_rows(
         if external_deployment_item_ready(item):
             continue
         metadata = external_deployment_readiness_metadata(item)
-        env_summary = _external_env_summary(item)
+        env_summary = external_env_summary(item)
         verify_command = external_deployment_command_summary(
             external_smoke_commands_from_payload(item)
         )
         capability = str(item.get("capability") or "")
         source = str(item.get("_env_source") or "upgrade audit")
-        for env_key, status in _external_env_key_actions(item, env_summary):
+        for env_key, status in external_env_key_actions(item, env_summary):
             key = (capability, env_key, status)
             if key in seen:
                 continue
@@ -229,7 +234,7 @@ def external_deployment_env_key_rows(
                 recommended_value,
                 env_summary["compose_recommended"],
             )
-            resolution_type = _external_env_resolution_type(item, env_key, recommended_value)
+            resolution_type = external_env_resolution_type(item, env_key, recommended_value)
             rows.append(
                 {
                     "優先級": metadata["priority"],
@@ -242,13 +247,13 @@ def external_deployment_env_key_rows(
                     "用途": hint.get("scope") or metadata["impact"],
                     "來源": source,
                     "處理類型": resolution_type,
-                    "維護動作": _external_env_maintenance_action(
+                    "維護動作": external_env_maintenance_action(
                         item,
                         env_key,
                         recommended_value,
                         resolution_type,
                     ),
-                    "下一步": _external_env_key_next_step(item, env_key, status),
+                    "下一步": external_env_key_next_step(item, env_key, status),
                     "驗證指令": verify_command,
                 }
             )
@@ -268,16 +273,6 @@ def external_deployment_env_resolution_rows_from_key_rows(rows: list[dict]) -> l
     return build_external_deployment_env_resolution_rows(rows)
 
 
-def _ordered_unique(values: object) -> list[str]:
-    output: list[str] = []
-    for value in values if isinstance(values, list) else list(values or []):
-        text = str(value or "").strip()
-        if not text or text == "-" or text in output:
-            continue
-        output.append(text)
-    return output
-
-
 def _service_snapshot_external_env_items(service_snapshot: dict) -> list[dict]:
     return build_service_snapshot_external_env_items(service_snapshot)
 
@@ -291,193 +286,3 @@ def _external_env_key_row_sort_key(row: dict) -> tuple[int, int, str, str]:
         str(row.get("能力") or ""),
         str(row.get("設定鍵") or ""),
     )
-
-
-def _external_env_summary(item: dict) -> dict:
-    payload = item.get("evidence") if isinstance(item.get("evidence"), dict) else item
-    return {
-        "missing": set(_collect_named_string_lists(payload, {"missing_env_keys"})),
-        "configured": set(_collect_named_string_lists(payload, {"configured_env_keys"})),
-        "required": set(_collect_named_string_lists(payload, {"required_env_keys", "env_keys"})),
-        "recommended": _collect_env_recommendations(payload, {"recommended_env"}),
-        "compose_recommended": _collect_env_recommendations(
-            payload,
-            {"compose_recommended_env"},
-        ),
-        "fallback_reasons": set(
-            _collect_named_strings(
-                payload,
-                {"fallback_reason", "reason", "connection_error", "runtime_error"},
-            )
-        ),
-    }
-
-
-def _external_env_key_actions(item: dict, env_summary: dict) -> list[tuple[str, str]]:
-    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
-    missing = set(env_summary["missing"])
-    configured = set(env_summary["configured"])
-    recommended = set(env_summary["recommended"])
-    defaults = set(external_capability_env_defaults(*key))
-    actions: list[tuple[str, str]] = []
-    if _external_env_missing_neo4j_uri(key, env_summary):
-        missing.add("NEO4J_URI")
-    for env_key in sorted(missing - configured):
-        actions.append((env_key, "缺少"))
-    if _external_env_needs_default_keys(item, env_summary):
-        for env_key in sorted((defaults or env_summary["required"]) - configured - missing):
-            actions.append((env_key, "建議"))
-    for env_key in sorted(recommended - configured - missing):
-        if defaults and env_key not in defaults:
-            continue
-        actions.append((env_key, "建議"))
-    for env_key in sorted(recommended & configured):
-        if defaults and env_key not in defaults:
-            continue
-        if _external_env_should_recommend_configured_value(key, env_key):
-            actions.append((env_key, "建議"))
-    return actions
-
-
-def _external_env_missing_neo4j_uri(key: tuple[str, str], env_summary: dict) -> bool:
-    if key not in {
-        ("ai_rag", "neo4j_import"),
-        ("ai_rag", "graphrag_live_cypher_query"),
-    }:
-        return False
-    return any(
-        str(reason).startswith("missing_settings:neo4j_uri")
-        for reason in env_summary["fallback_reasons"]
-    )
-
-
-def _external_env_needs_default_keys(item: dict, env_summary: dict) -> bool:
-    key = (str(item.get("area") or ""), str(item.get("capability") or ""))
-    fallback_reasons = env_summary["fallback_reasons"]
-    if key in {
-        ("ai_rag", "neo4j_import"),
-        ("ai_rag", "graphrag_live_cypher_query"),
-    }:
-        return any(str(reason).startswith("missing_settings:neo4j") for reason in fallback_reasons)
-    if key == ("ai_rag", "visual_rag"):
-        return any(
-            "missing_vision_llm_key_or_gateway" in str(reason) for reason in fallback_reasons
-        )
-    return False
-
-
-def _external_env_should_recommend_configured_value(
-    key: tuple[str, str],
-    env_key: str,
-) -> bool:
-    return key == ("data_business_logic", "company_filing_high_risk_unlocker") and env_key in {
-        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
-        "COMPANY_FILING_BROWSER_RENDER_URL",
-    }
-
-
-def _external_env_key_next_step(item: dict, env_key: str, status: str) -> str:
-    remediation = str(item.get("remediation") or "").strip()
-    if status == "缺少":
-        return f"補齊 {env_key} 後重跑對應 smoke。"
-    if remediation:
-        return remediation
-    return f"需要該能力時設定 {env_key}，再重跑 readiness checklist。"
-
-
-def _external_env_resolution_type(item: dict, env_key: str, recommended_value: str) -> str:
-    capability = str(item.get("capability") or "")
-    if capability in {"neo4j_import", "graphrag_live_cypher_query"}:
-        return "本機可套用"
-    if capability == "company_filing_high_risk_unlocker" and env_key in {
-        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
-        "COMPANY_FILING_BROWSER_RENDER_URL",
-    }:
-        if (
-            "flaresolverr" in recommended_value
-            or "127.0.0.1" in recommended_value
-            or "localhost" in recommended_value
-        ):
-            return "本機可套用"
-        return "外部服務選配"
-    if env_key.endswith("_TOKEN") or env_key.endswith("_PASSWORD") or "API_KEY" in env_key:
-        return "需人工密鑰"
-    if env_key == "COMPANY_FILING_STRUCTURED_API_PROVIDER":
-        return "外部資料源設定"
-    if env_key == "COMPANY_FILING_STRUCTURED_API_URL":
-        return "外部資料源設定"
-    if env_key == "COMPANY_FILING_PROXY_URLS":
-        return "外部服務選配"
-    if "<" in recommended_value and ">" in recommended_value:
-        return "需人工設定"
-    return "本機可套用"
-
-
-def _external_env_maintenance_action(
-    item: dict,
-    env_key: str,
-    recommended_value: str,
-    resolution_type: str,
-) -> str:
-    if resolution_type == "需人工密鑰":
-        return "手動補 .env 或 secret manager；不由維護操作寫入。"
-    if resolution_type in {"外部資料源設定", "外部服務選配", "需人工設定"}:
-        return "手動補 .env 或部署 secret 後重跑外部設定缺口診斷。"
-    capability = str(item.get("capability") or "")
-    if capability in {"neo4j_import", "graphrag_live_cypher_query"}:
-        return ".venv/bin/python scripts/start_system.py --start-dependencies"
-    if capability == "company_filing_high_risk_unlocker":
-        return ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker"
-    if capability == "company_filing_browser_or_proxy_fallback":
-        return ".venv/bin/python scripts/start_system.py --start-dependencies"
-    if "127.0.0.1" in recommended_value or "localhost" in recommended_value:
-        return ".venv/bin/python scripts/start_system.py --start-dependencies"
-    return "手動補 .env 或部署 secret 後重跑外部設定缺口診斷。"
-
-
-def _collect_named_string_lists(payload: object, keys: set[str]) -> list[str]:
-    values: list[str] = []
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            if str(key) in keys:
-                values.extend(string_list(value))
-            else:
-                values.extend(_collect_named_string_lists(value, keys))
-    elif isinstance(payload, list):
-        for value in payload:
-            values.extend(_collect_named_string_lists(value, keys))
-    return values
-
-
-def _collect_named_strings(payload: object, keys: set[str]) -> list[str]:
-    values: list[str] = []
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            if str(key) in keys and str(value or "").strip():
-                values.append(str(value).strip())
-            else:
-                values.extend(_collect_named_strings(value, keys))
-    elif isinstance(payload, list):
-        for value in payload:
-            values.extend(_collect_named_strings(value, keys))
-    return values
-
-
-def _collect_env_recommendations(
-    payload: object,
-    keys: set[str] | None = None,
-) -> dict[str, str]:
-    recommendations: dict[str, str] = {}
-    for line in _collect_named_string_lists(
-        payload,
-        keys or {"recommended_env", "compose_recommended_env"},
-    ):
-        key, _, value = line.partition("=")
-        key = key.strip()
-        if not key or not key.isupper():
-            continue
-        recommendations.setdefault(
-            key,
-            value.strip() or external_env_key_hint(key).get("default") or "-",
-        )
-    return recommendations

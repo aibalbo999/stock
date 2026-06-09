@@ -229,6 +229,9 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
 )
 
 READY_STATUSES = frozenset({"ready"})
+AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND = (
+    ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+)
 
 
 def optimization_progress_status(status: dict) -> dict:
@@ -283,6 +286,8 @@ def optimization_progress_status(status: dict) -> dict:
             overall_status,
             prioritized_next_actions,
             optional_gap_count=optional_gap_count,
+            local_resolvable_gap_count=local_resolvable_gap_count,
+            projected_optional_gap_count=projected_optional_gap_count,
         ),
         "next_actions": next_actions,
         "prioritized_next_actions": prioritized_next_actions,
@@ -629,10 +634,7 @@ def _next_action_for_capability(
     locally_available: bool,
 ) -> str:
     if locally_available and local_match:
-        command = str(
-            local_match.get("verify_command")
-            or ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
-        )
+        command = str(local_match.get("verify_command") or AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND)
         group = str(local_match.get("group") or "local dependency")
         return (
             f"本機 {group} 服務已偵測到；可先用 `{command}` 驗證並套用本次程序 defaults，"
@@ -646,10 +648,34 @@ def _primary_next_action(
     next_actions: list[dict],
     *,
     optional_gap_count: int,
+    local_resolvable_gap_count: int,
+    projected_optional_gap_count: int,
 ) -> dict:
     if overall_status == "degraded" and next_actions:
         return next_actions[0]
     if overall_status == "ready_with_optional_gaps":
+        if local_resolvable_gap_count > 0:
+            return {
+                "domain_id": None,
+                "domain_label": "全部",
+                "capability": "auto_local_defaults",
+                "label": "本機 defaults 可驗證",
+                "status": "local_ready",
+                "optional": True,
+                "external": True,
+                "action_type": "free_local_or_external_config",
+                "locally_available": True,
+                "priority_score": 75,
+                "priority_band": "free_local_ready",
+                "cost_profile": "free_local_available",
+                "decision": "先用本機免費服務驗證；正式部署時再固化到 .env。",
+                "priority_reason": "本機服務已偵測到，可用一條 audit 指令驗證多個選配缺口。",
+                "next_action": (
+                    f"先執行 `{AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND}`；可用本機 defaults "
+                    f"驗證 {local_resolvable_gap_count} 項缺口，之後剩餘 "
+                    f"{projected_optional_gap_count} 項外部/付費選配。"
+                ),
+            }
         return {
             "domain_id": None,
             "domain_label": "全部",

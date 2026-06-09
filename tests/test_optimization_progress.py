@@ -156,6 +156,18 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert actions["neo4j_import"]["locally_available"] is True
     assert "--auto-local-defaults" in actions["neo4j_import"]["next_action"]
     assert actions["company_filing_high_risk_unlocker"]["status"] == "local_ready"
+    assert progress["primary_next_action"]["capability"] == "auto_local_defaults"
+    assert progress["primary_next_action"]["status"] == "local_ready"
+    assert progress["primary_next_action"]["locally_available"] is True
+    assert "--auto-local-defaults" in progress["primary_next_action"]["next_action"]
+    assert "驗證 3 項缺口" in progress["primary_next_action"]["next_action"]
+    assert "剩餘 0 項外部/付費選配" in progress["primary_next_action"]["next_action"]
+    action_rows = optimization_progress_next_action_rows(progress)
+    assert action_rows[0]["能力"] == "本機 defaults 可驗證"
+    assert action_rows[0]["本機"] == "可用"
+    assert action_rows[0]["成本/額度"] == "本機免費可驗證"
+    assert "--auto-local-defaults" in action_rows[0]["建議"]
+    assert action_rows[1]["能力"] == "MOPS/TWSE/TPEx 高風險文件 unlocker"
     assert progress["local_auto_defaults"]["local_action_available_count"] == 3
 
 

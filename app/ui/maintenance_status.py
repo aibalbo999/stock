@@ -200,8 +200,15 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
         "paid_external": "付費外部",
     }
     actions = progress.get("prioritized_next_actions") or progress.get("next_actions") or []
-    if not actions and isinstance(progress.get("primary_next_action"), dict):
-        actions = [progress["primary_next_action"]]
+    primary_action = (
+        progress.get("primary_next_action")
+        if isinstance(progress.get("primary_next_action"), dict)
+        else {}
+    )
+    if primary_action.get("capability") == "auto_local_defaults":
+        actions = [primary_action, *actions]
+    elif not actions and primary_action:
+        actions = [primary_action]
     return [
         {
             "主題": action.get("domain_label") or "-",

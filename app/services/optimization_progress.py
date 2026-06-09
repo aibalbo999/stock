@@ -18,9 +18,15 @@ from app.services.optimization_local_defaults import (
     LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND as LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND,
     LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND as LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND,
     LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND as LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND,
-    local_default_capabilities,
-    local_default_verify_commands,
-    local_defaults_verify_command,
+)
+from app.services.optimization_progress_summary import (
+    effective_gap_count,
+    effective_gap_note,
+    local_resolution_projection,
+    primary_next_action,
+    progress_summary,
+    ratio,
+    status_note,
 )
 
 
@@ -51,12 +57,12 @@ def optimization_progress_status(status: dict) -> dict:
         projected_blocking_gap_count,
         projected_optional_gap_count,
     )
-    effective_blocking_gap_count = _effective_gap_count(
+    effective_blocking_gap_count = effective_gap_count(
         raw_count=blocking_gap_count,
         projected_count=projected_blocking_gap_count,
         local_resolvable_gap_count=local_resolvable_gap_count,
     )
-    effective_optional_gap_count = _effective_gap_count(
+    effective_optional_gap_count = effective_gap_count(
         raw_count=optional_gap_count,
         projected_count=projected_optional_gap_count,
         local_resolvable_gap_count=local_resolvable_gap_count,
@@ -64,14 +70,14 @@ def optimization_progress_status(status: dict) -> dict:
     effective_status = projected_status if local_resolvable_gap_count > 0 else overall_status
     next_actions = _next_actions(domains)
     prioritized_next_actions = prioritized_optimization_next_actions(next_actions)
-    local_projection = _local_resolution_projection(
+    local_projection = local_resolution_projection(
         projected_status=projected_status,
         local_resolvable_gap_count=local_resolvable_gap_count,
         projected_blocking_gap_count=projected_blocking_gap_count,
         projected_optional_gap_count=projected_optional_gap_count,
         prioritized_next_actions=prioritized_next_actions,
     )
-    primary_next_action = _primary_next_action(
+    primary_action = primary_next_action(
         overall_status,
         prioritized_next_actions,
         optional_gap_count=optional_gap_count,
@@ -81,7 +87,7 @@ def optimization_progress_status(status: dict) -> dict:
             local_projection.get("local_defaults_verify_command") or ""
         ),
     )
-    completion_ratio = _ratio(ready_checks, total_checks)
+    completion_ratio = ratio(ready_checks, total_checks)
     return {
         "collector_path": "app/services/optimization_progress.py",
         "status": overall_status,
@@ -102,7 +108,7 @@ def optimization_progress_status(status: dict) -> dict:
         "projected_blocking_gap_count_after_local_defaults": projected_blocking_gap_count,
         "projected_optional_gap_count_after_local_defaults": projected_optional_gap_count,
         "completion_ratio": completion_ratio,
-        "summary": _progress_summary(
+        "summary": progress_summary(
             overall_status=overall_status,
             effective_status=effective_status,
             total_domains=len(domains),
@@ -116,10 +122,10 @@ def optimization_progress_status(status: dict) -> dict:
             effective_optional_gap_count=effective_optional_gap_count,
             projected_blocking_gap_count=projected_blocking_gap_count,
             projected_optional_gap_count=projected_optional_gap_count,
-            primary_next_action=primary_next_action,
+            primary_next_action=primary_action,
         ),
         "domains": domains,
-        "primary_next_action": primary_next_action,
+        "primary_next_action": primary_action,
         "next_actions": next_actions,
         "prioritized_next_actions": prioritized_next_actions,
         "local_defaults_verify_command": (
@@ -129,8 +135,8 @@ def optimization_progress_status(status: dict) -> dict:
             local_projection.get("local_default_verify_commands") or []
         ),
         "local_resolution_projection": local_projection,
-        "status_note": _status_note(overall_status),
-        "effective_gap_note": _effective_gap_note(
+        "status_note": status_note(overall_status),
+        "effective_gap_note": effective_gap_note(
             raw_blocking_gap_count=blocking_gap_count,
             raw_optional_gap_count=optional_gap_count,
             effective_blocking_gap_count=effective_blocking_gap_count,
@@ -177,7 +183,7 @@ def _domain_status(
         "local_resolvable_gap_count": len(local_resolvable_gaps),
         "projected_blocking_gap_count": len(projected_blocking_gaps),
         "projected_optional_gap_count": len(projected_optional_gaps),
-        "completion_ratio": _ratio(ready_checks, len(checks)),
+        "completion_ratio": ratio(ready_checks, len(checks)),
         "checks": checks,
         "blocking_gaps": blocking_gaps,
         "optional_gaps": optional_gaps,
@@ -271,108 +277,6 @@ def _next_actions(domains: list[dict]) -> list[dict]:
     return actions
 
 
-def _local_resolution_projection(
-    *,
-    projected_status: str,
-    local_resolvable_gap_count: int,
-    projected_blocking_gap_count: int,
-    projected_optional_gap_count: int,
-    prioritized_next_actions: list[dict],
-) -> dict:
-    remaining_actions = [
-        action for action in prioritized_next_actions if not bool(action.get("locally_available"))
-    ]
-    local_actions = [
-        action for action in prioritized_next_actions if bool(action.get("locally_available"))
-    ]
-    local_defaults_command = local_defaults_verify_command(local_actions)
-    local_default_commands = local_default_verify_commands(
-        local_defaults_command,
-        local_actions,
-    )
-    if local_resolvable_gap_count <= 0:
-        next_action = "沒有偵測到可用本機 defaults；依一般優先隊列處理剩餘缺口。"
-    elif projected_blocking_gap_count == 0 and projected_optional_gap_count == 0:
-        next_action = (
-            f"套用本機 defaults 可消除 {local_resolvable_gap_count} 項剩餘缺口；"
-            "之後只需維持 smoke/audit 觀測。"
-        )
-    elif projected_blocking_gap_count == 0:
-        next_action = (
-            f"套用本機 defaults 可先消除 {local_resolvable_gap_count} 項缺口；"
-            f"之後剩餘 {projected_optional_gap_count} 項外部/付費選配。"
-        )
-    else:
-        next_action = (
-            f"套用本機 defaults 可先消除 {local_resolvable_gap_count} 項缺口；"
-            f"仍有 {projected_blocking_gap_count} 項 blocking gap 需要處理。"
-        )
-    return {
-        "status_after_local_defaults": projected_status,
-        "local_resolvable_gap_count": local_resolvable_gap_count,
-        "projected_blocking_gap_count": projected_blocking_gap_count,
-        "projected_optional_gap_count": projected_optional_gap_count,
-        "remaining_paid_external_pending": sum(
-            1 for action in remaining_actions if action.get("action_type") == "paid_external"
-        ),
-        "local_defaults_verify_command": local_defaults_command,
-        "compatible_auto_defaults_verify_command": AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND,
-        "local_default_verify_commands": local_default_commands,
-        "local_action_capabilities": [
-            action.get("capability") for action in local_actions if action.get("capability")
-        ],
-        "local_default_capabilities": local_default_capabilities(local_actions),
-        "remaining_action_capabilities": [
-            action.get("capability") for action in remaining_actions if action.get("capability")
-        ],
-        "remaining_actions": remaining_actions,
-        "next_action": next_action,
-    }
-
-
-def _progress_summary(
-    *,
-    overall_status: str,
-    effective_status: str,
-    total_domains: int,
-    total_checks: int,
-    ready_checks: int,
-    completion_ratio: float,
-    blocking_gap_count: int,
-    optional_gap_count: int,
-    local_resolvable_gap_count: int,
-    effective_blocking_gap_count: int,
-    effective_optional_gap_count: int,
-    projected_blocking_gap_count: int,
-    projected_optional_gap_count: int,
-    primary_next_action: dict,
-) -> dict:
-    return {
-        "status": overall_status,
-        "effective_status_after_available_local_defaults": effective_status,
-        "total_domains": total_domains,
-        "total_checks": total_checks,
-        "ready_checks": ready_checks,
-        "completion_ratio": completion_ratio,
-        "blocking_gap_count": blocking_gap_count,
-        "optional_gap_count": optional_gap_count,
-        "local_resolvable_gap_count": local_resolvable_gap_count,
-        "effective_blocking_gap_count_after_available_local_defaults": (
-            effective_blocking_gap_count
-        ),
-        "effective_optional_gap_count_after_available_local_defaults": (
-            effective_optional_gap_count
-        ),
-        "projected_blocking_gap_count_after_local_defaults": (projected_blocking_gap_count),
-        "projected_optional_gap_count_after_local_defaults": (projected_optional_gap_count),
-        "primary_next_action_label": primary_next_action.get("label") or "",
-        "primary_next_action_capability": primary_next_action.get("capability"),
-        "primary_next_action_type": primary_next_action.get("action_type") or "",
-        "primary_next_action_cost_profile": (primary_next_action.get("cost_profile") or ""),
-        "primary_next_action_verify_command": (primary_next_action.get("verify_command") or ""),
-    }
-
-
 def _next_action_for_capability(
     ref: OptimizationCapabilityRef,
     capability: dict[str, Any],
@@ -390,60 +294,6 @@ def _next_action_for_capability(
     return ref.next_action or _default_next_action(ref, capability)
 
 
-def _primary_next_action(
-    overall_status: str,
-    next_actions: list[dict],
-    *,
-    optional_gap_count: int,
-    local_resolvable_gap_count: int,
-    projected_optional_gap_count: int,
-    local_defaults_verify_command: str,
-) -> dict:
-    if overall_status == "degraded" and next_actions:
-        return next_actions[0]
-    if overall_status == "ready_with_optional_gaps":
-        if local_resolvable_gap_count > 0:
-            command = local_defaults_verify_command or AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND
-            return {
-                "domain_id": None,
-                "domain_label": "全部",
-                "capability": "auto_local_defaults",
-                "label": "本機 defaults 可驗證",
-                "status": "local_ready",
-                "optional": True,
-                "external": True,
-                "action_type": "free_local_or_external_config",
-                "locally_available": True,
-                "priority_score": 75,
-                "priority_band": "free_local_ready",
-                "cost_profile": "free_local_available",
-                "decision": "先用本機免費服務驗證；正式部署時再固化到 .env。",
-                "priority_reason": "本機服務已偵測到，可用一條 audit 指令驗證多個選配缺口。",
-                "verify_command": command,
-                "next_action": (
-                    f"先執行 `{command}`；可用本機 defaults "
-                    f"驗證 {local_resolvable_gap_count} 項缺口，之後剩餘 "
-                    f"{projected_optional_gap_count} 項外部/付費選配。"
-                    f" 相容自動偵測入口：`{AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND}`。"
-                ),
-            }
-        return {
-            "domain_id": None,
-            "domain_label": "全部",
-            "capability": None,
-            "label": "核心已完成",
-            "status": "ready_with_optional_gaps",
-            "optional": True,
-            "external": True,
-            "action_type": "optional_review",
-            "next_action": (
-                f"目前沒有 blocking 程式缺口；剩餘 {optional_gap_count} 項依正式部署、"
-                "額度或付費資料源需求再啟用。"
-            ),
-        }
-    return _no_gap_action()
-
-
 def _default_next_action(ref: OptimizationCapabilityRef, capability: dict[str, Any]) -> str:
     detail = str(capability.get("detail") or "").strip()
     if detail:
@@ -457,43 +307,6 @@ def _overall_status(blocking_gap_count: int, optional_gap_count: int) -> str:
     if optional_gap_count:
         return "ready_with_optional_gaps"
     return "ready"
-
-
-def _effective_gap_count(
-    *,
-    raw_count: int,
-    projected_count: int,
-    local_resolvable_gap_count: int,
-) -> int:
-    if local_resolvable_gap_count > 0:
-        return int(projected_count)
-    return int(raw_count)
-
-
-def _effective_gap_note(
-    *,
-    raw_blocking_gap_count: int,
-    raw_optional_gap_count: int,
-    effective_blocking_gap_count: int,
-    effective_optional_gap_count: int,
-    local_resolvable_gap_count: int,
-) -> str:
-    if local_resolvable_gap_count <= 0:
-        return ""
-    return (
-        f"原始缺口為 {raw_blocking_gap_count} blocking / {raw_optional_gap_count} 選配；"
-        f"本機 defaults 可驗證 {local_resolvable_gap_count} 項後，"
-        f"有效剩餘 {effective_blocking_gap_count} blocking / "
-        f"{effective_optional_gap_count} 選配。"
-    )
-
-
-def _status_note(status: str) -> str:
-    if status == "degraded":
-        return "仍有核心實作或設定缺口，需要先處理 blocking gaps。"
-    if status == "ready_with_optional_gaps":
-        return "核心實作已就緒；剩餘項目屬於外部部署、額度或付費資料源選配。"
-    return "核心實作與已選定的外部能力都已就緒。"
 
 
 def _local_auto_defaults(status: dict) -> dict:
@@ -539,23 +352,3 @@ def _local_auto_defaults_summary(local_auto_defaults: dict) -> dict:
             local_auto_defaults.get("local_action_available_count") or 0
         ),
     }
-
-
-def _no_gap_action() -> dict:
-    return {
-        "domain_id": None,
-        "domain_label": "全部",
-        "capability": None,
-        "label": "無立即缺口",
-        "status": "ready",
-        "optional": False,
-        "external": False,
-        "action_type": "monitoring",
-        "next_action": "目前沒有需要立即改程式的缺口；維持 audit、報告觀測與額度監控即可。",
-    }
-
-
-def _ratio(ready: int, total: int) -> float:
-    if total <= 0:
-        return 0.0
-    return round(ready / total, 4)

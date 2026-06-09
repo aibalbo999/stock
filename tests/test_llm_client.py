@@ -60,10 +60,19 @@ def test_api_key_rotator_advances_starting_key() -> None:
 def test_llm_provider_payload_helpers_are_split_from_client() -> None:
     client_source = Path("app/services/llm_client.py").read_text()
     provider_source = Path("app/services/llm_provider_calls.py").read_text()
+    call_mixin_source = Path("app/services/llm_provider_call_mixin.py").read_text()
 
     assert "def call_litellm(" in provider_source
     assert "def call_google_genai(" in provider_source
     assert "def call_gemini_vision(" in provider_source
+    assert "class LLMProviderCallMixin" in call_mixin_source
+    assert "def _call_litellm(" in call_mixin_source
+    assert "def _call_google_genai(" in call_mixin_source
+    assert "def _normalize_vision_images(" in call_mixin_source
+    assert "LLMProviderCallMixin" in client_source
+    assert "def _call_litellm(" not in client_source
+    assert "def _call_google_genai(" not in client_source
+    assert "def _normalize_vision_images(" not in client_source
     assert "litellm.completion" not in client_source
     assert "client.models.generate_content" not in client_source
     assert "inlineData" not in client_source

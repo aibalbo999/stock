@@ -168,6 +168,11 @@ def optimization_progress_rows(progress: dict) -> list[dict]:
             "完成率": _format_progress_ratio(domain.get("completion_ratio")),
             "Blocking": int(domain.get("blocking_gap_count") or 0),
             "外部/選配": int(domain.get("optional_gap_count") or 0),
+            "本機可補": int(domain.get("local_resolvable_gap_count") or 0),
+            "套用後剩餘": (
+                f"{int(domain.get('projected_blocking_gap_count') or 0)} blocking / "
+                f"{int(domain.get('projected_optional_gap_count') or 0)} 選配"
+            ),
             "下一步": domain.get("next_action") or "-",
             "長期考量": domain.get("long_term_note") or "-",
         }

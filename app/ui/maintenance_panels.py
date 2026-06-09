@@ -49,7 +49,7 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
     action_rows = optimization_progress_next_action_rows(progress)
     expanded = progress.get("status") != "ready"
     with st.expander("優化進度", expanded=expanded):
-        cols = st.columns(4)
+        cols = st.columns(5)
         cols[0].metric("狀態", progress.get("status") or "-")
         cols[1].metric(
             "完成",
@@ -57,8 +57,16 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
         )
         cols[2].metric("Blocking", int(progress.get("blocking_gap_count") or 0))
         cols[3].metric("外部/選配", int(progress.get("optional_gap_count") or 0))
+        cols[4].metric("本機可補", int(progress.get("local_resolvable_gap_count") or 0))
         if progress.get("status_note"):
             st.caption(str(progress["status_note"]))
+        local_projection = (
+            progress.get("local_resolution_projection")
+            if isinstance(progress.get("local_resolution_projection"), dict)
+            else {}
+        )
+        if local_projection.get("next_action"):
+            st.caption(str(local_projection["next_action"]))
         if rows:
             st.dataframe(rows, width="stretch", hide_index=True)
         if action_rows:

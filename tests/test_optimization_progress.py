@@ -29,6 +29,8 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
     assert progress["total_domains"] == 4
     assert progress["blocking_gap_count"] == 0
     assert progress["optional_gap_count"] == 0
+    assert progress["local_resolvable_gap_count"] == 0
+    assert progress["projected_status_after_local_defaults"] == "ready"
     assert progress["completion_ratio"] == 1.0
     assert progress["primary_next_action"]["action_type"] == "monitoring"
     assert {domain["id"] for domain in progress["domains"]} == {
@@ -53,6 +55,8 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert progress["status"] == "ready_with_optional_gaps"
     assert progress["blocking_gap_count"] == 0
     assert progress["optional_gap_count"] == 1
+    assert progress["local_resolvable_gap_count"] == 0
+    assert progress["projected_optional_gap_count_after_local_defaults"] == 1
     assert progress["primary_next_action"]["action_type"] == "optional_review"
     assert "沒有 blocking" in progress["primary_next_action"]["next_action"]
     assert progress["next_actions"][0]["capability"] == ("company_filing_structured_api_fallback")
@@ -138,6 +142,15 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     actions = {row["capability"]: row for row in progress["next_actions"]}
     assert progress["status"] == "ready_with_optional_gaps"
     assert progress["optional_gap_count"] == 3
+    assert progress["local_resolvable_gap_count"] == 3
+    assert progress["projected_status_after_local_defaults"] == "ready"
+    assert progress["projected_optional_gap_count_after_local_defaults"] == 0
+    assert progress["local_resolution_projection"]["local_action_capabilities"] == [
+        "company_filing_high_risk_unlocker",
+        "neo4j_import",
+        "graphrag_live_cypher_query",
+    ]
+    assert progress["local_resolution_projection"]["remaining_action_capabilities"] == []
     assert actions["neo4j_import"]["status"] == "local_ready"
     assert actions["neo4j_import"]["capability_status"] == "degraded"
     assert actions["neo4j_import"]["locally_available"] is True
@@ -193,6 +206,12 @@ def test_optimization_progress_prioritizes_high_roi_next_actions() -> None:
     assert prioritized[positions["company_filing_structured_api_fallback"]][
         "cost_profile"
     ] == "paid_external"
+    assert progress["local_resolution_projection"]["projected_blocking_gap_count"] == 1
+    assert progress["local_resolution_projection"]["remaining_action_capabilities"] == [
+        "background_task_queue",
+        "visual_rag",
+        "company_filing_structured_api_fallback",
+    ]
 
 
 def test_optimization_progress_ui_rows_summarize_domains_and_actions() -> None:
@@ -209,6 +228,8 @@ def test_optimization_progress_ui_rows_summarize_domains_and_actions() -> None:
     assert data_row["狀態"] == "核心完成/外部選配"
     assert data_row["外部/選配"] == 1
     assert data_row["Blocking"] == 0
+    assert data_row["本機可補"] == 0
+    assert data_row["套用後剩餘"] == "0 blocking / 1 選配"
     assert data_row["完成率"] != "-"
 
     assert action_rows[0]["能力"] == "公司文件結構化 API 備援"

@@ -19,6 +19,8 @@ from app.services import report_quality_relevance_rules
 from app.services import report_quality_sources
 from app.services import report_quality_action_policy
 from app.services import report_quality_coverage_rules
+from app.services import report_quality_issue_rules
+from app.services import report_quality_metrics
 from app.services.report_quality import (
     attach_quality_gate_to_report,
     build_report_quality_gate,
@@ -199,6 +201,35 @@ def test_report_quality_coverage_rules_live_outside_quality_gate_module() -> Non
     assert "公司公開文件覆蓋率低於 50%" in coverage_rules_source
     assert "近況訊號覆蓋偏低" not in report_quality_source
     assert "公司公開文件覆蓋率低於 50%" not in report_quality_source
+
+
+def test_report_quality_metrics_payload_lives_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    metrics_source = Path("app/services/report_quality_metrics.py").read_text()
+
+    assert report_quality.quality_gate_metrics is report_quality_metrics.quality_gate_metrics
+    assert "def quality_gate_metrics(" in metrics_source
+    assert '"llm_latency_ms"' in metrics_source
+    assert '"rag_retrieval_mode"' in metrics_source
+    assert '"source_unique_publishers"' in metrics_source
+    assert '"llm_latency_ms"' not in report_quality_source
+    assert '"rag_retrieval_mode"' not in report_quality_source
+    assert '"source_unique_publishers"' not in report_quality_source
+
+
+def test_report_quality_issue_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    issue_rules_source = Path("app/services/report_quality_issue_rules.py").read_text()
+
+    assert (
+        report_quality.quality_gate_issue_notes
+        is report_quality_issue_rules.quality_gate_issue_notes
+    )
+    assert "def quality_gate_issue_notes(" in issue_rules_source
+    assert "AI 動態資料來源入庫篇數過少" in issue_rules_source
+    assert "正式分析股票仍含弱證據公司" in issue_rules_source
+    assert "AI 動態資料來源入庫篇數過少" not in report_quality_source
+    assert "正式分析股票仍含弱證據公司" not in report_quality_source
 
 
 def _quality_gate(

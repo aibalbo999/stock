@@ -14,7 +14,9 @@ from app.services.market_repositories import (
 )
 from app.services.report_orchestrator import build_quality_recovery_plan
 from app.services.report_quality_action_policy import quality_gate_action_policy
-from app.services.report_quality_coverage_rules import coverage_quality_notes
+from app.services.report_quality_coverage_rules import (
+    coverage_quality_notes as coverage_quality_notes,
+)
 from app.services.report_quality_recovery import (
     quality_remediation_actions,
     should_recover_market_data_quality as should_recover_market_data_quality,
@@ -23,33 +25,35 @@ from app.services.report_quality_runtime import (
     rag_runtime_status,
     summarize_llm_status,
 )
-from app.services.report_quality_llm_rules import llm_quality_notes
+from app.services.report_quality_issue_rules import quality_gate_issue_notes
+from app.services.report_quality_llm_rules import llm_quality_notes as llm_quality_notes
 from app.services.report_quality_market_rules import (
-    market_coverage_quality_notes,
-    market_rescue_quality_notes,
-    market_trade_date_quality_notes,
+    market_coverage_quality_notes as market_coverage_quality_notes,
+    market_rescue_quality_notes as market_rescue_quality_notes,
+    market_trade_date_quality_notes as market_trade_date_quality_notes,
 )
-from app.services.report_quality_plan_rules import discovery_plan_quality_notes
+from app.services.report_quality_metrics import quality_gate_metrics
+from app.services.report_quality_plan_rules import (
+    discovery_plan_quality_notes as discovery_plan_quality_notes,
+)
 from app.services.report_quality_rag_rules import (
     normalized_rag_reranker_provider,
-    rag_quality_warnings,
+    rag_quality_warnings as rag_quality_warnings,
 )
 from app.services.report_quality_relevance_rules import (
-    adjusted_source_relevance_counts,
-    source_relevance_notes,
+    adjusted_source_relevance_counts as adjusted_source_relevance_counts,
+    source_relevance_notes as source_relevance_notes,
 )
 from app.services.report_quality_sources import (
     LATEST_ONLY_MARKET_SOURCE_MARKER,
     STALE_MARKET_SOURCE_MARKER,
-    date_lag_days as _date_lag_days,
-    date_to_text as _date_to_text,
     is_latest_only_market_data_source,
     is_stale_market_data_source,
     latest_only_financial_metric_ticker_count as _latest_only_financial_metric_ticker_count,
     latest_only_market_data_count as _latest_only_market_data_count,
     market_provider_summary,
     market_trade_date_summary,
-    source_quality_notes,
+    source_quality_notes as source_quality_notes,
     stale_financial_metric_ticker_count as _stale_financial_metric_ticker_count,
     stale_market_data_count as _stale_market_data_count,
     summarize_document_source_quality,
@@ -179,14 +183,6 @@ def build_report_quality_gate(
     llm_status = llm_status or {}
     llm_fallback = bool(llm_status.get("fallback")) if llm_status else None
     source_relevance = source_audit.get("source_relevance") or {}
-    missing_subtopic_count, weak_subtopic_count = adjusted_source_relevance_counts(
-        source_relevance,
-        market_count=market_count,
-        monthly_revenue_count=monthly_revenue_count,
-        valuation_count=valuation_count,
-        financial_metrics_count=financial_metrics_count,
-    )
-    unique_publishers = int(source_quality.get("unique_publisher_count") or 0)
     rag_status = rag_status or {}
     llm_observability = (llm_status or {}).get("observability") or {}
     rag_embedding_status = rag_status.get("embedding_status") or {}
@@ -207,96 +203,49 @@ def build_report_quality_gate(
         + int(valuation_latest_only_count)
     )
 
-    blockers = []
-    warnings = []
-    observations = []
-    if promoted_count == 0:
-        blockers.append("沒有通過證據驗證的正式分析股票")
-    if promoted_count == 0 and exploration_supported_ratio < 0.6:
-        blockers.append("候選公司證據覆蓋率低於 60%")
-    elif promoted_count and formal_supported_ratio < 1:
-        blockers.append("正式分析股票仍含弱證據公司")
-    elif promoted_count and formal_low_confidence_count:
-        blockers.append("正式分析股票含低信心證據公司")
-    elif promoted_count and exploration_supported_ratio < 0.6:
-        observations.append("AI 初始候選清單較廣，已由二次篩選收斂為正式分析股票")
-    if source_count < 8:
-        blockers.append("AI 動態資料來源入庫篇數過少")
-    elif source_count < 12:
-        warnings.append("AI 動態資料來源偏少")
-    relevance_blockers, relevance_warnings, relevance_observations = source_relevance_notes(
-        missing_subtopic_count=missing_subtopic_count,
-        weak_subtopic_count=weak_subtopic_count,
-        source_count=source_count,
-        unique_publishers=unique_publishers,
-    )
-    blockers.extend(relevance_blockers)
-    warnings.extend(relevance_warnings)
-    observations.extend(relevance_observations)
-    source_blockers, source_warnings = source_quality_notes(source_quality, source_count)
-    blockers.extend(source_blockers)
-    warnings.extend(source_warnings)
-    plan_blockers, plan_warnings = discovery_plan_quality_notes(plan_quality)
-    blockers.extend(plan_blockers)
-    warnings.extend(plan_warnings)
-    market_coverage_blockers, market_coverage_warnings = market_coverage_quality_notes(
+    issue_notes = quality_gate_issue_notes(
         promoted_count=promoted_count,
+        exploration_supported_ratio=exploration_supported_ratio,
+        formal_supported_ratio=formal_supported_ratio,
+        formal_low_confidence_count=formal_low_confidence_count,
+        source_count=source_count,
+        source_relevance=source_relevance,
+        source_quality=source_quality,
+        plan_quality=plan_quality,
+        market_count=market_count,
+        monthly_revenue_count=monthly_revenue_count,
+        financial_metrics_count=financial_metrics_count,
+        valuation_count=valuation_count,
         market_coverage=market_coverage,
         monthly_coverage=monthly_coverage,
-        financial_metrics_count=financial_metrics_count,
         valuation_coverage=valuation_coverage,
-    )
-    blockers.extend(market_coverage_blockers)
-    warnings.extend(market_coverage_warnings)
-    market_trade_date_lag_days = (
-        market_max_trade_date_lag_days
-        if market_max_trade_date_lag_days is not None
-        else _date_lag_days(
-            market_latest_trade_date,
-            market_database_latest_trade_date,
-        )
-    )
-    market_trade_date_warning_suppressed = bool(
-        promoted_count
-        and market_coverage >= 1
-        and not market_stale_count
-        and not market_latest_only_count
-        and market_trade_date_lag_days is not None
-        and market_trade_date_lag_days <= 1
-    )
-    market_trade_date_warnings, market_trade_date_observations = market_trade_date_quality_notes(
-        promoted_count=promoted_count,
+        market_latest_trade_date=market_latest_trade_date,
+        market_database_latest_trade_date=market_database_latest_trade_date,
+        market_max_trade_date_lag_days=market_max_trade_date_lag_days,
         market_latest_trade_date_coverage=market_latest_trade_date_coverage,
         market_older_than_database_latest_count=market_older_than_database_latest_count,
-        market_trade_date_warning_suppressed=market_trade_date_warning_suppressed,
-    )
-    warnings.extend(market_trade_date_warnings)
-    observations.extend(market_trade_date_observations)
-    market_rescue_warnings, market_rescue_observations = market_rescue_quality_notes(
-        stale_market_dataset_count=stale_market_dataset_count,
         market_stale_count=market_stale_count,
         monthly_revenue_stale_count=monthly_revenue_stale_count,
         financial_metrics_stale_ticker_count=financial_metrics_stale_ticker_count,
         valuation_stale_count=valuation_stale_count,
-        latest_only_market_dataset_count=latest_only_market_dataset_count,
+        stale_market_dataset_count=stale_market_dataset_count,
         market_latest_only_count=market_latest_only_count,
         monthly_revenue_latest_only_count=monthly_revenue_latest_only_count,
         financial_metrics_latest_only_ticker_count=financial_metrics_latest_only_ticker_count,
         valuation_latest_only_count=valuation_latest_only_count,
-    )
-    warnings.extend(market_rescue_warnings)
-    observations.extend(market_rescue_observations)
-    coverage_warnings, coverage_observations = coverage_quality_notes(
-        promoted_count=promoted_count,
+        latest_only_market_dataset_count=latest_only_market_dataset_count,
         leading_signal_coverage=leading_signal_coverage,
         company_filing_coverage=company_filing_coverage,
+        llm_status=llm_status,
+        rag_status=rag_status,
     )
-    warnings.extend(coverage_warnings)
-    observations.extend(coverage_observations)
-    llm_warnings, llm_observations = llm_quality_notes(llm_status)
-    warnings.extend(llm_warnings)
-    observations.extend(llm_observations)
-    warnings.extend(rag_quality_warnings(rag_status))
+    blockers = issue_notes["blockers"]
+    warnings = issue_notes["warnings"]
+    observations = issue_notes["observations"]
+    missing_subtopic_count = issue_notes["missing_subtopic_count"]
+    weak_subtopic_count = issue_notes["weak_subtopic_count"]
+    market_trade_date_lag_days = issue_notes["market_trade_date_lag_days"]
+    market_trade_date_warning_suppressed = issue_notes["market_trade_date_warning_suppressed"]
 
     status, action_policy = quality_gate_action_policy(
         blockers=blockers,
@@ -312,124 +261,53 @@ def build_report_quality_gate(
         "observations": observations,
         "remediation_actions": remediation_actions,
         "action_policy": action_policy,
-        "metrics": {
-            "promoted_count": promoted_count,
-            "candidate_supported_ratio": formal_supported_ratio,
-            "exploration_candidate_supported_ratio": exploration_supported_ratio,
-            "formal_confidence_avg": formal_confidence_avg,
-            "formal_confidence_min": formal_confidence_min,
-            "formal_low_confidence_count": formal_low_confidence_count,
-            "dynamic_source_count": source_count,
-            "missing_subtopic_count": missing_subtopic_count,
-            "weak_subtopic_count": weak_subtopic_count,
-            "market_coverage": market_coverage,
-            "monthly_revenue_coverage": monthly_coverage,
-            "financial_metrics_count": financial_metrics_count,
-            "valuation_coverage": valuation_coverage,
-            "market_fresh_coverage": market_fresh_coverage,
-            "monthly_revenue_fresh_coverage": monthly_fresh_coverage,
-            "valuation_fresh_coverage": valuation_fresh_coverage,
-            "market_stale_count": market_stale_count,
-            "monthly_revenue_stale_count": monthly_revenue_stale_count,
-            "financial_metrics_stale_ticker_count": financial_metrics_stale_ticker_count,
-            "valuation_stale_count": valuation_stale_count,
-            "stale_market_dataset_count": stale_market_dataset_count,
-            "market_latest_only_count": market_latest_only_count,
-            "monthly_revenue_latest_only_count": monthly_revenue_latest_only_count,
-            "financial_metrics_latest_only_ticker_count": financial_metrics_latest_only_ticker_count,
-            "valuation_latest_only_count": valuation_latest_only_count,
-            "latest_only_market_dataset_count": latest_only_market_dataset_count,
-            "market_latest_trade_date": _date_to_text(market_latest_trade_date),
-            "market_latest_trade_date_coverage": market_latest_trade_date_coverage,
-            "market_database_latest_trade_date": _date_to_text(market_database_latest_trade_date),
-            "market_older_than_database_latest_count": int(
-                market_older_than_database_latest_count or 0
-            ),
-            "market_trade_date_lag_days": market_trade_date_lag_days,
-            "market_trade_date_warning_suppressed": market_trade_date_warning_suppressed,
-            "leading_signal_coverage": leading_signal_coverage,
-            "company_filing_coverage": company_filing_coverage,
-            "llm_analysis_status": "fallback"
-            if llm_fallback
-            else "enabled"
-            if llm_status
-            else None,
-            "llm_model": llm_status.get("model"),
-            "llm_key_index": llm_status.get("key_index"),
-            "llm_provider": llm_status.get("provider"),
-            "llm_attempt_count": (llm_status.get("attempt_summary") or {}).get("attempt_count"),
-            "llm_failed_attempt_count": (llm_status.get("attempt_summary") or {}).get(
-                "failed_attempt_count"
-            ),
-            "llm_success_after_failure": (llm_status.get("attempt_summary") or {}).get(
-                "success_after_failure"
-            ),
-            "llm_retry_used": (llm_status.get("attempt_summary") or {}).get("retry_used"),
-            "llm_fallback_path_used": (llm_status.get("attempt_summary") or {}).get(
-                "fallback_path_used"
-            ),
-            "llm_provider_fallback_used": (llm_status.get("attempt_summary") or {}).get(
-                "provider_fallback_used"
-            ),
-            "llm_model_fallback_used": (llm_status.get("attempt_summary") or {}).get(
-                "model_fallback_used"
-            ),
-            "llm_final_outcome": (llm_status.get("attempt_summary") or {}).get("final_outcome"),
-            "llm_primary_failure_category": (llm_status.get("attempt_summary") or {}).get(
-                "primary_failure_category"
-            ),
-            "llm_retryable_failure_count": (llm_status.get("attempt_summary") or {}).get(
-                "retryable_failure_count"
-            ),
-            "llm_latency_ms": llm_observability.get("latency_ms"),
-            "llm_input_token_estimate": llm_observability.get("input_token_estimate"),
-            "llm_output_token_estimate": llm_observability.get("output_token_estimate"),
-            "llm_total_token_estimate": llm_observability.get("total_token_estimate"),
-            "llm_estimated_cost_usd": llm_observability.get("estimated_cost_usd"),
-            "llm_cost_tracking_mode": llm_observability.get("cost_tracking_mode"),
-            "llm_external_trace_provider": llm_observability.get("external_trace_provider"),
-            "rag_retrieval_mode": rag_status.get("retrieval_mode"),
-            "rag_retrieval_strategy": rag_retrieval_status.get("strategy"),
-            "rag_hybrid_search_enabled": rag_retrieval_status.get("hybrid_search_enabled"),
-            "rag_bm25_enabled": rag_retrieval_status.get("bm25_enabled"),
-            "rag_keyword_corpus_limit": rag_retrieval_status.get("keyword_corpus_limit"),
-            "rag_vector_weight": rag_retrieval_status.get("vector_weight"),
-            "rag_keyword_weight": rag_retrieval_status.get("keyword_weight"),
-            "rag_rerank_top_k": rag_retrieval_status.get("rerank_top_k"),
-            "rag_use_chroma": rag_status.get("use_chroma"),
-            "rag_chroma_available": rag_status.get("chroma_available"),
-            "rag_persistent_collection_enabled": rag_status.get("persistent_collection_enabled"),
-            "rag_embedding_provider": rag_embedding_status.get("provider"),
-            "rag_embedding_enabled": rag_embedding_status.get("custom_embedding_enabled"),
-            "rag_embedding_fallback_reason": rag_embedding_status.get("fallback_reason"),
-            "rag_reranker_provider": rag_reranker_status.get("provider"),
-            "rag_reranker_execution_mode": rag_reranker_status.get("execution_mode"),
-            "rag_reranker_available": rag_reranker_status.get("available"),
-            "rag_reranker_model_ready": (
-                rag_reranker_status.get("model_reranker_ready")
-                if "model_reranker_ready" in rag_reranker_status
-                else (
-                    None
-                    if rag_reranker_provider in {"", "none", "disabled", "off"}
-                    else bool(rag_reranker_status.get("available"))
-                    and rag_reranker_provider not in {"keyword", "hybrid"}
-                )
-            ),
-            "rag_reranker_quality_tier": rag_reranker_status.get("quality_tier"),
-            "rag_reranker_keyword_fallback": rag_reranker_status.get("keyword_fallback"),
-            "rag_reranker_model_gap": rag_reranker_status.get("model_reranker_gap"),
-            "rag_reranker_fallback_reason": rag_reranker_status.get("fallback_reason"),
-            "market_provider_summary": market_provider_summary,
-            "source_unique_publishers": source_quality.get("unique_publisher_count"),
-            "source_timestamp_coverage": source_quality.get("timestamp_coverage"),
-            "source_recent_coverage": source_quality.get("recent_coverage"),
-            "source_lookback_days": source_quality.get("lookback_days"),
-            "source_high_credibility_ratio": source_quality.get("high_credibility_ratio"),
-            "source_low_credibility_ratio": source_quality.get("low_credibility_ratio"),
-            "source_average_credibility": source_quality.get("average_credibility"),
-            "discovery_plan_status": plan_quality.get("status") if plan_quality else None,
-            "discovery_plan_score": plan_quality.get("score") if plan_quality else None,
-        },
+        "metrics": quality_gate_metrics(
+            promoted_count=promoted_count,
+            formal_supported_ratio=formal_supported_ratio,
+            exploration_supported_ratio=exploration_supported_ratio,
+            formal_confidence_avg=formal_confidence_avg,
+            formal_confidence_min=formal_confidence_min,
+            formal_low_confidence_count=formal_low_confidence_count,
+            source_count=source_count,
+            missing_subtopic_count=missing_subtopic_count,
+            weak_subtopic_count=weak_subtopic_count,
+            market_coverage=market_coverage,
+            monthly_coverage=monthly_coverage,
+            financial_metrics_count=financial_metrics_count,
+            valuation_coverage=valuation_coverage,
+            market_fresh_coverage=market_fresh_coverage,
+            monthly_fresh_coverage=monthly_fresh_coverage,
+            valuation_fresh_coverage=valuation_fresh_coverage,
+            market_stale_count=market_stale_count,
+            monthly_revenue_stale_count=monthly_revenue_stale_count,
+            financial_metrics_stale_ticker_count=financial_metrics_stale_ticker_count,
+            valuation_stale_count=valuation_stale_count,
+            stale_market_dataset_count=stale_market_dataset_count,
+            market_latest_only_count=market_latest_only_count,
+            monthly_revenue_latest_only_count=monthly_revenue_latest_only_count,
+            financial_metrics_latest_only_ticker_count=financial_metrics_latest_only_ticker_count,
+            valuation_latest_only_count=valuation_latest_only_count,
+            latest_only_market_dataset_count=latest_only_market_dataset_count,
+            market_latest_trade_date=market_latest_trade_date,
+            market_latest_trade_date_coverage=market_latest_trade_date_coverage,
+            market_database_latest_trade_date=market_database_latest_trade_date,
+            market_older_than_database_latest_count=market_older_than_database_latest_count,
+            market_trade_date_lag_days=market_trade_date_lag_days,
+            market_trade_date_warning_suppressed=market_trade_date_warning_suppressed,
+            leading_signal_coverage=leading_signal_coverage,
+            company_filing_coverage=company_filing_coverage,
+            llm_status=llm_status,
+            llm_fallback=llm_fallback,
+            llm_observability=llm_observability,
+            rag_status=rag_status,
+            rag_embedding_status=rag_embedding_status,
+            rag_reranker_status=rag_reranker_status,
+            rag_reranker_provider=rag_reranker_provider,
+            rag_retrieval_status=rag_retrieval_status,
+            market_provider_summary=market_provider_summary,
+            source_quality=source_quality,
+            plan_quality=plan_quality,
+        ),
         "recommendation": (
             "資料品質不足，請先視為研究草稿，不應作為買賣依據。"
             if status == "insufficient"

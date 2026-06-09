@@ -234,4 +234,6 @@ def _maintenance_diagnostic_action_status(action: dict) -> str:
         return "只讀可執行"
     if action.get("safe_to_run") and action.get("effect") == "safe_noop_task_submission":
         return "安全 no-op"
+    if action.get("safe_to_run") and action.get("effect") == "safe_local_neo4j_import_smoke":
+        return "本機 Neo4j smoke"
     return "停用"

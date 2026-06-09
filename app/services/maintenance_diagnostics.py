@@ -266,6 +266,37 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "graphrag_import_first_smoke": {
+        "id": "graphrag_import_first_smoke",
+        "label": "GraphRAG import-first smoke",
+        "description": (
+            "先將 bundled supply-chain graph payload 匯入目前設定的本機 Neo4j，"
+            "再驗證 guarded live Cypher query。"
+        ),
+        "display_command": (
+            ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+            "--local-neo4j-defaults "
+            "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
+            "--import-first --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/neo4j_graphrag_smoke.py",
+            "--local-neo4j-defaults",
+            "--tickers",
+            "2330",
+            "--target-ticker",
+            "2382",
+            "--question",
+            "上下游衝擊",
+            "--import-first",
+            "--json",
+        ],
+        "timeout_seconds": 120,
+        "read_only": False,
+        "effect": "safe_local_neo4j_import_smoke",
+        "safe_to_run": True,
+    },
     "company_filing_render_smoke": {
         "id": "company_filing_render_smoke",
         "label": "Company filing render smoke",
@@ -426,7 +457,11 @@ def _action_safe_to_run(action: dict) -> bool:
         action.get("read_only")
         or (
             action.get("safe_to_run")
-            and str(action.get("effect") or "") == "safe_noop_task_submission"
+            and str(action.get("effect") or "")
+            in {
+                "safe_local_neo4j_import_smoke",
+                "safe_noop_task_submission",
+            }
         )
     )
 
@@ -459,7 +494,11 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _llm_quota_env_audit_summary_rows(payload)
     if action_id == "neo4j_payload_dry_run":
         return _neo4j_payload_summary_rows(payload)
-    if action_id in {"graphrag_local_contract_smoke", "graphrag_live_query_smoke"}:
+    if action_id in {
+        "graphrag_import_first_smoke",
+        "graphrag_local_contract_smoke",
+        "graphrag_live_query_smoke",
+    }:
         return _graphrag_smoke_summary_rows(payload)
     if action_id in {"company_filing_render_smoke", "high_risk_unlocker_smoke"}:
         return _company_filing_render_summary_rows(payload)

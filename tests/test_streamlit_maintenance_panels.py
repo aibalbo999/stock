@@ -396,6 +396,16 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
                     "safe_to_run": True,
                 },
                 {
+                    "id": "graphrag_import_first_smoke",
+                    "label": "GraphRAG import-first smoke",
+                    "description": "匯入 bundled graph payload 後驗證 live Cypher。",
+                    "display_command": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
+                    "timeout_seconds": 120,
+                    "read_only": False,
+                    "effect": "safe_local_neo4j_import_smoke",
+                    "safe_to_run": True,
+                },
+                {
                     "id": "unsafe_action",
                     "label": "Unsafe action",
                     "description": "",
@@ -423,6 +433,14 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "說明": "送出 smoke=true 的 no-op market_refresh。",
             "指令": ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
             "Timeout": 45,
+        },
+        {
+            "動作": "GraphRAG import-first smoke",
+            "狀態": "本機 Neo4j smoke",
+            "效果": "safe_local_neo4j_import_smoke",
+            "說明": "匯入 bundled graph payload 後驗證 live Cypher。",
+            "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
+            "Timeout": 120,
         },
         {
             "動作": "Unsafe action",

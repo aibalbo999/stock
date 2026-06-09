@@ -100,9 +100,10 @@ POST_RUN_CHECKS = {
         {
             "item": "GraphRAG live Neo4j smoke",
             "purpose": "Neo4j env 套用後，驗證 live query / import-first 路徑。",
-            "diagnostic_action_id": "",
+            "diagnostic_action_id": "graphrag_import_first_smoke",
             "command": (
                 ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                "--local-neo4j-defaults "
                 "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
                 "--import-first --json"
             ),

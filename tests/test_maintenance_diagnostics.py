@@ -20,6 +20,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "external_deployment_env_check",
         "external_deployment_env_gaps",
         "external_integrations_smoke",
+        "graphrag_import_first_smoke",
         "graphrag_live_query_smoke",
         "graphrag_local_contract_smoke",
         "high_risk_unlocker_smoke",
@@ -38,7 +39,11 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert all(
         action["read_only"] is True
         for action in catalog["actions"]
-        if action["id"] != "task_submission_noop_smoke"
+        if action["id"]
+        not in {
+            "graphrag_import_first_smoke",
+            "task_submission_noop_smoke",
+        }
     )
     assert all("display_command" in action for action in catalog["actions"])
     assert all("argv" not in action for action in catalog["actions"])
@@ -92,6 +97,15 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         action["id"]: action for action in catalog["actions"]
     }["graphrag_live_query_smoke"]
     assert "--import-first" not in live_query_action["display_command"]
+    import_first_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["graphrag_import_first_smoke"]
+    assert import_first_action["read_only"] is False
+    assert import_first_action["effect"] == "safe_local_neo4j_import_smoke"
+    assert import_first_action["safe_to_run"] is True
+    assert "--local-neo4j-defaults" in import_first_action["display_command"]
+    assert "--import-first --json" in import_first_action["display_command"]
+    assert "本機 Neo4j" in import_first_action["description"]
     mops_action = {
         action["id"]: action for action in catalog["actions"]
     }["high_risk_unlocker_smoke"]
@@ -261,6 +275,46 @@ def test_run_maintenance_diagnostic_action_executes_local_chroma_upgrade_audit(
         "--json",
     ]
     assert captured["timeout"] == 90
+
+
+def test_run_maintenance_diagnostic_action_executes_graphrag_import_first_smoke(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ready"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "graphrag_import_first_smoke",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+        "--local-neo4j-defaults "
+        "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
+        "--import-first --json"
+    )
+    assert captured["command"][1:] == [
+        "scripts/neo4j_graphrag_smoke.py",
+        "--local-neo4j-defaults",
+        "--tickers",
+        "2330",
+        "--target-ticker",
+        "2382",
+        "--question",
+        "上下游衝擊",
+        "--import-first",
+        "--json",
+    ]
+    assert captured["timeout"] == 120
 
 
 def test_run_maintenance_diagnostic_action_executes_task_submission_noop_smoke(

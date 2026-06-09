@@ -56,6 +56,7 @@ def api_architecture_source_context() -> ApiArchitectureSourceContext:
         "ai_graph_service_factory": api_dir / "service_factory_ai.py",
         "tasks": app_dir / "tasks" / "tasks.py",
         "run_task_api": app_dir / "services" / "run_task_api.py",
+        "analysis_run_repository": app_dir / "services" / "analysis_run_repository.py",
         "persistence": app_dir / "services" / "persistence.py",
         "task_failure_diagnostics": app_dir / "services" / "task_failure_diagnostics.py",
         "config": app_dir / "core" / "config.py",

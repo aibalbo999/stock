@@ -13,7 +13,9 @@ from app.services.report_files import (
 
 def report_retention_status() -> dict:
     root = Path(__file__).resolve().parents[2]
-    persistence_source = _read_text(root / "app" / "services" / "persistence.py")
+    analysis_run_repository_source = _read_text(
+        root / "app" / "services" / "analysis_run_repository.py"
+    )
     report_repository_source = _read_text(root / "app" / "services" / "report_repository.py")
     report_retention_source = _read_text(root / "app" / "services" / "report_retention.py")
     report_files_source = _read_text(root / "app" / "services" / "report_files.py")
@@ -124,8 +126,8 @@ def report_retention_status() -> dict:
             and "_clear_analysis_run_report_links(old_report_ids)" in report_repository_source
         ),
         "orphan_cleanup_clears_output_path": (
-            "def clear_orphan_report_refs(" in persistence_source
-            and ".values(report_id=None, output_path=None)" in persistence_source
+            "def clear_orphan_report_refs(" in analysis_run_repository_source
+            and ".values(report_id=None, output_path=None)" in analysis_run_repository_source
         ),
         "markdown_bulk_prune_available": "def prune_older_report_files_by_topic("
         in report_files_source,
@@ -197,7 +199,7 @@ def report_retention_status() -> dict:
             and "maintenance_cleanup_stale_running_minutes" in schedule_ui_source
         ),
         "manual_delete_clears_run_links": ".values(report_id=None, output_path=None)"
-        in persistence_source,
+        in report_repository_source,
         "manual_delete_prunes_markdown": "delete_report_markdown_files(" in report_query_source
         and '"deleted_report_files"' in report_query_source,
         "manual_delete_prunes_report_artifacts": manual_delete_prunes_artifacts,
@@ -210,6 +212,7 @@ def report_retention_status() -> dict:
         and '"latest_reports_only": True' in maintenance_cleanup_source
         and '"orphan_report_refs": True' in maintenance_cleanup_source,
         "covered_paths": [
+            "app/services/analysis_run_repository.py",
             "app/services/persistence.py",
             "app/services/report_files.py",
             "app/services/report_query.py",

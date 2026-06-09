@@ -44,7 +44,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "description": "比對目前 .env 的 host/compose 外部部署設定狀態，輸出會遮蔽密鑰。",
         "display_command": (
             ".venv/bin/python scripts/external_deployment_env_gaps.py "
-            "--env-check --env-check-target all --env-file .env"
+            "--env-check --env-check-target all --env-file .env --json"
         ),
         "argv": [
             sys.executable,
@@ -54,6 +54,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
             "all",
             "--env-file",
             ".env",
+            "--json",
         ],
         "timeout_seconds": 90,
         "read_only": True,
@@ -307,6 +308,8 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         return _external_integrations_summary_rows(payload)
     if action_id == "external_deployment_env_gaps":
         return _external_env_gap_summary_rows(payload)
+    if action_id == "external_deployment_env_check":
+        return _external_env_check_summary_rows(payload)
     if action_id == "neo4j_payload_dry_run":
         return _neo4j_payload_summary_rows(payload)
     if action_id in {"graphrag_local_contract_smoke", "graphrag_live_query_smoke"}:
@@ -413,6 +416,58 @@ def _external_env_gap_summary_rows(payload: dict) -> list[dict]:
             )
         )
     return rows[:MAX_SUMMARY_ROWS]
+
+
+def _external_env_check_summary_rows(payload: dict) -> list[dict]:
+    checks = _dict_value(payload, "checks")
+    rows = [
+        _summary_row(
+            "External env check",
+            payload.get("status") or "-",
+            _counts(target=payload.get("target"), gaps=payload.get("gap_count")),
+            _counts(targets=len(checks), env_file=payload.get("env_file")),
+            "補齊 missing；確認 different；密鑰只顯示是否已設定。",
+        )
+    ]
+    if checks:
+        for target in payload.get("targets") or sorted(checks):
+            check = checks.get(str(target)) if isinstance(checks, dict) else None
+            if not isinstance(check, dict):
+                continue
+            rows.append(_external_env_check_target_summary_row(check))
+    else:
+        rows.append(_external_env_check_target_summary_row(payload))
+    return rows[:MAX_SUMMARY_ROWS]
+
+
+def _external_env_check_target_summary_row(check: dict) -> dict:
+    return _summary_row(
+        f"{check.get('target') or '-'} env",
+        check.get("status") or "-",
+        _ready_count(check.get("set_count"), check.get("checked_count")),
+        _counts(
+            missing=check.get("missing_count"),
+            different=check.get("different_count"),
+            env_exists=check.get("env_file_exists"),
+        ),
+        _external_env_check_next_action(check),
+    )
+
+
+def _external_env_check_next_action(check: dict) -> str:
+    rows = _list_value(check, "rows")
+    for status in ("missing", "different"):
+        row = next(
+            (
+                item
+                for item in rows
+                if isinstance(item, dict) and str(item.get("status") or "") == status
+            ),
+            {},
+        )
+        if row:
+            return row.get("action") or row.get("env_key") or "-"
+    return "目前 target 的外部部署 env 已可用。"
 
 
 def _neo4j_payload_summary_rows(payload: dict) -> list[dict]:

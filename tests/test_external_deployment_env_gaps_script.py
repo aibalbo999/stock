@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts import external_deployment_env_gaps
@@ -405,6 +406,68 @@ def test_external_deployment_env_gap_script_prints_env_check(
     assert "External deployment env check: action_required" in strict_output
 
 
+def test_external_deployment_env_gap_script_prints_env_check_json(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "NEO4J_URI=neo4j://localhost:7687",
+                f"{NEO4J_PW_ENV}=real-secret",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        external_deployment_env_gaps,
+        "external_deployment_env_gap_report",
+        lambda **_kwargs: {
+            "status": "action_required",
+            "gap_count": 2,
+            "missing_count": 2,
+            "recommended_count": 0,
+            "manual_secret_count": 1,
+            "local_action_count": 1,
+            "rows": [
+                {
+                    "優先級": "P0",
+                    "能力": "Neo4j",
+                    "設定鍵": "NEO4J_URI",
+                    "狀態": "缺少",
+                    "建議值": "neo4j://localhost:7687",
+                    "Compose 建議值": "neo4j://neo4j:7687",
+                    "處理類型": "本機可套用",
+                },
+                {
+                    "優先級": "P0",
+                    "能力": "Neo4j",
+                    "設定鍵": NEO4J_PW_ENV,
+                    "狀態": "缺少",
+                    "建議值": "<password>",
+                    "Compose 建議值": "<password>",
+                    "處理類型": "需人工密鑰",
+                },
+            ],
+        },
+    )
+
+    assert external_deployment_env_gaps.main(
+        ["--env-check", "--json", "--env-file", str(env_file)]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ready"
+    assert payload["target"] == "host"
+    assert payload["checked_count"] == 2
+    rows_by_key = {row["env_key"]: row for row in payload["rows"]}
+    assert rows_by_key["NEO4J_URI"]["status"] == "matches"
+    assert rows_by_key[NEO4J_PW_ENV]["current_value"] == "<set>"
+    assert "real-secret" not in str(payload)
+
+
 def test_external_deployment_env_gap_script_prints_all_target_env_check(
     monkeypatch,
     capsys,
@@ -476,3 +539,66 @@ def test_external_deployment_env_gap_script_prints_all_target_env_check(
     assert "[host] ready" in output
     assert "[compose] action_required" in output
     assert "COMPOSE_NEO4J_URI" in output
+
+
+def test_external_deployment_env_gap_script_prints_all_target_env_check_json(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("NEO4J_URI=neo4j://localhost:7687", encoding="utf-8")
+
+    def fake_status_report(**kwargs):
+        assert kwargs["target"] == "all"
+        assert kwargs["env_file"] == str(env_file)
+        return {
+            "status": "action_required",
+            "target": "all",
+            "targets": ["host", "compose"],
+            "env_file": str(env_file),
+            "gap_count": 1,
+            "checks": {
+                "host": {
+                    "status": "ready",
+                    "target": "host",
+                    "checked_count": 1,
+                    "missing_count": 0,
+                    "different_count": 0,
+                    "rows": [],
+                },
+                "compose": {
+                    "status": "action_required",
+                    "target": "compose",
+                    "checked_count": 1,
+                    "missing_count": 1,
+                    "different_count": 0,
+                    "rows": [
+                        {
+                            "status": "missing",
+                            "env_key": "COMPOSE_NEO4J_URI",
+                            "expected_value": "neo4j://neo4j:7687",
+                            "current_value": "<unset>",
+                            "action": "設定 COMPOSE_NEO4J_URI",
+                        }
+                    ],
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        external_deployment_env_gaps,
+        "external_deployment_env_check_status_report",
+        fake_status_report,
+    )
+
+    assert external_deployment_env_gaps.main(
+        ["--env-check", "--env-check-target", "all", "--json", "--env-file", str(env_file)]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "action_required"
+    assert payload["target"] == "all"
+    assert payload["checks"]["host"]["status"] == "ready"
+    assert payload["checks"]["compose"]["missing_count"] == 1
+    assert payload["checks"]["compose"]["rows"][0]["env_key"] == "COMPOSE_NEO4J_URI"

@@ -28,8 +28,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Return non-zero when any env gap is present.",
     )
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     output_group = parser.add_mutually_exclusive_group()
-    output_group.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     output_group.add_argument(
         "--env-template",
         action="store_true",
@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Let process environment values override --env-file during --env-check.",
     )
     args = parser.parse_args(argv)
+    if args.json and args.env_template:
+        parser.error("--json cannot be combined with --env-template.")
 
     env_check_target = args.env_check_target or args.env_template_target
     if args.env_check and env_check_target == "all":
@@ -75,14 +77,15 @@ def main(argv: list[str] | None = None) -> int:
             include_process_env=args.include_process_env,
             strict_external=args.strict_external,
         )
-        print(format_external_deployment_env_check_status_report(check))
+        if args.json:
+            print(json.dumps(check, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_external_deployment_env_check_status_report(check))
         return 1 if args.strict and check["status"] != "ready" else 0
 
     report = external_deployment_env_gap_report(strict_external=args.strict_external)
     strict_status = report["status"]
-    if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
-    elif args.env_template:
+    if args.env_template:
         print(format_external_deployment_env_template(report, target=args.env_template_target))
     elif args.env_check:
         check = external_deployment_env_check_report(
@@ -92,7 +95,12 @@ def main(argv: list[str] | None = None) -> int:
             include_process_env=args.include_process_env,
         )
         strict_status = check["status"]
-        print(format_external_deployment_env_check_report(check))
+        if args.json:
+            print(json.dumps(check, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_external_deployment_env_check_report(check))
+    elif args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(format_external_deployment_env_gap_report(report))
     return 1 if args.strict and strict_status != "ready" else 0

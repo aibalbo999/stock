@@ -43,7 +43,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     env_check_action = {
         action["id"]: action for action in catalog["actions"]
     }["external_deployment_env_check"]
-    assert "--env-check --env-check-target all --env-file .env" in (
+    assert "--env-check --env-check-target all --env-file .env --json" in (
         env_check_action["display_command"]
     )
     assert "遮蔽密鑰" in env_check_action["description"]
@@ -218,6 +218,80 @@ def test_run_maintenance_diagnostic_action_summarizes_graphrag_json(
     assert "nodes=4" in rows[1]["數量"]
     assert rows[2]["項目"] == "Cypher query"
     assert "rows=2" in rows[2]["數量"]
+
+
+def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    payload = {
+        "status": "action_required",
+        "target": "all",
+        "targets": ["host", "compose"],
+        "env_file": ".env",
+        "gap_count": 2,
+        "checks": {
+            "host": {
+                "status": "review_required",
+                "target": "host",
+                "env_file_exists": True,
+                "checked_count": 2,
+                "set_count": 1,
+                "missing_count": 0,
+                "different_count": 1,
+                "rows": [
+                    {
+                        "status": "different",
+                        "env_key": "COMPANY_FILING_STRUCTURED_API_PROVIDER",
+                        "action": "確認部署目標是否正確。",
+                    }
+                ],
+            },
+            "compose": {
+                "status": "action_required",
+                "target": "compose",
+                "env_file_exists": True,
+                "checked_count": 2,
+                "set_count": 0,
+                "missing_count": 2,
+                "different_count": 0,
+                "rows": [
+                    {
+                        "status": "missing",
+                        "env_key": "COMPOSE_NEO4J_URI",
+                        "action": "加入 COMPOSE_NEO4J_URI=neo4j://neo4j:7687。",
+                    }
+                ],
+            },
+        },
+    }
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "external_deployment_env_check",
+        root=tmp_path,
+    )
+
+    rows = result["summary_rows"]
+    assert rows[0]["項目"] == "External env check"
+    assert rows[0]["狀態"] == "action_required"
+    assert "target=all" in rows[0]["Ready"]
+    assert rows[1]["項目"] == "host env"
+    assert rows[1]["Ready"] == "1/2"
+    assert "different=1" in rows[1]["數量"]
+    assert rows[2]["項目"] == "compose env"
+    assert "missing=2" in rows[2]["數量"]
+    assert "COMPOSE_NEO4J_URI" in rows[2]["下一步"]
+    assert "real-secret" not in str(rows)
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:

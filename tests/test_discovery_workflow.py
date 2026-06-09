@@ -1,15 +1,70 @@
 import asyncio
 from contextlib import contextmanager
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.models.schemas import NewsDocument, Source
+from app.services import discovery_workflow, discovery_workflow_audit, discovery_workflow_settings
 from app.services.discovery_workflow import (
     DiscoveryWorkflowService,
     build_source_audit,
     discovery_fetch_settings,
     discovery_query_budget,
 )
+
+
+def test_discovery_source_audit_helpers_live_outside_workflow_service() -> None:
+    workflow_source = Path("app/services/discovery_workflow.py").read_text()
+    audit_source = Path("app/services/discovery_workflow_audit.py").read_text()
+
+    assert discovery_workflow.build_source_audit is discovery_workflow_audit.build_source_audit
+    assert (
+        discovery_workflow.summarize_ingestion_stage
+        is discovery_workflow_audit.summarize_ingestion_stage
+    )
+    assert discovery_workflow.query_type_label is discovery_workflow_audit.query_type_label
+    assert discovery_workflow.query_intent_label is discovery_workflow_audit.query_intent_label
+    for helper in [
+        "def summarize_ingestion_stage(",
+        "def summarize_source_categories(",
+        "def summarize_source_intents(",
+        "def summarize_source_selection(",
+        "def build_source_audit(",
+        "def query_type_label(",
+        "def query_intent_label(",
+    ]:
+        assert helper not in workflow_source
+        assert helper in audit_source
+
+
+def test_discovery_settings_helpers_live_outside_workflow_service() -> None:
+    workflow_source = Path("app/services/discovery_workflow.py").read_text()
+    settings_source = Path("app/services/discovery_workflow_settings.py").read_text()
+
+    assert (
+        discovery_workflow.discovery_analysis_mode
+        is discovery_workflow_settings.discovery_analysis_mode
+    )
+    assert (
+        discovery_workflow.discovery_fetch_settings
+        is discovery_workflow_settings.discovery_fetch_settings
+    )
+    assert (
+        discovery_workflow.discovery_effective_lookback_days
+        is discovery_workflow_settings.discovery_effective_lookback_days
+    )
+    for helper in [
+        "def discovery_analysis_mode(",
+        "def is_deep_discovery(",
+        "def discovery_fetch_settings(",
+        "def discovery_effective_lookback_days(",
+        "def discovery_document_limit(",
+        "def discovery_market_history_days(",
+        "def discovery_valuation_history_days(",
+    ]:
+        assert helper not in workflow_source
+        assert helper in settings_source
 
 
 def test_discovery_workflow_source_audit_lives_in_service_layer() -> None:

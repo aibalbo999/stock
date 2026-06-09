@@ -1,9 +1,12 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.supply_chain_routes import create_supply_chain_router
 from app.services import supply_chain_graph as graph_module
 from app.services import supply_chain_graph_models as graph_models
+from app.services import supply_chain_graph_reasoning
 from app.services.supply_chain_graph import SupplyChainGraph
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
 from app.services.whitelist import SupplyChainWhitelist
@@ -32,6 +35,25 @@ def test_supply_chain_graph_reexports_dedicated_model_types() -> None:
         "AI 伺服器",
         "散熱",
     ]
+
+
+def test_supply_chain_graph_reasoning_logic_lives_outside_core_graph() -> None:
+    graph_source = Path("app/services/supply_chain_graph.py").read_text()
+    reasoning_source = Path("app/services/supply_chain_graph_reasoning.py").read_text()
+
+    assert issubclass(SupplyChainGraph, supply_chain_graph_reasoning.SupplyChainGraphReasoningMixin)
+    for method in [
+        "def reasoning_plan(",
+        "def shortest_paths(",
+        "def neighborhood_paths(",
+        "def render_reasoning_context(",
+        "def _bfs_paths(",
+        "def _path_payload(",
+        "def _adjacency(",
+        "def _shortest_path_cypher_templates(",
+    ]:
+        assert method not in graph_source
+        assert method in reasoning_source
 
 
 def test_supply_chain_graph_builds_taxonomy_edges_from_static_whitelist() -> None:

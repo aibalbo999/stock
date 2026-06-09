@@ -22,10 +22,8 @@ from app.services.market_repositories import (
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
-from app.services.persistence import (
-    ReportRepository,
-)
 from app.services.report_build import ReportBuildService
+from app.services.report_repository import ReportRepository
 from app.services.report_followup_context import ReportFollowUpContextService
 from app.services.report_files import write_report_file_with_retention
 from app.services.task_cancellation import (

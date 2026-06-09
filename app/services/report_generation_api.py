@@ -6,9 +6,9 @@ from contextlib import AbstractContextManager
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.analysis_run_repository import AnalysisRunRepository
 from app.services.llm_usage import record_llm_usage_from_report_execution
-from app.services.persistence import ReportRepository
 from app.services.report_generator import ReportExecutionError
 from app.services.report_quality import should_recover_market_data_quality
+from app.services.report_repository import ReportRepository
 
 
 class SyncReportGenerationApiService:

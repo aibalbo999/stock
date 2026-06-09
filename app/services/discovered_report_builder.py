@@ -11,8 +11,8 @@ from app.services.discovery_workflow import (
     discovery_market_history_days,
     discovery_valuation_history_days,
 )
-from app.services.persistence import ReportRepository
 from app.services.llm_usage import record_llm_usage_from_report_execution
+from app.services.report_repository import ReportRepository
 from app.services.report_execution import report_execution_summary
 from app.services.report_generator import ReportGenerator
 from app.services.report_quality import (
@@ -92,13 +92,14 @@ class DiscoveredReportBuilderService:
         self.filter_formal_evidence_documents_func = filter_formal_evidence_documents_func
         self.summarize_llm_status_func = summarize_llm_status_func
         self.count_sufficient_company_filings_func = (
-            count_sufficient_company_filings_func
-            or self._count_sufficient_company_filings
+            count_sufficient_company_filings_func or self._count_sufficient_company_filings
         )
         self.candidate_revalidation_service_cls = candidate_revalidation_service_cls
 
     def _count_sufficient_company_filings(self, tickers: list[str]) -> int:
-        service = self.candidate_revalidation_service_cls(session_scope_factory=self.session_scope_factory)
+        service = self.candidate_revalidation_service_cls(
+            session_scope_factory=self.session_scope_factory
+        )
         return len(service.sufficient_company_filing_tickers(tickers))
 
     def build_and_store_report(
@@ -145,7 +146,9 @@ class DiscoveredReportBuilderService:
         )
         generator = self.report_generator_cls(whitelist=dynamic_whitelist)
         response = generator.generate(request, documents=documents)
-        company_filing_sufficient_count = self.count_sufficient_company_filings_func(promoted_tickers)
+        company_filing_sufficient_count = self.count_sufficient_company_filings_func(
+            promoted_tickers
+        )
         leading_signal_count = leading_signal_covered_count(
             promoted_tickers,
             snapshots,
@@ -154,7 +157,9 @@ class DiscoveredReportBuilderService:
         )
         market_stale_count = stale_market_data_count(snapshots)
         monthly_revenue_stale_count = stale_market_data_count(latest_monthly_revenues)
-        financial_metrics_stale_ticker_count = stale_financial_metric_ticker_count(financial_metrics)
+        financial_metrics_stale_ticker_count = stale_financial_metric_ticker_count(
+            financial_metrics
+        )
         valuation_stale_count = stale_market_data_count(valuations)
         quality_gate = self.build_report_quality_gate_func(
             source_audit,
@@ -206,12 +211,8 @@ class DiscoveredReportBuilderService:
             "market_history_count": len(price_history_snapshots),
             "market_errors": [model_dump_json(error) for error in market_errors],
             "market_stale_count": market_stale_count,
-            "monthly_revenue": [
-                model_dump_json(revenue) for revenue in monthly_revenues
-            ],
-            "monthly_revenue_errors": [
-                model_dump_json(error) for error in monthly_revenue_errors
-            ],
+            "monthly_revenue": [model_dump_json(revenue) for revenue in monthly_revenues],
+            "monthly_revenue_errors": [model_dump_json(error) for error in monthly_revenue_errors],
             "latest_monthly_revenue": [
                 model_dump_json(revenue) for revenue in latest_monthly_revenues
             ],

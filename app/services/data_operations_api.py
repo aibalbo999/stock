@@ -20,8 +20,8 @@ from app.services.market_repositories import (
 from app.services.persistence import (
     CompanyFilingRepository,
     NewsRepository,
-    ReportRepository,
 )
+from app.services.report_repository import ReportRepository
 from app.services.report_files import prune_older_report_files_by_topic
 from app.services.schedule_config import ScheduleConfigStore
 

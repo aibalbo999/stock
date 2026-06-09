@@ -13,7 +13,6 @@ from app.services.candidate_audit import (
 )
 from app.services.candidate_revalidation import sanitize_candidate_low_quality_sources
 from app.services.analysis_run_repository import AnalysisRunRepository
-from app.services.persistence import ReportRepository
 from app.services.report_observability_summary import (
     report_observability_alerts,
     report_observability_bottleneck_rows,
@@ -22,6 +21,7 @@ from app.services.report_observability_summary import (
     report_observability_summary_row,
     report_observability_totals,
 )
+from app.services.report_repository import ReportRepository
 from app.services.report_followup import (
     append_candidate_audit_if_missing,
     candidate_audit_from_run_payload,

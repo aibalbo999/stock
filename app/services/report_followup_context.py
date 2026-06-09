@@ -13,7 +13,6 @@ from app.services.company_data_audit import audit_company_data
 from app.services.followup_actions import FollowUpAction
 from app.services.ingestion import IngestionPipeline
 from app.services.analysis_run_repository import AnalysisRunRepository
-from app.services.persistence import ReportRepository
 from app.services.report_followup import (
     append_candidate_audit_if_missing,
     candidate_audit_from_run_payload,
@@ -22,6 +21,7 @@ from app.services.report_followup import (
     request_from_report_record,
 )
 from app.services.report_quality import parse_quality_gate_from_markdown
+from app.services.report_repository import ReportRepository
 from app.services.whitelist import SupplyChainWhitelist
 
 

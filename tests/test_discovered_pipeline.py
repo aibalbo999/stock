@@ -17,6 +17,7 @@ from app.services import (
     discovered_market_payload,
     discovered_pipeline_candidates,
     discovered_pipeline_checkpoints,
+    discovered_pipeline_report_stage,
     discovered_pipeline_results,
     discovered_pipeline_run_state,
 )
@@ -233,6 +234,21 @@ def test_discovered_pipeline_run_state_lives_outside_orchestrator() -> None:
     ]:
         assert method not in pipeline_source
         assert method in run_state_source
+
+
+def test_discovered_pipeline_report_resume_stage_lives_outside_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    report_stage_source = Path("app/services/discovered_pipeline_report_stage.py").read_text()
+
+    assert issubclass(
+        DiscoveredTopicPipelineService,
+        discovered_pipeline_report_stage.DiscoveredPipelineReportStageMixin,
+    )
+    assert "class DiscoveredPipelineReportStageMixin" in report_stage_source
+    assert "def _resume_report_build(" not in pipeline_source
+    assert "def _resume_report_build(" in report_stage_source
+    assert "resume requires checkpointed market_data" not in pipeline_source
+    assert "resume requires checkpointed market_data" in report_stage_source
 
 
 def test_candidate_revalidation_stage_result_builds_summary_and_checkpoint_payload() -> None:

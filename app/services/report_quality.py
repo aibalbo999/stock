@@ -22,6 +22,7 @@ from app.services.report_quality_runtime import (
     summarize_llm_status,
 )
 from app.services.report_quality_llm_rules import llm_quality_notes
+from app.services.report_quality_market_rules import market_rescue_quality_notes
 from app.services.report_quality_plan_rules import discovery_plan_quality_notes
 from app.services.report_quality_rag_rules import (
     normalized_rag_reranker_provider,
@@ -276,30 +277,20 @@ def build_report_quality_gate(
         warnings.append("五年財務資料不足，個股財務判斷信心需下修")
     if promoted_count and valuation_coverage < 0.5:
         warnings.append("估值資料覆蓋偏低")
-    if stale_market_dataset_count:
-        warnings.append("部分市場或財務資料使用快取救援，需刷新確認最新資料")
-        if market_stale_count:
-            observations.append("股價資料含快取救援來源，價格與成交量解讀需以刷新後資料覆核")
-        if monthly_revenue_stale_count:
-            observations.append("月營收資料含快取救援來源，成長率判斷需以最新公告覆核")
-        if financial_metrics_stale_ticker_count:
-            observations.append("五年財務資料含快取救援來源，財務體質結論需以最新財報覆核")
-        if valuation_stale_count:
-            observations.append("估值資料含快取救援來源，目前估值結論需以刷新後資料覆核")
-    if latest_only_market_dataset_count:
-        warnings.append("部分市場或財務資料只使用官方最新救援資料，不能代表完整歷史趨勢")
-        if market_latest_only_count:
-            observations.append("股價資料含官方最新救援來源，動能與區間漲跌需等待完整歷史資料覆核")
-        if monthly_revenue_latest_only_count:
-            observations.append(
-                "月營收資料含官方最新救援來源，連續成長趨勢需等待完整月營收歷史覆核"
-            )
-        if financial_metrics_latest_only_ticker_count:
-            observations.append(
-                "財務資料含官方最新季報救援來源，五年財務趨勢需等待完整歷史財報覆核"
-            )
-        if valuation_latest_only_count:
-            observations.append("估值資料含官方最新救援來源，同業估值比較需等待完整估值歷史覆核")
+    market_rescue_warnings, market_rescue_observations = market_rescue_quality_notes(
+        stale_market_dataset_count=stale_market_dataset_count,
+        market_stale_count=market_stale_count,
+        monthly_revenue_stale_count=monthly_revenue_stale_count,
+        financial_metrics_stale_ticker_count=financial_metrics_stale_ticker_count,
+        valuation_stale_count=valuation_stale_count,
+        latest_only_market_dataset_count=latest_only_market_dataset_count,
+        market_latest_only_count=market_latest_only_count,
+        monthly_revenue_latest_only_count=monthly_revenue_latest_only_count,
+        financial_metrics_latest_only_ticker_count=financial_metrics_latest_only_ticker_count,
+        valuation_latest_only_count=valuation_latest_only_count,
+    )
+    warnings.extend(market_rescue_warnings)
+    observations.extend(market_rescue_observations)
     if promoted_count and leading_signal_coverage is not None:
         if leading_signal_coverage < 0.5:
             warnings.append("近況訊號覆蓋偏低，目前情境升值/降值排序信心需下修")

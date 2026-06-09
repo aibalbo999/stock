@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+
+def market_rescue_quality_notes(
+    *,
+    stale_market_dataset_count: int,
+    market_stale_count: int,
+    monthly_revenue_stale_count: int,
+    financial_metrics_stale_ticker_count: int,
+    valuation_stale_count: int,
+    latest_only_market_dataset_count: int,
+    market_latest_only_count: int,
+    monthly_revenue_latest_only_count: int,
+    financial_metrics_latest_only_ticker_count: int,
+    valuation_latest_only_count: int,
+) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
+    observations: list[str] = []
+    if stale_market_dataset_count:
+        warnings.append("部分市場或財務資料使用快取救援，需刷新確認最新資料")
+        if market_stale_count:
+            observations.append("股價資料含快取救援來源，價格與成交量解讀需以刷新後資料覆核")
+        if monthly_revenue_stale_count:
+            observations.append("月營收資料含快取救援來源，成長率判斷需以最新公告覆核")
+        if financial_metrics_stale_ticker_count:
+            observations.append("五年財務資料含快取救援來源，財務體質結論需以最新財報覆核")
+        if valuation_stale_count:
+            observations.append("估值資料含快取救援來源，目前估值結論需以刷新後資料覆核")
+    if latest_only_market_dataset_count:
+        warnings.append("部分市場或財務資料只使用官方最新救援資料，不能代表完整歷史趨勢")
+        if market_latest_only_count:
+            observations.append("股價資料含官方最新救援來源，動能與區間漲跌需等待完整歷史資料覆核")
+        if monthly_revenue_latest_only_count:
+            observations.append(
+                "月營收資料含官方最新救援來源，連續成長趨勢需等待完整月營收歷史覆核"
+            )
+        if financial_metrics_latest_only_ticker_count:
+            observations.append(
+                "財務資料含官方最新季報救援來源，五年財務趨勢需等待完整歷史財報覆核"
+            )
+        if valuation_latest_only_count:
+            observations.append("估值資料含官方最新救援來源，同業估值比較需等待完整估值歷史覆核")
+    return warnings, observations

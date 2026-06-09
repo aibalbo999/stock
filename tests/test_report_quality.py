@@ -12,6 +12,7 @@ from app.services.llm_client import LLMResult
 from app.services import report_quality, report_quality_runtime
 from app.services import report_quality_recovery
 from app.services import report_quality_llm_rules
+from app.services import report_quality_market_rules
 from app.services import report_quality_plan_rules
 from app.services import report_quality_rag_rules
 from app.services import report_quality_relevance_rules
@@ -132,6 +133,21 @@ def test_report_quality_relevance_rules_live_outside_quality_gate_module() -> No
     assert "主題拆解仍有" in relevance_rules_source
     assert "is_financial_subtopic" not in report_quality_source
     assert "AI 拆解子題仍有" not in report_quality_source
+
+
+def test_report_quality_market_rescue_rules_live_outside_quality_gate_module() -> None:
+    report_quality_source = Path("app/services/report_quality.py").read_text()
+    market_rules_source = Path("app/services/report_quality_market_rules.py").read_text()
+
+    assert (
+        report_quality.market_rescue_quality_notes
+        is report_quality_market_rules.market_rescue_quality_notes
+    )
+    assert "def market_rescue_quality_notes(" in market_rules_source
+    assert "部分市場或財務資料使用快取救援" in market_rules_source
+    assert "部分市場或財務資料只使用官方最新救援資料" in market_rules_source
+    assert "部分市場或財務資料使用快取救援" not in report_quality_source
+    assert "部分市場或財務資料只使用官方最新救援資料" not in report_quality_source
 
 
 def _quality_gate(

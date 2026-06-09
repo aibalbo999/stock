@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any
 
+from app.services.task_payload_inspection import (
+    redact_sensitive_text,
+    safe_key_names,
+    sensitive_key_count,
+    ticker_count,
+    truncate_preview,
+)
 from app.services.task_failure_diagnostics import (
     run_operation as diagnostic_run_operation,
     run_retry_kind as diagnostic_run_retry_kind,
@@ -12,22 +18,6 @@ from app.services.task_failure_diagnostics import (
     task_failure_diagnostic as diagnostic_task_failure_diagnostic,
     task_next_action as diagnostic_task_next_action,
 )
-
-
-_SENSITIVE_KEY_MARKERS = (
-    "api_key",
-    "apikey",
-    "authorization",
-    "cookie",
-    "credential",
-    "password",
-    "secret",
-    "token",
-)
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_-]?key|authorization|cookie|password|secret|token)\b(\s*[=:]\s*)([^\s,;]+)"
-)
-_MAX_PREVIEW_LENGTH = 240
 
 
 def alert_sort_key(alert: dict) -> int:
@@ -52,7 +42,9 @@ def task_execution_context(
     serialized_run: dict | None,
 ) -> dict:
     run_payload = serialized_run_payload(serialized_run or {})
-    operation = run_operation(run_payload, serialized_run or {}) if serialized_run else "task_status"
+    operation = (
+        run_operation(run_payload, serialized_run or {}) if serialized_run else "task_status"
+    )
     context = {
         "task_id": task_id,
         "celery_status": str(task_status or "UNKNOWN"),
@@ -84,11 +76,11 @@ def task_payload_shape(payload: dict) -> dict:
     operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
     return {
         "present": True,
-        "top_level_keys": _safe_key_names(payload),
-        "request_keys": _safe_key_names(request_payload),
-        "operation_payload_keys": _safe_key_names(operation_payload),
-        "ticker_count": _ticker_count(payload),
-        "sensitive_key_count": _sensitive_key_count(payload),
+        "top_level_keys": safe_key_names(payload),
+        "request_keys": safe_key_names(request_payload),
+        "operation_payload_keys": safe_key_names(operation_payload),
+        "ticker_count": ticker_count(payload),
+        "sensitive_key_count": sensitive_key_count(payload),
     }
 
 
@@ -111,9 +103,9 @@ def celery_info_shape(celery_info: Any) -> dict:
     return {
         "present": True,
         "type": "dict",
-        "top_level_keys": _safe_key_names(celery_info),
-        "progress_keys": _safe_key_names(progress),
-        "sensitive_key_count": _sensitive_key_count(celery_info),
+        "top_level_keys": safe_key_names(celery_info),
+        "progress_keys": safe_key_names(progress),
+        "sensitive_key_count": sensitive_key_count(celery_info),
     }
 
 
@@ -128,7 +120,7 @@ def exception_summary(value: Any) -> dict:
     redacted = safe_exception_text(value)
     return {
         "exception_type": type(value).__name__,
-        "exception_message_preview": _truncate_preview(redacted),
+        "exception_message_preview": truncate_preview(redacted),
         "exception_message_length": len(raw_text),
     }
 
@@ -136,7 +128,7 @@ def exception_summary(value: Any) -> dict:
 def safe_exception_text(value: Any) -> str:
     if value is None:
         return ""
-    return _redact_sensitive_text(str(value).strip())
+    return redact_sensitive_text(str(value).strip())
 
 
 def progress_payload(
@@ -578,62 +570,6 @@ def parse_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(str(value))
     except ValueError:
         return None
-
-
-def _safe_key_names(payload: dict) -> list[str]:
-    names = {_safe_key_name(key) for key in payload.keys()}
-    return sorted(name for name in names if name)
-
-
-def _safe_key_name(key: object) -> str:
-    text = str(key).strip()
-    if not text:
-        return ""
-    lowered = text.casefold()
-    if any(marker in lowered for marker in _SENSITIVE_KEY_MARKERS):
-        return "<sensitive>"
-    return text
-
-
-def _sensitive_key_count(value: Any) -> int:
-    if isinstance(value, dict):
-        count = sum(
-            1
-            for key in value.keys()
-            if any(marker in str(key).casefold() for marker in _SENSITIVE_KEY_MARKERS)
-        )
-        return count + sum(_sensitive_key_count(item) for item in value.values())
-    if isinstance(value, list):
-        return sum(_sensitive_key_count(item) for item in value)
-    return 0
-
-
-def _ticker_count(value: Any) -> int:
-    tickers: set[str] = set()
-    _collect_tickers(value, tickers)
-    return len(tickers)
-
-
-def _collect_tickers(value: Any, tickers: set[str], *, key_hint: str = "") -> None:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            _collect_tickers(nested, tickers, key_hint=str(key).casefold())
-        return
-    if isinstance(value, list) and key_hint == "tickers":
-        for item in value:
-            text = str(item).strip()
-            if text:
-                tickers.add(text)
-
-
-def _redact_sensitive_text(value: str) -> str:
-    return _SECRET_ASSIGNMENT_RE.sub(r"\1\2<redacted>", value)
-
-
-def _truncate_preview(value: str) -> str:
-    if len(value) <= _MAX_PREVIEW_LENGTH:
-        return value
-    return value[: _MAX_PREVIEW_LENGTH - 1] + "…"
 
 
 __all__ = [

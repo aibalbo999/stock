@@ -12,12 +12,12 @@ from app.services.task_payload_inspection import (
 def test_payload_inspection_redacts_sensitive_keys_and_counts_nested_values() -> None:
     payload = {
         "topic": "AI 產業鏈",
-        "api_key": "secret",
+        "api_key": "secret",  # pragma: allowlist secret
         "request": {
             "tickers": ["2330", "", "2330", "2454"],
             "headers": {"Authorization": "Bearer hidden"},
         },
-        "items": [{"password": "pw"}, {"token": "tok"}],
+        "items": [{"password": "pw"}, {"token": "tok"}],  # pragma: allowlist secret
     }
 
     assert safe_key_names(payload) == ["<sensitive>", "items", "request", "topic"]

@@ -46,7 +46,7 @@ def test_external_env_actions_classify_managed_unlocker_and_secret_rules() -> No
         "evidence": {
             "configured_env_keys": ["COMPANY_FILING_BROWSER_RENDER_PROVIDER"],
             "recommended_env": [
-                "COMPANY_FILING_BROWSER_RENDER_PROVIDER=scrapingbee",
+                "COMPANY_FILING_BROWSER_RENDER_PROVIDER=scrapingbee",  # pragma: allowlist secret
                 "COMPANY_FILING_BROWSER_RENDER_URL=https://app.scrapingbee.com/api/v1",
                 "COMPANY_FILING_BROWSER_RENDER_TOKEN=<token>",
             ],

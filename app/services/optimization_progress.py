@@ -3,8 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.optimization_free_validation import capability_free_validation
 from app.services.optimization_action_priority import (
     prioritized_optimization_next_actions,
+)
+from app.services.optimization_local_defaults import (
+    AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND,
+    EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND as EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND,
+    EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND as EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND,
+    LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND as LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND,
+    LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND as LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND,
+    LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND as LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND,
+    local_default_capabilities,
+    local_default_verify_commands,
+    local_defaults_verify_command,
 )
 
 
@@ -233,32 +245,6 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
 )
 
 READY_STATUSES = frozenset({"ready"})
-AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
-)
-LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --wait-local-neo4j 20 --json"
-)
-LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py "
-    "--wait-local-browserless 20 --local-browser-render-defaults --json"
-)
-LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py "
-    "--prefer-unlocker --wait-local-flaresolverr 20 "
-    "--local-browser-render-defaults --json"
-)
-EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py "
-    "--local-neo4j-defaults --wait-local-neo4j 20 "
-    "--wait-local-browserless 20 --local-browser-render-defaults --json"
-)
-EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND = (
-    ".venv/bin/python scripts/upgrade_audit.py "
-    "--local-neo4j-defaults --prefer-unlocker "
-    "--wait-local-neo4j 20 --wait-local-flaresolverr 20 "
-    "--local-browser-render-defaults --json"
-)
 
 
 def optimization_progress_status(status: dict) -> dict:
@@ -432,7 +418,7 @@ def _capability_check(
     ready = capability_status in READY_STATUSES
     local_match = _local_auto_default_match(ref, local_auto_defaults)
     locally_available = bool(local_match and not ready)
-    free_validation = _capability_free_validation(capability)
+    free_validation = capability_free_validation(capability)
     return {
         "area": ref.area,
         "capability": ref.capability,
@@ -519,9 +505,9 @@ def _local_resolution_projection(
     local_actions = [
         action for action in prioritized_next_actions if bool(action.get("locally_available"))
     ]
-    local_defaults_verify_command = _local_defaults_verify_command(local_actions)
-    local_default_verify_commands = _local_default_verify_commands(
-        local_defaults_verify_command,
+    local_defaults_command = local_defaults_verify_command(local_actions)
+    local_default_commands = local_default_verify_commands(
+        local_defaults_command,
         local_actions,
     )
     if local_resolvable_gap_count <= 0:
@@ -549,148 +535,19 @@ def _local_resolution_projection(
         "remaining_paid_external_pending": sum(
             1 for action in remaining_actions if action.get("action_type") == "paid_external"
         ),
-        "local_defaults_verify_command": local_defaults_verify_command,
+        "local_defaults_verify_command": local_defaults_command,
         "compatible_auto_defaults_verify_command": AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND,
-        "local_default_verify_commands": local_default_verify_commands,
+        "local_default_verify_commands": local_default_commands,
         "local_action_capabilities": [
             action.get("capability") for action in local_actions if action.get("capability")
         ],
-        "local_default_capabilities": _local_default_capabilities(local_actions),
+        "local_default_capabilities": local_default_capabilities(local_actions),
         "remaining_action_capabilities": [
             action.get("capability") for action in remaining_actions if action.get("capability")
         ],
         "remaining_actions": remaining_actions,
         "next_action": next_action,
     }
-
-
-def _local_defaults_verify_command(local_actions: list[dict]) -> str:
-    if not local_actions:
-        return ""
-    capabilities = {
-        str(action.get("capability") or "").strip()
-        for action in local_actions
-        if str(action.get("capability") or "").strip()
-    }
-    groups = {
-        str((action.get("local_auto_default") or {}).get("group") or "").strip()
-        for action in local_actions
-        if isinstance(action.get("local_auto_default") or {}, dict)
-    }
-    has_neo4j = bool(
-        groups.intersection({"neo4j"})
-        or capabilities.intersection({"neo4j_import", "graphrag_live_cypher_query"})
-    )
-    has_unlocker = bool(
-        groups.intersection({"flaresolverr"}) or "company_filing_high_risk_unlocker" in capabilities
-    )
-    has_browser_render = bool(
-        groups.intersection({"browserless"})
-        or "company_filing_browser_or_proxy_fallback" in capabilities
-    )
-    if has_neo4j and has_unlocker:
-        return EXPLICIT_LOCAL_DEFAULTS_AUDIT_COMMAND
-    if has_neo4j and has_browser_render:
-        return EXPLICIT_LOCAL_BROWSERLESS_DEFAULTS_AUDIT_COMMAND
-    if has_neo4j:
-        return LOCAL_NEO4J_DEFAULTS_AUDIT_COMMAND
-    if has_unlocker:
-        return LOCAL_FLARESOLVERR_DEFAULTS_AUDIT_COMMAND
-    if has_browser_render:
-        return LOCAL_BROWSER_RENDER_DEFAULTS_AUDIT_COMMAND
-    return AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND
-
-
-def _capability_free_validation(capability: dict[str, Any]) -> dict:
-    evidence = capability.get("evidence") if isinstance(capability.get("evidence"), dict) else {}
-    runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else {}
-    free_validation = (
-        runtime.get("free_validation") if isinstance(runtime.get("free_validation"), dict) else {}
-    )
-    commands = _ordered_unique(
-        [
-            runtime.get("sample_contract_cli"),
-            free_validation.get("sample_contract_cli"),
-            runtime.get("local_fixture_http_smoke_cli"),
-            free_validation.get("local_fixture_http_smoke_cli"),
-            runtime.get("local_fixture_provider_profile_smoke_cli"),
-            free_validation.get("local_fixture_provider_profile_smoke_cli"),
-            runtime.get("local_fixture_start_cli"),
-            free_validation.get("local_fixture_start_cli"),
-            runtime.get("local_fixture_smoke_cli"),
-            free_validation.get("local_fixture_smoke_cli"),
-        ]
-    )
-    return {
-        "available": bool(commands),
-        "label": _free_validation_label(commands),
-        "commands": commands,
-    }
-
-
-def _free_validation_label(commands: list[str]) -> str:
-    if not commands:
-        return ""
-    has_sample = any("--sample-json" in command for command in commands)
-    has_fixture = any(
-        "structured_company_filing_fixture_smoke.py" in command
-        or "local_structured_company_filing_api.py" in command
-        for command in commands
-    )
-    has_provider_profile = any("--provider-profile" in command for command in commands)
-    if has_sample and has_fixture and has_provider_profile:
-        return "sample + fixture + provider profile 可驗證"
-    if has_sample and has_fixture:
-        return "sample + fixture 可驗證"
-    if has_sample:
-        return "sample contract 可驗證"
-    return "免費驗證可用"
-
-
-def _ordered_unique(values: list[object]) -> list[str]:
-    items: list[str] = []
-    for value in values:
-        item = str(value or "").strip()
-        if item and item not in items:
-            items.append(item)
-    return items
-
-
-def _local_default_verify_commands(
-    primary_command: str,
-    local_actions: list[dict],
-) -> list[str]:
-    commands: list[str] = []
-    for command in [
-        primary_command,
-        *[
-            str((action.get("local_auto_default") or {}).get("verify_command") or "")
-            for action in local_actions
-            if isinstance(action.get("local_auto_default") or {}, dict)
-        ],
-        AUTO_LOCAL_DEFAULTS_AUDIT_COMMAND if local_actions else "",
-    ]:
-        command = command.strip()
-        if command and command not in commands:
-            commands.append(command)
-    return commands
-
-
-def _local_default_capabilities(local_actions: list[dict]) -> list[dict]:
-    capabilities: list[dict] = []
-    for action in local_actions:
-        capability = str(action.get("capability") or "").strip()
-        if not capability:
-            continue
-        local_default = action.get("local_auto_default") or {}
-        capabilities.append(
-            {
-                "capability": capability,
-                "label": action.get("label") or capability,
-                "group": local_default.get("group") if isinstance(local_default, dict) else "",
-            }
-        )
-    return capabilities
 
 
 def _progress_summary(

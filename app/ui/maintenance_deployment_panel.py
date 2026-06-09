@@ -73,6 +73,14 @@ def render_external_deployment_panel(
     local_dependency_rows = local_dependency_status_rows(service_snapshot)
     local_dependency_start_rows = local_dependency_last_start_rows(service_snapshot)
     local_dependency_repair_plan_rows = local_dependency_repair_rows(service_snapshot)
+    external_local_projection = (
+        upgrade_audit.get("external_deployment_local_projection")
+        if isinstance(upgrade_audit.get("external_deployment_local_projection"), dict)
+        else {}
+    )
+    external_effective_gap_rows = external_deployment_effective_gap_rows(
+        external_local_projection
+    )
     optimization_progress = (
         service_snapshot.get("optimization_progress")
         if isinstance(service_snapshot.get("optimization_progress"), dict)
@@ -120,6 +128,28 @@ def render_external_deployment_panel(
         if external_enablement_summary_rows:
             st.caption("外部部署啟用摘要")
             st.dataframe(external_enablement_summary_rows, width="stretch", hide_index=True)
+        if external_effective_gap_rows:
+            effective_cols = st.columns(4)
+            effective_cols[0].metric(
+                "原始待處理",
+                int(external_local_projection.get("current_pending") or 0),
+            )
+            effective_cols[1].metric(
+                "本機可消除",
+                int(external_local_projection.get("available_local_default_gap_count") or 0),
+            )
+            effective_cols[2].metric(
+                "有效剩餘",
+                int(external_local_projection.get("remaining_pending") or 0),
+            )
+            effective_cols[3].metric(
+                "剩餘付費 API",
+                int(external_local_projection.get("remaining_paid_external_pending") or 0),
+            )
+            if external_local_projection.get("next_action"):
+                st.caption(str(external_local_projection["next_action"]))
+            st.caption("有效外部缺口")
+            st.dataframe(external_effective_gap_rows, width="stretch", hide_index=True)
         if external_pending_gap_rows:
             st.caption("待處理缺口分類")
             st.dataframe(external_pending_gap_rows, width="stretch", hide_index=True)
@@ -158,7 +188,10 @@ def render_external_deployment_panel(
             recommended_operation_id=recommended_maintenance_operation_id(
                 maintenance_operations or {},
                 external_env_resolution_rows,
-                local_resolution_projection,
+                _merge_local_action_projections(
+                    local_resolution_projection,
+                    external_local_projection,
+                ),
             ),
         )
         if local_dependency_rows:
@@ -188,6 +221,68 @@ def render_external_deployment_panel(
             )
         else:
             st.success("外部部署選配目前沒有警示。")
+
+
+def external_deployment_effective_gap_rows(local_projection: dict) -> list[dict]:
+    if not isinstance(local_projection, dict):
+        return []
+    if not any(
+        key in local_projection
+        for key in (
+            "current_pending",
+            "available_local_default_gap_count",
+            "remaining_pending",
+        )
+    ):
+        return []
+    local_capabilities = _projection_capability_summary(
+        local_projection.get("local_default_capabilities")
+    )
+    remaining_capabilities = _projection_capability_summary(
+        local_projection.get("remaining_capabilities")
+    )
+    rows = [
+        {
+            "項目": "原始外部選配",
+            "數量": int(local_projection.get("current_pending") or 0),
+            "說明": "尚未扣除已偵測本機 defaults",
+        },
+        {
+            "項目": "本機 defaults 可處理",
+            "數量": int(local_projection.get("available_local_default_gap_count") or 0),
+            "說明": local_capabilities,
+        },
+        {
+            "項目": "有效剩餘",
+            "數量": int(local_projection.get("remaining_pending") or 0),
+            "說明": remaining_capabilities,
+        },
+        {
+            "項目": "有效 blocking",
+            "數量": int(local_projection.get("remaining_blocking_pending") or 0),
+            "說明": "正式部署前必修缺口",
+        },
+        {
+            "項目": "有效選配",
+            "數量": int(local_projection.get("remaining_optional_pending") or 0),
+            "說明": "依需求或合約再啟用",
+        },
+        {
+            "項目": "付費外部 API",
+            "數量": int(local_projection.get("remaining_paid_external_pending") or 0),
+            "說明": remaining_capabilities,
+        },
+    ]
+    commands = local_projection.get("local_default_verify_commands")
+    if isinstance(commands, list) and commands:
+        rows.append(
+            {
+                "項目": "本機驗證指令",
+                "數量": len(commands),
+                "說明": "\n".join(str(command) for command in commands if str(command).strip()),
+            }
+        )
+    return rows
 
 
 def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
@@ -288,9 +383,47 @@ def recommended_maintenance_operation_id(
 
 def _projection_local_action_capabilities(local_resolution_projection: dict) -> set[str]:
     capabilities = local_resolution_projection.get("local_action_capabilities")
-    if not isinstance(capabilities, list):
-        return set()
-    return {str(capability) for capability in capabilities if str(capability).strip()}
+    if isinstance(capabilities, list):
+        return {str(capability) for capability in capabilities if str(capability).strip()}
+    local_defaults = local_resolution_projection.get("local_default_capabilities")
+    if isinstance(local_defaults, list):
+        return {
+            str(row.get("capability") or "").strip()
+            for row in local_defaults
+            if isinstance(row, dict) and str(row.get("capability") or "").strip()
+        }
+    return set()
+
+
+def _merge_local_action_projections(*projections: dict) -> dict:
+    capabilities: list[str] = []
+    seen: set[str] = set()
+    for projection in projections:
+        if not isinstance(projection, dict):
+            continue
+        for capability in _projection_local_action_capabilities(projection):
+            if capability in seen:
+                continue
+            seen.add(capability)
+            capabilities.append(capability)
+    return {"local_action_capabilities": capabilities}
+
+
+def _projection_capability_summary(value: object) -> str:
+    if not isinstance(value, list):
+        return "-"
+    labels = []
+    seen: set[str] = set()
+    for row in value:
+        if isinstance(row, dict):
+            label = str(row.get("label") or row.get("capability") or "").strip()
+        else:
+            label = str(row or "").strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+    return "、".join(labels) if labels else "-"
 
 
 def _maintenance_operation_capability_summary(operation: dict) -> str:

@@ -4,6 +4,7 @@ from app.services.external_deployment_env_gaps import (
     external_deployment_env_check_status_report,
 )
 from app.ui.maintenance_deployment_panel import (
+    external_deployment_effective_gap_rows,
     maintenance_operation_recommendation_caption,
     maintenance_operation_post_run_diagnostic_action_ids,
     maintenance_operation_post_run_check_rows,
@@ -113,6 +114,72 @@ def test_maintenance_operation_recommendation_uses_projection_before_env_rows() 
         )
         == "start_local_dependencies"
     )
+    assert (
+        recommended_maintenance_operation_id(
+            catalog,
+            [],
+            {
+                "local_default_capabilities": [
+                    {"capability": "neo4j_import"},
+                    {"capability": "company_filing_high_risk_unlocker"},
+                ]
+            },
+        )
+        == "start_local_dependencies_with_unlocker"
+    )
+
+
+def test_external_deployment_effective_gap_rows_show_effective_remaining_gap() -> None:
+    rows = external_deployment_effective_gap_rows(
+        {
+            "current_pending": 4,
+            "available_local_default_gap_count": 3,
+            "remaining_pending": 1,
+            "remaining_blocking_pending": 0,
+            "remaining_optional_pending": 1,
+            "remaining_paid_external_pending": 1,
+            "local_default_capabilities": [
+                {"capability": "neo4j_import", "label": "外部 Neo4j 匯入連線"},
+                {
+                    "capability": "company_filing_high_risk_unlocker",
+                    "label": "MOPS/TWSE/TPEx 高風險文件 unlocker",
+                },
+            ],
+            "remaining_capabilities": [
+                {
+                    "capability": "company_filing_structured_api_fallback",
+                    "label": "公司文件結構化 API 備援",
+                }
+            ],
+            "local_default_verify_commands": [
+                ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+            ],
+        }
+    )
+
+    assert rows[0] == {
+        "項目": "原始外部選配",
+        "數量": 4,
+        "說明": "尚未扣除已偵測本機 defaults",
+    }
+    assert rows[1]["項目"] == "本機 defaults 可處理"
+    assert rows[1]["數量"] == 3
+    assert "外部 Neo4j 匯入連線" in rows[1]["說明"]
+    assert "高風險文件 unlocker" in rows[1]["說明"]
+    assert rows[2] == {
+        "項目": "有效剩餘",
+        "數量": 1,
+        "說明": "公司文件結構化 API 備援",
+    }
+    assert rows[3]["數量"] == 0
+    assert rows[4]["數量"] == 1
+    assert rows[5] == {
+        "項目": "付費外部 API",
+        "數量": 1,
+        "說明": "公司文件結構化 API 備援",
+    }
+    assert rows[6]["項目"] == "本機驗證指令"
+    assert "--auto-local-defaults" in rows[6]["說明"]
 
 
 def test_maintenance_operation_recommendation_uses_core_dependencies_for_local_plan() -> None:

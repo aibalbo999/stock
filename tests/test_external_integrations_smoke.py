@@ -226,6 +226,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     ) in output
     assert "action: local_action" in output
     assert "action: paid_external" in output
+    assert "command: .venv/bin/python scripts/start_system.py --start-dependencies" in output
     assert "enablement: 可本機免費啟用" in output
     assert "enablement: 需外部資料 API" in output
     assert "Neo4j payload local contract: ready" in output

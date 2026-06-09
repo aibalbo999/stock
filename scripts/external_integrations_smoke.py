@@ -442,6 +442,9 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
                     f"{gap_row.get('action_type')} "
                     f"({gap_row.get('decision')}; {gap_row.get('local_action_state')})"
                 )
+                local_command = str(gap_row.get("local_action_command") or "-")
+                if local_command != "-":
+                    lines.append(f"  command: {local_command}")
         smoke_commands = [
             str(command)
             for command in check.get("smoke_commands") or []

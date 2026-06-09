@@ -228,7 +228,55 @@ def test_start_dependency_services_reports_missing_image_after_pull(
     result = start_dependency_services(tmp_path, allow_pull_missing_images=True)
 
     assert result["status"] == "失敗"
-    assert "下載後仍缺少：neo4j" in result["message"]
+    assert "下載後仍缺少核心依賴：neo4j" in result["message"]
+
+
+def test_start_dependency_services_can_continue_without_optional_render_images(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr("scripts.start_system.docker_compose_command", lambda: ["docker", "compose"])
+    image_statuses = iter(
+        [
+            {
+                "all_present": False,
+                "missing_services": ["browserless", "flaresolverr"],
+                "remediation": "docker compose pull browserless flaresolverr",
+            },
+            {
+                "all_present": False,
+                "missing_services": ["browserless"],
+                "remediation": "docker compose pull browserless",
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.local_docker_image_status",
+        lambda images=None: next(image_statuses),
+    )
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[-2:] == ["pull", "browserless"]:
+            raise subprocess.TimeoutExpired(command, timeout=kwargs["timeout"])
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    result = start_dependency_services(
+        tmp_path,
+        allow_pull_missing_images=True,
+        include_unlocker=True,
+    )
+
+    assert result["status"] == "部分啟動"
+    assert result["missing_optional_services"] == ["browserless"]
+    assert result["services"] == ["redis", "postgres", "neo4j", "chroma", "flaresolverr"]
+    assert calls[0][-2:] == ["pull", "browserless"]
+    assert calls[1][-2:] == ["pull", "flaresolverr"]
+    assert calls[2][-5:] == ["redis", "postgres", "neo4j", "chroma", "flaresolverr"]
 
 
 def test_pull_missing_dependency_images_reports_service_timeout(monkeypatch, tmp_path) -> None:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+
+from app.core.config import get_settings
 from scripts import neo4j_graphrag_smoke as smoke
 
 
@@ -187,3 +190,34 @@ def test_neo4j_graphrag_smoke_main_prints_json(monkeypatch, capsys) -> None:
 
     assert smoke.main(["--json"]) == 0
     assert '"status": "ready"' in capsys.readouterr().out
+
+
+def test_neo4j_graphrag_smoke_main_can_apply_local_defaults(monkeypatch, capsys) -> None:
+    neo4j_env_keys = ("NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "NEO4J_DATABASE")
+    for key in neo4j_env_keys:
+        monkeypatch.delenv(key, raising=False)
+    get_settings.cache_clear()
+    assert get_settings().neo4j_uri == ""
+    captured = {}
+
+    def fake_report(**_kwargs) -> dict:
+        captured["neo4j_uri"] = os.environ.get("NEO4J_URI")
+        captured["neo4j_user"] = os.environ.get("NEO4J_USER")
+        captured["settings_neo4j_uri"] = get_settings().neo4j_uri
+        return {"status": "ready", "ready": True}
+
+    monkeypatch.setattr(smoke, "neo4j_graphrag_smoke_report", fake_report)
+
+    try:
+        assert smoke.main(["--local-neo4j-defaults", "--json"]) == 0
+
+        output = capsys.readouterr().out
+        assert captured["neo4j_uri"] == "neo4j://localhost:7687"
+        assert captured["neo4j_user"] == "neo4j"
+        assert captured["settings_neo4j_uri"] == "neo4j://localhost:7687"
+        assert '"local_neo4j_defaults"' in output
+        assert "NEO4J_PASSWORD" in output
+    finally:
+        for key in neo4j_env_keys:
+            os.environ.pop(key, None)
+        get_settings.cache_clear()

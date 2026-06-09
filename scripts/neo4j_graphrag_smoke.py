@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
+from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 
 
 DEFAULT_TICKERS = "2330"
@@ -23,6 +26,23 @@ LOCAL_CONTRACT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
     "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --local-contract --json"
 )
+LOCAL_DEFAULTS_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--local-neo4j-defaults --tickers 2330 --target-ticker 2382 "
+    "--question 上下游衝擊 --json"
+)
+
+
+def apply_local_neo4j_defaults() -> dict[str, str]:
+    applied = {}
+    for key, value in LOCAL_NEO4J_ENV_DEFAULTS.items():
+        if os.environ.get(key):
+            continue
+        os.environ[key] = value
+        applied[key] = value
+    if applied:
+        get_settings.cache_clear()
+    return applied
 
 
 def neo4j_graphrag_smoke_report(
@@ -294,6 +314,7 @@ def build_smoke_report(
         "smoke_command": SMOKE_COMMAND,
         "import_smoke_command": IMPORT_SMOKE_COMMAND,
         "local_contract_command": LOCAL_CONTRACT_SMOKE_COMMAND,
+        "local_defaults_smoke_command": LOCAL_DEFAULTS_SMOKE_COMMAND,
         "remediation": remediation,
     }
 
@@ -335,6 +356,7 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     if report.get("remediation"):
         lines.append(f"- remediation: {report['remediation']}")
     lines.append(f"- command: {report['smoke_command']}")
+    lines.append(f"- local defaults command: {report['local_defaults_smoke_command']}")
     lines.append(f"- local contract command: {report['local_contract_command']}")
     lines.append(f"- import command: {report['import_smoke_command']}")
     return "\n".join(lines)
@@ -361,6 +383,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-llm", action="store_true", help="Allow LLM-generated Cypher plan before validation.")
     parser.add_argument("--import-first", action="store_true", help="Import the current graph into Neo4j before querying.")
     parser.add_argument(
+        "--local-neo4j-defaults",
+        action="store_true",
+        help=(
+            "Apply docker-compose local Neo4j defaults for this smoke process "
+            "without writing .env."
+        ),
+    )
+    parser.add_argument(
         "--local-contract",
         action="store_true",
         help="Validate payload export, guarded Cypher plan, and local dry-run without live Neo4j.",
@@ -372,6 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    local_defaults = apply_local_neo4j_defaults() if args.local_neo4j_defaults else {}
     if args.local_contract:
         report = neo4j_graphrag_local_contract_report(
             tickers=args.tickers,
@@ -392,6 +423,11 @@ def main(argv: list[str] | None = None) -> int:
             use_llm=bool(args.use_llm),
             import_first=bool(args.import_first),
         )
+    if args.local_neo4j_defaults:
+        report["local_neo4j_defaults"] = {
+            "applied_env_keys": sorted(local_defaults),
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+        }
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:

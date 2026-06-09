@@ -40,6 +40,7 @@ LOCAL_CHROMA_ENV_DEFAULTS = {
     "USE_CHROMA": "true",
     "CHROMA_API_URL": f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
 }
+OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
 LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
     "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
     "COMPANY_FILING_BROWSER_RENDER_URL": (
@@ -341,6 +342,12 @@ def dependency_start_blocker(dependency_status: dict | None) -> bool:
     return bool(dependency_status and dependency_status.get("status") in {"需下載", "失敗"})
 
 
+def dependency_start_attempted(dependency_status: dict | None) -> bool:
+    return bool(
+        dependency_status and dependency_status.get("status") in {"已啟動", "部分啟動"}
+    )
+
+
 def print_dependency_start_blocker(
     dependency_status: dict, dependency_wait_status: dict | None = None
 ) -> None:
@@ -483,24 +490,46 @@ def start_dependency_services(
                 f"請先執行 {remediation}，或加 --pull-missing-dependencies 允許一鍵啟動自動下載。"
             ),
         }
+    missing_optional_services: list[str] = []
     if not image_status.get("all_present"):
         pull_status = pull_missing_dependency_images(
             root,
             docker_command,
             image_status.get("missing_services") or [],
         )
-        if pull_status.get("status") != "已下載":
-            return pull_status
         image_status = local_docker_image_status(
             _dependency_images(include_unlocker=include_unlocker)
         )
-        if not image_status.get("all_present"):
-            missing = "、".join(image_status.get("missing_services") or [])
+        missing_after_pull = [str(service) for service in image_status.get("missing_services") or []]
+        blocking_missing = [
+            service
+            for service in missing_after_pull
+            if service not in OPTIONAL_RENDER_DEPENDENCY_SERVICES
+        ]
+        missing_optional_services = [
+            service
+            for service in missing_after_pull
+            if service in OPTIONAL_RENDER_DEPENDENCY_SERVICES
+        ]
+        if blocking_missing:
+            missing = "、".join(blocking_missing)
             return {
                 "status": "失敗",
-                "message": f"Docker image 下載後仍缺少：{missing}。請檢查 Docker Desktop 網路或手動重試 pull。",
+                "message": (
+                    f"Docker image 下載後仍缺少核心依賴：{missing}。"
+                    "請檢查 Docker Desktop 網路或手動重試 pull。"
+                ),
             }
+        if pull_status.get("status") != "已下載" and not missing_optional_services:
+            return pull_status
+    if missing_optional_services:
+        missing_optional_set = set(missing_optional_services)
+        dependency_services = [
+            service for service in dependency_services if service not in missing_optional_set
+        ]
     profile_args = ["--profile", "unlocker"] if include_unlocker else []
+    if "flaresolverr" not in dependency_services:
+        profile_args = []
     command = [
         *docker_command,
         "-f",
@@ -543,10 +572,18 @@ def start_dependency_services(
             "message": message.splitlines()[-1] if message else "Docker Compose 回傳錯誤。",
         }
     service_label = "、".join(_dependency_service_labels(dependency_services))
+    missing_optional_label = "、".join(_dependency_service_labels(missing_optional_services))
+    status = "部分啟動" if missing_optional_services else "已啟動"
+    optional_note = (
+        f"；略過可由 Playwright fallback 接手的選配 render 服務：{missing_optional_label}"
+        if missing_optional_services
+        else ""
+    )
     return {
-        "status": "已啟動",
-        "message": f"{service_label} 已送出啟動指令。",
+        "status": status,
+        "message": f"{service_label} 已送出啟動指令{optional_note}。",
         "services": dependency_services,
+        "missing_optional_services": missing_optional_services,
     }
 
 
@@ -589,13 +626,18 @@ def pull_missing_dependency_images(
     *,
     timeout_seconds: int = 300,
 ) -> dict[str, str]:
-    services = [
-        service
-        for service in missing_services
-        if service in _dependency_images(include_unlocker=True)
-    ]
+    services = sorted(
+        (
+            service
+            for service in missing_services
+            if service in _dependency_images(include_unlocker=True)
+        ),
+        key=lambda service: (service in OPTIONAL_RENDER_DEPENDENCY_SERVICES, service),
+    )
     if not services:
         return {"status": "已下載", "message": "沒有需要下載的 Docker image。"}
+    failed: list[dict[str, str]] = []
+    pulled: list[str] = []
     for service in services:
         command = [*docker_command, "pull", service]
         try:
@@ -608,28 +650,44 @@ def pull_missing_dependency_images(
                 timeout=max(30, int(timeout_seconds)),
             )
         except subprocess.TimeoutExpired:
-            return {
-                "status": "失敗",
-                "message": (
-                    f"Docker image 下載逾時：{service}。"
-                    "請確認 Docker Desktop 網路狀態，或手動執行 docker compose pull "
-                    + " ".join(services)
-                    + " 後重試。"
-                ),
-            }
+            failed.append({"service": service, "reason": f"Docker image 下載逾時：{service}"})
+            continue
         except (OSError, subprocess.SubprocessError) as exc:
-            return {"status": "失敗", "message": f"Docker image 下載失敗：{service}；{exc}"}
+            failed.append({"service": service, "reason": f"Docker image 下載失敗：{service}；{exc}"})
+            continue
         if completed.returncode != 0:
             message = (
                 completed.stderr or completed.stdout or "Docker Compose pull 回傳錯誤"
             ).strip()
-            return {
-                "status": "失敗",
-                "message": f"Docker image 下載失敗：{service}；{message.splitlines()[-1] if message else '未知錯誤'}",
-            }
+            failed.append(
+                {
+                    "service": service,
+                    "reason": (
+                        f"Docker image 下載失敗：{service}；"
+                        f"{message.splitlines()[-1] if message else '未知錯誤'}"
+                    ),
+                }
+            )
+            continue
+        pulled.append(service)
+    if failed:
+        first_reason = failed[0]["reason"]
+        failed_services = "、".join(item["service"] for item in failed)
+        return {
+            "status": "失敗",
+            "message": (
+                f"{first_reason}。失敗服務：{failed_services}。"
+                "請確認 Docker Desktop 網路狀態，或手動執行 docker compose pull "
+                + " ".join(services)
+                + " 後重試。"
+            ),
+            "failed_services": failed_services,
+            "pulled_services": "、".join(pulled),
+        }
     return {
         "status": "已下載",
         "message": "已下載缺少的 Docker image：" + "、".join(services),
+        "pulled_services": "、".join(pulled),
     }
 
 
@@ -705,7 +763,7 @@ def wait_for_local_dependency_ports(
     *,
     timeout_seconds: int,
 ) -> dict[str, bool]:
-    if not dependency_status or dependency_status.get("status") != "已啟動":
+    if not dependency_start_attempted(dependency_status):
         return {}
     results: dict[str, bool] = {}
     services = set(dependency_status.get("services") or [])
@@ -770,7 +828,7 @@ def fallback_local_browser_render_to_playwright(
     selected_flaresolverr = current_url == flaresolverr_url
     render_ready = (
         dependency_status is not None
-        and dependency_status.get("status") == "已啟動"
+        and dependency_start_attempted(dependency_status)
         and (
             (selected_browserless and dependency_wait_status.get("browserless") is True)
             or (selected_flaresolverr and dependency_wait_status.get("flaresolverr") is True)

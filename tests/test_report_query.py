@@ -731,6 +731,7 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["totals"]["max_retrieval_latency_ms"] == 18.5
     assert summary["totals"]["bottleneck_count"] == 1
     assert summary["totals"]["highest_bottleneck_score"] > 0
+    assert summary["totals"]["recommendation_count"] == 3
     assert summary["reports"][0]["run_id"] == 88
     assert summary["reports"][0]["model"] == "gemini-3.5-flash"
     assert summary["reports"][0]["selected_model_rank"] == 2
@@ -747,6 +748,14 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert "quota_skips=1" in summary["bottlenecks"][0]["reasons"]
     assert "routing_reason=quota_or_cooldown_skip" in summary["bottlenecks"][0]["reasons"]
     assert "quota/routing" in summary["bottlenecks"][0]["next_action"]
+    assert [row["code"] for row in summary["recommendations"]] == [
+        "llm_quota_routing",
+        "llm_retryable_failures",
+        "reranker_model_fallback",
+    ]
+    assert summary["recommendations"][0]["affected_reports"] == 1
+    assert summary["recommendations"][0]["top_report_id"] == 8
+    assert "聰明模型" in summary["recommendations"][0]["next_action"]
     assert {alert["code"] for alert in summary["alerts"]} == {
         "report_llm_fallback_used",
         "report_llm_retryable_failures",
@@ -828,3 +837,4 @@ def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
     assert summary["reports"][0]["total_token_estimate"] == 2048
     assert summary["bottlenecks"][0]["dominant_factor"] == "token_volume"
     assert "壓縮 prompt" in summary["bottlenecks"][0]["next_action"]
+    assert summary["recommendations"] == []

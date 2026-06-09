@@ -242,12 +242,15 @@ class ReportQueryService:
         totals["highest_bottleneck_score"] = (
             bottlenecks[0]["score"] if bottlenecks else 0.0
         )
+        recommendations = _observability_recommendations(rows, totals, bottlenecks)
+        totals["recommendation_count"] = len(recommendations)
         status = _observability_status(rows, totals)
         return {
             "status": status,
             "policy": "latest_per_topic",
             "totals": totals,
             "alerts": self._observability_alerts(rows, totals),
+            "recommendations": recommendations,
             "bottlenecks": bottlenecks,
             "reports": rows,
         }
@@ -798,6 +801,172 @@ def _observability_bottleneck_next_action(row: dict, dominant_factor: str) -> st
     if dominant_factor == "estimated_cost":
         return "確認 rate card、模型路由與是否可用 Flash-Lite/Gemma 承接低風險任務。"
     return "檢查 LLM latency、prompt 長度與模型 fallback 設定。"
+
+
+def _observability_recommendations(
+    rows: list[dict],
+    totals: dict[str, Any],
+    bottlenecks: list[dict],
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    recommendations = []
+    top_bottleneck = bottlenecks[0] if bottlenecks else {}
+    if int(totals.get("trace_missing_count") or 0):
+        recommendations.append(
+            _observability_recommendation(
+                priority=10,
+                severity="warning",
+                code="trace_missing",
+                affected_reports=int(totals.get("trace_missing_count") or 0),
+                evidence=f"trace_missing={totals.get('trace_missing_count')}",
+                next_action="重新產生缺 trace 的報告，並確認 run payload 寫入 report_execution。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    fallback_count = int(totals.get("fallback_path_count") or 0)
+    quota_skips = int(totals.get("quota_skip_count") or 0)
+    degraded_count = int(totals.get("degraded_from_primary_count") or 0)
+    if fallback_count or quota_skips or degraded_count:
+        recommendations.append(
+            _observability_recommendation(
+                priority=20,
+                severity="warning",
+                code="llm_quota_routing",
+                affected_reports=max(fallback_count, degraded_count, 1),
+                evidence=(
+                    f"fallback={fallback_count}; quota_skips={quota_skips}; "
+                    f"degraded={degraded_count}"
+                ),
+                next_action=(
+                    "先看 /llm/quota 的 exhausted/cooldown 模型；確認聰明模型仍在前，"
+                    "只有 429/quota 後才降級。"
+                ),
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    retryable_failures = int(totals.get("retryable_failure_count") or 0)
+    if retryable_failures:
+        recommendations.append(
+            _observability_recommendation(
+                priority=30,
+                severity="warning",
+                code="llm_retryable_failures",
+                affected_reports=retryable_failures,
+                evidence=f"retryable_failures={retryable_failures}",
+                next_action="檢查 LLM provider timeout/429/5xx 分布，必要時拉長 cooldown 或降低同時產報。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    keyword_fallback = int(totals.get("keyword_fallback_count") or 0)
+    if keyword_fallback:
+        recommendations.append(
+            _observability_recommendation(
+                priority=40,
+                severity="info",
+                code="reranker_model_fallback",
+                affected_reports=keyword_fallback,
+                evidence=f"keyword_fallback={keyword_fallback}",
+                next_action="啟用本機 cross-encoder、Cohere 或 LLM reranker，降低只靠關鍵字排序的風險。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    p95_llm_latency = _metric_float(totals.get("p95_llm_latency_ms"), default=0.0) or 0.0
+    if p95_llm_latency >= 5000:
+        recommendations.append(
+            _observability_recommendation(
+                priority=50,
+                severity="info",
+                code="llm_latency",
+                affected_reports=_count_rows_at_or_above(rows, "llm_latency_ms", 5000),
+                evidence=f"p95_llm_latency_ms={p95_llm_latency}",
+                next_action="檢查 prompt 長度、模型選擇與 retry 次數；低風險章節可改走較快 fallback。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    p95_retrieval_latency = (
+        _metric_float(totals.get("p95_retrieval_latency_ms"), default=0.0) or 0.0
+    )
+    if p95_retrieval_latency >= 1000:
+        recommendations.append(
+            _observability_recommendation(
+                priority=60,
+                severity="info",
+                code="retrieval_latency",
+                affected_reports=_count_rows_at_or_above(
+                    rows,
+                    "retrieval_latency_ms",
+                    1000,
+                ),
+                evidence=f"p95_retrieval_latency_ms={p95_retrieval_latency}",
+                next_action="檢查 Chroma query、hybrid candidate limit 與 rerank top-k，避免檢索拖慢報告。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    max_tokens = max((_metric_int(row.get("total_token_estimate"), default=0) or 0) for row in rows)
+    if max_tokens >= 12000:
+        recommendations.append(
+            _observability_recommendation(
+                priority=70,
+                severity="info",
+                code="token_volume",
+                affected_reports=sum(
+                    1
+                    for row in rows
+                    if (_metric_int(row.get("total_token_estimate"), default=0) or 0) >= 12000
+                ),
+                evidence=f"max_tokens={max_tokens}",
+                next_action="壓縮 RAG context、表格摘要與章節輸入，減少免費額度消耗。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    estimated_cost = _metric_float(totals.get("estimated_cost_usd"), default=0.0) or 0.0
+    if estimated_cost >= 0.05:
+        recommendations.append(
+            _observability_recommendation(
+                priority=80,
+                severity="info",
+                code="estimated_cost",
+                affected_reports=sum(1 for row in rows if row.get("estimated_cost_usd")),
+                evidence=f"estimated_cost_usd={estimated_cost}",
+                next_action="檢查 rate card 與模型任務分流；低風險摘要可交給 Flash-Lite/Gemma。",
+                top_bottleneck=top_bottleneck,
+            )
+        )
+    return sorted(recommendations, key=lambda item: int(item["priority"]))[: max(1, min(int(limit or 8), 20))]
+
+
+def _observability_recommendation(
+    *,
+    priority: int,
+    severity: str,
+    code: str,
+    affected_reports: int,
+    evidence: str,
+    next_action: str,
+    top_bottleneck: dict,
+) -> dict[str, Any]:
+    return {
+        "priority": priority,
+        "severity": severity,
+        "code": code,
+        "affected_reports": max(0, int(affected_reports or 0)),
+        "evidence": evidence,
+        "next_action": next_action,
+        "top_report_id": top_bottleneck.get("id"),
+        "top_topic": top_bottleneck.get("topic"),
+        "top_dominant_factor": top_bottleneck.get("dominant_factor"),
+        "top_score": top_bottleneck.get("score"),
+    }
+
+
+def _count_rows_at_or_above(rows: list[dict], key: str, threshold: float) -> int:
+    return sum(
+        1
+        for row in rows
+        if (_metric_float(row.get(key), default=0.0) or 0.0) >= threshold
+    )
 
 
 def _observability_status(rows: list[dict], totals: dict[str, Any]) -> str:

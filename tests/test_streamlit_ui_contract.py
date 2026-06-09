@@ -277,6 +277,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         "def report_observability_bottleneck_rows("
         in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     )
+    assert (
+        "def report_observability_recommendation_rows("
+        in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
     assert "report_obs_cols" not in source
     assert "def render_task_status_panel(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
@@ -364,8 +368,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "trace_captured_count" in source
     assert "keyword_fallback_count" in source
     assert 'summary.get("bottlenecks")' in source
+    assert 'summary.get("recommendations")' in source
     assert "render_report_observability_panel(report_observability_summary)" in source
     assert "優先優化清單" in source
+    assert "建議處理順序" in source
     assert "Queue / Worker readiness" in source
     assert "Queue 修復指引" in source
     assert "task_queue_health_rows(service_snapshot)" in source

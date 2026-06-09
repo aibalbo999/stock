@@ -2,6 +2,7 @@ from app.ui.report_observability_panel import (
     report_observability_alert_rows,
     report_observability_bottleneck_rows,
     report_observability_metric_values,
+    report_observability_recommendation_rows,
     report_observability_report_rows,
 )
 
@@ -27,6 +28,10 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
             {"report_id": 7, "dominant_factor": "llm_latency"},
             None,
         ],
+        "recommendations": [
+            {"code": "llm_quota_routing", "priority": 20},
+            "ignored",
+        ],
         "reports": [
             {"id": 7, "llm_latency_ms": 9000},
             42,
@@ -50,6 +55,9 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
     assert report_observability_bottleneck_rows(summary) == [
         {"report_id": 7, "dominant_factor": "llm_latency"}
     ]
+    assert report_observability_recommendation_rows(summary) == [
+        {"code": "llm_quota_routing", "priority": 20}
+    ]
     assert report_observability_report_rows(summary) == [
         {"id": 7, "llm_latency_ms": 9000}
     ]
@@ -69,4 +77,5 @@ def test_report_observability_metric_values_handle_missing_summary() -> None:
     }
     assert report_observability_alert_rows({}) == []
     assert report_observability_bottleneck_rows({}) == []
+    assert report_observability_recommendation_rows({}) == []
     assert report_observability_report_rows({}) == []

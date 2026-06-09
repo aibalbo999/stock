@@ -28,6 +28,10 @@ def report_observability_bottleneck_rows(summary: dict[str, Any]) -> list[dict]:
     return [row for row in summary.get("bottlenecks") or [] if isinstance(row, dict)]
 
 
+def report_observability_recommendation_rows(summary: dict[str, Any]) -> list[dict]:
+    return [row for row in summary.get("recommendations") or [] if isinstance(row, dict)]
+
+
 def report_observability_report_rows(summary: dict[str, Any]) -> list[dict]:
     return [row for row in summary.get("reports") or [] if isinstance(row, dict)]
 
@@ -46,6 +50,11 @@ def render_report_observability_panel(report_observability_summary: dict[str, An
             st.error(message)
         else:
             st.info(message)
+
+    recommendation_rows = report_observability_recommendation_rows(report_observability_summary)
+    if recommendation_rows:
+        st.caption("建議處理順序")
+        st.dataframe(recommendation_rows, width="stretch", hide_index=True)
 
     bottleneck_rows = report_observability_bottleneck_rows(report_observability_summary)
     if bottleneck_rows:

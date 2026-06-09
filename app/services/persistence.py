@@ -270,6 +270,8 @@ def _formal_report_findings(findings: list[RiskFinding]) -> list[RiskFinding]:
 class ReportRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
+        self._last_pruned_report_ids: list[int] = []
+        self.last_retention_result: dict = self._empty_retention_result()
 
     def create(self, request: ReportRequest, response: ReportResponse) -> GeneratedReport:
         markdown = remove_low_quality_investor_forum_lines(response.markdown)
@@ -293,7 +295,16 @@ class ReportRepository:
         )
         self.session.add(report)
         self.session.flush()
-        self.prune_older_for_topic(report.topic, report.id)
+        old_report_versions_deleted = self.prune_older_for_topic(report.topic, report.id)
+        self.last_retention_result = {
+            "policy": "latest_per_topic",
+            "topic": report.topic,
+            "report_id": report.id,
+            "old_report_versions_deleted": old_report_versions_deleted,
+            "old_report_ids": list(self._last_pruned_report_ids),
+            "run_links_cleared": bool(old_report_versions_deleted),
+            "run_output_paths_cleared": bool(old_report_versions_deleted),
+        }
         return report
 
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
@@ -376,6 +387,7 @@ class ReportRepository:
         return result.rowcount or 0
 
     def prune_older_for_topic(self, topic: str, keep_report_id: int) -> int:
+        self._last_pruned_report_ids = []
         statement = select(GeneratedReport.id).where(
             GeneratedReport.topic == topic,
             GeneratedReport.id != keep_report_id,
@@ -383,12 +395,25 @@ class ReportRepository:
         old_report_ids = list(self.session.scalars(statement))
         if not old_report_ids:
             return 0
+        self._last_pruned_report_ids = list(old_report_ids)
         self._clear_analysis_run_report_links(old_report_ids)
         result = self.session.execute(
             delete(GeneratedReport).where(GeneratedReport.id.in_(old_report_ids))
         )
         self.session.flush()
         return result.rowcount or 0
+
+    @staticmethod
+    def _empty_retention_result() -> dict:
+        return {
+            "policy": "latest_per_topic",
+            "topic": None,
+            "report_id": None,
+            "old_report_versions_deleted": 0,
+            "old_report_ids": [],
+            "run_links_cleared": False,
+            "run_output_paths_cleared": False,
+        }
 
     def _clear_analysis_run_report_links(self, report_ids: list[int]) -> None:
         if not report_ids:

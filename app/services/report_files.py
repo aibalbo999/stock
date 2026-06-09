@@ -14,13 +14,26 @@ REPORT_ARTIFACT_SUFFIXES = frozenset({".md", ".html", ".pdf"})
 
 
 def write_report_file(report_dir: Path, request: ReportRequest, response: Any) -> Path:
+    return write_report_file_with_retention(report_dir, request, response)["path"]
+
+
+def write_report_file_with_retention(
+    report_dir: Path,
+    request: ReportRequest,
+    response: Any,
+) -> dict:
     report_dir.mkdir(parents=True, exist_ok=True)
     safe_topic = safe_report_topic(request.topic)
     filename = f"{response.generated_at.strftime('%Y%m%d_%H%M%S')}_{safe_topic}.md"
     path = report_dir / filename.replace("/", "_")
     path.write_text(response.markdown, encoding="utf-8")
-    prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)
-    return path
+    deleted = prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)
+    return {
+        "policy": "latest_per_topic",
+        "topic": safe_topic,
+        "path": path,
+        "old_report_files_deleted": deleted,
+    }
 
 
 def safe_report_topic(topic: str) -> str:

@@ -34,7 +34,7 @@ from app.services.report_followup import (
     summarize_candidate_support_payload,
 )
 from app.services.report_followup_context import ReportFollowUpContextService
-from app.services.report_files import write_report_file
+from app.services.report_files import write_report_file_with_retention
 from app.services.task_cancellation import (
     TaskCancelledError,
     mark_run_cancelled,
@@ -362,19 +362,20 @@ def _rerun_after_close_report(target: dict) -> dict:
         ),
     )
     response = report_result["response"]
-    with session_scope() as session:
-        report = ReportRepository(session).create(request, response)
-        report_id = report.id
+    report_id, db_retention = _create_report_with_retention(request, response)
     record_llm_usage_from_report_execution(
         report_result.get("report_execution"),
         operation="after_close_report_rerun",
         report_id=report_id,
     )
-    path = _write_report_file(request, response)
+    file_retention = _write_report_file_with_retention(request, response)
+    path = file_retention["path"]
+    retention = _combined_report_retention(db_retention, file_retention)
     return {
         "status": "generated",
         "report_id": report_id,
         "path": str(path),
+        "retention": retention,
         "quality_gate": report_result["quality_gate"],
         "report_execution": report_result["report_execution"],
         "evidence_count": report_result["evidence_count"],
@@ -418,8 +419,45 @@ def _coverage_after_close_update(target: dict) -> dict:
 
 
 def _write_report_file(request: ReportRequest, response) -> Path:
+    return _write_report_file_with_retention(request, response)["path"]
+
+
+def _write_report_file_with_retention(request: ReportRequest, response) -> dict:
     settings = get_settings()
-    return write_report_file(Path(settings.report_dir), request, response)
+    retention = write_report_file_with_retention(Path(settings.report_dir), request, response)
+    return {
+        **retention,
+        "path": retention["path"],
+    }
+
+
+def _create_report_with_retention(
+    request: ReportRequest,
+    response,
+) -> tuple[int, dict]:
+    with session_scope() as session:
+        repository = ReportRepository(session)
+        report = repository.create(request, response)
+        report_id = report.id
+        retention = getattr(repository, "last_retention_result", {}) or {}
+    return report_id, retention
+
+
+def _combined_report_retention(db_retention: dict | None, file_retention: dict | None) -> dict:
+    db_retention = dict(db_retention or {})
+    file_retention = dict(file_retention or {})
+    file_path = file_retention.get("path")
+    artifact_retention = {
+        **file_retention,
+        "path": str(file_path) if file_path is not None else None,
+    }
+    return {
+        "policy": "latest_per_topic",
+        "db": db_retention,
+        "artifacts": artifact_retention,
+        "old_report_versions_deleted": int(db_retention.get("old_report_versions_deleted") or 0),
+        "old_report_files_deleted": int(file_retention.get("old_report_files_deleted") or 0),
+    }
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
@@ -661,9 +699,7 @@ def generate_report_task(self, payload: dict) -> dict:
                 ),
             )
         _raise_if_cancelled(run_id)
-        with session_scope() as session:
-            report = ReportRepository(session).create(request, response)
-            report_id = report.id
+        report_id, db_retention = _create_report_with_retention(request, response)
         record_llm_usage_from_report_execution(
             report_result.get("report_execution"),
             operation="celery_report_generation",
@@ -671,7 +707,9 @@ def generate_report_task(self, payload: dict) -> dict:
             run_id=run_id,
         )
         workflow.complete_step(run_id, current_step, {"report_id": report_id})
-        path = _write_report_file(request, response)
+        file_retention = _write_report_file_with_retention(request, response)
+        path = file_retention["path"]
+        retention = _combined_report_retention(db_retention, file_retention)
         with session_scope() as session:
             AnalysisRunRepository(session).update_payload(
                 run_id,
@@ -682,6 +720,7 @@ def generate_report_task(self, payload: dict) -> dict:
                         "quality_gate": quality_gate,
                         "follow_up": follow_up_summary,
                         "report_execution": report_result["report_execution"],
+                        "retention": retention,
                     },
                 ),
             )
@@ -693,6 +732,7 @@ def generate_report_task(self, payload: dict) -> dict:
             "title": response.title,
             "path": str(path),
             "generated_at": response.generated_at.isoformat(),
+            "retention": retention,
         }
     except TaskCancelledError as exc:
         workflow.cancel_step(run_id, current_step, str(exc), {"cancelled": True})

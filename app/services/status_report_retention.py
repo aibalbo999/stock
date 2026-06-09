@@ -33,6 +33,22 @@ def report_retention_status() -> dict:
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
         in report_files_source
     )
+    report_file_write_returns_retention = (
+        "def write_report_file_with_retention(" in report_files_source
+        and '"old_report_files_deleted"' in report_files_source
+        and '"policy": "latest_per_topic"' in report_files_source
+    )
+    repository_create_records_retention = (
+        "self.last_retention_result" in persistence_source
+        and '"old_report_versions_deleted"' in persistence_source
+        and '"old_report_ids"' in persistence_source
+    )
+    celery_combined_write_guard = (
+        "def _create_report_with_retention(" in tasks_source
+        and "def _write_report_file_with_retention(" in tasks_source
+        and "def _combined_report_retention(" in tasks_source
+        and '"retention": retention' in tasks_source
+    )
     artifact_retention_smoke = _report_artifact_retention_smoke()
     report_file_write_prunes_artifacts = (
         report_file_write_prunes and "REPORT_ARTIFACT_SUFFIXES" in report_files_source
@@ -61,6 +77,9 @@ def report_retention_status() -> dict:
         "write_prunes_db_by_topic": write_prunes_db,
         "write_prunes_markdown_by_topic": report_file_write_prunes,
         "write_prunes_report_artifacts_by_topic": report_file_write_prunes_artifacts,
+        "repository_create_records_retention_result": repository_create_records_retention,
+        "report_file_write_returns_retention_result": report_file_write_returns_retention,
+        "celery_report_write_uses_combined_retention_guard": celery_combined_write_guard,
         "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
         and "row_number()" in persistence_source
         and "partition_by=GeneratedReport.topic" in persistence_source,

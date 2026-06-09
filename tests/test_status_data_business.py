@@ -48,6 +48,9 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert report_retention["evidence"]["write_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["write_prunes_markdown_by_topic"] is True
     assert report_retention["evidence"]["write_prunes_report_artifacts_by_topic"] is True
+    assert report_retention["evidence"]["repository_create_records_retention_result"] is True
+    assert report_retention["evidence"]["report_file_write_returns_retention_result"] is True
+    assert report_retention["evidence"]["celery_report_write_uses_combined_retention_guard"] is True
     assert report_retention["evidence"]["repository_latest_by_topic_available"] is True
     assert report_retention["evidence"]["repository_latest_tie_breaks_by_id"] is True
     assert report_retention["evidence"]["list_reports_uses_latest_by_topic"] is True

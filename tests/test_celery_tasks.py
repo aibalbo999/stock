@@ -139,6 +139,15 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
 
         def create(self, request, response):
             calls.append(("create_report", request.tickers, response.title))
+            self.last_retention_result = {
+                "policy": "latest_per_topic",
+                "topic": request.topic,
+                "report_id": self.created_id,
+                "old_report_versions_deleted": 1,
+                "old_report_ids": [27],
+                "run_links_cleared": True,
+                "run_output_paths_cleared": True,
+            }
             return SimpleNamespace(id=self.created_id)
 
     class FakeContextService:
@@ -203,6 +212,8 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
     monkeypatch.setattr(tasks, "FinancialMetricRepository", lambda session: SimpleNamespace(by_tickers=lambda tickers: []))
     monkeypatch.setattr(tasks, "today_taipei", lambda: date(2026, 6, 3))
     monkeypatch.setattr(tasks, "get_settings", lambda: SimpleNamespace(report_dir=tmp_path))
+    old_report_file = tmp_path / "20260602_153000_機器人 產業鏈.md"
+    old_report_file.write_text("# old", encoding="utf-8")
 
     result = tasks.after_close_report_update_task.run(
         {"task": "latest_report_update", "lookback_days": 120, "rerun_report": True}
@@ -218,6 +229,10 @@ def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monke
     assert ("filings", ["2308", "2359"], False) in calls
     assert ("build", ["2308", "2359"], True) in calls
     assert FakeAnalysisRunRepository.run.status == "success"
+    assert not old_report_file.exists()
+    assert result["rerun_report"]["retention"]["old_report_versions_deleted"] == 1
+    assert result["rerun_report"]["retention"]["old_report_files_deleted"] == 1
+    assert result["rerun_report"]["retention"]["db"]["old_report_ids"] == [27]
 
 
 def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path) -> None:
@@ -284,6 +299,15 @@ def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path
             self.session = session
 
         def create(self, request, response):
+            self.last_retention_result = {
+                "policy": "latest_per_topic",
+                "topic": request.topic,
+                "report_id": FakeReport.id,
+                "old_report_versions_deleted": 1,
+                "old_report_ids": [201],
+                "run_links_cleared": True,
+                "run_output_paths_cleared": True,
+            }
             return FakeReport()
 
     @contextmanager
@@ -297,6 +321,8 @@ def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path
     monkeypatch.setattr(tasks, "ReportBuildService", FakeReportBuildService)
     monkeypatch.setattr(tasks, "ReportRepository", FakeReportRepository)
     monkeypatch.setattr(tasks, "get_settings", lambda: SimpleNamespace(report_dir=tmp_path))
+    old_report_file = tmp_path / "20260606_080000_AI 產業鏈.md"
+    old_report_file.write_text("# old", encoding="utf-8")
 
     result = tasks.generate_report_task.run({"topic": "AI 產業鏈", "tickers": ["2330"]})
     payload = json.loads(FakeAnalysisRunRepository.run.payload_json)
@@ -311,6 +337,10 @@ def test_generate_report_task_records_workflow_checkpoints(monkeypatch, tmp_path
     assert statuses["report_build"] == "success"
     assert statuses["report_persist"] == "success"
     assert payload["quality_gate"] == {"status": "ready"}
+    assert payload["retention"]["old_report_versions_deleted"] == 1
+    assert payload["retention"]["old_report_files_deleted"] == 1
+    assert result["retention"]["db"]["old_report_ids"] == [201]
+    assert not old_report_file.exists()
 
 
 def test_maintenance_cleanup_task_records_result(monkeypatch) -> None:

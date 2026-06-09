@@ -194,11 +194,21 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
             ReportRequest(topic="AI 產業鏈", tickers=["3324"]),
             ReportResponse(title="new", markdown="# new"),
         )
+        retention = repository.last_retention_result
         session.commit()
 
         assert repository.get(old_report.id) is None
         assert repository.get(latest_report.id) is not None
         assert repository.get(other_topic_report.id) is not None
+        assert retention == {
+            "policy": "latest_per_topic",
+            "topic": "AI 產業鏈",
+            "report_id": latest_report.id,
+            "old_report_versions_deleted": 1,
+            "old_report_ids": [old_report.id],
+            "run_links_cleared": True,
+            "run_output_paths_cleared": True,
+        }
         restored_run = AnalysisRunRepository(session).get(run.id)
         assert restored_run.report_id is None
         assert restored_run.output_path is None

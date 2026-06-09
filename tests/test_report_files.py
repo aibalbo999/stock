@@ -9,6 +9,7 @@ from app.services.report_files import (
     report_file_topic_key,
     report_retention_preview,
     write_report_file,
+    write_report_file_with_retention,
 )
 
 
@@ -46,6 +47,32 @@ def test_write_report_file_prunes_same_topic_files(tmp_path) -> None:
     assert not old_slug_same_topic.exists()
     assert other_topic.exists()
     assert other_topic_html.exists()
+
+
+def test_write_report_file_with_retention_returns_pruned_artifact_count(tmp_path) -> None:
+    old_same_topic = tmp_path / "20260606_120000_AI產業鏈.md"
+    old_same_topic_html = tmp_path / "20260606_120000_AI產業鏈.html"
+    other_topic = tmp_path / "20260606_120000_機器人產業鏈.md"
+    old_same_topic.write_text("old", encoding="utf-8")
+    old_same_topic_html.write_text("old html", encoding="utf-8")
+    other_topic.write_text("robot", encoding="utf-8")
+
+    result = write_report_file_with_retention(
+        tmp_path,
+        ReportRequest(topic="AI產業鏈"),
+        SimpleNamespace(
+            generated_at=datetime(2026, 6, 7, 8, 0, 0),
+            markdown="# latest",
+        ),
+    )
+
+    assert result["policy"] == "latest_per_topic"
+    assert result["topic"] == "AI產業鏈"
+    assert result["path"].name == "20260607_080000_AI產業鏈.md"
+    assert result["old_report_files_deleted"] == 2
+    assert not old_same_topic.exists()
+    assert not old_same_topic_html.exists()
+    assert other_topic.exists()
 
 
 def test_prune_older_report_files_by_topic_keeps_latest_each_topic(tmp_path) -> None:

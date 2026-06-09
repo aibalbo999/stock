@@ -51,6 +51,9 @@ def data_business_capabilities(
             "ready"
             if report_retention_status.get("write_prunes_db_by_topic")
             and report_retention_status.get("write_prunes_report_artifacts_by_topic")
+            and report_retention_status.get("repository_create_records_retention_result")
+            and report_retention_status.get("report_file_write_returns_retention_result")
+            and report_retention_status.get("celery_report_write_uses_combined_retention_guard")
             and report_retention_status.get("list_reports_uses_latest_by_topic")
             and report_retention_status.get("quality_summary_uses_latest_by_topic")
             and report_retention_status.get("maintenance_prunes_db_by_topic")

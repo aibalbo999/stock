@@ -6,6 +6,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.data_sources import company_filing_structured_api as structured_api_module
+from app.data_sources import company_filing_structured_api_documents as structured_api_documents
 from app.data_sources import company_filing_structured_api_profiles as structured_api_profiles
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
@@ -359,6 +360,26 @@ def test_structured_api_payload_contract_diagnostics_summarizes_field_coverage()
         "ticker_or_company_mention": 1,
         "requested_document_type_match": 1,
     }
+
+
+def test_structured_api_document_adapter_logic_lives_outside_status_module() -> None:
+    status_source = Path("app/data_sources/company_filing_structured_api.py").read_text()
+    documents_source = Path("app/data_sources/company_filing_structured_api_documents.py").read_text()
+
+    assert "from app.data_sources.company_filing_structured_api_documents import" in status_source
+    assert "def structured_api_payload_contract_diagnostics(" not in status_source
+    assert "def structured_api_row_to_news_document(" not in status_source
+    assert "def structured_api_row_to_company_filing_document(" not in status_source
+    assert "source.publisher" not in status_source
+    assert "def structured_api_payload_contract_diagnostics(" in documents_source
+    assert "def structured_api_row_to_news_document(" in documents_source
+    assert "def structured_api_row_to_company_filing_document(" in documents_source
+    assert structured_api_module.structured_api_row_to_company_filing_document is (
+        structured_api_documents.structured_api_row_to_company_filing_document
+    )
+    assert structured_api_module.parse_structured_api_date is (
+        structured_api_documents.parse_structured_api_date
+    )
 
 
 def test_fetch_structured_api_documents_uses_provider_request_contract(monkeypatch) -> None:

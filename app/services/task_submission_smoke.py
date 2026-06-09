@@ -8,6 +8,8 @@ from datetime import date
 from typing import Any, Callable
 from urllib.parse import urljoin
 
+from app.services.api_runtime_identity_check import check_api_runtime_identity
+
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
 DEFAULT_OPERATION = "market_refresh"
@@ -24,12 +26,23 @@ def run_task_submission_smoke(
     wait: bool = False,
     timeout_seconds: float = 30.0,
     poll_interval_seconds: float = 1.0,
+    check_runtime_identity: bool = True,
+    expected_api_commit: str | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict:
     base_url = _base_url(api_url)
     checks = []
+    runtime_identity = None
+    if check_runtime_identity:
+        runtime_identity = check_api_runtime_identity(
+            base_url,
+            expected_commit=expected_api_commit,
+            timeout_seconds=timeout_seconds,
+            opener=opener,
+        )
+        checks.append(_runtime_identity_check(runtime_identity))
     service_status = _request_json(
         "GET",
         _api_url(base_url, "/services/status"),
@@ -83,11 +96,18 @@ def run_task_submission_smoke(
         "submission_payload": _submission_payload(operation=operation, tickers=tickers)
         if submit
         else None,
+        "runtime_identity": runtime_identity,
         "task_queue": task_queue,
         "submission": _public_http_result(submission),
         "task_poll": poll_result,
         "checks": checks,
-        "next_actions": _next_actions(status, task_queue, submission, poll_result),
+        "next_actions": _next_actions(
+            status,
+            task_queue,
+            submission,
+            poll_result,
+            runtime_identity,
+        ),
     }
 
 
@@ -99,6 +119,18 @@ def format_task_submission_smoke(report: dict) -> str:
         f"- submit: {bool(report.get('submit'))}",
     ]
     task_queue = report.get("task_queue") if isinstance(report.get("task_queue"), dict) else {}
+    runtime_identity = (
+        report.get("runtime_identity")
+        if isinstance(report.get("runtime_identity"), dict)
+        else {}
+    )
+    if runtime_identity:
+        lines.append(
+            "- runtime: "
+            f"status={runtime_identity.get('status', '-')}; "
+            f"expected={runtime_identity.get('expected_commit_short') or '-'}; "
+            f"actual={runtime_identity.get('actual_commit_short') or '-'}"
+        )
     if task_queue:
         lines.append(
             "- task queue: "
@@ -302,6 +334,24 @@ def _task_queue_checks(task_queue: dict) -> list[dict]:
     return rows
 
 
+def _runtime_identity_check(runtime_identity: dict) -> dict:
+    status = str(runtime_identity.get("status") or "failed")
+    reason = runtime_identity.get("reason") or runtime_identity.get("error")
+    if status == "passed":
+        message = "API runtime commit matches current checkout."
+    elif status == "skipped":
+        message = str(reason or "runtime identity check skipped")
+    else:
+        message = str(reason or "API runtime identity check failed")
+    return {
+        "name": "api_runtime_identity",
+        "status": status,
+        "message": message,
+        "expected_commit_short": runtime_identity.get("expected_commit_short"),
+        "actual_commit_short": runtime_identity.get("actual_commit_short"),
+    }
+
+
 def _check_from_http(name: str, result: dict | None) -> dict:
     if not result:
         return {"name": name, "status": "failed", "message": "not executed"}
@@ -360,8 +410,18 @@ def _next_actions(
     task_queue: dict,
     submission: dict | None,
     poll_result: dict | None,
+    runtime_identity: dict | None,
 ) -> list[str]:
     actions = []
+    runtime_identity = runtime_identity if isinstance(runtime_identity, dict) else {}
+    if runtime_identity.get("status") == "failed":
+        reason = str(runtime_identity.get("reason") or runtime_identity.get("error") or "")
+        if reason == "api_runtime_commit_mismatch":
+            actions.append("重啟 FastAPI/Celery，現在 API runtime 不是目前工作樹 commit。")
+        elif reason == "api_runtime_commit_unavailable":
+            actions.append("確認 /services/runtime-identity 可回傳 git_commit，或用 --skip-runtime-identity 略過遠端部署比對。")
+        else:
+            actions.append("確認 API 已啟動並可讀取 /services/runtime-identity，或用 --skip-runtime-identity 略過比對。")
     if task_queue.get("legacy_status_shape"):
         actions.append("重啟 FastAPI，使 /services/status 載入新版 task_queue 診斷欄位。")
     if not task_queue.get("ready"):

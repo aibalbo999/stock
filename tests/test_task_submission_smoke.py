@@ -53,6 +53,7 @@ def test_task_submission_smoke_posts_noop_market_refresh_payload() -> None:
     report = smoke.run_task_submission_smoke(
         api_url="http://api.test",
         submit=True,
+        check_runtime_identity=False,
         opener=fake_opener,
         timeout_seconds=3,
     )
@@ -101,6 +102,7 @@ def test_task_submission_smoke_polls_until_task_success() -> None:
     report = smoke.run_task_submission_smoke(
         submit=True,
         wait=True,
+        check_runtime_identity=False,
         opener=fake_opener,
         clock=lambda: 0.0,
         sleeper=lambda seconds: sleeps.append(seconds),
@@ -130,7 +132,11 @@ def test_task_submission_smoke_reports_api_submission_failure() -> None:
             status=500,
         )
 
-    report = smoke.run_task_submission_smoke(submit=True, opener=fake_opener)
+    report = smoke.run_task_submission_smoke(
+        submit=True,
+        check_runtime_identity=False,
+        opener=fake_opener,
+    )
 
     assert report["status"] == "failed"
     assert report["submission"]["status_code"] == 500
@@ -153,7 +159,7 @@ def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -
             }
         )
 
-    report = smoke.run_task_submission_smoke(opener=fake_opener)
+    report = smoke.run_task_submission_smoke(check_runtime_identity=False, opener=fake_opener)
 
     assert report["status"] == "caution"
     assert report["task_queue"]["legacy_status_shape"] is True
@@ -162,3 +168,39 @@ def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -
         check["name"]: check["status"]
         for check in report["checks"]
     }["task_queue_status_shape"] == "warning"
+
+
+def test_task_submission_smoke_reports_api_runtime_commit_mismatch() -> None:
+    def fake_opener(request, timeout):
+        if request.full_url.endswith("/services/runtime-identity"):
+            return FakeResponse(
+                {
+                    "git_commit": "old-api-commit",
+                    "source": "git",
+                    "git_dirty": False,
+                }
+            )
+        return FakeResponse(
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "submission_contract_ready": True,
+                    "worker_online": True,
+                }
+            }
+        )
+
+    report = smoke.run_task_submission_smoke(
+        api_url="http://api.test",
+        expected_api_commit="new-api-commit",
+        opener=fake_opener,
+    )
+
+    assert report["status"] == "failed"
+    assert report["runtime_identity"]["reason"] == "api_runtime_commit_mismatch"
+    assert {
+        check["name"]: check["status"]
+        for check in report["checks"]
+    }["api_runtime_identity"] == "failed"
+    assert "重啟 FastAPI/Celery" in report["next_actions"][0]

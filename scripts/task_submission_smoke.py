@@ -32,6 +32,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--poll-interval", type=float, default=1.0)
+    parser.add_argument(
+        "--skip-runtime-identity",
+        action="store_true",
+        help="Skip API runtime commit comparison.",
+    )
+    parser.add_argument(
+        "--expected-api-commit",
+        default=None,
+        help="Expected API runtime git commit. Defaults to the current working tree commit.",
+    )
     parser.add_argument("--strict", action="store_true", help="Return non-zero on caution.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(argv)
@@ -44,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         wait=bool(args.wait),
         timeout_seconds=float(args.timeout),
         poll_interval_seconds=float(args.poll_interval),
+        check_runtime_identity=not args.skip_runtime_identity,
+        expected_api_commit=args.expected_api_commit,
     )
     print(to_json(report) if args.json else format_task_submission_smoke(report))
     return smoke_exit_code(report, strict=bool(args.strict))

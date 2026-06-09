@@ -89,8 +89,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "id": "task_submission_smoke",
         "label": "Task submission readiness smoke",
         "description": (
-            "只讀檢查 /services/status 的 task_queue readiness 與背景任務提交 smoke 指令，"
-            "不送出 Celery 任務。"
+            "只讀檢查 /services/runtime-identity、/services/status 的 task_queue readiness "
+            "與背景任務提交 smoke 指令，不送出 Celery 任務。"
         ),
         "display_command": ".venv/bin/python scripts/task_submission_smoke.py --json",
         "argv": [sys.executable, "scripts/task_submission_smoke.py", "--json"],
@@ -617,6 +617,17 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
             _first_text(payload, "next_actions") or "背景任務提交 readiness 正常。",
         )
     ]
+    runtime_identity = _dict_value(payload, "runtime_identity")
+    if runtime_identity:
+        rows.append(
+            _summary_row(
+                "API runtime identity",
+                runtime_identity.get("status") or "-",
+                runtime_identity.get("expected_commit_short") or "-",
+                runtime_identity.get("actual_commit_short") or "-",
+                runtime_identity.get("reason") or runtime_identity.get("error") or "-",
+            )
+        )
     task_queue = _dict_value(payload, "task_queue")
     if task_queue:
         rows.append(

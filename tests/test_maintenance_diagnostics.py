@@ -427,6 +427,12 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
             "legacy_status_shape": True,
             "status_shape_warning": "目前 API runtime 回傳 legacy celery status。",
         },
+        "runtime_identity": {
+            "status": "failed",
+            "expected_commit_short": "new-commit",
+            "actual_commit_short": "old-commit",
+            "reason": "api_runtime_commit_mismatch",
+        },
         "submission": {
             "ok": True,
             "status_code": 202,
@@ -462,18 +468,23 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
     assert "submit=True" in rows[0]["Ready"]
     assert "warnings=1" in rows[0]["數量"]
     assert "重啟 FastAPI" in rows[0]["下一步"]
-    assert rows[1]["項目"] == "Task queue"
-    assert rows[1]["狀態"] == "not_ready"
-    assert "worker=False" in rows[1]["Ready"]
-    assert "legacy_status_shape=True" in rows[1]["數量"]
-    assert rows[2]["項目"] == "Data operation submission"
-    assert rows[2]["狀態"] == "ok"
-    assert rows[2]["Ready"] == "202"
-    assert rows[2]["數量"] == "abc-123"
-    assert rows[3]["項目"] == "Task polling"
-    assert rows[3]["狀態"] == "finished"
-    assert "successful=True" in rows[3]["Ready"]
-    assert rows[3]["數量"] == "SUCCESS"
+    assert rows[1]["項目"] == "API runtime identity"
+    assert rows[1]["狀態"] == "failed"
+    assert rows[1]["Ready"] == "new-commit"
+    assert rows[1]["數量"] == "old-commit"
+    assert rows[1]["下一步"] == "api_runtime_commit_mismatch"
+    assert rows[2]["項目"] == "Task queue"
+    assert rows[2]["狀態"] == "not_ready"
+    assert "worker=False" in rows[2]["Ready"]
+    assert "legacy_status_shape=True" in rows[2]["數量"]
+    assert rows[3]["項目"] == "Data operation submission"
+    assert rows[3]["狀態"] == "ok"
+    assert rows[3]["Ready"] == "202"
+    assert rows[3]["數量"] == "abc-123"
+    assert rows[4]["項目"] == "Task polling"
+    assert rows[4]["狀態"] == "finished"
+    assert "successful=True" in rows[4]["Ready"]
+    assert rows[4]["數量"] == "SUCCESS"
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:

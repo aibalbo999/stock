@@ -494,6 +494,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_queue_preflight_ready(" in source
     assert "def task_queue_unready_message(" in source
     assert "def task_queue_worker_warning(" in source
+    assert "def task_queue_smoke_hint(" in source
+    assert "task_submission_smoke.py" in source
     assert "def task_queue_health_rows(" in source
     assert "def task_queue_health_alert(" in source
     assert "def task_queue_repair_rows(" in source

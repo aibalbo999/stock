@@ -172,8 +172,8 @@ def task_queue_unready_message(task_queue: dict) -> str:
         reasons.append("背景任務提交契約尚未就緒")
     if not reasons:
         reasons.append("背景任務 queue 尚未就緒")
-    smoke_commands = task_queue.get("smoke_commands") or []
-    hint = f" 可用指令：{smoke_commands[0]}" if smoke_commands else ""
+    hint_command = task_queue_smoke_hint(task_queue)
+    hint = f" 可用指令：{hint_command}" if hint_command else ""
     return "；".join(reasons) + "。" + hint
 
 
@@ -184,8 +184,8 @@ def task_queue_worker_warning(task_queue: dict) -> str:
         detail = f"；錯誤：{task_queue['worker_ping_error']}"
     else:
         detail = ""
-    smoke_commands = task_queue.get("smoke_commands") or []
-    hint = f" 可用指令：{smoke_commands[0]}" if smoke_commands else ""
+    hint_command = task_queue_smoke_hint(task_queue)
+    hint = f" 可用指令：{hint_command}" if hint_command else ""
     return f"背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待{detail}。{hint}"
 
 
@@ -202,6 +202,16 @@ def task_queue_accepts_submission_but_worker_offline(task_queue: dict | None) ->
         and task_queue.get("worker_ping_checked")
         and not task_queue.get("worker_online")
     )
+
+
+def task_queue_smoke_hint(task_queue: dict | None) -> str:
+    if not isinstance(task_queue, dict):
+        return ""
+    smoke_commands = [str(command) for command in task_queue.get("smoke_commands") or []]
+    for command in smoke_commands:
+        if "task_submission_smoke.py" in command:
+            return command
+    return smoke_commands[0] if smoke_commands else ""
 
 
 def _task_id(task_response: Any) -> str:

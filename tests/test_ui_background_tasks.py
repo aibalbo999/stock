@@ -168,7 +168,8 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
             "missing_task_exports": [],
             "task_names_match_expected": True,
             "smoke_commands": [
-                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+                ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
             ],
         },
     )
@@ -190,7 +191,7 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
     assert "last_data_task_id" not in fake_st.session_state
     assert fake_st.errors == [
         "股價刷新任務送出失敗：Redis broker/backend 未連線。 "
-        "可用指令：.venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+        "可用指令：.venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
     ]
     assert fake_st.successes == []
 
@@ -232,7 +233,8 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
             "worker_online": False,
             "worker_ping_error": None,
             "smoke_commands": [
-                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+                ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
             ],
         },
     )
@@ -249,7 +251,7 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
     assert fake_st.session_state["last_data_task_id"] == "task-queued-without-worker"
     assert fake_st.warnings == [
         "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待。 "
-        "可用指令：.venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+        "可用指令：.venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
     ]
     assert fake_st.successes == [
         "已送出股價刷新背景任務：task-queued-without-worker"
@@ -270,6 +272,25 @@ def test_task_queue_submission_success_note_explains_worker_offline_queue_state(
         )
         == ""
     )
+
+
+def test_task_queue_smoke_hint_prefers_submission_smoke_and_falls_back_to_first_command() -> None:
+    assert background_tasks.task_queue_smoke_hint(
+        {
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+                ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
+            ]
+        }
+    ) == ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
+    assert background_tasks.task_queue_smoke_hint(
+        {
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+            ]
+        }
+    ) == ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+    assert background_tasks.task_queue_smoke_hint({}) == ""
 
 
 def test_task_queue_preflight_reuses_ready_status_cache(monkeypatch) -> None:

@@ -87,6 +87,65 @@ def test_optimization_progress_marks_core_capability_gap_as_blocking() -> None:
     )
 
 
+def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
+    status = _ready_status()
+    status["upgrade_capability_matrix"]["ai_rag"]["neo4j_import"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["ai_rag"]["graphrag_live_cypher_query"] = {
+        "status": "degraded",
+        "detail": "missing Neo4j env",
+    }
+    status["upgrade_capability_matrix"]["data_business_logic"][
+        "company_filing_high_risk_unlocker"
+    ] = {
+        "status": "not_configured",
+        "detail": "missing unlocker env",
+    }
+    status["local_dependency_auto_defaults"] = {
+        "mode": "status_preview",
+        "compatible_audit_command": (
+            ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        ),
+        "detected": {"neo4j": True, "flaresolverr": True},
+        "would_apply_groups": ["flaresolverr", "neo4j"],
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "group": "neo4j",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "group": "flaresolverr",
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+        ],
+        "local_action_available_count": 3,
+    }
+
+    progress = optimization_progress_status(status)
+
+    actions = {row["capability"]: row for row in progress["next_actions"]}
+    assert progress["status"] == "ready_with_optional_gaps"
+    assert progress["optional_gap_count"] == 3
+    assert actions["neo4j_import"]["status"] == "local_ready"
+    assert actions["neo4j_import"]["capability_status"] == "degraded"
+    assert actions["neo4j_import"]["locally_available"] is True
+    assert "--auto-local-defaults" in actions["neo4j_import"]["next_action"]
+    assert actions["company_filing_high_risk_unlocker"]["status"] == "local_ready"
+    assert progress["local_auto_defaults"]["local_action_available_count"] == 3
+
+
 def test_optimization_progress_ui_rows_summarize_domains_and_actions() -> None:
     status = _ready_status()
     status["upgrade_capability_matrix"]["data_business_logic"][

@@ -233,7 +233,11 @@ READY_STATUSES = frozenset({"ready"})
 
 def optimization_progress_status(status: dict) -> dict:
     matrix = status.get("upgrade_capability_matrix") or {}
-    domains = [_domain_status(domain, matrix) for domain in OPTIMIZATION_DOMAINS]
+    local_auto_defaults = _local_auto_defaults(status)
+    domains = [
+        _domain_status(domain, matrix, local_auto_defaults)
+        for domain in OPTIMIZATION_DOMAINS
+    ]
     blocking_gap_count = sum(int(domain["blocking_gap_count"]) for domain in domains)
     optional_gap_count = sum(int(domain["optional_gap_count"]) for domain in domains)
     total_checks = sum(int(domain["total_checks"]) for domain in domains)
@@ -257,11 +261,19 @@ def optimization_progress_status(status: dict) -> dict:
         ),
         "next_actions": next_actions,
         "status_note": _status_note(overall_status),
+        "local_auto_defaults": _local_auto_defaults_summary(local_auto_defaults),
     }
 
 
-def _domain_status(domain: OptimizationDomain, matrix: dict) -> dict:
-    checks = [_capability_check(ref, matrix) for ref in domain.capability_refs]
+def _domain_status(
+    domain: OptimizationDomain,
+    matrix: dict,
+    local_auto_defaults: dict,
+) -> dict:
+    checks = [
+        _capability_check(ref, matrix, local_auto_defaults)
+        for ref in domain.capability_refs
+    ]
     ready_checks = sum(1 for check in checks if check["ready"])
     blocking_gaps = [check for check in checks if not check["ready"] and not check["optional"]]
     optional_gaps = [check for check in checks if not check["ready"] and check["optional"]]
@@ -284,21 +296,35 @@ def _domain_status(domain: OptimizationDomain, matrix: dict) -> dict:
     }
 
 
-def _capability_check(ref: OptimizationCapabilityRef, matrix: dict) -> dict:
+def _capability_check(
+    ref: OptimizationCapabilityRef,
+    matrix: dict,
+    local_auto_defaults: dict,
+) -> dict:
     capability = _matrix_capability(matrix, ref.area, ref.capability)
     capability_status = str(capability.get("status") or "missing")
     ready = capability_status in READY_STATUSES
+    local_match = _local_auto_default_match(ref, local_auto_defaults)
+    locally_available = bool(local_match and not ready)
     return {
         "area": ref.area,
         "capability": ref.capability,
         "label": ref.label,
-        "status": capability_status,
+        "status": "local_ready" if locally_available else capability_status,
+        "capability_status": capability_status,
         "ready": ready,
         "optional": ref.optional,
         "external": ref.external,
         "action_type": ref.action_type,
-        "next_action": ref.next_action or _default_next_action(ref, capability),
+        "next_action": _next_action_for_capability(
+            ref,
+            capability,
+            local_match=local_match,
+            locally_available=locally_available,
+        ),
         "detail": capability.get("detail"),
+        "locally_available": locally_available,
+        "local_auto_default": local_match or {},
     }
 
 
@@ -338,9 +364,32 @@ def _next_actions(domains: list[dict]) -> list[dict]:
                         "external": gap["external"],
                         "action_type": gap["action_type"],
                         "next_action": gap["next_action"],
+                        "capability_status": gap.get("capability_status"),
+                        "locally_available": gap.get("locally_available"),
+                        "local_auto_default": gap.get("local_auto_default") or {},
                     }
                 )
     return actions
+
+
+def _next_action_for_capability(
+    ref: OptimizationCapabilityRef,
+    capability: dict[str, Any],
+    *,
+    local_match: dict | None,
+    locally_available: bool,
+) -> str:
+    if locally_available and local_match:
+        command = str(
+            local_match.get("verify_command")
+            or ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        )
+        group = str(local_match.get("group") or "local dependency")
+        return (
+            f"本機 {group} 服務已偵測到；可先用 `{command}` 驗證並套用本次程序 defaults，"
+            "正式部署時再寫入 .env。"
+        )
+    return ref.next_action or _default_next_action(ref, capability)
 
 
 def _primary_next_action(
@@ -390,6 +439,51 @@ def _status_note(status: str) -> str:
     if status == "ready_with_optional_gaps":
         return "核心實作已就緒；剩餘項目屬於外部部署、額度或付費資料源選配。"
     return "核心實作與已選定的外部能力都已就緒。"
+
+
+def _local_auto_defaults(status: dict) -> dict:
+    direct = status.get("local_dependency_auto_defaults")
+    if isinstance(direct, dict):
+        return direct
+    local_dependencies = status.get("local_dependencies")
+    if isinstance(local_dependencies, dict) and isinstance(
+        local_dependencies.get("auto_defaults_preview"),
+        dict,
+    ):
+        return local_dependencies["auto_defaults_preview"]
+    return {}
+
+
+def _local_auto_default_match(
+    ref: OptimizationCapabilityRef,
+    local_auto_defaults: dict,
+) -> dict | None:
+    if ref.action_type != "free_local_or_external_config":
+        return None
+    matches = local_auto_defaults.get("capability_matches")
+    if not isinstance(matches, list):
+        return None
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        if match.get("area") == ref.area and match.get("capability") == ref.capability:
+            return match
+    return None
+
+
+def _local_auto_defaults_summary(local_auto_defaults: dict) -> dict:
+    if not local_auto_defaults:
+        return {}
+    return {
+        "mode": local_auto_defaults.get("mode"),
+        "compatible_audit_command": local_auto_defaults.get("compatible_audit_command"),
+        "detected": local_auto_defaults.get("detected") or {},
+        "would_apply_groups": local_auto_defaults.get("would_apply_groups") or [],
+        "already_configured_groups": local_auto_defaults.get("already_configured_groups") or [],
+        "local_action_available_count": int(
+            local_auto_defaults.get("local_action_available_count") or 0
+        ),
+    }
 
 
 def _no_gap_action() -> dict:

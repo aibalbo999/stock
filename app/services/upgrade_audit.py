@@ -357,6 +357,13 @@ def audit_upgrade_capabilities(
         if isinstance(status.get("local_dependencies"), dict)
         else {}
     )
+    local_dependency_auto_defaults = (
+        status.get("local_dependency_auto_defaults")
+        if isinstance(status.get("local_dependency_auto_defaults"), dict)
+        else local_dependencies.get("auto_defaults_preview")
+        if isinstance(local_dependencies.get("auto_defaults_preview"), dict)
+        else {}
+    )
     checks = [
         _requirement_result(requirement, status, strict_external=strict_external)
         for requirement in REQUIREMENTS
@@ -428,6 +435,7 @@ def audit_upgrade_capabilities(
         "implementation": implementation,
         "deployment": deployment,
         "local_dependencies": local_dependencies,
+        "local_dependency_auto_defaults": local_dependency_auto_defaults,
         "areas": dict(sorted(areas.items())),
         "checks": checks,
         "failures": failures,

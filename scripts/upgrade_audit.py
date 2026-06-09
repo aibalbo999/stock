@@ -11,31 +11,17 @@ import urllib.request
 from app.core.config import get_settings
 from app.data_sources.company_filing_render import company_filing_playwright_browser_status
 from app.services.local_dependency_diagnostics import (
+    LOCAL_BROWSERLESS_PORT,
+    LOCAL_BROWSER_RENDER_ENV_DEFAULTS,
+    LOCAL_CHROMA_ENV_DEFAULTS,
     LOCAL_DOCKER_DEPENDENCY_IMAGES,
+    LOCAL_FLARESOLVERR_IMAGE,
+    LOCAL_FLARESOLVERR_PORT,
+    LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS,
     local_docker_image_status,
 )
 from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 from app.services.upgrade_audit import audit_upgrade_capabilities
-
-LOCAL_BROWSERLESS_PORT = 3000
-LOCAL_FLARESOLVERR_PORT = 8191
-LOCAL_CHROMA_PORT = 8001
-LOCAL_CHROMA_ENV_DEFAULTS = {
-    "USE_CHROMA": "true",
-    "CHROMA_API_URL": f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
-}
-LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
-    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
-    "COMPANY_FILING_BROWSER_RENDER_URL": (
-        f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/content?token=stock_ai_browserless_token"
-    ),
-}
-LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS = {
-    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
-    "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
-    "COMPANY_FILING_BROWSER_RENDER_URL": f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/v1",
-}
-LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 
 def main(argv: list[str] | None = None) -> int:

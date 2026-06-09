@@ -19,6 +19,7 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert "runtime_identity" in status
     assert "task_queue" in status
     assert "local_dependencies" in status
+    assert "local_dependency_auto_defaults" in status
     assert status["runtime_identity"]["collector_path"] == "app/services/runtime_identity.py"
     assert "git_commit" in status["runtime_identity"]
     assert "git_dirty" in status["runtime_identity"]
@@ -39,6 +40,13 @@ def test_backend_status_collectors_for_database_workflow_and_security(
     assert all(isinstance(row["open"], bool) for row in status["local_dependencies"]["ports"])
     assert "start_core" in status["local_dependencies"]["commands"]
     assert "verify_flaresolverr" in status["local_dependencies"]["commands"]
+    assert status["local_dependencies"]["auto_defaults_preview"] == (
+        status["local_dependency_auto_defaults"]
+    )
+    assert status["local_dependency_auto_defaults"]["mode"] == "status_preview"
+    assert "compatible_audit_command" in status["local_dependency_auto_defaults"]
+    assert isinstance(status["local_dependency_auto_defaults"]["detected"], dict)
+    assert isinstance(status["local_dependency_auto_defaults"]["capability_matches"], list)
     assert isinstance(status["local_dependencies"]["repair_plan"], list)
     assert all(
         {"item", "state", "next_step", "repair_command", "verify_command", "severity"} <= set(row)
@@ -83,6 +91,7 @@ def test_backend_status_collectors_for_database_workflow_and_security(
         service_status_source
     )
     assert "def local_dependency_runtime_status(" in local_dependency_source
+    assert "def local_dependency_auto_defaults_preview(" in local_dependency_source
     assert "def local_dependency_last_start_status(" in local_dependency_source
     assert "def local_dependency_repair_plan(" in local_dependency_source
     assert "def is_local_port_open(" in local_dependency_source
@@ -153,6 +162,43 @@ def test_local_dependency_runtime_status_builds_service_repair_plan(tmp_path) ->
     )
     assert repair_by_item["FlareSolverr unlocker"]["severity"] == "warning"
     assert "--prefer-unlocker" in repair_by_item["FlareSolverr unlocker"]["repair_command"]
+
+
+def test_local_dependency_runtime_status_previews_auto_defaults(tmp_path) -> None:
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    def fake_port_open(_host: str, port: int) -> bool:
+        return port in {7687, 8191}
+
+    status = local_dependency_runtime_status(
+        root=tmp_path,
+        environ={},
+        port_open_func=fake_port_open,
+        chroma_http_ready_func=lambda _url: True,
+    )
+
+    preview = status["auto_defaults_preview"]
+    assert preview["mode"] == "status_preview"
+    assert preview["detected"] == {
+        "neo4j": True,
+        "chroma": True,
+        "browserless": False,
+        "flaresolverr": True,
+    }
+    assert preview["would_apply_groups"] == ["chroma", "flaresolverr", "neo4j"]
+    assert "NEO4J_URI" in preview["would_apply_env_keys"]
+    assert "COMPANY_FILING_BROWSER_RENDER_URL" in preview["would_apply_env_keys"]
+    matches = {
+        (row["area"], row["capability"]): row
+        for row in preview["capability_matches"]
+    }
+    assert matches[("ai_rag", "neo4j_import")]["group"] == "neo4j"
+    assert matches[("ai_rag", "graphrag_live_cypher_query")]["group"] == "neo4j"
+    assert (
+        matches[("data_business_logic", "company_filing_high_risk_unlocker")]["group"]
+        == "flaresolverr"
+    )
+    assert preview["local_action_available_count"] == 4
 
 
 def test_task_queue_status_contract_and_compatibility_alias(service_status_snapshot) -> None:

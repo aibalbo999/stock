@@ -158,6 +158,7 @@ def optimization_progress_rows(progress: dict) -> list[dict]:
         "ready": "完成",
         "ready_with_optional_gaps": "核心完成/外部選配",
         "degraded": "需處理",
+        "local_ready": "本機可驗證",
     }
     return [
         {
@@ -193,6 +194,8 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
             "主題": action.get("domain_label") or "-",
             "能力": action.get("label") or action.get("capability") or "-",
             "狀態": action.get("status") or "-",
+            "能力狀態": action.get("capability_status") or action.get("status") or "-",
+            "本機": "可用" if action.get("locally_available") else "-",
             "類型": action_type_labels.get(
                 str(action.get("action_type")),
                 action.get("action_type") or "-",

@@ -16,7 +16,14 @@ from pathlib import Path
 
 from app.data_sources.company_filing_render import company_filing_playwright_browser_status
 from app.services.local_dependency_diagnostics import (
+    LOCAL_BROWSERLESS_PORT,
+    LOCAL_BROWSER_RENDER_ENV_DEFAULTS,
+    LOCAL_CHROMA_ENV_DEFAULTS,
+    LOCAL_CHROMA_PORT,
     LOCAL_DEPENDENCY_START_STATUS_PATH,
+    LOCAL_FLARESOLVERR_IMAGE,
+    LOCAL_FLARESOLVERR_PORT,
+    LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS,
     local_docker_image_status,
 )
 from app.services.schedule_config import ScheduleConfigStore
@@ -31,28 +38,9 @@ API_HOST = "127.0.0.1"
 API_PORT = 8000
 STREAMLIT_HOST = "0.0.0.0"
 STREAMLIT_PORT = 8501
-LOCAL_BROWSERLESS_PORT = 3000
-LOCAL_FLARESOLVERR_PORT = 8191
 LOCAL_REDIS_PORT = 6379
 LOCAL_POSTGRES_PORT = 5432
-LOCAL_CHROMA_PORT = 8001
-LOCAL_CHROMA_ENV_DEFAULTS = {
-    "USE_CHROMA": "true",
-    "CHROMA_API_URL": f"http://127.0.0.1:{LOCAL_CHROMA_PORT}",
-}
 OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
-LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
-    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
-    "COMPANY_FILING_BROWSER_RENDER_URL": (
-        f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/content?token=stock_ai_browserless_token"
-    ),
-}
-LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS = {
-    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
-    "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
-    "COMPANY_FILING_BROWSER_RENDER_URL": f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/v1",
-}
-LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 
 
 def main() -> int:

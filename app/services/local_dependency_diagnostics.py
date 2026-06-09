@@ -4,8 +4,12 @@ import os
 import json
 import socket
 import subprocess
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping
 from pathlib import Path
+
+from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
 
 
 LOCAL_DOCKER_DEPENDENCY_IMAGES = {
@@ -15,14 +19,43 @@ LOCAL_DOCKER_DEPENDENCY_IMAGES = {
     "browserless": "ghcr.io/browserless/chromium:latest",
     "chroma": "chromadb/chroma:latest",
 }
+LOCAL_NEO4J_PORT = 7687
+LOCAL_BROWSERLESS_PORT = 3000
+LOCAL_FLARESOLVERR_PORT = 8191
+LOCAL_CHROMA_PORT = 8001
 LOCAL_DEPENDENCY_PORTS = {
     "redis": {"label": "Redis", "port": 6379, "role": "Celery broker/backend 與快取"},
     "postgres": {"label": "Postgres", "port": 5432, "role": "正式資料庫"},
-    "neo4j": {"label": "Neo4j", "port": 7687, "role": "GraphRAG live graph"},
-    "browserless": {"label": "Browserless", "port": 3000, "role": "公司文件瀏覽器 render"},
-    "chroma": {"label": "Chroma", "port": 8001, "role": "向量資料庫服務"},
-    "flaresolverr": {"label": "FlareSolverr", "port": 8191, "role": "MOPS/TWSE 高風險 unlocker"},
+    "neo4j": {"label": "Neo4j", "port": LOCAL_NEO4J_PORT, "role": "GraphRAG live graph"},
+    "browserless": {
+        "label": "Browserless",
+        "port": LOCAL_BROWSERLESS_PORT,
+        "role": "公司文件瀏覽器 render",
+    },
+    "chroma": {"label": "Chroma", "port": LOCAL_CHROMA_PORT, "role": "向量資料庫服務"},
+    "flaresolverr": {
+        "label": "FlareSolverr",
+        "port": LOCAL_FLARESOLVERR_PORT,
+        "role": "MOPS/TWSE 高風險 unlocker",
+    },
 }
+LOCAL_CHROMA_API_URL = f"http://127.0.0.1:{LOCAL_CHROMA_PORT}"
+LOCAL_CHROMA_ENV_DEFAULTS = {
+    "USE_CHROMA": "true",
+    "CHROMA_API_URL": LOCAL_CHROMA_API_URL,
+}
+LOCAL_BROWSER_RENDER_ENV_DEFAULTS = {
+    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+    "COMPANY_FILING_BROWSER_RENDER_URL": (
+        f"http://127.0.0.1:{LOCAL_BROWSERLESS_PORT}/content?token=stock_ai_browserless_token"
+    ),
+}
+LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS = {
+    "COMPANY_FILING_BROWSER_RENDER_ENABLED": "true",
+    "COMPANY_FILING_BROWSER_RENDER_PROVIDER": "flaresolverr",
+    "COMPANY_FILING_BROWSER_RENDER_URL": f"http://127.0.0.1:{LOCAL_FLARESOLVERR_PORT}/v1",
+}
+LOCAL_FLARESOLVERR_IMAGE = "ghcr.io/flaresolverr/flaresolverr:latest"
 LOCAL_DEPENDENCY_COMMANDS = {
     "start_core": ".venv/bin/python scripts/start_system.py --start-dependencies",
     "start_unlocker": ".venv/bin/python scripts/start_system.py --start-dependencies --prefer-unlocker",
@@ -51,9 +84,10 @@ def local_dependency_runtime_status(
     root: Path | None = None,
     environ: Mapping[str, str] | None = None,
     port_open_func: Callable[[str, int], bool] | None = None,
+    chroma_http_ready_func: Callable[[str], bool] | None = None,
 ) -> dict:
     project_root = root or Path(__file__).resolve().parents[2]
-    env = environ or os.environ
+    env = os.environ if environ is None else environ
     port_checker = port_open_func or is_local_port_open
     ports = [
         {
@@ -73,6 +107,13 @@ def local_dependency_runtime_status(
     compose_file_present = compose_path.exists()
     commands = dict(LOCAL_DEPENDENCY_COMMANDS)
     configured_env = _local_dependency_configured_env(env)
+    auto_defaults_preview = local_dependency_auto_defaults_preview(
+        ports=ports,
+        configured_env=configured_env,
+        environ=env,
+        commands=commands,
+        chroma_http_ready_func=chroma_http_ready_func,
+    )
     return {
         "collector_path": "app/services/local_dependency_diagnostics.py",
         "compose_path": "docker-compose.yml",
@@ -89,6 +130,7 @@ def local_dependency_runtime_status(
         "unlocker_ready": "flaresolverr" in open_services,
         "commands": commands,
         "configured_env": configured_env,
+        "auto_defaults_preview": auto_defaults_preview,
         "last_start": local_dependency_last_start_status(root=project_root),
         "repair_plan": local_dependency_repair_plan(
             compose_file_present=compose_file_present,
@@ -97,6 +139,139 @@ def local_dependency_runtime_status(
             configured_env=configured_env,
             commands=commands,
         ),
+    }
+
+
+def local_dependency_auto_defaults_preview(
+    *,
+    ports: list[dict],
+    configured_env: dict,
+    environ: Mapping[str, str] | None = None,
+    commands: dict[str, str] | None = None,
+    chroma_http_ready_func: Callable[[str], bool] | None = None,
+) -> dict:
+    env = os.environ if environ is None else environ
+    command_map = commands or dict(LOCAL_DEPENDENCY_COMMANDS)
+    chroma_url = str(env.get("CHROMA_API_URL") or LOCAL_CHROMA_API_URL)
+    chroma_heartbeat_ready = bool(
+        (chroma_http_ready_func or local_chroma_heartbeat_ok)(chroma_health_url(chroma_url))
+    )
+    detected = {
+        "neo4j": _local_dependency_port_open(ports, "neo4j"),
+        "chroma": chroma_heartbeat_ready,
+        "browserless": _local_dependency_port_open(ports, "browserless"),
+        "flaresolverr": _local_dependency_port_open(ports, "flaresolverr"),
+    }
+    groups: list[dict] = []
+    _append_auto_default_group(
+        groups,
+        "neo4j",
+        detected=detected["neo4j"],
+        env_defaults=LOCAL_NEO4J_ENV_DEFAULTS,
+        applied_env_keys=[
+            key for key in LOCAL_NEO4J_ENV_DEFAULTS if not str(env.get(key) or "").strip()
+        ],
+        configured=bool(configured_env.get("neo4j_uri_configured")),
+        verify_command=command_map.get("verify_neo4j") or "-",
+        capabilities=[
+            ("ai_rag", "neo4j_import"),
+            ("ai_rag", "graphrag_live_cypher_query"),
+        ],
+    )
+    _append_auto_default_group(
+        groups,
+        "chroma",
+        detected=detected["chroma"],
+        env_defaults=LOCAL_CHROMA_ENV_DEFAULTS,
+        applied_env_keys=(
+            []
+            if env.get("USE_CHROMA") or env.get("CHROMA_API_URL")
+            else list(LOCAL_CHROMA_ENV_DEFAULTS)
+        ),
+        configured=bool(configured_env.get("chroma_api_url_configured")),
+        verify_command=command_map.get("verify_chroma") or "-",
+        capabilities=[
+            ("ai_rag", "hybrid_search"),
+        ],
+    )
+    render_group = "flaresolverr" if detected["flaresolverr"] else "browserless"
+    render_defaults = (
+        LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS
+        if render_group == "flaresolverr"
+        else LOCAL_BROWSER_RENDER_ENV_DEFAULTS
+    )
+    render_detected = bool(detected["flaresolverr"] or detected["browserless"])
+    render_skip = bool(
+        env.get("COMPANY_FILING_PROXY_URLS")
+        or (
+            env.get("COMPANY_FILING_BROWSER_RENDER_ENABLED")
+            and env.get("COMPANY_FILING_BROWSER_RENDER_URL")
+        )
+        or env.get("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED")
+    )
+    _append_auto_default_group(
+        groups,
+        render_group,
+        detected=render_detected,
+        env_defaults=render_defaults,
+        applied_env_keys=[] if render_skip else list(render_defaults),
+        configured=bool(
+            configured_env.get("browser_render_enabled")
+            and (
+                configured_env.get("browserless_url_configured")
+                or configured_env.get("flaresolverr_url_configured")
+            )
+        ),
+        verify_command=(
+            command_map.get("verify_flaresolverr")
+            if render_group == "flaresolverr"
+            else command_map.get("verify_browserless")
+        )
+        or "-",
+        capabilities=[
+            (
+                "data_business_logic",
+                "company_filing_high_risk_unlocker"
+                if render_group == "flaresolverr"
+                else "company_filing_browser_or_proxy_fallback",
+            )
+        ],
+    )
+    would_apply_groups = [
+        str(group["group"]) for group in groups if group["detected"] and group["would_apply"]
+    ]
+    already_configured_groups = [
+        str(group["group"])
+        for group in groups
+        if group["detected"] and group["configured"] and not group["would_apply"]
+    ]
+    capability_matches = [
+        match
+        for group in groups
+        if group["detected"] and (group["would_apply"] or group["configured"])
+        for match in _auto_default_capability_matches(group)
+    ]
+    return {
+        "collector_path": "app/services/local_dependency_diagnostics.py",
+        "mode": "status_preview",
+        "compatible_audit_command": (
+            ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        ),
+        "note": "Status preview only; no environment variables are changed by /services/status.",
+        "detected": detected,
+        "groups": groups,
+        "would_apply_groups": sorted(would_apply_groups),
+        "would_apply_env_keys": sorted(
+            {
+                str(key)
+                for group in groups
+                if group["detected"] and group["would_apply"]
+                for key in group.get("applied_env_keys") or []
+            }
+        ),
+        "already_configured_groups": sorted(already_configured_groups),
+        "capability_matches": capability_matches,
+        "local_action_available_count": len(capability_matches),
     }
 
 
@@ -189,6 +364,18 @@ def is_local_port_open(host: str, port: int, *, timeout_seconds: float = 0.1) ->
         return False
 
 
+def local_chroma_heartbeat_ok(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=0.5) as response:
+            return 200 <= int(response.getcode()) < 300
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return False
+
+
+def chroma_health_url(api_url: str) -> str:
+    return str(api_url or LOCAL_CHROMA_API_URL).rstrip("/") + "/api/v2/heartbeat"
+
+
 def local_docker_image_status(images: dict[str, str] | None = None) -> dict:
     image_map = images or LOCAL_DOCKER_DEPENDENCY_IMAGES
     rows = []
@@ -262,6 +449,52 @@ def _local_dependency_port_open(ports: list[dict], service: str) -> bool:
         if isinstance(row, dict) and row.get("service") == service:
             return bool(row.get("open"))
     return False
+
+
+def _append_auto_default_group(
+    groups: list[dict],
+    group: str,
+    *,
+    detected: bool,
+    env_defaults: Mapping[str, str],
+    applied_env_keys: list[str],
+    configured: bool,
+    verify_command: str,
+    capabilities: list[tuple[str, str]],
+) -> None:
+    groups.append(
+        {
+            "group": group,
+            "detected": bool(detected),
+            "configured": bool(configured),
+            "would_apply": bool(detected and applied_env_keys),
+            "applied_env_keys": sorted(applied_env_keys) if detected else [],
+            "default_env_keys": sorted(env_defaults),
+            "verify_command": verify_command,
+            "capabilities": [
+                {"area": area, "capability": capability}
+                for area, capability in capabilities
+            ],
+        }
+    )
+
+
+def _auto_default_capability_matches(group: dict) -> list[dict]:
+    state = "already_configured" if group.get("configured") else "would_apply"
+    return [
+        {
+            "area": capability.get("area"),
+            "capability": capability.get("capability"),
+            "group": group.get("group"),
+            "state": state,
+            "would_apply": bool(group.get("would_apply")),
+            "configured": bool(group.get("configured")),
+            "verify_command": group.get("verify_command") or "-",
+            "env_keys": group.get("applied_env_keys") or group.get("default_env_keys") or [],
+        }
+        for capability in group.get("capabilities") or []
+        if isinstance(capability, dict)
+    ]
 
 
 def _local_dependency_configured_env(env: Mapping[str, str]) -> dict:

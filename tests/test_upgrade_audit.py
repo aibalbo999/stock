@@ -79,6 +79,11 @@ def _fake_status(overrides: dict | None = None) -> dict:
                 ),
             },
         },
+        "local_dependency_auto_defaults": {
+            "mode": "status_preview",
+            "detected": {"neo4j": False},
+            "capability_matches": [],
+        },
     }
 
 
@@ -92,6 +97,7 @@ def test_upgrade_audit_includes_local_dependency_runtime_status() -> None:
     assert audit["local_dependencies"]["open_services"] == ["redis"]
     assert audit["local_dependencies"]["missing_core_services"] == ["neo4j"]
     assert "start_core" in audit["local_dependencies"]["commands"]
+    assert audit["local_dependency_auto_defaults"]["mode"] == "status_preview"
 
 
 def test_upgrade_audit_treats_live_neo4j_import_as_optional_by_default() -> None:

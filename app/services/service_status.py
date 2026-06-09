@@ -116,6 +116,10 @@ def service_status() -> dict:
         },
         "frontend": frontend_status,
         "local_dependencies": local_dependencies_status,
+        "local_dependency_auto_defaults": local_dependencies_status.get(
+            "auto_defaults_preview"
+        )
+        or {},
         "python_runtime": python_runtime_status,
         "report_retention": report_retention_status,
         "llm_quota_routing": llm_quota_routing,

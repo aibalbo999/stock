@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 
-from app.core.time import today_taipei
 from app.data_sources.company_filing_discovery import REQUIRED_CORE_DOCUMENT_TYPES
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
@@ -71,6 +70,7 @@ from app.services.ingestion_market import (
     refresh_monthly_revenue_history,
     refresh_valuation_metrics,
 )
+from app.services.ingestion_pre_report import pre_report_refresh_for_pipeline
 from app.services.task_cancellation import TaskCancelledError
 
 __all__ = [
@@ -667,53 +667,7 @@ class IngestionPipeline:
     _cached_company_filings_by_ticker = staticmethod(cached_company_filings_by_ticker)
 
     async def pre_report_refresh(self, request: ReportRequest) -> dict:
-        self._check_cancelled()
-        end_date = today_taipei()
-        start_date = end_date - timedelta(days=request.lookback_days)
-        tickers = self.mapper.filter_allowed_tickers(request.tickers)
-        if not tickers:
-            tickers = sorted(self.mapper.whitelist.allowed_tickers())
-        news = await self.ingest_feeds(
-            enabled_sources_only=True,
-            topic=request.topic,
-            limit=max(10, min(30, request.evidence_limit // 4)),
-            start_date=start_date,
-            end_date=end_date,
-        )
-        self._check_cancelled()
-        market = await self.refresh_market(tickers, start_date, end_date)
-        self._check_cancelled()
-        monthly_revenue = await self.refresh_monthly_revenue(
-            tickers,
-            end_date - timedelta(days=450),
-            end_date,
-        )
-        self._check_cancelled()
-        financial_metrics = await self.refresh_financial_metrics(
-            tickers,
-            end_date - timedelta(days=365 * 6),
-            end_date,
-        )
-        self._check_cancelled()
-        valuations = await self.refresh_valuations(
-            tickers,
-            start_date,
-            end_date,
-        )
-        self._check_cancelled()
-        company_filings = await self.ingest_company_filings(
-            tickers,
-            limit_per_query=2,
-            filter_allowed=False,
-        )
-        return {
-            "news": news,
-            "market": market,
-            "monthly_revenue": monthly_revenue,
-            "financial_metrics": financial_metrics,
-            "valuations": valuations,
-            "company_filings": company_filings,
-        }
+        return await pre_report_refresh_for_pipeline(self, request)
 
     _dedupe_documents = staticmethod(_dedupe_documents)
     _filter_documents = staticmethod(_filter_documents)

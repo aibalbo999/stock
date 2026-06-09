@@ -10,6 +10,7 @@ from app.models.schemas import MarketSnapshot, ReportRequest
 from app.services import ingestion as ingestion_module
 from app.services import ingestion_company_filing_cache
 from app.services import ingestion_documents
+from app.services import ingestion_pre_report
 from app.services.ingestion import (
     IngestionPipeline,
     classify_company_filing_error,
@@ -88,6 +89,24 @@ def test_ingestion_market_refresh_helpers_are_split_from_pipeline() -> None:
     assert "get_monthly_revenue_histories_with_errors(" not in ingestion_source
     assert "get_financial_metrics_histories_with_errors(" not in ingestion_source
     assert "get_latest_valuations_with_errors(" not in ingestion_source
+
+
+def test_pre_report_refresh_orchestration_is_split_from_pipeline() -> None:
+    ingestion_source = Path("app/services/ingestion.py").read_text()
+    pre_report_source = Path("app/services/ingestion_pre_report.py").read_text()
+
+    assert "async def pre_report_refresh_for_pipeline(" in pre_report_source
+    assert ingestion_module.pre_report_refresh_for_pipeline is (
+        ingestion_pre_report.pre_report_refresh_for_pipeline
+    )
+    assert "await pre_report_refresh_for_pipeline(" in ingestion_source
+    pre_report_method_source = ingestion_source.split(
+        "async def pre_report_refresh(",
+        maxsplit=1,
+    )[1].split("_dedupe_documents = staticmethod", maxsplit=1)[0]
+    assert "today_taipei()" not in pre_report_method_source
+    assert "await self.refresh_market(" not in pre_report_method_source
+    assert "await self.ingest_company_filings(" not in pre_report_method_source
 
 
 def test_source_category_counts_sum_stored_documents() -> None:

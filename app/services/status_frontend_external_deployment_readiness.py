@@ -14,6 +14,7 @@ def frontend_external_deployment_readiness_status(
     external_deployment_source = ui_sources["external_deployment_diagnostics.py"]
     external_deployment_common_source = ui_sources["external_deployment_common.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
+    maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
     readiness_service_source = _read_text(readiness_service_path)
@@ -36,8 +37,7 @@ def frontend_external_deployment_readiness_status(
             and "EXTERNAL_ENABLEMENT_METADATA = {" in profile_catalog_source
             and "EXTERNAL_LOCAL_ACTION_METADATA = {" in profile_catalog_source
             and "EXTERNAL_SMOKE_COMMAND_KEYS = frozenset(" in profile_catalog_source
-            and "from app.services.external_deployment_profiles import"
-            in readiness_service_source
+            and "from app.services.external_deployment_profiles import" in readiness_service_source
         ),
         "ui_external_deployment_profile_catalog_path": (
             "app/services/external_deployment_profiles.py"
@@ -50,8 +50,7 @@ def frontend_external_deployment_readiness_status(
             and "EXTERNAL_READINESS_METADATA" in profile_catalog_source
             and "EXTERNAL_ENABLEMENT_METADATA" in profile_catalog_source
             and "EXTERNAL_LOCAL_ACTION_METADATA" in profile_catalog_source
-            and "from app.services.external_deployment_profiles import"
-            in readiness_service_source
+            and "from app.services.external_deployment_profiles import" in readiness_service_source
             and "from app.services.external_deployment_enablement import"
             in readiness_service_source
             and "def external_deployment_enablement_profile(" in enablement_service_source
@@ -109,22 +108,23 @@ def frontend_external_deployment_readiness_status(
             in system_settings_maintenance_source
             and "maintenance_operations,\n        external_env_check,\n    )"
             in system_settings_maintenance_source
-            and "def maintenance_operation_rows(" in maintenance_deployment_panel_source
+            and "from app.ui.maintenance_deployment_presenter import"
+            in maintenance_deployment_panel_source
+            and "def maintenance_operation_rows(" in maintenance_deployment_presenter_source
             and "def maintenance_operation_post_run_check_rows("
-            in maintenance_deployment_panel_source
+            in maintenance_deployment_presenter_source
             and "def maintenance_operation_post_run_diagnostic_action_ids("
-            in maintenance_deployment_panel_source
-            and "local_resolution_projection" in maintenance_deployment_panel_source
-            and "resolves_capabilities" in maintenance_deployment_panel_source
-            and '"可處理能力"' in maintenance_deployment_panel_source
+            in maintenance_deployment_presenter_source
+            and "local_resolution_projection" in maintenance_deployment_presenter_source
+            and "resolves_capabilities" in maintenance_deployment_presenter_source
+            and '"可處理能力"' in maintenance_deployment_presenter_source
             and "本機依賴操作" in maintenance_deployment_panel_source
             and "選擇維護操作" in maintenance_deployment_panel_source
             and "後續驗證" in maintenance_deployment_panel_source
-            and '"可執行診斷"' in maintenance_deployment_panel_source
+            and '"可執行診斷"' in maintenance_deployment_presenter_source
             and "可直接執行的後續診斷" in maintenance_deployment_panel_source
             and "maintenance_post_run_diagnostic_" in maintenance_deployment_panel_source
-            and 'f"/maintenance/diagnostics/{action_id}/run"'
-            in maintenance_deployment_panel_source
+            and 'f"/maintenance/diagnostics/{action_id}/run"' in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
             and "runtime_settings_cache_cleared" in maintenance_deployment_panel_source
@@ -147,7 +147,7 @@ def frontend_external_deployment_readiness_status(
             and '"confirmed": True' in maintenance_deployment_panel_source
             and "timeout=300" in maintenance_deployment_panel_source
         ),
-        "ui_maintenance_operations_path": "app/ui/maintenance_deployment_panel.py",
+        "ui_maintenance_operations_path": "app/ui/maintenance_deployment_presenter.py",
     }
 
 

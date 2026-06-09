@@ -21,6 +21,7 @@ FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
 MAINTENANCE_DEPLOYMENT_PANEL_SOURCE = Path("app/ui/maintenance_deployment_panel.py")
+MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE = Path("app/ui/maintenance_deployment_presenter.py")
 MAINTENANCE_AI_PANELS_SOURCE = Path("app/ui/maintenance_ai_panels.py")
 MAINTENANCE_TASK_PANELS_SOURCE = Path("app/ui/maintenance_task_panels.py")
 MAINTENANCE_CLEANUP_PANEL_SOURCE = Path("app/ui/maintenance_cleanup_panel.py")
@@ -55,6 +56,7 @@ UI_SOURCE_FILES = [
     MAINTENANCE_STATUS_SOURCE,
     MAINTENANCE_PANELS_SOURCE,
     MAINTENANCE_DEPLOYMENT_PANEL_SOURCE,
+    MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE,
     MAINTENANCE_AI_PANELS_SOURCE,
     MAINTENANCE_TASK_PANELS_SOURCE,
     MAINTENANCE_CLEANUP_PANEL_SOURCE,

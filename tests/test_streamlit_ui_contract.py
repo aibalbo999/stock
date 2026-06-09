@@ -127,9 +127,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "visual_rag_runtime_available" in company_filing_runtime_rows_service_source
     assert "structured_api_configured" in company_filing_runtime_rows_service_source
     assert "visual_rag_model_chain" in company_filing_runtime_rows_service_source
-    assert "visual_rag_runtime_available" not in Path(
-        "app/ui/data_enrichment_runtime.py"
-    ).read_text()
+    assert (
+        "visual_rag_runtime_available" not in Path("app/ui/data_enrichment_runtime.py").read_text()
+    )
     assert Path("pages/01_分析工作區.py").exists()
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()
@@ -251,7 +251,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "外部設定缺口" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert "外部設定處理計畫" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     assert "目前 .env 外部部署檢查" in ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    assert "from app.ui.maintenance_deployment_presenter import (" in (
+        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    )
     assert "def recommended_maintenance_operation_id(" in (
+        ui.MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE.read_text()
+    )
+    assert "def recommended_maintenance_operation_id(" not in (
         ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     )
     assert "index=recommended_operation_index" in (

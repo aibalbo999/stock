@@ -55,6 +55,12 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     assert report_retention["evidence"]["maintenance_prunes_db_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_markdown_by_topic"] is True
     assert report_retention["evidence"]["maintenance_prunes_report_artifacts_by_topic"] is True
+    assert report_retention["evidence"]["scheduled_cleanup_config_available"] is True
+    assert report_retention["evidence"]["scheduled_cleanup_payload_retains_latest"] is True
+    assert report_retention["evidence"]["scheduled_cleanup_task_registered"] is True
+    assert report_retention["evidence"]["scheduled_cleanup_beat_registered"] is True
+    assert report_retention["evidence"]["scheduled_cleanup_task_queue_visible"] is True
+    assert report_retention["evidence"]["settings_ui_scheduled_cleanup_controls"] is True
     assert report_retention["evidence"]["report_retention_preview_available"] is True
     assert report_retention["evidence"]["report_retention_preview_endpoint"] is True
     assert report_retention["evidence"]["settings_ui_retention_preview"] is True

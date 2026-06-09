@@ -22,6 +22,12 @@ def report_retention_status() -> dict:
     )
     maintenance_cleanup_source = _read_text(root / "app" / "ui" / "maintenance_cleanup_panel.py")
     report_routes_source = _read_text(root / "app" / "api" / "report_routes.py")
+    schedule_config_source = _read_text(root / "app" / "services" / "schedule_config.py")
+    celery_app_source = _read_text(root / "app" / "tasks" / "celery_app.py")
+    tasks_source = _read_text(root / "app" / "tasks" / "tasks.py")
+    task_exports_source = _read_text(root / "app" / "api" / "task_exports.py")
+    task_queue_status_source = _read_text(root / "app" / "services" / "status_task_queue.py")
+    schedule_ui_source = _read_text(root / "app" / "ui" / "system_settings_schedule.py")
     write_prunes_db = "self.prune_older_for_topic(report.topic, report.id)" in persistence_source
     report_file_write_prunes = (
         "prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)"
@@ -108,6 +114,39 @@ def report_retention_status() -> dict:
         "maintenance_prunes_report_artifacts_by_topic": maintenance_prunes_artifacts,
         "maintenance_returns_policy": '"report_retention_policy": "latest_per_topic"'
         in data_operations_source,
+        "scheduled_cleanup_config_available": (
+            "maintenance_cleanup_enabled: bool = True" in schedule_config_source
+            and "maintenance_cleanup_payload" in schedule_config_source
+            and "maintenance_cleanup_latest_reports_only: bool = True" in schedule_config_source
+            and "maintenance_cleanup_orphan_report_refs: bool = True" in schedule_config_source
+        ),
+        "scheduled_cleanup_payload_retains_latest": (
+            '"latest_reports_only": config.maintenance_cleanup_latest_reports_only'
+            in schedule_config_source
+            and '"orphan_report_refs": config.maintenance_cleanup_orphan_report_refs'
+            in schedule_config_source
+        ),
+        "scheduled_cleanup_task_registered": (
+            'name="app.tasks.tasks.maintenance_cleanup_task"' in tasks_source
+            and "def maintenance_cleanup_task(" in tasks_source
+            and ".data_operations_api().maintenance_cleanup(" in tasks_source
+        ),
+        "scheduled_cleanup_beat_registered": (
+            '"daily-maintenance-cleanup"' in celery_app_source
+            and '"task": "app.tasks.tasks.maintenance_cleanup_task"' in celery_app_source
+            and "schedule_store.maintenance_cleanup_payload()" in celery_app_source
+        ),
+        "scheduled_cleanup_task_queue_visible": (
+            '"maintenance_cleanup_task"' in task_exports_source
+            and '"maintenance_cleanup_task"' in task_queue_status_source
+            and '"app.tasks.tasks.maintenance_cleanup_task"' in task_queue_status_source
+        ),
+        "settings_ui_scheduled_cleanup_controls": (
+            "maintenance_cleanup_enabled" in schedule_ui_source
+            and "maintenance_cleanup_latest_reports_only" in schedule_ui_source
+            and "maintenance_cleanup_orphan_report_refs" in schedule_ui_source
+            and "maintenance_cleanup_stale_running_minutes" in schedule_ui_source
+        ),
         "manual_delete_clears_run_links": ".values(report_id=None, output_path=None)"
         in persistence_source,
         "manual_delete_prunes_markdown": "delete_report_markdown_files("
@@ -126,8 +165,14 @@ def report_retention_status() -> dict:
             "app/services/report_files.py",
             "app/services/report_query.py",
             "app/services/data_operations_api.py",
+            "app/services/schedule_config.py",
+            "app/tasks/celery_app.py",
+            "app/tasks/tasks.py",
+            "app/api/task_exports.py",
+            "app/services/status_task_queue.py",
             "app/ui/system_settings_maintenance.py",
             "app/ui/maintenance_cleanup_panel.py",
+            "app/ui/system_settings_schedule.py",
         ],
     }
 

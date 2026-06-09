@@ -55,6 +55,12 @@ def data_business_capabilities(
             and report_retention_status.get("quality_summary_uses_latest_by_topic")
             and report_retention_status.get("maintenance_prunes_db_by_topic")
             and report_retention_status.get("maintenance_prunes_report_artifacts_by_topic")
+            and report_retention_status.get("scheduled_cleanup_config_available")
+            and report_retention_status.get("scheduled_cleanup_payload_retains_latest")
+            and report_retention_status.get("scheduled_cleanup_task_registered")
+            and report_retention_status.get("scheduled_cleanup_beat_registered")
+            and report_retention_status.get("scheduled_cleanup_task_queue_visible")
+            and report_retention_status.get("settings_ui_scheduled_cleanup_controls")
             and report_retention_status.get("run_links_cleared_for_pruned_reports")
             and report_retention_status.get("run_output_paths_cleared_for_pruned_reports")
             and report_retention_status.get("delete_before_clears_run_links")
@@ -68,7 +74,8 @@ def data_business_capabilities(
             evidence=report_retention_status,
             detail=(
                 "Generated reports use latest-per-topic retention across DB writes, "
-                "report center queries, quality summary, maintenance cleanup, and report artifacts."
+                "report center queries, quality summary, scheduled maintenance cleanup, "
+                "and report artifacts."
             ),
         ),
         **company_filing_capabilities(company_filing_status=company_filing_status),

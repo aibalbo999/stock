@@ -723,6 +723,12 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
     assert summary["totals"]["degraded_from_primary_count"] == 1
     assert summary["totals"]["keyword_fallback_count"] == 1
     assert summary["totals"]["graph_reasoning_ready_count"] == 1
+    assert summary["totals"]["avg_llm_latency_ms"] == 1200.25
+    assert summary["totals"]["p95_llm_latency_ms"] == 1200.25
+    assert summary["totals"]["max_llm_latency_ms"] == 1200.25
+    assert summary["totals"]["avg_retrieval_latency_ms"] == 18.5
+    assert summary["totals"]["p95_retrieval_latency_ms"] == 18.5
+    assert summary["totals"]["max_retrieval_latency_ms"] == 18.5
     assert summary["totals"]["bottleneck_count"] == 1
     assert summary["totals"]["highest_bottleneck_score"] > 0
     assert summary["reports"][0]["run_id"] == 88
@@ -815,6 +821,8 @@ def test_report_observability_summary_reads_after_close_rerun_payload() -> None:
     assert summary["status"] == "ready"
     assert summary["totals"]["trace_captured_count"] == 1
     assert summary["totals"]["trace_missing_count"] == 0
+    assert summary["totals"]["p95_llm_latency_ms"] == 800.0
+    assert summary["totals"]["max_retrieval_latency_ms"] == 9.5
     assert summary["reports"][0]["run_source"] == "celery_after_close"
     assert summary["reports"][0]["retrieval_latency_ms"] == 9.5
     assert summary["reports"][0]["total_token_estimate"] == 2048

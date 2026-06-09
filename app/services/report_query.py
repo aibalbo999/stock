@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -649,6 +650,8 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         for row in rows
         if row.get("retrieval_latency_ms") is not None
     ]
+    llm_latency = _latency_distribution(latency_values)
+    retrieval_latency = _latency_distribution(retrieval_latency_values)
     return {
         "report_count": len(rows),
         "trace_captured_count": sum(1 for row in rows if row.get("trace_captured")),
@@ -668,15 +671,12 @@ def _observability_totals(rows: list[dict]) -> dict[str, Any]:
         "graph_reasoning_ready_count": sum(
             1 for row in rows if row.get("graph_reasoning_status") == "ready"
         ),
-        "avg_llm_latency_ms": round(sum(latency_values) / len(latency_values), 2)
-        if latency_values
-        else None,
-        "avg_retrieval_latency_ms": round(
-            sum(retrieval_latency_values) / len(retrieval_latency_values),
-            2,
-        )
-        if retrieval_latency_values
-        else None,
+        "avg_llm_latency_ms": llm_latency["avg"],
+        "p95_llm_latency_ms": llm_latency["p95"],
+        "max_llm_latency_ms": llm_latency["max"],
+        "avg_retrieval_latency_ms": retrieval_latency["avg"],
+        "p95_retrieval_latency_ms": retrieval_latency["p95"],
+        "max_retrieval_latency_ms": retrieval_latency["max"],
     }
 
 
@@ -808,6 +808,24 @@ def _observability_status(rows: list[dict], totals: dict[str, Any]) -> str:
     if int(totals.get("fallback_path_count") or 0) or int(totals.get("retryable_failure_count") or 0):
         return "caution"
     return "ready"
+
+
+def _latency_distribution(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"avg": None, "p95": None, "max": None}
+    sorted_values = sorted(float(value) for value in values)
+    return {
+        "avg": round(sum(sorted_values) / len(sorted_values), 2),
+        "p95": round(_percentile_nearest_rank(sorted_values, 95), 2),
+        "max": round(sorted_values[-1], 2),
+    }
+
+
+def _percentile_nearest_rank(sorted_values: list[float], percentile: int) -> float:
+    if not sorted_values:
+        return 0.0
+    rank = max(1, math.ceil((max(0, min(percentile, 100)) / 100.0) * len(sorted_values)))
+    return sorted_values[min(rank - 1, len(sorted_values) - 1)]
 
 
 def _metric_int(value: Any, default: int | None = None) -> int | None:

@@ -507,6 +507,9 @@ def test_llm_api_service_returns_usage_summary() -> None:
 
     assert summary["totals"]["request_count"] == 1
     assert summary["totals"]["total_token_estimate"] == 99
+    assert summary["totals"]["avg_latency_ms"] == 120.0
+    assert summary["totals"]["p95_latency_ms"] == 120.0
+    assert summary["totals"]["max_latency_ms"] == 120.0
     assert summary["totals"]["fallback_path_count"] == 1
     assert summary["totals"]["quota_skip_count"] == 1
     assert summary["totals"]["daily_quota_skip_count"] == 1
@@ -516,8 +519,10 @@ def test_llm_api_service_returns_usage_summary() -> None:
     assert summary["recent"][0]["selected_routing_tier"] == "fallback"
     assert summary["recent"][0]["routing_reason"] == "quota_or_cooldown_skip"
     assert summary["by_model"][0]["model"] == "gemini-3.5-flash"
+    assert summary["by_model"][0]["p95_latency_ms"] == 120.0
     assert summary["by_model"][0]["quota_skip_count"] == 1
     assert summary["by_operation"][0]["operation"] == "report_generation"
+    assert summary["by_operation"][0]["max_latency_ms"] == 120.0
     assert summary["routing_snapshot"]["available"] is True
     assert summary["routing_snapshot"]["strategy"] == "smartest_first_then_budget_degrade"
     assert summary["routing_snapshot"]["recommended_model"] == "gemini-3.5-flash"
@@ -587,6 +592,8 @@ def test_llm_api_usage_summary_flags_cost_budget_and_fallback_alerts() -> None:
 
     summary = service.usage_summary(1)
 
+    assert summary["totals"]["p95_latency_ms"] == 900.0
+    assert summary["totals"]["max_latency_ms"] == 900.0
     assert summary["cost_budget"]["status"] == "exceeded"
     assert summary["cost_budget"]["window_cost_budget_usd"] == 0.01
     assert {alert["code"] for alert in summary["alerts"]} == {

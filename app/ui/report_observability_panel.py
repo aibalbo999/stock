@@ -12,6 +12,8 @@ def report_observability_metric_values(summary: dict[str, Any]) -> dict[str, obj
         "最新版報告": int(totals.get("report_count") or 0),
         "Trace 覆蓋": int(totals.get("trace_captured_count") or 0),
         "平均 LLM ms": totals.get("avg_llm_latency_ms") or "-",
+        "P95 LLM ms": totals.get("p95_llm_latency_ms") or "-",
+        "P95 Retrieval ms": totals.get("p95_retrieval_latency_ms") or "-",
         "Keyword fallback": int(totals.get("keyword_fallback_count") or 0),
         "Quota skip": int(totals.get("quota_skip_count") or 0),
         "模型降級": int(totals.get("degraded_from_primary_count") or 0),

@@ -89,6 +89,7 @@ def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
         "7 日請求": int(totals.get("request_count") or 0),
         "7 日 Token": int(totals.get("total_token_estimate") or 0),
         "估算成本 USD": f"{float(totals.get('estimated_cost_usd') or 0.0):.4f}",
+        "P95 LLM ms": totals.get("p95_latency_ms") or "-",
         "Fallback 次數": int(totals.get("fallback_path_count") or 0),
         "可重試失敗": int(totals.get("retryable_failure_count") or 0),
         "Quota skip": int(totals.get("quota_skip_count") or 0),

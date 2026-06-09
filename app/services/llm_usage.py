@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
@@ -156,6 +157,7 @@ def _normalized_usage_row(record: dict[str, Any]) -> dict[str, Any]:
 
 def _usage_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
     latency_values = [row["latency_ms"] for row in rows if row["latency_ms"] is not None]
+    latency_summary = _latency_summary(latency_values)
     return {
         "request_count": len(rows),
         "total_token_estimate": sum(row["total_token_estimate"] or 0 for row in rows),
@@ -168,9 +170,9 @@ def _usage_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "cooldown_skip_count": sum(row["cooldown_skip_count"] or 0 for row in rows),
         "degraded_from_primary_count": sum(1 for row in rows if row["degraded_from_primary"]),
         "high_quota_fallback_count": sum(1 for row in rows if row["high_quota_fallback_used"]),
-        "avg_latency_ms": round(sum(latency_values) / len(latency_values), 2)
-        if latency_values
-        else None,
+        "avg_latency_ms": latency_summary["avg"],
+        "p95_latency_ms": latency_summary["p95"],
+        "max_latency_ms": latency_summary["max"],
     }
 
 
@@ -249,6 +251,24 @@ def _usage_alerts(totals: dict[str, Any], cost_budget: dict[str, Any], observabi
             }
         )
     return alerts
+
+
+def _latency_summary(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"avg": None, "p95": None, "max": None}
+    sorted_values = sorted(float(value) for value in values)
+    return {
+        "avg": round(sum(sorted_values) / len(sorted_values), 2),
+        "p95": round(_percentile_nearest_rank(sorted_values, 95), 2),
+        "max": round(sorted_values[-1], 2),
+    }
+
+
+def _percentile_nearest_rank(sorted_values: list[float], percentile: int) -> float:
+    if not sorted_values:
+        return 0.0
+    rank = max(1, math.ceil((max(0, min(percentile, 100)) / 100.0) * len(sorted_values)))
+    return sorted_values[min(rank - 1, len(sorted_values) - 1)]
 
 
 def _int(value: Any) -> int | None:

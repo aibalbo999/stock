@@ -1,9 +1,12 @@
 import asyncio
 from datetime import date
+from pathlib import Path
 
 import httpx
 
 from app.core.config import get_settings
+from app.data_sources import company_filing_structured_api as structured_api_module
+from app.data_sources import company_filing_structured_api_profiles as structured_api_profiles
 from app.data_sources.company_filings import (
     CompanyFilingFetcher,
     company_filing_structured_api_configured,
@@ -268,6 +271,27 @@ def test_structured_api_provider_profiles_and_request_contracts() -> None:
     assert scrapingbee_preview["token_location"] == "query_param"
     assert scrapingbee_preview["token_redacted"] is True
     assert bee_token not in str(scrapingbee_preview)
+
+
+def test_structured_api_provider_contract_logic_lives_outside_document_adapter() -> None:
+    adapter_source = Path("app/data_sources/company_filing_structured_api.py").read_text()
+    profile_source = Path("app/data_sources/company_filing_structured_api_profiles.py").read_text()
+
+    assert "from app.data_sources.company_filing_structured_api_profiles import" in adapter_source
+    assert "STRUCTURED_API_PROVIDER_PROFILES = {" not in adapter_source
+    assert "def structured_api_configuration_check(" not in adapter_source
+    assert "def structured_api_provider_profile(" not in adapter_source
+    assert "def structured_api_request_contract(" not in adapter_source
+    assert "STRUCTURED_API_PROVIDER_PROFILES = {" in profile_source
+    assert "def structured_api_configuration_check(" in profile_source
+    assert "def structured_api_provider_profile(" in profile_source
+    assert "def structured_api_request_contract(" in profile_source
+    assert structured_api_module.structured_api_request_contract is (
+        structured_api_profiles.structured_api_request_contract
+    )
+    assert structured_api_provider_profile("tej") == structured_api_profiles.structured_api_provider_profile(
+        "tej"
+    )
 
 
 def test_structured_api_provider_decision_matrix_summarizes_vendor_contracts() -> None:

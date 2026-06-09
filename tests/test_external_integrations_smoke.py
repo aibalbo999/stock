@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
+
+from app.core.config import get_settings
+from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
+import scripts.external_integrations_smoke as smoke
 from scripts.external_integrations_smoke import (
     external_integration_report,
     format_external_integration_report,
@@ -240,3 +246,164 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "structured_company_filing_smoke.py" in output
     assert "structured_company_filing_sample.json" in output
     assert "Structured company filing sample contract: ready" in output
+
+
+def test_external_integration_report_can_use_local_neo4j_smoke_commands() -> None:
+    report = external_integration_report(
+        {
+            "upgrade_capability_matrix": {
+                "ai_rag": {
+                    "neo4j_payload_export": {
+                        "status": "ready",
+                        "evidence": {
+                            "payload_export_ready": True,
+                            "payload_format": "neo4j_cypher_v1",
+                            "payload_node_count": 27,
+                            "payload_statement_count": 5,
+                        },
+                    },
+                    "graphrag_agentic_cypher": {
+                        "status": "ready",
+                        "evidence": {
+                            "local_dry_run_enabled": True,
+                            "local_dry_run_status": "executed_dry_run",
+                            "agentic_cypher_plan_example": {
+                                "validation": {"valid": True, "read_only": True},
+                            },
+                        },
+                    },
+                    "neo4j_import": {
+                        "status": "ready",
+                        "evidence": {
+                            "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
+                            "import_smoke_cli": (
+                                ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+                                "--import-first --json"
+                            ),
+                            "payload_dry_run_cli": (
+                                ".venv/bin/python -m "
+                                "scripts.import_supply_chain_graph_neo4j --dry-run"
+                            ),
+                        },
+                    },
+                    "graphrag_live_cypher_query": {
+                        "status": "ready",
+                        "evidence": {
+                            "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json"
+                        },
+                    },
+                },
+                "data_business_logic": {
+                    "company_filing_browser_or_proxy_fallback": {
+                        "status": "ready",
+                        "evidence": {},
+                    },
+                    "company_filing_high_risk_unlocker": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                    "company_filing_structured_api_fallback": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                },
+            }
+        },
+        local_neo4j_defaults={
+            "requested": True,
+            "applied_env_keys": ["NEO4J_URI"],
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+        },
+    )
+
+    checks = {check["capability"]: check for check in report["checks"]}
+
+    assert "--local-neo4j-defaults" in report["neo4j_graphrag_smoke_command"]
+    assert "--local-neo4j-defaults" in report["neo4j_import_smoke_command"]
+    assert "--local-neo4j-defaults" in checks["neo4j_import"]["smoke_commands"][1]
+    assert "--local-neo4j-defaults" in checks["neo4j_import"]["smoke_commands"][2]
+    assert any(
+        "--local-neo4j-defaults" in command
+        for command in checks["graphrag_live_cypher_query"]["smoke_commands"]
+    )
+    assert "local_neo4j_defaults" in report
+
+    output = format_external_integration_report(report)
+
+    assert "Local Neo4j defaults: applied NEO4J_URI" in output
+    assert "Neo4j GraphRAG smoke: .venv/bin/python scripts/neo4j_graphrag_smoke.py --local-neo4j-defaults" in output
+
+
+def test_external_integrations_smoke_main_applies_local_neo4j_defaults(
+    monkeypatch,
+    capsys,
+) -> None:
+    old_env = {key: os.environ.get(key) for key in LOCAL_NEO4J_ENV_DEFAULTS}
+    for key in LOCAL_NEO4J_ENV_DEFAULTS:
+        os.environ.pop(key, None)
+    get_settings.cache_clear()
+
+    def fake_service_status() -> dict:
+        settings = get_settings()
+        assert settings.neo4j_uri == LOCAL_NEO4J_ENV_DEFAULTS["NEO4J_URI"]
+        assert settings.neo4j_user == LOCAL_NEO4J_ENV_DEFAULTS["NEO4J_USER"]
+        assert settings.neo4j_password == LOCAL_NEO4J_ENV_DEFAULTS["NEO4J_PASSWORD"]
+        return {
+            "upgrade_capability_matrix": {
+                "ai_rag": {
+                    "neo4j_payload_export": {
+                        "status": "ready",
+                        "evidence": {
+                            "payload_export_ready": True,
+                            "payload_format": "neo4j_cypher_v1",
+                            "payload_node_count": 27,
+                            "payload_statement_count": 5,
+                        },
+                    },
+                    "graphrag_agentic_cypher": {
+                        "status": "ready",
+                        "evidence": {
+                            "local_dry_run_enabled": True,
+                            "local_dry_run_status": "executed_dry_run",
+                            "agentic_cypher_plan_example": {
+                                "validation": {"valid": True, "read_only": True},
+                            },
+                        },
+                    },
+                    "neo4j_import": {"status": "ready", "evidence": {}},
+                    "graphrag_live_cypher_query": {"status": "ready", "evidence": {}},
+                },
+                "data_business_logic": {
+                    "company_filing_browser_or_proxy_fallback": {
+                        "status": "ready",
+                        "evidence": {},
+                    },
+                    "company_filing_high_risk_unlocker": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                    "company_filing_structured_api_fallback": {
+                        "status": "not_configured",
+                        "evidence": {},
+                    },
+                },
+            }
+        }
+
+    monkeypatch.setattr(smoke, "service_status", fake_service_status)
+    try:
+        exit_code = smoke.main(["--local-neo4j-defaults", "--json"])
+        report = json.loads(capsys.readouterr().out)
+    finally:
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()
+
+    assert exit_code == 0
+    assert report["local_neo4j_defaults"]["applied_env_keys"] == sorted(
+        LOCAL_NEO4J_ENV_DEFAULTS
+    )
+    assert "--local-neo4j-defaults" in report["neo4j_graphrag_smoke_command"]

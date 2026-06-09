@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
+import time
 from pathlib import Path
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.external_deployment_readiness import (
     external_deployment_enablement_profile,
     external_deployment_enablement_summary,
@@ -12,6 +15,11 @@ from app.services.external_deployment_readiness import (
     external_deployment_pending_gap_rows,
 )
 from app.services.service_status import service_status
+
+try:
+    from scripts.neo4j_graphrag_smoke import apply_local_neo4j_defaults
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    from neo4j_graphrag_smoke import apply_local_neo4j_defaults
 
 try:
     from scripts.company_filing_render_smoke import (
@@ -35,6 +43,16 @@ NEO4J_GRAPHRAG_SMOKE_COMMAND = (
 NEO4J_IMPORT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
     "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --import-first --json"
+)
+NEO4J_LOCAL_DEFAULTS_GRAPHRAG_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--local-neo4j-defaults --tickers 2330 --target-ticker 2382 "
+    "--question 上下游衝擊 --json"
+)
+NEO4J_LOCAL_DEFAULTS_IMPORT_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
+    "--local-neo4j-defaults --tickers 2330 --target-ticker 2382 "
+    "--question 上下游衝擊 --import-first --json"
 )
 NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
@@ -64,6 +82,14 @@ HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND = (
 COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--provider-contract --json"
+)
+EXTERNAL_LOCAL_NEO4J_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/external_integrations_smoke.py "
+    "--local-neo4j-defaults --json"
+)
+EXTERNAL_LOCAL_NEO4J_WAIT_SMOKE_COMMAND = (
+    ".venv/bin/python scripts/external_integrations_smoke.py "
+    "--local-neo4j-defaults --wait-local-neo4j 20 --json"
 )
 
 EXTERNAL_CHECKS = (
@@ -135,11 +161,32 @@ DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY = {
         STRUCTURED_COMPANY_FILING_SMOKE_COMMAND,
     ],
 }
+LOCAL_NEO4J_SMOKE_COMMANDS_BY_CAPABILITY = {
+    "neo4j_import": [
+        NEO4J_PAYLOAD_DRY_RUN_COMMAND,
+        NEO4J_LOCAL_DEFAULTS_GRAPHRAG_SMOKE_COMMAND,
+        NEO4J_LOCAL_DEFAULTS_IMPORT_SMOKE_COMMAND,
+    ],
+    "graphrag_live_cypher_query": [
+        NEO4J_PAYLOAD_DRY_RUN_COMMAND,
+        NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND,
+        NEO4J_LOCAL_DEFAULTS_GRAPHRAG_SMOKE_COMMAND,
+        NEO4J_LOCAL_DEFAULTS_IMPORT_SMOKE_COMMAND,
+    ],
+}
 
 
-def external_integration_report(status: dict[str, Any] | None = None) -> dict[str, Any]:
+def external_integration_report(
+    status: dict[str, Any] | None = None,
+    *,
+    local_neo4j_defaults: dict[str, Any] | None = None,
+    local_dependency_wait: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     snapshot = status or service_status()
     matrix = snapshot.get("upgrade_capability_matrix") or {}
+    use_local_neo4j_defaults = bool(
+        local_neo4j_defaults and local_neo4j_defaults.get("requested")
+    )
     checks = []
     for area, capability, label, remediation in EXTERNAL_CHECKS:
         item = ((matrix.get(area) or {}).get(capability) or {})
@@ -155,7 +202,11 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
             "external_integration": True,
             "deployment_check": True,
             "evidence": evidence,
-            "smoke_commands": external_check_smoke_commands(capability, evidence),
+            "smoke_commands": external_check_smoke_commands(
+                capability,
+                evidence,
+                local_neo4j_defaults=use_local_neo4j_defaults,
+            ),
             "remediation": item.get("remediation") or remediation,
         }
         check["enablement_profile"] = external_deployment_enablement_profile(check)
@@ -164,7 +215,7 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
     checks.append(company_filing_render_provider_contract_check())
     checks.append(structured_company_filing_sample_contract_check())
     pending_gap_rows = external_deployment_pending_gap_rows({"checks": checks})
-    return {
+    report = {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
         "ready_count": sum(1 for check in checks if check["ready"]),
         "check_count": len(checks),
@@ -176,8 +227,20 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         ),
         "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
-        "neo4j_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
-        "neo4j_import_smoke_command": NEO4J_IMPORT_SMOKE_COMMAND,
+        "neo4j_graphrag_smoke_command": (
+            NEO4J_LOCAL_DEFAULTS_GRAPHRAG_SMOKE_COMMAND
+            if use_local_neo4j_defaults
+            else NEO4J_GRAPHRAG_SMOKE_COMMAND
+        ),
+        "neo4j_import_smoke_command": (
+            NEO4J_LOCAL_DEFAULTS_IMPORT_SMOKE_COMMAND
+            if use_local_neo4j_defaults
+            else NEO4J_IMPORT_SMOKE_COMMAND
+        ),
+        "neo4j_standard_graphrag_smoke_command": NEO4J_GRAPHRAG_SMOKE_COMMAND,
+        "neo4j_standard_import_smoke_command": NEO4J_IMPORT_SMOKE_COMMAND,
+        "neo4j_local_defaults_graphrag_smoke_command": NEO4J_LOCAL_DEFAULTS_GRAPHRAG_SMOKE_COMMAND,
+        "neo4j_local_defaults_import_smoke_command": NEO4J_LOCAL_DEFAULTS_IMPORT_SMOKE_COMMAND,
         "neo4j_local_contract_smoke_command": NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND,
         "neo4j_payload_dry_run_command": NEO4J_PAYLOAD_DRY_RUN_COMMAND,
         "company_filing_render_smoke_command": COMPANY_FILING_RENDER_SMOKE_COMMAND,
@@ -187,7 +250,14 @@ def external_integration_report(status: dict[str, Any] | None = None) -> dict[st
         "structured_company_filing_sample_command": STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND,
         "structured_company_filing_sample_status": checks[-1]["status"],
         "strict_command": ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
+        "local_neo4j_smoke_command": EXTERNAL_LOCAL_NEO4J_SMOKE_COMMAND,
+        "local_neo4j_wait_smoke_command": EXTERNAL_LOCAL_NEO4J_WAIT_SMOKE_COMMAND,
     }
+    if local_neo4j_defaults:
+        report["local_neo4j_defaults"] = local_neo4j_defaults
+    if local_dependency_wait:
+        report["local_dependency_wait"] = local_dependency_wait
+    return report
 
 
 def company_filing_render_provider_contract_check() -> dict[str, Any]:
@@ -299,10 +369,21 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> list[str]:
+def external_check_smoke_commands(
+    capability: str,
+    evidence: dict[str, Any],
+    *,
+    local_neo4j_defaults: bool = False,
+) -> list[str]:
     commands = _commands_from_payload(evidence)
     commands = _commands_for_capability(capability, commands)
-    preferred_order = DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY.get(capability, [])
+    if local_neo4j_defaults:
+        commands = _localize_neo4j_smoke_commands(capability, commands)
+    preferred_order = (
+        LOCAL_NEO4J_SMOKE_COMMANDS_BY_CAPABILITY.get(capability)
+        if local_neo4j_defaults
+        else None
+    ) or DEFAULT_SMOKE_COMMANDS_BY_CAPABILITY.get(capability, [])
     if not commands:
         commands = preferred_order
     elif preferred_order:
@@ -315,6 +396,21 @@ def external_check_smoke_commands(capability: str, evidence: dict[str, Any]) -> 
         seen.add(command)
         deduped.append(command)
     return deduped
+
+
+def _localize_neo4j_smoke_commands(capability: str, commands: list[str]) -> list[str]:
+    if capability not in {"neo4j_import", "graphrag_live_cypher_query"}:
+        return commands
+    return [_with_local_neo4j_defaults(command) for command in commands]
+
+
+def _with_local_neo4j_defaults(command: str) -> str:
+    if "scripts/neo4j_graphrag_smoke.py" not in command:
+        return command
+    if "--local-neo4j-defaults" in command:
+        return command
+    script = "scripts/neo4j_graphrag_smoke.py"
+    return command.replace(script, f"{script} --local-neo4j-defaults", 1)
 
 
 def _commands_for_capability(capability: str, commands: list[str]) -> list[str]:
@@ -420,6 +516,31 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
             f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
         )
+    local_neo4j_defaults = (
+        report.get("local_neo4j_defaults")
+        if isinstance(report.get("local_neo4j_defaults"), dict)
+        else {}
+    )
+    if local_neo4j_defaults:
+        applied_keys = [
+            str(key) for key in local_neo4j_defaults.get("applied_env_keys") or []
+        ]
+        applied_text = ", ".join(applied_keys) if applied_keys else "none; existing env used"
+        lines.append(
+            "Local Neo4j defaults: applied "
+            + applied_text
+            + " (current process only)"
+        )
+    local_wait = (
+        report.get("local_dependency_wait")
+        if isinstance(report.get("local_dependency_wait"), dict)
+        else {}
+    )
+    if "neo4j" in local_wait:
+        lines.append(
+            f"Local Neo4j wait: {'ready' if local_wait.get('neo4j') else 'not ready'} "
+            f"within {local_wait.get('neo4j_timeout_seconds')}s"
+        )
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
         lines.append(f"- [{marker}] {check['label']}: {check['status']}")
@@ -482,15 +603,75 @@ def main(argv: list[str] | None = None) -> int:
         description="Smoke-check optional external deployment integrations."
     )
     parser.add_argument("--strict", action="store_true", help="Return non-zero unless all checks are ready.")
+    parser.add_argument(
+        "--local-neo4j-defaults",
+        action="store_true",
+        help=(
+            "Apply docker-compose local Neo4j defaults for this smoke process "
+            "without editing .env."
+        ),
+    )
+    parser.add_argument(
+        "--wait-local-neo4j",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Wait for localhost Neo4j port before checking local Neo4j status.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(argv)
 
-    report = external_integration_report()
+    local_defaults_report = None
+    if args.local_neo4j_defaults:
+        applied_defaults = apply_local_neo4j_defaults()
+        clear_settings_cache()
+        local_defaults_report = {
+            "requested": True,
+            "applied_env_keys": sorted(applied_defaults),
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+        }
+
+    wait_report = None
+    if int(args.wait_local_neo4j or 0) > 0:
+        wait_report = {
+            "neo4j": wait_for_port(
+                "127.0.0.1",
+                7687,
+                timeout_seconds=int(args.wait_local_neo4j),
+            ),
+            "neo4j_timeout_seconds": int(args.wait_local_neo4j),
+        }
+
+    report = external_integration_report(
+        local_neo4j_defaults=local_defaults_report,
+        local_dependency_wait=wait_report,
+    )
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(format_external_integration_report(report))
     return 1 if args.strict and report["status"] != "ready" else 0
+
+
+def wait_for_port(host: str, port: int, timeout_seconds: int) -> bool:
+    deadline = time.time() + max(0, timeout_seconds)
+    while time.time() < deadline:
+        if is_port_open(host, port):
+            return True
+        time.sleep(0.5)
+    return is_port_open(host, port)
+
+
+def is_port_open(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex((host, port)) == 0
+
+
+def clear_settings_cache() -> None:
+    cache_clear = getattr(get_settings, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
 
 
 if __name__ == "__main__":

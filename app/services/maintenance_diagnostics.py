@@ -14,9 +14,16 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     "upgrade_audit": {
         "id": "upgrade_audit",
         "label": "Upgrade audit",
-        "description": "檢查核心升級能力與外部部署選配狀態。",
-        "display_command": ".venv/bin/python scripts/upgrade_audit.py --json",
-        "argv": [sys.executable, "scripts/upgrade_audit.py", "--json"],
+        "description": "檢查核心升級能力與外部部署選配狀態，並自動套用已啟動的本機依賴預設值。",
+        "display_command": (
+            ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/upgrade_audit.py",
+            "--auto-local-defaults",
+            "--json",
+        ],
         "timeout_seconds": 90,
         "read_only": True,
     },

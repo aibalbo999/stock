@@ -53,6 +53,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Apply local docker-compose Neo4j defaults for this audit process without editing .env.",
     )
     parser.add_argument(
+        "--auto-local-defaults",
+        action="store_true",
+        help=(
+            "Auto-apply local defaults for already reachable Neo4j, Chroma, Browserless, "
+            "or FlareSolverr services in this audit process without editing .env."
+        ),
+    )
+    parser.add_argument(
         "--local-browser-render-defaults",
         action="store_true",
         help=(
@@ -107,21 +115,68 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     applied_defaults = {}
+    auto_defaults_status = None
+    auto_applied_defaults = {}
+    wait_result = {}
+    if args.auto_local_defaults:
+        auto_defaults_status = {
+            "requested": True,
+            "detected": {},
+            "applied_groups": [],
+            "applied_env_keys": [],
+            "note": "Auto defaults apply only to this audit process; .env is unchanged.",
+        }
+        neo4j_ready = _detect_local_neo4j_for_auto_defaults(
+            wait_seconds=int(args.wait_local_neo4j or 0),
+            wait_result=wait_result,
+        )
+        auto_defaults_status["detected"]["neo4j"] = neo4j_ready
+        if neo4j_ready and not args.local_neo4j_defaults:
+            neo4j_defaults = apply_local_neo4j_env_defaults()
+            applied_defaults.update(neo4j_defaults)
+            auto_applied_defaults.update(neo4j_defaults)
+            if neo4j_defaults:
+                auto_defaults_status["applied_groups"].append("neo4j")
+
     if args.local_neo4j_defaults:
         applied_defaults.update(apply_local_neo4j_env_defaults())
     chroma_default_status = None
+    if args.auto_local_defaults:
+        chroma_ready = _detect_local_chroma_for_auto_defaults(
+            wait_seconds=int(args.wait_local_chroma or 0),
+            wait_result=wait_result,
+        )
+        auto_defaults_status["detected"]["chroma"] = chroma_ready
+        if chroma_ready and not args.local_chroma_defaults:
+            chroma_defaults = apply_local_chroma_env_defaults()
+            applied_defaults.update(chroma_defaults)
+            auto_applied_defaults.update(chroma_defaults)
+            if chroma_defaults:
+                auto_defaults_status["applied_groups"].append("chroma")
+            chroma_default_status = {
+                "requested": True,
+                "auto_detected": True,
+                "url": os.environ.get("CHROMA_API_URL")
+                or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"],
+                "applied_env_keys": sorted(chroma_defaults),
+                "reason": None if chroma_defaults else "existing_chroma_env_configured",
+            }
     if args.local_chroma_defaults:
         chroma_defaults = apply_local_chroma_env_defaults()
         applied_defaults.update(chroma_defaults)
         chroma_default_status = {
             "requested": True,
+            "auto_detected": False,
             "url": os.environ.get("CHROMA_API_URL") or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"],
             "applied_env_keys": sorted(chroma_defaults),
             "reason": None if chroma_defaults else "existing_chroma_env_configured",
         }
 
-    wait_result = {}
-    if int(args.wait_local_neo4j or 0) > 0 and is_local_neo4j_uri(os.environ.get("NEO4J_URI", "")):
+    if (
+        int(args.wait_local_neo4j or 0) > 0
+        and "neo4j" not in wait_result
+        and is_local_neo4j_uri(os.environ.get("NEO4J_URI", ""))
+    ):
         wait_result["neo4j"] = wait_for_port(
             "127.0.0.1",
             7687,
@@ -146,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         wait_result["flaresolverr"] = flaresolverr_wait_ready
         wait_result["flaresolverr_timeout_seconds"] = int(args.wait_local_flaresolverr)
-    if int(args.wait_local_chroma or 0) > 0:
+    if int(args.wait_local_chroma or 0) > 0 and "chroma" not in wait_result:
         chroma_api_url = os.environ.get("CHROMA_API_URL") or LOCAL_CHROMA_ENV_DEFAULTS[
             "CHROMA_API_URL"
         ]
@@ -157,6 +212,46 @@ def main(argv: list[str] | None = None) -> int:
         wait_result["chroma_timeout_seconds"] = int(args.wait_local_chroma)
 
     browser_default_status = None
+    if args.auto_local_defaults and auto_defaults_status is not None:
+        browserless_port_available = bool(browserless_wait_ready) or is_port_open(
+            "127.0.0.1",
+            LOCAL_BROWSERLESS_PORT,
+        )
+        flaresolverr_port_available = bool(flaresolverr_wait_ready) or is_port_open(
+            "127.0.0.1",
+            LOCAL_FLARESOLVERR_PORT,
+        )
+        auto_defaults_status["detected"]["browserless"] = browserless_port_available
+        auto_defaults_status["detected"]["flaresolverr"] = flaresolverr_port_available
+        if (
+            (browserless_port_available or flaresolverr_port_available)
+            and not args.local_browser_render_defaults
+        ):
+            browser_defaults = apply_local_browser_render_env_defaults(
+                prefer_browserless=browserless_port_available,
+                prefer_unlocker=bool(flaresolverr_port_available or args.prefer_unlocker),
+            )
+            applied_defaults.update(browser_defaults)
+            auto_applied_defaults.update(browser_defaults)
+            if browser_defaults:
+                auto_defaults_status["applied_groups"].append(
+                    "flaresolverr" if flaresolverr_port_available else "browserless"
+                )
+            browser_default_status = {
+                "requested": True,
+                "auto_detected": True,
+                **company_filing_playwright_browser_status(),
+                "browserless_port_available": browserless_port_available,
+                "flaresolverr_port_available": flaresolverr_port_available,
+                "preferred_unlocker": bool(flaresolverr_port_available or args.prefer_unlocker),
+                "applied_env_keys": sorted(browser_defaults),
+                "reason": None
+                if browser_defaults
+                else (
+                    "flaresolverr_or_browserless_port_or_playwright_dependency_missing_"
+                    "or_existing_render_fallback_configured"
+                ),
+            }
     if args.local_browser_render_defaults:
         browserless_port_available = bool(browserless_wait_ready) or is_port_open(
             "127.0.0.1", LOCAL_BROWSERLESS_PORT
@@ -172,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         applied_defaults.update(browser_defaults)
         browser_default_status = {
             "requested": True,
+            "auto_detected": False,
             **company_filing_playwright_browser_status(),
             "browserless_port_available": browserless_port_available,
             "flaresolverr_port_available": flaresolverr_port_available,
@@ -186,8 +282,15 @@ def main(argv: list[str] | None = None) -> int:
         }
     if applied_defaults:
         clear_settings_cache()
+    if auto_defaults_status is not None:
+        auto_defaults_status["applied_env_keys"] = sorted(auto_applied_defaults)
+        auto_defaults_status["applied_groups"] = sorted(
+            set(auto_defaults_status["applied_groups"])
+        )
 
     audit = audit_upgrade_capabilities(strict_external=args.strict_external)
+    if auto_defaults_status is not None:
+        audit["local_dependency_auto_defaults"] = auto_defaults_status
     if applied_defaults:
         audit["local_dependency_defaults"] = {
             "applied_env_keys": sorted(applied_defaults),
@@ -268,6 +371,17 @@ def _format_text(audit: dict) -> str:
             f"quota_or_external={int(pending_gap_counts.get('quota_or_external') or 0)}; "
             f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
             f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
+        )
+    auto_defaults = audit.get("local_dependency_auto_defaults")
+    if auto_defaults:
+        detected = auto_defaults.get("detected") or {}
+        detected_ready = ", ".join(
+            service for service, ready in detected.items() if ready
+        ) or "-"
+        applied_groups = ", ".join(auto_defaults.get("applied_groups") or []) or "-"
+        lines.append(
+            "Auto local defaults: "
+            f"detected={detected_ready}; applied={applied_groups}"
         )
     local_defaults = audit.get("local_dependency_defaults")
     if local_defaults:
@@ -450,6 +564,35 @@ def apply_local_browser_render_env_defaults(
         return {}
     os.environ["COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED"] = "true"
     return {"COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED": "true"}
+
+
+def _detect_local_neo4j_for_auto_defaults(
+    *,
+    wait_seconds: int,
+    wait_result: dict,
+) -> bool:
+    if wait_seconds > 0:
+        ready = wait_for_port("127.0.0.1", 7687, timeout_seconds=wait_seconds)
+        wait_result["neo4j"] = ready
+        wait_result["neo4j_timeout_seconds"] = wait_seconds
+        return ready
+    return is_port_open("127.0.0.1", 7687)
+
+
+def _detect_local_chroma_for_auto_defaults(
+    *,
+    wait_seconds: int,
+    wait_result: dict,
+) -> bool:
+    url = chroma_health_url(
+        os.environ.get("CHROMA_API_URL") or LOCAL_CHROMA_ENV_DEFAULTS["CHROMA_API_URL"]
+    )
+    if wait_seconds > 0:
+        ready = wait_for_http_ok(url, timeout_seconds=wait_seconds)
+        wait_result["chroma"] = ready
+        wait_result["chroma_timeout_seconds"] = wait_seconds
+        return ready
+    return http_ok(url)
 
 
 def clear_settings_cache() -> None:

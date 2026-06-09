@@ -249,6 +249,142 @@ def test_upgrade_audit_script_can_apply_local_chroma_defaults(monkeypatch, capsy
     os.environ.pop("CHROMA_API_URL", None)
 
 
+def test_upgrade_audit_script_auto_applies_reachable_local_defaults(
+    monkeypatch,
+    capsys,
+) -> None:
+    for key in (
+        "NEO4J_URI",
+        "NEO4J_USER",
+        "NEO4J_PASSWORD",
+        "NEO4J_DATABASE",
+        "USE_CHROMA",
+        "CHROMA_API_URL",
+        "COMPANY_FILING_PROXY_URLS",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    monkeypatch.setattr(
+        upgrade_audit,
+        "company_filing_playwright_browser_status",
+        lambda: {"dependency_available": False, "browser_available": False},
+    )
+    monkeypatch.setattr(
+        upgrade_audit,
+        "is_port_open",
+        lambda host, port: (host, port)
+        in {
+            ("127.0.0.1", 7687),
+            ("127.0.0.1", 8191),
+        },
+    )
+    monkeypatch.setattr(upgrade_audit, "http_ok", lambda url: url.endswith("/api/v2/heartbeat"))
+    captured = {}
+
+    def fake_audit(strict_external=False):
+        captured["neo4j_uri"] = os.environ.get("NEO4J_URI")
+        captured["use_chroma"] = os.environ.get("USE_CHROMA")
+        captured["browser_render_provider"] = os.environ.get(
+            "COMPANY_FILING_BROWSER_RENDER_PROVIDER"
+        )
+        captured["browser_render_url"] = os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL")
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--auto-local-defaults", "--json"])
+
+    assert exit_code == 0
+    assert captured == {
+        "neo4j_uri": "neo4j://localhost:7687",
+        "use_chroma": "true",
+        "browser_render_provider": "flaresolverr",
+        "browser_render_url": "http://127.0.0.1:8191/v1",
+    }
+    output = capsys.readouterr().out
+    assert '"local_dependency_auto_defaults"' in output
+    assert '"applied_groups": [' in output
+    assert '"flaresolverr"' in output
+    assert "NEO4J_PASSWORD" in output
+    assert "stock_ai_neo4j_password" not in output
+    for key in (
+        "NEO4J_URI",
+        "NEO4J_USER",
+        "NEO4J_PASSWORD",
+        "NEO4J_DATABASE",
+        "USE_CHROMA",
+        "CHROMA_API_URL",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+    ):
+        os.environ.pop(key, None)
+
+
+def test_upgrade_audit_script_auto_defaults_skip_unreachable_services(
+    monkeypatch,
+    capsys,
+) -> None:
+    for key in (
+        "NEO4J_URI",
+        "USE_CHROMA",
+        "CHROMA_API_URL",
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(upgrade_audit, "clear_settings_cache", lambda: None)
+    monkeypatch.setattr(upgrade_audit, "is_port_open", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(upgrade_audit, "http_ok", lambda _url: False)
+    monkeypatch.setattr(
+        upgrade_audit,
+        "company_filing_playwright_browser_status",
+        lambda: {"dependency_available": False, "browser_available": False},
+    )
+    captured = {}
+
+    def fake_audit(strict_external=False):
+        captured["neo4j_uri"] = os.environ.get("NEO4J_URI")
+        captured["use_chroma"] = os.environ.get("USE_CHROMA")
+        captured["browser_render_enabled"] = os.environ.get(
+            "COMPANY_FILING_BROWSER_RENDER_ENABLED"
+        )
+        return {
+            "overall_status": "ready",
+            "summary": {"ready": 16, "warnings": 0, "failures": 0},
+            "implementation": {"status": "ready", "ready": 14, "total_checks": 14},
+            "deployment": {"status": "ready", "ready": 2, "total_checks": 2},
+            "checks": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(upgrade_audit, "audit_upgrade_capabilities", fake_audit)
+
+    exit_code = upgrade_audit.main(["--auto-local-defaults", "--json"])
+
+    assert exit_code == 0
+    assert captured == {
+        "neo4j_uri": None,
+        "use_chroma": None,
+        "browser_render_enabled": None,
+    }
+    output = capsys.readouterr().out
+    assert '"local_dependency_auto_defaults"' in output
+    assert '"applied_env_keys": []' in output
+
+
 def test_upgrade_audit_script_waits_for_local_chroma(monkeypatch, capsys) -> None:
     monkeypatch.setenv("USE_CHROMA", "true")
     monkeypatch.setenv("CHROMA_API_URL", "http://127.0.0.1:8001")

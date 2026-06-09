@@ -34,7 +34,9 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     upgrade_action = {
         action["id"]: action for action in catalog["actions"]
     }["upgrade_audit"]
-    assert "upgrade_audit.py --json" in upgrade_action["display_command"]
+    assert "upgrade_audit.py --auto-local-defaults --json" in (
+        upgrade_action["display_command"]
+    )
     env_gap_action = {
         action["id"]: action for action in catalog["actions"]
     }["external_deployment_env_gaps"]
@@ -98,8 +100,14 @@ def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
     assert result["stdout_tail"] == "ok\n"
     assert result["stderr_tail"] == ""
     assert result["summary_rows"] == []
-    assert result["display_command"] == ".venv/bin/python scripts/upgrade_audit.py --json"
-    assert captured["command"][1:] == ["scripts/upgrade_audit.py", "--json"]
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+    )
+    assert captured["command"][1:] == [
+        "scripts/upgrade_audit.py",
+        "--auto-local-defaults",
+        "--json",
+    ]
     assert captured["cwd"] == tmp_path
     assert captured["timeout"] == 90
     assert captured["check"] is False

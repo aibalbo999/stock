@@ -53,6 +53,19 @@ def test_llm_observability_cost_helpers_are_split_from_trace_module() -> None:
     assert "def llm_cost_budget_status(" not in observability_source
 
 
+def test_llm_observability_routing_helpers_are_split_from_trace_module() -> None:
+    observability_source = Path("app/services/llm_observability.py").read_text()
+    routing_source = Path("app/services/llm_observability_routing.py").read_text()
+
+    assert "def attempt_summary_for_trace(" in routing_source
+    assert "def model_routing_decision(" in routing_source
+    assert "def trace_failure_category(" in routing_source
+    assert "from app.services.llm_observability_routing import" in observability_source
+    assert "def _attempt_summary_for_trace(" not in observability_source
+    assert "def _model_routing_decision(" not in observability_source
+    assert "def _trace_failure_category(" not in observability_source
+
+
 def test_langsmith_observability_sink_reports_ready_and_marks_trace_export(monkeypatch) -> None:
     monkeypatch.setattr(llm_observability_module, "_module_available", lambda _module: True)
     settings = _settings(

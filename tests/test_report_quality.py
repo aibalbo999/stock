@@ -147,13 +147,22 @@ def test_report_quality_market_rescue_rules_live_outside_quality_gate_module() -
         report_quality.market_coverage_quality_notes
         is report_quality_market_rules.market_coverage_quality_notes
     )
+    assert (
+        report_quality.market_trade_date_quality_notes
+        is report_quality_market_rules.market_trade_date_quality_notes
+    )
     assert "def market_coverage_quality_notes(" in market_rules_source
+    assert "def market_trade_date_quality_notes(" in market_rules_source
     assert "def market_rescue_quality_notes(" in market_rules_source
     assert "股價資料覆蓋率低於 50%" in market_rules_source
+    assert "股價日期不一致" in market_rules_source
+    assert "部分股票未取得資料庫最新交易日股價" in market_rules_source
     assert "月營收資料覆蓋偏低" in market_rules_source
     assert "部分市場或財務資料使用快取救援" in market_rules_source
     assert "部分市場或財務資料只使用官方最新救援資料" in market_rules_source
     assert "股價資料覆蓋率低於 50%" not in report_quality_source
+    assert "股價日期不一致" not in report_quality_source
+    assert "部分股票未取得資料庫最新交易日股價" not in report_quality_source
     assert "月營收資料覆蓋偏低" not in report_quality_source
     assert "部分市場或財務資料使用快取救援" not in report_quality_source
     assert "部分市場或財務資料只使用官方最新救援資料" not in report_quality_source

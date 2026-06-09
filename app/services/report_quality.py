@@ -25,6 +25,7 @@ from app.services.report_quality_llm_rules import llm_quality_notes
 from app.services.report_quality_market_rules import (
     market_coverage_quality_notes,
     market_rescue_quality_notes,
+    market_trade_date_quality_notes,
 )
 from app.services.report_quality_plan_rules import discovery_plan_quality_notes
 from app.services.report_quality_rag_rules import (
@@ -261,24 +262,14 @@ def build_report_quality_gate(
         and market_trade_date_lag_days is not None
         and market_trade_date_lag_days <= 1
     )
-    if (
-        promoted_count
-        and market_latest_trade_date_coverage is not None
-        and market_latest_trade_date_coverage < 0.8
-    ):
-        if market_trade_date_warning_suppressed:
-            observations.append("股價日期略有差異，系統已使用各股票最新可取得收盤資料")
-        else:
-            warnings.append("股價日期不一致，最新可取得交易日未覆蓋多數股票")
-    if promoted_count and market_older_than_database_latest_count:
-        older_ratio = market_older_than_database_latest_count / promoted_count
-        message = "部分股票未取得資料庫最新交易日股價，報告僅能使用最新可取得收盤價"
-        if market_trade_date_warning_suppressed:
-            observations.append(message)
-        elif older_ratio >= 0.5:
-            warnings.append(message)
-        else:
-            observations.append(message)
+    market_trade_date_warnings, market_trade_date_observations = market_trade_date_quality_notes(
+        promoted_count=promoted_count,
+        market_latest_trade_date_coverage=market_latest_trade_date_coverage,
+        market_older_than_database_latest_count=market_older_than_database_latest_count,
+        market_trade_date_warning_suppressed=market_trade_date_warning_suppressed,
+    )
+    warnings.extend(market_trade_date_warnings)
+    observations.extend(market_trade_date_observations)
     market_rescue_warnings, market_rescue_observations = market_rescue_quality_notes(
         stale_market_dataset_count=stale_market_dataset_count,
         market_stale_count=market_stale_count,

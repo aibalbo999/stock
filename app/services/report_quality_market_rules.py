@@ -24,6 +24,36 @@ def market_coverage_quality_notes(
     return blockers, warnings
 
 
+def market_trade_date_quality_notes(
+    *,
+    promoted_count: int,
+    market_latest_trade_date_coverage: float | None,
+    market_older_than_database_latest_count: int,
+    market_trade_date_warning_suppressed: bool,
+) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
+    observations: list[str] = []
+    if (
+        promoted_count
+        and market_latest_trade_date_coverage is not None
+        and market_latest_trade_date_coverage < 0.8
+    ):
+        if market_trade_date_warning_suppressed:
+            observations.append("股價日期略有差異，系統已使用各股票最新可取得收盤資料")
+        else:
+            warnings.append("股價日期不一致，最新可取得交易日未覆蓋多數股票")
+    if promoted_count and market_older_than_database_latest_count:
+        older_ratio = market_older_than_database_latest_count / promoted_count
+        message = "部分股票未取得資料庫最新交易日股價，報告僅能使用最新可取得收盤價"
+        if market_trade_date_warning_suppressed:
+            observations.append(message)
+        elif older_ratio >= 0.5:
+            warnings.append(message)
+        else:
+            observations.append(message)
+    return warnings, observations
+
+
 def market_rescue_quality_notes(
     *,
     stale_market_dataset_count: int,

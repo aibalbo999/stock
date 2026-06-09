@@ -446,10 +446,13 @@ def _create_report_with_retention(
 def _combined_report_retention(db_retention: dict | None, file_retention: dict | None) -> dict:
     db_retention = dict(db_retention or {})
     file_retention = dict(file_retention or {})
-    file_path = file_retention.get("path")
     artifact_retention = {
-        **file_retention,
-        "path": str(file_path) if file_path is not None else None,
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in file_retention.items()
+    }
+    artifact_retention = {
+        **artifact_retention,
+        "path": artifact_retention.get("path"),
     }
     return {
         "policy": "latest_per_topic",

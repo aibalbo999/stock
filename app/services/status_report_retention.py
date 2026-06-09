@@ -38,10 +38,24 @@ def report_retention_status() -> dict:
         and '"old_report_files_deleted"' in report_files_source
         and '"policy": "latest_per_topic"' in report_files_source
     )
+    report_file_write_retains_latest_version = (
+        "def _matching_report_versions_by_stem(" in report_files_source
+        and "report_artifact_version_sort_key(versions[stem])" in report_files_source
+        and '"written_path"' in report_files_source
+        and '"retained_path"' in report_files_source
+        and '"written_file_retained"' in report_files_source
+    )
     repository_create_records_retention = (
         "self.last_retention_result" in persistence_source
         and '"old_report_versions_deleted"' in persistence_source
         and '"old_report_ids"' in persistence_source
+    )
+    repository_create_retains_latest_version = (
+        "def _latest_report_id_for_topic(" in persistence_source
+        and "GeneratedReport.generated_at.desc()" in persistence_source
+        and '"created_report_id"' in persistence_source
+        and '"retained_report_id"' in persistence_source
+        and '"created_report_retained"' in persistence_source
     )
     celery_combined_write_guard = (
         "def _create_report_with_retention(" in tasks_source
@@ -79,6 +93,8 @@ def report_retention_status() -> dict:
         "write_prunes_report_artifacts_by_topic": report_file_write_prunes_artifacts,
         "repository_create_records_retention_result": repository_create_records_retention,
         "report_file_write_returns_retention_result": report_file_write_returns_retention,
+        "report_file_write_retains_latest_version": report_file_write_retains_latest_version,
+        "repository_create_retains_latest_version": repository_create_retains_latest_version,
         "celery_report_write_uses_combined_retention_guard": celery_combined_write_guard,
         "repository_latest_by_topic_available": "def latest_by_topic(" in persistence_source
         and "row_number()" in persistence_source

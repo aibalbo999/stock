@@ -28,10 +28,14 @@ def write_report_file_with_retention(
     path = report_dir / filename.replace("/", "_")
     path.write_text(response.markdown, encoding="utf-8")
     deleted = prune_report_files_for_topic(report_dir, safe_topic, keep_path=path)
+    retained_path = _retained_report_markdown_path(report_dir, safe_topic) or path
     return {
         "policy": "latest_per_topic",
         "topic": safe_topic,
-        "path": path,
+        "path": retained_path,
+        "written_path": path,
+        "retained_path": retained_path,
+        "written_file_retained": retained_path.resolve() == path.resolve(),
         "old_report_files_deleted": deleted,
     }
 
@@ -41,15 +45,21 @@ def safe_report_topic(topic: str) -> str:
 
 
 def prune_report_files_for_topic(report_dir: Path, safe_topic: str, *, keep_path: Path) -> int:
+    versions = _matching_report_versions_by_stem(report_dir, safe_topic)
+    if not versions:
+        return 0
+    keep_stem = max(
+        versions,
+        key=lambda stem: report_artifact_version_sort_key(versions[stem]),
+    )
+    if keep_path.stem not in versions:
+        keep_stem = keep_path.stem
     deleted = 0
-    keep_path = keep_path.resolve()
-    keep_stem = keep_path.stem
-    for candidate in report_artifact_files(report_dir):
-        if candidate.resolve() == keep_path or candidate.stem == keep_stem:
+    for stem, files in versions.items():
+        if stem == keep_stem:
             continue
-        if not report_file_matches_topic(candidate, safe_topic):
-            continue
-        deleted += _unlink_report_file(candidate)
+        for candidate in files:
+            deleted += _unlink_report_file(candidate)
     return deleted
 
 
@@ -133,6 +143,26 @@ def report_artifact_files(report_dir: Path) -> list[Path]:
         for candidate in report_dir.iterdir()
         if candidate.is_file() and candidate.suffix.lower() in REPORT_ARTIFACT_SUFFIXES
     ]
+
+
+def _matching_report_versions_by_stem(report_dir: Path, safe_topic: str) -> dict[str, list[Path]]:
+    versions: dict[str, list[Path]] = {}
+    for candidate in report_artifact_files(report_dir):
+        if report_file_matches_topic(candidate, safe_topic):
+            versions.setdefault(candidate.stem, []).append(candidate)
+    return versions
+
+
+def _retained_report_markdown_path(report_dir: Path, safe_topic: str) -> Path | None:
+    versions = _matching_report_versions_by_stem(report_dir, safe_topic)
+    if not versions:
+        return None
+    keep_stem = max(
+        versions,
+        key=lambda stem: report_artifact_version_sort_key(versions[stem]),
+    )
+    files = sorted(versions[keep_stem], key=lambda path: (path.suffix.lower() != ".md", path.name))
+    return files[0] if files else None
 
 
 def report_file_matches_topic(path: Path, safe_topic: str) -> bool:

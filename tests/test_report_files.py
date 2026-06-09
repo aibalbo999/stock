@@ -69,10 +69,38 @@ def test_write_report_file_with_retention_returns_pruned_artifact_count(tmp_path
     assert result["policy"] == "latest_per_topic"
     assert result["topic"] == "AI產業鏈"
     assert result["path"].name == "20260607_080000_AI產業鏈.md"
+    assert result["retained_path"].name == "20260607_080000_AI產業鏈.md"
+    assert result["written_path"].name == "20260607_080000_AI產業鏈.md"
+    assert result["written_file_retained"] is True
     assert result["old_report_files_deleted"] == 2
     assert not old_same_topic.exists()
     assert not old_same_topic_html.exists()
     assert other_topic.exists()
+
+
+def test_write_report_file_with_retention_keeps_newer_existing_artifact(tmp_path) -> None:
+    newer_same_topic = tmp_path / "20260608_090000_AI產業鏈.md"
+    newer_same_topic_html = tmp_path / "20260608_090000_AI產業鏈.html"
+    newer_same_topic.write_text("# newer", encoding="utf-8")
+    newer_same_topic_html.write_text("<h1>newer</h1>", encoding="utf-8")
+
+    result = write_report_file_with_retention(
+        tmp_path,
+        ReportRequest(topic="AI產業鏈"),
+        SimpleNamespace(
+            generated_at=datetime(2026, 6, 7, 8, 0, 0),
+            markdown="# backfill",
+        ),
+    )
+
+    assert result["path"].name == "20260608_090000_AI產業鏈.md"
+    assert result["retained_path"].name == "20260608_090000_AI產業鏈.md"
+    assert result["written_path"].name == "20260607_080000_AI產業鏈.md"
+    assert result["written_file_retained"] is False
+    assert result["old_report_files_deleted"] == 1
+    assert newer_same_topic.exists()
+    assert newer_same_topic_html.exists()
+    assert not result["written_path"].exists()
 
 
 def test_prune_older_report_files_by_topic_keeps_latest_each_topic(tmp_path) -> None:

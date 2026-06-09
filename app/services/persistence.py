@@ -271,6 +271,7 @@ class ReportRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
         self._last_pruned_report_ids: list[int] = []
+        self._last_retained_report_id: int | None = None
         self.last_retention_result: dict = self._empty_retention_result()
 
     def create(self, request: ReportRequest, response: ReportResponse) -> GeneratedReport:
@@ -295,17 +296,22 @@ class ReportRepository:
         )
         self.session.add(report)
         self.session.flush()
+        created_report_id = report.id
         old_report_versions_deleted = self.prune_older_for_topic(report.topic, report.id)
+        retained_report_id = self._last_retained_report_id or created_report_id
         self.last_retention_result = {
             "policy": "latest_per_topic",
             "topic": report.topic,
-            "report_id": report.id,
+            "report_id": retained_report_id,
+            "created_report_id": created_report_id,
+            "retained_report_id": retained_report_id,
+            "created_report_retained": created_report_id == retained_report_id,
             "old_report_versions_deleted": old_report_versions_deleted,
             "old_report_ids": list(self._last_pruned_report_ids),
             "run_links_cleared": bool(old_report_versions_deleted),
             "run_output_paths_cleared": bool(old_report_versions_deleted),
         }
-        return report
+        return self.session.get(GeneratedReport, retained_report_id) or report
 
     def latest(self, limit: int = 20) -> list[GeneratedReport]:
         statement = (
@@ -388,9 +394,12 @@ class ReportRepository:
 
     def prune_older_for_topic(self, topic: str, keep_report_id: int) -> int:
         self._last_pruned_report_ids = []
+        self._last_retained_report_id = None
+        retained_report_id = self._latest_report_id_for_topic(topic) or keep_report_id
+        self._last_retained_report_id = retained_report_id
         statement = select(GeneratedReport.id).where(
             GeneratedReport.topic == topic,
-            GeneratedReport.id != keep_report_id,
+            GeneratedReport.id != retained_report_id,
         )
         old_report_ids = list(self.session.scalars(statement))
         if not old_report_ids:
@@ -403,12 +412,24 @@ class ReportRepository:
         self.session.flush()
         return result.rowcount or 0
 
+    def _latest_report_id_for_topic(self, topic: str) -> int | None:
+        statement = (
+            select(GeneratedReport.id)
+            .where(GeneratedReport.topic == topic)
+            .order_by(GeneratedReport.generated_at.desc(), GeneratedReport.id.desc())
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
     @staticmethod
     def _empty_retention_result() -> dict:
         return {
             "policy": "latest_per_topic",
             "topic": None,
             "report_id": None,
+            "created_report_id": None,
+            "retained_report_id": None,
+            "created_report_retained": True,
             "old_report_versions_deleted": 0,
             "old_report_ids": [],
             "run_links_cleared": False,

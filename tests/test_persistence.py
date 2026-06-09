@@ -204,6 +204,9 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
             "policy": "latest_per_topic",
             "topic": "AI 產業鏈",
             "report_id": latest_report.id,
+            "created_report_id": latest_report.id,
+            "retained_report_id": latest_report.id,
+            "created_report_retained": True,
             "old_report_versions_deleted": 1,
             "old_report_ids": [old_report.id],
             "run_links_cleared": True,
@@ -212,6 +215,55 @@ def test_report_repository_keeps_only_latest_report_per_topic() -> None:
         restored_run = AnalysisRunRepository(session).get(run.id)
         assert restored_run.report_id is None
         assert restored_run.output_path is None
+    finally:
+        session.close()
+
+
+def test_report_repository_backfill_does_not_replace_newer_topic_report() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        repository = ReportRepository(session)
+        newest_report = repository.create(
+            ReportRequest(topic="AI 產業鏈", tickers=["2330"]),
+            ReportResponse(
+                title="newest",
+                markdown="# newest",
+                generated_at=datetime(2026, 6, 8, 9, 0, 0),
+            ),
+        )
+        run = AnalysisRunRepository(session).start("test", {})
+        AnalysisRunRepository(session).mark_success(
+            run.id,
+            newest_report.id,
+            "reports/20260608_090000_AI.md",
+        )
+
+        retained_report = repository.create(
+            ReportRequest(topic="AI 產業鏈", tickers=["3324"]),
+            ReportResponse(
+                title="backfill",
+                markdown="# backfill",
+                generated_at=datetime(2026, 6, 7, 8, 0, 0),
+            ),
+        )
+        retention = repository.last_retention_result
+        session.commit()
+
+        assert retained_report.id == newest_report.id
+        assert repository.get(newest_report.id) is not None
+        assert repository.latest_by_topic(20)[0].title == "newest"
+        assert retention["report_id"] == newest_report.id
+        assert retention["retained_report_id"] == newest_report.id
+        assert retention["created_report_id"] != newest_report.id
+        assert retention["created_report_retained"] is False
+        assert retention["old_report_ids"] == [retention["created_report_id"]]
+        assert retention["old_report_versions_deleted"] == 1
+        restored_run = AnalysisRunRepository(session).get(run.id)
+        assert restored_run.report_id == newest_report.id
+        assert restored_run.output_path == "reports/20260608_090000_AI.md"
     finally:
         session.close()
 

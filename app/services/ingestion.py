@@ -69,6 +69,7 @@ from app.services.ingestion_documents import (
     source_selection_limit as _source_selection_limit,
     stale_market_source_count as _stale_market_source_count,
 )
+from app.services.ingestion_company_filings import fetch_company_filing_ticker_documents
 from app.services.task_cancellation import TaskCancelledError
 
 __all__ = [
@@ -549,197 +550,19 @@ class IngestionPipeline:
             search_plans.append(
                 fetcher.official_search_plan(ticker, company_name, document_types=document_types)
             )
-            attempts = []
-            company_documents = list(cached_documents)
-            enriched_errors = []
-            latest_errors = []
-            if cached_documents:
-                attempts.append(
-                    company_filing_attempt_result(
-                        "cached_company_filings",
-                        cached_documents,
-                        [],
-                    )
-                )
-            mops_attempted = False
-            missing_document_types = missing_company_filing_document_types(
-                company_documents,
-                list(target_document_types),
+            ticker_fetch_result = await fetch_company_filing_ticker_documents(
+                fetcher=fetcher,
+                ticker=ticker,
+                company_name=company_name,
+                cached_documents=cached_documents,
+                target_document_types=target_document_types,
+                document_types=document_types,
+                limit_per_query=limit_per_query,
+                check_cancelled=self._check_cancelled,
             )
-            if "annual_report" in missing_document_types:
-                mops_documents, mops_errors = await fetcher.fetch_mops_annual_report_documents(
-                    ticker,
-                    company_name,
-                )
-                self._check_cancelled()
-                mops_attempted = True
-                mops_enriched_errors = enrich_company_filing_errors(
-                    mops_errors, ticker, company_name
-                )
-                company_documents.extend(mops_documents)
-                enriched_errors.extend(mops_enriched_errors)
-                latest_errors = mops_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "mops_annual_report",
-                        mops_documents,
-                        mops_enriched_errors,
-                    )
-                )
-            missing_document_types = missing_company_filing_document_types(
-                company_documents,
-                list(target_document_types),
-            )
-            if should_broaden_company_filing_search(
-                company_documents, enriched_errors, list(target_document_types)
-            ):
-                fetched_documents, company_errors = await fetcher.fetch_discovery_documents(
-                    ticker,
-                    company_name,
-                    limit_per_query=limit_per_query,
-                    document_types=missing_document_types or document_types,
-                )
-                self._check_cancelled()
-                targeted_enriched_errors = enrich_company_filing_errors(
-                    company_errors, ticker, company_name
-                )
-                company_documents.extend(fetched_documents)
-                enriched_errors.extend(targeted_enriched_errors)
-                latest_errors = targeted_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "targeted_search",
-                        fetched_documents,
-                        targeted_enriched_errors,
-                    )
-                )
-            if should_retry_company_filing_fetch(company_documents, latest_errors):
-                missing_document_types = missing_company_filing_document_types(
-                    company_documents,
-                    list(target_document_types),
-                )
-                retry_documents, retry_errors = await fetcher.fetch_discovery_documents(
-                    ticker,
-                    company_name,
-                    limit_per_query=limit_per_query,
-                    document_types=missing_document_types or document_types,
-                )
-                self._check_cancelled()
-                retry_enriched_errors = enrich_company_filing_errors(
-                    retry_errors, ticker, company_name
-                )
-                company_documents.extend(retry_documents)
-                enriched_errors.extend(retry_enriched_errors)
-                latest_errors = retry_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "retry_after_source_error",
-                        retry_documents,
-                        retry_enriched_errors,
-                    )
-                )
-            if should_broaden_company_filing_search(
-                company_documents, enriched_errors, list(target_document_types)
-            ):
-                broad_documents, broad_errors = await fetcher.fetch_discovery_documents(
-                    ticker,
-                    company_name,
-                    limit_per_query=limit_per_query + 2,
-                    document_types=None,
-                )
-                self._check_cancelled()
-                broad_enriched_errors = enrich_company_filing_errors(
-                    broad_errors, ticker, company_name
-                )
-                company_documents.extend(broad_documents)
-                enriched_errors.extend(broad_enriched_errors)
-                latest_errors = broad_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "broaden_official_search",
-                        broad_documents,
-                        broad_enriched_errors,
-                    )
-                )
-            missing_document_types = missing_company_filing_document_types(
-                company_documents,
-                list(target_document_types),
-            )
-            if not mops_attempted and "annual_report" in missing_document_types:
-                mops_documents, mops_errors = await fetcher.fetch_mops_annual_report_documents(
-                    ticker,
-                    company_name,
-                )
-                self._check_cancelled()
-                mops_enriched_errors = enrich_company_filing_errors(
-                    mops_errors, ticker, company_name
-                )
-                company_documents.extend(mops_documents)
-                enriched_errors.extend(mops_enriched_errors)
-                latest_errors = mops_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "mops_annual_report",
-                        mops_documents,
-                        mops_enriched_errors,
-                    )
-                )
-            missing_document_types = missing_company_filing_document_types(
-                company_documents,
-                list(target_document_types),
-            )
-            if should_broaden_company_filing_search(
-                company_documents, enriched_errors, list(target_document_types)
-            ):
-                (
-                    official_documents,
-                    official_errors,
-                ) = await fetcher.fetch_official_website_documents(
-                    ticker,
-                    company_name,
-                    limit=limit_per_query + 5,
-                    document_types=missing_document_types or document_types,
-                )
-                self._check_cancelled()
-                official_enriched_errors = enrich_company_filing_errors(
-                    official_errors, ticker, company_name
-                )
-                company_documents.extend(official_documents)
-                enriched_errors.extend(official_enriched_errors)
-                latest_errors = official_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "official_company_website",
-                        official_documents,
-                        official_enriched_errors,
-                    )
-                )
-            missing_document_types = missing_company_filing_document_types(
-                company_documents,
-                list(target_document_types),
-            )
-            if should_broaden_company_filing_search(
-                company_documents, enriched_errors, list(target_document_types)
-            ):
-                web_documents, web_errors = await fetcher.fetch_web_search_documents(
-                    ticker,
-                    company_name,
-                    limit_per_query=limit_per_query + 3,
-                    document_types=missing_document_types or document_types,
-                )
-                self._check_cancelled()
-                web_enriched_errors = enrich_company_filing_errors(web_errors, ticker, company_name)
-                company_documents.extend(web_documents)
-                enriched_errors.extend(web_enriched_errors)
-                latest_errors = web_enriched_errors
-                attempts.append(
-                    company_filing_attempt_result(
-                        "official_web_search",
-                        web_documents,
-                        web_enriched_errors,
-                    )
-                )
-            company_documents = self._dedupe_documents(company_documents)
+            company_documents = ticker_fetch_result["documents"]
+            enriched_errors = ticker_fetch_result["errors"]
+            attempts = ticker_fetch_result["attempts"]
             documents.extend(company_documents)
             errors.extend(enriched_errors)
             per_ticker_results.append(

@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import contextmanager
 from datetime import date
+from pathlib import Path
 
 from app.data_sources.company_filings import CompanyFilingFetcher
 from app.data_sources.market import MarketDataClient
@@ -34,6 +35,20 @@ def test_ingestion_reexports_dedicated_document_helpers() -> None:
         is ingestion_documents.is_low_quality_market_source
     )
     assert ingestion_module._dedupe_documents is ingestion_documents.dedupe_documents
+
+
+def test_ingestion_company_filing_fetch_sequence_is_split_from_pipeline() -> None:
+    ingestion_source = Path("app/services/ingestion.py").read_text()
+    filing_source = Path("app/services/ingestion_company_filings.py").read_text()
+
+    assert "async def fetch_company_filing_ticker_documents(" in filing_source
+    assert "retry_after_source_error" in filing_source
+    assert "official_company_website" in filing_source
+    assert "official_web_search" in filing_source
+    assert "fetch_company_filing_ticker_documents(" in ingestion_source
+    assert "retry_after_source_error" not in ingestion_source
+    assert "official_company_website" not in ingestion_source
+    assert "official_web_search" not in ingestion_source
 
 
 def test_source_category_counts_sum_stored_documents() -> None:

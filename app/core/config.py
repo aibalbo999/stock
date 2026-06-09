@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     llm_model_quota_cooldown_seconds: float = 60 * 60
     llm_quota_hard_routing_enabled: bool = True
     llm_quota_window_timezone: str = "America/Los_Angeles"
+    llm_quota_warning_ratio: float = 0.8
     llm_model_daily_request_budgets: str = (
         "gemini-3.5-flash=250,"
         "gemini-2.5-flash=250,"

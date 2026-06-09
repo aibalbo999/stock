@@ -38,17 +38,21 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
                     "rank": 1,
                     "model": "gemini-3.5-flash",
                     "status": "exhausted",
+                    "risk_level": "exhausted",
                     "routing_tier": "primary",
                     "status_reason": "request_budget_exhausted",
                     "routing_reason": "Skipped until the next quota window.",
                     "requests_used": 250,
                     "request_budget": 250,
                     "requests_remaining": 0,
+                    "request_used_ratio": 1.0,
                     "tokens_used": 1000,
                     "token_budget": None,
                     "tokens_remaining": None,
+                    "token_used_ratio": None,
                     "fallback_count": 0,
                     "retryable_failure_count": 3,
+                    "next_action": "No action needed for routing.",
                 }
             ]
         }
@@ -59,17 +63,21 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
             "rank": 1,
             "model": "gemini-3.5-flash",
             "status": "exhausted",
+            "risk": "exhausted",
             "tier": "primary",
             "reason": "request_budget_exhausted",
             "routing_reason": "Skipped until the next quota window.",
             "requests_used": 250,
             "request_budget": 250,
             "requests_remaining": 0,
+            "request_used_pct": "100.0%",
             "tokens_used": 1000,
             "token_budget": None,
             "tokens_remaining": None,
+            "token_used_pct": "-",
             "fallback_count": 0,
             "retryable_failure_count": 3,
+            "next_action": "No action needed for routing.",
         }
     ]
 
@@ -92,6 +100,38 @@ def test_llm_quota_captions_summarize_recommendation_budget_note_and_gemma_fallb
         "Earlier model(s) exhausted.",
         "Limits are project-level.",
         "高額度保底模型：gemma-4-31b-it",
+    ]
+
+
+def test_llm_quota_captions_surface_near_limit_alerts_without_changing_recommendation() -> None:
+    captions = llm_quota_captions(
+        {
+            "recommended_model": "gemini-3.5-flash",
+            "recommended_rank": 1,
+            "recommended_routing_tier": "primary",
+            "recommended_reason": (
+                "Top-ranked configured model still has remaining tracked quota; "
+                "it has reached the 80% warning threshold."
+            ),
+            "window": {"reset_in_seconds": 600},
+            "alerts": [
+                {
+                    "model": "gemini-3.5-flash",
+                    "severity": "warning",
+                    "usage_ratio": 0.8,
+                    "next_action": "Keep using this model until exhausted.",
+                }
+            ],
+        }
+    )
+
+    assert captions == [
+        "目前推薦：gemini-3.5-flash｜順位 1｜tier=primary｜約 10 分鐘 後重置",
+        (
+            "Top-ranked configured model still has remaining tracked quota; "
+            "it has reached the 80% warning threshold."
+        ),
+        "額度提醒：gemini-3.5-flash warning（已用 80.0%）；Keep using this model until exhausted.",
     ]
 
 

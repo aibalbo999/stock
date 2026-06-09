@@ -39,6 +39,11 @@ def test_llm_status_retry_quota_and_observability_shape(service_status_snapshot)
     }
     assert status["llm_quota_routing"]["high_quota_fallback_request_budget"] == 14400
     assert status["llm_quota_routing"]["readiness_checks"]["hard_routing_enabled"] is True
+    assert status["llm_quota_routing"]["quota_warning_ratio"] == 0.8
+    assert (
+        status["llm_quota_routing"]["readiness_checks"]["quota_warning_ratio_configured"]
+        is True
+    )
     assert status["llm_quota_routing"]["excluded_media_live_models"] == []
     assert status["llm_observability"]["enabled"] is True
     assert status["llm_observability"]["local_trace_enabled"] is True
@@ -121,6 +126,7 @@ def test_llm_retry_settings_defaults() -> None:
     )
     assert settings.llm_model_quota_cooldown_seconds == 3600
     assert settings.llm_quota_window_timezone == "America/Los_Angeles"
+    assert settings.llm_quota_warning_ratio == 0.8
     assert "gemini-3.5-flash=250" in settings.llm_model_daily_request_budgets
     assert settings.llm_model_cost_rate_card_usd == ""
     assert settings.llm_daily_cost_budget_usd == 0.0
@@ -137,6 +143,7 @@ def test_llm_quota_routing_status_requires_smart_first_order_and_equal_budgets()
     assert ready["readiness_checks"]["smart_model_order"] is True
     assert ready["readiness_checks"]["flash_models_share_request_budget"] is True
     assert ready["readiness_checks"]["high_quota_fallback_budget_ready"] is True
+    assert ready["readiness_checks"]["quota_warning_ratio_configured"] is True
 
     misordered = _llm_quota_routing_status(
         Settings(

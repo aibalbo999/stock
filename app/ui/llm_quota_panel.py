@@ -25,17 +25,21 @@ def llm_quota_model_rows(llm_quota: dict) -> list[dict]:
                 "rank": model.get("rank"),
                 "model": model.get("model"),
                 "status": model.get("status"),
+                "risk": model.get("risk_level"),
                 "tier": model.get("routing_tier"),
                 "reason": model.get("status_reason"),
                 "routing_reason": model.get("routing_reason"),
                 "requests_used": model.get("requests_used"),
                 "request_budget": model.get("request_budget"),
                 "requests_remaining": model.get("requests_remaining"),
+                "request_used_pct": _format_ratio(model.get("request_used_ratio")),
                 "tokens_used": model.get("tokens_used"),
                 "token_budget": model.get("token_budget"),
                 "tokens_remaining": model.get("tokens_remaining"),
+                "token_used_pct": _format_ratio(model.get("token_used_ratio")),
                 "fallback_count": model.get("fallback_count"),
                 "retryable_failure_count": model.get("retryable_failure_count"),
+                "next_action": model.get("next_action"),
             }
         )
     return rows
@@ -48,6 +52,7 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
         captions.append(recommendation)
     if llm_quota.get("recommended_reason"):
         captions.append(str(llm_quota["recommended_reason"]))
+    captions.extend(_quota_alert_captions(llm_quota))
     budget_source = _dict_value(llm_quota.get("budget_source"))
     if budget_source.get("note"):
         captions.append(str(budget_source["note"]))
@@ -60,6 +65,24 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
     if high_quota_models:
         captions.append("高額度保底模型：" + "、".join(high_quota_models))
     return captions
+
+
+def _quota_alert_captions(llm_quota: dict) -> list[str]:
+    captions = []
+    for alert in llm_quota.get("alerts") or []:
+        if not isinstance(alert, dict):
+            continue
+        model = str(alert.get("model") or "-")
+        severity = str(alert.get("severity") or "warning")
+        ratio = _format_ratio(alert.get("usage_ratio"))
+        next_action = str(alert.get("next_action") or "").strip()
+        caption = f"額度提醒：{model} {severity}"
+        if ratio != "-":
+            caption += f"（已用 {ratio}）"
+        if next_action:
+            caption += f"；{next_action}"
+        captions.append(caption)
+    return captions[:3]
 
 
 def _recommendation_caption(llm_quota: dict) -> str:
@@ -97,6 +120,14 @@ def _format_duration(value: Any) -> str:
     if minutes:
         return f"{minutes} 分鐘"
     return f"{seconds} 秒"
+
+
+def _format_ratio(value: Any) -> str:
+    try:
+        ratio = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    return f"{ratio * 100:.1f}%"
 
 
 def _format_window_end(value: Any) -> str:

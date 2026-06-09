@@ -142,6 +142,8 @@ def test_llm_api_service_reports_status_from_settings() -> None:
             "available": False,
             "reason": "usage_store_unavailable",
             "recommended_model": None,
+            "quota_warning_ratio": None,
+            "alerts": [],
             "exhausted_models": [],
             "high_quota_fallback_models": [],
             "models": [],
@@ -308,6 +310,14 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
                 "recommended_routing_tier": "fallback",
                 "recommended_status": "available",
                 "recommended_reason": "Earlier model(s) exhausted in the current window: gemini-3.5-flash.",
+                "quota_warning_ratio": 0.8,
+                "alerts": [
+                    {
+                        "code": "llm_quota_exhausted",
+                        "severity": "critical",
+                        "model": "gemini-3.5-flash",
+                    }
+                ],
                 "model_order": ["gemini-3.5-flash", "gemini-2.5-flash", "gemma-4-31b-it"],
                 "window": {
                     "timezone": "America/Los_Angeles",
@@ -336,10 +346,16 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
                         "requests_used": 1,
                         "request_budget": 1,
                         "requests_remaining": 0,
+                        "request_used_ratio": 1.0,
                         "completion_count": 0,
                         "tokens_used": 0,
                         "token_budget": None,
                         "tokens_remaining": None,
+                        "token_used_ratio": None,
+                        "usage_ratio": 1.0,
+                        "quota_warning": False,
+                        "risk_level": "exhausted",
+                        "next_action": "No action needed for routing.",
                         "estimated_cost_usd": 99.0,
                     },
                     {
@@ -352,10 +368,16 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
                         "requests_used": 2,
                         "request_budget": 250,
                         "requests_remaining": 248,
+                        "request_used_ratio": 0.008,
                         "completion_count": 2,
                         "tokens_used": 1200,
                         "token_budget": None,
                         "tokens_remaining": None,
+                        "token_used_ratio": None,
+                        "usage_ratio": 0.008,
+                        "quota_warning": False,
+                        "risk_level": "normal",
+                        "next_action": "No immediate action.",
                     },
                 ],
             }
@@ -379,6 +401,14 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
     assert quota["recommended_rank"] == 2
     assert quota["recommended_routing_tier"] == "fallback"
     assert quota["recommended_status"] == "available"
+    assert quota["quota_warning_ratio"] == 0.8
+    assert quota["alerts"] == [
+        {
+            "code": "llm_quota_exhausted",
+            "severity": "critical",
+            "model": "gemini-3.5-flash",
+        }
+    ]
     assert quota["exhausted_models"] == ["gemini-3.5-flash"]
     assert quota["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert quota["window"]["reset_in_seconds"] == 5400
@@ -398,10 +428,16 @@ def test_llm_api_status_embeds_compact_quota_routing_snapshot() -> None:
         "requests_used": 1,
         "request_budget": 1,
         "requests_remaining": 0,
+        "request_used_ratio": 1.0,
         "completion_count": 0,
         "tokens_used": 0,
         "token_budget": None,
         "tokens_remaining": None,
+        "token_used_ratio": None,
+        "usage_ratio": 1.0,
+        "quota_warning": False,
+        "risk_level": "exhausted",
+        "next_action": "No action needed for routing.",
     }
     assert "estimated_cost_usd" not in quota["models"][0]
 
@@ -461,6 +497,8 @@ def test_llm_api_service_returns_usage_summary() -> None:
                 "recommended_routing_tier": "primary",
                 "recommended_status": "available",
                 "recommended_reason": "Primary model remains within the current quota window.",
+                "quota_warning_ratio": 0.8,
+                "alerts": [],
                 "model_order": ["gemini-3.5-flash", "gemini-2.5-flash", "gemma-4-31b-it"],
                 "routing_policy": {
                     "strategy": "smartest_first_then_budget_degrade",
@@ -485,10 +523,16 @@ def test_llm_api_service_returns_usage_summary() -> None:
                         "requests_used": 1,
                         "request_budget": 250,
                         "requests_remaining": 249,
+                        "request_used_ratio": 0.004,
                         "completion_count": 1,
                         "tokens_used": 99,
                         "token_budget": None,
                         "tokens_remaining": None,
+                        "token_used_ratio": None,
+                        "usage_ratio": 0.004,
+                        "quota_warning": False,
+                        "risk_level": "normal",
+                        "next_action": "No immediate action.",
                     }
                 ],
             }
@@ -526,6 +570,8 @@ def test_llm_api_service_returns_usage_summary() -> None:
     assert summary["routing_snapshot"]["available"] is True
     assert summary["routing_snapshot"]["strategy"] == "smartest_first_then_budget_degrade"
     assert summary["routing_snapshot"]["recommended_model"] == "gemini-3.5-flash"
+    assert summary["routing_snapshot"]["quota_warning_ratio"] == 0.8
+    assert summary["routing_snapshot"]["alerts"] == []
     assert summary["routing_snapshot"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert summary["routing_snapshot"]["models"][0] == {
         "rank": 1,
@@ -537,10 +583,16 @@ def test_llm_api_service_returns_usage_summary() -> None:
         "requests_used": 1,
         "request_budget": 250,
         "requests_remaining": 249,
+        "request_used_ratio": 0.004,
         "completion_count": 1,
         "tokens_used": 99,
         "token_budget": None,
         "tokens_remaining": None,
+        "token_used_ratio": None,
+        "usage_ratio": 0.004,
+        "quota_warning": False,
+        "risk_level": "normal",
+        "next_action": "No immediate action.",
     }
 
 

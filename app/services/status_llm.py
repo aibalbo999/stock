@@ -100,6 +100,7 @@ def _llm_quota_routing_status(settings) -> dict:
     hard_routing_enabled = bool(getattr(settings, "llm_quota_hard_routing_enabled", True))
     cooldown_seconds = max(0.0, float(getattr(settings, "llm_model_quota_cooldown_seconds", 0.0)))
     quota_timezone = str(getattr(settings, "llm_quota_window_timezone", "") or "").strip()
+    quota_warning_ratio = _safe_warning_ratio(getattr(settings, "llm_quota_warning_ratio", 0.8))
     media_or_live_models = [
         model
         for model in model_order
@@ -118,6 +119,7 @@ def _llm_quota_routing_status(settings) -> dict:
         "hard_routing_enabled": hard_routing_enabled,
         "quota_cooldown_enabled": cooldown_seconds > 0,
         "quota_window_timezone_configured": bool(quota_timezone),
+        "quota_warning_ratio_configured": 0.0 < quota_warning_ratio < 1.0,
         "embedding_model_kept_separate": embedding_model_key == "gemini-embedding-2",
         "media_live_models_excluded_from_report_route": not media_or_live_models,
     }
@@ -139,6 +141,7 @@ def _llm_quota_routing_status(settings) -> dict:
         "hard_routing_enabled": hard_routing_enabled,
         "quota_cooldown_seconds": cooldown_seconds,
         "quota_window_timezone": quota_timezone,
+        "quota_warning_ratio": quota_warning_ratio,
         "same_tier_flash_request_budgets": smart_request_budgets,
         "high_quota_fallback_request_budget": high_quota_budget,
         "configured_request_budget_models": sorted(request_budgets),
@@ -156,3 +159,13 @@ def _llm_quota_routing_status(settings) -> dict:
 
 def _split_config_values(value: str) -> list[str]:
     return [item.strip() for item in value.replace("\n", ",").split(",") if item.strip()]
+
+
+def _safe_warning_ratio(value: object) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.8
+    if parsed <= 0 or parsed >= 1:
+        return 0.8
+    return parsed

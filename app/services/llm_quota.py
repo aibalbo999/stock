@@ -18,6 +18,7 @@ NON_REQUEST_ATTEMPT_OUTCOMES = {
     "quota_daily_exhausted",
     "timeout",
 }
+DEFAULT_QUOTA_WARNING_RATIO = 0.8
 
 
 class LLMQuotaGovernanceService:
@@ -39,6 +40,9 @@ class LLMQuotaGovernanceService:
         window = self._quota_window(settings)
         request_budgets = parse_model_budget_map(getattr(settings, "llm_model_daily_request_budgets", ""))
         token_budgets = parse_model_budget_map(getattr(settings, "llm_model_daily_token_budgets", ""))
+        warning_ratio = _safe_warning_ratio(
+            getattr(settings, "llm_quota_warning_ratio", DEFAULT_QUOTA_WARNING_RATIO)
+        )
         model_order = self._model_order(settings)
         usage_records = self._usage_records(window["start_utc_naive"])
         usage_by_model = self._usage_by_model(usage_records)
@@ -54,6 +58,9 @@ class LLMQuotaGovernanceService:
             tokens_used = int(usage.get("total_token_estimate") or 0)
             request_remaining = _remaining(request_budget, requests_used)
             token_remaining = _remaining(token_budget, tokens_used)
+            request_used_ratio = _used_ratio(request_budget, requests_used)
+            token_used_ratio = _used_ratio(token_budget, tokens_used)
+            usage_ratio = _max_ratio(request_used_ratio, token_used_ratio)
             request_exhausted = request_budget is not None and request_remaining is not None and request_remaining <= 0
             token_exhausted = token_budget is not None and token_remaining is not None and token_remaining <= 0
             has_budget = request_budget is not None or token_budget is not None
@@ -64,6 +71,23 @@ class LLMQuotaGovernanceService:
                 if has_budget
                 else "tracking_only"
             )
+            request_warning = (
+                status != "exhausted"
+                and request_used_ratio is not None
+                and request_used_ratio >= warning_ratio
+            )
+            token_warning = (
+                status != "exhausted"
+                and token_used_ratio is not None
+                and token_used_ratio >= warning_ratio
+            )
+            quota_warning = request_warning or token_warning
+            risk_level = _risk_level(
+                status=status,
+                has_budget=has_budget,
+                quota_warning=quota_warning,
+            )
+            routing_tier = _routing_tier(model_order, display_model, request_budget)
             rows.append(
                 {
                     "model": display_model,
@@ -74,9 +98,12 @@ class LLMQuotaGovernanceService:
                     "requests_used": requests_used,
                     "request_budget": request_budget,
                     "requests_remaining": request_remaining,
+                    "request_used_ratio": request_used_ratio,
                     "tokens_used": tokens_used,
                     "token_budget": token_budget,
                     "tokens_remaining": token_remaining,
+                    "token_used_ratio": token_used_ratio,
+                    "usage_ratio": usage_ratio,
                     "estimated_cost_usd": round(float(usage.get("estimated_cost_usd") or 0.0), 6),
                     "fallback_count": int(usage.get("fallback_count") or 0),
                     "retryable_failure_count": int(usage.get("retryable_failure_count") or 0),
@@ -85,14 +112,24 @@ class LLMQuotaGovernanceService:
                         status=status,
                         request_exhausted=request_exhausted,
                         token_exhausted=token_exhausted,
+                        request_warning=request_warning,
+                        token_warning=token_warning,
                         has_budget=has_budget,
                     ),
-                    "routing_tier": _routing_tier(model_order, display_model, request_budget),
+                    "quota_warning": quota_warning,
+                    "risk_level": risk_level,
+                    "routing_tier": routing_tier,
                     "routing_reason": _routing_reason(
                         status=status,
+                        quota_warning=quota_warning,
                         model_order=model_order,
                         model=display_model,
                         request_budget=request_budget,
+                    ),
+                    "next_action": _next_action(
+                        status=status,
+                        risk_level=risk_level,
+                        routing_tier=routing_tier,
                     ),
                 }
             )
@@ -125,12 +162,22 @@ class LLMQuotaGovernanceService:
                 recommended["routing_tier"] if recommended else None
             ),
             "recommended_status": recommended["status"] if recommended else None,
-            "recommended_reason": _recommended_reason(recommended, exhausted_before_recommendation),
+            "recommended_reason": _recommended_reason(
+                recommended,
+                exhausted_before_recommendation,
+                warning_ratio,
+            ),
             "models": rows,
+            "quota_warning_ratio": warning_ratio,
+            "alerts": _quota_alerts(rows),
             "totals": totals,
             "routing_policy": {
                 "strategy": "smartest_first_then_budget_degrade",
                 "selection_rule": "Use the first configured model that is not exhausted in the current quota window.",
+                "warning_rule": (
+                    "Warning thresholds only surface risk; routing still uses smarter models "
+                    "until their configured budget is exhausted."
+                ),
                 "exhausted_before_recommendation": exhausted_before_recommendation,
                 "high_quota_fallback_models": [
                     item["model"] for item in rows if item.get("routing_tier") == "high_quota_fallback"
@@ -146,7 +193,8 @@ class LLMQuotaGovernanceService:
                 "note": (
                     "Gemini API free-tier limits are project-level and can vary by model/version; "
                     "request counts are attributed from persisted attempts/models_tried when available, "
-                    "and settings should match the limits shown in Google AI Studio."
+                    "and settings should match the limits shown in Google AI Studio. "
+                    "Quota warnings do not change routing; only exhausted models are skipped."
                 ),
             },
         }
@@ -336,6 +384,19 @@ def _remaining(budget: int | None, used: int) -> int | None:
     return max(0, int(budget) - int(used))
 
 
+def _used_ratio(budget: int | None, used: int) -> float | None:
+    if budget is None or int(budget) <= 0:
+        return None
+    return round(max(0.0, float(used) / float(budget)), 4)
+
+
+def _max_ratio(*values: float | None) -> float | None:
+    available = [value for value in values if value is not None]
+    if not available:
+        return None
+    return max(available)
+
+
 def _rank_for_model(model_order: list[str], model: str) -> int | None:
     model_key = normalize_model_name(model)
     for index, candidate in enumerate(model_order, start=1):
@@ -349,15 +410,31 @@ def _status_reason(
     status: str,
     request_exhausted: bool,
     token_exhausted: bool,
+    request_warning: bool,
+    token_warning: bool,
     has_budget: bool,
 ) -> str:
     if status == "exhausted" and request_exhausted:
         return "request_budget_exhausted"
     if status == "exhausted" and token_exhausted:
         return "token_budget_exhausted"
+    if request_warning:
+        return "request_budget_near_limit"
+    if token_warning:
+        return "token_budget_near_limit"
     if has_budget:
         return "within_configured_budget"
     return "no_budget_configured_tracking_only"
+
+
+def _risk_level(*, status: str, has_budget: bool, quota_warning: bool) -> str:
+    if status == "exhausted":
+        return "exhausted"
+    if quota_warning:
+        return "warning"
+    if has_budget:
+        return "normal"
+    return "tracking_only"
 
 
 def _routing_tier(model_order: list[str], model: str, request_budget: int | None) -> str:
@@ -375,6 +452,7 @@ def _routing_tier(model_order: list[str], model: str, request_budget: int | None
 def _routing_reason(
     *,
     status: str,
+    quota_warning: bool,
     model_order: list[str],
     model: str,
     request_budget: int | None,
@@ -382,6 +460,8 @@ def _routing_reason(
     tier = _routing_tier(model_order, model, request_budget)
     if status == "exhausted":
         return "Skipped until the next quota window because the configured daily budget is exhausted."
+    if quota_warning:
+        return "Still eligible until exhausted; watch remaining quota before starting large batches."
     if tier == "primary":
         return "First choice while quota remains."
     if tier == "high_quota_fallback":
@@ -391,10 +471,87 @@ def _routing_reason(
     return "Fallback candidate used only after earlier ranked models are exhausted or unavailable."
 
 
-def _recommended_reason(recommended: dict | None, exhausted_before_recommendation: list[str]) -> str:
+def _next_action(*, status: str, risk_level: str, routing_tier: str) -> str:
+    if status == "exhausted":
+        return "No action needed for routing; this model is skipped until the quota window resets."
+    if risk_level == "warning":
+        return "Keep using this model until exhausted; defer large batch runs if you need to preserve its remaining quota."
+    if routing_tier == "high_quota_fallback":
+        return "Keep as the high-volume fallback after smarter models are exhausted."
+    if risk_level == "tracking_only":
+        return "Configure a daily budget if this model should participate in hard routing."
+    return "No immediate action."
+
+
+def _recommended_reason(
+    recommended: dict | None,
+    exhausted_before_recommendation: list[str],
+    warning_ratio: float,
+) -> str:
     if not recommended:
         return "No configured model has remaining tracked quota in the current window."
+    if not exhausted_before_recommendation and recommended.get("quota_warning"):
+        percent = int(round(warning_ratio * 100))
+        return (
+            "Top-ranked configured model still has remaining tracked quota; "
+            f"it has reached the {percent}% warning threshold."
+        )
     if not exhausted_before_recommendation:
         return "Top-ranked configured model still has remaining tracked quota."
     skipped = ", ".join(exhausted_before_recommendation)
     return f"Earlier model(s) exhausted in the current window: {skipped}."
+
+
+def _quota_alerts(rows: list[dict]) -> list[dict]:
+    alerts = []
+    for row in rows:
+        if not row.get("configured"):
+            continue
+        risk_level = str(row.get("risk_level") or "")
+        if risk_level not in {"warning", "exhausted"}:
+            continue
+        code = "llm_quota_exhausted" if risk_level == "exhausted" else "llm_quota_near_limit"
+        severity = "critical" if risk_level == "exhausted" else "warning"
+        alerts.append(
+            {
+                "code": code,
+                "severity": severity,
+                "model": row.get("model"),
+                "model_key": row.get("model_key"),
+                "risk_level": risk_level,
+                "status": row.get("status"),
+                "status_reason": row.get("status_reason"),
+                "usage_ratio": row.get("usage_ratio"),
+                "requests_used": row.get("requests_used"),
+                "request_budget": row.get("request_budget"),
+                "requests_remaining": row.get("requests_remaining"),
+                "tokens_used": row.get("tokens_used"),
+                "token_budget": row.get("token_budget"),
+                "tokens_remaining": row.get("tokens_remaining"),
+                "next_action": row.get("next_action"),
+                "message": _quota_alert_message(row),
+            }
+        )
+    return alerts
+
+
+def _quota_alert_message(row: dict) -> str:
+    model = str(row.get("model") or "model")
+    status_reason = str(row.get("status_reason") or "")
+    if row.get("risk_level") == "exhausted":
+        return f"{model} is exhausted for the current configured quota window."
+    if status_reason == "request_budget_near_limit":
+        return f"{model} is near its configured daily request budget."
+    if status_reason == "token_budget_near_limit":
+        return f"{model} is near its configured daily token budget."
+    return f"{model} is near a configured quota limit."
+
+
+def _safe_warning_ratio(value: object) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_QUOTA_WARNING_RATIO
+    if parsed <= 0 or parsed >= 1:
+        return DEFAULT_QUOTA_WARNING_RATIO
+    return parsed

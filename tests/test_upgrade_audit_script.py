@@ -50,6 +50,15 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "paid_external": 0,
                 "manual_configuration": 0,
             },
+            "external_deployment_pending_gaps": [
+                {
+                    "capability": "neo4j_import",
+                    "action_type": "local_action",
+                    "decision": "需要該能力時配置",
+                    "local_action_state": "可啟動",
+                    "local_action_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                }
+            ],
             "checks": [
                 {
                     "severity": "pass",
@@ -114,6 +123,8 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
     ) in output
     assert "[WARN optional] ai_rag.neo4j_import" in output
     assert "enablement: 可本機免費啟用; cost: 本機 Neo4j 免費" in output
+    assert "action: local_action (需要該能力時配置; 可啟動)" in output
+    assert "command: .venv/bin/python scripts/start_system.py --start-dependencies" in output
 
 
 def test_upgrade_audit_script_returns_failure_when_required_check_fails(monkeypatch) -> None:

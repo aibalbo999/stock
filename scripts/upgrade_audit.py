@@ -293,6 +293,7 @@ def _format_text(audit: dict) -> str:
         lines.append("Local docker images: " + ", ".join(image_lines))
         if local_images.get("remediation"):
             lines.append("  fix: " + str(local_images["remediation"]))
+    pending_gap_rows = _pending_gap_rows_by_capability(audit)
     for check in audit["checks"]:
         marker = (
             "OK"
@@ -318,7 +319,28 @@ def _format_text(audit: dict) -> str:
             )
         if check["remediation"]:
             lines.append(f"  fix: {check['remediation']}")
+        gap_row = pending_gap_rows.get(str(check.get("capability") or ""))
+        if gap_row and check["severity"] != "pass":
+            lines.append(
+                "  action: "
+                f"{gap_row.get('action_type')} "
+                f"({gap_row.get('decision')}; {gap_row.get('local_action_state')})"
+            )
+            local_command = str(gap_row.get("local_action_command") or "-")
+            if local_command != "-":
+                lines.append(f"  command: {local_command}")
     return "\n".join(lines)
+
+
+def _pending_gap_rows_by_capability(audit: dict) -> dict[str, dict]:
+    rows = audit.get("external_deployment_pending_gaps")
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get("capability") or ""): row
+        for row in rows
+        if isinstance(row, dict) and str(row.get("capability") or "")
+    }
 
 
 def apply_local_neo4j_env_defaults() -> dict[str, str]:

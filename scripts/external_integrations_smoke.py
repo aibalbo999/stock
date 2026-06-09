@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.services.external_deployment_readiness import (
     external_deployment_enablement_profile,
     external_deployment_enablement_summary,
+    external_deployment_local_projection,
     external_deployment_pending_gap_action_counts,
     external_deployment_pending_gap_rows,
 )
@@ -255,16 +256,32 @@ def external_integration_report(
     checks.extend(local_graphrag_contract_checks(matrix))
     checks.append(company_filing_render_provider_contract_check())
     checks.append(structured_company_filing_sample_contract_check())
-    pending_gap_rows = external_deployment_pending_gap_rows({"checks": checks})
+    local_dependency_status = (
+        snapshot.get("local_dependencies")
+        if isinstance(snapshot.get("local_dependencies"), dict)
+        else {}
+    )
+    pending_gap_rows = external_deployment_pending_gap_rows(
+        {"checks": checks},
+        local_dependency_status=local_dependency_status,
+    )
+    local_dependency_auto_defaults = _local_dependency_auto_defaults(snapshot)
     report = {
         "status": "ready" if all(check["ready"] for check in checks) else "caution",
         "ready_count": sum(1 for check in checks if check["ready"]),
         "check_count": len(checks),
         "checks": checks,
-        "enablement_summary": external_deployment_enablement_summary({"checks": checks}),
+        "enablement_summary": external_deployment_enablement_summary(
+            {"checks": checks},
+            local_dependency_status=local_dependency_status,
+        ),
         "pending_gap_rows": pending_gap_rows,
         "pending_gap_action_counts": external_deployment_pending_gap_action_counts(
             pending_gap_rows
+        ),
+        "local_projection": external_deployment_local_projection(
+            pending_gap_rows,
+            local_dependency_auto_defaults,
         ),
         "actionable_check_count": sum(1 for check in checks if check["smoke_commands"]),
         "local_start_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
@@ -312,6 +329,19 @@ def external_integration_report(
     if local_dependency_wait:
         report["local_dependency_wait"] = local_dependency_wait
     return report
+
+
+def _local_dependency_auto_defaults(snapshot: dict[str, Any]) -> dict[str, Any]:
+    auto_defaults = snapshot.get("local_dependency_auto_defaults")
+    if isinstance(auto_defaults, dict):
+        return auto_defaults
+    local_dependencies = snapshot.get("local_dependencies")
+    if isinstance(local_dependencies, dict) and isinstance(
+        local_dependencies.get("auto_defaults_preview"),
+        dict,
+    ):
+        return local_dependencies["auto_defaults_preview"]
+    return {}
 
 
 def company_filing_render_provider_contract_check() -> dict[str, Any]:
@@ -570,6 +600,24 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
             f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
             f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
         )
+    local_projection = (
+        report.get("local_projection")
+        if isinstance(report.get("local_projection"), dict)
+        else {}
+    )
+    if local_projection:
+        lines.append(
+            "Effective gaps: "
+            f"pending={int(local_projection.get('current_pending') or 0)} -> "
+            f"{int(local_projection.get('remaining_pending') or 0)} "
+            "after available local defaults; "
+            f"blocking={int(local_projection.get('remaining_blocking_pending') or 0)}; "
+            f"optional={int(local_projection.get('remaining_optional_pending') or 0)}; "
+            f"paid_external={int(local_projection.get('remaining_paid_external_pending') or 0)}; "
+            f"local_defaults={int(local_projection.get('available_local_default_gap_count') or 0)}"
+        )
+        if local_projection.get("next_action"):
+            lines.append("Effective next action: " + str(local_projection["next_action"]))
     local_neo4j_defaults = (
         report.get("local_neo4j_defaults")
         if isinstance(report.get("local_neo4j_defaults"), dict)

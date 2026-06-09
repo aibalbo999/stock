@@ -87,8 +87,51 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
                         "evidence": {},
                     },
                 },
-            }
-        }
+            },
+            "local_dependency_auto_defaults": {
+                "capability_matches": [
+                    {
+                        "area": "ai_rag",
+                        "capability": "neo4j_import",
+                        "group": "neo4j",
+                        "state": "would_apply",
+                        "would_apply": True,
+                        "verify_command": (
+                            ".venv/bin/python scripts/upgrade_audit.py "
+                            "--auto-local-defaults --json"
+                        ),
+                    },
+                    {
+                        "area": "ai_rag",
+                        "capability": "graphrag_live_cypher_query",
+                        "group": "neo4j",
+                        "state": "would_apply",
+                        "would_apply": True,
+                        "verify_command": (
+                            ".venv/bin/python scripts/upgrade_audit.py "
+                            "--auto-local-defaults --json"
+                        ),
+                    },
+                    {
+                        "area": "data_business_logic",
+                        "capability": "company_filing_high_risk_unlocker",
+                        "group": "flaresolverr",
+                        "state": "would_apply",
+                        "would_apply": True,
+                        "verify_command": (
+                            ".venv/bin/python scripts/upgrade_audit.py "
+                            "--auto-local-defaults --json"
+                        ),
+                    },
+                ],
+            },
+            "local_dependencies": {
+                "ports": [
+                    {"service": "neo4j", "open": True},
+                    {"service": "flaresolverr", "open": True},
+                ],
+            },
+        },
     )
 
     assert report["status"] == "caution"
@@ -111,6 +154,23 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "paid_external": 1,
         "manual_configuration": 0,
     }
+    assert report["local_projection"]["current_pending"] == 4
+    assert report["local_projection"]["available_local_default_gap_count"] == 3
+    assert report["local_projection"]["remaining_pending"] == 1
+    assert report["local_projection"]["remaining_blocking_pending"] == 0
+    assert report["local_projection"]["remaining_optional_pending"] == 1
+    assert report["local_projection"]["remaining_paid_external_pending"] == 1
+    assert report["local_projection"]["remaining_capabilities"] == [
+        {
+            "area": "data_business_logic",
+            "capability": "company_filing_structured_api_fallback",
+            "label": "Structured company filing API fallback",
+            "action_type": "paid_external",
+        }
+    ]
+    assert "有效剩餘 1 項付費外部資料 API 選配" in report["local_projection"][
+        "next_action"
+    ]
     assert [row["capability"] for row in report["pending_gap_rows"]] == [
         "company_filing_high_risk_unlocker",
         "graphrag_live_cypher_query",
@@ -123,8 +183,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "local_action",
         "paid_external",
     ]
-    assert report["pending_gap_rows"][0]["local_action_state"] == "可啟動"
-    assert "start_system.py --start-dependencies" in report["pending_gap_rows"][0][
+    assert report["pending_gap_rows"][0]["local_action_state"] == "端口已啟動，需驗證"
+    assert "--wait-local-flaresolverr 20" in report["pending_gap_rows"][0][
         "local_action_command"
     ]
     assert report["pending_gap_rows"][-1]["deployment_profile"] == "paid_external"
@@ -275,9 +335,15 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         "Pending gap actions: local_action=3; quota_or_external=0; "
         "paid_external=1; manual_configuration=0"
     ) in output
+    assert (
+        "Effective gaps: pending=4 -> 1 after available local defaults; "
+        "blocking=0; optional=1; paid_external=1; local_defaults=3"
+    ) in output
+    assert "Effective next action: 套用已偵測本機 defaults 可先消除 3 項缺口" in output
     assert "action: local_action" in output
     assert "action: paid_external" in output
-    assert "command: .venv/bin/python scripts/start_system.py --start-dependencies" in output
+    assert "command: .venv/bin/python scripts/upgrade_audit.py --prefer-unlocker" in output
+    assert "端口已啟動，需驗證" in output
     assert "enablement: 可本機免費啟用" in output
     assert "enablement: 需外部資料 API" in output
     assert "Neo4j payload local contract: ready" in output

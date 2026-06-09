@@ -80,6 +80,11 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             in maintenance_task_panels_source
             and "timeout=120" in maintenance_task_panels_source
         ),
+        "ui_maintenance_safe_noop_diagnostics_enabled": (
+            "safe_to_run" in maintenance_task_panels_source
+            and "safe_noop_task_submission" in maintenance_task_panels_source
+            and "安全 no-op" in maintenance_task_panels_source
+        ),
         "ui_maintenance_diagnostic_actions_path": "app/ui/maintenance_task_panels.py",
         "uses_background_task_submit_helper": "submit_api_task(" in ui_source
         and "submit_data_operation_task(" in ui_source,

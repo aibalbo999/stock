@@ -13,7 +13,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
 
     action_ids = {action["id"] for action in catalog["actions"]}
     assert catalog["collector_path"] == "app/services/maintenance_diagnostics.py"
-    assert catalog["execution_policy"] == "allowlisted_read_only_subprocess"
+    assert catalog["execution_policy"] == "allowlisted_safe_diagnostic_subprocess"
     assert action_ids == {
         "celery_inspect_ping",
         "company_filing_render_smoke",
@@ -28,10 +28,16 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "neo4j_payload_dry_run",
         "structured_company_filing_fixture_http_smoke",
         "structured_company_filing_sample_contract_smoke",
+        "task_submission_noop_smoke",
         "task_submission_smoke",
         "upgrade_audit",
     }
-    assert all(action["read_only"] is True for action in catalog["actions"])
+    assert all(action["safe_to_run"] is True for action in catalog["actions"])
+    assert all(
+        action["read_only"] is True
+        for action in catalog["actions"]
+        if action["id"] != "task_submission_noop_smoke"
+    )
     assert all("display_command" in action for action in catalog["actions"])
     assert all("argv" not in action for action in catalog["actions"])
     upgrade_action = {
@@ -81,6 +87,16 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         task_submission_action["display_command"]
     )
     assert "不送出 Celery 任務" in task_submission_action["description"]
+    task_noop_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["task_submission_noop_smoke"]
+    assert task_noop_action["read_only"] is False
+    assert task_noop_action["effect"] == "safe_noop_task_submission"
+    assert task_noop_action["safe_to_run"] is True
+    assert "--submit --wait --timeout 30 --json --strict" in (
+        task_noop_action["display_command"]
+    )
+    assert "不呼叫外部市場資料 API" in task_noop_action["description"]
     structured_sample_action = {
         action["id"]: action for action in catalog["actions"]
     }["structured_company_filing_sample_contract_smoke"]
@@ -165,6 +181,41 @@ def test_run_maintenance_diagnostic_action_executes_task_submission_readiness_sm
     )
     assert captured["command"][1:] == ["scripts/task_submission_smoke.py", "--json"]
     assert captured["timeout"] == 30
+
+
+def test_run_maintenance_diagnostic_action_executes_task_submission_noop_smoke(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"passed"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "task_submission_noop_smoke",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/task_submission_smoke.py "
+        "--submit --wait --timeout 30 --json --strict"
+    )
+    assert captured["command"][1:] == [
+        "scripts/task_submission_smoke.py",
+        "--submit",
+        "--wait",
+        "--timeout",
+        "30",
+        "--json",
+        "--strict",
+    ]
+    assert captured["timeout"] == 45
 
 
 def test_run_maintenance_diagnostic_action_executes_structured_sample_smoke(
@@ -726,7 +777,7 @@ def test_run_maintenance_diagnostic_action_rejects_non_read_only_action(monkeypa
         },
     )
 
-    with pytest.raises(ValueError, match="not read-only"):
+    with pytest.raises(ValueError, match="not allowlisted safe"):
         maintenance_diagnostics.run_maintenance_diagnostic_action("unsafe_action")
 
 

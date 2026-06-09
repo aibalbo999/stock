@@ -201,6 +201,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_queue_health_panel_extracted")
             and frontend_status.get("ui_task_queue_repair_guidance_enabled")
             and frontend_status.get("ui_maintenance_diagnostic_actions_enabled")
+            and frontend_status.get("ui_maintenance_safe_noop_diagnostics_enabled")
             and frontend_status.get("ui_external_deployment_diagnostics_enabled")
             and frontend_status.get("ui_external_deployment_readiness_checklist_enabled")
             and frontend_status.get("ui_external_deployment_diagnostics_extracted")
@@ -243,8 +244,9 @@ def architecture_capabilities(
                 "Streamlit uses a multi-page shell, explicit page imports, external CSS, "
                 "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
                 "polling, queue health diagnostics, allowlisted maintenance diagnostic "
-                "actions, confirmed local dependency operations, and categorized failed-task "
-                "retry drilldown instead of running long ingestion/report calls inline."
+                "actions including safe no-op submission smoke, confirmed local dependency "
+                "operations, and categorized failed-task retry drilldown instead of running "
+                "long ingestion/report calls inline."
             ),
         ),
         "python_runtime": _capability(

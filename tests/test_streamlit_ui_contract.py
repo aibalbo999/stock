@@ -478,6 +478,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def maintenance_diagnostic_action_rows(" in source
     assert "維護診斷動作" in source
     assert "選擇診斷動作" in source
+    assert "safe_to_run" in source
+    assert "安全 no-op" in source
     assert "maintenance_run_diagnostic_action" in source
     assert 'f"/maintenance/diagnostics/{selected_action_id}/run"' in source
     assert "timeout=120" in source

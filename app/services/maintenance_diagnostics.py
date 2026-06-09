@@ -97,6 +97,32 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 30,
         "read_only": True,
     },
+    "task_submission_noop_smoke": {
+        "id": "task_submission_noop_smoke",
+        "label": "Task submission no-op submit/wait smoke",
+        "description": (
+            "送出 smoke=true 的 no-op market_refresh，驗證 /tasks/data-operation、"
+            "Celery enqueue、worker 執行與 task polling；不呼叫外部市場資料 API。"
+        ),
+        "display_command": (
+            ".venv/bin/python scripts/task_submission_smoke.py "
+            "--submit --wait --timeout 30 --json --strict"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/task_submission_smoke.py",
+            "--submit",
+            "--wait",
+            "--timeout",
+            "30",
+            "--json",
+            "--strict",
+        ],
+        "timeout_seconds": 45,
+        "read_only": False,
+        "effect": "safe_noop_task_submission",
+        "safe_to_run": True,
+    },
     "local_neo4j_upgrade_audit": {
         "id": "local_neo4j_upgrade_audit",
         "label": "Local Neo4j upgrade audit",
@@ -287,7 +313,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
 def maintenance_diagnostic_action_catalog() -> dict:
     return {
         "collector_path": "app/services/maintenance_diagnostics.py",
-        "execution_policy": "allowlisted_read_only_subprocess",
+        "execution_policy": "allowlisted_safe_diagnostic_subprocess",
         "actions": [
             _action_catalog_row(action)
             for action in sorted(
@@ -302,8 +328,8 @@ def run_maintenance_diagnostic_action(action_id: str, *, root: Path | None = Non
     action = MAINTENANCE_DIAGNOSTIC_ACTIONS.get(str(action_id or ""))
     if not action:
         raise ValueError(f"Unknown maintenance diagnostic action: {action_id}")
-    if not action.get("read_only"):
-        raise ValueError(f"Maintenance diagnostic action is not read-only: {action_id}")
+    if not _action_safe_to_run(action):
+        raise ValueError(f"Maintenance diagnostic action is not allowlisted safe: {action_id}")
     started_at = time.monotonic()
     try:
         completed = subprocess.run(
@@ -340,6 +366,10 @@ def run_maintenance_diagnostic_action(action_id: str, *, root: Path | None = Non
 
 
 def _action_catalog_row(action: dict) -> dict:
+    effect = str(
+        action.get("effect")
+        or ("read_only" if action.get("read_only") else "disabled")
+    )
     return {
         "id": str(action["id"]),
         "label": str(action["label"]),
@@ -347,7 +377,19 @@ def _action_catalog_row(action: dict) -> dict:
         "display_command": str(action["display_command"]),
         "timeout_seconds": int(action["timeout_seconds"]),
         "read_only": bool(action["read_only"]),
+        "effect": effect,
+        "safe_to_run": _action_safe_to_run(action),
     }
+
+
+def _action_safe_to_run(action: dict) -> bool:
+    return bool(
+        action.get("read_only")
+        or (
+            action.get("safe_to_run")
+            and str(action.get("effect") or "") == "safe_noop_task_submission"
+        )
+    )
 
 
 def _tail_text(value: object) -> str:
@@ -384,7 +426,7 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
         "structured_company_filing_fixture_http_smoke",
     }:
         return _structured_company_filing_smoke_summary_rows(payload)
-    if action_id == "task_submission_smoke":
+    if action_id in {"task_submission_smoke", "task_submission_noop_smoke"}:
         return _task_submission_smoke_summary_rows(payload)
     return _generic_json_summary_rows(payload)
 

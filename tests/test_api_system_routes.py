@@ -154,15 +154,29 @@ def test_system_router_external_env_check_endpoint_rejects_bad_target() -> None:
 def test_system_router_maintenance_diagnostics_catalog_endpoint() -> None:
     response = system_router_client(
         maintenance_diagnostic_catalog={
-            "execution_policy": "allowlisted_read_only_subprocess",
-            "actions": [{"id": "upgrade_audit", "read_only": True}],
+            "execution_policy": "allowlisted_safe_diagnostic_subprocess",
+            "actions": [
+                {
+                    "id": "upgrade_audit",
+                    "read_only": True,
+                    "effect": "read_only",
+                    "safe_to_run": True,
+                }
+            ],
         }
     ).get("/maintenance/diagnostics")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["execution_policy"] == "allowlisted_read_only_subprocess"
-    assert body["actions"] == [{"id": "upgrade_audit", "read_only": True}]
+    assert body["execution_policy"] == "allowlisted_safe_diagnostic_subprocess"
+    assert body["actions"] == [
+        {
+            "id": "upgrade_audit",
+            "read_only": True,
+            "effect": "read_only",
+            "safe_to_run": True,
+        }
+    ]
 
 
 def test_system_router_maintenance_diagnostic_run_endpoint_delegates_action_id() -> None:

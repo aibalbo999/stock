@@ -160,7 +160,8 @@ def maintenance_diagnostic_action_rows(maintenance_diagnostics: dict) -> list[di
     return [
         {
             "動作": action.get("label") or action.get("id") or "-",
-            "狀態": "可執行" if action.get("read_only") else "停用",
+            "狀態": _maintenance_diagnostic_action_status(action),
+            "效果": action.get("effect") or "-",
             "說明": action.get("description") or "-",
             "指令": action.get("display_command") or "-",
             "Timeout": int(action.get("timeout_seconds") or 0),
@@ -175,7 +176,7 @@ def _render_maintenance_diagnostic_actions(maintenance_diagnostics: dict) -> Non
     actions = [
         action
         for action in maintenance_diagnostics.get("actions") or []
-        if isinstance(action, dict) and action.get("id") and action.get("read_only")
+        if isinstance(action, dict) and action.get("id") and action.get("safe_to_run")
     ]
     if not action_rows or not actions:
         return
@@ -226,3 +227,11 @@ def _render_maintenance_diagnostic_result(result: dict) -> None:
     )
     if output:
         st.code(output, language="text")
+
+
+def _maintenance_diagnostic_action_status(action: dict) -> str:
+    if action.get("read_only"):
+        return "只讀可執行"
+    if action.get("safe_to_run") and action.get("effect") == "safe_noop_task_submission":
+        return "安全 no-op"
+    return "停用"

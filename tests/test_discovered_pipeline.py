@@ -18,6 +18,7 @@ from app.services import (
     discovered_pipeline_candidates,
     discovered_pipeline_checkpoints,
     discovered_pipeline_report_stage,
+    discovered_pipeline_resume,
     discovered_pipeline_results,
     discovered_pipeline_run_state,
 )
@@ -259,6 +260,28 @@ def test_discovered_pipeline_report_resume_stage_lives_outside_orchestrator() ->
     assert "resume requires checkpointed market_data" in report_stage_source
 
 
+def test_discovered_pipeline_resume_flow_lives_outside_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    resume_source = Path("app/services/discovered_pipeline_resume.py").read_text()
+
+    assert issubclass(
+        DiscoveredTopicPipelineService,
+        discovered_pipeline_resume.DiscoveredPipelineResumeMixin,
+    )
+    assert "class DiscoveredPipelineResumeMixin" in resume_source
+    for method in [
+        "async def resume(",
+        "async def _resume_after_source_ingestion(",
+        "async def _resume_topic_discovery_stage(",
+        "async def _resume_source_ingestion_stage(",
+        "def _resume_candidate_revalidation_stage(",
+        "async def _resume_market_data_refresh_stage(",
+        "def _discovery_fetch_settings_from_checkpoint(",
+    ]:
+        assert method not in pipeline_source
+        assert method in resume_source
+
+
 def test_candidate_revalidation_stage_result_builds_summary_and_checkpoint_payload() -> None:
     stage = discovered_pipeline_candidates.CandidateRevalidationStageResult(
         candidate_filing_ingestion={"stored_count": 0},
@@ -280,7 +303,9 @@ def test_candidate_revalidation_stage_result_builds_summary_and_checkpoint_paylo
         "candidate_filing_attempted": True,
         "resumed": True,
     }
-    assert stage.checkpoint_updates(lambda documents: [{"document": document} for document in documents]) == {
+    assert stage.checkpoint_updates(
+        lambda documents: [{"document": document} for document in documents]
+    ) == {
         "source_documents": [{"document": "doc-a"}],
         "candidate_filing_ingestion": {"stored_count": 0},
         "company_filing_ingestion": {"requested_tickers": ["2330"]},

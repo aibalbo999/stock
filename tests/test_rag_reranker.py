@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.data_sources.news import NewsFetcher
-from app.rag import keyword_reranker
+from app.rag import keyword_reranker, llm_reranker
 from app.rag.reranker import RagReranker
 from app.rag.timeouts import RagOperationTimeout
 
@@ -110,6 +110,31 @@ def test_keyword_fallback_logic_lives_outside_rag_reranker() -> None:
     assert "CONFUSING_ENTITY_PREFIXES" not in reranker_source
     assert "def _keyword_rerank(" in reranker_source
     assert RagReranker._tokenize("南亞科 DRAM") == keyword_reranker.tokenize("南亞科 DRAM")
+
+
+def test_llm_rerank_logic_lives_outside_rag_reranker() -> None:
+    documents = [
+        NewsFetcher.from_manual_text("台積電 CoWoS", "2330 台積電 先進封裝擴產", publisher="經濟日報"),
+    ]
+    reranker = RagReranker(provider="llm", text_limit=12)
+    reranker_source = Path("app/rag/reranker.py").read_text()
+    llm_source = Path("app/rag/llm_reranker.py").read_text()
+
+    assert "from app.rag.llm_reranker import" in reranker_source
+    assert "只輸出 JSON 陣列" not in reranker_source
+    assert "def llm_rerank_prompt(" in llm_source
+    assert "def parse_llm_ranked_indexes(" in llm_source
+    assert "def apply_llm_ranked_indexes(" in llm_source
+    assert reranker._llm_rerank_prompt("台積電", documents) == llm_reranker.llm_rerank_prompt(
+        "台積電",
+        documents,
+        text_limit=12,
+    )
+    assert RagReranker._parse_llm_ranked_indexes("排序：[1, 0, 1, 3]", 2) == [1, 0, 1]
+    assert RagReranker._parse_llm_ranked_indexes("排序：[1, 0]", 2) == llm_reranker.parse_llm_ranked_indexes(
+        "排序：[1, 0]",
+        2,
+    )
 
 
 def test_auto_reranker_prefers_cross_encoder_model_when_available() -> None:

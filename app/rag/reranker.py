@@ -4,8 +4,6 @@ from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
 from importlib.util import find_spec
-import json
-import re
 from typing import Any, Optional
 
 from app.core.config import get_settings
@@ -21,6 +19,7 @@ from app.rag.keyword_reranker import (
     source_quality_adjustment,
     tokenize,
 )
+from app.rag.llm_reranker import apply_llm_ranked_indexes, llm_rerank_prompt, parse_llm_ranked_indexes
 from app.rag.timeouts import RagOperationTimeout, run_with_timeout
 
 
@@ -307,21 +306,13 @@ class RagReranker:
             self.last_status["fallback_reason"] = "llm_reranker_failed_session_disabled"
             return self._keyword_rerank(query, documents, n_results)
 
-        seen = set()
-        ordered: list[NewsDocument] = []
-        for index in indexes:
-            if index in seen:
-                continue
-            seen.add(index)
-            ordered.append(candidates[index])
-        ordered.extend(document for index, document in enumerate(candidates) if index not in seen)
-        ordered.extend(remainder)
+        ordered = apply_llm_ranked_indexes(candidates, remainder, indexes, n_results)
         self.last_status = self._status_for_provider(provider, model_checked=True, model=client)
         model_name = getattr(result, "model", None)
         if model_name:
             self.last_status["model"] = str(model_name)
         self.last_status["llm_attempt_count"] = len(getattr(result, "attempts", ()) or ())
-        return ordered[:n_results]
+        return ordered
 
     def _run_external(self, operation: str, func: Callable[[], Any]) -> Any:
         return run_with_timeout(func, self.timeout_seconds, operation)
@@ -732,44 +723,11 @@ class RagReranker:
         }
 
     def _llm_rerank_prompt(self, query: str, documents: list[NewsDocument]) -> str:
-        rows = []
-        for index, document in enumerate(documents):
-            source = document.source
-            rows.append(
-                {
-                    "index": index,
-                    "title": document.title,
-                    "publisher": source.publisher,
-                    "date": source.published_at.isoformat() if source.published_at else None,
-                    "text": self._document_text(document),
-                }
-            )
-        return (
-            "你是 RAG 檢索重排序器。請依照查詢與文件內容的直接相關性、公司/股票代號精準命中、"
-            "來源品質與日期新鮮度，將文件由最相關排到最不相關。\n"
-            "只輸出 JSON 陣列，內容是文件 index，例如 [2,0,1]；不要輸出解釋文字。\n"
-            f"查詢：{query}\n"
-            f"文件：{json.dumps(rows, ensure_ascii=False)}"
-        )
+        return llm_rerank_prompt(query, documents, text_limit=self.text_limit)
 
     @staticmethod
     def _parse_llm_ranked_indexes(text: str, document_count: int) -> list[int]:
-        match = re.search(r"\[[\s\d,]+\]", str(text or ""))
-        if not match:
-            return []
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return []
-        indexes: list[int] = []
-        for value in parsed:
-            try:
-                index = int(value)
-            except (TypeError, ValueError):
-                continue
-            if 0 <= index < document_count:
-                indexes.append(index)
-        return indexes
+        return parse_llm_ranked_indexes(text, document_count)
 
     @staticmethod
     def _module_available(module_name: str) -> bool:

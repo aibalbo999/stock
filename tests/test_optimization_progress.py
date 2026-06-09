@@ -42,6 +42,13 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
     assert progress["effective_gap_note"] == ""
     assert progress["projected_status_after_local_defaults"] == "ready"
     assert progress["completion_ratio"] == 1.0
+    assert progress["summary"]["status"] == "ready"
+    assert (
+        progress["summary"]["effective_status_after_available_local_defaults"]
+        == "ready"
+    )
+    assert progress["summary"]["completion_ratio"] == 1.0
+    assert progress["summary"]["primary_next_action_type"] == "monitoring"
     assert progress["primary_next_action"]["action_type"] == "monitoring"
     assert {domain["id"] for domain in progress["domains"]} == {
         "architecture_uiux",
@@ -78,6 +85,11 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert progress["projected_optional_gap_count_after_local_defaults"] == 1
     assert progress["primary_next_action"]["action_type"] == "optional_review"
     assert "沒有 blocking" in progress["primary_next_action"]["next_action"]
+    assert (
+        progress["summary"]["primary_next_action_type"]
+        == progress["primary_next_action"]["action_type"]
+    )
+    assert progress["summary"]["optional_gap_count"] == 1
     assert progress["next_actions"][0]["capability"] == ("company_filing_structured_api_fallback")
     assert progress["next_actions"][0]["action_type"] == "paid_external"
     data_domain = next(
@@ -189,6 +201,11 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert progress["primary_next_action"]["capability"] == "auto_local_defaults"
     assert progress["primary_next_action"]["status"] == "local_ready"
     assert progress["primary_next_action"]["locally_available"] is True
+    assert progress["summary"]["primary_next_action_capability"] == "auto_local_defaults"
+    assert (
+        progress["summary"]["primary_next_action_cost_profile"]
+        == "free_local_available"
+    )
     assert "--auto-local-defaults" in progress["primary_next_action"]["next_action"]
     assert "驗證 3 項缺口" in progress["primary_next_action"]["next_action"]
     assert "剩餘 0 項外部/付費選配" in progress["primary_next_action"]["next_action"]

@@ -27,6 +27,8 @@ def test_service_status_shape(service_status_snapshot) -> None:
     assert status["optimization_progress"]["collector_path"] == (
         "app/services/optimization_progress.py"
     )
+    assert status["optimization_progress"]["summary"]["total_domains"] == 4
+    assert "primary_next_action_type" in status["optimization_progress"]["summary"]
     assert {domain["id"] for domain in status["optimization_progress"]["domains"]} == {
         "architecture_uiux",
         "codebase_maintainability",

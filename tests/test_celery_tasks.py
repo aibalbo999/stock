@@ -2,10 +2,11 @@ import json
 import asyncio
 from contextlib import contextmanager
 from datetime import date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.models.schemas import ReportRequest, ReportResponse
-from app.tasks import tasks
+from app.tasks import data_operations, tasks
 from app.tasks.tasks import build_run_payload
 
 
@@ -62,6 +63,21 @@ def test_data_operation_market_refresh_smoke_skips_market_provider(monkeypatch) 
         "source": "task submission smoke no-op",
         "note": "No external market data providers are called when payload.smoke is true.",
     }
+
+
+def test_data_operation_dispatch_logic_lives_outside_celery_tasks() -> None:
+    tasks_source = Path("app/tasks/tasks.py").read_text()
+    helper_source = Path("app/tasks/data_operations.py").read_text()
+
+    assert "from app.tasks.data_operations import" in tasks_source
+    assert "async def run_data_operation_payload(" in helper_source
+    assert "unsupported data operation task" not in tasks_source
+    assert "No external market data providers are called" not in tasks_source
+    assert "if operation == \"market_refresh\":" not in tasks_source
+    assert "if operation == \"market_refresh\":" in helper_source
+    assert tasks._normalize_tickers(["2330", "2330", ""]) == data_operations.normalize_tickers(
+        ["2330", "2330", ""]
+    )
 
 
 def test_after_close_report_update_task_refreshes_latest_report_and_reruns(monkeypatch, tmp_path) -> None:

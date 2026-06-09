@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 from app.api.schemas import FollowUpRunRequest, TopicDiscoveryRequest
 from app.core.async_bridge import run_async_from_sync
@@ -43,6 +42,11 @@ from app.services.task_cancellation import (
 from app.services.whitelist import SupplyChainWhitelist
 from app.services.workflow_checkpoint import CELERY_REPORT_STEPS, WorkflowCheckpointRecorder
 from app.tasks.celery_app import celery_app
+from app.tasks.data_operations import (
+    cancellable_ingestion_pipeline,
+    normalize_tickers as _normalize_tickers,
+    run_data_operation_payload,
+)
 
 
 def build_run_payload(
@@ -79,11 +83,6 @@ def _mark_cancelled(run_id: int) -> None:
     )
 
 
-def _normalize_tickers(tickers: list[Any] | tuple[Any, ...] | None) -> list[str]:
-    values = [str(ticker).strip() for ticker in tickers or [] if str(ticker).strip()]
-    return list(dict.fromkeys(values))
-
-
 def _json_tickers(value: str | None) -> list[str]:
     try:
         payload = json.loads(value or "[]")
@@ -96,44 +95,6 @@ def _api_services_for_tasks():
     from app.api.runtime import get_task_api_services
 
     return get_task_api_services()
-
-
-def _payload_date(payload: dict, key: str) -> date | None:
-    value = payload.get(key)
-    if value is None or value == "":
-        return None
-    if isinstance(value, date):
-        return value
-    return date.fromisoformat(str(value))
-
-
-def _payload_smoke(payload: dict) -> bool:
-    return bool(payload.get("smoke") or payload.get("task_submission_smoke"))
-
-
-def _market_refresh_smoke_result(
-    *,
-    tickers: list[str],
-    start_date: date | None,
-    end_date: date | None,
-) -> dict:
-    resolved_end_date = end_date or today_taipei()
-    resolved_start_date = start_date or resolved_end_date
-    return {
-        "smoke": True,
-        "operation": "market_refresh",
-        "mode": "task_submission_contract",
-        "requested_tickers": tickers,
-        "start_date": resolved_start_date.isoformat(),
-        "end_date": resolved_end_date.isoformat(),
-        "stored": [],
-        "stored_history_count": 0,
-        "stale_source_count": 0,
-        "errors": [],
-        "sources": [],
-        "source": "task submission smoke no-op",
-        "note": "No external market data providers are called when payload.smoke is true.",
-    }
 
 
 def _payload_datetime(payload: dict, key: str) -> datetime | None:
@@ -162,84 +123,25 @@ async def _run_discovered_report_payload(payload: dict, *, task_id: str | None =
 
 
 def _cancellable_ingestion_pipeline(run_id: int | None = None) -> IngestionPipeline:
-    if run_id is None:
-        return IngestionPipeline()
-    try:
-        return IngestionPipeline(cancellation_checker=lambda: _raise_if_cancelled(run_id))
-    except TypeError:
-        return IngestionPipeline()
+    return cancellable_ingestion_pipeline(
+        run_id,
+        raise_if_cancelled_func=_raise_if_cancelled,
+        ingestion_pipeline_cls=IngestionPipeline,
+    )
 
 
 async def _run_data_operation_payload(
     operation: str, payload: dict, *, run_id: int | None = None
 ) -> dict:
-    services = _api_services_for_tasks()
-    pipeline = _cancellable_ingestion_pipeline(run_id)
-    tickers = _normalize_tickers(payload.get("tickers") or [])
-    start_date = _payload_date(payload, "start_date")
-    end_date = _payload_date(payload, "end_date")
-    if operation == "market_refresh":
-        if _payload_smoke(payload):
-            return _market_refresh_smoke_result(
-                tickers=tickers,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        resolved_end_date = end_date or today_taipei()
-        resolved_start_date = start_date or resolved_end_date - timedelta(days=14)
-        return await pipeline.refresh_market(
-            tickers,
-            resolved_start_date,
-            resolved_end_date,
-        )
-    if operation == "fundamentals_refresh":
-        resolved_end_date = end_date or today_taipei()
-        resolved_start_date = start_date or resolved_end_date - timedelta(days=365 * 6)
-        financial_metrics = await pipeline.refresh_financial_metrics(
-            tickers,
-            resolved_start_date,
-            resolved_end_date,
-        )
-        if run_id is not None:
-            _raise_if_cancelled(run_id)
-        valuations = await pipeline.refresh_valuations(
-            tickers,
-            resolved_end_date - timedelta(days=30),
-            resolved_end_date,
-        )
-        return {"financial_metrics": financial_metrics, "valuations": valuations}
-    if operation == "valuation_refresh":
-        resolved_end_date = end_date or today_taipei()
-        resolved_start_date = start_date or resolved_end_date - timedelta(days=30)
-        return await pipeline.refresh_valuations(
-            tickers,
-            resolved_start_date,
-            resolved_end_date,
-        )
-    if operation == "company_filings_fetch":
-        return await pipeline.ingest_company_filings(
-            tickers,
-            limit_per_query=3,
-            filter_allowed=bool(tickers),
-        )
-    if operation == "company_filing_from_url":
-        return await services.company_filing_api().ingest_from_url(
-            url=str(payload.get("url") or ""),
-            ticker=str(payload.get("ticker") or ""),
-            company_name=str(payload.get("company_name") or ""),
-            document_type=str(payload.get("document_type") or "company_disclosure"),
-            publisher=payload.get("publisher"),
-            published_at=_payload_date(payload, "published_at"),
-        )
-    if operation == "feed_fetch":
-        return await pipeline.ingest_feeds(
-            url=payload.get("url"),
-            publisher=payload.get("publisher"),
-            limit=int(payload.get("limit") or 10),
-            enabled_sources_only=bool(payload.get("enabled_sources_only", True)),
-            topic=payload.get("topic"),
-        )
-    raise ValueError(f"unsupported data operation task: {operation or 'missing'}")
+    return await run_data_operation_payload(
+        operation,
+        payload,
+        api_services_factory=_api_services_for_tasks,
+        pipeline_factory=_cancellable_ingestion_pipeline,
+        raise_if_cancelled_func=_raise_if_cancelled,
+        today_func=today_taipei,
+        run_id=run_id,
+    )
 
 
 async def _run_report_follow_up_payload(payload: dict, *, task_id: str | None = None) -> dict:

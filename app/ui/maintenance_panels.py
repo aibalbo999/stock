@@ -47,19 +47,52 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
     )
     rows = optimization_progress_rows(progress)
     action_rows = optimization_progress_next_action_rows(progress)
-    expanded = progress.get("status") != "ready"
+    raw_status = str(progress.get("status") or "unknown")
+    effective_status = str(
+        progress.get("effective_status_after_available_local_defaults")
+        or raw_status
+    )
+    expanded = effective_status != "ready"
     with st.expander("優化進度", expanded=expanded):
         cols = st.columns(5)
-        cols[0].metric("狀態", progress.get("status") or "-")
+        cols[0].metric(
+            "狀態",
+            effective_status,
+            delta=f"原始 {raw_status}" if effective_status != raw_status else None,
+        )
         cols[1].metric(
             "完成",
             f"{int(progress.get('ready_checks') or 0)}/{int(progress.get('total_checks') or 0)}",
         )
-        cols[2].metric("Blocking", int(progress.get("blocking_gap_count") or 0))
-        cols[3].metric("外部/選配", int(progress.get("optional_gap_count") or 0))
+        raw_blocking = int(progress.get("blocking_gap_count") or 0)
+        raw_optional = int(progress.get("optional_gap_count") or 0)
+        effective_blocking = int(
+            progress.get("effective_blocking_gap_count_after_available_local_defaults")
+            if progress.get("effective_blocking_gap_count_after_available_local_defaults")
+            is not None
+            else raw_blocking
+        )
+        effective_optional = int(
+            progress.get("effective_optional_gap_count_after_available_local_defaults")
+            if progress.get("effective_optional_gap_count_after_available_local_defaults")
+            is not None
+            else raw_optional
+        )
+        cols[2].metric(
+            "Blocking",
+            effective_blocking,
+            delta=f"原始 {raw_blocking}" if effective_blocking != raw_blocking else None,
+        )
+        cols[3].metric(
+            "外部/選配",
+            effective_optional,
+            delta=f"原始 {raw_optional}" if effective_optional != raw_optional else None,
+        )
         cols[4].metric("本機可補", int(progress.get("local_resolvable_gap_count") or 0))
         if progress.get("status_note"):
             st.caption(str(progress["status_note"]))
+        if progress.get("effective_gap_note"):
+            st.caption(str(progress["effective_gap_note"]))
         local_projection = (
             progress.get("local_resolution_projection")
             if isinstance(progress.get("local_resolution_projection"), dict)

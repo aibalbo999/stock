@@ -259,6 +259,19 @@ def optimization_progress_status(status: dict) -> dict:
         projected_blocking_gap_count,
         projected_optional_gap_count,
     )
+    effective_blocking_gap_count = _effective_gap_count(
+        raw_count=blocking_gap_count,
+        projected_count=projected_blocking_gap_count,
+        local_resolvable_gap_count=local_resolvable_gap_count,
+    )
+    effective_optional_gap_count = _effective_gap_count(
+        raw_count=optional_gap_count,
+        projected_count=projected_optional_gap_count,
+        local_resolvable_gap_count=local_resolvable_gap_count,
+    )
+    effective_status = (
+        projected_status if local_resolvable_gap_count > 0 else overall_status
+    )
     next_actions = _next_actions(domains)
     prioritized_next_actions = _prioritized_next_actions(next_actions)
     local_projection = _local_resolution_projection(
@@ -278,6 +291,13 @@ def optimization_progress_status(status: dict) -> dict:
         "blocking_gap_count": blocking_gap_count,
         "optional_gap_count": optional_gap_count,
         "local_resolvable_gap_count": local_resolvable_gap_count,
+        "effective_status_after_available_local_defaults": effective_status,
+        "effective_blocking_gap_count_after_available_local_defaults": (
+            effective_blocking_gap_count
+        ),
+        "effective_optional_gap_count_after_available_local_defaults": (
+            effective_optional_gap_count
+        ),
         "projected_blocking_gap_count_after_local_defaults": projected_blocking_gap_count,
         "projected_optional_gap_count_after_local_defaults": projected_optional_gap_count,
         "completion_ratio": _ratio(ready_checks, total_checks),
@@ -293,6 +313,13 @@ def optimization_progress_status(status: dict) -> dict:
         "prioritized_next_actions": prioritized_next_actions,
         "local_resolution_projection": local_projection,
         "status_note": _status_note(overall_status),
+        "effective_gap_note": _effective_gap_note(
+            raw_blocking_gap_count=blocking_gap_count,
+            raw_optional_gap_count=optional_gap_count,
+            effective_blocking_gap_count=effective_blocking_gap_count,
+            effective_optional_gap_count=effective_optional_gap_count,
+            local_resolvable_gap_count=local_resolvable_gap_count,
+        ),
         "local_auto_defaults": _local_auto_defaults_summary(local_auto_defaults),
     }
 
@@ -706,6 +733,35 @@ def _overall_status(blocking_gap_count: int, optional_gap_count: int) -> str:
     if optional_gap_count:
         return "ready_with_optional_gaps"
     return "ready"
+
+
+def _effective_gap_count(
+    *,
+    raw_count: int,
+    projected_count: int,
+    local_resolvable_gap_count: int,
+) -> int:
+    if local_resolvable_gap_count > 0:
+        return int(projected_count)
+    return int(raw_count)
+
+
+def _effective_gap_note(
+    *,
+    raw_blocking_gap_count: int,
+    raw_optional_gap_count: int,
+    effective_blocking_gap_count: int,
+    effective_optional_gap_count: int,
+    local_resolvable_gap_count: int,
+) -> str:
+    if local_resolvable_gap_count <= 0:
+        return ""
+    return (
+        f"原始缺口為 {raw_blocking_gap_count} blocking / {raw_optional_gap_count} 選配；"
+        f"本機 defaults 可驗證 {local_resolvable_gap_count} 項後，"
+        f"有效剩餘 {effective_blocking_gap_count} blocking / "
+        f"{effective_optional_gap_count} 選配。"
+    )
 
 
 def _status_note(status: str) -> str:

@@ -30,6 +30,16 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
     assert progress["blocking_gap_count"] == 0
     assert progress["optional_gap_count"] == 0
     assert progress["local_resolvable_gap_count"] == 0
+    assert progress["effective_status_after_available_local_defaults"] == "ready"
+    assert (
+        progress["effective_blocking_gap_count_after_available_local_defaults"]
+        == 0
+    )
+    assert (
+        progress["effective_optional_gap_count_after_available_local_defaults"]
+        == 0
+    )
+    assert progress["effective_gap_note"] == ""
     assert progress["projected_status_after_local_defaults"] == "ready"
     assert progress["completion_ratio"] == 1.0
     assert progress["primary_next_action"]["action_type"] == "monitoring"
@@ -56,6 +66,15 @@ def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> No
     assert progress["blocking_gap_count"] == 0
     assert progress["optional_gap_count"] == 1
     assert progress["local_resolvable_gap_count"] == 0
+    assert (
+        progress["effective_optional_gap_count_after_available_local_defaults"]
+        == 1
+    )
+    assert (
+        progress["effective_status_after_available_local_defaults"]
+        == "ready_with_optional_gaps"
+    )
+    assert progress["effective_gap_note"] == ""
     assert progress["projected_optional_gap_count_after_local_defaults"] == 1
     assert progress["primary_next_action"]["action_type"] == "optional_review"
     assert "沒有 blocking" in progress["primary_next_action"]["next_action"]
@@ -143,6 +162,17 @@ def test_optimization_progress_marks_local_auto_default_optional_gaps() -> None:
     assert progress["status"] == "ready_with_optional_gaps"
     assert progress["optional_gap_count"] == 3
     assert progress["local_resolvable_gap_count"] == 3
+    assert progress["effective_status_after_available_local_defaults"] == "ready"
+    assert (
+        progress["effective_blocking_gap_count_after_available_local_defaults"]
+        == 0
+    )
+    assert (
+        progress["effective_optional_gap_count_after_available_local_defaults"]
+        == 0
+    )
+    assert "原始缺口為 0 blocking / 3 選配" in progress["effective_gap_note"]
+    assert "有效剩餘 0 blocking / 0 選配" in progress["effective_gap_note"]
     assert progress["projected_status_after_local_defaults"] == "ready"
     assert progress["projected_optional_gap_count_after_local_defaults"] == 0
     assert progress["local_resolution_projection"]["local_action_capabilities"] == [
@@ -219,6 +249,10 @@ def test_optimization_progress_prioritizes_high_roi_next_actions() -> None:
         "cost_profile"
     ] == "paid_external"
     assert progress["local_resolution_projection"]["projected_blocking_gap_count"] == 1
+    assert (
+        progress["effective_blocking_gap_count_after_available_local_defaults"]
+        == 1
+    )
     assert progress["local_resolution_projection"]["remaining_action_capabilities"] == [
         "background_task_queue",
         "visual_rag",

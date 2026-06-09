@@ -165,6 +165,7 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
                     "diagnostic_action_id": "high_risk_unlocker_smoke",
                     "command": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--local-browser-render-defaults --prefer-unlocker "
                         "--url https://mops.twse.com.tw/ --json"
                     ),
                 },
@@ -185,6 +186,7 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
             "可執行診斷": "high_risk_unlocker_smoke",
             "指令": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--local-browser-render-defaults --prefer-unlocker "
                 "--url https://mops.twse.com.tw/ --json"
             ),
         },
@@ -721,7 +723,11 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
                         "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
                     },
                     "playwright_render_runtime": {
-                        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
+                        "smoke_cli": (
+                            ".venv/bin/python scripts/company_filing_render_smoke.py "
+                            "--local-browser-render-defaults --prefer-unlocker "
+                            "--url https://mops.twse.com.tw/ --json"
+                        ),
                     },
                 },
                 "remediation": "設定 Browserless 或 Playwright。",
@@ -885,7 +891,11 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
         ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
         ".venv/bin/python scripts/company_filing_render_smoke.py --url https://example.com/ --json",
-        ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
+        (
+            ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--local-browser-render-defaults --prefer-unlocker "
+            "--url https://mops.twse.com.tw/ --json"
+        ),
         ".venv/bin/python scripts/structured_company_filing_smoke.py --ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
     ]
     service_snapshot = {
@@ -1073,6 +1083,7 @@ def test_external_deployment_env_key_rows_map_status_missing_settings() -> None:
                     ],
                     "smoke_cli": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--local-browser-render-defaults --prefer-unlocker "
                         "--url https://mops.twse.com.tw/ --json"
                     ),
                 },
@@ -1445,6 +1456,7 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
                     "compose_recommended_env": [provider_env, compose_render_url_env],
                     "smoke_cli": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--local-browser-render-defaults --prefer-unlocker "
                         "--url https://mops.twse.com.tw/ --json"
                     ),
                 },
@@ -1567,6 +1579,7 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
                     "fallback_reason": "browser_or_playwright_render_lacks_captcha_unlocker",
                     "smoke_cli": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
+                        "--local-browser-render-defaults --prefer-unlocker "
                         "--url https://mops.twse.com.tw/ --json"
                     ),
                 },
@@ -1590,6 +1603,7 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
     assert "Browserless/Playwright" in rows[2]["說明"]
     assert rows[2]["指令"] == "-"
     assert "docker compose logs flaresolverr" in rows[3]["指令"]
+    assert "--local-browser-render-defaults --prefer-unlocker" in rows[4]["指令"]
     assert "https://mops.twse.com.tw/" in rows[4]["指令"]
 
 

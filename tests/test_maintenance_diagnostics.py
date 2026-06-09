@@ -109,6 +109,9 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     mops_action = {
         action["id"]: action for action in catalog["actions"]
     }["high_risk_unlocker_smoke"]
+    assert "--local-browser-render-defaults --prefer-unlocker" in (
+        mops_action["display_command"]
+    )
     assert "https://mops.twse.com.tw/" in mops_action["display_command"]
     task_submission_action = {
         action["id"]: action for action in catalog["actions"]
@@ -414,6 +417,41 @@ def test_run_maintenance_diagnostic_action_executes_structured_fixture_http_smok
         "--strict",
     ]
     assert captured["timeout"] == 90
+
+
+def test_run_maintenance_diagnostic_action_executes_high_risk_unlocker_smoke(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ready"}', stderr="")
+
+    monkeypatch.setattr(maintenance_diagnostics.subprocess, "run", fake_run)
+
+    result = maintenance_diagnostics.run_maintenance_diagnostic_action(
+        "high_risk_unlocker_smoke",
+        root=tmp_path,
+    )
+
+    assert result["status"] == "success"
+    assert result["display_command"] == (
+        ".venv/bin/python scripts/company_filing_render_smoke.py "
+        "--local-browser-render-defaults --prefer-unlocker "
+        "--url https://mops.twse.com.tw/ --json"
+    )
+    assert captured["command"][1:] == [
+        "scripts/company_filing_render_smoke.py",
+        "--local-browser-render-defaults",
+        "--prefer-unlocker",
+        "--url",
+        "https://mops.twse.com.tw/",
+        "--json",
+    ]
+    assert captured["timeout"] == 120
 
 
 def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(

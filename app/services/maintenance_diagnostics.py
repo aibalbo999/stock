@@ -365,11 +365,14 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "description": "驗證 FlareSolverr / unlocker provider 是否可處理 MOPS 高風險入口。",
         "display_command": (
             ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--local-browser-render-defaults --prefer-unlocker "
             "--url https://mops.twse.com.tw/ --json"
         ),
         "argv": [
             sys.executable,
             "scripts/company_filing_render_smoke.py",
+            "--local-browser-render-defaults",
+            "--prefer-unlocker",
             "--url",
             "https://mops.twse.com.tw/",
             "--json",

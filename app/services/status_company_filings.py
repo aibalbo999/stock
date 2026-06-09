@@ -256,7 +256,11 @@ def _company_filing_high_risk_source_policy(
                 ("COMPANY_FILING_BROWSER_RENDER_URL", "http://flaresolverr:8191/v1"),
             )
         ],
-        "smoke_cli": ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json",
+        "smoke_cli": (
+            ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--local-browser-render-defaults --prefer-unlocker "
+            "--url https://mops.twse.com.tw/ --json"
+        ),
     }
 
 

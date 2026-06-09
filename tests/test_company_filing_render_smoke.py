@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -263,6 +265,73 @@ def test_company_filing_render_smoke_main_prints_json(monkeypatch, capsys) -> No
 
     assert smoke.main(["--json"]) == 0
     assert '"status": "ready"' in capsys.readouterr().out
+
+
+def test_company_filing_render_smoke_main_can_apply_local_unlocker_defaults(
+    monkeypatch,
+    capsys,
+) -> None:
+    class FakeSettingsProvider:
+        def __init__(self) -> None:
+            self.clear_count = 0
+
+        def __call__(self):
+            return SimpleNamespace(
+                company_filing_proxy_urls="",
+                company_filing_browser_render_enabled=False,
+                company_filing_browser_render_url="",
+                company_filing_playwright_render_enabled=True,
+            )
+
+        def cache_clear(self) -> None:
+            self.clear_count += 1
+
+    provider = FakeSettingsProvider()
+
+    async def fake_report(**_kwargs):
+        return {
+            "status": "ready",
+            "ready": True,
+            "provider": smoke.os.environ.get("COMPANY_FILING_BROWSER_RENDER_PROVIDER"),
+            "url": smoke.os.environ.get("COMPANY_FILING_BROWSER_RENDER_URL"),
+        }
+
+    monkeypatch.setattr(smoke, "get_settings", provider)
+    monkeypatch.setattr(smoke, "company_filing_render_smoke_report", fake_report)
+    monkeypatch.setattr(
+        smoke,
+        "is_local_port_open",
+        lambda _host, port: int(port) == smoke.LOCAL_FLARESOLVERR_PORT,
+    )
+    for key in (
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+        "COMPANY_FILING_PROXY_URLS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+
+    assert smoke.main(
+        [
+            "--local-browser-render-defaults",
+            "--prefer-unlocker",
+            "--json",
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider"] == "flaresolverr"
+    assert payload["url"] == "http://127.0.0.1:8191/v1"
+    assert payload["local_browser_render_defaults"]["prefer_unlocker"] is True
+    assert payload["local_browser_render_defaults"]["applied_env_keys"] == [
+        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+        "COMPANY_FILING_BROWSER_RENDER_PROVIDER",
+        "COMPANY_FILING_BROWSER_RENDER_URL",
+    ]
+    assert "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED" not in smoke.os.environ
+    assert "--local-browser-render-defaults --prefer-unlocker" in payload["smoke_command"]
+    assert provider.clear_count >= 2
 
 
 def test_company_filing_render_smoke_main_prints_provider_contract_json(capsys) -> None:

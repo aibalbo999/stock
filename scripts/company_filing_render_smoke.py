@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from typing import Any
 
 from app.core.config import get_settings
@@ -15,6 +16,13 @@ from app.data_sources.company_filing_render import (
     company_filing_proxy_urls,
 )
 from app.data_sources.company_filings import CompanyFilingFetcher
+from app.services.local_dependency_diagnostics import (
+    LOCAL_BROWSERLESS_PORT,
+    LOCAL_BROWSER_RENDER_ENV_DEFAULTS,
+    LOCAL_FLARESOLVERR_PORT,
+    LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS,
+    is_local_port_open,
+)
 
 
 DEFAULT_SMOKE_URL = "https://example.com/"
@@ -26,6 +34,52 @@ PROVIDER_CONTRACT_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
     "--provider-contract --json"
 )
+
+
+def apply_local_browser_render_defaults(
+    *,
+    prefer_browserless: bool = False,
+    prefer_unlocker: bool = False,
+) -> dict[str, str]:
+    cache_clear = getattr(get_settings, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+    settings = get_settings()
+    if prefer_unlocker and is_local_port_open("127.0.0.1", LOCAL_FLARESOLVERR_PORT):
+        defaults = LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS
+        applied = {}
+        for key, value in defaults.items():
+            os.environ[key] = value
+            applied[key] = value
+        os.environ.pop("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", None)
+        if callable(cache_clear):
+            cache_clear()
+        return applied
+    if settings.company_filing_proxy_urls:
+        return {}
+    if (
+        settings.company_filing_browser_render_enabled
+        and settings.company_filing_browser_render_url
+    ):
+        return {}
+    if settings.company_filing_playwright_render_enabled:
+        return {}
+    defaults = None
+    if prefer_browserless or is_local_port_open("127.0.0.1", LOCAL_BROWSERLESS_PORT):
+        defaults = LOCAL_BROWSER_RENDER_ENV_DEFAULTS
+    elif is_local_port_open("127.0.0.1", LOCAL_FLARESOLVERR_PORT):
+        defaults = LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS
+    if not defaults:
+        return {}
+    applied = {}
+    for key, value in defaults.items():
+        if key == "COMPANY_FILING_BROWSER_RENDER_PROVIDER" and not prefer_unlocker:
+            continue
+        os.environ[key] = value
+        applied[key] = value
+    if callable(cache_clear):
+        cache_clear()
+    return applied
 
 
 async def company_filing_render_smoke_report(
@@ -254,6 +308,15 @@ def company_filing_render_provider_contract_report(
     }
 
 
+def local_browser_render_defaults_smoke_command(*, url: str, prefer_unlocker: bool) -> str:
+    return (
+        ".venv/bin/python scripts/company_filing_render_smoke.py "
+        "--local-browser-render-defaults "
+        + ("--prefer-unlocker " if prefer_unlocker else "")
+        + f"--url {url} --json"
+    )
+
+
 def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
     if report.get("providers"):
         return format_company_filing_render_provider_contract(report)
@@ -324,10 +387,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Validate render/unlocker provider request and response contracts without network access.",
     )
+    parser.add_argument(
+        "--local-browser-render-defaults",
+        action="store_true",
+        help=(
+            "Apply local Browserless/FlareSolverr render defaults for this smoke process "
+            "without writing .env."
+        ),
+    )
+    parser.add_argument(
+        "--prefer-unlocker",
+        action="store_true",
+        help="Prefer local FlareSolverr defaults when --local-browser-render-defaults is used.",
+    )
     parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(argv)
 
+    local_defaults = (
+        apply_local_browser_render_defaults(prefer_unlocker=bool(args.prefer_unlocker))
+        if args.local_browser_render_defaults
+        else {}
+    )
     if args.provider_contract:
         report = company_filing_render_provider_contract_report(target_url=args.url)
     else:
@@ -337,6 +418,16 @@ def main(argv: list[str] | None = None) -> int:
                 min_text_chars=args.min_text_chars,
             )
         )
+    if args.local_browser_render_defaults:
+        report["smoke_command"] = local_browser_render_defaults_smoke_command(
+            url=args.url,
+            prefer_unlocker=bool(args.prefer_unlocker),
+        )
+        report["local_browser_render_defaults"] = {
+            "applied_env_keys": sorted(local_defaults),
+            "prefer_unlocker": bool(args.prefer_unlocker),
+            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+        }
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:

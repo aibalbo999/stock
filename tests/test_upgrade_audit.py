@@ -263,6 +263,7 @@ def test_upgrade_audit_treats_high_risk_filing_unlocker_as_deployment_hardening(
                         ],
                         "smoke_cli": (
                             ".venv/bin/python scripts/company_filing_render_smoke.py "
+                            "--local-browser-render-defaults --prefer-unlocker "
                             "--url https://mops.twse.com.tw/ --json"
                         ),
                     },

@@ -145,6 +145,7 @@ POST_RUN_CHECKS = {
             "diagnostic_action_id": "high_risk_unlocker_smoke",
             "command": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--local-browser-render-defaults --prefer-unlocker "
                 "--url https://mops.twse.com.tw/ --json"
             ),
         },

@@ -65,6 +65,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
                             "high_risk_source_policy": {
                                 "smoke_cli": (
                                     ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                    "--local-browser-render-defaults --prefer-unlocker "
                                     "--url https://mops.twse.com.tw/ --json"
                                 )
                             },
@@ -76,6 +77,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
                             "configured_provider": "browserless",
                             "smoke_cli": (
                                 ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                "--local-browser-render-defaults --prefer-unlocker "
                                 "--url https://mops.twse.com.tw/ --json"
                             ),
                         },
@@ -200,7 +202,11 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         for command in checks["company_filing_browser_or_proxy_fallback"]["smoke_commands"]
     )
     assert checks["company_filing_high_risk_unlocker"]["smoke_commands"] == [
-        ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
+        (
+            ".venv/bin/python scripts/company_filing_render_smoke.py "
+            "--local-browser-render-defaults --prefer-unlocker "
+            "--url https://mops.twse.com.tw/ --json"
+        )
     ]
     assert checks["company_filing_high_risk_unlocker"]["enablement_profile"][
         "free_local_available"
@@ -406,6 +412,7 @@ def test_external_integration_report_surfaces_local_browser_render_defaults() ->
                             "configured_provider": "flaresolverr",
                             "smoke_cli": (
                                 ".venv/bin/python scripts/company_filing_render_smoke.py "
+                                "--local-browser-render-defaults --prefer-unlocker "
                                 "--url https://mops.twse.com.tw/ --json"
                             ),
                         },

@@ -64,6 +64,12 @@ def test_maintenance_operation_catalog_exposes_allowlisted_local_dependency_oper
         for check in checks_by_id["start_local_dependencies_with_unlocker"]
     )
     assert any(
+        check["diagnostic_action_id"] == "high_risk_unlocker_smoke"
+        and "--local-browser-render-defaults --prefer-unlocker" in check["command"]
+        and "https://mops.twse.com.tw/" in check["command"]
+        for check in checks_by_id["start_local_dependencies_with_unlocker"]
+    )
+    assert any(
         check["diagnostic_action_id"] == "local_unlocker_upgrade_audit"
         for check in checks_by_id["start_local_dependencies_with_unlocker"]
     )

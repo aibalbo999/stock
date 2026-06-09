@@ -101,6 +101,7 @@ COMPANY_FILING_RENDER_SMOKE_COMMAND = (
 )
 HIGH_RISK_COMPANY_FILING_RENDER_SMOKE_COMMAND = (
     ".venv/bin/python scripts/company_filing_render_smoke.py "
+    "--local-browser-render-defaults --prefer-unlocker "
     "--url https://mops.twse.com.tw/ --json"
 )
 COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND = (

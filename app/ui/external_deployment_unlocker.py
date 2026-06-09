@@ -139,7 +139,11 @@ def high_risk_mops_smoke_command(evidence: dict) -> str:
     smoke_cli = str(evidence.get("smoke_cli") or "").strip()
     if smoke_cli:
         return smoke_cli
-    return ".venv/bin/python scripts/company_filing_render_smoke.py --url https://mops.twse.com.tw/ --json"
+    return (
+        ".venv/bin/python scripts/company_filing_render_smoke.py "
+        "--local-browser-render-defaults --prefer-unlocker "
+        "--url https://mops.twse.com.tw/ --json"
+    )
 
 
 def _high_risk_unlocker_strategy(evidence: dict) -> str:

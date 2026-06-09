@@ -18,6 +18,7 @@ from app.services import (
     discovered_pipeline_candidates,
     discovered_pipeline_checkpoints,
     discovered_pipeline_results,
+    discovered_pipeline_run_state,
 )
 from app.services.discovered_pipeline import (
     DiscoveredTopicPipelineService,
@@ -205,6 +206,33 @@ def test_discovered_pipeline_candidate_revalidation_lives_outside_orchestrator()
     assert "def _finalize_candidate_revalidation_stage(" in candidate_source
     assert "def _latest_company_filing_news_documents(" not in pipeline_source
     assert "def _latest_company_filing_news_documents(" in candidate_source
+
+
+def test_discovered_pipeline_run_state_lives_outside_orchestrator() -> None:
+    pipeline_source = Path("app/services/discovered_pipeline.py").read_text()
+    run_state_source = Path("app/services/discovered_pipeline_run_state.py").read_text()
+
+    assert issubclass(
+        DiscoveredTopicPipelineService,
+        discovered_pipeline_run_state.DiscoveredPipelineRunStateMixin,
+    )
+    assert "class DiscoveredPipelineRunStateMixin" in run_state_source
+    for method in [
+        "def _start_run(",
+        "def _checkpoint_stage_payload(",
+        "def _checkpoint_report_build_payload(",
+        "def _attach_celery_task_id(",
+        "def _update_run_payload(",
+        "def _current_run_payload(",
+        "def _mark_run_running(",
+        "def _mark_run_cancelled(",
+        "def _check_cancelled(",
+        "def _discovered_market_data_service(",
+        "def _load_resumable_discovered_run(",
+        "def _load_report_response(",
+    ]:
+        assert method not in pipeline_source
+        assert method in run_state_source
 
 
 def test_candidate_revalidation_stage_result_builds_summary_and_checkpoint_payload() -> None:

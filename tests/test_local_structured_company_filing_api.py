@@ -112,6 +112,12 @@ def test_local_fixture_env_and_smoke_commands_point_to_custom_provider() -> None
         port=8794,
         path="/filings",
     )
+    provider_profile_command = fixture.local_fixture_provider_profile_smoke_command(
+        host="127.0.0.1",
+        port=8794,
+        path="/filings",
+        provider_profile="tej",
+    )
 
     assert env_lines == [
         "export COMPANY_FILING_STRUCTURED_API_PROVIDER=custom",
@@ -121,3 +127,6 @@ def test_local_fixture_env_and_smoke_commands_point_to_custom_provider() -> None
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in smoke_command
     assert "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings" in smoke_command
     assert "structured_company_filing_smoke.py" in smoke_command
+    assert "structured_company_filing_fixture_smoke.py" in provider_profile_command
+    assert "--provider-profile tej" in provider_profile_command
+    assert "--host 127.0.0.1 --port 8794 --path /filings" in provider_profile_command

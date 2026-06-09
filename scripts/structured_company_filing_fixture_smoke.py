@@ -14,10 +14,12 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.data_sources.company_filing_structured_api import (
+    STRUCTURED_API_PROVIDER_PROFILES,
     STRUCTURED_API_LOCAL_FIXTURE_HOST,
     STRUCTURED_API_LOCAL_FIXTURE_PATH,
     STRUCTURED_API_LOCAL_FIXTURE_PORT,
     STRUCTURED_API_SAMPLE_CONTRACT_PATH,
+    structured_api_provider_profile,
 )
 
 
@@ -28,6 +30,8 @@ DEFAULT_DOCUMENT_TYPES = ("investor_presentation",)
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 10.0
 DEFAULT_SMOKE_TIMEOUT_SECONDS = 45.0
 DEFAULT_POLL_INTERVAL_SECONDS = 0.2
+DEFAULT_PROVIDER_PROFILE = "custom"
+LOCAL_FIXTURE_AUTH_VALUE = "local-structured-fixture-" + "credential"
 
 
 def structured_company_filing_fixture_smoke_report(
@@ -41,6 +45,7 @@ def structured_company_filing_fixture_smoke_report(
     company_name: str = DEFAULT_COMPANY_NAME,
     document_types: list[str] | tuple[str, ...] | None = DEFAULT_DOCUMENT_TYPES,
     limit: int = 3,
+    provider_profile: str = DEFAULT_PROVIDER_PROFILE,
     startup_timeout_seconds: float = DEFAULT_STARTUP_TIMEOUT_SECONDS,
     smoke_timeout_seconds: float = DEFAULT_SMOKE_TIMEOUT_SECONDS,
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
@@ -54,6 +59,9 @@ def structured_company_filing_fixture_smoke_report(
     requested_types = tuple(document_types or ())
     api_path = _normalized_api_path(path)
     fixture_url = f"http://{host}:{int(port)}{api_path}"
+    profile = structured_api_provider_profile(provider_profile)
+    profile_key = str(profile.get("profile_key") or DEFAULT_PROVIDER_PROFILE)
+    token_configured = _profile_requires_token(profile)
     probe_url = _fixture_probe_url(
         fixture_url,
         ticker=ticker,
@@ -106,6 +114,8 @@ def structured_company_filing_fixture_smoke_report(
                     company_name=company_name,
                     document_types=requested_types,
                     limit=limit,
+                    provider_profile=profile_key,
+                    token_configured=token_configured,
                     serve_argv=serve_argv,
                     smoke_argv=smoke_argv,
                     fixture_started=fixture_started,
@@ -116,7 +126,7 @@ def structured_company_filing_fixture_smoke_report(
         completed = run_func(
             [str(part) for part in smoke_argv],
             cwd=root_path,
-            env=_fixture_smoke_env(fixture_url),
+            env=_fixture_smoke_env(fixture_url, provider_profile=profile_key),
             check=False,
             text=True,
             capture_output=True,
@@ -133,6 +143,8 @@ def structured_company_filing_fixture_smoke_report(
             company_name=company_name,
             document_types=requested_types,
             limit=limit,
+            provider_profile=profile_key,
+            token_configured=token_configured,
             serve_argv=serve_argv,
             smoke_argv=smoke_argv,
             fixture_started=fixture_started,
@@ -152,6 +164,8 @@ def structured_company_filing_fixture_smoke_report(
             company_name=company_name,
             document_types=requested_types,
             limit=limit,
+            provider_profile=profile_key,
+            token_configured=token_configured,
             serve_argv=serve_argv,
             smoke_argv=smoke_argv,
             fixture_started=fixture_started,
@@ -170,6 +184,12 @@ def structured_company_filing_fixture_smoke_report(
         "ready": ready,
         "mode": "local_fixture_http_smoke",
         "fixture_url": fixture_url,
+        "provider_profile": profile_key,
+        "auth_mode": str(profile.get("auth_mode") or ""),
+        "token_location": str(profile.get("token_location") or ""),
+        "token_configured": token_configured,
+        "token_redacted": token_configured,
+        "document_type_param": str(profile.get("document_type_param") or ""),
         "fixture_started": fixture_started,
         "reused_existing_fixture": reused_existing_fixture,
         "sample_path": str(sample_path),
@@ -186,7 +206,12 @@ def structured_company_filing_fixture_smoke_report(
         "documents": _list_value(smoke_payload, "documents"),
         "errors": errors,
         "serve_command": _display_command(serve_argv),
-        "smoke_command": _display_smoke_command(smoke_argv, fixture_url),
+        "smoke_command": _display_smoke_command(
+            smoke_argv,
+            fixture_url,
+            provider_profile=profile_key,
+            token_configured=token_configured,
+        ),
         "smoke_returncode": int(completed.returncode),
         "smoke_status": smoke_payload.get("status") or "-",
         "stdout_tail": "" if ready else _tail_text(completed.stdout),
@@ -211,6 +236,7 @@ def format_structured_company_filing_fixture_smoke(report: dict[str, Any]) -> st
         f"Structured company filing fixture HTTP smoke: {report['status']}",
         f"- ready: {str(bool(report.get('ready'))).lower()}",
         f"- fixture url: {report.get('fixture_url') or '-'}",
+        f"- provider profile: {report.get('provider_profile') or '-'}",
         f"- fixture started: {str(bool(report.get('fixture_started'))).lower()}",
         f"- reused existing fixture: {str(bool(report.get('reused_existing_fixture'))).lower()}",
         f"- documents: {report.get('document_count', 0)}",
@@ -268,6 +294,8 @@ def _fixture_smoke_error_report(
     company_name: str,
     document_types: tuple[str, ...],
     limit: int,
+    provider_profile: str,
+    token_configured: bool,
     serve_argv: list[str],
     smoke_argv: list[str],
     fixture_started: bool,
@@ -282,6 +310,9 @@ def _fixture_smoke_error_report(
         "ready": False,
         "mode": "local_fixture_http_smoke",
         "fixture_url": fixture_url,
+        "provider_profile": provider_profile,
+        "token_configured": token_configured,
+        "token_redacted": token_configured,
         "fixture_started": fixture_started,
         "reused_existing_fixture": reused_existing_fixture,
         "fixture_returncode": process_returncode,
@@ -297,7 +328,12 @@ def _fixture_smoke_error_report(
         "documents": [],
         "errors": [{"category": category, "message": message}],
         "serve_command": _display_command(serve_argv),
-        "smoke_command": _display_smoke_command(smoke_argv, fixture_url),
+        "smoke_command": _display_smoke_command(
+            smoke_argv,
+            fixture_url,
+            provider_profile=provider_profile,
+            token_configured=token_configured,
+        ),
         "stdout_tail": stdout_tail,
         "stderr_tail": stderr_tail,
         "remediation": "Run the serve_command and smoke_command separately to inspect the failing step.",
@@ -349,11 +385,21 @@ def _fixture_smoke_argv(
     return argv
 
 
-def _fixture_smoke_env(fixture_url: str) -> dict[str, str]:
+def _fixture_smoke_env(
+    fixture_url: str,
+    *,
+    provider_profile: str = DEFAULT_PROVIDER_PROFILE,
+) -> dict[str, str]:
     env = dict(os.environ)
-    env["COMPANY_FILING_STRUCTURED_API_PROVIDER"] = "custom"
+    profile = structured_api_provider_profile(provider_profile)
+    env["COMPANY_FILING_STRUCTURED_API_PROVIDER"] = str(
+        profile.get("profile_key") or DEFAULT_PROVIDER_PROFILE
+    )
     env["COMPANY_FILING_STRUCTURED_API_URL"] = fixture_url
-    env.pop("COMPANY_FILING_STRUCTURED_API_TOKEN", None)
+    if _profile_requires_token(profile):
+        env["COMPANY_FILING_STRUCTURED_API_TOKEN"] = LOCAL_FIXTURE_AUTH_VALUE
+    else:
+        env.pop("COMPANY_FILING_STRUCTURED_API_TOKEN", None)
     return env
 
 
@@ -396,6 +442,14 @@ def _url_ready(url: str, *, timeout: float = 1.0) -> bool:
 def _normalized_api_path(path: str) -> str:
     normalized = "/" + str(path or STRUCTURED_API_LOCAL_FIXTURE_PATH).strip().strip("/")
     return normalized if normalized != "/" else STRUCTURED_API_LOCAL_FIXTURE_PATH
+
+
+def _profile_requires_token(profile: dict) -> bool:
+    return str(profile.get("auth_mode") or "").strip().lower() not in {
+        "",
+        "bearer_optional",
+        "none",
+    }
 
 
 def _json_object_from_stdout(value: object) -> dict[str, Any]:
@@ -471,12 +525,22 @@ def _display_command(argv: list[str]) -> str:
     return " ".join(shlex.quote(str(part)) for part in display_argv)
 
 
-def _display_smoke_command(argv: list[str], fixture_url: str) -> str:
-    return (
-        "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
-        f"COMPANY_FILING_STRUCTURED_API_URL={shlex.quote(fixture_url)} "
-        + _display_command(argv)
-    )
+def _display_smoke_command(
+    argv: list[str],
+    fixture_url: str,
+    *,
+    provider_profile: str = DEFAULT_PROVIDER_PROFILE,
+    token_configured: bool = False,
+) -> str:
+    env_parts = [
+        f"COMPANY_FILING_STRUCTURED_API_PROVIDER={shlex.quote(provider_profile)}",
+        f"COMPANY_FILING_STRUCTURED_API_URL={shlex.quote(fixture_url)}",
+    ]
+    if token_configured:
+        env_parts.append(
+            f"COMPANY_FILING_STRUCTURED_API_TOKEN={shlex.quote('<token>')}"
+        )
+    return " ".join([*env_parts, _display_command(argv)])
 
 
 def _communicate_process(process) -> tuple[str, str]:
@@ -527,6 +591,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--limit", type=int, default=3, help="Maximum documents to request.")
     parser.add_argument(
+        "--provider-profile",
+        default=DEFAULT_PROVIDER_PROFILE,
+        choices=sorted(STRUCTURED_API_PROVIDER_PROFILES),
+        help=(
+            "Structured API provider profile to validate against the local fixture. "
+            "Profiles that require auth receive a local dummy token in the child process."
+        ),
+    )
+    parser.add_argument(
         "--startup-timeout",
         type=float,
         default=DEFAULT_STARTUP_TIMEOUT_SECONDS,
@@ -551,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
         company_name=args.company_name,
         document_types=args.document_types or list(DEFAULT_DOCUMENT_TYPES),
         limit=args.limit,
+        provider_profile=args.provider_profile,
         startup_timeout_seconds=args.startup_timeout,
         smoke_timeout_seconds=args.smoke_timeout,
     )

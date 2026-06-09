@@ -359,6 +359,28 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "timeout_seconds": 90,
         "read_only": True,
     },
+    "structured_company_filing_provider_profile_fixture_smoke": {
+        "id": "structured_company_filing_provider_profile_fixture_smoke",
+        "label": "Structured filing TEJ profile fixture smoke",
+        "description": (
+            "用本機 fixture 驗證 TEJ provider profile 的 Bearer auth、"
+            "document_type 參數與 JSON 轉換，不連外且不需要真實 token。"
+        ),
+        "display_command": (
+            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+            "--provider-profile tej --json --strict"
+        ),
+        "argv": [
+            sys.executable,
+            "scripts/structured_company_filing_fixture_smoke.py",
+            "--provider-profile",
+            "tej",
+            "--json",
+            "--strict",
+        ],
+        "timeout_seconds": 90,
+        "read_only": True,
+    },
     "high_risk_unlocker_smoke": {
         "id": "high_risk_unlocker_smoke",
         "label": "High-risk MOPS unlocker smoke",
@@ -508,6 +530,7 @@ def _diagnostic_summary_rows(action_id: str, stdout: object) -> list[dict]:
     if action_id in {
         "structured_company_filing_sample_contract_smoke",
         "structured_company_filing_fixture_http_smoke",
+        "structured_company_filing_provider_profile_fixture_smoke",
     }:
         return _structured_company_filing_smoke_summary_rows(payload)
     if action_id in {"task_submission_smoke", "task_submission_noop_smoke"}:

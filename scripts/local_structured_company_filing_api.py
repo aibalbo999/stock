@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from app.data_sources.company_filing_structured_api import (
+    STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
     STRUCTURED_API_SAMPLE_CONTRACT_PATH,
     structured_api_document_rows,
     structured_api_document_type,
@@ -104,6 +105,22 @@ def local_fixture_smoke_command(
         f"COMPANY_FILING_STRUCTURED_API_URL={shlex.quote(endpoint)} "
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json"
+    )
+
+
+def local_fixture_provider_profile_smoke_command(
+    *,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    path: str = DEFAULT_PATH,
+    provider_profile: str = STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
+) -> str:
+    return (
+        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+        f"--provider-profile {shlex.quote(provider_profile)} "
+        f"--host {shlex.quote(host)} --port {int(port)} "
+        f"--path {shlex.quote(_normalized_api_path(path))} "
+        "--json --strict"
     )
 
 
@@ -320,6 +337,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_env:
         print("\n".join(local_fixture_env_lines(host=args.host, port=args.port, path=args.path)))
         print(local_fixture_smoke_command(host=args.host, port=args.port, path=args.path))
+        print(
+            local_fixture_provider_profile_smoke_command(
+                host=args.host,
+                port=args.port,
+                path=args.path,
+            )
+        )
         return 0
 
     if args.once:

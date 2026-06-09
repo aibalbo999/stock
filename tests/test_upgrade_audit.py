@@ -330,6 +330,10 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
                                     ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
                                     "--json --strict"
                                 ),
+                                "local_fixture_provider_profile_smoke_cli": (
+                                    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                                    "--provider-profile tej --json --strict"
+                                ),
                                 "local_fixture_smoke_cli": (
                                     "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
                                     "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
@@ -355,17 +359,20 @@ def test_upgrade_audit_treats_structured_filing_api_as_deployment_hardening() ->
     assert warning["enablement_profile"]["deployment_profile"] == "paid_external"
     assert warning["enablement_profile"]["paid_service_required"] is True
     assert warning["enablement_profile"]["free_validation_available"] is True
-    assert warning["enablement_profile"]["free_validation_label"] == "sample + fixture 可驗證"
-    assert len(warning["enablement_profile"]["free_validation_commands"]) == 4
+    assert warning["enablement_profile"]["free_validation_label"] == (
+        "sample + fixture + provider profile 可驗證"
+    )
+    assert len(warning["enablement_profile"]["free_validation_commands"]) == 5
     assert "structured_company_filing_sample.json" in warning["remediation"]
     assert "structured_company_filing_fixture_smoke.py" in warning["remediation"]
+    assert "--provider-profile tej" in warning["remediation"]
     assert "local_structured_company_filing_api.py" in warning["remediation"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in warning["remediation"]
     assert "structured_company_filing_smoke.py --json" in warning["remediation"]
     pending = audit["external_deployment_pending_gaps"][-1]
     assert pending["capability"] == "company_filing_structured_api_fallback"
     assert pending["free_validation_available"] is True
-    assert pending["free_validation_label"] == "sample + fixture 可驗證"
+    assert pending["free_validation_label"] == "sample + fixture + provider profile 可驗證"
 
 
 def test_upgrade_audit_marks_paid_external_only_gaps_as_nonblocking_optional() -> None:

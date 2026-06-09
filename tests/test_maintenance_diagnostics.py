@@ -30,6 +30,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         "local_unlocker_upgrade_audit",
         "neo4j_payload_dry_run",
         "structured_company_filing_fixture_http_smoke",
+        "structured_company_filing_provider_profile_fixture_smoke",
         "structured_company_filing_sample_contract_smoke",
         "task_submission_noop_smoke",
         "task_submission_smoke",
@@ -146,6 +147,14 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     )
     assert "live HTTP fetch path" in structured_fixture_action["description"]
     assert "不需要 token" in structured_fixture_action["description"]
+    structured_provider_profile_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["structured_company_filing_provider_profile_fixture_smoke"]
+    assert "--provider-profile tej --json --strict" in (
+        structured_provider_profile_action["display_command"]
+    )
+    assert "Bearer auth" in structured_provider_profile_action["description"]
+    assert "不需要真實 token" in structured_provider_profile_action["description"]
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(

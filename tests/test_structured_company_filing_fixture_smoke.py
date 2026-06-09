@@ -118,6 +118,69 @@ def test_fixture_smoke_starts_fixture_runs_live_smoke_and_cleans_up(tmp_path) ->
     assert "COMPANY_FILING_STRUCTURED_API_TOKEN" not in captured["smoke_env"]
 
 
+def test_fixture_smoke_can_validate_tej_profile_without_exposing_token(tmp_path) -> None:
+    process = FakeFixtureProcess()
+    captured = {}
+    probe_calls = []
+
+    def fake_popen(command, **kwargs):
+        return process
+
+    def fake_run(command, **kwargs):
+        captured["smoke_env"] = kwargs["env"]
+        payload = {
+            "status": "ready",
+            "ready": True,
+            "runtime": {
+                "configured": True,
+                "provider": "tej",
+                "token_configured": True,
+                "provider_setup_preview": {
+                    "profile_key": "tej",
+                    "headers": {"Authorization": "Bearer <redacted>"},
+                    "params": {"document_type": "investor_presentation"},
+                    "token_redacted": True,
+                },
+            },
+            "document_count": 1,
+            "error_count": 0,
+            "documents": [{"title": "2330 台積電 法說會", "text_length": 128}],
+            "errors": [],
+        }
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload, ensure_ascii=False),
+            stderr="",
+        )
+
+    def fake_url_ready(url, *, timeout):
+        probe_calls.append(url)
+        return len(probe_calls) >= 2
+
+    report = fixture_smoke.structured_company_filing_fixture_smoke_report(
+        root=tmp_path,
+        provider_profile="tej",
+        popen_func=fake_popen,
+        run_func=fake_run,
+        url_ready_func=fake_url_ready,
+        sleep_func=lambda _: None,
+    )
+
+    assert report["ready"] is True
+    assert report["provider_profile"] == "tej"
+    assert report["token_configured"] is True
+    assert report["token_redacted"] is True
+    assert captured["smoke_env"]["COMPANY_FILING_STRUCTURED_API_PROVIDER"] == "tej"
+    assert (
+        captured["smoke_env"]["COMPANY_FILING_STRUCTURED_API_URL"]
+        == "http://127.0.0.1:8794/filings"
+    )
+    assert "COMPANY_FILING_STRUCTURED_API_TOKEN" in captured["smoke_env"]
+    assert "COMPANY_FILING_STRUCTURED_API_TOKEN='<token>'" in report["smoke_command"]
+    assert captured["smoke_env"]["COMPANY_FILING_STRUCTURED_API_TOKEN"] not in str(report)
+
+
 def test_fixture_smoke_reuses_existing_fixture_without_starting_process(tmp_path) -> None:
     captured = {}
 

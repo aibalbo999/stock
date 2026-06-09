@@ -489,13 +489,19 @@ def _external_free_validation_profile(
     local_fixture_available = bool(
         free_validation.get("local_fixture_available")
         or runtime.get("local_fixture_http_smoke_cli")
+        or runtime.get("local_fixture_provider_profile_smoke_cli")
         or runtime.get("local_fixture_start_cli")
         or runtime.get("local_fixture_smoke_cli")
+    )
+    provider_profile_smoke = (
+        free_validation.get("local_fixture_provider_profile_smoke_cli")
+        or runtime.get("local_fixture_provider_profile_smoke_cli")
     )
     commands = [
         free_validation.get("sample_contract_cli") or runtime.get("sample_contract_cli"),
         free_validation.get("local_fixture_http_smoke_cli")
         or runtime.get("local_fixture_http_smoke_cli"),
+        provider_profile_smoke,
         free_validation.get("local_fixture_start_cli") or runtime.get("local_fixture_start_cli"),
         free_validation.get("local_fixture_smoke_cli") or runtime.get("local_fixture_smoke_cli"),
     ]
@@ -503,7 +509,7 @@ def _external_free_validation_profile(
     available = bool(sample_ready and local_fixture_available)
     return {
         "available": available,
-        "label": "sample + fixture 可驗證" if available else "-",
+        "label": "sample + fixture + provider profile 可驗證" if available else "-",
         "commands": command_texts,
     }
 

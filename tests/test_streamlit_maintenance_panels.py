@@ -1824,6 +1824,10 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
                             "--json --strict"
                         ),
+                        "local_fixture_provider_profile_smoke_cli": (
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                            "--provider-profile tej --json --strict"
+                        ),
                         "sample_contract": {
                             "status": "ready",
                             "ready": True,
@@ -1835,8 +1839,17 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                         "free_validation": {
                             "sample_contract_ready": True,
                             "local_fixture_available": True,
+                            "provider_profile_fixture_available": True,
+                            "provider_profile": "tej",
                             "local_fixture_url": "http://127.0.0.1:8794/filings",
-                            "purpose": "用本機 fixture 驗證 live HTTP fetch path，不需要付費資料商 token。",
+                            "local_fixture_provider_profile_smoke_cli": (
+                                ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+                                "--provider-profile tej --json --strict"
+                            ),
+                            "purpose": (
+                                "用本機 fixture 驗證 live HTTP fetch path，含 TEJ profile "
+                                "auth/parameter smoke，不需要付費資料商 token。"
+                            ),
                         },
                         "smoke_cli": (
                             ".venv/bin/python scripts/structured_company_filing_smoke.py "
@@ -1885,9 +1898,11 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "raw_rows=1；documents=1；errors=0" in rows[4]["說明"]
     assert rows[5]["狀態"] == "可執行"
     assert "structured_company_filing_fixture_smoke.py" in rows[5]["指令"]
+    assert "--provider-profile tej" in rows[5]["指令"]
     assert "local_structured_company_filing_api.py" in rows[5]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[5]["指令"]
     assert "http://127.0.0.1:8794/filings" in rows[5]["說明"]
+    assert "provider_profile=tej local smoke" in rows[5]["說明"]
     assert "不需要付費資料商 token" in rows[5]["說明"]
     assert rows[6]["狀態"] == "待設定"
     assert "structured_company_filing_smoke.py" in rows[6]["指令"]

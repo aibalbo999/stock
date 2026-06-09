@@ -160,6 +160,9 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "structured_company_filing_sample.json" in report[
         "structured_company_filing_sample_command"
     ]
+    assert "--provider-profile tej" in report[
+        "structured_company_filing_local_provider_profile_smoke_command"
+    ]
     assert report["structured_company_filing_sample_status"] == "ready"
     checks = {check["capability"]: check for check in report["checks"]}
     assert checks["neo4j_payload_export_contract"]["ready"] is True
@@ -234,6 +237,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
         "--sample-json examples/structured_company_filing_sample.json "
         "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json",
+        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+        "--provider-profile tej --json --strict",
         "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom "
         "COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings "
         ".venv/bin/python scripts/structured_company_filing_smoke.py "
@@ -284,6 +289,7 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "High-risk filing unlocker smoke" in output
     assert "https://mops.twse.com.tw/" in output
     assert "structured_company_filing_smoke.py" in output
+    assert "--provider-profile tej" in output
     assert "structured_company_filing_sample.json" in output
     assert "Structured company filing sample contract: ready" in output
 

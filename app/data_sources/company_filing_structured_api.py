@@ -40,6 +40,10 @@ STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI = (
     ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"
 )
 STRUCTURED_API_RECOMMENDED_PAID_PROVIDER = "tej"
+STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI = (
+    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
+    f"--provider-profile {STRUCTURED_API_RECOMMENDED_PAID_PROVIDER} --json --strict"
+)
 STRUCTURED_API_PROVIDER_PROFILES = {
     "tej": {
         "label": "TEJ structured company filings",
@@ -176,18 +180,24 @@ def company_filing_structured_api_status_payload(
             "serve_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
             "smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
             "http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
+            "provider_profile_smoke_cli": STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI,
+            "provider_profile": STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
             "purpose": (
                 "Run the existing live HTTP fetch path against the bundled sample contract "
-                "before a paid TEJ/professional API is configured."
+                "before a paid TEJ/professional API is configured; the provider-profile smoke "
+                "also validates TEJ auth and document_type request mapping with a local dummy token."
             ),
         },
         "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
         "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
         "local_fixture_http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
+        "local_fixture_provider_profile_smoke_cli": STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI,
         "free_validation": {
             "status": "ready" if sample_contract.get("ready") else "degraded",
             "sample_contract_ready": bool(sample_contract.get("ready")),
             "local_fixture_available": True,
+            "provider_profile_fixture_available": True,
+            "provider_profile": STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
             "live_paid_provider_configured": bool(configuration_check["ready"]),
             "local_fixture_url": STRUCTURED_API_LOCAL_FIXTURE_URL,
             "sample_contract_cli": (
@@ -198,10 +208,14 @@ def company_filing_structured_api_status_payload(
             "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
             "local_fixture_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_SMOKE_CLI,
             "local_fixture_http_smoke_cli": STRUCTURED_API_LOCAL_FIXTURE_HTTP_SMOKE_CLI,
+            "local_fixture_provider_profile_smoke_cli": (
+                STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI
+            ),
             "purpose": (
                 "Free-tier validation covers JSON mapping plus the live HTTP fetch path "
-                "against a local fixture; paid/provider credentials are required only for "
-                "production TEJ or professional data feeds."
+                "against a local fixture, including a TEJ profile auth/parameter smoke with "
+                "a local dummy token; paid/provider credentials are required only for production "
+                "TEJ or professional data feeds."
             ),
         },
         "sample_contract": sample_contract,

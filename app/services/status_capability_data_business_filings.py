@@ -297,6 +297,9 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "local_fixture_http_smoke_cli": (
                     company_filing_status.get("structured_api_runtime") or {}
                 ).get("local_fixture_http_smoke_cli"),
+                "local_fixture_provider_profile_smoke_cli": (
+                    company_filing_status.get("structured_api_runtime") or {}
+                ).get("local_fixture_provider_profile_smoke_cli"),
                 "runtime": company_filing_status.get("structured_api_runtime"),
             },
             detail=(

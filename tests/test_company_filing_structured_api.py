@@ -118,15 +118,20 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert "structured_company_filing_fixture_smoke.py" in (
         status["local_fixture_api"]["http_smoke_cli"]
     )
+    assert status["local_fixture_api"]["provider_profile"] == "tej"
+    assert "--provider-profile tej" in status["local_fixture_api"]["provider_profile_smoke_cli"]
     assert "local_structured_company_filing_api.py" in status["local_fixture_start_cli"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in status["local_fixture_smoke_cli"]
     assert "structured_company_filing_smoke.py" in status["local_fixture_smoke_cli"]
     assert "structured_company_filing_fixture_smoke.py" in (
         status["local_fixture_http_smoke_cli"]
     )
+    assert "--provider-profile tej" in status["local_fixture_provider_profile_smoke_cli"]
     assert status["free_validation"]["status"] == "ready"
     assert status["free_validation"]["sample_contract_ready"] is True
     assert status["free_validation"]["local_fixture_available"] is True
+    assert status["free_validation"]["provider_profile_fixture_available"] is True
+    assert status["free_validation"]["provider_profile"] == "tej"
     assert status["free_validation"]["live_paid_provider_configured"] is True
     assert status["free_validation"]["local_fixture_url"] == "http://127.0.0.1:8794/filings"
     assert "local_structured_company_filing_api.py" in (
@@ -137,6 +142,9 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     )
     assert "structured_company_filing_fixture_smoke.py" in (
         status["free_validation"]["local_fixture_http_smoke_cli"]
+    )
+    assert "--provider-profile tej" in (
+        status["free_validation"]["local_fixture_provider_profile_smoke_cli"]
     )
     assert status["sample_contract_ready"] is True
     assert status["sample_contract"]["status"] == "ready"

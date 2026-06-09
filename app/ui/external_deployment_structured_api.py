@@ -203,6 +203,11 @@ def structured_filing_local_fixture_command(runtime: dict) -> str:
         or runtime.get("local_fixture_http_smoke_cli")
         or ""
     ).strip()
+    provider_profile_cli = str(
+        free_validation.get("local_fixture_provider_profile_smoke_cli")
+        or runtime.get("local_fixture_provider_profile_smoke_cli")
+        or ""
+    ).strip()
     start_cli = str(
         free_validation.get("local_fixture_start_cli")
         or runtime.get("local_fixture_start_cli")
@@ -213,7 +218,9 @@ def structured_filing_local_fixture_command(runtime: dict) -> str:
         or runtime.get("local_fixture_smoke_cli")
         or ""
     ).strip()
-    commands = [command for command in (one_shot_cli, start_cli, smoke_cli) if command]
+    commands = [
+        command for command in (one_shot_cli, provider_profile_cli, start_cli, smoke_cli) if command
+    ]
     return "\n".join(commands) if commands else "-"
 
 
@@ -297,7 +304,11 @@ def _structured_filing_local_fixture_detail(runtime: dict) -> str:
         or fixture.get("purpose")
         or "用本機 fixture 驗證 live HTTP fetch path，不需要付費資料商 token。"
     )
-    return f"url={url}；{purpose}"
+    provider_profile = str(
+        free_validation.get("provider_profile") or fixture.get("provider_profile") or ""
+    ).strip()
+    profile_text = f"；provider_profile={provider_profile} local smoke" if provider_profile else ""
+    return f"url={url}{profile_text}；{purpose}"
 
 
 def _structured_filing_configuration_status(configuration_check: dict) -> str:

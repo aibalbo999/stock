@@ -281,6 +281,10 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         structured_api["evidence"]["local_fixture_api"]["url"]
         == "http://127.0.0.1:8794/filings"
     )
+    assert structured_api["evidence"]["local_fixture_api"]["provider_profile"] == "tej"
+    assert "--provider-profile tej" in structured_api["evidence"]["local_fixture_api"][
+        "provider_profile_smoke_cli"
+    ]
     assert (
         "local_structured_company_filing_api.py"
         in structured_api["evidence"]["local_fixture_start_cli"]
@@ -289,6 +293,12 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom"
         in structured_api["evidence"]["local_fixture_smoke_cli"]
     )
+    assert "--provider-profile tej" in structured_api["evidence"][
+        "local_fixture_provider_profile_smoke_cli"
+    ]
+    assert "--provider-profile tej" in structured_api["evidence"]["runtime"][
+        "free_validation"
+    ]["local_fixture_provider_profile_smoke_cli"]
     assert structured_api["evidence"]["runtime"]["sample_contract_ready"] is True
     assert structured_api["evidence"]["runtime"]["sample_contract"]["status"] == "ready"
     assert structured_api["evidence"]["runtime"]["sample_contract"]["document_count"] >= 1

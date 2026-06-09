@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.ui.task_status_panel import (
     _fetch_task_status,
     company_filing_gap_rows,
+    task_execution_context_rows,
     task_status_diagnostic_rows,
     task_status_poll_caption,
     task_status_poll_interval_seconds,
@@ -128,6 +129,65 @@ def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
 
 def test_task_status_diagnostic_rows_hide_when_no_failure_category() -> None:
     assert task_status_diagnostic_rows({"status": "SUCCESS"}) == []
+
+
+def test_task_execution_context_rows_summarize_payload_and_exception() -> None:
+    rows = task_execution_context_rows(
+        {
+            "task_id": "task-sensitive",
+            "status": "FAILURE",
+            "ready": True,
+            "successful": False,
+            "execution_context": {
+                "celery_status": "FAILURE",
+                "ready": True,
+                "successful": False,
+                "run_id": 35,
+                "run_status": "failed",
+                "run_source": "celery_data_operation",
+                "operation": "market_refresh",
+                "payload_shape": {
+                    "present": True,
+                    "top_level_keys": ["celery_task_id", "operation", "payload", "task"],
+                    "request_keys": [],
+                    "operation_payload_keys": ["<sensitive>", "tickers"],
+                    "ticker_count": 2,
+                    "sensitive_key_count": 1,
+                },
+                "celery_info_shape": {
+                    "present": True,
+                    "type": "dict",
+                    "top_level_keys": ["progress"],
+                    "progress_keys": ["current_step"],
+                    "sensitive_key_count": 0,
+                },
+                "exception_type": "RuntimeError",
+                "exception_message_preview": "api_key=<redacted> timeout",
+            },
+        }
+    )
+
+    assert rows == [
+        {
+            "celery_status": "FAILURE",
+            "ready": "True",
+            "successful": "False",
+            "run": "#35",
+            "run_status": "failed",
+            "source": "celery_data_operation",
+            "operation": "market_refresh",
+            "payload": (
+                "keys=celery_task_id、operation、payload、task；tickers=2；"
+                "payload=<sensitive>、tickers；sensitive_keys_masked=1"
+            ),
+            "celery_info": "type=dict；keys=progress；progress=current_step",
+            "exception": "RuntimeError: api_key=<redacted> timeout",
+        }
+    ]
+
+
+def test_task_execution_context_rows_hide_without_context() -> None:
+    assert task_execution_context_rows({"status": "SUCCESS"}) == []
 
 
 def test_company_filing_gap_rows_show_visual_rag_next_actions_from_data_task_result() -> None:

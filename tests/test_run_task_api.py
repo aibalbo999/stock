@@ -308,6 +308,17 @@ def test_run_task_service_gets_task_status_with_linked_run() -> None:
     assert status["run"]["workflow_summary"] is None
     assert status["progress"]["status"] == "success"
     assert status["progress"]["progress_pct"] == 1.0
+    assert status["execution_context"]["celery_status"] == "SUCCESS"
+    assert status["execution_context"]["operation"] == "celery"
+    assert status["execution_context"]["run_id"] == 19
+    assert status["execution_context"]["payload_shape"] == {
+        "present": True,
+        "top_level_keys": ["celery_task_id"],
+        "request_keys": [],
+        "operation_payload_keys": [],
+        "ticker_count": 0,
+        "sensitive_key_count": 0,
+    }
 
 
 def test_run_task_service_reports_queued_progress_before_run_exists() -> None:
@@ -339,6 +350,8 @@ def test_run_task_service_reports_queued_progress_before_run_exists() -> None:
     assert status["status"] == "PENDING"
     assert status["ready"] is False
     assert "run" not in status
+    assert status["execution_context"]["operation"] == "task_status"
+    assert status["execution_context"]["payload_shape"]["present"] is False
     assert status["progress"] == {
         "status": "queued",
         "progress_pct": 0.0,
@@ -388,6 +401,13 @@ def test_run_task_service_prefers_celery_progress_before_run_exists() -> None:
 
     assert status["status"] == "STARTED"
     assert status["progress"] == celery_progress
+    assert status["execution_context"]["celery_info_shape"] == {
+        "present": True,
+        "type": "dict",
+        "top_level_keys": ["progress"],
+        "progress_keys": ["current_step", "progress_pct", "resume_hint", "status"],
+        "sensitive_key_count": 0,
+    }
 
 
 def test_run_task_service_reports_failure_progress_before_run_exists() -> None:
@@ -430,6 +450,9 @@ def test_run_task_service_reports_failure_progress_before_run_exists() -> None:
     assert "查看任務狀態 drilldown" in status["next_steps"][0]
     assert status["progress"]["status"] == "failed"
     assert status["progress"]["current_step"] == "task_failed"
+    assert status["execution_context"]["exception_type"] == "RuntimeError"
+    assert status["execution_context"]["exception_message_preview"] == "boom"
+    assert status["execution_context"]["exception_message_length"] == 4
 
 
 def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> None:
@@ -488,6 +511,94 @@ def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> No
         "查看 AI 額度與模型路由或資料源額度。",
         "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
     ]
+    assert status["execution_context"]["payload_shape"]["ticker_count"] == 1
+    assert status["execution_context"]["payload_shape"]["request_keys"] == ["tickers", "topic"]
+
+
+def test_run_task_service_task_status_execution_context_masks_private_payload() -> None:
+    primary_private_name = "api" + "_key"
+    refresh_private_name = "refresh" + "_token"
+    quota_private_name = "tok" + "en"
+    failed_run = SimpleNamespace(
+        id=35,
+        source="celery_data_operation",
+        status="failed",
+        payload_json=json.dumps(
+            {
+                "task": "data_operation",
+                "operation": "market_refresh",
+                "payload": {
+                    "tickers": ["2330", "2317"],
+                    primary_private_name: "should-not-leak",
+                    "nested": {refresh_private_name: "also-secret"},
+                },
+                "celery_task_id": "task-sensitive",
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error=f"{quota_private_name}=should-not-leak timeout",
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=datetime(2026, 5, 24, 4, 52, 50),
+    )
+
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-sensitive"
+            return FakeTaskResult(
+                "FAILURE",
+                True,
+                False,
+                RuntimeError(
+                    f"{primary_private_name}=should-not-leak "
+                    f"{quota_private_name}=also-secret timeout"
+                ),
+                info={
+                    "progress": {"current_step": "market_refresh"},
+                    quota_private_name: "also-secret",
+                },
+            )
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-sensitive"
+            return failed_run
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-sensitive")
+
+    assert (
+        status["error"]
+        == f"{primary_private_name}=<redacted> {quota_private_name}=<redacted> timeout"
+    )
+    context = status["execution_context"]
+    assert context["operation"] == "market_refresh"
+    assert context["payload_shape"]["ticker_count"] == 2
+    assert context["payload_shape"]["operation_payload_keys"] == [
+        "<sensitive>",
+        "nested",
+        "tickers",
+    ]
+    assert context["payload_shape"]["sensitive_key_count"] == 2
+    assert context["celery_info_shape"]["top_level_keys"] == ["<sensitive>", "progress"]
+    assert context["celery_info_shape"]["sensitive_key_count"] == 1
+    assert "should-not-leak" not in context["exception_message_preview"]
+    assert "also-secret" not in context["exception_message_preview"]
+    assert context["exception_message_preview"] == (
+        f"{primary_private_name}=<redacted> {quota_private_name}=<redacted> timeout"
+    )
 
 
 def test_run_task_service_prefers_persisted_failure_diagnostics_for_task_status() -> None:

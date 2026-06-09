@@ -75,6 +75,14 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and '"action_route": task_failure_action_route(task_status)' in task_status_panel_source
         and "task_failure_action_route_detail(task_status)" in task_status_panel_source
         and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
+        "ui_task_execution_context_enabled": "def task_execution_context_rows("
+        in task_status_panel_source
+        and "執行上下文" in task_status_panel_source
+        and "execution_context" in task_status_panel_source
+        and "payload_shape" in task_status_panel_source
+        and "celery_info_shape" in task_status_panel_source
+        and "sensitive_keys_masked" in task_status_panel_source
+        and "exception_message_preview" in task_status_panel_source,
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
         and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,

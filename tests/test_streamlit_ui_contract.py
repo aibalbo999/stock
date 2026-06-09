@@ -294,6 +294,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'st.button("查詢背景任務狀態")' not in report_center_source
     assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
     assert "def task_status_diagnostic_rows(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "def task_execution_context_rows(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "執行上下文" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "sensitive_keys_masked" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def hydrate_active_report_result(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def hydrate_active_report_result(" in ui.REPORT_STATE_SOURCE.read_text()
     assert "def parse_json_object(" not in ui.DASHBOARD_CORE_SOURCE.read_text()

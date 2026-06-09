@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +14,22 @@ from app.services.task_failure_diagnostics import (
 )
 
 
+_SENSITIVE_KEY_MARKERS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|cookie|password|secret|token)\b(\s*[=:]\s*)([^\s,;]+)"
+)
+_MAX_PREVIEW_LENGTH = 240
+
+
 def alert_sort_key(alert: dict) -> int:
     severity_order = {"error": 0, "warning": 1, "info": 2}
     return severity_order.get(str(alert.get("severity") or "info"), 3)
@@ -22,6 +39,104 @@ def celery_progress(celery_info: Any) -> dict | None:
     if isinstance(celery_info, dict) and isinstance(celery_info.get("progress"), dict):
         return celery_info["progress"]
     return None
+
+
+def task_execution_context(
+    *,
+    task_id: str,
+    task_status: str,
+    ready: bool,
+    successful: bool,
+    result_payload: Any,
+    celery_info: Any,
+    serialized_run: dict | None,
+) -> dict:
+    run_payload = serialized_run_payload(serialized_run or {})
+    operation = run_operation(run_payload, serialized_run or {}) if serialized_run else "task_status"
+    context = {
+        "task_id": task_id,
+        "celery_status": str(task_status or "UNKNOWN"),
+        "ready": bool(ready),
+        "successful": bool(successful),
+        "run_id": serialized_run.get("id") if isinstance(serialized_run, dict) else None,
+        "run_status": serialized_run.get("status") if isinstance(serialized_run, dict) else None,
+        "run_source": serialized_run.get("source") if isinstance(serialized_run, dict) else None,
+        "operation": operation,
+        "payload_shape": task_payload_shape(run_payload),
+        "celery_info_shape": celery_info_shape(celery_info),
+    }
+    if ready and not successful:
+        context.update(exception_summary(result_payload))
+    return context
+
+
+def task_payload_shape(payload: dict) -> dict:
+    if not isinstance(payload, dict) or not payload:
+        return {
+            "present": False,
+            "top_level_keys": [],
+            "request_keys": [],
+            "operation_payload_keys": [],
+            "ticker_count": 0,
+            "sensitive_key_count": 0,
+        }
+    request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    return {
+        "present": True,
+        "top_level_keys": _safe_key_names(payload),
+        "request_keys": _safe_key_names(request_payload),
+        "operation_payload_keys": _safe_key_names(operation_payload),
+        "ticker_count": _ticker_count(payload),
+        "sensitive_key_count": _sensitive_key_count(payload),
+    }
+
+
+def celery_info_shape(celery_info: Any) -> dict:
+    if celery_info is None:
+        return {
+            "present": False,
+            "type": None,
+            "top_level_keys": [],
+            "progress_keys": [],
+        }
+    if not isinstance(celery_info, dict):
+        return {
+            "present": True,
+            "type": type(celery_info).__name__,
+            "top_level_keys": [],
+            "progress_keys": [],
+        }
+    progress = celery_info.get("progress") if isinstance(celery_info.get("progress"), dict) else {}
+    return {
+        "present": True,
+        "type": "dict",
+        "top_level_keys": _safe_key_names(celery_info),
+        "progress_keys": _safe_key_names(progress),
+        "sensitive_key_count": _sensitive_key_count(celery_info),
+    }
+
+
+def exception_summary(value: Any) -> dict:
+    if value is None:
+        return {
+            "exception_type": None,
+            "exception_message_preview": None,
+            "exception_message_length": 0,
+        }
+    raw_text = str(value).strip()
+    redacted = safe_exception_text(value)
+    return {
+        "exception_type": type(value).__name__,
+        "exception_message_preview": _truncate_preview(redacted),
+        "exception_message_length": len(raw_text),
+    }
+
+
+def safe_exception_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return _redact_sensitive_text(str(value).strip())
 
 
 def progress_payload(
@@ -465,6 +580,62 @@ def parse_datetime(value: object) -> datetime | None:
         return None
 
 
+def _safe_key_names(payload: dict) -> list[str]:
+    names = {_safe_key_name(key) for key in payload.keys()}
+    return sorted(name for name in names if name)
+
+
+def _safe_key_name(key: object) -> str:
+    text = str(key).strip()
+    if not text:
+        return ""
+    lowered = text.casefold()
+    if any(marker in lowered for marker in _SENSITIVE_KEY_MARKERS):
+        return "<sensitive>"
+    return text
+
+
+def _sensitive_key_count(value: Any) -> int:
+    if isinstance(value, dict):
+        count = sum(
+            1
+            for key in value.keys()
+            if any(marker in str(key).casefold() for marker in _SENSITIVE_KEY_MARKERS)
+        )
+        return count + sum(_sensitive_key_count(item) for item in value.values())
+    if isinstance(value, list):
+        return sum(_sensitive_key_count(item) for item in value)
+    return 0
+
+
+def _ticker_count(value: Any) -> int:
+    tickers: set[str] = set()
+    _collect_tickers(value, tickers)
+    return len(tickers)
+
+
+def _collect_tickers(value: Any, tickers: set[str], *, key_hint: str = "") -> None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            _collect_tickers(nested, tickers, key_hint=str(key).casefold())
+        return
+    if isinstance(value, list) and key_hint == "tickers":
+        for item in value:
+            text = str(item).strip()
+            if text:
+                tickers.add(text)
+
+
+def _redact_sensitive_text(value: str) -> str:
+    return _SECRET_ASSIGNMENT_RE.sub(r"\1\2<redacted>", value)
+
+
+def _truncate_preview(value: str) -> str:
+    if len(value) <= _MAX_PREVIEW_LENGTH:
+        return value
+    return value[: _MAX_PREVIEW_LENGTH - 1] + "…"
+
+
 __all__ = [
     "alert_severity_for_category",
     "alert_sort_key",
@@ -474,17 +645,21 @@ __all__ = [
     "count_rows",
     "diagnostic_from_failure_detail",
     "error_category_daily_rows",
+    "exception_summary",
     "parse_datetime",
     "persistent_task_failure_detail",
     "progress_payload",
     "run_operation",
     "run_retry_kind",
     "run_source",
+    "safe_exception_text",
     "run_summary_row",
     "serialized_run_payload",
     "task_failure_alert_message",
     "task_failure_alerts",
     "task_failure_diagnostic",
+    "task_execution_context",
+    "task_payload_shape",
     "task_next_action",
     "task_status_failure_detail",
     "task_summary_totals",

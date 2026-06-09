@@ -39,6 +39,10 @@ def render_task_status(task_status: dict) -> None:
     if company_filing_rows:
         st.caption("公司文件補抓摘要")
         st.dataframe(company_filing_rows, width="stretch", hide_index=True)
+    execution_rows = task_execution_context_rows(task_status)
+    if execution_rows:
+        st.caption("執行上下文")
+        st.dataframe(execution_rows, width="stretch", hide_index=True)
     if task_status.get("result"):
         st.json(task_status["result"])
     if task_status.get("error"):
@@ -79,6 +83,36 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
             "action_route_detail": task_failure_action_route_detail(task_status),
             "next_action": task_status.get("next_action") or "-",
             "next_steps": _task_status_next_steps_text(task_status),
+        }
+    ]
+
+
+def task_execution_context_rows(task_status: dict) -> list[dict]:
+    if not isinstance(task_status, dict):
+        return []
+    context = task_status.get("execution_context")
+    if not isinstance(context, dict):
+        return []
+    payload_shape = (
+        context.get("payload_shape") if isinstance(context.get("payload_shape"), dict) else {}
+    )
+    celery_info_shape = (
+        context.get("celery_info_shape")
+        if isinstance(context.get("celery_info_shape"), dict)
+        else {}
+    )
+    return [
+        {
+            "celery_status": context.get("celery_status") or task_status.get("status") or "-",
+            "ready": str(context.get("ready", task_status.get("ready", False))),
+            "successful": str(context.get("successful", task_status.get("successful", False))),
+            "run": f"#{context['run_id']}" if context.get("run_id") else "-",
+            "run_status": context.get("run_status") or "-",
+            "source": context.get("run_source") or "-",
+            "operation": context.get("operation") or task_status.get("operation") or "-",
+            "payload": _task_payload_shape_text(payload_shape),
+            "celery_info": _celery_info_shape_text(celery_info_shape),
+            "exception": _task_exception_text(context),
         }
     ]
 
@@ -196,6 +230,49 @@ def _task_status_next_steps_text(task_status: dict) -> str:
         return "-"
     steps = [str(step).strip() for step in next_steps if str(step).strip()]
     return "；".join(steps) if steps else "-"
+
+
+def _task_payload_shape_text(payload_shape: dict) -> str:
+    if not payload_shape.get("present"):
+        return "無 run payload"
+    parts = [
+        f"keys={_join_values(payload_shape.get('top_level_keys'))}",
+        f"tickers={int(payload_shape.get('ticker_count') or 0)}",
+    ]
+    request_keys = _join_values(payload_shape.get("request_keys"))
+    operation_payload_keys = _join_values(payload_shape.get("operation_payload_keys"))
+    if request_keys != "-":
+        parts.append(f"request={request_keys}")
+    if operation_payload_keys != "-":
+        parts.append(f"payload={operation_payload_keys}")
+    sensitive_count = int(payload_shape.get("sensitive_key_count") or 0)
+    if sensitive_count:
+        parts.append(f"sensitive_keys_masked={sensitive_count}")
+    return "；".join(parts)
+
+
+def _celery_info_shape_text(celery_info_shape: dict) -> str:
+    if not celery_info_shape.get("present"):
+        return "-"
+    parts = [f"type={celery_info_shape.get('type') or '-'}"]
+    top_level_keys = _join_values(celery_info_shape.get("top_level_keys"))
+    progress_keys = _join_values(celery_info_shape.get("progress_keys"))
+    if top_level_keys != "-":
+        parts.append(f"keys={top_level_keys}")
+    if progress_keys != "-":
+        parts.append(f"progress={progress_keys}")
+    sensitive_count = int(celery_info_shape.get("sensitive_key_count") or 0)
+    if sensitive_count:
+        parts.append(f"sensitive_keys_masked={sensitive_count}")
+    return "；".join(parts)
+
+
+def _task_exception_text(context: dict) -> str:
+    exception_type = str(context.get("exception_type") or "").strip()
+    preview = str(context.get("exception_message_preview") or "").strip()
+    if exception_type and preview:
+        return f"{exception_type}: {preview}"
+    return exception_type or preview or "-"
 
 
 def _task_status_ready(task_status: dict | None) -> bool:

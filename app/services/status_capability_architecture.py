@@ -217,6 +217,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_status_poll_backoff_enabled")
             and frontend_status.get("ui_task_status_autorefresh_feedback_enabled")
             and frontend_status.get("ui_task_status_failure_diagnostics_enabled")
+            and frontend_status.get("ui_task_execution_context_enabled")
             and frontend_status.get("ui_llm_quota_panel_extracted")
             and frontend_status.get("ui_report_observability_panel_extracted")
             and frontend_status.get("ui_company_filing_runtime_panel_enabled")
@@ -245,8 +246,8 @@ def architecture_capabilities(
                 "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
                 "polling, queue health diagnostics, allowlisted maintenance diagnostic "
                 "actions including safe no-op submission smoke, confirmed local dependency "
-                "operations, and categorized failed-task retry drilldown instead of running "
-                "long ingestion/report calls inline."
+                "operations, categorized failed-task retry drilldown, and safe task execution "
+                "context summaries instead of running long ingestion/report calls inline."
             ),
         ),
         "python_runtime": _capability(

@@ -25,11 +25,13 @@ from app.services.run_task_api_summary import (
     run_operation as _run_operation,
     run_retry_kind as _run_retry_kind,
     run_source as _run_source,
+    safe_exception_text as _safe_exception_text,
     run_summary_row as _run_summary_row,
     serialized_run_payload as _serialized_run_payload,
     task_failure_alert_message as _task_failure_alert_message,
     task_failure_alerts as _task_failure_alerts,
     task_failure_diagnostic as _task_failure_diagnostic,
+    task_execution_context as _task_execution_context,
     task_next_action as _task_next_action,
     task_status_failure_detail as _task_status_failure_detail,
     task_summary_totals as _task_summary_totals,
@@ -222,17 +224,19 @@ class RunTaskApiService:
             raise TaskQueueUnavailableError(
                 f"task queue unavailable while checking task status: {exc}"
             ) from exc
+        ready = bool(result.ready())
+        successful = bool(result.successful()) if ready else False
         response = {
             "task_id": task_id,
             "status": result.status,
-            "ready": result.ready(),
-            "successful": result.successful() if result.ready() else False,
+            "ready": ready,
+            "successful": successful,
         }
-        if result.ready():
-            if result.successful():
+        if ready:
+            if successful:
                 response["result"] = result.result
             else:
-                response["error"] = str(result.result)
+                response["error"] = self._safe_exception_text(result.result)
         with self.session_scope_factory() as session:
             run = self.analysis_run_repository_cls(session).get_by_celery_task_id(task_id)
         serialized_run = self.serialize_run_func(run) if run is not None else None
@@ -243,7 +247,16 @@ class RunTaskApiService:
         elif celery_progress:
             response["progress"] = celery_progress
         else:
-            response["progress"] = self._celery_status_progress(result.status, ready=result.ready())
+            response["progress"] = self._celery_status_progress(result.status, ready=ready)
+        response["execution_context"] = self._task_execution_context(
+            task_id=task_id,
+            task_status=str(result.status or ""),
+            ready=ready,
+            successful=successful,
+            result_payload=result.result if ready else None,
+            celery_info=getattr(result, "info", None),
+            serialized_run=serialized_run,
+        )
         failure_detail = self._task_status_failure_detail(
             task_id=task_id,
             task_status=str(result.status or ""),
@@ -368,7 +381,9 @@ class RunTaskApiService:
     _run_source = staticmethod(_run_source)
     _task_next_action = staticmethod(_task_next_action)
     _task_failure_diagnostic = staticmethod(_task_failure_diagnostic)
+    _task_execution_context = staticmethod(_task_execution_context)
     _task_status_failure_detail = staticmethod(_task_status_failure_detail)
+    _safe_exception_text = staticmethod(_safe_exception_text)
     _run_operation = staticmethod(_run_operation)
     _task_summary_totals = staticmethod(_task_summary_totals)
     _count_error_categories = staticmethod(_count_error_categories)

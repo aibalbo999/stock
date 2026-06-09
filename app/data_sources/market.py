@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.data_sources import (
     market_batch,
     market_cache_rescue,
+    market_client_runtime,
     market_finmind,
     market_fugle,
     market_official_fallbacks,
@@ -40,6 +41,7 @@ class MarketFetchError:
             "error": self.error,
         }
 
+
 class MarketDataClient:
     STALE_CACHE_SOURCE_MARKER = market_cache_rescue.STALE_CACHE_SOURCE_MARKER
     LATEST_ONLY_SOURCE_MARKER = "latest-only"
@@ -61,40 +63,14 @@ class MarketDataClient:
     def __init__(self, cancellation_checker: Callable[[], None] | None = None) -> None:
         self.settings = get_settings()
         self.cancellation_checker = cancellation_checker
-        self.timeout = httpx.Timeout(
-            max(1.0, float(getattr(self.settings, "finmind_timeout_seconds", 20.0))),
-            connect=max(1.0, float(getattr(self.settings, "finmind_connect_timeout_seconds", 8.0))),
-        )
-        self.fugle_timeout = httpx.Timeout(
-            max(1.0, float(getattr(self.settings, "fugle_timeout_seconds", 20.0))),
-            connect=max(1.0, float(getattr(self.settings, "fugle_connect_timeout_seconds", 8.0))),
-        )
-        self.official_openapi_timeout = httpx.Timeout(
-            max(1.0, float(getattr(self.settings, "market_official_openapi_timeout_seconds", 15.0))),
-            connect=max(
-                1.0,
-                min(
-                    8.0,
-                    float(getattr(self.settings, "market_official_openapi_timeout_seconds", 15.0)),
-                ),
-            ),
+        self.timeout = market_client_runtime.finmind_timeout(self.settings)
+        self.fugle_timeout = market_client_runtime.fugle_timeout(self.settings)
+        self.official_openapi_timeout = market_client_runtime.official_openapi_timeout(
+            self.settings
         )
         self.concurrency = max(1, int(getattr(self.settings, "finmind_concurrency", 5)))
         self.cache = RedisMarketDataCache()
-        self._circuit_breakers = {
-            "finmind": ProviderCircuitBreaker(
-                "FinMind",
-                enabled=self._provider_circuit_setting("finmind", "enabled", True),
-                failure_threshold=self._provider_circuit_setting("finmind", "failure_threshold", 5),
-                recovery_seconds=self._provider_circuit_setting("finmind", "recovery_seconds", 60.0),
-            ),
-            "fugle": ProviderCircuitBreaker(
-                "Fugle",
-                enabled=self._provider_circuit_setting("fugle", "enabled", True),
-                failure_threshold=self._provider_circuit_setting("fugle", "failure_threshold", 5),
-                recovery_seconds=self._provider_circuit_setting("fugle", "recovery_seconds", 60.0),
-            ),
-        }
+        self._circuit_breakers = market_client_runtime.provider_circuit_breakers(self.settings)
 
     def _check_cancelled(self) -> None:
         if self.cancellation_checker is not None:
@@ -157,7 +133,9 @@ class MarketDataClient:
             end_date,
             force_refresh=force_refresh,
         )
-        snapshots = market_batch.latest_rows_from_histories(histories, sort_key=lambda item: item.trade_date)
+        snapshots = market_batch.latest_rows_from_histories(
+            histories, sort_key=lambda item: item.trade_date
+        )
         return snapshots, errors
 
     async def get_price_histories_with_errors(
@@ -228,7 +206,9 @@ class MarketDataClient:
         start_date: date,
         end_date: date,
     ) -> list[MonthlyRevenue]:
-        revenues, _errors = await self.get_monthly_revenue_histories_with_errors(tickers, start_date, end_date)
+        revenues, _errors = await self.get_monthly_revenue_histories_with_errors(
+            tickers, start_date, end_date
+        )
         return revenues
 
     async def get_monthly_revenue_histories_with_errors(
@@ -242,7 +222,9 @@ class MarketDataClient:
             tickers=tickers,
             concurrency=self.concurrency,
             dataset=dataset,
-            fetch_rows=lambda ticker: self.get_monthly_revenue_history(ticker, start_date, end_date),
+            fetch_rows=lambda ticker: self.get_monthly_revenue_history(
+                ticker, start_date, end_date
+            ),
             make_error=self._fetch_error,
             check_cancelled=self._check_cancelled,
         )
@@ -296,7 +278,9 @@ class MarketDataClient:
             tickers=tickers,
             concurrency=self.concurrency,
             dataset=dataset,
-            fetch_rows=lambda ticker: self.get_financial_metrics_history(ticker, start_date, end_date),
+            fetch_rows=lambda ticker: self.get_financial_metrics_history(
+                ticker, start_date, end_date
+            ),
             make_error=self._fetch_error,
             check_cancelled=self._check_cancelled,
         )
@@ -593,7 +577,7 @@ class MarketDataClient:
         return market_official_openapi.find_official_row(rows, ticker)
 
     def _provider_circuit_setting(self, provider: str, suffix: str, default):
-        return market_provider_runtime.provider_circuit_setting(
+        return market_client_runtime.provider_circuit_setting(
             self.settings,
             provider,
             suffix,
@@ -659,45 +643,43 @@ class MarketDataClient:
         )
 
     def _market_price_provider_order(self) -> list[str]:
-        return market_provider_runtime.market_price_provider_order(
-            getattr(self.settings, "market_price_provider_order", "finmind,fugle")
-        )
+        return market_client_runtime.market_price_provider_order(self.settings)
 
     @property
     def finmind_max_retries(self) -> int:
-        return max(0, int(getattr(self.settings, "finmind_max_retries", 2)))
+        return market_client_runtime.finmind_max_retries(self.settings)
 
     @property
     def finmind_base_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "finmind_base_retry_delay_seconds", 0.5)))
+        return market_client_runtime.finmind_base_retry_delay_seconds(self.settings)
 
     @property
     def finmind_max_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "finmind_max_retry_delay_seconds", 5.0)))
+        return market_client_runtime.finmind_max_retry_delay_seconds(self.settings)
 
     @property
     def finmind_public_fallback_enabled(self) -> bool:
-        return bool(getattr(self.settings, "finmind_public_fallback_enabled", True))
+        return market_client_runtime.finmind_public_fallback_enabled(self.settings)
 
     @property
     def fugle_api_key(self) -> str:
-        return str(getattr(self.settings, "fugle_api_key", "") or "").strip()
+        return market_client_runtime.fugle_api_key(self.settings)
 
     @property
     def fugle_max_retries(self) -> int:
-        return max(0, int(getattr(self.settings, "fugle_max_retries", 2)))
+        return market_client_runtime.fugle_max_retries(self.settings)
 
     @property
     def fugle_base_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "fugle_base_retry_delay_seconds", 0.5)))
+        return market_client_runtime.fugle_base_retry_delay_seconds(self.settings)
 
     @property
     def fugle_max_retry_delay_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "fugle_max_retry_delay_seconds", 5.0)))
+        return market_client_runtime.fugle_max_retry_delay_seconds(self.settings)
 
     @property
     def official_openapi_fallback_enabled(self) -> bool:
-        return bool(getattr(self.settings, "market_official_openapi_fallback_enabled", True))
+        return market_client_runtime.official_openapi_fallback_enabled(self.settings)
 
     @staticmethod
     def _row_to_snapshot(row: dict) -> MarketSnapshot:
@@ -753,11 +735,15 @@ class MarketDataClient:
         return market_parsers.row_to_valuation_metric(row)
 
     @staticmethod
-    def _twse_openapi_row_to_valuation_metric(row: dict, ticker: str, source: str) -> ValuationMetric:
+    def _twse_openapi_row_to_valuation_metric(
+        row: dict, ticker: str, source: str
+    ) -> ValuationMetric:
         return market_parsers.twse_openapi_row_to_valuation_metric(row, ticker, source)
 
     @staticmethod
-    def _tpex_openapi_row_to_valuation_metric(row: dict, ticker: str, source: str) -> ValuationMetric:
+    def _tpex_openapi_row_to_valuation_metric(
+        row: dict, ticker: str, source: str
+    ) -> ValuationMetric:
         return market_parsers.tpex_openapi_row_to_valuation_metric(row, ticker, source)
 
     @staticmethod

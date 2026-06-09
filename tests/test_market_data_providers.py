@@ -9,6 +9,7 @@ import pytest
 from app.data_sources import (
     market_batch,
     market_cache_rescue,
+    market_client_runtime,
     market_finmind,
     market_fugle,
     market_official_fallbacks,
@@ -52,7 +53,11 @@ def test_finmind_public_fallback_can_be_disabled_without_token() -> None:
     client.settings = SimpleNamespace(finmind_token=None, finmind_public_fallback_enabled=False)
 
     with pytest.raises(MarketDataProviderUnavailable, match="public fallback is disabled"):
-        asyncio.run(client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)))
+        asyncio.run(
+            client._fetch_finmind_rows(
+                "TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)
+            )
+        )
 
 
 def test_finmind_provider_logic_lives_outside_client() -> None:
@@ -65,14 +70,20 @@ def test_finmind_provider_logic_lives_outside_client() -> None:
     assert "market_finmind.fetch_financial_metrics" in client_source
     assert "FINMIND_DATA_URL" in finmind_source
     assert "FINANCIAL_DATASETS" in finmind_source
-    assert "client.get(" not in client_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
-        "async def _fetch_price_history_uncached(",
-        maxsplit=1,
-    )[0]
-    assert "TaiwanStockFinancialStatements" not in client_source.split(
-        "async def get_financial_metrics_history(",
-        maxsplit=1,
-    )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
+    assert (
+        "client.get("
+        not in client_source.split("async def _fetch_finmind_rows(", maxsplit=1)[1].split(
+            "async def _fetch_price_history_uncached(",
+            maxsplit=1,
+        )[0]
+    )
+    assert (
+        "TaiwanStockFinancialStatements"
+        not in client_source.split(
+            "async def get_financial_metrics_history(",
+            maxsplit=1,
+        )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
+    )
 
 
 def test_market_price_provider_order_logic_lives_outside_client() -> None:
@@ -91,15 +102,24 @@ def test_official_openapi_provider_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
     official_source = Path("app/data_sources/market_official_openapi.py").read_text()
 
-    assert market_official_openapi.TWSE_PRICE_ENDPOINT == "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-    assert market_official_openapi.TPEX_PRICE_ENDPOINT == "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
+    assert (
+        market_official_openapi.TWSE_PRICE_ENDPOINT
+        == "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+    )
+    assert (
+        market_official_openapi.TPEX_PRICE_ENDPOINT
+        == "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
+    )
     assert "market_official_openapi.fetch_official_openapi_rows" in client_source
     assert "market_official_openapi.find_first_statement_row" in client_source
     assert "OFFICIAL_OPENAPI_USER_AGENT" in official_source
-    assert "client.get(" not in client_source.split(
-        "async def _fetch_official_openapi_rows(",
-        maxsplit=1,
-    )[1].split("@staticmethod", maxsplit=1)[0]
+    assert (
+        "client.get("
+        not in client_source.split(
+            "async def _fetch_official_openapi_rows(",
+            maxsplit=1,
+        )[1].split("@staticmethod", maxsplit=1)[0]
+    )
 
 
 def test_official_openapi_fallback_logic_lives_outside_client() -> None:
@@ -112,24 +132,32 @@ def test_official_openapi_fallback_logic_lives_outside_client() -> None:
     assert "market_official_fallbacks.fetch_price_snapshot" in client_source
     assert "market_official_fallbacks.fetch_financial_metrics" in client_source
     assert "INCOME_STATEMENT_METRIC_NAMES" in fallback_source
-    assert "TWSE OpenAPI STOCK_DAY_ALL" not in client_source.split(
-        "async def _fetch_official_openapi_price_snapshot(",
-        maxsplit=1,
-    )[1].split("async def _fetch_official_openapi_monthly_revenue(", maxsplit=1)[0]
+    assert (
+        "TWSE OpenAPI STOCK_DAY_ALL"
+        not in client_source.split(
+            "async def _fetch_official_openapi_price_snapshot(",
+            maxsplit=1,
+        )[1].split("async def _fetch_official_openapi_monthly_revenue(", maxsplit=1)[0]
+    )
 
 
 def test_market_cache_rescue_logic_lives_outside_client() -> None:
     client_source = Path("app/data_sources/market.py").read_text()
     helper_source = Path("app/data_sources/market_cache_rescue.py").read_text()
 
-    assert MarketDataClient.STALE_CACHE_SOURCE_MARKER == market_cache_rescue.STALE_CACHE_SOURCE_MARKER
+    assert (
+        MarketDataClient.STALE_CACHE_SOURCE_MARKER == market_cache_rescue.STALE_CACHE_SOURCE_MARKER
+    )
     assert "market_cache_rescue.get_or_fetch_with_rescue" in client_source
     assert "def get_or_fetch_with_rescue(" in helper_source
     assert "def mark_stale_cache_source(" in helper_source
-    assert "except Exception" not in client_source.split(
-        "async def get_financial_metrics_history(",
-        maxsplit=1,
-    )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
+    assert (
+        "except Exception"
+        not in client_source.split(
+            "async def get_financial_metrics_history(",
+            maxsplit=1,
+        )[1].split("async def get_financial_metrics_histories_with_errors(", maxsplit=1)[0]
+    )
 
 
 def test_market_batch_orchestration_lives_outside_client() -> None:
@@ -144,6 +172,55 @@ def test_market_batch_orchestration_lives_outside_client() -> None:
     assert "def collect_history_by_ticker(" in helper_source
     assert "def collect_latest_rows(" in helper_source
     assert "except TaskCancelledError" in helper_source
+
+
+def test_market_client_runtime_config_lives_outside_client() -> None:
+    client_source = Path("app/data_sources/market.py").read_text()
+    runtime_source = Path("app/data_sources/market_client_runtime.py").read_text()
+    init_source = client_source.split("def __init__(", maxsplit=1)[1].split(
+        "def _check_cancelled",
+        maxsplit=1,
+    )[0]
+
+    settings = SimpleNamespace(
+        finmind_max_retries=3,
+        finmind_base_retry_delay_seconds=0.25,
+        finmind_max_retry_delay_seconds=4.0,
+        finmind_public_fallback_enabled=False,
+        fugle_api_key="fugle-key",  # pragma: allowlist secret
+        fugle_max_retries=1,
+        fugle_base_retry_delay_seconds=0.75,
+        fugle_max_retry_delay_seconds=6.0,
+        market_official_openapi_fallback_enabled=False,
+    )
+    client = MarketDataClient()
+    client.settings = settings
+
+    assert client.finmind_max_retries == market_client_runtime.finmind_max_retries(settings)
+    assert client.finmind_base_retry_delay_seconds == (
+        market_client_runtime.finmind_base_retry_delay_seconds(settings)
+    )
+    assert client.finmind_max_retry_delay_seconds == (
+        market_client_runtime.finmind_max_retry_delay_seconds(settings)
+    )
+    assert client.finmind_public_fallback_enabled == (
+        market_client_runtime.finmind_public_fallback_enabled(settings)
+    )
+    assert client.fugle_api_key == market_client_runtime.fugle_api_key(settings)
+    assert client.fugle_max_retries == market_client_runtime.fugle_max_retries(settings)
+    assert client.fugle_base_retry_delay_seconds == (
+        market_client_runtime.fugle_base_retry_delay_seconds(settings)
+    )
+    assert client.fugle_max_retry_delay_seconds == (
+        market_client_runtime.fugle_max_retry_delay_seconds(settings)
+    )
+    assert client.official_openapi_fallback_enabled == (
+        market_client_runtime.official_openapi_fallback_enabled(settings)
+    )
+    assert "def finmind_timeout(" in runtime_source
+    assert "def provider_circuit_breakers(" in runtime_source
+    assert "httpx.Timeout(" not in init_source
+    assert "ProviderCircuitBreaker(" not in init_source
 
 
 def test_finmind_rows_retries_retryable_status_before_success(monkeypatch) -> None:
@@ -204,11 +281,15 @@ def test_finmind_circuit_breaker_opens_after_retryable_failure(monkeypatch) -> N
 
     with pytest.raises(httpx.TransportError):
         asyncio.run(
-            client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31))
+            client._fetch_finmind_rows(
+                "TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)
+            )
         )
     with pytest.raises(MarketDataProviderUnavailable, match="FinMind circuit breaker is open"):
         asyncio.run(
-            client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31))
+            client._fetch_finmind_rows(
+                "TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)
+            )
         )
 
     assert calls == ["https://api.finmindtrade.com/api/v4/data"]
@@ -253,14 +334,20 @@ def test_fugle_provider_logic_lives_outside_client() -> None:
     assert "market_fugle.fetch_price_history" in client_source
     assert "def fetch_historical_candle_rows(" in fugle_source
     assert "FUGLE_HISTORICAL_CANDLES_URL" in fugle_source
-    assert "client.get(" not in client_source.split("async def _fetch_fugle_json(", maxsplit=1)[1].split(
-        "async def _fetch_official_openapi_price_snapshot(",
-        maxsplit=1,
-    )[0]
-    assert "candle_error" not in client_source.split(
-        "async def _fetch_fugle_price_history(",
-        maxsplit=1,
-    )[1].split("async def _fetch_fugle_historical_candle_rows(", maxsplit=1)[0]
+    assert (
+        "client.get("
+        not in client_source.split("async def _fetch_fugle_json(", maxsplit=1)[1].split(
+            "async def _fetch_official_openapi_price_snapshot(",
+            maxsplit=1,
+        )[0]
+    )
+    assert (
+        "candle_error"
+        not in client_source.split(
+            "async def _fetch_fugle_price_history(",
+            maxsplit=1,
+        )[1].split("async def _fetch_fugle_historical_candle_rows(", maxsplit=1)[0]
+    )
 
 
 def test_fugle_retry_delay_uses_retry_after_header() -> None:
@@ -273,7 +360,9 @@ def test_fugle_retry_delay_uses_retry_after_header() -> None:
     response = httpx.Response(
         429,
         headers={"Retry-After": "2.5"},
-        request=httpx.Request("GET", "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/2330"),
+        request=httpx.Request(
+            "GET", "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/2330"
+        ),
     )
 
     helper_delay = market_provider_runtime.retry_delay_seconds(
@@ -361,7 +450,9 @@ def test_finmind_rows_does_not_retry_non_retryable_status(monkeypatch) -> None:
 
     with pytest.raises(httpx.HTTPStatusError):
         asyncio.run(
-            client._fetch_finmind_rows("TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31))
+            client._fetch_finmind_rows(
+                "TaiwanStockPrice", "2330", date(2026, 5, 1), date(2026, 5, 31)
+            )
         )
 
     assert calls == ["TaiwanStockPrice"]

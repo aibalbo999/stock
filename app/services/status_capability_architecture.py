@@ -193,6 +193,8 @@ def architecture_capabilities(
             and frontend_status.get("frontend_maintenance_ui_status_extracted")
             and frontend_status.get("frontend_external_deployment_domain_status_extracted")
             and frontend_status.get("frontend_external_deployment_readiness_status_extracted")
+            and frontend_status.get("frontend_runtime_identity_marker_enabled")
+            and frontend_status.get("frontend_smoke_checks_runtime_identity_marker")
             and frontend_status.get("external_css_loaded")
             and frontend_status.get("external_report_css_loaded")
             and frontend_status.get("report_html_renderer_extracted")
@@ -252,7 +254,8 @@ def architecture_capabilities(
             detail=(
                 "Streamlit uses a multi-page shell, explicit page imports, external CSS, "
                 "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
-                "polling, queue health diagnostics, allowlisted maintenance diagnostic "
+                "polling, frontend/API runtime identity smoke checks, queue health diagnostics, "
+                "allowlisted maintenance diagnostic "
                 "actions including safe no-op submission smoke, confirmed local dependency "
                 "operations, categorized failed-task retry drilldown, and safe task execution "
                 "context summaries instead of running long ingestion/report calls inline."

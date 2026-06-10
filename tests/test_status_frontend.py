@@ -169,6 +169,11 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_runtime_status_path"] == (
         "app/services/status_frontend_runtime.py"
     )
+    assert status["frontend"]["frontend_runtime_identity_marker_enabled"] is True
+    assert status["frontend"]["frontend_runtime_identity_marker_path"] == (
+        "app/ui/dashboard_core.py"
+    )
+    assert status["frontend"]["frontend_smoke_checks_runtime_identity_marker"] is True
     assert status["frontend"]["frontend_data_enrichment_status_extracted"] is True
     assert status["frontend"]["frontend_data_enrichment_status_path"] == (
         "app/services/status_frontend_data_enrichment.py"
@@ -394,6 +399,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
     assert frontend_arch["evidence"]["frontend_runtime_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_runtime_identity_marker_enabled"] is True
+    assert frontend_arch["evidence"]["frontend_smoke_checks_runtime_identity_marker"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_rendering_status_extracted"] is True

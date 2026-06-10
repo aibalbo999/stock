@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--skip-runtime-identity",
         action="store_true",
-        help="Skip API runtime commit comparison.",
+        help="Skip API and Streamlit runtime commit comparison.",
     )
     parser.add_argument(
         "--expected-api-commit",

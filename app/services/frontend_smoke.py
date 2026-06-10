@@ -10,6 +10,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from app.services.api_runtime_identity_check import check_api_runtime_identity
+from app.services.runtime_identity import runtime_identity_status
 
 
 DEFAULT_API_ENDPOINTS = (
@@ -90,6 +91,8 @@ def run_frontend_smoke(
             run_playwright_visual_smoke(
                 streamlit_url,
                 screenshot_path=screenshot_path,
+                check_frontend_runtime_identity=check_runtime_identity,
+                expected_frontend_commit=expected_api_commit,
                 required_text_fragments=required_text_fragments,
                 required_text_max_top_px=required_text_max_top_px,
                 required_text_scope_selector=required_text_scope_selector,
@@ -223,6 +226,8 @@ def run_playwright_visual_smoke(
     url: str,
     *,
     screenshot_path: str | Path | None = "artifacts/frontend_smoke/streamlit.png",
+    check_frontend_runtime_identity: bool = True,
+    expected_frontend_commit: str | None = None,
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
@@ -261,7 +266,32 @@ def run_playwright_visual_smoke(
                 "() => document.body && (document.body.innerText || '').trim().length >= 80",
                 timeout=int(timeout_seconds * 1000),
             )
-            if required_text_fragments:
+            frontend_marker = page.evaluate(
+                """() => {
+                    const marker = document.querySelector("[data-stock-frontend-runtime='true']");
+                    if (!marker) {
+                        return {};
+                    }
+                    return {
+                        git_commit: marker.dataset.gitCommit || "",
+                        git_commit_short: marker.dataset.gitCommitShort || "",
+                        git_dirty: marker.dataset.gitDirty || "",
+                        source: marker.dataset.source || "",
+                    };
+                }"""
+            )
+            frontend_identity = (
+                frontend_runtime_identity_result(
+                    frontend_marker,
+                    expected_commit=expected_frontend_commit,
+                )
+                if check_frontend_runtime_identity
+                else {
+                    "status": "skipped",
+                    "reason": "runtime_identity_check_disabled",
+                }
+            )
+            if required_text_fragments and frontend_identity.get("status") != "failed":
                 page.wait_for_function(
                     """({fragments, scopeSelector}) => {
                         const root = scopeSelector
@@ -310,6 +340,7 @@ def run_playwright_visual_smoke(
         and len(body_text.strip()) >= 80
         and not missing_required_text
         and not text_layout_failures
+        and frontend_identity.get("status") in {"passed", "skipped"}
     )
     return {
         "label": "streamlit_playwright",
@@ -326,7 +357,73 @@ def run_playwright_visual_smoke(
         "required_text_scope_selector": required_text_scope_selector,
         "required_text_measurements": required_text_measurements,
         "required_text_layout_failures": text_layout_failures,
+        "frontend_runtime_identity": frontend_identity,
     }
+
+
+def frontend_runtime_identity_result(
+    marker: dict,
+    *,
+    expected_commit: str | None = None,
+) -> dict:
+    local_identity = runtime_identity_status()
+    expected = str(
+        expected_commit if expected_commit is not None else local_identity.get("git_commit") or ""
+    )
+    result = {
+        "expected_commit": expected,
+        "expected_commit_short": expected[:12] if expected else "",
+    }
+    actual = str(marker.get("git_commit") or "")
+    if not expected:
+        return {
+            **result,
+            "status": "skipped",
+            "reason": "local_git_commit_unavailable",
+            "actual_commit": actual,
+            "actual_commit_short": actual[:12] if actual else "",
+        }
+    if not marker:
+        return {
+            **result,
+            "status": "failed",
+            "reason": "streamlit_runtime_identity_marker_missing",
+            "actual_commit": "",
+        }
+    if not actual:
+        return {
+            **result,
+            "status": "failed",
+            "reason": "streamlit_runtime_commit_unavailable",
+            "actual_commit": "",
+        }
+    matched = _commits_match(expected, actual)
+    return {
+        **result,
+        "status": "passed" if matched else "failed",
+        "actual_commit": actual,
+        "actual_commit_short": actual[:12],
+        "actual_source": marker.get("source"),
+        "actual_dirty": _marker_bool(marker.get("git_dirty")),
+        "reason": None if matched else "streamlit_runtime_commit_mismatch",
+    }
+
+
+def _marker_bool(value: object) -> bool | None:
+    text = str(value or "").strip().casefold()
+    if text == "true":
+        return True
+    if text == "false":
+        return False
+    return None
+
+
+def _commits_match(expected: str, actual: str) -> bool:
+    if expected == actual:
+        return True
+    if len(expected) >= 7 and len(actual) >= 7:
+        return expected.startswith(actual) or actual.startswith(expected)
+    return False
 
 
 def required_text_layout_failures(
@@ -473,6 +570,18 @@ def format_frontend_smoke_report(report: dict) -> str:
                 f"expected={check.get('expected_commit_short') or '-'} "
                 f"actual={check.get('actual_commit_short') or '-'}"
             )
+        frontend_identity = check.get("frontend_runtime_identity")
+        if isinstance(frontend_identity, dict):
+            if frontend_identity.get("expected_commit_short") or frontend_identity.get(
+                "actual_commit_short"
+            ):
+                lines.append(
+                    "  frontend commit: "
+                    f"expected={frontend_identity.get('expected_commit_short') or '-'} "
+                    f"actual={frontend_identity.get('actual_commit_short') or '-'}"
+                )
+            if frontend_identity.get("reason"):
+                lines.append(f"  frontend reason: {frontend_identity['reason']}")
     return "\n".join(lines)
 
 

@@ -17,6 +17,8 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
     root = source_context.root
     style_path = source_context.style_path
     ui_source = source_context.ui_source
+    dashboard_core_source = source_context.ui_sources["dashboard_core.py"]
+    frontend_smoke_source = _read_text(root / "app" / "services" / "frontend_smoke.py")
     frontend_blocking_call_scan_paths = source_context.frontend_blocking_call_scan_paths
     asyncio_run_locations = source_context.asyncio_run_locations
     long_blocking_post_locations = source_context.long_blocking_post_locations
@@ -36,6 +38,18 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source
         and "unsafe_allow_html=True" in ui_source,
+        "frontend_runtime_identity_marker_enabled": (
+            'data-stock-frontend-runtime="true"' in dashboard_core_source
+            and "runtime_identity_status()" in dashboard_core_source
+            and "render_frontend_runtime_identity()" in dashboard_core_source
+        ),
+        "frontend_runtime_identity_marker_path": "app/ui/dashboard_core.py",
+        "frontend_smoke_checks_runtime_identity_marker": (
+            "frontend_runtime_identity_result(" in frontend_smoke_source
+            and "data-stock-frontend-runtime" in frontend_smoke_source
+            and "streamlit_runtime_commit_mismatch" in frontend_smoke_source
+        ),
+        "frontend_runtime_identity_smoke_path": "app/services/frontend_smoke.py",
         "frontend_blocking_call_scan_paths": [
             str(path.relative_to(root)) for path in frontend_blocking_call_scan_paths
         ],
@@ -71,3 +85,10 @@ def _frontend_constant_value(source: str, name: str) -> int | None:
             except ValueError:
                 return None
     return None
+
+
+def _read_text(path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""

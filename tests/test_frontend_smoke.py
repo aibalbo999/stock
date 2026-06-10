@@ -8,8 +8,10 @@ from app.services.frontend_smoke import (
     DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     DEFAULT_VISUAL_TEXT_FRAGMENTS,
     check_api_runtime_identity,
+    frontend_runtime_identity_result,
     check_http_target,
     check_streamlit_page_import_contract,
+    format_frontend_smoke_report,
     missing_required_text_fragments,
     png_has_nonblank_pixels,
     required_text_layout_failures,
@@ -237,6 +239,66 @@ def test_check_api_runtime_identity_fails_when_runtime_commit_missing() -> None:
 
     assert result["status"] == "failed"
     assert result["reason"] == "api_runtime_commit_unavailable"
+
+
+def test_frontend_runtime_identity_result_matches_commit_prefix() -> None:
+    result = frontend_runtime_identity_result(
+        {
+            "git_commit": "commit-main-test",
+            "source": "git",
+            "git_dirty": "false",
+        },
+        expected_commit="commit-main-test-extra",
+    )
+
+    assert result["status"] == "passed"
+    assert result["actual_commit_short"] == "commit-main-"
+    assert result["actual_dirty"] is False
+
+
+def test_frontend_runtime_identity_result_fails_on_commit_mismatch() -> None:
+    result = frontend_runtime_identity_result(
+        {"git_commit": "commit-old-test", "source": "git"},
+        expected_commit="commit-main-test",
+    )
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "streamlit_runtime_commit_mismatch"
+    assert result["expected_commit_short"] == "commit-main-"
+    assert result["actual_commit_short"] == "commit-old-t"
+
+
+def test_frontend_runtime_identity_result_fails_when_marker_missing() -> None:
+    result = frontend_runtime_identity_result({}, expected_commit="commit-main-test")
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "streamlit_runtime_identity_marker_missing"
+
+
+def test_format_frontend_smoke_report_includes_streamlit_runtime_identity() -> None:
+    output = format_frontend_smoke_report(
+        {
+            "status": "failed",
+            "failed_count": 1,
+            "skipped_count": 0,
+            "checks": [
+                {
+                    "label": "streamlit_playwright",
+                    "status": "failed",
+                    "url": "http://127.0.0.1:8501",
+                    "frontend_runtime_identity": {
+                        "status": "failed",
+                        "reason": "streamlit_runtime_commit_mismatch",
+                        "expected_commit_short": "commit-main-",
+                        "actual_commit_short": "commit-old-t",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "frontend commit: expected=commit-main- actual=commit-old-t" in output
+    assert "frontend reason: streamlit_runtime_commit_mismatch" in output
 
 
 def _png(*, width: int, height: int, pixels: list[tuple[int, int, int]]) -> bytes:

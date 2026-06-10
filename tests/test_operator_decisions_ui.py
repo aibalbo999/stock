@@ -231,6 +231,40 @@ def test_operator_next_action_surfaces_quota_pressure_after_report_gates() -> No
     assert action["route_hint"] == "settings:ai_quota"
 
 
+def test_operator_next_action_prioritizes_retryable_failure_affecting_latest_report() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {
+            "recent_failures": [
+                {
+                    "id": 88,
+                    "task_id": "retry-latest-1",
+                    "report_id": 15,
+                    "operation": "market_refresh",
+                    "status": "failed",
+                    "error_category": "data_source",
+                    "error_summary": "股價刷新暫時失敗",
+                    "next_action": "重試股價刷新任務",
+                    "retryable": True,
+                    "finished_at": "2026-06-10T10:00:00",
+                }
+            ]
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 7
+    assert action["title"] == "重試影響最新版報告的任務"
+    assert action["reason"] == "股價刷新暫時失敗"
+    assert action["action_label"] == "重試任務"
+    assert action["route_hint"] == "task:retry-latest-1"
+    assert action["source_ids"] == ["report:15", "retry-latest-1"]
+
+
 def test_operator_next_action_requires_quota_before_healthy_read() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

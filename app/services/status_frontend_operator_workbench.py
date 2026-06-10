@@ -5,6 +5,7 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
+    operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
 
     return {
         "frontend_operator_workbench_status_extracted": True,
@@ -23,5 +24,13 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 "quota_summary[\"caption\"]" in operator_status_source
                 or "quota_summary['caption']" in operator_status_source
             )
+        ),
+        "ui_operator_retryable_failure_primary_action_enabled": (
+            "def _retryable_failure_affecting_report(" in operator_decisions_source
+            and "def _task_summary_failures(" in operator_decisions_source
+            and "重試影響最新版報告的任務" in operator_decisions_source
+            and "priority=7" in operator_decisions_source
+            and 'action_label="重試任務"' in operator_decisions_source
+            and 'route_hint=f"task:{retry_task_id}"' in operator_decisions_source
         ),
     }

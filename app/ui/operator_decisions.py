@@ -152,6 +152,30 @@ def operator_next_best_action(
             source_ids=[f"report:{report_id}"] if report_id is not None else [],
         )
 
+    retryable_latest_failure = _retryable_failure_affecting_report(task_summary, report_id)
+    if retryable_latest_failure:
+        retry_task_id = _text(retryable_latest_failure.get("task_id"))
+        return _action(
+            state="attention",
+            priority=7,
+            title="重試影響最新版報告的任務",
+            reason=_text(
+                retryable_latest_failure.get("error_summary"),
+                default="近期有可重試任務影響最新版報告。",
+            ),
+            risk="未重試前，最新版報告可能沿用不完整資料或舊狀態。",
+            impact=_text(
+                retryable_latest_failure.get("next_action"),
+                default="到維護頁重試此任務。",
+            ),
+            action_label="重試任務",
+            route_hint=f"task:{retry_task_id}" if retry_task_id else "settings:maintenance",
+            source_ids=[
+                f"report:{report_id}" if report_id is not None else "",
+                retry_task_id or retryable_latest_failure.get("id") or "",
+            ],
+        )
+
     critical_incident = _first_critical_incident(incidents)
     if critical_incident:
         return _action(
@@ -378,6 +402,59 @@ def _data_gap_action_source_ids(action: dict, report_id: Any) -> list[Any]:
         source_ids.append(f"report:{report_id}")
     source_ids.extend(action.get("tickers") or [])
     return source_ids
+
+
+def _retryable_failure_affecting_report(task_summary: dict | None, report_id: Any) -> dict:
+    if report_id is None:
+        return {}
+    report_id_text = str(report_id).strip()
+    for failure in _task_summary_failures(task_summary):
+        if not failure.get("retryable"):
+            continue
+        if str(failure.get("report_id") or "").strip() == report_id_text:
+            return failure
+    return {}
+
+
+def _task_summary_failures(task_summary: dict | None) -> list[dict]:
+    if not isinstance(task_summary, dict):
+        return []
+    failures = [row for row in task_summary.get("recent_failures") or [] if isinstance(row, dict)]
+    seen = {_task_failure_identity(row) for row in failures}
+    for row in task_summary.get("recent") or []:
+        if not isinstance(row, dict) or not _task_row_failed(row):
+            continue
+        identity = _task_failure_identity(row)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        failures.append(row)
+    return failures
+
+
+def _task_row_failed(row: dict) -> bool:
+    status = _text(row.get("status")).casefold()
+    celery_status = _text(row.get("celery_status")).casefold()
+    return bool(
+        status in {"failed", "failure", "cancelled", "error"}
+        or celery_status in {"failed", "failure", "revoked"}
+        or row.get("error")
+        or row.get("error_category")
+    )
+
+
+def _task_failure_identity(row: dict) -> str:
+    for key in ("task_id", "id"):
+        value = _text(row.get(key))
+        if value:
+            return f"{key}:{value}"
+    return ":".join(
+        [
+            _text(row.get("operation"), default="task"),
+            _text(row.get("error_category"), default="unknown"),
+            _text(row.get("finished_at") or row.get("created_at")),
+        ]
+    )
 
 
 def _incident_matches_primary(incident: dict, primary_action: dict) -> bool:

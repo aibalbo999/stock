@@ -181,6 +181,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_runtime_status_extracted")
             and frontend_status.get("frontend_operator_workbench_status_extracted")
             and frontend_status.get("ui_operator_quota_summary_enabled")
+            and frontend_status.get("ui_operator_retryable_failure_primary_action_enabled")
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_report_rendering_status_extracted")
             and frontend_status.get("frontend_report_workflow_status_extracted")

@@ -261,6 +261,37 @@ def test_ensure_background_process_starts_and_writes_pid(monkeypatch, tmp_path) 
     assert (tmp_path / "celery.pid").read_text(encoding="utf-8") == "456"
 
 
+def test_start_process_injects_process_runtime_identity_env(monkeypatch, tmp_path) -> None:
+    captured = {}
+
+    class FakeProcess:
+        pid = 789
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return FakeProcess()
+
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.ROOT", tmp_path)
+    monkeypatch.setattr(
+        "scripts.start_system.process_runtime_identity_env",
+        lambda: {
+            "STOCK_AI_RUNTIME_COMMIT": "commit-process-start",
+            "STOCK_AI_RUNTIME_BRANCH": "main",
+            "STOCK_AI_RUNTIME_DIRTY": "false",
+        },
+    )
+    monkeypatch.setattr("scripts.start_system.subprocess.Popen", fake_popen)
+
+    started = start_system_module.start_process("api", ["python", "-m", "uvicorn"], tmp_path / "api.log")
+
+    assert started is True
+    assert captured["env"]["STOCK_AI_RUNTIME_COMMIT"] == "commit-process-start"
+    assert captured["env"]["STOCK_AI_RUNTIME_DIRTY"] == "false"
+    assert (tmp_path / "api.pid").read_text(encoding="utf-8") == "789"
+
+
 def test_ensure_api_process_restarts_stale_runtime(monkeypatch, tmp_path) -> None:
     started_commands = []
     stopped_ports = []
@@ -300,6 +331,41 @@ def test_ensure_api_process_restarts_stale_runtime(monkeypatch, tmp_path) -> Non
     assert status["reason"] == "api_runtime_commit_mismatch"
     assert stopped_ports == [8000]
     assert started_commands == [("api", ["python", "-m", "uvicorn"], tmp_path / "api.log")]
+
+
+def test_ensure_api_process_restarts_unpinned_runtime(monkeypatch, tmp_path) -> None:
+    stopped_ports = []
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8000)
+    monkeypatch.setattr(
+        "scripts.start_system.run_api_runtime_identity_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "api_runtime_identity",
+            "status": "passed",
+            "actual_source": "git",
+            "reason": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.stop_port_processes",
+        lambda port: stopped_ports.append(port)
+        or {"pids": [2345], "terminated": [2345], "killed": []},
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.wait_for_port_closed",
+        lambda _host, port, _timeout_seconds: port == 8000,
+    )
+    monkeypatch.setattr("scripts.start_system.start_process", lambda *_args, **_kwargs: True)
+
+    started, status = start_system_module.ensure_api_process(
+        command=["python", "-m", "uvicorn"],
+        log_path=tmp_path / "api.log",
+        api_url="http://127.0.0.1:8000",
+    )
+
+    assert started is True
+    assert status["status"] == "restarted"
+    assert status["reason"] == "api_runtime_identity_unpinned"
+    assert stopped_ports == [8000]
 
 
 def test_ensure_api_process_keeps_verified_running_runtime(monkeypatch, tmp_path) -> None:
@@ -435,6 +501,22 @@ def test_streamlit_runtime_identity_failure_reason_reads_nested_reason() -> None
     )
 
     assert reason == "streamlit_runtime_commit_mismatch"
+
+
+def test_streamlit_runtime_identity_failure_reason_flags_unpinned_git_source() -> None:
+    reason = start_system_module.streamlit_runtime_identity_failure_reason(
+        {
+            "label": "streamlit_playwright",
+            "status": "passed",
+            "frontend_runtime_identity": {
+                "status": "passed",
+                "actual_source": "git",
+                "reason": None,
+            },
+        }
+    )
+
+    assert reason == "streamlit_runtime_identity_unpinned"
 
 
 def test_process_ids_on_port_ignores_stale_streamlit_pidfile_when_lsof_finds_port(

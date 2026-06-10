@@ -23,6 +23,33 @@ def test_runtime_identity_prefers_build_env_commit() -> None:
     assert status["build_commit_env_configured"] is True
 
 
+def test_runtime_identity_prefers_process_start_env_over_live_git() -> None:
+    def fake_git(args, _root):
+        if args == ["rev-parse", "HEAD"]:
+            return "commit-after-pull"
+        if args == ["branch", "--show-current"]:
+            return "main"
+        if args == ["status", "--porcelain"]:
+            return " M app.py"
+        return None
+
+    status = runtime_identity_status(
+        root=Path("."),
+        environ={
+            "STOCK_AI_RUNTIME_COMMIT": "commit-process-start",
+            "STOCK_AI_RUNTIME_BRANCH": "main",
+            "STOCK_AI_RUNTIME_DIRTY": "false",
+        },
+        command_runner=fake_git,
+    )
+
+    assert status["source"] == "env"
+    assert status["git_commit"] == "commit-process-start"
+    assert status["git_dirty"] is False
+    assert status["runtime_commit_env_configured"] is True
+    assert status["runtime_dirty_env_configured"] is True
+
+
 def test_runtime_identity_falls_back_to_git_runner() -> None:
     def fake_git(args, _root):
         if args == ["rev-parse", "HEAD"]:

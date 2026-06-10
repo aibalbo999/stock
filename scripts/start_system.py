@@ -45,11 +45,13 @@ OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
 STALE_API_RESTART_REASONS = {
     "api_runtime_commit_mismatch",
     "api_runtime_commit_unavailable",
+    "api_runtime_identity_unpinned",
 }
 STALE_STREAMLIT_RESTART_REASONS = {
     "streamlit_runtime_identity_marker_missing",
     "streamlit_runtime_commit_mismatch",
     "streamlit_runtime_commit_unavailable",
+    "streamlit_runtime_identity_unpinned",
 }
 
 
@@ -1325,6 +1327,7 @@ def ensure_process(name: str, port: int, command: list[str], log_path: Path) -> 
 def start_process(name: str, command: list[str], log_path: Path) -> bool:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
+    env.update(process_runtime_identity_env())
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log_file:
         process = subprocess.Popen(
@@ -1337,6 +1340,25 @@ def start_process(name: str, command: list[str], log_path: Path) -> bool:
         )
     (RUN_DIR / f"{name}.pid").write_text(str(process.pid), encoding="utf-8")
     return True
+
+
+def process_runtime_identity_env() -> dict[str, str]:
+    from app.services.runtime_identity import runtime_identity_status
+
+    identity = runtime_identity_status()
+    env = {}
+    commit = str(identity.get("git_commit") or "").strip()
+    branch = str(identity.get("git_branch") or "").strip()
+    dirty = identity.get("git_dirty")
+    if commit:
+        env["STOCK_AI_RUNTIME_COMMIT"] = commit
+    if branch:
+        env["STOCK_AI_RUNTIME_BRANCH"] = branch
+    if dirty is True:
+        env["STOCK_AI_RUNTIME_DIRTY"] = "true"
+    elif dirty is False:
+        env["STOCK_AI_RUNTIME_DIRTY"] = "false"
+    return env
 
 
 def ensure_api_process(
@@ -1405,6 +1427,8 @@ def run_api_runtime_identity_smoke(
 def api_runtime_identity_failure_reason(smoke_check: dict) -> str:
     if smoke_check.get("status") == "failed":
         return str(smoke_check.get("reason") or "")
+    if smoke_check.get("status") == "passed" and smoke_check.get("actual_source") == "git":
+        return "api_runtime_identity_unpinned"
     return ""
 
 
@@ -1514,6 +1538,12 @@ def streamlit_runtime_identity_failure_reason(smoke_check: dict) -> str:
     frontend_identity = smoke_check.get("frontend_runtime_identity")
     if isinstance(frontend_identity, dict) and frontend_identity.get("status") == "failed":
         return str(frontend_identity.get("reason") or "")
+    if (
+        isinstance(frontend_identity, dict)
+        and frontend_identity.get("status") == "passed"
+        and frontend_identity.get("actual_source") == "git"
+    ):
+        return "streamlit_runtime_identity_unpinned"
     if smoke_check.get("status") == "failed":
         return str(smoke_check.get("reason") or "")
     return ""

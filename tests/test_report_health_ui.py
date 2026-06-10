@@ -7,7 +7,9 @@ def test_latest_report_health_summary_uses_quality_gate_candidate_and_follow_up_
     result = latest_report_health_summary(
         {
             "report_id": 15,
+            "title": "記憶體產業鏈 自動分析報告",
             "topic": "記憶體產業鏈",
+            "generated_at": "2026-06-06T16:31:24",
             "tickers": ["2408", "8150"],
             "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
             "candidate_whitelist": [
@@ -24,7 +26,8 @@ def test_latest_report_health_summary_uses_quality_gate_candidate_and_follow_up_
     assert result == {
         "state": "ready",
         "quality_label": "ready",
-        "report_label": "#15｜記憶體產業鏈",
+        "report_label": "記憶體產業鏈 自動分析報告",
+        "report_meta_label": "#15｜記憶體產業鏈｜2026-06-06 16:31",
         "candidate_label": "候選 2｜正式 2",
         "follow_up_label": "可閱讀",
         "action_label": "閱讀最新版",
@@ -69,7 +72,22 @@ def test_latest_report_health_summary_handles_empty_report() -> None:
         "state": "attention",
         "quality_label": "-",
         "report_label": "尚未選擇報告",
+        "report_meta_label": "尚無報告時間",
         "candidate_label": "候選 0｜正式 0",
         "follow_up_label": "尚無狀態",
         "action_label": "建立分析",
     }
+
+
+def test_latest_report_health_summary_falls_back_to_topic_when_title_missing() -> None:
+    result = latest_report_health_summary(
+        {
+            "report_id": 22,
+            "topic": "散熱產業鏈",
+            "generated_at": "2026-06-06T08:05:00",
+        },
+        {},
+    )
+
+    assert result["report_label"] == "散熱產業鏈"
+    assert result["report_meta_label"] == "#22｜散熱產業鏈｜2026-06-06 08:05"

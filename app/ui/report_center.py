@@ -77,7 +77,9 @@ def render_report_center() -> None:
             report_title = report_payload.get("title") or "report"
             history_result = {
                 "report_id": selected_id,
+                "title": report_payload.get("title"),
                 "topic": report_payload.get("topic"),
+                "generated_at": report_payload.get("generated_at"),
                 "tickers": report_payload.get("tickers") or [],
                 "request": report_payload.get("request") or {},
                 "quality_gate": report_payload.get("quality_gate")
@@ -89,6 +91,7 @@ def render_report_center() -> None:
         if report_markdown:
             history_result = history_result or {
                 "report_id": selected_id,
+                "title": report_title,
                 "quality_gate": parse_quality_gate_from_markdown(report_markdown),
             }
 
@@ -292,6 +295,7 @@ def _render_report_health_strip(summary: dict[str, str]) -> None:
 <article class="report-health-card">
 <span>最新版</span>
 <strong>{escape(summary.get("report_label", "-"))}</strong>
+<em>{escape(summary.get("report_meta_label", ""))}</em>
 </article>
 <article class="report-health-card">
 <span>品質門檻</span>

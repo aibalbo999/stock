@@ -7,8 +7,10 @@ def latest_report_health_summary(
     report_result: dict, follow_up_plan: dict | None = None
 ) -> dict[str, str]:
     follow_up_plan = follow_up_plan or {}
-    report_id = report_result.get("report_id")
-    topic = str(report_result.get("topic") or "").strip()
+    report_id = report_result.get("report_id") or report_result.get("id")
+    topic = _text(report_result.get("topic"))
+    title = _report_title(report_result, topic)
+    generated_at = _format_generated_at(report_result.get("generated_at"))
     quality_gate = _dict_value(report_result.get("quality_gate"))
     metrics = _dict_value(quality_gate.get("metrics"))
     candidates = report_result.get("candidate_whitelist") or []
@@ -20,6 +22,7 @@ def latest_report_health_summary(
             "state": "attention",
             "quality_label": "-",
             "report_label": "尚未選擇報告",
+            "report_meta_label": "尚無報告時間",
             "candidate_label": "候選 0｜正式 0",
             "follow_up_label": "尚無狀態",
             "action_label": "建立分析",
@@ -30,11 +33,34 @@ def latest_report_health_summary(
     return {
         "state": state,
         "quality_label": str(quality_gate.get("status") or "-"),
-        "report_label": f"#{report_id}｜{topic or '未命名主題'}",
+        "report_label": title,
+        "report_meta_label": _report_meta_label(report_id, topic, generated_at),
         "candidate_label": f"候選 {candidate_count}｜正式 {promoted_count}",
         "follow_up_label": follow_up_label,
         "action_label": action_label,
     }
+
+
+def _report_title(report_result: dict, topic: str) -> str:
+    nested_report = _dict_value(report_result.get("report"))
+    return (
+        _text(report_result.get("title"))
+        or _text(nested_report.get("title"))
+        or topic
+        or "未命名報告"
+    )
+
+
+def _report_meta_label(report_id: object, topic: str, generated_at: str) -> str:
+    parts = [f"#{report_id}", topic or "未命名主題", generated_at or "時間未標示"]
+    return "｜".join(parts)
+
+
+def _format_generated_at(value: object) -> str:
+    text = _text(value)
+    if not text:
+        return ""
+    return text.replace("T", " ")[:16]
 
 
 def _required_follow_up_count(follow_up_plan: dict) -> int:
@@ -59,3 +85,7 @@ def _promoted_count(metrics: dict, report_result: dict) -> int:
 
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()

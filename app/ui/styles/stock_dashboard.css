@@ -714,6 +714,7 @@ textarea:focus,
     font-weight: 800;
 }
 .market-cache-card em,
+.report-health-card em,
 .market-cache-card small {
     display: block;
     margin-top: 8px;

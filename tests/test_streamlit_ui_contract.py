@@ -122,6 +122,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source
     assert "from app.ui.report_health import latest_report_health_summary" in source
     assert "latest_report_health_summary(" in source
+    assert '"title": report_payload.get("title")' in source
+    assert '"generated_at": report_payload.get("generated_at")' in source
+    assert "report_meta_label" in source
     assert "report-health-strip" in combined
     assert "report-health-card" in combined
     assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source

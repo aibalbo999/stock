@@ -12,7 +12,13 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_panels_source = ui_sources["report_panels.py"]
     report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
+    report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
+    style_source = (
+        source_context.style_path.read_text(encoding="utf-8")
+        if source_context.style_path.exists()
+        else ""
+    )
     return {
         "frontend_report_workflow_status_extracted": True,
         "frontend_report_workflow_status_path": (
@@ -51,6 +57,15 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "primary_action_detail" in report_lifecycle_source
             and 'lifecycle.get("primary_action_detail"' in ui_source
             and 'key="report_lifecycle_primary_action"' in ui_source
+        ),
+        "ui_report_health_identity_enabled": (
+            "def latest_report_health_summary(" in report_health_source
+            and '"report_meta_label": _report_meta_label(' in report_health_source
+            and "def _format_generated_at(" in report_health_source
+            and '"title": report_payload.get("title")' in ui_source
+            and '"generated_at": report_payload.get("generated_at")' in ui_source
+            and 'summary.get("report_meta_label"' in ui_source
+            and ".report-health-card em" in style_source
         ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"

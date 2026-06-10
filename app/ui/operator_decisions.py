@@ -223,19 +223,7 @@ def operator_next_best_action(
         )
 
     quota_payload = _dict_value(quota)
-    if not quota_payload:
-        return _action(
-            state="attention",
-            priority=8,
-            title="確認 AI 額度狀態",
-            reason="目前尚未取得 AI 額度資訊。",
-            risk="缺少額度狀態時，送出高成本任務可能失敗或降級。",
-            impact="確認建議模型與 fallback 後再送出高成本任務。",
-            action_label="查看額度",
-            route_hint="settings:ai_quota",
-            source_ids=[],
-        )
-
+    quota_missing = not quota_payload
     if quota_payload:
         quota_summary = quota_operator_summary(quota_payload)
         if quota_summary.get("state") != "ready":
@@ -255,8 +243,8 @@ def operator_next_best_action(
         state="ready",
         priority=10,
         title="閱讀最新版報告",
-        reason="背景任務、品質門檻與必補資料缺口都沒有阻塞。",
-        risk="仍需把報告視為研究輔助，不是買賣指令。",
+        reason=_healthy_read_reason(quota_missing=quota_missing),
+        risk=_healthy_read_risk(quota_missing=quota_missing),
         impact="直接閱讀目前系統保留的最新版結論。",
         action_label="讀報告",
         route_hint=f"report:{report_id}" if report_id is not None else "report_center",
@@ -448,6 +436,19 @@ def _data_gap_action_source_ids(action: dict, report_id: Any) -> list[Any]:
         source_ids.append(f"report:{report_id}")
     source_ids.extend(action.get("tickers") or [])
     return source_ids
+
+
+def _healthy_read_reason(*, quota_missing: bool) -> str:
+    reason = "背景任務、品質門檻與必補資料缺口都沒有阻塞。"
+    if quota_missing:
+        return f"{reason}模型額度狀態暫不可讀，但不影響閱讀既有報告。"
+    return reason
+
+
+def _healthy_read_risk(*, quota_missing: bool) -> str:
+    if quota_missing:
+        return "閱讀現有報告不消耗額度；送出新分析或重跑前再確認 AI 額度。"
+    return "仍需把報告視為研究輔助，不是買賣指令。"
 
 
 def _retryable_failure_affecting_report(task_summary: dict | None, report_id: Any) -> dict:

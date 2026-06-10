@@ -310,7 +310,7 @@ def test_operator_next_action_prioritizes_retryable_failure_affecting_latest_rep
     assert action["source_ids"] == ["report:15", "retry-latest-1"]
 
 
-def test_operator_next_action_requires_quota_before_healthy_read() -> None:
+def test_operator_next_action_does_not_block_healthy_report_when_quota_missing() -> None:
     action = operator_next_best_action(
         READY_QUEUE,
         {},
@@ -320,10 +320,13 @@ def test_operator_next_action_requires_quota_before_healthy_read() -> None:
         {"summary": {"required_count": 0}},
     )
 
-    assert action["state"] == "attention"
-    assert action["priority"] == 8
-    assert action["title"] == "確認 AI 額度狀態"
-    assert action["route_hint"] == "settings:ai_quota"
+    assert action["state"] == "ready"
+    assert action["priority"] == 10
+    assert action["title"] == "閱讀最新版報告"
+    assert "模型額度狀態暫不可讀" in action["reason"]
+    assert "閱讀現有報告不消耗額度" in action["risk"]
+    assert action["action_label"] == "讀報告"
+    assert action["route_hint"] == "report:15"
 
 
 def test_operator_next_action_promotes_non_queue_critical_incident() -> None:

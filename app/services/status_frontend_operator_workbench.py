@@ -43,4 +43,15 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             in operator_decisions_source
             and 'route_hint=stale_running_incident["route_hint"]' in operator_decisions_source
         ),
+        "ui_operator_quota_missing_read_guard_enabled": (
+            "def _healthy_read_reason(" in operator_decisions_source
+            and "def _healthy_read_risk(" in operator_decisions_source
+            and "quota_missing = not quota_payload" in operator_decisions_source
+            and "模型額度狀態暫不可讀" in operator_decisions_source
+            and "閱讀現有報告不消耗額度" in operator_decisions_source
+            and "reason=_healthy_read_reason(quota_missing=quota_missing)"
+            in operator_decisions_source
+            and "risk=_healthy_read_risk(quota_missing=quota_missing)"
+            in operator_decisions_source
+        ),
     }

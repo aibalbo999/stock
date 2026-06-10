@@ -86,21 +86,32 @@ def operator_status_cards(
     queue_state = (
         "attention" if service_status_missing else "ready" if _queue_ready(task_queue) else "blocked"
     )
+    queue_running = queue_state == "ready" and bool(running_task)
 
     return [
         {
             "title": "系統狀態",
-            "value": _queue_card_value(queue_state),
+            "value": "處理中" if queue_running else _queue_card_value(queue_state),
             "caption": (
                 "無法讀取 /services/status"
                 if service_status_missing
+                else "Worker 線上，最新任務執行中"
+                if queue_running
                 else "Worker 線上"
                 if task_queue.get("worker_online")
                 else "Worker 離線"
             ),
-            "state": queue_state,
-            "action_label": "開始使用" if queue_state == "ready" else "查看維護",
-            "route_hint": "analysis" if queue_state == "ready" else "settings:maintenance",
+            "state": "attention" if queue_running else queue_state,
+            "action_label": (
+                "查看任務" if queue_running else "開始使用" if queue_state == "ready" else "查看維護"
+            ),
+            "route_hint": (
+                _task_route_hint(running_task)
+                if queue_running
+                else "analysis"
+                if queue_state == "ready"
+                else "settings:maintenance"
+            ),
         },
         {
             "title": "最新版報告",

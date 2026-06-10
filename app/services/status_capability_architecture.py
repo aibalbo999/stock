@@ -190,6 +190,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_operator_running_task_primary_action_enabled")
             and frontend_status.get("ui_operator_running_task_report_card_enabled")
             and frontend_status.get("ui_operator_running_task_pending_card_enabled")
+            and frontend_status.get("ui_operator_running_task_queue_card_enabled")
             and frontend_status.get(
                 "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled"
             )

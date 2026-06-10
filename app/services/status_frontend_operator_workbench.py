@@ -138,6 +138,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 )
             )
         ),
+        "ui_operator_running_task_queue_card_enabled": (
+            "queue_running = queue_state == \"ready\" and bool(running_task)"
+            in operator_status_source
+            and "處理中" in operator_status_source
+            and "Worker 線上，最新任務執行中" in operator_status_source
+            and '"查看任務" if queue_running' in operator_status_source
+            and "_task_route_hint(running_task)" in operator_status_source
+            and (
+                operator_status_source.find(
+                    "queue_running = queue_state == \"ready\" and bool(running_task)"
+                )
+                < operator_status_source.find('"title": "系統狀態"')
+            )
+        ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
             "def _latest_task_successful(" in operator_decisions_source
             and "def _task_row_successful(" in operator_decisions_source

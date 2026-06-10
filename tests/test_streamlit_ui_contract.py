@@ -493,9 +493,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "選擇主題最新版報告" in source
     assert "flex-wrap: wrap" in combined
     assert 'button[data-testid^="stBaseButton"]' in styles
+    assert 'button[data-testid^="stBaseButton"] {\n    min-height: 48px !important;' in styles
     assert '[data-testid="stSliderThumbValue"]' in styles
     assert '[data-baseweb="tag"]' in styles
-    assert "min-height: 40px !important" in styles
+    assert "min-height: 44px !important" in styles
+    assert "min-height: 40px !important" not in styles
+    assert styles.count('button[data-testid="stBaseButton-elementToolbar"]') == 3
     assert 'svg[role="button"]' in styles
     assert '[data-testid="stWidgetLabel"]' in styles
     assert '[data-testid="stDateInputField"]' in styles

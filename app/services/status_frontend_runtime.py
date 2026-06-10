@@ -48,6 +48,16 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and "display: none !important" in style_source
             and "pointer-events: none !important" in style_source
         ),
+        "ui_touch_targets_min_size_enabled": (
+            'button[data-testid^="stBaseButton"] {\n    min-height: 48px !important;'
+            in style_source
+            and 'button[data-testid="stBaseButton-elementToolbar"]' in style_source
+            and style_source.count('button[data-testid="stBaseButton-elementToolbar"]') == 3
+            and 'button[data-testid="stNumberInputStepDown"]' in style_source
+            and 'button[data-testid="stNumberInputStepUp"]' in style_source
+            and "min-height: 44px !important" in style_source
+            and "min-height: 40px !important" not in style_source
+        ),
         "frontend_runtime_identity_marker_enabled": (
             'data-stock-frontend-runtime="true"' in dashboard_core_source
             and "runtime_identity_status()" in dashboard_core_source

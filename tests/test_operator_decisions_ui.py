@@ -114,6 +114,40 @@ def test_operator_next_action_prompts_report_creation_when_missing() -> None:
     assert action["route_hint"] == "analysis"
 
 
+def test_operator_next_action_waits_for_running_first_report_task() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {
+            "latest": {
+                "task_id": "first-report-task",
+                "operation": "report_generation",
+                "status": "queued",
+                "celery_status": "PENDING",
+            },
+            "totals": {
+                "run_count": 1,
+                "success_count": 0,
+                "failed_count": 0,
+                "running_count": 1,
+                "stale_running_count": 0,
+            },
+        },
+        READY_QUOTA,
+        [],
+        {},
+        {},
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 3
+    assert action["title"] == "等待最新任務完成"
+    assert "尚未產生可閱讀的最新版報告" in action["reason"]
+    assert "重複送出同類任務" in action["risk"]
+    assert action["action_label"] == "查看任務進度"
+    assert action["route_hint"] == "task:first-report-task"
+    assert action["source_ids"] == ["first-report-task"]
+
+
 def test_operator_next_action_reads_report_status_when_only_list_row_exists() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

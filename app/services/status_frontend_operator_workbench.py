@@ -87,6 +87,24 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 < operator_status_source.find("if not _latest_report(reports):")
             )
         ),
+        "ui_operator_running_task_primary_action_enabled": (
+            "def _latest_task_running(" in operator_decisions_source
+            and "def _task_row_running(" in operator_decisions_source
+            and "latest_running_task = _latest_task_running(task_summary)"
+            in operator_decisions_source
+            and "等待最新任務完成" in operator_decisions_source
+            and "尚未產生可閱讀的最新版報告" in operator_decisions_source
+            and "重複送出同類任務" in operator_decisions_source
+            and 'action_label="查看任務進度"' in operator_decisions_source
+            and 'route_hint=f"task:{task_id}" if task_id else "settings:maintenance"'
+            in operator_decisions_source
+            and (
+                operator_decisions_source.find(
+                    "latest_running_task = _latest_task_running(task_summary)"
+                )
+                < operator_decisions_source.find('title="先建立最新版報告"')
+            )
+        ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
             "def _latest_task_successful(" in operator_decisions_source
             and "def _task_row_successful(" in operator_decisions_source

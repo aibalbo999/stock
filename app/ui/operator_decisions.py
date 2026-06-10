@@ -91,6 +91,20 @@ def operator_next_best_action(
 
     report_id = _report_id(report_payload, latest_report)
     if not latest_report and not has_report_detail:
+        latest_running_task = _latest_task_running(task_summary)
+        if latest_running_task:
+            task_id = _text(latest_running_task.get("task_id"))
+            return _action(
+                state="attention",
+                priority=3,
+                title="等待最新任務完成",
+                reason="最新背景任務正在執行，尚未產生可閱讀的最新版報告。",
+                risk="重複送出同類任務可能造成排隊、額度消耗或資料寫入衝突。",
+                impact="到維護頁查看任務進度；完成後再閱讀最新版報告或重新送出。",
+                action_label="查看任務進度",
+                route_hint=f"task:{task_id}" if task_id else "settings:maintenance",
+                source_ids=[task_id or latest_running_task.get("id") or "latest_task"],
+            )
         return _action(
             state="attention",
             priority=3,
@@ -516,18 +530,27 @@ def _task_row_failed(row: dict) -> bool:
 
 
 def _latest_task_successful(task_summary: dict | None) -> bool:
+    return _task_row_successful(_latest_task_row(task_summary))
+
+
+def _latest_task_running(task_summary: dict | None) -> dict:
+    task = _latest_task_row(task_summary)
+    return task if _task_row_running(task) else {}
+
+
+def _latest_task_row(task_summary: dict | None) -> dict:
     if not isinstance(task_summary, dict):
-        return False
+        return {}
     for key in ("latest", "latest_task"):
         row = task_summary.get(key)
         if isinstance(row, dict):
-            return _task_row_successful(row)
+            return row
     recent = task_summary.get("recent")
     if isinstance(recent, list):
         for row in recent:
             if isinstance(row, dict):
-                return _task_row_successful(row)
-    return False
+                return row
+    return {}
 
 
 def _task_row_successful(row: dict) -> bool:
@@ -538,6 +561,34 @@ def _task_row_successful(row: dict) -> bool:
     return status in {"success", "successful", "succeeded", "completed", "done"} or (
         celery_status in {"success", "successful", "succeeded"}
     )
+
+
+def _task_row_running(row: dict) -> bool:
+    if _task_row_successful(row) or _task_row_failed(row):
+        return False
+    if row.get("running") is True:
+        return True
+    status = _text(row.get("status")).casefold()
+    celery_status = _text(row.get("celery_status")).casefold()
+    return status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+        "in_progress",
+        "processing",
+        "submitted",
+        "scheduled",
+    } or celery_status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+    }
 
 
 def _task_failure_identity(row: dict) -> str:

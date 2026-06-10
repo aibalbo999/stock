@@ -42,6 +42,7 @@ def latest_report_lifecycle(
     follow_up_status = _follow_up_status(report, plan)
     running = follow_up_status in RUNNING_STATUSES
     has_rerun_report = _has_rerun_report(report)
+    has_incomplete_rerun_report = _has_incomplete_rerun_report(report)
 
     data_state = "attention" if required_count > 0 else "done"
     data_label = f"缺口 {required_count} 項" if required_count > 0 else "資料可用"
@@ -93,6 +94,10 @@ def latest_report_lifecycle(
         rerun_state = "done"
         rerun_label = "已有重跑"
         rerun_detail = "補強後的重跑報告已記錄在最新版流程中。"
+    elif has_incomplete_rerun_report:
+        rerun_state = "attention"
+        rerun_label = "重跑未完成"
+        rerun_detail = "補強流程已有重跑紀錄，但尚未產生可讀的重跑報告。"
     else:
         rerun_state = "done"
         rerun_label = "不需重跑"
@@ -238,6 +243,9 @@ def _promoted_count(report: dict, metrics: dict) -> int:
     promoted = report.get("promoted_tickers")
     if isinstance(promoted, list):
         return len(promoted)
+    tickers = report.get("tickers")
+    if isinstance(tickers, list):
+        return len(tickers)
     return 0
 
 
@@ -253,6 +261,9 @@ def _candidate_count(report: dict) -> int:
 
 def _required_count(plan: dict) -> int:
     summary = _dict_value(plan.get("summary"))
+    selected = _dict_value(summary.get("selected"))
+    if "required_count" in selected:
+        return _int_value(selected.get("required_count"))
     return _int_value(summary.get("required_count"))
 
 
@@ -266,4 +277,11 @@ def _follow_up_status(report: dict, plan: dict) -> str:
 
 def _has_rerun_report(report: dict) -> bool:
     auto_follow_up = _dict_value(report.get("auto_follow_up"))
-    return isinstance(auto_follow_up.get("rerun_report"), dict)
+    rerun_report = _dict_value(auto_follow_up.get("rerun_report"))
+    return bool(rerun_report.get("report_id"))
+
+
+def _has_incomplete_rerun_report(report: dict) -> bool:
+    auto_follow_up = _dict_value(report.get("auto_follow_up"))
+    rerun_report = auto_follow_up.get("rerun_report")
+    return isinstance(rerun_report, dict) and not bool(rerun_report.get("report_id"))

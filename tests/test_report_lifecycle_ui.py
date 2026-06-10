@@ -94,3 +94,50 @@ def test_latest_report_lifecycle_handles_empty_report() -> None:
     assert lifecycle["primary_action"] == "建立分析"
     assert lifecycle["route_hint"] == "analysis"
     assert stage_by_key(lifecycle, "data")["state"] == "unknown"
+
+
+def test_latest_report_lifecycle_reads_nested_selected_required_count() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 31,
+            "topic": "先進封裝",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "3711"}],
+        },
+        {"summary": {"selected": {"required_count": 3}}, "status": "needs_follow_up"},
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert stage_by_key(lifecycle, "data")["label"] == "缺口 3 項"
+
+
+def test_latest_report_lifecycle_marks_skipped_rerun_as_incomplete() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 32,
+            "topic": "電源管理",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "auto_follow_up": {"rerun_report": {"status": "skipped"}},
+            "candidate_whitelist": [{"ticker": "2308"}, {"ticker": "6415"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert stage_by_key(lifecycle, "rerun")["state"] == "attention"
+    assert stage_by_key(lifecycle, "rerun")["label"] == "重跑未完成"
+
+
+def test_latest_report_lifecycle_falls_back_to_tickers_when_promoted_metrics_missing() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 33,
+            "topic": "AI 代工",
+            "tickers": ["2330", "2382"],
+            "quality_gate": {"status": "ready", "metrics": {}},
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "ready"
+    assert stage_by_key(lifecycle, "quality")["state"] == "done"

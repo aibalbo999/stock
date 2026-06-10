@@ -84,4 +84,13 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "successful" in operator_decisions_source
             and "celery_status" in operator_decisions_source
         ),
+        "ui_operator_overall_historical_failure_ready_when_latest_task_healthy_enabled": (
+            "def operator_status_overall(" in operator_status_source
+            and "def _latest_task_successful(" in operator_status_source
+            and "def _task_successful(" in operator_status_source
+            and "if _latest_task_successful(task_summary):" in operator_status_source
+            and '"state": "ready"' in operator_status_source
+            and "歷史失敗仍可追蹤" in operator_status_source
+            and "celery_status" in operator_status_source
+        ),
     }

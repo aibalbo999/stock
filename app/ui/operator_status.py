@@ -36,6 +36,12 @@ def operator_status_overall(
 
     failure_count = len(_recent_failures(task_summary))
     if failure_count:
+        if _latest_task_successful(task_summary):
+            return {
+                "state": "ready",
+                "label": "可執行",
+                "detail": "背景任務與最新版報告都可用；歷史失敗仍可追蹤。",
+            }
         return {
             "state": "attention",
             "label": "有待處理紀錄",
@@ -259,7 +265,15 @@ def _task_successful(task: dict) -> bool:
         return True
     status = _text(task.get("status")).casefold()
     celery_status = _text(task.get("celery_status")).casefold()
-    return status in {"success", "successful", "completed"} or celery_status == "success"
+    return status in {"success", "successful", "succeeded", "completed", "done"} or celery_status in {
+        "success",
+        "successful",
+        "succeeded",
+    }
+
+
+def _latest_task_successful(task_summary: dict) -> bool:
+    return _task_successful(_latest_task(task_summary))
 
 
 def _latest_report(reports: list[dict]) -> dict:

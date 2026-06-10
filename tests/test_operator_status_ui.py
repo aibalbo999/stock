@@ -132,7 +132,7 @@ def test_operator_status_overall_blocks_for_stale_running_before_failures_or_rep
     }
 
 
-def test_operator_status_overall_returns_attention_for_historical_failed_task() -> None:
+def test_operator_status_overall_returns_attention_for_latest_failed_task() -> None:
     task_summary = _successful_task_summary()
     task_summary["totals"] = {
         "run_count": 2,
@@ -141,14 +141,15 @@ def test_operator_status_overall_returns_attention_for_historical_failed_task() 
         "running_count": 0,
         "stale_running_count": 0,
     }
-    task_summary["recent"].append(
+    task_summary["recent"].insert(
+        0,
         {
-            "task_id": "task-old-failure",
+            "task_id": "task-latest-failure",
             "status": "failed",
             "operation": "report_generation",
             "retryable": False,
             "error_category": "runtime_storage",
-        }
+        },
     )
 
     overall = operator_status_overall(_healthy_service_snapshot(), task_summary, _reports())
@@ -156,6 +157,40 @@ def test_operator_status_overall_returns_attention_for_historical_failed_task() 
     assert overall["state"] == "attention"
     assert overall["label"] == "有待處理紀錄"
     assert "最近任務可執行" in overall["detail"]
+
+
+def test_operator_status_overall_stays_ready_when_latest_task_succeeded_after_historical_failure() -> None:
+    task_summary = {
+        "latest": {
+            "task_id": "smoke-ok",
+            "operation": "submission_smoke",
+            "status": "success",
+            "successful": True,
+        },
+        "totals": {
+            "run_count": 2,
+            "success_count": 1,
+            "failed_count": 1,
+            "running_count": 0,
+            "stale_running_count": 0,
+        },
+        "recent_failures": [
+            {
+                "task_id": "old-storage",
+                "status": "failed",
+                "operation": "report_write",
+                "retryable": False,
+                "error_category": "runtime_storage",
+                "finished_at": "2026-06-09T09:00:00",
+            }
+        ],
+    }
+
+    overall = operator_status_overall(_healthy_service_snapshot(), task_summary, _reports())
+
+    assert overall["state"] == "ready"
+    assert overall["label"] == "可執行"
+    assert "歷史失敗仍可追蹤" in overall["detail"]
 
 
 def test_operator_status_cards_include_queue_report_quota_and_failure_actions() -> None:

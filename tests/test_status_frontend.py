@@ -211,6 +211,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_report_workflow_status_path"] == (
         "app/services/status_frontend_report_workflow.py"
     )
+    assert status["frontend"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
     assert status["frontend"]["frontend_settings_ui_status_path"] == (
         "app/services/status_frontend_settings.py"
@@ -408,6 +409,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_report_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_rendering_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_workflow_status_extracted"] is True
+    assert frontend_arch["evidence"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui import report_center
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
@@ -64,6 +65,42 @@ def test_latest_report_lifecycle_marks_required_gaps_as_attention() -> None:
     assert stage_by_key(lifecycle, "data")["label"] == "缺口 2 項"
     assert stage_by_key(lifecycle, "follow_up")["state"] == "attention"
     assert stage_by_key(lifecycle, "rerun")["label"] == "補強後重跑"
+
+
+def test_latest_report_lifecycle_prefills_first_required_data_gap_action() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 12,
+            "topic": "AI 產業鏈",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {
+            "summary": {"required_count": 2},
+            "status": "needs_follow_up",
+            "next_actions": [
+                {
+                    "action": "refresh_market",
+                    "tickers": ["2330"],
+                    "purpose": "required",
+                    "target": "股價與量能",
+                    "reason": "缺少最新股價",
+                },
+                {
+                    "action": "ingest_company_filings",
+                    "tickers": ["2382"],
+                    "purpose": "required",
+                    "target": "公司公開文件",
+                    "reason": "缺少法說會簡報",
+                },
+            ],
+        },
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert lifecycle["primary_action"] == "刷新股價"
+    assert lifecycle["route_hint"] == "data_enrichment:market_refresh:2330"
+    assert lifecycle["primary_action_detail"] == "刷新股價可改善「股價與量能」：缺少最新股價"
 
 
 def test_latest_report_lifecycle_marks_follow_up_running() -> None:
@@ -174,3 +211,25 @@ def test_latest_report_lifecycle_attention_explanation_names_incomplete_rerun() 
     assert lifecycle["overall_state"] == "attention"
     assert "0 項必補缺口" not in lifecycle["trust_explanation"]
     assert "尚未產生可讀的重跑報告" in lifecycle["trust_explanation"]
+
+
+def test_report_lifecycle_strip_renders_primary_action_detail(monkeypatch) -> None:
+    rendered: list[str] = []
+    monkeypatch.setattr(
+        report_center.st,
+        "markdown",
+        lambda body, **_kwargs: rendered.append(str(body)),
+    )
+
+    report_center._render_report_lifecycle_strip(
+        {
+            "overall_state": "attention",
+            "trust_label": "可閱讀但需註記",
+            "trust_explanation": "仍有 1 項必補缺口。",
+            "primary_action": "刷新股價",
+            "primary_action_detail": "刷新股價可改善「股價與量能」：缺少最新股價",
+            "stage_cards": [],
+        }
+    )
+
+    assert "刷新股價可改善「股價與量能」：缺少最新股價" in rendered[0]

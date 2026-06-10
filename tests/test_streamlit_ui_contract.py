@@ -124,6 +124,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "report-health-card" in combined
     assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source
     assert "latest_report_lifecycle(" in source
+    assert "from app.ui.data_gap_actions import data_gap_action_items" in source
+    assert "def _primary_data_gap_action(" in source
+    assert "primary_action_detail" in source
     assert "_render_report_lifecycle_action(" in source
     assert 'key="report_lifecycle_primary_action"' in source
     assert 'lifecycle.get("route_hint")' in source

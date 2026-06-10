@@ -12,6 +12,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_panels_source = ui_sources["report_panels.py"]
     report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
+    report_lifecycle_source = ui_sources["report_lifecycle.py"]
     return {
         "frontend_report_workflow_status_extracted": True,
         "frontend_report_workflow_status_path": (
@@ -41,6 +42,15 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "graph_reasoning_coverage_ratio" in report_observability_panel_source
             and "GraphRAG paths" in report_observability_panel_source
             and "Graph 覆蓋率" in report_observability_panel_source
+        ),
+        "ui_report_lifecycle_data_gap_prefill_enabled": (
+            "from app.ui.data_gap_actions import data_gap_action_items"
+            in report_lifecycle_source
+            and "def _primary_data_gap_action(" in report_lifecycle_source
+            and 'gap_action.get("route_hint")' in report_lifecycle_source
+            and "primary_action_detail" in report_lifecycle_source
+            and 'lifecycle.get("primary_action_detail"' in ui_source
+            and 'key="report_lifecycle_primary_action"' in ui_source
         ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"

@@ -245,6 +245,7 @@ def _render_report_lifecycle_strip(lifecycle: dict) -> None:
 <strong>{escape(lifecycle.get("trust_label", "-"))}</strong>
 <p>{escape(lifecycle.get("trust_explanation", ""))}</p>
 <em>{escape(lifecycle.get("primary_action", ""))}</em>
+<small>{escape(lifecycle.get("primary_action_detail", ""))}</small>
 </div>
 <div class="report-lifecycle-steps">
 {stage_html}

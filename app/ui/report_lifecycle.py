@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.ui.data_gap_actions import data_gap_action_items
+
 
 RUNNING_STATUSES = {"queued", "started", "running", "pending", "processing"}
 BLOCKED_QUALITY_STATUSES = {"failed", "blocked", "error", "insufficient"}
@@ -125,9 +127,11 @@ def latest_report_lifecycle(
     ]
     overall_state = _overall_state(stage_cards)
     trust_label = _trust_label(overall_state)
-    primary_action, route_hint = _primary_action(
+    primary_action, route_hint, primary_action_detail = _primary_action(
         overall_state=overall_state,
         report_id=report_id,
+        report=report,
+        plan=plan,
         required_count=required_count,
         running=running,
     )
@@ -143,6 +147,7 @@ def latest_report_lifecycle(
             stage_cards=stage_cards,
         ),
         "primary_action": primary_action,
+        "primary_action_detail": primary_action_detail,
         "route_hint": route_hint,
         "report_id": report_id,
         "stage_cards": stage_cards,
@@ -227,16 +232,39 @@ def _primary_action(
     *,
     overall_state: str,
     report_id: Any,
+    report: dict,
+    plan: dict,
     required_count: int,
     running: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     if running or overall_state == "running":
-        return "查看補強任務", "settings:maintenance"
+        return "查看補強任務", "settings:maintenance", "補強任務正在背景執行。"
     if overall_state == "blocked" or required_count > 0:
-        return "補強資料", "data_enrichment"
+        gap_action = _primary_data_gap_action(report, plan)
+        if gap_action:
+            return (
+                _text(gap_action.get("action_label"), default="補強資料"),
+                _text(gap_action.get("route_hint"), default="data_enrichment"),
+                _text(gap_action.get("impact"), default="補強最新版報告資料缺口。"),
+            )
+        return "補強資料", "data_enrichment", "補強最新版報告資料缺口。"
     if report_id is not None:
-        return "閱讀最新版", f"report:{report_id}"
-    return "建立分析", "analysis"
+        return "閱讀最新版", f"report:{report_id}", "開啟目前保留的最新版報告。"
+    return "建立分析", "analysis", "建立第一份可閱讀的分析報告。"
+
+
+def _primary_data_gap_action(report: dict, plan: dict) -> dict:
+    items = data_gap_action_items(report, plan)
+    for item in items:
+        if item.get("purpose") == "required" and item.get("operation") != "report_follow_up":
+            return item
+    for item in items:
+        if item.get("purpose") == "required":
+            return item
+    for item in items:
+        if item.get("operation") != "report_follow_up":
+            return item
+    return {}
 
 
 def _dict_value(value: Any) -> dict:

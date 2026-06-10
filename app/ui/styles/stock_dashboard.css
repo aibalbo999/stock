@@ -224,6 +224,11 @@ textarea,
     color: var(--stock-text) !important;
     border-color: #64748b !important;
 }
+[data-baseweb="select"] > div {
+    min-height: 44px !important;
+    align-items: center !important;
+    touch-action: manipulation;
+}
 [data-testid="stWidgetLabel"],
 [data-testid="stWidgetLabel"] p,
 [data-testid="stWidgetLabel"] span {

@@ -500,6 +500,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '[data-baseweb="tag"]' in styles
     assert "min-height: 44px !important" in styles
     assert "min-height: 40px !important" not in styles
+    assert '[data-baseweb="select"] > div {\n    min-height: 44px !important;' in styles
     assert styles.count('button[data-testid="stBaseButton-elementToolbar"]') == 3
     assert 'svg[role="button"]' in styles
     assert '[data-testid="stWidgetLabel"]' in styles

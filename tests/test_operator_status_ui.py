@@ -132,6 +132,54 @@ def test_operator_status_overall_blocks_for_stale_running_before_failures_or_rep
     }
 
 
+def test_operator_status_overall_marks_latest_running_task_as_attention() -> None:
+    task_summary = {
+        "latest": {
+            "task_id": "task-running",
+            "operation": "report_generation",
+            "status": "running",
+            "celery_status": "STARTED",
+        },
+        "totals": {
+            "run_count": 1,
+            "success_count": 0,
+            "failed_count": 0,
+            "running_count": 1,
+            "stale_running_count": 0,
+        },
+    }
+
+    assert operator_status_overall(_healthy_service_snapshot(), task_summary, _reports()) == {
+        "state": "attention",
+        "label": "最新任務執行中",
+        "detail": "背景任務正在處理；完成前先等待結果，不要重複送出同類任務。",
+    }
+
+
+def test_operator_status_overall_shows_running_before_missing_report_creation() -> None:
+    task_summary = {
+        "latest": {
+            "task_id": "task-running",
+            "operation": "report_generation",
+            "status": "queued",
+            "celery_status": "PENDING",
+        },
+        "totals": {
+            "run_count": 1,
+            "success_count": 0,
+            "failed_count": 0,
+            "running_count": 1,
+            "stale_running_count": 0,
+        },
+    }
+
+    assert operator_status_overall(_healthy_service_snapshot(), task_summary, []) == {
+        "state": "attention",
+        "label": "最新任務執行中",
+        "detail": "背景任務正在處理；完成前先等待結果，不要重複送出同類任務。",
+    }
+
+
 def test_operator_status_overall_returns_attention_for_latest_failed_task() -> None:
     task_summary = _successful_task_summary()
     task_summary["totals"] = {

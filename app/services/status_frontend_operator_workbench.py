@@ -71,6 +71,22 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "task_summary_unavailable(task_summary)" in operator_status_source
             and '"route_hint": "settings:maintenance"' in operator_status_source
         ),
+        "ui_operator_running_task_overall_message_enabled": (
+            "def _latest_task_running(" in operator_status_source
+            and "def _task_running(" in operator_status_source
+            and "if _latest_task_running(task_summary):" in operator_status_source
+            and "最新任務執行中" in operator_status_source
+            and "背景任務正在處理；完成前先等待結果，不要重複送出同類任務。"
+            in operator_status_source
+            and (
+                operator_status_source.find('if _int_value(totals.get("stale_running_count")) > 0:')
+                < operator_status_source.find("if _latest_task_running(task_summary):")
+            )
+            and (
+                operator_status_source.find("if _latest_task_running(task_summary):")
+                < operator_status_source.find("if not _latest_report(reports):")
+            )
+        ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
             "def _latest_task_successful(" in operator_decisions_source
             and "def _task_row_successful(" in operator_decisions_source

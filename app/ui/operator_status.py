@@ -6,6 +6,7 @@ from typing import Any
 READY_OVERALL = {"state": "ready", "label": "可執行", "detail": "背景任務與最新版報告都可用。"}
 
 PAYLOAD_VALIDATION_DETAIL = "補強或重跑任務曾被 payload 驗證擋下；修正後可重試。"
+RUNNING_TASK_DETAIL = "背景任務正在處理；完成前先等待結果，不要重複送出同類任務。"
 
 
 def operator_status_overall(
@@ -32,6 +33,13 @@ def operator_status_overall(
             "state": "blocked",
             "label": "有卡住任務",
             "detail": "有任務疑似卡住，請先到維護頁處理。",
+        }
+
+    if _latest_task_running(task_summary):
+        return {
+            "state": "attention",
+            "label": "最新任務執行中",
+            "detail": RUNNING_TASK_DETAIL,
         }
 
     if not _latest_report(reports):
@@ -279,8 +287,40 @@ def _task_successful(task: dict) -> bool:
     }
 
 
+def _task_running(task: dict) -> bool:
+    if _task_successful(task) or _task_failed(task):
+        return False
+    if task.get("running") is True:
+        return True
+    status = _text(task.get("status")).casefold()
+    celery_status = _text(task.get("celery_status")).casefold()
+    return status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+        "in_progress",
+        "processing",
+        "submitted",
+        "scheduled",
+    } or celery_status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+    }
+
+
 def _latest_task_successful(task_summary: dict) -> bool:
     return _task_successful(_latest_task(task_summary))
+
+
+def _latest_task_running(task_summary: dict) -> bool:
+    return _task_running(_latest_task(task_summary))
 
 
 def _latest_task_failed(task_summary: dict) -> bool:

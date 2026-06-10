@@ -63,4 +63,12 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "這不代表背景任務已壞掉" in operator_decisions_source
             and 'source_ids=["services_status"]' in operator_decisions_source
         ),
+        "ui_operator_task_summary_unknown_guard_enabled": (
+            "def task_summary_unavailable(" in operator_status_source
+            and "任務摘要暫不可讀" in operator_status_source
+            and "目前無法讀取 /tasks/summary；不代表沒有失敗任務。"
+            in operator_status_source
+            and "task_summary_unavailable(task_summary)" in operator_status_source
+            and '"route_hint": "settings:maintenance"' in operator_status_source
+        ),
     }

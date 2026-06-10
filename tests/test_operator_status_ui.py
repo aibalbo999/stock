@@ -221,6 +221,21 @@ def test_operator_status_cards_do_not_report_worker_offline_when_service_status_
     }
 
 
+def test_operator_status_cards_mark_missing_task_summary_as_unknown_not_clear() -> None:
+    cards = operator_status_cards(_healthy_service_snapshot(), {}, _quota(), _reports())
+
+    assert cards[0]["state"] == "ready"
+    assert cards[1]["action_label"] == "讀報告"
+    assert cards[3] == {
+        "title": "待處理事項",
+        "value": "任務摘要暫不可讀",
+        "caption": "目前無法讀取 /tasks/summary；不代表沒有失敗任務。",
+        "state": "attention",
+        "action_label": "查看維護",
+        "route_hint": "settings:maintenance",
+    }
+
+
 def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback_caption() -> None:
     assert quota_operator_summary(_quota()) == {
         "recommended_model": "gemini-3.5-flash",

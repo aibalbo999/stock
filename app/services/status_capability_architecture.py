@@ -185,6 +185,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_operator_stale_running_primary_action_enabled")
             and frontend_status.get("ui_operator_quota_missing_read_guard_enabled")
             and frontend_status.get("ui_operator_service_status_unknown_guard_enabled")
+            and frontend_status.get("ui_operator_task_summary_unknown_guard_enabled")
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_report_rendering_status_extracted")
             and frontend_status.get("frontend_report_workflow_status_extracted")

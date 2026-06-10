@@ -113,6 +113,15 @@ def service_status_unavailable(service_snapshot: dict | None) -> bool:
     )
 
 
+def task_summary_unavailable(task_summary: dict | None) -> bool:
+    if not isinstance(task_summary, dict):
+        return True
+    return not any(
+        key in task_summary
+        for key in ("totals", "recent", "recent_failures", "alerts", "latest", "latest_task")
+    )
+
+
 def quota_operator_summary(quota: dict) -> dict[str, str]:
     recommended_model = _text(quota.get("recommended_model"), default="-")
     recommended_row = _recommended_quota_row(quota, recommended_model)
@@ -344,6 +353,14 @@ def _report_route_hint(report: dict) -> str:
 
 
 def _first_failure_summary(task_summary: dict) -> dict[str, str]:
+    if task_summary_unavailable(task_summary):
+        return {
+            "state": "attention",
+            "label": "任務摘要暫不可讀",
+            "detail": "目前無法讀取 /tasks/summary；不代表沒有失敗任務。",
+            "action_label": "查看維護",
+            "route_hint": "settings:maintenance",
+        }
     return task_failure_action_summary(_first_failure(task_summary))
 
 

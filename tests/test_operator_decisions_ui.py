@@ -392,6 +392,21 @@ def test_operator_next_action_reads_latest_when_healthy() -> None:
     assert action["route_hint"] == "report:15"
 
 
+def test_operator_next_action_keeps_report_readable_when_task_summary_missing() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "ready"
+    assert action["title"] == "閱讀最新版報告"
+    assert action["route_hint"] == "report:15"
+
+
 def test_operator_secondary_actions_show_ranked_incidents() -> None:
     actions = operator_secondary_actions(
         READY_QUEUE,

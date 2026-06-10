@@ -12,9 +12,7 @@ def latest_report_health_summary(
     quality_gate = _dict_value(report_result.get("quality_gate"))
     metrics = _dict_value(quality_gate.get("metrics"))
     candidates = report_result.get("candidate_whitelist") or []
-    promoted_count = int(
-        metrics.get("promoted_count") or len(report_result.get("tickers") or [])
-    )
+    promoted_count = _promoted_count(metrics, report_result)
     candidate_count = len([item for item in candidates if isinstance(item, dict)])
     required_count = _required_follow_up_count(follow_up_plan)
     if not report_id:
@@ -43,6 +41,16 @@ def _required_follow_up_count(follow_up_plan: dict) -> int:
     summary = _dict_value(follow_up_plan.get("summary"))
     selected = _dict_value(summary.get("selected"))
     value = selected.get("required_count", summary.get("required_count", 0))
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _promoted_count(metrics: dict, report_result: dict) -> int:
+    value = metrics.get("promoted_count")
+    if value in {None, ""}:
+        value = len(report_result.get("tickers") or [])
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError):

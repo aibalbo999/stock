@@ -47,6 +47,21 @@ def test_latest_report_health_summary_marks_required_gaps_as_attention() -> None
     assert result["action_label"] == "補強資料"
 
 
+def test_latest_report_health_summary_preserves_explicit_zero_promoted_count() -> None:
+    result = latest_report_health_summary(
+        {
+            "report_id": 18,
+            "topic": "散熱產業鏈",
+            "tickers": ["3017", "3324"],
+            "quality_gate": {"status": "caution", "metrics": {"promoted_count": 0}},
+            "candidate_whitelist": [{"ticker": "3017"}, {"ticker": "3324"}],
+        },
+        {"summary": {"required_count": 0}},
+    )
+
+    assert result["candidate_label"] == "候選 2｜正式 0"
+
+
 def test_latest_report_health_summary_handles_empty_report() -> None:
     result = latest_report_health_summary({}, {})
 

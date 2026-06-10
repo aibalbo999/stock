@@ -30,6 +30,7 @@ reports/
 backups/
 artifacts/
 *.log
+.superpowers/
 
 # OS/editor
 .DS_Store

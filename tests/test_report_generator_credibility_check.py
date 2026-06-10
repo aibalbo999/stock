@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from app.data_sources.news import NewsFetcher
@@ -10,7 +10,12 @@ from app.services.whitelist import SupplyChainWhitelist
 from report_generator_factories import make_finding
 
 
-def test_credibility_check_summarizes_traceability_and_company_limits() -> None:
+def test_credibility_check_summarizes_traceability_and_company_limits(monkeypatch) -> None:
+    monkeypatch.setattr(
+        report_credibility_check,
+        "now_taipei",
+        lambda: datetime(2026, 6, 10),
+    )
     generator_source = Path("app/services/report_generator.py").read_text()
     credibility_source = Path("app/services/report_credibility_check.py").read_text()
     generator = object.__new__(ReportGenerator)

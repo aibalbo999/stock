@@ -261,6 +261,115 @@ def test_ensure_background_process_starts_and_writes_pid(monkeypatch, tmp_path) 
     assert (tmp_path / "celery.pid").read_text(encoding="utf-8") == "456"
 
 
+def test_ensure_streamlit_process_restarts_stale_frontend(monkeypatch, tmp_path) -> None:
+    started_commands = []
+    stopped_ports = []
+    monkeypatch.setattr("scripts.start_system.ROOT", tmp_path)
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8501)
+    monkeypatch.setattr(
+        "scripts.start_system.run_streamlit_frontend_runtime_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "streamlit_playwright",
+            "status": "failed",
+            "frontend_runtime_identity": {
+                "status": "failed",
+                "reason": "streamlit_runtime_identity_marker_missing",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.stop_port_processes",
+        lambda port: stopped_ports.append(port)
+        or {"pids": [1234], "terminated": [1234], "killed": []},
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.wait_for_port_closed",
+        lambda _host, port, _timeout_seconds: port == 8501,
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.start_process",
+        lambda name, command, log_path: started_commands.append((name, command, log_path)) or True,
+    )
+
+    started, status = start_system_module.ensure_streamlit_process(
+        command=["python", "-m", "streamlit"],
+        log_path=tmp_path / "streamlit.log",
+        streamlit_url="http://127.0.0.1:8501",
+    )
+
+    assert started is True
+    assert status["status"] == "restarted"
+    assert status["reason"] == "streamlit_runtime_identity_marker_missing"
+    assert stopped_ports == [8501]
+    assert started_commands == [
+        ("streamlit", ["python", "-m", "streamlit"], tmp_path / "streamlit.log")
+    ]
+
+
+def test_ensure_streamlit_process_keeps_verified_running_frontend(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8501)
+    monkeypatch.setattr(
+        "scripts.start_system.run_streamlit_frontend_runtime_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "streamlit_playwright",
+            "status": "passed",
+            "frontend_runtime_identity": {"status": "passed", "reason": None},
+        },
+    )
+
+    def fail_if_stopped(_port):
+        raise AssertionError("verified Streamlit should not be stopped")
+
+    def fail_if_started(_name, _command, _log_path):
+        raise AssertionError("verified Streamlit should not be started again")
+
+    monkeypatch.setattr("scripts.start_system.stop_port_processes", fail_if_stopped)
+    monkeypatch.setattr("scripts.start_system.start_process", fail_if_started)
+
+    started, status = start_system_module.ensure_streamlit_process(
+        command=["python", "-m", "streamlit"],
+        log_path=tmp_path / "streamlit.log",
+        streamlit_url="http://127.0.0.1:8501",
+    )
+
+    assert started is False
+    assert status["status"] == "already_running"
+    assert status["reason"] == "frontend_runtime_verified"
+
+
+def test_streamlit_runtime_identity_failure_reason_reads_nested_reason() -> None:
+    reason = start_system_module.streamlit_runtime_identity_failure_reason(
+        {
+            "label": "streamlit_playwright",
+            "status": "failed",
+            "frontend_runtime_identity": {
+                "status": "failed",
+                "reason": "streamlit_runtime_commit_mismatch",
+            },
+        }
+    )
+
+    assert reason == "streamlit_runtime_commit_mismatch"
+
+
+def test_process_ids_on_port_ignores_stale_streamlit_pidfile_when_lsof_finds_port(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    (tmp_path / "streamlit.pid").write_text("9999", encoding="utf-8")
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.is_process_running", lambda pid: pid == 9999)
+
+    def fake_run(command, **kwargs):
+        assert command == ["lsof", "-nP", "-ti", "tcp:8501"]
+        return subprocess.CompletedProcess(command, 0, stdout="1234\n", stderr="")
+
+    monkeypatch.setattr("scripts.start_system.subprocess.run", fake_run)
+
+    assert start_system_module.process_ids_on_port(8501) == [1234]
+
+
 def test_apply_local_dependency_env_defaults_supplies_neo4j_for_one_click_start(
     monkeypatch,
 ) -> None:

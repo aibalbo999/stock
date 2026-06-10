@@ -4,6 +4,7 @@ import argparse
 import importlib
 import json
 import os
+import signal
 import socket
 import subprocess
 import time
@@ -41,6 +42,11 @@ STREAMLIT_PORT = 8501
 LOCAL_REDIS_PORT = 6379
 LOCAL_POSTGRES_PORT = 5432
 OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
+STALE_STREAMLIT_RESTART_REASONS = {
+    "streamlit_runtime_identity_marker_missing",
+    "streamlit_runtime_commit_mismatch",
+    "streamlit_runtime_commit_unavailable",
+}
 
 
 def main() -> int:
@@ -171,9 +177,7 @@ def main() -> int:
         ],
         log_path=LOG_DIR / "api.log",
     )
-    streamlit_started = ensure_process(
-        name="streamlit",
-        port=STREAMLIT_PORT,
+    streamlit_started, streamlit_runtime_status = ensure_streamlit_process(
         command=[
             str(python),
             "-m",
@@ -188,6 +192,7 @@ def main() -> int:
             "true",
         ],
         log_path=LOG_DIR / "streamlit.log",
+        streamlit_url=f"http://127.0.0.1:{STREAMLIT_PORT}",
     )
     schedule_config = ScheduleConfigStore().load()
     celery_started = False
@@ -228,8 +233,11 @@ def main() -> int:
         f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}"
     )
     print(
-        f"- Streamlit: {'已啟動' if streamlit_started else '已在執行'}，連線檢查：{'正常' if streamlit_ok else '尚未回應'}"
+        f"- Streamlit: {streamlit_process_label(streamlit_started, streamlit_runtime_status)}，"
+        f"連線檢查：{'正常' if streamlit_ok else '尚未回應'}"
     )
+    for line in streamlit_runtime_status_lines(streamlit_runtime_status):
+        print(line)
     if celery_enabled:
         print(
             "- 自動排程："
@@ -1305,8 +1313,13 @@ def ensure_process(name: str, port: int, command: list[str], log_path: Path) -> 
     if is_port_open("127.0.0.1", port):
         return False
 
+    return start_process(name, command, log_path)
+
+
+def start_process(name: str, command: list[str], log_path: Path) -> bool:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log_file:
         process = subprocess.Popen(
             command,
@@ -1318,6 +1331,173 @@ def ensure_process(name: str, port: int, command: list[str], log_path: Path) -> 
         )
     (RUN_DIR / f"{name}.pid").write_text(str(process.pid), encoding="utf-8")
     return True
+
+
+def ensure_streamlit_process(
+    command: list[str],
+    log_path: Path,
+    *,
+    streamlit_url: str,
+    smoke_timeout_seconds: float = 8.0,
+) -> tuple[bool, dict]:
+    if not is_port_open("127.0.0.1", STREAMLIT_PORT):
+        started = start_process("streamlit", command, log_path)
+        return started, {"status": "started", "reason": "port_closed"}
+
+    smoke_check = run_streamlit_frontend_runtime_smoke(
+        streamlit_url,
+        timeout_seconds=smoke_timeout_seconds,
+    )
+    stale_reason = streamlit_runtime_identity_failure_reason(smoke_check)
+    if stale_reason in STALE_STREAMLIT_RESTART_REASONS:
+        stop_result = stop_port_processes(STREAMLIT_PORT)
+        if not wait_for_port_closed("127.0.0.1", STREAMLIT_PORT, 8):
+            return (
+                False,
+                {
+                    "status": "stale_restart_blocked",
+                    "reason": stale_reason,
+                    "stop_result": stop_result,
+                    "smoke_check": smoke_check,
+                },
+            )
+        started = start_process("streamlit", command, log_path)
+        return (
+            started,
+            {
+                "status": "restarted",
+                "reason": stale_reason,
+                "stop_result": stop_result,
+                "smoke_check": smoke_check,
+            },
+        )
+
+    if smoke_check.get("status") == "passed":
+        reason = "frontend_runtime_verified"
+    else:
+        reason = str(smoke_check.get("reason") or stale_reason or "frontend_runtime_unverified")
+    return (
+        False,
+        {
+            "status": "already_running",
+            "reason": reason,
+            "smoke_check": smoke_check,
+        },
+    )
+
+
+def run_streamlit_frontend_runtime_smoke(
+    streamlit_url: str,
+    *,
+    timeout_seconds: float = 8.0,
+) -> dict:
+    from app.services.frontend_smoke import (
+        DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+        DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+        DEFAULT_VISUAL_TEXT_FRAGMENTS,
+        run_playwright_visual_smoke,
+    )
+
+    return run_playwright_visual_smoke(
+        streamlit_url,
+        screenshot_path=ROOT / "artifacts/frontend_smoke/start_system_streamlit.png",
+        check_frontend_runtime_identity=True,
+        expected_frontend_commit=None,
+        required_text_fragments=DEFAULT_VISUAL_TEXT_FRAGMENTS,
+        required_text_max_top_px=DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+        required_text_scope_selector=DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def streamlit_runtime_identity_failure_reason(smoke_check: dict) -> str:
+    frontend_identity = smoke_check.get("frontend_runtime_identity")
+    if isinstance(frontend_identity, dict) and frontend_identity.get("status") == "failed":
+        return str(frontend_identity.get("reason") or "")
+    if smoke_check.get("status") == "failed":
+        return str(smoke_check.get("reason") or "")
+    return ""
+
+
+def streamlit_process_label(started: bool, runtime_status: dict) -> str:
+    if runtime_status.get("status") == "restarted":
+        return "已重啟"
+    if started:
+        return "已啟動"
+    return "已在執行"
+
+
+def streamlit_runtime_status_lines(runtime_status: dict) -> list[str]:
+    status = str(runtime_status.get("status") or "")
+    reason = str(runtime_status.get("reason") or "")
+    if status == "restarted":
+        pids = (runtime_status.get("stop_result") or {}).get("terminated") or []
+        pid_text = f"；已停止 PID {', '.join(str(pid) for pid in pids)}" if pids else ""
+        return [f"- Streamlit runtime：偵測到舊前端（{reason}），已重新啟動 8501{pid_text}。"]
+    if status == "stale_restart_blocked":
+        return [
+            "- Streamlit runtime：偵測到舊前端，但無法自動釋放 8501；"
+            "請手動停止佔用該 port 的 Streamlit 後重跑啟動指令。"
+        ]
+    if status == "already_running" and reason not in {"", "frontend_runtime_verified"}:
+        return [f"- Streamlit runtime：既有程序保留，runtime smoke 未完成確認（{reason}）。"]
+    return []
+
+
+def stop_port_processes(port: int) -> dict:
+    pids = process_ids_on_port(port)
+    terminated: list[int] = []
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        terminated.append(pid)
+    deadline = time.time() + 5
+    while time.time() < deadline and any(is_process_running(pid) for pid in terminated):
+        time.sleep(0.2)
+    killed: list[int] = []
+    for pid in terminated:
+        if not is_process_running(pid):
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        killed.append(pid)
+    return {"pids": pids, "terminated": terminated, "killed": killed}
+
+
+def process_ids_on_port(port: int) -> list[int]:
+    try:
+        completed = subprocess.run(
+            ["lsof", "-nP", "-ti", f"tcp:{port}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids = {
+        int(line.strip())
+        for line in completed.stdout.splitlines()
+        if line.strip().isdigit()
+    }
+    return sorted(pids)
+
+
+def wait_for_port_closed(host: str, port: int, timeout_seconds: int) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if not is_port_open(host, port):
+            return True
+        time.sleep(0.2)
+    return not is_port_open(host, port)
 
 
 def ensure_background_process(name: str, command: list[str], log_path: Path) -> bool:

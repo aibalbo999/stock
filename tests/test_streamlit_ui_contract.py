@@ -120,6 +120,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "incident-action-controls" in combined
     assert "_render_incident_action_controls(" in source
     assert 'key=f"incident_action_{index}"' in source
+    assert '"action_label": incident_action_label(incident, index)' in source
+    assert "def incident_action_label(" in source
     assert "下一步建議" in source
     assert 'f"/reports/{int(latest_report_id)}"' in source
     assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source

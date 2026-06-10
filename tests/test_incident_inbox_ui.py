@@ -95,6 +95,34 @@ def test_incident_inbox_deduplicates_recent_failures() -> None:
     assert whitelist_incidents[0]["title"] == "白名單或輸入擋下任務"
     assert whitelist_incidents[0]["retryable"] is True
     assert whitelist_incidents[0]["route_hint"] == "task:abc"
+    assert whitelist_incidents[0]["action_label"] == "重試任務"
+
+
+def test_incident_inbox_labels_manual_failures_for_operator_review() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "recent_failures": [
+                {
+                    "task_id": "store-1",
+                    "operation": "report_write",
+                    "status": "failed",
+                    "error_category": "runtime_storage",
+                    "retryable": False,
+                }
+            ]
+        },
+        {},
+    )
+
+    assert incidents[0]["category"] == "runtime_storage"
+    assert incidents[0]["action_label"] == "檢查任務"
 
 
 def test_incident_inbox_reports_quota_pressure() -> None:

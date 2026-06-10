@@ -45,6 +45,15 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             )
             >= 2
         ),
+        "ui_incident_action_labels_enabled": (
+            '"action_label": incident_action_label(incident, index)'
+            in system_settings_maintenance_source
+            and "def incident_action_label(" in system_settings_maintenance_source
+            and '"action_label": _failure_action_label(category, retryable)' in ui_source
+            and "def _failure_action_label(" in ui_source
+            and 'return "重試任務"' in ui_source
+            and 'return "檢查任務"' in ui_source
+        ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
         and (ui_dir / "maintenance_ai_panels.py").exists()

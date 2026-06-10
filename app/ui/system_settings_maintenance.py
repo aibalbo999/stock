@@ -192,7 +192,7 @@ def _render_incident_action_controls(incidents: list[dict]) -> None:
         with columns[index]:
             render_operator_route_button(
                 {
-                    "action_label": f"處理事件 {index + 1}",
+                    "action_label": incident_action_label(incident, index),
                     "route_hint": incident.get("route_hint"),
                 },
                 key=f"incident_action_{index}",
@@ -200,3 +200,8 @@ def _render_incident_action_controls(incidents: list[dict]) -> None:
                 show_caption=False,
             )
             st.caption(str(incident.get("title") or incident.get("route_hint") or ""))
+
+
+def incident_action_label(incident: dict, index: int) -> str:
+    label = str(incident.get("action_label") or "").strip()
+    return label or f"處理事件 {index + 1}"

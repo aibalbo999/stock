@@ -58,6 +58,7 @@ def incident_inbox_items(
                 "title": "背景任務未就緒",
                 "impact": "分析、補強與資料刷新可能無法完成。",
                 "next_action": "到維護頁檢查 Redis/Celery worker。",
+                "action_label": "查看維護",
                 "route_hint": "settings:maintenance",
                 "retryable": False,
                 "source": "task_queue",
@@ -76,6 +77,7 @@ def incident_inbox_items(
                 "title": f"有 {stale_count} 個任務疑似卡住",
                 "impact": "新的補強或報告任務可能排隊等待過久。",
                 "next_action": "到維護頁查看任務狀態並重試可重試任務。",
+                "action_label": "查看任務",
                 "route_hint": "settings:maintenance",
                 "retryable": False,
                 "source": "task_queue",
@@ -134,6 +136,7 @@ def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
                 "title": message,
                 "impact": "背景任務觀測已回報異常。",
                 "next_action": "；".join(next_steps) if next_steps else "到維護頁查看背景任務觀測。",
+                "action_label": "查看維護",
                 "route_hint": "settings:maintenance",
                 "retryable": False,
                 "source": code,
@@ -177,6 +180,7 @@ def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:
                     failure.get("next_action"),
                     default=_failure_next_action(category, retryable),
                 ),
+                "action_label": _failure_action_label(category, retryable),
                 "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
                 "retryable": retryable,
                 "source": _failure_source(failure, operation),
@@ -201,6 +205,7 @@ def _quota_incident(quota: dict) -> dict[str, Any] | None:
         "title": "AI 額度需注意",
         "impact": f"目前建議模型 {model} 額度狀態為 {summary.get('remaining') or '-'}。",
         "next_action": "查看額度頁，等待重置或確認 fallback 模型。",
+        "action_label": "查看額度",
         "route_hint": "settings:ai_quota",
         "retryable": False,
         "source": model,
@@ -222,6 +227,7 @@ def _report_lifecycle_incident(lifecycle: dict) -> dict[str, Any] | None:
         "title": lifecycle.get("trust_label") or "報告品質需確認",
         "impact": lifecycle.get("trust_explanation") or "最新版報告需要人工確認。",
         "next_action": lifecycle.get("primary_action") or "查看報告中心",
+        "action_label": lifecycle.get("primary_action") or "查看報告",
         "route_hint": lifecycle.get("route_hint") or "report_center",
         "retryable": False,
         "source": source,
@@ -337,6 +343,16 @@ def _failure_next_action(category: str, retryable: bool) -> str:
     if retryable:
         return "到維護頁重試此任務"
     return "到維護頁查看失敗診斷"
+
+
+def _failure_action_label(category: str, retryable: bool) -> str:
+    if retryable:
+        return "重試任務"
+    if category == "quota":
+        return "查看額度"
+    if category in {"external_config", "task_queue", "visual_rag", "data_source"}:
+        return "修復配置"
+    return "檢查任務"
 
 
 def _dedupe_incidents(incidents: list[dict[str, Any]]) -> list[dict[str, Any]]:

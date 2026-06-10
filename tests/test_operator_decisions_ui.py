@@ -271,8 +271,97 @@ def test_operator_secondary_actions_hide_primary_queue_blocker() -> None:
     )
 
     assert all(action["title"] != "背景任務未就緒" for action in actions)
-    assert all(action["route_hint"] != "settings:maintenance" for action in actions)
     assert any(action["title"] == "白名單或輸入擋下任務" for action in actions)
+
+
+def test_operator_secondary_actions_keep_distinct_incident_with_same_route() -> None:
+    actions = operator_secondary_actions(
+        {"task_queue": {"ready": False, "processing_ready": False, "worker_online": False}},
+        {
+            "recent_failures": [
+                {
+                    "operation": "report_write",
+                    "status": "failed",
+                    "error_category": "runtime_storage",
+                    "error_severity": "error",
+                    "retryable": False,
+                }
+            ]
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert any(action["title"] == "本機儲存失敗" for action in actions)
+    assert any(action["route_hint"] == "settings:maintenance" for action in actions)
+
+
+def test_operator_secondary_actions_hide_primary_report_route_action() -> None:
+    primary = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 18, "title": "散熱產業鏈"}],
+        {
+            "report_id": 18,
+            "topic": "散熱產業鏈",
+            "quality_gate": {"status": "caution", "metrics": {"promoted_count": 0}},
+            "candidate_whitelist": [{"ticker": "3017"}],
+        },
+        {"summary": {"required_count": 0}},
+    )
+    actions = operator_secondary_actions(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 18, "title": "散熱產業鏈"}],
+        {
+            "report_id": 18,
+            "topic": "散熱產業鏈",
+            "quality_gate": {"status": "caution", "metrics": {"promoted_count": 0}},
+            "candidate_whitelist": [{"ticker": "3017"}],
+        },
+        {"summary": {"required_count": 0}},
+        primary_action=primary,
+    )
+
+    assert primary["route_hint"] == "report:18"
+    assert all(action["route_hint"] != "report:18" for action in actions)
+
+
+def test_operator_secondary_actions_hide_primary_data_gap_action() -> None:
+    primary = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 12, "title": "AI 產業鏈"}],
+        {
+            "report_id": 12,
+            "topic": "AI 產業鏈",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {"summary": {"required_count": 2}, "status": "needs_follow_up"},
+    )
+    actions = operator_secondary_actions(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 12, "title": "AI 產業鏈"}],
+        {
+            "report_id": 12,
+            "topic": "AI 產業鏈",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {"summary": {"required_count": 2}, "status": "needs_follow_up"},
+        primary_action=primary,
+    )
+
+    assert primary["route_hint"] == "data_enrichment"
+    assert all(action["route_hint"] != "data_enrichment" for action in actions)
 
 
 def test_operator_primary_action_contains_contract_keys() -> None:

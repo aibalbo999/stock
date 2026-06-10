@@ -217,21 +217,27 @@ def operator_secondary_actions(
     ]
     report_id = _report_id(report_payload, latest_report)
     if report_id is not None:
-        secondary.append(
+        _append_secondary_action(
+            secondary,
+            primary,
             {
                 "title": "查看報告生命週期",
                 "detail": lifecycle.get("trust_label") or "確認最新版報告狀態",
                 "state": lifecycle.get("overall_state") or "attention",
                 "route_hint": f"report:{report_id}",
-            }
+                "source_ids": [f"report:{report_id}"],
+            },
         )
-    secondary.append(
+    _append_secondary_action(
+        secondary,
+        primary,
         {
             "title": "資料缺口行動地圖",
             "detail": "查看目前補資料動作能改善哪些報告缺口。",
             "state": "attention",
             "route_hint": "data_enrichment",
-        }
+            "source_ids": [],
+        },
     )
     return _dedupe_secondary_actions(secondary)[:3]
 
@@ -306,14 +312,36 @@ def _dedupe_secondary_actions(actions: list[dict[str, Any]]) -> list[dict[str, A
     return deduped
 
 
+def _append_secondary_action(
+    secondary: list[dict[str, Any]],
+    primary_action: dict,
+    action: dict[str, Any],
+) -> None:
+    if _secondary_action_matches_primary(action, primary_action):
+        return
+    secondary.append({key: value for key, value in action.items() if key != "source_ids"})
+
+
 def _incident_matches_primary(incident: dict, primary_action: dict) -> bool:
     source = str(incident.get("source") or "").strip()
     return (
         bool(primary_action)
         and (
             incident.get("title") == primary_action.get("title")
-            or incident.get("route_hint") == primary_action.get("route_hint")
             or source in set(primary_action.get("source_ids") or [])
+        )
+    )
+
+
+def _secondary_action_matches_primary(action: dict, primary_action: dict) -> bool:
+    action_sources = {str(source) for source in action.get("source_ids") or [] if str(source).strip()}
+    primary_sources = set(primary_action.get("source_ids") or [])
+    return (
+        bool(primary_action)
+        and (
+            action.get("title") == primary_action.get("title")
+            or action.get("route_hint") == primary_action.get("route_hint")
+            or bool(action_sources & primary_sources)
         )
     )
 

@@ -574,6 +574,23 @@ textarea:focus,
     color: var(--stock-text);
     font-size: 0.9rem;
 }
+.incident-action-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: -4px 0 8px;
+    color: var(--stock-muted);
+}
+.incident-action-controls span {
+    color: var(--stock-danger);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.incident-action-controls strong {
+    color: var(--stock-text);
+    font-size: 0.9rem;
+}
 .operator-secondary-actions {
     grid-column: 1 / -1;
     display: grid;
@@ -713,6 +730,9 @@ textarea:focus,
     border: 1px solid var(--stock-border);
     border-radius: 8px;
     padding: 16px;
+}
+.incident-inbox.is-list {
+    margin-top: 8px;
 }
 .incident-inbox-head,
 .data-gap-action-head {

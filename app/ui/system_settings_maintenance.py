@@ -23,6 +23,7 @@ from app.ui.maintenance_panels import (
     render_service_metrics_panel,
     render_upgrade_audit_panel,
 )
+from app.ui.operator_route_controls import render_operator_route_button
 
 
 def render_maintenance_tab() -> None:
@@ -134,6 +135,12 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
 <span>Info {counts["info"]}</span>
 </div>
 </div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    _render_incident_action_controls(incidents)
+    st.markdown(
+        f"""<section class="incident-inbox is-list" aria-label="事件清單">
 <div class="incident-list">
 {incident_html}
 </div>
@@ -149,3 +156,29 @@ def _incident_card_html(incident: dict) -> str:
 <em>{escape(incident.get("next_action", ""))}</em>
 <small>{escape(incident.get("route_hint", ""))}</small>
 </article>"""
+
+
+def _render_incident_action_controls(incidents: list[dict]) -> None:
+    actionable = [incident for incident in incidents if incident.get("route_hint")][:3]
+    if not actionable:
+        return
+    st.markdown(
+        """<section class="incident-action-controls" aria-label="事件處理操作">
+<span>處理事件</span>
+<strong>開啟對應頁面或任務檢視</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    columns = st.columns(len(actionable), gap="small")
+    for index, incident in enumerate(actionable):
+        with columns[index]:
+            render_operator_route_button(
+                {
+                    "action_label": f"處理事件 {index + 1}",
+                    "route_hint": incident.get("route_hint"),
+                },
+                key=f"incident_action_{index}",
+                primary=index == 0,
+                show_caption=False,
+            )
+            st.caption(str(incident.get("title") or incident.get("route_hint") or ""))

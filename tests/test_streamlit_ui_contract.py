@@ -58,6 +58,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source
     assert "from app.ui.maintenance_panels import (" in source
+    assert "from app.ui.operator_route_controls import render_operator_route_button" in source
     assert (
         "from app.ui.maintenance_deployment_panel import render_external_deployment_panel" in source
     )
@@ -107,6 +108,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "st.switch_page(" in source
     assert "pending_selected_report_id" in source
     assert "maintenance_inspect_task_id" in source
+    assert "incident-action-controls" in combined
+    assert "_render_incident_action_controls(" in source
+    assert 'key=f"incident_action_{index}"' in source
     assert "下一步建議" in source
     assert 'f"/reports/{int(latest_report_id)}"' in source
     assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source

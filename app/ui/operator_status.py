@@ -80,6 +80,7 @@ def operator_status_cards(
     service_status_missing = service_status_unavailable(service_snapshot)
     task_queue = _task_queue_from_snapshot(service_snapshot)
     report = _latest_report(reports)
+    running_task = _latest_task(task_summary) if _latest_task_running(task_summary) else {}
     quota_summary = quota_operator_summary(quota)
     failure_summary = _first_failure_summary(task_summary)
     queue_state = (
@@ -103,11 +104,17 @@ def operator_status_cards(
         },
         {
             "title": "最新版報告",
-            "value": _report_value(report),
-            "caption": _report_caption(report),
+            "value": "生成中" if running_task and not report else _report_value(report),
+            "caption": (
+                "最新任務執行中" if running_task and not report else _report_caption(report)
+            ),
             "state": "ready" if report else "attention",
-            "action_label": "讀報告" if report else "建立分析",
-            "route_hint": _report_route_hint(report),
+            "action_label": "讀報告" if report else "查看任務" if running_task else "建立分析",
+            "route_hint": (
+                _task_route_hint(running_task)
+                if running_task and not report
+                else _report_route_hint(report)
+            ),
         },
         {
             "title": "AI 額度",
@@ -415,6 +422,11 @@ def _report_caption(report: dict) -> str:
 def _report_route_hint(report: dict) -> str:
     report_id = _report_id(report)
     return f"report:{report_id}" if report_id else "analysis"
+
+
+def _task_route_hint(task: dict) -> str:
+    task_id = _text(task.get("task_id"))
+    return f"task:{task_id}" if task_id else "settings:maintenance"
 
 
 def _first_failure_summary(task_summary: dict) -> dict[str, str]:

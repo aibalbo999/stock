@@ -188,6 +188,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_operator_task_summary_unknown_guard_enabled")
             and frontend_status.get("ui_operator_running_task_overall_message_enabled")
             and frontend_status.get("ui_operator_running_task_primary_action_enabled")
+            and frontend_status.get("ui_operator_running_task_report_card_enabled")
             and frontend_status.get(
                 "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled"
             )

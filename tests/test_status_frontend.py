@@ -186,6 +186,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_operator_task_summary_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_operator_running_task_overall_message_enabled"] is True
     assert status["frontend"]["ui_operator_running_task_primary_action_enabled"] is True
+    assert status["frontend"]["ui_operator_running_task_report_card_enabled"] is True
     assert (
         status["frontend"][
             "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled"
@@ -479,6 +480,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert (
         frontend_arch["evidence"]["ui_operator_running_task_primary_action_enabled"] is True
     )
+    assert frontend_arch["evidence"]["ui_operator_running_task_report_card_enabled"] is True
     assert (
         frontend_arch["evidence"][
             "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled"

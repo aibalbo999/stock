@@ -320,6 +320,38 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
     ]
 
 
+def test_operator_status_cards_show_latest_report_generating_when_first_task_running() -> None:
+    cards = operator_status_cards(
+        _healthy_service_snapshot(),
+        {
+            "latest": {
+                "task_id": "first-report-task",
+                "operation": "report_generation",
+                "status": "running",
+                "celery_status": "STARTED",
+            },
+            "totals": {
+                "run_count": 1,
+                "success_count": 0,
+                "failed_count": 0,
+                "running_count": 1,
+                "stale_running_count": 0,
+            },
+        },
+        _quota(),
+        [],
+    )
+
+    assert cards[1] == {
+        "title": "最新版報告",
+        "value": "生成中",
+        "caption": "最新任務執行中",
+        "state": "attention",
+        "action_label": "查看任務",
+        "route_hint": "task:first-report-task",
+    }
+
+
 def test_operator_status_cards_keep_historical_failure_trackable_when_latest_task_healthy() -> None:
     cards = operator_status_cards(
         _healthy_service_snapshot(),

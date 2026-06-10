@@ -105,6 +105,21 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 < operator_decisions_source.find('title="先建立最新版報告"')
             )
         ),
+        "ui_operator_running_task_report_card_enabled": (
+            "running_task = _latest_task(task_summary) if _latest_task_running(task_summary) else {}"
+            in operator_status_source
+            and "生成中" in operator_status_source
+            and "最新任務執行中" in operator_status_source
+            and '"查看任務" if running_task else "建立分析"' in operator_status_source
+            and "def _task_route_hint(" in operator_status_source
+            and "_task_route_hint(running_task)" in operator_status_source
+            and (
+                operator_status_source.find(
+                    "running_task = _latest_task(task_summary) if _latest_task_running(task_summary) else {}"
+                )
+                < operator_status_source.find('"title": "最新版報告"')
+            )
+        ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
             "def _latest_task_successful(" in operator_decisions_source
             and "def _task_row_successful(" in operator_decisions_source

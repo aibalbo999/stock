@@ -65,6 +65,18 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
             in data_enrichment_market_source
         ),
+        "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
+            "def pending_market_selection_state(" in data_enrichment_market_source
+            and "def _normalized_pending_tickers(" in data_enrichment_market_source
+            and "pending_market_selection_state(pending_tickers, allowed_tickers)"
+            in data_enrichment_market_source
+            and '"pending_market_selection_state"' in data_enrichment_market_source
+            and "建議股票未在目前白名單" in data_enrichment_market_source
+            and '"route_hint": "settings:scope"' in data_enrichment_market_source
+            and 'class="market-allowlist-warning' in data_enrichment_market_source
+            and 'key="market_pending_allowlist_route"' in data_enrichment_market_source
+            and 'if route == "settings:scope":' in operator_routes_source
+        ),
         "ui_market_cache_operator_summary_enabled": (
             "def market_cache_operator_summary(" in data_enrichment_market_source
             and "def _render_market_cache_operator_summary(" in data_enrichment_market_source

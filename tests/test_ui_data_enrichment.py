@@ -109,6 +109,22 @@ def test_market_data_operation_button_type_prioritizes_pending_operation() -> No
     )
 
 
+def test_pending_market_selection_state_reports_tickers_outside_allowlist() -> None:
+    assert hasattr(data_enrichment_market, "pending_market_selection_state")
+    state = data_enrichment_market.pending_market_selection_state(
+        ["2330", "9999", "  "], ["2330", "2382"]
+    )
+
+    assert state == {
+        "selected": ["2330"],
+        "rejected": ["9999"],
+        "state": "attention",
+        "detail": "建議股票未在目前白名單：9999。已先選取可用股票：2330。",
+        "action_label": "檢查股票範圍",
+        "route_hint": "settings:scope",
+    }
+
+
 def test_market_operation_readiness_rows_show_pending_operation_and_ready_state() -> None:
     assert hasattr(data_enrichment_market, "market_operation_readiness_rows")
     rows = data_enrichment_market.market_operation_readiness_rows(

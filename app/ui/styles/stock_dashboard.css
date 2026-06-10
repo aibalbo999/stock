@@ -467,6 +467,7 @@ textarea:focus,
 .report-lifecycle-strip,
 .incident-inbox,
 .data-gap-action-map,
+.market-allowlist-warning,
 .market-cache-readiness,
 .market-operation-readiness,
 .action-impact-grid {
@@ -818,6 +819,7 @@ textarea:focus,
 }
 .incident-inbox,
 .data-gap-action-map,
+.market-allowlist-warning,
 .market-cache-readiness,
 .market-operation-readiness {
     background: var(--stock-surface);
@@ -827,6 +829,22 @@ textarea:focus,
 }
 .incident-inbox.is-list {
     margin-top: 8px;
+}
+.market-allowlist-warning {
+    display: grid;
+    gap: 5px;
+    border-color: rgba(146, 64, 14, 0.28);
+    background: var(--stock-warning-soft);
+}
+.market-allowlist-warning span {
+    color: var(--stock-warning);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.market-allowlist-warning strong {
+    color: var(--stock-text);
+    font-size: 0.95rem;
+    line-height: 1.5;
 }
 .incident-inbox-head,
 .data-gap-action-head,

@@ -111,6 +111,7 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     _render_data_gap_action_map(data_gap_action_items(latest_report_payload, latest_follow_up_plan))
 
     _apply_pending_market_data_selection(allowed_tickers)
+    _render_pending_market_selection_notice()
     selected_market_tickers = st.multiselect(
         "選擇要刷新或補文件的股票",
         options=allowed_tickers,
@@ -314,11 +315,47 @@ def _render_data_gap_action_controls(items: list[dict]) -> None:
             )
 
 
+def pending_market_selection_state(
+    pending_tickers: object,
+    allowed_tickers: list[str],
+) -> dict[str, Any]:
+    requested = _normalized_pending_tickers(pending_tickers)
+    allowed = {str(ticker).strip() for ticker in allowed_tickers if str(ticker).strip()}
+    selected = [ticker for ticker in requested if ticker in allowed]
+    rejected = [ticker for ticker in requested if ticker not in allowed]
+    if rejected:
+        selected_detail = (
+            f"已先選取可用股票：{'、'.join(selected)}。"
+            if selected
+            else "目前沒有可用股票可自動選取。"
+        )
+        return {
+            "selected": selected,
+            "rejected": rejected,
+            "state": "attention",
+            "detail": f"建議股票未在目前白名單：{'、'.join(rejected)}。{selected_detail}",
+            "action_label": "檢查股票範圍",
+            "route_hint": "settings:scope",
+        }
+    return {
+        "selected": selected,
+        "rejected": [],
+        "state": "ready",
+        "detail": "",
+        "action_label": "",
+        "route_hint": "",
+    }
+
+
 def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
     pending_tickers = st.session_state.pop("pending_data_enrichment_tickers", None)
-    selected_tickers = _allowed_pending_tickers(pending_tickers, allowed_tickers)
-    if selected_tickers:
-        st.session_state["market_data_tickers"] = selected_tickers
+    if pending_tickers is not None:
+        selection_state = pending_market_selection_state(pending_tickers, allowed_tickers)
+        st.session_state["market_data_tickers"] = selection_state["selected"]
+        if selection_state["rejected"]:
+            st.session_state["pending_market_selection_state"] = selection_state
+        else:
+            st.session_state.pop("pending_market_selection_state", None)
         return
     if "market_data_tickers" not in st.session_state:
         st.session_state["market_data_tickers"] = _default_market_tickers(allowed_tickers)
@@ -327,6 +364,41 @@ def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
         st.session_state.get("market_data_tickers"),
         allowed_tickers,
     )
+
+
+def _render_pending_market_selection_notice() -> None:
+    selection_state = st.session_state.get("pending_market_selection_state")
+    if not isinstance(selection_state, dict) or not selection_state.get("rejected"):
+        return
+    st.markdown(
+        f"""<section class="market-allowlist-warning is-{escape(selection_state.get("state", "attention"))}" aria-label="白名單提醒">
+<span>白名單提醒</span>
+<strong>{escape(str(selection_state.get("detail") or ""))}</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    render_operator_route_button(
+        {
+            "action_label": selection_state.get("action_label"),
+            "route_hint": selection_state.get("route_hint"),
+        },
+        key="market_pending_allowlist_route",
+        show_caption=True,
+    )
+
+
+def _normalized_pending_tickers(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    tickers = []
+    seen = set()
+    for ticker in value:
+        text = str(ticker).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        tickers.append(text)
+    return tickers
 
 
 def market_data_operation_button_type(

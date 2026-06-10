@@ -65,6 +65,11 @@ def test_operator_route_target_preserves_task_for_maintenance_drilldown() -> Non
 
 
 def test_operator_route_target_maps_settings_sections() -> None:
+    assert operator_route_target("settings:scope") == {
+        "page": "pages/04_系統設定.py",
+        "session_updates": {"pending_settings_section": "scope"},
+        "caption": "開啟系統設定的股票範圍區",
+    }
     assert operator_route_target("settings:ai_quota") == {
         "page": "pages/04_系統設定.py",
         "session_updates": {"pending_settings_section": "ai_quota"},

@@ -174,6 +174,38 @@ def test_market_operation_readiness_rows_explain_invalid_date_range_only_where_n
     assert by_operation["company_filings_fetch"]["disabled_reason"] == "可送出背景任務"
 
 
+def test_market_operation_readiness_rows_block_when_worker_offline() -> None:
+    rows = data_enrichment_market.market_operation_readiness_rows(
+        selected_market_tickers=["2330"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation="market_refresh",
+        task_queue={"ready": True, "processing_ready": False, "worker_online": False},
+    )
+
+    assert {row["state"] for row in rows} == {"blocked"}
+    assert {row["disabled_reason"] for row in rows} == {
+        "背景任務未就緒，請先到維護頁檢查 Worker"
+    }
+    assert rows[0]["selected"] == "yes"
+    assert rows[0]["button_type"] == "primary"
+
+
+def test_market_operation_readiness_rows_show_queue_status_when_unavailable() -> None:
+    rows = data_enrichment_market.market_operation_readiness_rows(
+        selected_market_tickers=["2330"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation=None,
+        task_queue={"ready": False, "worker_online": True},
+    )
+
+    assert {row["state"] for row in rows} == {"blocked"}
+    assert {row["disabled_reason"] for row in rows} == {
+        "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+    }
+
+
 def test_market_cache_operator_summary_flags_stale_and_missing_cache() -> None:
     rows = market_cache_operator_summary(
         {

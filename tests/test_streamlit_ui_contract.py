@@ -225,6 +225,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "market-operation-readiness" in combined
     assert "執行前檢查" in source
     assert "可送出背景任務" in source
+    assert "task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)" in source
+    assert "task_queue=task_queue_status" in source
+    assert "task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))" in source
+    assert "def _task_queue_block_reason(" in source
+    assert "背景任務未就緒，請先到維護頁檢查 Worker" in source
+    assert "背景任務未就緒，請先到維護頁檢查 Redis/Celery" in source
     assert "from app.ui.data_gap_actions import (" in source
     assert "data_gap_action_items(" in source
     assert "data_gap_action_summary(" in source

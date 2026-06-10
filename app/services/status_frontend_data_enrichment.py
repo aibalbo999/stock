@@ -53,6 +53,18 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "可送出背景任務" in data_enrichment_market_source
             and "disabled_reason" in data_enrichment_market_source
         ),
+        "ui_data_enrichment_task_queue_guard_enabled": (
+            "task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)"
+            in data_enrichment_market_source
+            and "task_queue=task_queue_status" in data_enrichment_market_source
+            and "task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))"
+            in data_enrichment_market_source
+            and "def _task_queue_status_from_service_snapshot(" in data_enrichment_market_source
+            and "def _task_queue_block_reason(" in data_enrichment_market_source
+            and "背景任務未就緒，請先到維護頁檢查 Worker" in data_enrichment_market_source
+            and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+            in data_enrichment_market_source
+        ),
         "ui_market_cache_operator_summary_enabled": (
             "def market_cache_operator_summary(" in data_enrichment_market_source
             and "def _render_market_cache_operator_summary(" in data_enrichment_market_source

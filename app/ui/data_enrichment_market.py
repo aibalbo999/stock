@@ -127,11 +127,14 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
 
     has_market_selection = bool(selected_market_tickers)
     has_valid_market_range = market_start <= market_end
+    task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)
+    task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))
     operation_readiness = market_operation_readiness_rows(
         selected_market_tickers=selected_market_tickers,
         market_start=market_start,
         market_end=market_end,
         pending_operation=pending_operation,
+        task_queue=task_queue_status,
     )
     if not has_market_selection:
         st.caption("請先選擇至少一檔股票。")
@@ -143,22 +146,24 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     refresh_price = refresh_cols[0].button(
         "刷新股價",
         type=market_data_operation_button_type(pending_operation, "market_refresh"),
-        disabled=not (has_market_selection and has_valid_market_range),
+        disabled=task_queue_blocks_submission
+        or not (has_market_selection and has_valid_market_range),
     )
     refresh_financials = refresh_cols[1].button(
         "刷新 5 年財報",
         type=market_data_operation_button_type(pending_operation, "fundamentals_refresh"),
-        disabled=not has_market_selection,
+        disabled=task_queue_blocks_submission or not has_market_selection,
     )
     refresh_valuations = refresh_cols[2].button(
         "刷新估值",
         type=market_data_operation_button_type(pending_operation, "valuation_refresh"),
-        disabled=not (has_market_selection and has_valid_market_range),
+        disabled=task_queue_blocks_submission
+        or not (has_market_selection and has_valid_market_range),
     )
     refresh_filings = refresh_cols[3].button(
         "補抓公司文件",
         type=market_data_operation_button_type(pending_operation, "company_filings_fetch"),
-        disabled=not has_market_selection,
+        disabled=task_queue_blocks_submission or not has_market_selection,
     )
     st.markdown(
         """<div class="action-impact-grid" aria-label="資料補強影響">
@@ -340,10 +345,12 @@ def market_operation_readiness_rows(
     market_start: Any,
     market_end: Any,
     pending_operation: str | None,
+    task_queue: dict | None = None,
 ) -> list[dict[str, str]]:
     selected_count = len([ticker for ticker in selected_market_tickers if str(ticker).strip()])
     has_market_selection = selected_count > 0
     has_valid_market_range = market_start <= market_end
+    task_queue_block_reason = _task_queue_block_reason(task_queue)
 
     rows = []
     for operation in MARKET_OPERATION_ORDER:
@@ -352,12 +359,14 @@ def market_operation_readiness_rows(
             operation,
             has_market_selection=has_market_selection,
             has_valid_market_range=has_valid_market_range,
+            task_queue_block_reason=task_queue_block_reason,
         )
+        state = "blocked" if task_queue_block_reason else "ready" if not disabled_reason else "attention"
         rows.append(
             {
                 "operation": operation,
                 "label": metadata["label"],
-                "state": "ready" if not disabled_reason else "attention",
+                "state": state,
                 "selected": "yes" if str(pending_operation or "").strip() == operation else "no",
                 "caption": _market_operation_caption(
                     selected_count,
@@ -434,11 +443,35 @@ def _market_operation_disabled_reason(
     *,
     has_market_selection: bool,
     has_valid_market_range: bool,
+    task_queue_block_reason: str = "",
 ) -> str:
+    if task_queue_block_reason:
+        return task_queue_block_reason
     if not has_market_selection:
         return "請先選擇至少一檔股票"
     if operation in {"market_refresh", "valuation_refresh"} and not has_valid_market_range:
         return "起始日期不可晚於結束日期"
+    return ""
+
+
+def _task_queue_status_from_service_snapshot(service_snapshot: dict) -> dict:
+    if not isinstance(service_snapshot, dict):
+        return {}
+    task_queue = service_snapshot.get("task_queue")
+    return task_queue if isinstance(task_queue, dict) else {}
+
+
+def _task_queue_block_reason(task_queue: dict | None) -> str:
+    if task_queue is None:
+        return ""
+    if not isinstance(task_queue, dict) or not task_queue:
+        return "尚未取得背景任務狀態"
+    if not task_queue.get("ready"):
+        return "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+    if task_queue.get("worker_online") is False:
+        return "背景任務未就緒，請先到維護頁檢查 Worker"
+    if "processing_ready" in task_queue and not task_queue.get("processing_ready"):
+        return "背景任務未就緒，請先到維護頁檢查 Worker"
     return ""
 
 
@@ -480,7 +513,7 @@ def _render_market_operation_readiness(rows: list[dict[str, str]]) -> None:
 <div class="market-operation-readiness-head">
 <div class="workspace-kicker">執行前檢查</div>
 <h3>先確認能否送出背景任務</h3>
-<p>每個刷新操作會先檢查股票、日期與目前建議操作；可送出時再按下方按鈕。</p>
+<p>每個刷新操作會先檢查背景任務、股票、日期與目前建議操作；可送出時再按下方按鈕。</p>
 </div>
 <div class="market-operation-readiness-list">
 {cards_html}

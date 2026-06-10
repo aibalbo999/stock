@@ -141,3 +141,36 @@ def test_latest_report_lifecycle_falls_back_to_tickers_when_promoted_metrics_mis
 
     assert lifecycle["overall_state"] == "ready"
     assert stage_by_key(lifecycle, "quality")["state"] == "done"
+
+
+def test_latest_report_lifecycle_blocks_insufficient_quality_gate() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 34,
+            "topic": "網通產業鏈",
+            "quality_gate": {"status": "insufficient", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2345"}, {"ticker": "3596"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "blocked"
+    assert stage_by_key(lifecycle, "quality")["state"] == "blocked"
+    assert stage_by_key(lifecycle, "quality")["label"] == "insufficient"
+
+
+def test_latest_report_lifecycle_attention_explanation_names_incomplete_rerun() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 35,
+            "topic": "車用電子",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "auto_follow_up": {"rerun_report": {"status": "skipped"}},
+            "candidate_whitelist": [{"ticker": "2308"}, {"ticker": "3034"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert "0 項必補缺口" not in lifecycle["trust_explanation"]
+    assert "尚未產生可讀的重跑報告" in lifecycle["trust_explanation"]

@@ -4,7 +4,7 @@ from typing import Any
 
 
 RUNNING_STATUSES = {"queued", "started", "running", "pending", "processing"}
-BLOCKED_QUALITY_STATUSES = {"failed", "blocked", "error"}
+BLOCKED_QUALITY_STATUSES = {"failed", "blocked", "error", "insufficient"}
 ATTENTION_QUALITY_STATUSES = {"caution", "warning", "attention", "needs_follow_up"}
 
 
@@ -140,6 +140,7 @@ def latest_report_lifecycle(
             candidate_count=candidate_count,
             promoted_count=promoted_count,
             required_count=required_count,
+            stage_cards=stage_cards,
         ),
         "primary_action": primary_action,
         "route_hint": route_hint,
@@ -192,15 +193,32 @@ def _trust_explanation(
     candidate_count: int,
     promoted_count: int,
     required_count: int,
+    stage_cards: list[dict[str, str]],
 ) -> str:
     if overall_state == "blocked":
         return f"{topic} 報告目前正式分析 {promoted_count} 檔，需先補強資料或品質門檻。"
     if overall_state == "running":
         return f"{topic} 報告正在補強，等待背景任務完成後再閱讀最新版。"
     if overall_state == "attention":
+        if required_count > 0:
+            return (
+                f"{topic} 報告候選 {candidate_count} 檔、正式分析 {promoted_count} 檔，"
+                f"仍有 {required_count} 項必補缺口。"
+            )
+        attention_stages = [
+            stage
+            for stage in stage_cards
+            if stage.get("state") == "attention" and stage.get("key") != "readable"
+        ]
+        if attention_stages:
+            details = "；".join(stage["detail"] for stage in attention_stages if stage.get("detail"))
+            return (
+                f"{topic} 報告候選 {candidate_count} 檔、正式分析 {promoted_count} 檔，"
+                f"{details}"
+            )
         return (
             f"{topic} 報告候選 {candidate_count} 檔、正式分析 {promoted_count} 檔，"
-            f"仍有 {required_count} 項必補缺口。"
+            "需人工確認生命週期狀態。"
         )
     return f"{topic} 報告候選 {candidate_count} 檔、正式分析 {promoted_count} 檔，可作為最新版閱讀。"
 

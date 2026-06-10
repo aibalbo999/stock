@@ -7,6 +7,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     ui_dir = source_context.ui_dir
     ui_source = source_context.ui_source
     ui_sources = source_context.ui_sources
+    system_settings_source = ui_sources["system_settings.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
@@ -17,6 +18,18 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     return {
         "frontend_maintenance_ui_status_extracted": True,
         "frontend_maintenance_ui_status_path": "app/services/status_frontend_maintenance.py",
+        "ui_settings_ai_quota_route_focus_enabled": (
+            "def maintenance_focus_from_pending_section(" in system_settings_source
+            and '"pending_maintenance_focus"' in system_settings_source
+            and "maintenance_focus_from_pending_section(pending_section)"
+            in system_settings_source
+            and "def _consume_pending_maintenance_focus(" in system_settings_maintenance_source
+            and 'st.session_state.pop("pending_maintenance_focus"' in system_settings_maintenance_source
+            and 'if maintenance_focus == "ai_quota":' in system_settings_maintenance_source
+            and "render_ai_quota_panel(llm_quota, service_snapshot)"
+            in system_settings_maintenance_source
+            and 'if maintenance_focus != "ai_quota":' in system_settings_maintenance_source
+        ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
         and (ui_dir / "maintenance_ai_panels.py").exists()

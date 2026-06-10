@@ -196,6 +196,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'settings_section = st.radio(' in source
     assert 'key="settings_section"' in source
     assert "pending_settings_section" in source
+    assert "pending_maintenance_focus" in source
+    assert "maintenance_focus_from_pending_section(pending_section)" in source
+    assert "def _consume_pending_maintenance_focus(" in source
+    assert 'if maintenance_focus == "ai_quota":' in source
+    assert 'if maintenance_focus != "ai_quota":' in source
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
     assert "會更新最新版報告的股價與成交量判讀" in source

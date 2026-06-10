@@ -28,6 +28,7 @@ from app.ui.operator_route_controls import render_operator_route_button
 
 def render_maintenance_tab() -> None:
     render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
+    maintenance_focus = _consume_pending_maintenance_focus()
     status = load_api_json_or_default(
         "/db/status",
         {"settings": {}, "integrity": {}, "tables": {}},
@@ -92,6 +93,8 @@ def render_maintenance_tab() -> None:
     )
 
     _render_incident_inbox(incident_inbox_items(service_snapshot, task_summary, llm_quota))
+    if maintenance_focus == "ai_quota":
+        render_ai_quota_panel(llm_quota, service_snapshot)
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
     render_service_metrics_panel(status, service_snapshot)
@@ -101,7 +104,8 @@ def render_maintenance_tab() -> None:
         maintenance_operations,
         external_env_check,
     )
-    render_ai_quota_panel(llm_quota, service_snapshot)
+    if maintenance_focus != "ai_quota":
+        render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)
     render_report_generation_observability_panel(report_observability_summary)
     render_background_task_observability_panel(
@@ -112,6 +116,13 @@ def render_maintenance_tab() -> None:
     render_report_quality_panel(report_quality_summary)
     render_service_details_panel(status, service_snapshot)
     render_maintenance_cleanup_panel()
+
+
+def _consume_pending_maintenance_focus() -> str | None:
+    focus = str(st.session_state.pop("pending_maintenance_focus", "") or "").strip()
+    if focus == "ai_quota":
+        return "ai_quota"
+    return None
 
 
 def _render_incident_inbox(incidents: list[dict]) -> None:

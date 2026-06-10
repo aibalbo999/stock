@@ -228,6 +228,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_maintenance_ui_status_path"] == (
         "app/services/status_frontend_maintenance.py"
     )
+    assert status["frontend"]["ui_settings_ai_quota_route_focus_enabled"] is True
     assert status["frontend"]["frontend_task_ui_status_extracted"] is True
     assert status["frontend"]["frontend_task_ui_status_path"] == (
         "app/services/status_frontend_tasks.py"
@@ -417,6 +418,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True
+    assert frontend_arch["evidence"]["ui_settings_ai_quota_route_focus_enabled"] is True
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_queue_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True

@@ -14,6 +14,9 @@ SETTINGS_SECTION_LABELS = ("股票範圍", "自動排程", "維護")
 def render_system_settings() -> None:
     settings_whitelist = SupplyChainWhitelist()
     pending_section = st.session_state.pop("pending_settings_section", None)
+    maintenance_focus = maintenance_focus_from_pending_section(pending_section)
+    if maintenance_focus:
+        st.session_state["pending_maintenance_focus"] = maintenance_focus
     if pending_section is not None or st.session_state.get("settings_section") not in (
         SETTINGS_SECTION_LABELS
     ):
@@ -41,3 +44,10 @@ def settings_section_label(pending_section: str | None) -> str:
     if section == "schedule":
         return "自動排程"
     return "股票範圍"
+
+
+def maintenance_focus_from_pending_section(pending_section: str | None) -> str | None:
+    section = str(pending_section or "").strip()
+    if section == "ai_quota":
+        return "ai_quota"
+    return None

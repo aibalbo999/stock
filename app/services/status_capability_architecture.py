@@ -21,6 +21,19 @@ def architecture_capabilities(
     background_task_control_ready = bool(
         api_status.get("background_task_control_handlers_extracted")
     )
+    background_task_queue_implementation_ready = bool(
+        task_queue_status.get("submission_contract_ready")
+        and task_queue_status.get("task_queue_source_diagnostics_extracted")
+        and task_queue_status.get("task_async_bridge_guard_present")
+        and task_queue_status.get("app_asyncio_run_policy_ready")
+        and task_queue_status.get("compose_runtime_env_passthrough_ready")
+        and api_status.get("structured_task_submission_errors")
+        and background_task_submission_ready
+        and background_task_control_ready
+        and api_status.get("task_failure_diagnostics_shared_service")
+        and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
+    )
+    background_task_queue_runtime_ready = bool(task_queue_status.get("ready"))
     return {
         "thin_api_controller": _capability(
             "ready"
@@ -78,19 +91,11 @@ def architecture_capabilities(
         ),
         "background_task_queue": _capability(
             "ready"
-            if task_queue_status.get("ready")
-            and task_queue_status.get("submission_contract_ready")
-            and task_queue_status.get("task_queue_source_diagnostics_extracted")
-            and task_queue_status.get("task_async_bridge_guard_present")
-            and task_queue_status.get("app_asyncio_run_policy_ready")
-            and task_queue_status.get("compose_runtime_env_passthrough_ready")
-            and api_status.get("structured_task_submission_errors")
-            and background_task_submission_ready
-            and background_task_control_ready
-            and api_status.get("task_failure_diagnostics_shared_service")
-            and api_status.get("task_failure_diagnostics_persisted_to_run_payload")
+            if background_task_queue_implementation_ready
             else "degraded",
             evidence={
+                "implementation_ready": background_task_queue_implementation_ready,
+                "runtime_ready": background_task_queue_runtime_ready,
                 "ready": task_queue_status.get("ready"),
                 "submission_contract_ready": task_queue_status.get("submission_contract_ready"),
                 "broker_configured": task_queue_status.get("broker_configured"),
@@ -156,11 +161,14 @@ def architecture_capabilities(
                     "task_failure_diagnostics_persisted_to_run_payload"
                 ),
                 "smoke_commands": task_queue_status.get("smoke_commands"),
+                "runtime_repair_plan": task_queue_status.get("repair_plan"),
             },
             detail=(
-                "Background task submission requires live Redis broker/backend, Celery app "
-                "exports, named task wiring, status endpoints, structured task submission errors, "
-                "and exposes live worker ping diagnostics for stalled queue triage."
+                "Background task implementation readiness covers Celery exports, named task wiring, "
+                "status endpoints, structured submission errors, source diagnostics, and persisted "
+                "failure diagnostics. Live Redis/Celery runtime readiness is reported separately for "
+                "operator repair without turning an offline local dependency into an implementation "
+                "failure."
             ),
         ),
         "streamlit_mpa_background_tasks": _capability(

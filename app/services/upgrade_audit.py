@@ -503,6 +503,8 @@ def _requirement_result(
 def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence: dict) -> str:
     if (requirement.area, requirement.capability) == ("architecture", "python_runtime"):
         return _python_runtime_remediation(evidence, requirement.remediation)
+    if (requirement.area, requirement.capability) == ("architecture", "background_task_queue"):
+        return _background_task_queue_remediation(evidence, requirement.remediation)
     if (requirement.area, requirement.capability) == ("ai_rag", "neo4j_import"):
         return _neo4j_import_remediation(evidence, requirement.remediation)
     if (requirement.area, requirement.capability) == ("ai_rag", "graphrag_live_cypher_query"):
@@ -610,6 +612,43 @@ def _append_smoke_commands(message: str, commands: list[object]) -> str:
         str(command).strip() for command in commands if str(command or "").strip()
     )
     return f"{message} 驗證指令：{command_text}" if command_text else message
+
+
+def _background_task_queue_remediation(evidence: dict, default: str) -> str:
+    reasons: list[str] = []
+    missing_exports = [
+        str(item).strip() for item in evidence.get("missing_task_exports") or [] if str(item).strip()
+    ]
+    if evidence.get("submission_contract_ready") is False:
+        if missing_exports:
+            reasons.append("缺少 Celery task exports：" + "、".join(missing_exports))
+        elif evidence.get("task_export_error"):
+            reasons.append(f"task export error: {evidence['task_export_error']}")
+        elif evidence.get("task_names_match_expected") is False:
+            reasons.append("Celery task name 與 EXPECTED_TASK_NAMES 不一致")
+        else:
+            reasons.append("確認 app.api.task_exports 匯出 celery_app 與所有必要 task")
+    if evidence.get("task_queue_source_diagnostics_extracted") is False:
+        reasons.append("恢復 task queue source diagnostics collector")
+    if evidence.get("task_async_bridge_guard_present") is False:
+        reasons.append("確認 Celery task 透過 app.core.async_bridge 執行 async 呼叫")
+    if evidence.get("app_asyncio_run_policy_ready") is False:
+        reasons.append("移除 app/ 內未授權的 asyncio.run 呼叫")
+    if evidence.get("compose_runtime_env_passthrough_ready") is False:
+        reasons.append("補齊 docker-compose Celery runtime env passthrough")
+    if evidence.get("structured_task_submission_errors") is False:
+        reasons.append("恢復背景任務提交 endpoint 的 structured error boundary")
+    if evidence.get("background_task_submission_handlers_extracted") is False and evidence.get(
+        "operation_task_submission_handlers_extracted"
+    ) is False:
+        reasons.append("恢復背景任務提交 handler/service 抽離")
+    if evidence.get("background_task_control_handlers_extracted") is False:
+        reasons.append("恢復 task status/cancel/retry control handlers")
+    if evidence.get("task_failure_diagnostics_shared_service") is False:
+        reasons.append("恢復 task failure diagnostics shared service")
+    if evidence.get("task_failure_diagnostics_persisted_to_run_payload") is False:
+        reasons.append("將 task failure diagnostics 寫回 analysis run payload")
+    return "；".join(reasons) + "。" if reasons else default
 
 
 def _first_nested_value(payload: dict, *paths: tuple[str, ...]) -> object:

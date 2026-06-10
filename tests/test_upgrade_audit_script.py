@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
+from pathlib import Path
 
 from scripts import upgrade_audit
 
@@ -171,6 +174,29 @@ def test_upgrade_audit_script_returns_failure_when_required_check_fails(monkeypa
     )
 
     assert upgrade_audit.main([]) == 1
+
+
+def test_upgrade_audit_script_bootstraps_repo_root_for_task_exports() -> None:
+    root = Path(__file__).resolve().parents[1]
+
+    result = subprocess.run(
+        [sys.executable, "scripts/upgrade_audit.py", "--json"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.stdout, result.stderr
+    audit = json.loads(result.stdout)
+    background_task_queue = next(
+        check for check in audit["checks"] if check["capability"] == "background_task_queue"
+    )
+    evidence = background_task_queue["evidence"]
+    assert evidence["celery_app_available"] is True
+    assert evidence["submission_contract_ready"] is True
+    assert evidence["missing_task_exports"] == []
 
 
 def test_upgrade_audit_script_can_apply_local_neo4j_defaults(monkeypatch, capsys) -> None:

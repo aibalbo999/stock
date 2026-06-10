@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from app.core.config import Settings
+from app.services.status_capability_architecture import architecture_capabilities
 from app.services.local_dependency_diagnostics import local_dependency_runtime_status
 
 
@@ -466,7 +467,11 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     status = service_status_snapshot
     task_queue_arch = status["upgrade_capability_matrix"]["architecture"]["background_task_queue"]
 
-    assert task_queue_arch["status"] == ("ready" if status["task_queue"]["ready"] else "degraded")
+    assert task_queue_arch["status"] == (
+        "ready" if task_queue_arch["evidence"]["implementation_ready"] else "degraded"
+    )
+    assert task_queue_arch["evidence"]["implementation_ready"] is True
+    assert task_queue_arch["evidence"]["runtime_ready"] is bool(status["task_queue"]["ready"])
     assert task_queue_arch["evidence"]["submission_contract_ready"] is True
     assert task_queue_arch["evidence"]["broker_ok"] == status["redis"]["ok"]
     assert (
@@ -501,7 +506,56 @@ def test_background_task_queue_architecture_capability_evidence(service_status_s
     )
     assert task_queue_arch["evidence"]["task_failure_diagnostics_shared_service"] is True
     assert task_queue_arch["evidence"]["task_failure_diagnostics_persisted_to_run_payload"] is True
+    assert task_queue_arch["evidence"]["runtime_repair_plan"] == status["task_queue"]["repair_plan"]
     assert "POST /tasks/data-operation" in task_queue_arch["evidence"]["submission_endpoints"]
+
+
+def test_background_task_queue_architecture_separates_contract_from_live_runtime() -> None:
+    capabilities = architecture_capabilities(
+        api_status={
+            "route_module_count": 0,
+            "main_direct_domain_import_count": 1,
+            "legacy_facade_api_reference_count": 1,
+            "structured_task_submission_errors": True,
+            "background_task_submission_handlers_extracted": True,
+            "background_task_control_handlers_extracted": True,
+            "task_failure_diagnostics_shared_service": True,
+            "task_failure_diagnostics_persisted_to_run_payload": True,
+        },
+        workflow_status={"ready": True},
+        task_queue_status={
+            "ready": False,
+            "processing_ready": False,
+            "submission_contract_ready": True,
+            "broker_configured": True,
+            "broker_ok": False,
+            "backend_ok": False,
+            "worker_online": False,
+            "task_queue_source_diagnostics_extracted": True,
+            "task_async_bridge_guard_present": True,
+            "app_asyncio_run_policy_ready": True,
+            "compose_runtime_env_passthrough_ready": True,
+            "repair_plan": [
+                {
+                    "item": "Redis Broker/Backend",
+                    "state": "未連線",
+                    "repair_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
+                }
+            ],
+        },
+        frontend_status={},
+        python_runtime_status={},
+        database_status={},
+        migration_status={},
+        security_scan_status={},
+    )
+
+    task_queue_arch = capabilities["background_task_queue"]
+
+    assert task_queue_arch["status"] == "ready"
+    assert task_queue_arch["evidence"]["implementation_ready"] is True
+    assert task_queue_arch["evidence"]["runtime_ready"] is False
+    assert task_queue_arch["evidence"]["runtime_repair_plan"][0]["item"] == "Redis Broker/Backend"
 
 
 def test_runtime_migration_and_secret_scanning_architecture_capabilities(

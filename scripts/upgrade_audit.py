@@ -4,13 +4,21 @@ import argparse
 import json
 import os
 import socket
+import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
-from app.core.config import get_settings
-from app.data_sources.company_filing_render import company_filing_playwright_browser_status
-from app.services.local_dependency_diagnostics import (
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from app.core.config import get_settings  # noqa: E402
+from app.data_sources.company_filing_render import (  # noqa: E402
+    company_filing_playwright_browser_status,
+)
+from app.services.local_dependency_diagnostics import (  # noqa: E402
     LOCAL_BROWSERLESS_PORT,
     LOCAL_BROWSER_RENDER_ENV_DEFAULTS,
     LOCAL_CHROMA_ENV_DEFAULTS,
@@ -20,8 +28,8 @@ from app.services.local_dependency_diagnostics import (
     LOCAL_FLARESOLVERR_RENDER_ENV_DEFAULTS,
     local_docker_image_status,
 )
-from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS
-from app.services.upgrade_audit import audit_upgrade_capabilities
+from app.services.supply_chain_graph_neo4j import LOCAL_NEO4J_ENV_DEFAULTS  # noqa: E402
+from app.services.upgrade_audit import audit_upgrade_capabilities  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

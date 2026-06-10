@@ -700,15 +700,42 @@ def test_upgrade_audit_fails_frontend_blocking_regression() -> None:
     assert audit["areas"]["architecture"]["failures"] == 1
 
 
-def test_upgrade_audit_fails_background_task_queue_regression() -> None:
+def test_upgrade_audit_passes_background_task_queue_when_only_live_runtime_is_down() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "architecture.background_task_queue": {
+                    "status": "ready",
+                    "evidence": {
+                        "implementation_ready": True,
+                        "runtime_ready": False,
+                        "broker_ok": False,
+                        "submission_contract_ready": True,
+                    },
+                }
+            }
+        )
+    )
+
+    assert audit["overall_status"] == "ready"
+    assert audit["implementation"]["status"] == "ready"
+    assert not any(
+        item["capability"] == "background_task_queue" for item in audit["failures"]
+    )
+
+
+def test_upgrade_audit_fails_background_task_queue_wiring_regression() -> None:
     audit = audit_upgrade_capabilities(
         _fake_status(
             {
                 "architecture.background_task_queue": {
                     "status": "degraded",
                     "evidence": {
-                        "broker_ok": False,
-                        "submission_contract_ready": True,
+                        "implementation_ready": False,
+                        "runtime_ready": True,
+                        "broker_ok": True,
+                        "submission_contract_ready": False,
+                        "missing_task_exports": ["maintenance_diagnostic_task"],
                     },
                 }
             }
@@ -721,7 +748,8 @@ def test_upgrade_audit_fails_background_task_queue_regression() -> None:
         item for item in audit["failures"] if item["capability"] == "background_task_queue"
     )
     assert failure["optional"] is False
-    assert failure["evidence"]["broker_ok"] is False
+    assert failure["evidence"]["submission_contract_ready"] is False
+    assert "maintenance_diagnostic_task" in failure["remediation"]
     assert audit["areas"]["architecture"]["failures"] == 1
 
 

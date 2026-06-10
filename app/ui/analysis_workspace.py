@@ -35,12 +35,12 @@ from app.ui.task_status_panel import render_task_status_panel
 def render_analysis_workspace() -> None:
     st.markdown(
         """
-        <section class="workspace-topbar">
+        <section class="workspace-topbar is-compact">
             <div>
                 <div class="workspace-kicker">AI 台股投資工作台</div>
-                <h1>研究主題、補資料、看報告，集中在同一個工作台</h1>
+                <h1>AI 台股操作者控制台</h1>
                 <div class="workspace-subtitle">
-                    先確認本次配置與避開名單，再檢視候選標的與投資理由。必要資料缺口會自動排入補強流程。
+                    先看系統建議，再決定讀最新版報告、補資料或重跑分析。
                 </div>
             </div>
             <div class="workspace-meta">
@@ -49,13 +49,13 @@ def render_analysis_workspace() -> None:
                 <span class="workspace-chip is-accent">缺口自動補強</span>
             </div>
         </section>
-        <section class="workflow-strip" aria-label="分析流程">
+        <section class="workflow-strip is-compact" aria-label="分析流程">
             <div class="workflow-step"><span>01</span><strong>主題拆解</strong></div>
             <div class="workflow-step"><span>02</span><strong>來源驗證</strong></div>
             <div class="workflow-step"><span>03</span><strong>個股評估</strong></div>
             <div class="workflow-step"><span>04</span><strong>補強與重跑</strong></div>
         </section>
-        <section class="workspace-ledger" aria-label="報告判讀基準">
+        <section class="workspace-ledger is-compact" aria-label="報告判讀基準">
             <div class="ledger-item"><span>品質門檻</span><strong>未過門檻先標示，不包裝成建議</strong></div>
             <div class="ledger-item"><span>資料來源</span><strong>新聞、市場、財務、公司文件分開查核</strong></div>
             <div class="ledger-item"><span>投資口徑</span><strong>正式分析不等於買進，分數只用於排序</strong></div>

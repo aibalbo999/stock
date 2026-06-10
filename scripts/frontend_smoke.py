@@ -4,6 +4,8 @@ import argparse
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+    DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     DEFAULT_VISUAL_TEXT_FRAGMENTS,
     format_frontend_smoke_report,
     run_frontend_smoke,
@@ -42,6 +44,33 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not require any specific visible text before screenshot.",
     )
     parser.add_argument(
+        "--required-text-max-top-px",
+        type=float,
+        default=DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+        help=(
+            "Maximum allowed top position for each required text fragment in the desktop "
+            "viewport. Use --no-required-text-layout to disable."
+        ),
+    )
+    parser.add_argument(
+        "--no-required-text-layout",
+        action="store_true",
+        help="Do not enforce a maximum viewport position for required text.",
+    )
+    parser.add_argument(
+        "--required-text-scope-selector",
+        default=DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+        help=(
+            "CSS selector that scopes required text checks. The default requires the "
+            "operator marker inside the next-action decision card."
+        ),
+    )
+    parser.add_argument(
+        "--no-required-text-scope",
+        action="store_true",
+        help="Search the whole page body for required text instead of a scoped component.",
+    )
+    parser.add_argument(
         "--skip-runtime-identity",
         action="store_true",
         help="Skip API runtime commit comparison.",
@@ -60,6 +89,12 @@ def main(argv: list[str] | None = None) -> int:
         required_text_fragments = DEFAULT_VISUAL_TEXT_FRAGMENTS
     else:
         required_text_fragments = tuple(args.required_text)
+    required_text_max_top_px = (
+        None if args.no_required_text_layout else float(args.required_text_max_top_px)
+    )
+    required_text_scope_selector = (
+        None if args.no_required_text_scope else args.required_text_scope_selector
+    )
 
     report = run_frontend_smoke(
         streamlit_url=args.streamlit_url,
@@ -68,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         screenshot_path=args.screenshot,
         skip_browser=args.skip_browser,
         required_text_fragments=required_text_fragments,
+        required_text_max_top_px=required_text_max_top_px,
+        required_text_scope_selector=required_text_scope_selector,
         check_runtime_identity=not args.skip_runtime_identity,
         expected_api_commit=args.expected_api_commit,
         timeout_seconds=args.timeout,

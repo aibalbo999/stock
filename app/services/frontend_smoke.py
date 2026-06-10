@@ -17,6 +17,8 @@ DEFAULT_API_ENDPOINTS = (
     "/services/external-deployment/env-check",
 )
 DEFAULT_VISUAL_TEXT_FRAGMENTS = ("下一步建議",)
+DEFAULT_REQUIRED_TEXT_MAX_TOP_PX = 560
+DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR = ".operator-decision-card"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",
@@ -43,6 +45,8 @@ def run_frontend_smoke(
     check_runtime_identity: bool = True,
     expected_api_commit: str | None = None,
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
+    required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+    required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     timeout_seconds: float = 10.0,
 ) -> dict:
     checks = [
@@ -87,6 +91,8 @@ def run_frontend_smoke(
                 streamlit_url,
                 screenshot_path=screenshot_path,
                 required_text_fragments=required_text_fragments,
+                required_text_max_top_px=required_text_max_top_px,
+                required_text_scope_selector=required_text_scope_selector,
                 timeout_seconds=timeout_seconds,
             )
         )
@@ -218,6 +224,8 @@ def run_playwright_visual_smoke(
     *,
     screenshot_path: str | Path | None = "artifacts/frontend_smoke/streamlit.png",
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
+    required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
+    required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     timeout_seconds: float = 10.0,
 ) -> dict:
     url = _iri_to_uri(url)
@@ -255,13 +263,19 @@ def run_playwright_visual_smoke(
             )
             if required_text_fragments:
                 page.wait_for_function(
-                    """fragments => {
-                        const text = document.body
-                            ? (document.body.innerText || document.body.textContent || "")
+                    """({fragments, scopeSelector}) => {
+                        const root = scopeSelector
+                            ? document.querySelector(scopeSelector)
+                            : document.body;
+                        const text = root
+                            ? (root.innerText || root.textContent || "")
                             : "";
                         return fragments.every(fragment => text.includes(fragment));
                     }""",
-                    arg=list(required_text_fragments),
+                    arg={
+                        "fragments": list(required_text_fragments),
+                        "scopeSelector": required_text_scope_selector,
+                    },
                     timeout=int(timeout_seconds * 1000),
                 )
             if target:
@@ -270,6 +284,11 @@ def run_playwright_visual_smoke(
             title = page.title()
             body_text = page.evaluate(
                 "() => document.body ? (document.body.innerText || document.body.textContent || '') : ''"
+            )
+            required_text_measurements = _required_text_measurements(
+                page,
+                required_text_fragments,
+                scope_selector=required_text_scope_selector,
             )
             browser.close()
     except Exception as exc:
@@ -281,11 +300,16 @@ def run_playwright_visual_smoke(
         }
     nonblank = png_has_nonblank_pixels(screenshot)
     missing_required_text = missing_required_text_fragments(body_text, required_text_fragments)
+    text_layout_failures = required_text_layout_failures(
+        required_text_measurements,
+        max_top_px=required_text_max_top_px,
+    )
     passed = bool(
         nonblank
         and len(screenshot) > 1000
         and len(body_text.strip()) >= 80
         and not missing_required_text
+        and not text_layout_failures
     )
     return {
         "label": "streamlit_playwright",
@@ -298,13 +322,110 @@ def run_playwright_visual_smoke(
         "screenshot_bytes": len(screenshot),
         "screenshot_nonblank": nonblank,
         "missing_required_text": missing_required_text,
+        "required_text_max_top_px": required_text_max_top_px,
+        "required_text_scope_selector": required_text_scope_selector,
+        "required_text_measurements": required_text_measurements,
+        "required_text_layout_failures": text_layout_failures,
     }
+
+
+def required_text_layout_failures(
+    measurements: list[dict[str, Any]],
+    *,
+    max_top_px: float | None,
+) -> list[str]:
+    if max_top_px is None:
+        return []
+    failures = []
+    max_label = _px_label(max_top_px)
+    for measurement in measurements:
+        fragment = str(measurement.get("fragment") or "-")
+        if not measurement.get("found"):
+            failures.append(f"{fragment} missing")
+            continue
+        top = measurement.get("top")
+        if not isinstance(top, int | float):
+            failures.append(f"{fragment} missing")
+            continue
+        if top > max_top_px:
+            failures.append(
+                f"{fragment} below {max_label}px (top={_px_label(float(top))}px)"
+            )
+    return failures
 
 
 def missing_required_text_fragments(
     body_text: str, required_text_fragments: tuple[str, ...]
 ) -> list[str]:
     return [fragment for fragment in required_text_fragments if fragment not in body_text]
+
+
+def _required_text_measurements(
+    page: Any,
+    fragments: tuple[str, ...],
+    *,
+    scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+) -> list[dict[str, Any]]:
+    if not fragments:
+        return []
+    return list(
+        page.evaluate(
+            """({fragments, scopeSelector}) => fragments.map(fragment => {
+                const roots = scopeSelector
+                    ? Array.from(document.querySelectorAll(scopeSelector))
+                    : [document.body].filter(Boolean);
+                const elements = roots.flatMap(root => [
+                    root,
+                    ...Array.from(root.querySelectorAll("*")),
+                ]);
+                const candidates = elements
+                    .map(element => {
+                        const text = element.innerText || element.textContent || "";
+                        if (!text.includes(fragment)) {
+                            return null;
+                        }
+                        const rect = element.getBoundingClientRect();
+                        const style = window.getComputedStyle(element);
+                        if (
+                            rect.width <= 0 ||
+                            rect.height <= 0 ||
+                            style.display === "none" ||
+                            style.visibility === "hidden"
+                        ) {
+                            return null;
+                        }
+                        const childHasFragment = Array.from(element.children).some(child => {
+                            const childText = child.innerText || child.textContent || "";
+                            return childText.includes(fragment);
+                        });
+                        return {
+                            fragment,
+                            found: true,
+                            top: Math.round(rect.top),
+                            height: Math.round(rect.height),
+                            textLength: text.trim().length,
+                            childHasFragment,
+                        };
+                    })
+                    .filter(Boolean)
+                    .sort((left, right) => {
+                        if (left.childHasFragment !== right.childHasFragment) {
+                            return left.childHasFragment ? 1 : -1;
+                        }
+                        if (left.top !== right.top) {
+                            return left.top - right.top;
+                        }
+                        return left.textLength - right.textLength;
+                    });
+                return candidates[0] || {fragment, found: false, top: null};
+            })""",
+            {"fragments": list(fragments), "scopeSelector": scope_selector},
+        )
+    )
+
+
+def _px_label(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:.1f}"
 
 
 def png_has_nonblank_pixels(data: bytes) -> bool:
@@ -340,6 +461,10 @@ def format_frontend_smoke_report(report: dict) -> str:
         )
         if check.get("error"):
             lines.append(f"  error: {check['error']}")
+        for missing_text in check.get("missing_required_text") or []:
+            lines.append(f"  missing text: {missing_text}")
+        for layout_failure in check.get("required_text_layout_failures") or []:
+            lines.append(f"  layout: {layout_failure}")
         if check.get("reason"):
             lines.append(f"  reason: {check['reason']}")
         if check.get("expected_commit_short") or check.get("actual_commit_short"):

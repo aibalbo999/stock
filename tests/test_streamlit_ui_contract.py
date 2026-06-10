@@ -46,8 +46,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     combined = source + "\n" + styles + "\n" + report_styles
 
     assert "workspace-topbar" in combined
+    assert "workspace-topbar is-compact" in source
+    assert "AI 台股操作者控制台" in source
+    assert "研究主題、補資料、看報告，集中在同一個工作台" not in source
+    assert "先看下一步建議" not in source
     assert "workflow-strip" in combined
+    assert "workflow-strip is-compact" in source
     assert "workspace-ledger" in combined
+    assert "workspace-ledger is-compact" in source
     assert "credibility_html" in source
     assert "credibility-grid" in combined
     assert "upgrade_audit_html" in source

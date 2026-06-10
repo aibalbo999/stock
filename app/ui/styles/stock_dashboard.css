@@ -302,6 +302,11 @@ textarea:focus,
     position: relative;
     overflow: hidden;
 }
+.workspace-topbar.is-compact {
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    align-items: center;
+}
 .workspace-topbar::after {
     content: "";
     position: absolute;
@@ -322,11 +327,19 @@ textarea:focus,
     letter-spacing: 0;
     color: #f8fafc;
 }
+.workspace-topbar.is-compact h1 {
+    font-size: 1.45rem;
+    margin-bottom: 4px;
+}
 .workspace-subtitle {
     color: #cbd5e1;
     font-size: 0.98rem;
     line-height: 1.55;
     max-width: 720px;
+}
+.workspace-topbar.is-compact .workspace-subtitle {
+    font-size: 0.92rem;
+    line-height: 1.35;
 }
 .workspace-meta {
     display: flex;
@@ -354,6 +367,10 @@ textarea:focus,
     gap: 10px;
     margin-bottom: 18px;
 }
+.workflow-strip.is-compact {
+    gap: 8px;
+    margin-bottom: 8px;
+}
 .workflow-step {
     background: #ffffff;
     border: 1px solid var(--stock-border);
@@ -361,6 +378,12 @@ textarea:focus,
     border-radius: 8px;
     padding: 12px 14px;
     box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+}
+.workflow-strip.is-compact .workflow-step {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
 }
 .workflow-step:nth-child(1) { border-top-color: #1d4ed8; }
 .workflow-step:nth-child(2) { border-top-color: #0f766e; }
@@ -372,12 +395,19 @@ textarea:focus,
     gap: 10px;
     margin: -4px 0 18px;
 }
+.workspace-ledger.is-compact {
+    gap: 8px;
+    margin: 0 0 10px;
+}
 .ledger-item {
     background: #ffffff;
     border: 1px solid var(--stock-border);
     border-radius: 8px;
     padding: 13px 14px;
     box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+}
+.workspace-ledger.is-compact .ledger-item {
+    padding: 8px 10px;
 }
 .ledger-item span {
     display: block;
@@ -391,6 +421,9 @@ textarea:focus,
     color: var(--stock-text);
     font-size: 0.98rem;
     line-height: 1.35;
+}
+.workspace-ledger.is-compact .ledger-item strong {
+    font-size: 0.88rem;
 }
 .workflow-step span {
     display: block;
@@ -435,6 +468,7 @@ textarea:focus,
     background: var(--stock-surface);
     border: 1px solid var(--stock-border);
     border-radius: 8px;
+    margin: 10px 0 18px;
     padding: 20px;
     box-shadow: var(--stock-shadow);
 }

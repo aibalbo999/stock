@@ -5,12 +5,14 @@ import zlib
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     DEFAULT_VISUAL_TEXT_FRAGMENTS,
     check_api_runtime_identity,
     check_http_target,
     check_streamlit_page_import_contract,
     missing_required_text_fragments,
     png_has_nonblank_pixels,
+    required_text_layout_failures,
     run_frontend_smoke,
 )
 
@@ -70,6 +72,7 @@ def test_png_has_nonblank_pixels_detects_blank_and_nonblank_png() -> None:
 
 def test_missing_required_text_fragments_reports_absent_operator_markers() -> None:
     assert DEFAULT_VISUAL_TEXT_FRAGMENTS == ("下一步建議",)
+    assert DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR == ".operator-decision-card"
     assert missing_required_text_fragments(
         "今日狀態\n下一步建議\n待處理事件",
         ("下一步建議", "待處理事件"),
@@ -78,6 +81,20 @@ def test_missing_required_text_fragments_reports_absent_operator_markers() -> No
         "今日狀態",
         ("下一步建議", "待處理事件"),
     ) == ["下一步建議", "待處理事件"]
+
+
+def test_required_text_layout_failures_flags_missing_and_late_operator_markers() -> None:
+    assert required_text_layout_failures(
+        [
+            {"fragment": "下一步建議", "found": True, "top": 420},
+            {"fragment": "待處理事件", "found": True, "top": 720},
+            {"fragment": "資料缺口", "found": False, "top": None},
+        ],
+        max_top_px=560,
+    ) == [
+        "待處理事件 below 560px (top=720px)",
+        "資料缺口 missing",
+    ]
 
 
 def test_check_streamlit_page_import_contract_accepts_project_pages() -> None:

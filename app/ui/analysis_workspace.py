@@ -14,6 +14,7 @@ from app.ui.operator_decisions import (
     operator_secondary_actions,
 )
 from app.ui.operator_route_controls import render_operator_route_button
+from app.ui.operator_routes import operator_route_target
 from app.ui.operator_status import (
     operator_status_cards,
     operator_status_overall,
@@ -332,7 +333,6 @@ def _render_operator_workbench() -> None:
     overall = operator_status_overall(service_snapshot, task_summary, reports)
     cards = operator_status_cards(service_snapshot, task_summary, quota, reports)
     card_html = "\n".join(_operator_card_html(card) for card in cards)
-    _render_operator_primary_action_control(primary_action)
     st.markdown(
         f"""<section class="operator-workbench" aria-label="今日狀態">
 <div class="operator-workbench-head">
@@ -347,6 +347,7 @@ def _render_operator_workbench() -> None:
 </section>""",
         unsafe_allow_html=True,
     )
+    _render_operator_primary_action_control(primary_action)
     _render_operator_action_controls(secondary_actions)
     st.markdown(
         f"""<section class="operator-status-grid" aria-label="狀態摘要">
@@ -370,7 +371,9 @@ def _latest_report_id(reports: list[dict]) -> int | None:
 def _operator_decision_html(primary_action: dict, secondary_actions: list[dict]) -> str:
     secondary_html = "\n".join(_secondary_action_html(action) for action in secondary_actions)
     source_ids = primary_action.get("source_ids") or []
-    source_text = "、".join(str(source_id) for source_id in source_ids) if source_ids else "系統狀態"
+    source_text = _operator_source_text(source_ids)
+    target = operator_route_target(primary_action.get("route_hint"))
+    target_caption = str(target.get("caption") or "")
     return f"""<section class="operator-decision-card is-{escape(primary_action.get("state", "attention"))}">
 <div class="operator-decision-copy">
 <div class="workspace-kicker">下一步建議</div>
@@ -384,12 +387,34 @@ def _operator_decision_html(primary_action: dict, secondary_actions: list[dict])
 </div>
 <div class="operator-decision-action">
 <strong>{escape(primary_action.get("action_label", "-"))}</strong>
-<span>{escape(primary_action.get("route_hint", ""))}</span>
+<span>{escape(target_caption)}</span>
 </div>
 <div class="operator-secondary-actions" aria-label="次要建議">
 {secondary_html}
 </div>
 </section>"""
+
+
+def _operator_source_text(source_ids: object) -> str:
+    if not isinstance(source_ids, list) or not source_ids:
+        return "系統狀態"
+    labels = []
+    for source_id in source_ids:
+        source_text = str(source_id).strip()
+        if not source_text:
+            continue
+        if _looks_like_operator_route(source_text):
+            labels.append(str(operator_route_target(source_text).get("caption") or source_text))
+        else:
+            labels.append(source_text)
+    return "、".join(labels) if labels else "系統狀態"
+
+
+def _looks_like_operator_route(value: str) -> bool:
+    return bool(
+        value in {"analysis", "data_enrichment", "report_center"}
+        or value.startswith(("report:", "task:", "settings:", "data_enrichment:"))
+    )
 
 
 def _render_operator_primary_action_control(primary_action: dict) -> None:
@@ -444,10 +469,12 @@ def _render_operator_route_button(
 
 
 def _secondary_action_html(action: dict) -> str:
+    target = operator_route_target(action.get("route_hint"))
+    target_caption = str(target.get("caption") or "")
     return f"""<article class="operator-secondary-action is-{escape(action.get("state", "attention"))}">
 <strong>{escape(action.get("title", "-"))}</strong>
 <span>{escape(action.get("detail", ""))}</span>
-<em>{escape(action.get("route_hint", ""))}</em>
+<em>{escape(target_caption)}</em>
 </article>"""
 
 

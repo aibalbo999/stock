@@ -351,11 +351,11 @@ def _render_operator_workbench() -> None:
 </section>""",
         unsafe_allow_html=True,
     )
-    _render_operator_primary_action_control(primary_action)
     st.markdown(
         _operator_decision_html(primary_action, [], include_secondary=False),
         unsafe_allow_html=True,
     )
+    _render_operator_primary_action_control(primary_action)
     if secondary_actions:
         st.markdown(_operator_secondary_actions_html(secondary_actions), unsafe_allow_html=True)
     _render_operator_action_controls(secondary_actions)

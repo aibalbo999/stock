@@ -56,7 +56,7 @@ def test_operator_secondary_actions_use_readable_target_captions() -> None:
     assert "data_enrichment:" not in html
 
 
-def test_operator_workbench_renders_primary_button_before_decision_detail(monkeypatch) -> None:
+def test_operator_workbench_renders_decision_detail_before_primary_button(monkeypatch) -> None:
     events: list[tuple[str, str]] = []
 
     def fake_load(endpoint: str, default, **_kwargs):
@@ -113,10 +113,12 @@ def test_operator_workbench_renders_primary_button_before_decision_detail(monkey
         for index, (kind, body) in enumerate(events)
         if kind == "markdown" and "operator-decision-card" in body
     )
-    assert primary_button_index < decision_index
+    assert decision_index < primary_button_index
 
 
-def test_operator_workbench_renders_primary_button_before_secondary_cards(monkeypatch) -> None:
+def test_operator_workbench_renders_primary_button_between_decision_and_secondary_cards(
+    monkeypatch,
+) -> None:
     events: list[tuple[str, str]] = []
 
     def fake_load(endpoint: str, default, **_kwargs):
@@ -179,9 +181,14 @@ def test_operator_workbench_renders_primary_button_before_secondary_cards(monkey
         for index, (kind, body) in enumerate(events)
         if kind == "button" and body == "查看事件"
     )
+    decision_index = next(
+        index
+        for index, (kind, body) in enumerate(events)
+        if kind == "markdown" and "operator-decision-card" in body
+    )
     secondary_cards_index = next(
         index
         for index, (kind, body) in enumerate(events)
         if kind == "markdown" and "operator-secondary-actions" in body
     )
-    assert primary_button_index < secondary_cards_index
+    assert decision_index < primary_button_index < secondary_cards_index

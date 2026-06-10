@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ui.data_gap_actions import data_gap_action_items
+from app.ui.data_gap_actions import data_gap_action_items, market_freshness_action_item
 
 
 RUNNING_STATUSES = {"queued", "started", "running", "pending", "processing"}
@@ -113,6 +113,14 @@ def _follow_up_health_state(
             "needs_data",
             f"需補強 {required_count} 項",
             _primary_data_gap_action_label(report_result, follow_up_plan),
+        )
+    market_freshness_action = market_freshness_action_item(report_result)
+    if market_freshness_action:
+        return (
+            "attention",
+            "market_freshness",
+            _text(market_freshness_action.get("summary_label")) or "股價需刷新",
+            _text(market_freshness_action.get("action_label")) or "刷新股價",
         )
     if _has_incomplete_rerun_report(report_result):
         return "attention", "needs_retry", "重跑未完成", "重新重跑"

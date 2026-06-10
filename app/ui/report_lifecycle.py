@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ui.data_gap_actions import data_gap_action_items
+from app.ui.data_gap_actions import data_gap_action_items, market_freshness_action_item
 
 
 RUNNING_STATUSES = {"queued", "started", "running", "pending", "processing"}
@@ -39,6 +39,7 @@ def latest_report_lifecycle(
     quality_gate_known = _quality_gate_known(quality_gate)
     quality_status = _text(quality_gate.get("status"), default="-").casefold()
     metrics = _dict_value(quality_gate.get("metrics"))
+    market_freshness_action = market_freshness_action_item(report)
     promoted_count = _promoted_count(report, metrics) if quality_gate_known else 0
     candidate_count = _candidate_count(report)
     required_count = _required_count(plan)
@@ -47,13 +48,21 @@ def latest_report_lifecycle(
     has_rerun_report = _has_rerun_report(report)
     has_incomplete_rerun_report = _has_incomplete_rerun_report(report)
 
-    data_state = "attention" if required_count > 0 else "done"
-    data_label = f"缺口 {required_count} 項" if required_count > 0 else "資料可用"
-    data_detail = (
-        "最新版報告仍有必補資料缺口，先補資料再重跑。"
-        if required_count > 0
-        else "未發現必補資料缺口。"
-    )
+    if required_count > 0:
+        data_state = "attention"
+        data_label = f"缺口 {required_count} 項"
+        data_detail = "最新版報告仍有必補資料缺口，先補資料再重跑。"
+    elif market_freshness_action:
+        data_state = "attention"
+        data_label = _text(market_freshness_action.get("summary_label"), default="股價需刷新")
+        data_detail = _text(
+            market_freshness_action.get("impact"),
+            default="股價資料落後資料庫最新快取，建議刷新股價後重跑。",
+        )
+    else:
+        data_state = "done"
+        data_label = "資料可用"
+        data_detail = "未發現必補資料缺口。"
 
     if not quality_gate_known:
         quality_state = "unknown"
@@ -144,6 +153,7 @@ def latest_report_lifecycle(
         required_count=required_count,
         running=running,
         quality_state=quality_state,
+        market_freshness_action=market_freshness_action,
     )
     return {
         "overall_state": overall_state,
@@ -247,6 +257,7 @@ def _primary_action(
     required_count: int,
     running: bool,
     quality_state: str,
+    market_freshness_action: dict,
 ) -> tuple[str, str, str]:
     if running or overall_state == "running":
         return "查看補強任務", "settings:maintenance", "補強任務正在背景執行。"
@@ -267,6 +278,12 @@ def _primary_action(
                 _text(gap_action.get("impact"), default="補強最新版報告資料缺口。"),
             )
         return "補強資料", "data_enrichment", "補強最新版報告資料缺口。"
+    if market_freshness_action:
+        return (
+            _text(market_freshness_action.get("action_label"), default="刷新股價"),
+            _text(market_freshness_action.get("route_hint"), default="data_enrichment:market_refresh"),
+            _text(market_freshness_action.get("impact"), default="刷新股價可改善最新版報告。"),
+        )
     if report_id is not None:
         return "閱讀最新版", f"report:{report_id}", "開啟目前保留的最新版報告。"
     return "建立分析", "analysis", "建立第一份可閱讀的分析報告。"

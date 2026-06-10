@@ -329,6 +329,44 @@ def test_operator_next_action_surfaces_quota_pressure_after_report_gates() -> No
     assert action["route_hint"] == "settings:ai_quota"
 
 
+def test_operator_next_action_surfaces_market_freshness_after_quota_is_ready() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        {
+            "report_id": 15,
+            "topic": "AI 產業鏈",
+            "tickers": ["2330", "2382"],
+            "quality_gate": {
+                "status": "ready",
+                "metrics": {
+                    "promoted_count": 2,
+                    "market_latest_trade_date": "2026-06-02",
+                    "market_database_latest_trade_date": "2026-06-05",
+                    "market_older_than_database_latest_count": 1,
+                    "market_trade_date_lag_days": 3,
+                    "market_trade_date_warning_suppressed": False,
+                },
+            },
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 9
+    assert action["title"] == "先刷新股價"
+    assert action["reason"] == (
+        "刷新股價可改善「股價與量能」：有 1 檔股價落後資料庫最新交易日 2026-06-05。"
+    )
+    assert "閱讀前" in action["risk"]
+    assert action["action_label"] == "刷新股價"
+    assert action["route_hint"] == "data_enrichment:market_refresh:2330,2382"
+    assert action["source_ids"] == ["report:15", "2330", "2382"]
+
+
 def test_operator_next_action_prioritizes_retryable_failure_affecting_latest_report() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

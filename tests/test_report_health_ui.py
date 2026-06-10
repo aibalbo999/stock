@@ -52,6 +52,34 @@ def test_latest_report_health_summary_marks_required_gaps_as_attention() -> None
     assert result["action_label"] == "補強資料"
 
 
+def test_latest_report_health_summary_marks_market_freshness_as_attention() -> None:
+    result = latest_report_health_summary(
+        {
+            "report_id": 15,
+            "topic": "AI 產業鏈",
+            "tickers": ["2330", "2382"],
+            "quality_gate": {
+                "status": "ready",
+                "metrics": {
+                    "promoted_count": 2,
+                    "market_latest_trade_date": "2026-06-02",
+                    "market_database_latest_trade_date": "2026-06-05",
+                    "market_older_than_database_latest_count": 1,
+                    "market_trade_date_lag_days": 3,
+                    "market_trade_date_warning_suppressed": False,
+                },
+            },
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert result["state"] == "attention"
+    assert result["follow_up_state"] == "market_freshness"
+    assert result["follow_up_label"] == "股價落後 1 檔"
+    assert result["action_label"] == "刷新股價"
+
+
 def test_latest_report_health_summary_marks_missing_quality_gate_as_attention() -> None:
     result = latest_report_health_summary(
         {

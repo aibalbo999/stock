@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui import data_gap_actions
 from app.ui.data_gap_actions import data_gap_action_items, data_gap_action_summary
 
 
@@ -207,3 +208,60 @@ def test_data_gap_action_items_use_prefilled_data_enrichment_routes() -> None:
         "data_enrichment:market_refresh:2330",
         "data_enrichment:manual_ingest:2330",
     ]
+
+
+def test_market_freshness_action_item_maps_quality_metric_to_refresh_route() -> None:
+    assert hasattr(data_gap_actions, "market_freshness_action_item")
+    item = data_gap_actions.market_freshness_action_item(
+        {
+            "report_id": 15,
+            "topic": "AI 產業鏈",
+            "tickers": ["2330", "2382"],
+            "quality_gate": {
+                "status": "ready",
+                "metrics": {
+                    "market_latest_trade_date": "2026-06-02",
+                    "market_database_latest_trade_date": "2026-06-05",
+                    "market_older_than_database_latest_count": 1,
+                    "market_trade_date_lag_days": 3,
+                    "market_trade_date_warning_suppressed": False,
+                },
+            },
+        }
+    )
+
+    assert item == {
+        "report_id": 15,
+        "topic": "AI 產業鏈",
+        "ticker": "2330、2382",
+        "tickers": ["2330", "2382"],
+        "gap_type": "price",
+        "action_label": "刷新股價",
+        "operation": "market_refresh",
+        "impact": "刷新股價可改善「股價與量能」：有 1 檔股價落後資料庫最新交易日 2026-06-05。",
+        "post_action_hint": "補完後建議重跑報告",
+        "route_hint": "data_enrichment:market_refresh:2330,2382",
+        "purpose": "tracking",
+        "priority": "freshness",
+        "summary_label": "股價落後 1 檔",
+    }
+
+
+def test_market_freshness_action_item_ignores_suppressed_one_day_lag() -> None:
+    assert (
+        data_gap_actions.market_freshness_action_item(
+            {
+                "report_id": 15,
+                "tickers": ["2330"],
+                "quality_gate": {
+                    "status": "ready",
+                    "metrics": {
+                        "market_older_than_database_latest_count": 1,
+                        "market_trade_date_lag_days": 1,
+                        "market_trade_date_warning_suppressed": True,
+                    },
+                },
+            }
+        )
+        == {}
+    )

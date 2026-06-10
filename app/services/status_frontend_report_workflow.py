@@ -95,6 +95,18 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'quality_stage.get("state") == "unknown"' in operator_decisions_source
             and "先確認報告品質狀態" in operator_decisions_source
         ),
+        "ui_report_market_freshness_action_enabled": (
+            "market_freshness_action_item" in report_lifecycle_source
+            and "market_freshness_action = market_freshness_action_item(report)"
+            in report_lifecycle_source
+            and 'market_freshness_action.get("summary_label")' in report_lifecycle_source
+            and 'market_freshness_action.get("impact")' in report_lifecycle_source
+            and "market_freshness_action_item" in report_health_source
+            and '"market_freshness"' in report_health_source
+            and "股價需刷新" in report_health_source
+            and "market_freshness_action_item" in operator_decisions_source
+            and "priority=9" in operator_decisions_source
+        ),
         "ui_report_latest_only_picker_enabled": (
             'load_api_json_or_default(\n        "/reports?limit=5"' in report_center_source
             and "def latest_report_picker_state(" in report_center_source

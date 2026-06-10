@@ -54,6 +54,22 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "risk=_healthy_read_risk(quota_missing=quota_missing)"
             in operator_decisions_source
         ),
+        "ui_operator_market_freshness_primary_action_enabled": (
+            "market_freshness_action_item" in operator_decisions_source
+            and "market_freshness_action = market_freshness_action_item(report_payload)"
+            in operator_decisions_source
+            and "priority=9" in operator_decisions_source
+            and 'title=f"先{action_label}"' in operator_decisions_source
+            and "股價資料落後資料庫最新快取" in operator_decisions_source
+            and "閱讀前未刷新股價" in operator_decisions_source
+            and "data_enrichment:market_refresh" in operator_decisions_source
+            and (
+                operator_decisions_source.find("if quota_payload:")
+                < operator_decisions_source.find(
+                    "market_freshness_action = market_freshness_action_item(report_payload)"
+                )
+            )
+        ),
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source
             and "系統狀態暫不可讀" in operator_status_source

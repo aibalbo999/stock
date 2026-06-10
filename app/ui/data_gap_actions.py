@@ -109,6 +109,44 @@ def data_gap_action_summary(items: list[dict]) -> dict[str, str]:
     }
 
 
+def market_freshness_action_item(report_result: dict | None) -> dict[str, Any]:
+    report = _dict_value(report_result)
+    quality_gate = _dict_value(report.get("quality_gate"))
+    metrics = _dict_value(quality_gate.get("metrics"))
+    older_count = _int_value(metrics.get("market_older_than_database_latest_count"))
+    stale_count = max(
+        _int_value(metrics.get("market_stale_count")),
+        _int_value(metrics.get("stale_market_dataset_count")),
+    )
+    if older_count <= 0 and stale_count <= 0:
+        return {}
+    if older_count > 0 and stale_count <= 0 and _bool_value(
+        metrics.get("market_trade_date_warning_suppressed")
+    ):
+        return {}
+
+    tickers = _report_tickers(report)
+    report_id = report.get("report_id") or report.get("id")
+    topic = report.get("topic") or "最新版報告"
+    database_latest = _text(metrics.get("market_database_latest_trade_date"))
+    reason = _market_freshness_reason(older_count, stale_count, database_latest)
+    return {
+        "report_id": report_id,
+        "topic": topic,
+        "ticker": "、".join(tickers) if tickers else "全部",
+        "tickers": tickers,
+        "gap_type": "price",
+        "action_label": "刷新股價",
+        "operation": "market_refresh",
+        "impact": f"刷新股價可改善「股價與量能」：{reason}",
+        "post_action_hint": "補完後建議重跑報告",
+        "route_hint": _data_enrichment_route_hint("market_refresh", tickers),
+        "purpose": "tracking",
+        "priority": "freshness",
+        "summary_label": _market_freshness_label(older_count, stale_count),
+    }
+
+
 def _impact(row: dict, action_label: str) -> str:
     target = _text(row.get("target"))
     reason = _text(row.get("reason"))
@@ -117,6 +155,23 @@ def _impact(row: dict, action_label: str) -> str:
     if target:
         return f"{action_label}可改善「{target}」。"
     return _text(row.get("next_step"), default=f"{action_label}可改善最新版報告資料缺口。")
+
+
+def _market_freshness_reason(
+    older_count: int,
+    stale_count: int,
+    database_latest: str,
+) -> str:
+    if older_count > 0:
+        suffix = f" {database_latest}" if database_latest else ""
+        return f"有 {older_count} 檔股價落後資料庫最新交易日{suffix}。"
+    return f"有 {stale_count} 檔股價使用快取救援資料。"
+
+
+def _market_freshness_label(older_count: int, stale_count: int) -> str:
+    if older_count > 0:
+        return f"股價落後 {older_count} 檔"
+    return f"快取救援 {stale_count} 檔"
 
 
 def _post_action_hint(action: str) -> str:
@@ -139,6 +194,33 @@ def _tickers(row: dict, request: dict) -> list[str]:
     if not isinstance(tickers, list):
         return []
     return [str(ticker).strip() for ticker in tickers if str(ticker).strip()]
+
+
+def _report_tickers(report: dict) -> list[str]:
+    tickers = report.get("tickers")
+    if isinstance(tickers, list):
+        return _unique_texts(tickers)
+    promoted = report.get("promoted_tickers")
+    if isinstance(promoted, list):
+        return _unique_texts(promoted)
+    candidates = report.get("candidate_whitelist")
+    if isinstance(candidates, list):
+        return _unique_texts(
+            item.get("ticker") for item in candidates if isinstance(item, dict)
+        )
+    return []
+
+
+def _unique_texts(values: Any) -> list[str]:
+    result = []
+    seen = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
 
 
 def _purpose(row: dict) -> str:
@@ -172,6 +254,19 @@ def _dedupe_key(
 
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "y"}
+    return bool(value)
 
 
 def _list_value(value: Any) -> list[dict]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ui.data_gap_actions import data_gap_action_items
+from app.ui.data_gap_actions import data_gap_action_items, market_freshness_action_item
 from app.ui.incident_inbox import incident_inbox_items, top_incidents
 from app.ui.operator_status import quota_operator_summary, service_status_unavailable
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
@@ -171,7 +171,7 @@ def operator_next_best_action(
         )
 
     data_stage = stage_by_key(lifecycle, "data")
-    if data_stage.get("state") == "attention":
+    if data_stage.get("state") == "attention" and _required_follow_up_count(follow_up_plan) > 0:
         data_gap_action = _primary_data_gap_action(report_payload, follow_up_plan)
         if data_gap_action:
             action_label = _text(data_gap_action.get("action_label"), default="補強資料")
@@ -265,6 +265,24 @@ def operator_next_best_action(
                 route_hint="settings:ai_quota",
                 source_ids=[quota_summary.get("recommended_model") or "-"],
             )
+
+    market_freshness_action = market_freshness_action_item(report_payload)
+    if market_freshness_action:
+        action_label = _text(market_freshness_action.get("action_label"), default="刷新股價")
+        return _action(
+            state="attention",
+            priority=9,
+            title=f"先{action_label}",
+            reason=_text(
+                market_freshness_action.get("impact"),
+                default="股價資料落後資料庫最新快取。",
+            ),
+            risk="閱讀前未刷新股價，最新版報告可能沿用落後的價量判讀。",
+            impact=_data_gap_action_impact(market_freshness_action),
+            action_label=action_label,
+            route_hint=market_freshness_action.get("route_hint") or "data_enrichment:market_refresh",
+            source_ids=_data_gap_action_source_ids(market_freshness_action, report_id),
+        )
 
     return _action(
         state="ready",
@@ -461,6 +479,15 @@ def _primary_data_gap_action(report_payload: dict, follow_up_plan: dict | None) 
     return {}
 
 
+def _required_follow_up_count(follow_up_plan: dict | None) -> int:
+    plan = _dict_value(follow_up_plan)
+    summary = _dict_value(plan.get("summary"))
+    selected = _dict_value(summary.get("selected"))
+    if "required_count" in selected:
+        return _int_value(selected.get("required_count"))
+    return _int_value(summary.get("required_count"))
+
+
 def _data_gap_action_impact(action: dict) -> str:
     impact = _text(action.get("impact"), default="補強最新版報告資料缺口。")
     post_action_hint = _text(action.get("post_action_hint"))
@@ -654,6 +681,13 @@ def _report_id(report_payload: dict, latest_report: dict) -> Any:
 
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _text(value: Any, *, default: str = "") -> str:

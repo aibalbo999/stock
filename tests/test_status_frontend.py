@@ -182,6 +182,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_operator_retryable_failure_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_stale_running_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_quota_missing_read_guard_enabled"] is True
+    assert status["frontend"]["ui_operator_market_freshness_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_service_status_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_operator_task_summary_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_operator_running_task_overall_message_enabled"] is True
@@ -403,6 +404,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_health_identity_enabled"] is True
     assert status["frontend"]["ui_report_health_action_enabled"] is True
     assert status["frontend"]["ui_report_quality_unknown_guard_enabled"] is True
+    assert status["frontend"]["ui_report_market_freshness_action_enabled"] is True
     assert status["frontend"]["ui_report_latest_only_picker_enabled"] is True
     assert status["frontend"]["ui_report_empty_running_task_state_enabled"] is True
     assert status["frontend"]["ui_report_advanced_controls_progressive_disclosure_enabled"] is True
@@ -476,6 +478,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_operator_quota_missing_read_guard_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_operator_market_freshness_primary_action_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_operator_service_status_unknown_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_operator_task_summary_unknown_guard_enabled"] is True
     assert (
@@ -522,6 +528,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_health_identity_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_action_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_quality_unknown_guard_enabled"] is True
+    assert frontend_arch["evidence"]["ui_report_market_freshness_action_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_latest_only_picker_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_empty_running_task_state_enabled"] is True
     assert (

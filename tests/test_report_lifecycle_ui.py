@@ -148,6 +148,43 @@ def test_latest_report_lifecycle_marks_required_gaps_as_attention() -> None:
     assert stage_by_key(lifecycle, "rerun")["label"] == "補強後重跑"
 
 
+def test_latest_report_lifecycle_marks_market_freshness_as_actionable_attention() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 15,
+            "topic": "AI 產業鏈",
+            "tickers": ["2330", "2382"],
+            "quality_gate": {
+                "status": "ready",
+                "metrics": {
+                    "promoted_count": 2,
+                    "market_latest_trade_date": "2026-06-02",
+                    "market_database_latest_trade_date": "2026-06-05",
+                    "market_older_than_database_latest_count": 1,
+                    "market_trade_date_lag_days": 3,
+                    "market_trade_date_warning_suppressed": False,
+                },
+            },
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert lifecycle["primary_action"] == "刷新股價"
+    assert lifecycle["primary_action_detail"] == (
+        "刷新股價可改善「股價與量能」：有 1 檔股價落後資料庫最新交易日 2026-06-05。"
+    )
+    assert lifecycle["route_hint"] == "data_enrichment:market_refresh:2330,2382"
+    assert stage_by_key(lifecycle, "data") == {
+        "key": "data",
+        "title": "資料",
+        "state": "attention",
+        "label": "股價落後 1 檔",
+        "detail": "刷新股價可改善「股價與量能」：有 1 檔股價落後資料庫最新交易日 2026-06-05。",
+    }
+
+
 def test_latest_report_lifecycle_prefills_first_required_data_gap_action() -> None:
     lifecycle = latest_report_lifecycle(
         {

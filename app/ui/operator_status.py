@@ -122,7 +122,7 @@ def task_failure_action_summary(failure: dict) -> dict[str, str]:
     if category == "payload_validation":
         return {
             "state": "attention",
-            "label": _text(failure.get("error_summary"), default="輸入或白名單已擋下任務"),
+            "label": "輸入或白名單已擋下任務",
             "detail": PAYLOAD_VALIDATION_DETAIL,
             "action_label": "可重試" if retryable else "檢查輸入",
             "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
@@ -310,23 +310,20 @@ def _first_failure_summary(task_summary: dict) -> dict[str, str]:
 def _recommended_quota_row(quota: dict, recommended_model: str) -> dict:
     if not isinstance(quota, dict):
         return {}
-    fallback = {}
     for row in quota.get("models") or []:
         if not isinstance(row, dict):
             continue
-        if not fallback:
-            fallback = row
         if _text(row.get("model")) == recommended_model:
             return row
-    return fallback
+    return {}
 
 
 def _quota_remaining_text(model_row: dict) -> str:
     remaining = model_row.get("requests_remaining") if isinstance(model_row, dict) else None
     budget = model_row.get("request_budget") if isinstance(model_row, dict) else None
-    if remaining in {None, ""} and budget in {None, ""}:
-        return "- / -"
-    return f"{_text(remaining, default='-')} / {_text(budget, default='-')}"
+    if remaining in {None, ""} or budget in {None, ""}:
+        return "額度未追蹤"
+    return f"{remaining} / {budget}"
 
 
 def _quota_state(model_row: dict) -> str:

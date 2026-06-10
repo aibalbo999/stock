@@ -210,6 +210,28 @@ def test_quota_operator_summary_uses_exact_caption_when_no_high_quota_fallback()
     assert quota_operator_summary(quota)["caption"] == "無高額度保底模型"
 
 
+def test_quota_operator_summary_marks_untracked_when_recommended_model_missing() -> None:
+    quota = _quota()
+    quota["recommended_model"] = "missing-model"
+
+    result = quota_operator_summary(quota)
+
+    assert result["recommended_model"] == "missing-model"
+    assert result["remaining"] == "額度未追蹤"
+    assert result["state"] == "attention"
+
+
+def test_quota_operator_summary_marks_untracked_when_request_budget_or_remaining_missing() -> None:
+    for model_patch in [
+        {"requests_remaining": 5, "request_budget": ""},
+        {"requests_remaining": "", "request_budget": 250},
+    ]:
+        quota = _quota()
+        quota["models"][0] = {**quota["models"][0], **model_patch}
+
+        assert quota_operator_summary(quota)["remaining"] == "額度未追蹤"
+
+
 def test_task_failure_action_summary_maps_payload_validation_retryable_failure() -> None:
     assert task_failure_action_summary(_payload_validation_failure()) == {
         "state": "attention",
@@ -218,3 +240,9 @@ def test_task_failure_action_summary_maps_payload_validation_retryable_failure()
         "action_label": "可重試",
         "route_hint": "task:task-8150",
     }
+
+
+def test_task_failure_action_summary_uses_fixed_payload_validation_label() -> None:
+    failure = {**_payload_validation_failure(), "error_summary": "custom backend detail"}
+
+    assert task_failure_action_summary(failure)["label"] == "輸入或白名單已擋下任務"

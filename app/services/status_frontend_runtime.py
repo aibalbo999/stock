@@ -58,6 +58,12 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and "min-height: 44px !important" in style_source
             and "min-height: 40px !important" not in style_source
         ),
+        "ui_streamlit_heading_anchor_noise_hidden": (
+            'a[aria-label="Link to heading"]' in style_source
+            and "display: none !important" in style_source
+            and "visibility: hidden !important" in style_source
+            and "pointer-events: none !important" in style_source
+        ),
         "frontend_runtime_identity_marker_enabled": (
             'data-stock-frontend-runtime="true"' in dashboard_core_source
             and "runtime_identity_status()" in dashboard_core_source

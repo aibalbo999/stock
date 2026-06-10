@@ -38,6 +38,11 @@ footer {visibility: hidden;}
     visibility: hidden !important;
     pointer-events: none !important;
 }
+a[aria-label="Link to heading"] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 .block-container {
     padding-top: 0.55rem;
     padding-bottom: 3rem;

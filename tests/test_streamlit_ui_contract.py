@@ -161,6 +161,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '[data-testid="stStatusWidget"]' in styles
     assert '[data-testid="stSidebarCollapseButton"]' in styles
     assert ".stDeployButton" in styles
+    assert 'a[aria-label="Link to heading"]' in styles
+    assert "pointer-events: none !important" in styles
     assert "def render_analysis_workspace() -> None:" in source
     assert "def render_report_center() -> None:" in source
     assert "def render_data_enrichment() -> None:" in source

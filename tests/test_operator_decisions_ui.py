@@ -40,6 +40,51 @@ def test_operator_next_action_prioritizes_queue_blocker() -> None:
     assert action["route_hint"] == "settings:maintenance"
 
 
+def test_operator_next_action_distinguishes_stale_running_from_queue_unavailable() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {"totals": {"stale_running_count": 2}},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "blocked"
+    assert action["priority"] == 2
+    assert action["title"] == "檢查卡住的背景任務"
+    assert "2 個任務疑似卡住" in action["reason"]
+    assert action["action_label"] == "查看任務"
+    assert action["route_hint"] == "settings:maintenance"
+
+
+def test_operator_next_action_distinguishes_stale_running_alert() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {
+            "alerts": [
+                {
+                    "code": "stale_running_tasks",
+                    "severity": "error",
+                    "message": "有任務疑似卡住",
+                    "next_steps": ["查看背景任務", "重試可重試任務"],
+                }
+            ]
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "blocked"
+    assert action["priority"] == 2
+    assert action["title"] == "檢查卡住的背景任務"
+    assert action["reason"] == "有任務疑似卡住"
+    assert action["impact"] == "查看背景任務；重試可重試任務"
+    assert action["action_label"] == "查看維護"
+
+
 def test_operator_next_action_prompts_report_creation_when_missing() -> None:
     action = operator_next_best_action(READY_QUEUE, {}, {}, [], {}, {})
 

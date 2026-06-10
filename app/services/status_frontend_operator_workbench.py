@@ -33,4 +33,14 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'action_label="重試任務"' in operator_decisions_source
             and 'route_hint=f"task:{retry_task_id}"' in operator_decisions_source
         ),
+        "ui_operator_stale_running_primary_action_enabled": (
+            "def _first_incident_by_id(" in operator_decisions_source
+            and "task_queue_stale_running" in operator_decisions_source
+            and "task_queue:stale_running" in operator_decisions_source
+            and "檢查卡住的背景任務" in operator_decisions_source
+            and "priority=2" in operator_decisions_source
+            and 'action_label=stale_running_incident.get("action_label") or "查看任務"'
+            in operator_decisions_source
+            and 'route_hint=stale_running_incident["route_hint"]' in operator_decisions_source
+        ),
     }

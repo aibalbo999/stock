@@ -180,6 +180,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_operator_quota_summary_enabled"] is True
     assert status["frontend"]["ui_operator_retryable_failure_primary_action_enabled"] is True
+    assert status["frontend"]["ui_operator_stale_running_primary_action_enabled"] is True
     assert status["frontend"]["frontend_runtime_identity_marker_enabled"] is True
     assert status["frontend"]["frontend_runtime_identity_marker_path"] == (
         "app/ui/dashboard_core.py"
@@ -432,6 +433,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_operator_quota_summary_enabled"] is True
     assert (
         frontend_arch["evidence"]["ui_operator_retryable_failure_primary_action_enabled"]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"]["ui_operator_stale_running_primary_action_enabled"]
         is True
     )
     assert frontend_arch["evidence"]["frontend_runtime_identity_marker_enabled"] is True

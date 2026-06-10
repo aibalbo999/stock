@@ -30,6 +30,38 @@ def operator_next_best_action(
     has_report_detail = _has_report_detail_payload(report_payload)
     lifecycle = latest_report_lifecycle(report_payload, follow_up_plan) if has_report_detail else {}
     incidents = incident_inbox_items(service_snapshot, task_summary, quota, lifecycle)
+    queue_unavailable_incident = _first_incident_by_id(incidents, "task_queue_unavailable")
+    if queue_unavailable_incident:
+        return _action(
+            state="blocked",
+            priority=1,
+            title="先修復背景任務",
+            reason=queue_unavailable_incident["impact"],
+            risk="未修復前，分析、補強與資料刷新可能卡住。",
+            impact="恢復所有背景任務提交與處理能力。",
+            action_label="查看維護",
+            route_hint="settings:maintenance",
+            source_ids=[queue_unavailable_incident["source"]],
+        )
+
+    stale_running_incident = _first_incident_by_id(
+        incidents,
+        "task_queue_stale_running",
+        dedupe_key="task_queue:stale_running",
+    )
+    if stale_running_incident:
+        return _action(
+            state="blocked",
+            priority=2,
+            title="檢查卡住的背景任務",
+            reason=stale_running_incident["title"],
+            risk="卡住任務可能讓新的補強或報告任務排隊等待過久。",
+            impact=stale_running_incident["next_action"],
+            action_label=stale_running_incident.get("action_label") or "查看任務",
+            route_hint=stale_running_incident["route_hint"],
+            source_ids=[stale_running_incident["source"]],
+        )
+
     queue_incident = _first_incident(incidents, "task_queue", severity="critical")
     if queue_incident:
         return _action(
@@ -39,8 +71,8 @@ def operator_next_best_action(
             reason=queue_incident["impact"],
             risk="未修復前，分析、補強與資料刷新可能卡住。",
             impact="恢復所有背景任務提交與處理能力。",
-            action_label="查看維護",
-            route_hint="settings:maintenance",
+            action_label=queue_incident.get("action_label") or "查看維護",
+            route_hint=queue_incident["route_hint"],
             source_ids=[queue_incident["source"]],
         )
 
@@ -331,6 +363,20 @@ def _first_incident(
         if severity is not None and incident.get("severity") != severity:
             continue
         return incident
+    return {}
+
+
+def _first_incident_by_id(
+    incidents: list[dict],
+    incident_id: str,
+    *,
+    dedupe_key: str | None = None,
+) -> dict:
+    for incident in incidents:
+        if incident.get("id") == incident_id or (
+            dedupe_key is not None and incident.get("dedupe_key") == dedupe_key
+        ):
+            return incident
     return {}
 
 

@@ -154,6 +154,41 @@ def test_report_follow_up_context_service_prepare_revalidates_and_refreshes() ->
     assert refreshed["tickers"] == ["2330", "3324"]
 
 
+def test_report_follow_up_context_service_prepare_builds_whitelist_from_legacy_report_tickers() -> None:
+    service = ReportFollowUpContextService(
+        session_scope_factory=fake_session_scope,
+        candidate_revalidation_service=SimpleNamespace(revalidate_candidate_whitelist=lambda payload, candidates: {}),
+    )
+
+    prepared = run_async(
+        service.prepare(
+            {
+                "source_report_tickers": ["2408", "2344", "8299", "2451", "3260", "4967", "2337", "8150"],
+                "source_report_topic": "記憶體產業鏈",
+                "run_payload": {},
+                "candidate_whitelist": [],
+            },
+            ReportRequest(
+                topic="記憶體產業鏈",
+                tickers=["2408", "2344", "8299", "2451", "3260", "4967", "2337", "8150"],
+                lookback_days=120,
+            ),
+            [FollowUpAction("rerun_analysis", "重跑分析報告", ("8150",), purpose="tracking")],
+        )
+    )
+
+    assert prepared["request"].tickers[-1] == "8150"
+    assert prepared["whitelist"] is not None
+    assert "8150" in prepared["whitelist"].allowed_tickers()
+    assert prepared["candidate_whitelist"][-1] == {
+        "ticker": "8150",
+        "name": "8150",
+        "segment": "記憶體產業鏈",
+        "status": "evidence_supported",
+        "metadata": {"source": "legacy_report_tickers"},
+    }
+
+
 def test_report_follow_up_context_service_refresh_market_data_uses_calendar_windows() -> None:
     pipeline = FakePipeline()
     service = ReportFollowUpContextService(

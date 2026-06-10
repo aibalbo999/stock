@@ -151,6 +151,19 @@ class ReportFollowUpContextService:
             promoted_tickers = request.tickers
 
         rerun_request = request.model_copy(update={"tickers": promoted_tickers})
+        if not candidate_payload:
+            candidate_payload = self._legacy_candidate_payload_from_report_tickers(
+                context,
+                rerun_request,
+            )
+            if candidate_payload:
+                revalidation = {
+                    **revalidation,
+                    "candidate_whitelist": candidate_payload,
+                    "promoted_tickers": rerun_request.tickers,
+                    "revalidation_status": "legacy_report_ticker_whitelist",
+                    "revalidation_reason": "原報告缺少候選白名單，依原報告股票清單建立最小動態白名單以支援補強重跑。",
+                }
         if revalidation.get("changed") and promoted_tickers:
             await self.refresh_market_data_func(rerun_request)
         whitelist = (
@@ -164,6 +177,36 @@ class ReportFollowUpContextService:
             "candidate_whitelist": candidate_payload,
             "candidate_revalidation": revalidation,
         }
+
+    def _legacy_candidate_payload_from_report_tickers(
+        self,
+        context: dict,
+        request: ReportRequest,
+    ) -> list[dict]:
+        tickers = _dedupe_tickers(request.tickers or context.get("source_report_tickers") or [])
+        if not tickers:
+            return []
+        static_whitelist = self.supply_chain_whitelist_cls()
+        static_allowed = static_whitelist.allowed_tickers()
+        if set(tickers).issubset(static_allowed):
+            return []
+        static_companies = {company.ticker: company for company in static_whitelist.companies()}
+        topic = str(context.get("source_report_topic") or request.topic or "補強重跑").strip()
+        return [
+            {
+                "ticker": ticker,
+                "name": getattr(static_companies.get(ticker), "name", None) or ticker,
+                "segment": (
+                    getattr(static_whitelist.segment_for_ticker(ticker), "name", None)
+                    if ticker in static_allowed
+                    else topic
+                )
+                or topic,
+                "status": "evidence_supported",
+                "metadata": {"source": "legacy_report_tickers"},
+            }
+            for ticker in tickers
+        ]
 
     async def refresh_market_data(self, request: ReportRequest) -> dict:
         today = self.today_func()
@@ -207,3 +250,15 @@ def _json_tickers(tickers_json: str | None) -> list[str]:
     except (TypeError, json.JSONDecodeError):
         return []
     return [str(ticker) for ticker in tickers if str(ticker).strip()]
+
+
+def _dedupe_tickers(tickers: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for ticker in tickers:
+        normalized = str(ticker).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result

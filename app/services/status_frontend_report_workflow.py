@@ -105,6 +105,22 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "建立分析後，這裡會顯示目前保留的最新版報告。" in report_center_source
             and ".latest-report-picker" in style_source
         ),
+        "ui_report_empty_running_task_state_enabled": (
+            '"/tasks/summary?days=7&limit=10"' in report_center_source
+            and "task_summary=task_summary" in report_center_source
+            and "def _latest_task_running(" in report_center_source
+            and "def _task_running(" in report_center_source
+            and "最新版報告生成中" in report_center_source
+            and "最新任務正在背景執行；完成前不需要重複建立分析。"
+            in report_center_source
+            and '"action_label": "查看任務"' in report_center_source
+            and '"route_hint": _task_route_hint(latest_running_task)' in report_center_source
+            and 'key="report_empty_state_primary_action"' in report_center_source
+            and (
+                report_center_source.find('"/tasks/summary?days=7&limit=10"')
+                < report_center_source.find("latest_report_picker_state(")
+            )
+        ),
         "ui_report_advanced_controls_progressive_disclosure_enabled": (
             'with st.expander("疑難排解：執行紀錄")' in report_center_source
             and 'with st.expander("報告管理")' not in report_center_source

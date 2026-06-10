@@ -36,11 +36,22 @@ def render_report_center() -> None:
         [],
         error_message="讀取報告清單失敗",
     )
+    task_summary = (
+        {}
+        if reports
+        else load_api_json_or_default(
+            "/tasks/summary?days=7&limit=10",
+            {},
+            error_message="讀取報告中心任務狀態失敗",
+            notify="warning",
+        )
+    )
     pending_report_id = st.session_state.pop("pending_selected_report_id", None)
     picker = latest_report_picker_state(
         reports,
         pending_report_id=pending_report_id,
         current_report_id=st.session_state.get("selected_report_id"),
+        task_summary=task_summary,
     )
     report_options = picker["options"]
 
@@ -60,7 +71,8 @@ def render_report_center() -> None:
             )
     else:
         selected_id = None
-        st.info("尚無最新版報告。")
+        _render_latest_report_picker_summary(picker)
+        st.info(str(picker.get("summary_detail") or "尚無最新版報告。"))
 
     report_markdown = None
     report_title = "report"
@@ -142,14 +154,15 @@ def render_report_center() -> None:
             st.markdown(report_markdown)
     else:
         st.markdown(
-            """
+            f"""
                 <div class="result-shell">
-                <div class="section-title">尚未選擇報告</div>
-                <div class="section-note">建立分析後，這裡會顯示目前保留的最新版報告。</div>
+                <div class="section-title">{escape(str(picker.get("summary_title") or "尚未選擇報告"))}</div>
+                <div class="section-note">{escape(str(picker.get("summary_detail") or "建立分析後，這裡會顯示目前保留的最新版報告。"))}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        _render_empty_report_action(picker)
 
     with st.expander("疑難排解：執行紀錄"):
         render_section_header(
@@ -243,9 +256,22 @@ def latest_report_picker_state(
     *,
     pending_report_id: Any = None,
     current_report_id: Any = None,
+    task_summary: dict | None = None,
 ) -> dict[str, Any]:
     options = _latest_report_options(reports)
     if not options:
+        latest_running_task = _latest_task_running(task_summary)
+        if latest_running_task:
+            return {
+                "mode": "running",
+                "options": [],
+                "selected_id": None,
+                "selector_label": "",
+                "summary_title": "最新版報告生成中",
+                "summary_detail": "最新任務正在背景執行；完成前不需要重複建立分析。",
+                "action_label": "查看任務",
+                "route_hint": _task_route_hint(latest_running_task),
+            }
         return {
             "mode": "empty",
             "options": [],
@@ -310,6 +336,81 @@ def _matching_report_id(options: list[dict[str, Any]], report_id: Any) -> Any:
     return None
 
 
+def _latest_task_running(task_summary: dict | None) -> dict:
+    task = _latest_task(task_summary)
+    return task if _task_running(task) else {}
+
+
+def _latest_task(task_summary: dict | None) -> dict:
+    if not isinstance(task_summary, dict):
+        return {}
+    for key in ("latest", "latest_task"):
+        value = task_summary.get(key)
+        if isinstance(value, dict):
+            return value
+    recent = task_summary.get("recent")
+    if isinstance(recent, list):
+        for row in recent:
+            if isinstance(row, dict):
+                return row
+    return {}
+
+
+def _task_running(task: dict) -> bool:
+    if _task_successful(task) or _task_failed(task):
+        return False
+    if task.get("running") is True:
+        return True
+    status = _text(task.get("status")).casefold()
+    celery_status = _text(task.get("celery_status")).casefold()
+    return status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+        "in_progress",
+        "processing",
+        "submitted",
+        "scheduled",
+    } or celery_status in {
+        "pending",
+        "queued",
+        "received",
+        "retry",
+        "running",
+        "started",
+    }
+
+
+def _task_successful(task: dict) -> bool:
+    if task.get("successful") is True:
+        return True
+    status = _text(task.get("status")).casefold()
+    celery_status = _text(task.get("celery_status")).casefold()
+    return status in {"success", "successful", "succeeded", "completed", "done"} or celery_status in {
+        "success",
+        "successful",
+        "succeeded",
+    }
+
+
+def _task_failed(task: dict) -> bool:
+    status = _text(task.get("status")).casefold()
+    celery_status = _text(task.get("celery_status")).casefold()
+    if status in {"failed", "failure", "cancelled", "error"}:
+        return True
+    if celery_status in {"failed", "failure", "revoked"}:
+        return True
+    return bool(task.get("error") or task.get("error_category"))
+
+
+def _task_route_hint(task: dict) -> str:
+    task_id = _text(task.get("task_id"))
+    return f"task:{task_id}" if task_id else "settings:maintenance"
+
+
 def _format_generated_at(value: Any) -> str:
     text = _text(value)
     if not text:
@@ -371,6 +472,29 @@ def _render_report_lifecycle_action(lifecycle: dict) -> None:
             "route_hint": route_hint,
         },
         key="report_lifecycle_primary_action",
+        primary=True,
+        show_caption=True,
+    )
+
+
+def _render_empty_report_action(picker: dict[str, Any]) -> None:
+    action_label = _text(picker.get("action_label"))
+    route_hint = _text(picker.get("route_hint"))
+    if not action_label or not route_hint:
+        return
+    st.markdown(
+        """<section class="report-lifecycle-action" aria-label="報告空狀態操作">
+<span>建議操作</span>
+<strong>先確認背景任務進度</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    render_operator_route_button(
+        {
+            "action_label": action_label,
+            "route_hint": route_hint,
+        },
+        key="report_empty_state_primary_action",
         primary=True,
         show_caption=True,
     )

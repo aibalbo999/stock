@@ -53,6 +53,38 @@ def test_latest_report_picker_state_multi_topic_uses_topic_latest_selector() -> 
     assert picker["summary_detail"] == "共 2 份主題最新版，預設讀取最新產生的一份。"
 
 
+def test_latest_report_picker_state_shows_running_empty_state() -> None:
+    picker = report_center.latest_report_picker_state(
+        [],
+        task_summary={
+            "latest": {
+                "task_id": "first-report-task",
+                "operation": "report_generation",
+                "status": "queued",
+                "celery_status": "PENDING",
+            },
+            "totals": {
+                "run_count": 1,
+                "success_count": 0,
+                "failed_count": 0,
+                "running_count": 1,
+                "stale_running_count": 0,
+            },
+        },
+    )
+
+    assert picker == {
+        "mode": "running",
+        "options": [],
+        "selected_id": None,
+        "selector_label": "",
+        "summary_title": "最新版報告生成中",
+        "summary_detail": "最新任務正在背景執行；完成前不需要重複建立分析。",
+        "action_label": "查看任務",
+        "route_hint": "task:first-report-task",
+    }
+
+
 def test_latest_report_lifecycle_marks_ready_report_readable() -> None:
     lifecycle = latest_report_lifecycle(
         {

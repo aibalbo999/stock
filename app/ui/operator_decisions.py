@@ -328,6 +328,7 @@ def operator_secondary_actions(
             "detail": incident["next_action"],
             "state": _incident_state(incident),
             "route_hint": incident["route_hint"],
+            "action_label": incident.get("action_label") or "查看事件",
         }
         for incident in incidents
         if not _incident_matches_primary(incident, primary)

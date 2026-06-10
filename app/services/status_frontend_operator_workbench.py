@@ -70,6 +70,17 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 )
             )
         ),
+        "ui_operator_secondary_action_labels_enabled": (
+            '"action_label": incident.get("action_label") or "查看事件"'
+            in operator_decisions_source
+            and "operator_secondary_actions(" in operator_decisions_source
+            and "render_operator_route_button(" in source_context.ui_sources.get(
+                "analysis_workspace.py", ""
+            )
+            and "action.get(\"action_label\")" in source_context.ui_sources.get(
+                "operator_route_controls.py", ""
+            )
+        ),
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source
             and "系統狀態暫不可讀" in operator_status_source

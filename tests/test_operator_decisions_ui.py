@@ -564,6 +564,7 @@ def test_operator_secondary_actions_show_ranked_incidents() -> None:
     )
 
     assert actions[0]["title"] == "白名單或輸入擋下任務"
+    assert actions[0]["action_label"] == "重試任務"
     assert actions[0]["route_hint"] == "task:abc"
 
 

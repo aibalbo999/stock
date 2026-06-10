@@ -139,7 +139,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert task_noop_action["read_only"] is False
     assert task_noop_action["effect"] == "safe_noop_task_submission"
     assert task_noop_action["safe_to_run"] is True
-    assert "--submit --wait --timeout 30 --json --strict" in (
+    assert "--submit --timeout 10 --skip-processing-ready --json" in (
         task_noop_action["display_command"]
     )
     assert "不呼叫外部市場資料 API" in task_noop_action["description"]
@@ -362,16 +362,15 @@ def test_run_maintenance_diagnostic_action_executes_task_submission_noop_smoke(
     assert result["status"] == "success"
     assert result["display_command"] == (
         ".venv/bin/python scripts/task_submission_smoke.py "
-        "--submit --wait --timeout 30 --json --strict"
+        "--submit --timeout 10 --skip-processing-ready --json"
     )
     assert captured["command"][1:] == [
         "scripts/task_submission_smoke.py",
         "--submit",
-        "--wait",
         "--timeout",
-        "30",
+        "10",
+        "--skip-processing-ready",
         "--json",
-        "--strict",
     ]
     assert captured["timeout"] == 45
 

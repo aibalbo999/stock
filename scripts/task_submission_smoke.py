@@ -30,6 +30,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Poll GET /tasks/{task_id} until the smoke task finishes or times out.",
     )
+    parser.add_argument(
+        "--skip-processing-ready",
+        action="store_true",
+        help=(
+            "Do not require Celery worker processing readiness. Useful for diagnostics "
+            "running inside a single Celery worker that only need to verify enqueue."
+        ),
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--poll-interval", type=float, default=1.0)
     parser.add_argument(
@@ -52,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         tickers=tuple(args.ticker or DEFAULT_TICKERS),
         submit=bool(args.submit),
         wait=bool(args.wait),
+        check_processing_ready=not bool(args.skip_processing_ready),
         timeout_seconds=float(args.timeout),
         poll_interval_seconds=float(args.poll_interval),
         check_runtime_identity=not args.skip_runtime_identity,

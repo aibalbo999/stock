@@ -22,6 +22,8 @@ from app.services.market_repositories import (
     MonthlyRevenueRepository,
     ValuationMetricRepository,
 )
+from app.services.maintenance_diagnostics import run_maintenance_diagnostic_action
+from app.services.maintenance_operations import run_maintenance_operation
 from app.services.report_build import ReportBuildService
 from app.services.report_repository import ReportRepository
 from app.services.report_followup_context import ReportFollowUpContextService
@@ -266,6 +268,88 @@ def _run_maintenance_cleanup_payload(payload: dict | None, *, task_id: str | Non
     )
 
 
+def _run_maintenance_operation_payload(payload: dict, *, task_id: str | None = None) -> dict:
+    action_id = str(payload.get("action_id") or "").strip()
+    operation_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    with session_scope() as session:
+        run = AnalysisRunRepository(session).start(
+            "celery_maintenance_operation",
+            {
+                "task": "maintenance_operation",
+                "action_id": action_id,
+                "payload": operation_payload,
+                "celery_task_id": task_id,
+            },
+        )
+        run_id = run.id
+    try:
+        result = run_maintenance_operation(
+            action_id,
+            confirmed=bool(operation_payload.get("confirmed")),
+        )
+        with session_scope() as session:
+            repository = AnalysisRunRepository(session)
+            repository.update_payload(
+                run_id,
+                {
+                    "task": "maintenance_operation",
+                    "action_id": action_id,
+                    "payload": operation_payload,
+                    "celery_task_id": task_id,
+                    "result": result,
+                },
+            )
+            repository.mark_success(run_id, report_id=None)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "action_id": action_id,
+            "result": result,
+        }
+    except Exception as exc:
+        with session_scope() as session:
+            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
+        raise
+
+
+def _run_maintenance_diagnostic_payload(payload: dict, *, task_id: str | None = None) -> dict:
+    action_id = str(payload.get("action_id") or "").strip()
+    with session_scope() as session:
+        run = AnalysisRunRepository(session).start(
+            "celery_maintenance_diagnostic",
+            {
+                "task": "maintenance_diagnostic",
+                "action_id": action_id,
+                "celery_task_id": task_id,
+            },
+        )
+        run_id = run.id
+    try:
+        result = run_maintenance_diagnostic_action(action_id)
+        with session_scope() as session:
+            repository = AnalysisRunRepository(session)
+            repository.update_payload(
+                run_id,
+                {
+                    "task": "maintenance_diagnostic",
+                    "action_id": action_id,
+                    "celery_task_id": task_id,
+                    "result": result,
+                },
+            )
+            repository.mark_success(run_id, report_id=None)
+        return {
+            "task_id": task_id,
+            "run_id": run_id,
+            "action_id": action_id,
+            "result": result,
+        }
+    except Exception as exc:
+        with session_scope() as session:
+            AnalysisRunRepository(session).mark_failed(run_id, str(exc))
+        raise
+
+
 @celery_app.task(bind=True, name="app.tasks.tasks.discovered_report_task")
 def discovered_report_task(self, payload: dict) -> dict:
     init_db()
@@ -342,6 +426,20 @@ def maintenance_cleanup_task(self, payload: dict | None = None) -> dict:
     init_db()
     task_id = getattr(self.request, "id", None)
     return _run_maintenance_cleanup_payload(payload, task_id=task_id)
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.maintenance_operation_task")
+def maintenance_operation_task(self, payload: dict) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    return _run_maintenance_operation_payload(payload, task_id=task_id)
+
+
+@celery_app.task(bind=True, name="app.tasks.tasks.maintenance_diagnostic_task")
+def maintenance_diagnostic_task(self, payload: dict) -> dict:
+    init_db()
+    task_id = getattr(self.request, "id", None)
+    return _run_maintenance_diagnostic_payload(payload, task_id=task_id)
 
 
 @celery_app.task(bind=True, name="app.tasks.tasks.report_follow_up_task")

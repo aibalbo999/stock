@@ -7,6 +7,8 @@ ASYNC_TASK_ENDPOINTS = [
     "/pipeline/run_discovered_async",
     "/reports/generate_async",
     "/tasks/data-operation",
+    "/tasks/maintenance-operation/",
+    "/tasks/maintenance-diagnostic/",
     "/follow-up/run_async",
 ]
 

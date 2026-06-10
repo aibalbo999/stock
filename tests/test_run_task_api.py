@@ -196,7 +196,7 @@ def test_run_task_service_queues_async_report_after_whitelist_check() -> None:
     }
 
 
-def test_run_task_service_queues_discovered_report_data_operation_and_follow_up() -> None:
+def test_run_task_service_queues_discovered_report_data_operation_follow_up_and_maintenance() -> None:
     captured = {}
 
     class FakeTask:
@@ -216,11 +216,20 @@ def test_run_task_service_queues_discovered_report_data_operation_and_follow_up(
         discovered_report_task=FakeTask("discovered"),
         data_operation_task=FakeTask("data"),
         report_follow_up_task=FakeTask("followup"),
+        maintenance_operation_task=FakeTask("maintenance_operation"),
+        maintenance_diagnostic_task=FakeTask("maintenance_diagnostic"),
     )
 
     discovered = service.generate_discovered_report_async({"topic": "AI 產業鏈", "lookback_days": 14})
     data = service.queue_data_operation("market_refresh", {"tickers": ["2330"]})
     follow_up = service.queue_report_follow_up(7, {"purpose": "required", "rerun_report": True})
+    maintenance_operation = service.queue_maintenance_operation(
+        "start_local_dependencies",
+        {"confirmed": True},
+    )
+    maintenance_diagnostic = service.queue_maintenance_diagnostic(
+        "local_neo4j_upgrade_audit"
+    )
 
     assert discovered == {
         "task_id": "discovered-task",
@@ -243,6 +252,25 @@ def test_run_task_service_queues_discovered_report_data_operation_and_follow_up(
     assert captured["followup"] == {
         "report_id": 7,
         "payload": {"purpose": "required", "rerun_report": True},
+    }
+    assert maintenance_operation == {
+        "task_id": "maintenance_operation-task",
+        "status": "queued",
+        "operation": "maintenance_operation",
+        "action_id": "start_local_dependencies",
+    }
+    assert captured["maintenance_operation"] == {
+        "action_id": "start_local_dependencies",
+        "payload": {"confirmed": True},
+    }
+    assert maintenance_diagnostic == {
+        "task_id": "maintenance_diagnostic-task",
+        "status": "queued",
+        "operation": "maintenance_diagnostic",
+        "action_id": "local_neo4j_upgrade_audit",
+    }
+    assert captured["maintenance_diagnostic"] == {
+        "action_id": "local_neo4j_upgrade_audit",
     }
 
 

@@ -11,12 +11,15 @@ from app.api.background_task_submission import (
     submit_data_operation_task,
     submit_discovered_report_task,
     submit_generate_report_task,
+    submit_maintenance_diagnostic_task,
+    submit_maintenance_operation_task,
 )
 from app.api.dependencies import api_services_provider
 from app.api.schemas import (
     DataOperationTaskRequest,
     FeedFetchRequest,
     MaintenanceCleanupRequest,
+    MaintenanceOperationRunRequest,
     ManualNewsIngest,
     MarketRefreshRequest,
     TopicDiscoveryRequest,
@@ -182,6 +185,32 @@ def create_operations_router(
             services,
             payload.operation,
             payload.payload,
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
+
+    @router.post("/tasks/maintenance-operation/{action_id}")
+    def queue_maintenance_operation(
+        action_id: str,
+        payload: MaintenanceOperationRunRequest,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return submit_maintenance_operation_task(
+            services,
+            action_id,
+            payload.model_dump(mode="json"),
+            async_report_validation_error_cls=async_report_validation_error_cls,
+            task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
+        )
+
+    @router.post("/tasks/maintenance-diagnostic/{action_id}")
+    def queue_maintenance_diagnostic(
+        action_id: str,
+        services: Any = Depends(services_dependency),
+    ) -> dict:
+        return submit_maintenance_diagnostic_task(
+            services,
+            action_id,
             async_report_validation_error_cls=async_report_validation_error_cls,
             task_queue_unavailable_error_cls=task_queue_unavailable_error_cls,
         )

@@ -72,6 +72,43 @@ def submit_data_operation_task(
         )
 
 
+def submit_maintenance_operation_task(
+    services: Any,
+    action_id: str,
+    payload: dict,
+    *,
+    async_report_validation_error_cls: type[Exception],
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    operation = f"maintenance_operation.{action_id or 'missing'}"
+    try:
+        return services.run_task_api().queue_maintenance_operation(action_id, payload)
+    except async_report_validation_error_cls as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation=operation)
+    except Exception as exc:
+        raise_task_submission_failed(exc, operation=operation)
+
+
+def submit_maintenance_diagnostic_task(
+    services: Any,
+    action_id: str,
+    *,
+    async_report_validation_error_cls: type[Exception],
+    task_queue_unavailable_error_cls: type[Exception],
+) -> dict:
+    operation = f"maintenance_diagnostic.{action_id or 'missing'}"
+    try:
+        return services.run_task_api().queue_maintenance_diagnostic(action_id)
+    except async_report_validation_error_cls as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except task_queue_unavailable_error_cls as exc:
+        raise_task_queue_unavailable(exc, operation=operation)
+    except Exception as exc:
+        raise_task_submission_failed(exc, operation=operation)
+
+
 def submit_report_follow_up_task(
     services: Any,
     report_id: int,

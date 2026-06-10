@@ -534,6 +534,107 @@ def test_maintenance_cleanup_task_records_result(monkeypatch) -> None:
     assert FakeAnalysisRunRepository.run.status == "success"
 
 
+def test_maintenance_operation_and_diagnostic_tasks_record_results(monkeypatch) -> None:
+    captured = {"starts": [], "updates": [], "successes": [], "operations": [], "diagnostics": []}
+
+    class FakeAnalysisRunRepository:
+        next_id = 910
+
+        def __init__(self, session):
+            self.session = session
+
+        def start(self, source, payload):
+            self.__class__.next_id += 1
+            run = SimpleNamespace(id=self.__class__.next_id)
+            captured["starts"].append((source, payload, run.id))
+            return run
+
+        def update_payload(self, run_id, payload):
+            captured["updates"].append((run_id, payload))
+            return SimpleNamespace(id=run_id)
+
+        def mark_success(self, run_id, report_id, output_path=None):
+            assert report_id is None
+            captured["successes"].append((run_id, output_path))
+            return SimpleNamespace(id=run_id, status="success")
+
+        def mark_failed(self, run_id, error):
+            raise AssertionError(f"maintenance task should not fail: {run_id} {error}")
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    def fake_run_maintenance_operation(action_id, *, confirmed=False):
+        captured["operations"].append((action_id, confirmed))
+        return {"status": "success", "message": "started", "runtime_settings_cache_cleared": True}
+
+    def fake_run_maintenance_diagnostic_action(action_id):
+        captured["diagnostics"].append(action_id)
+        return {"status": "success", "label": "Neo4j upgrade audit", "summary_rows": []}
+
+    monkeypatch.setattr(tasks, "init_db", lambda: None)
+    monkeypatch.setattr(tasks, "session_scope", fake_session_scope)
+    monkeypatch.setattr(tasks, "AnalysisRunRepository", FakeAnalysisRunRepository)
+    monkeypatch.setattr(tasks, "run_maintenance_operation", fake_run_maintenance_operation)
+    monkeypatch.setattr(
+        tasks,
+        "run_maintenance_diagnostic_action",
+        fake_run_maintenance_diagnostic_action,
+    )
+
+    operation_result = tasks.maintenance_operation_task.run(
+        {
+            "action_id": "start_local_dependencies",
+            "payload": {"confirmed": True},
+        }
+    )
+    diagnostic_result = tasks.maintenance_diagnostic_task.run(
+        {"action_id": "local_neo4j_upgrade_audit"}
+    )
+
+    assert captured["starts"] == [
+        (
+            "celery_maintenance_operation",
+            {
+                "task": "maintenance_operation",
+                "action_id": "start_local_dependencies",
+                "payload": {"confirmed": True},
+                "celery_task_id": None,
+            },
+            911,
+        ),
+        (
+            "celery_maintenance_diagnostic",
+            {
+                "task": "maintenance_diagnostic",
+                "action_id": "local_neo4j_upgrade_audit",
+                "celery_task_id": None,
+            },
+            912,
+        ),
+    ]
+    assert captured["operations"] == [("start_local_dependencies", True)]
+    assert captured["diagnostics"] == ["local_neo4j_upgrade_audit"]
+    assert captured["successes"] == [(911, None), (912, None)]
+    assert operation_result == {
+        "task_id": None,
+        "run_id": 911,
+        "action_id": "start_local_dependencies",
+        "result": {
+            "status": "success",
+            "message": "started",
+            "runtime_settings_cache_cleared": True,
+        },
+    }
+    assert diagnostic_result == {
+        "task_id": None,
+        "run_id": 912,
+        "action_id": "local_neo4j_upgrade_audit",
+        "result": {"status": "success", "label": "Neo4j upgrade audit", "summary_rows": []},
+    }
+
+
 def test_write_report_file_prunes_older_files_for_same_topic(monkeypatch, tmp_path) -> None:
     old_same_topic = tmp_path / "20260606_120000_記憶體產業鏈.md"
     old_numeric_same_topic = tmp_path / "010_記憶體產業鏈.md"

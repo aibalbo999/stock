@@ -23,6 +23,10 @@ class FakeResponse:
         return self.status
 
 
+def test_task_submission_smoke_default_api_url_comes_from_runtime_settings() -> None:
+    assert smoke.DEFAULT_API_URL == smoke.get_settings().api_base_url
+
+
 def test_task_submission_smoke_posts_noop_market_refresh_payload() -> None:
     captured = []
 
@@ -145,6 +149,78 @@ def test_task_submission_smoke_reports_api_submission_failure() -> None:
         "檢查 /tasks/data-operation structured error detail" in action
         for action in report["next_actions"]
     )
+
+
+def test_task_submission_smoke_can_skip_processing_readiness_for_enqueue_only() -> None:
+    def fake_opener(request, timeout):
+        if request.full_url.endswith("/services/status"):
+            return FakeResponse(
+                {
+                    "task_queue": {
+                        "ready": True,
+                        "processing_ready": False,
+                        "submission_contract_ready": True,
+                        "worker_online": False,
+                    }
+                }
+            )
+        return FakeResponse(
+            {"task_id": "task-1", "status": "queued", "operation": "market_refresh"}
+        )
+
+    report = smoke.run_task_submission_smoke(
+        submit=True,
+        check_processing_ready=False,
+        check_runtime_identity=False,
+        opener=fake_opener,
+    )
+
+    assert report["status"] == "passed"
+    assert report["check_processing_ready"] is False
+    assert "啟動 Celery worker" not in " ".join(report["next_actions"])
+    assert {
+        check["name"]: check["status"]
+        for check in report["checks"]
+    }["submission_contract_ready"] == "passed"
+
+
+def test_task_submission_smoke_suppresses_worker_hint_when_poll_succeeds() -> None:
+    responses = [
+        FakeResponse(
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": False,
+                    "submission_contract_ready": True,
+                    "worker_online": False,
+                }
+            }
+        ),
+        FakeResponse({"task_id": "task-1", "status": "queued", "operation": "market_refresh"}),
+        FakeResponse(
+            {
+                "task_id": "task-1",
+                "status": "SUCCESS",
+                "ready": True,
+                "successful": True,
+                "result": {"smoke": True},
+            }
+        ),
+    ]
+
+    def fake_opener(_request, timeout):
+        return responses.pop(0)
+
+    report = smoke.run_task_submission_smoke(
+        submit=True,
+        wait=True,
+        check_runtime_identity=False,
+        opener=fake_opener,
+    )
+
+    assert report["status"] == "passed"
+    assert "啟動 Celery worker" not in " ".join(report["next_actions"])
+    assert report["next_actions"] == ["背景任務提交路徑正常。"]
 
 
 def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -> None:

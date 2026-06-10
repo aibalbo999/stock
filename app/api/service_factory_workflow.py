@@ -32,6 +32,8 @@ class WorkflowServiceFactoryMixin:
             discovered_report_task=d["discovered_report_task"],
             data_operation_task=d["data_operation_task"],
             report_follow_up_task=d["report_follow_up_task"],
+            maintenance_operation_task=d["maintenance_operation_task"],
+            maintenance_diagnostic_task=d["maintenance_diagnostic_task"],
             celery_app=d["celery_app"],
             serialize_run_func=d["serialize_run"],
             settings_provider=d["get_settings"],

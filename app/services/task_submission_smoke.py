@@ -8,10 +8,11 @@ from datetime import date
 from typing import Any, Callable
 from urllib.parse import urljoin
 
+from app.core.config import get_settings
 from app.services.api_runtime_identity_check import check_api_runtime_identity
 
 
-DEFAULT_API_URL = "http://127.0.0.1:8000"
+DEFAULT_API_URL = get_settings().api_base_url
 DEFAULT_OPERATION = "market_refresh"
 DEFAULT_TICKERS = ("2330",)
 SMOKE_USER_AGENT = "stock-ai-task-submission-smoke/1.0"
@@ -24,6 +25,7 @@ def run_task_submission_smoke(
     tickers: tuple[str, ...] | list[str] = DEFAULT_TICKERS,
     submit: bool = False,
     wait: bool = False,
+    check_processing_ready: bool = True,
     timeout_seconds: float = 30.0,
     poll_interval_seconds: float = 1.0,
     check_runtime_identity: bool = True,
@@ -51,7 +53,7 @@ def run_task_submission_smoke(
     )
     checks.append(_check_from_http("service_status", service_status))
     task_queue = _task_queue_payload(service_status.get("json"))
-    checks.extend(_task_queue_checks(task_queue))
+    checks.extend(_task_queue_checks(task_queue, check_processing_ready=check_processing_ready))
 
     submission = None
     poll_result = None
@@ -91,6 +93,7 @@ def run_task_submission_smoke(
         "operation": operation,
         "submit": submit,
         "wait": wait,
+        "check_processing_ready": check_processing_ready,
         "timeout_seconds": timeout_seconds,
         "poll_interval_seconds": poll_interval_seconds,
         "submission_payload": _submission_payload(operation=operation, tickers=tickers)
@@ -107,6 +110,7 @@ def run_task_submission_smoke(
             submission,
             poll_result,
             runtime_identity,
+            check_processing_ready=check_processing_ready,
         ),
     }
 
@@ -300,7 +304,7 @@ def _task_queue_payload(payload: object) -> dict:
     return {}
 
 
-def _task_queue_checks(task_queue: dict) -> list[dict]:
+def _task_queue_checks(task_queue: dict, *, check_processing_ready: bool = True) -> list[dict]:
     if not task_queue:
         return [
             {
@@ -313,7 +317,7 @@ def _task_queue_checks(task_queue: dict) -> list[dict]:
         ("task_queue_ready", bool(task_queue.get("ready"))),
         ("submission_contract_ready", bool(task_queue.get("submission_contract_ready"))),
     ]
-    if "processing_ready" in task_queue:
+    if check_processing_ready and "processing_ready" in task_queue:
         checks.append(("processing_ready", bool(task_queue.get("processing_ready"))))
     rows = [
         {
@@ -411,6 +415,8 @@ def _next_actions(
     submission: dict | None,
     poll_result: dict | None,
     runtime_identity: dict | None,
+    *,
+    check_processing_ready: bool = True,
 ) -> list[str]:
     actions = []
     runtime_identity = runtime_identity if isinstance(runtime_identity, dict) else {}
@@ -426,7 +432,17 @@ def _next_actions(
         actions.append("重啟 FastAPI，使 /services/status 載入新版 task_queue 診斷欄位。")
     if not task_queue.get("ready"):
         actions.append("確認 Redis broker/backend 與 Celery task exports，重跑 /services/status。")
-    if task_queue and not task_queue.get("processing_ready"):
+    poll_succeeded = bool(
+        poll_result
+        and poll_result.get("status") == "completed"
+        and poll_result.get("successful")
+    )
+    if (
+        check_processing_ready
+        and task_queue
+        and not task_queue.get("processing_ready")
+        and not poll_succeeded
+    ):
         actions.append("啟動 Celery worker 後重跑 --submit --wait smoke。")
     if submission and not submission.get("ok"):
         actions.append("檢查 /tasks/data-operation structured error detail 與 API logs。")

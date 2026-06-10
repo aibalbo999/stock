@@ -163,6 +163,61 @@ def test_operations_router_queues_discovered_and_data_tasks() -> None:
     assert captured["data"] == {"operation": "market_refresh", "payload": {"tickers": ["2330"]}}
 
 
+def test_operations_router_queues_maintenance_operation_and_diagnostic_tasks() -> None:
+    captured = {}
+
+    class FakeRunTaskApi:
+        def queue_maintenance_operation(self, action_id: str, payload: dict) -> dict:
+            captured["operation"] = {"action_id": action_id, "payload": payload}
+            return {
+                "task_id": "maintenance-operation-task",
+                "status": "queued",
+                "operation": "maintenance_operation",
+                "action_id": action_id,
+            }
+
+        def queue_maintenance_diagnostic(self, action_id: str) -> dict:
+            captured["diagnostic"] = action_id
+            return {
+                "task_id": "maintenance-diagnostic-task",
+                "status": "queued",
+                "operation": "maintenance_diagnostic",
+                "action_id": action_id,
+            }
+
+    client = _client(run_task_api=FakeRunTaskApi())
+
+    operation_response = client.post(
+        "/tasks/maintenance-operation/start_local_dependencies",
+        json={"confirmed": True},
+    )
+    diagnostic_response = client.post(
+        "/tasks/maintenance-diagnostic/local_neo4j_upgrade_audit"
+    )
+
+    assert operation_response.status_code == 200
+    assert operation_response.json() == {
+        "task_id": "maintenance-operation-task",
+        "status": "queued",
+        "operation": "maintenance_operation",
+        "action_id": "start_local_dependencies",
+    }
+    assert diagnostic_response.status_code == 200
+    assert diagnostic_response.json() == {
+        "task_id": "maintenance-diagnostic-task",
+        "status": "queued",
+        "operation": "maintenance_diagnostic",
+        "action_id": "local_neo4j_upgrade_audit",
+    }
+    assert captured == {
+        "operation": {
+            "action_id": "start_local_dependencies",
+            "payload": {"confirmed": True},
+        },
+        "diagnostic": "local_neo4j_upgrade_audit",
+    }
+
+
 def test_operations_router_uses_task_submission_helper() -> None:
     operations_source = Path("app/api/operations_routes.py").read_text()
     helper_source = Path("app/api/background_task_submission.py").read_text()
@@ -170,11 +225,15 @@ def test_operations_router_uses_task_submission_helper() -> None:
     assert "submit_generate_report_task(" in operations_source
     assert "submit_discovered_report_task(" in operations_source
     assert "submit_data_operation_task(" in operations_source
+    assert "submit_maintenance_operation_task(" in operations_source
+    assert "submit_maintenance_diagnostic_task(" in operations_source
     assert "raise_task_submission_failed(" not in operations_source
     assert "raise_task_queue_unavailable(" not in operations_source
     assert "def submit_generate_report_task(" in helper_source
     assert "def submit_discovered_report_task(" in helper_source
     assert "def submit_data_operation_task(" in helper_source
+    assert "def submit_maintenance_operation_task(" in helper_source
+    assert "def submit_maintenance_diagnostic_task(" in helper_source
     assert "data_operation_error_context(" in helper_source
     assert "def get_background_task_status(" in helper_source
     assert "def cancel_background_task(" in helper_source

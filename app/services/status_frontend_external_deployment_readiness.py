@@ -124,28 +124,28 @@ def frontend_external_deployment_readiness_status(
             and '"可執行診斷"' in maintenance_deployment_presenter_source
             and "可直接執行的後續診斷" in maintenance_deployment_panel_source
             and "maintenance_post_run_diagnostic_" in maintenance_deployment_panel_source
-            and 'f"/maintenance/diagnostics/{action_id}/run"' in maintenance_deployment_panel_source
+            and 'f"/tasks/maintenance-diagnostic/{action_id}"'
+            in maintenance_deployment_panel_source
             and "confirm_maintenance_operation" in maintenance_deployment_panel_source
             and "maintenance_run_operation" in maintenance_deployment_panel_source
             and "runtime_settings_cache_cleared" in maintenance_deployment_panel_source
             and "Runtime settings cache" in maintenance_deployment_panel_source
-            and 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"'
+            and 'LAST_MAINTENANCE_OPERATION_TASK_KEY = "last_maintenance_operation_task_id"'
             in maintenance_deployment_panel_source
-            and 'LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY = "last_post_run_diagnostic_result"'
+            and 'LAST_POST_RUN_DIAGNOSTIC_TASK_KEY = "last_post_run_diagnostic_task_id"'
             in maintenance_deployment_panel_source
-            and "st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result"
+            and "task_state_key=LAST_MAINTENANCE_OPERATION_TASK_KEY"
             in maintenance_deployment_panel_source
-            and "st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)"
+            and 'refresh_key="refresh_maintenance_operation_task_status"'
             in maintenance_deployment_panel_source
-            and "st.session_state[LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY] = result"
+            and "task_state_key=LAST_POST_RUN_DIAGNOSTIC_TASK_KEY"
             in maintenance_deployment_panel_source
-            and "st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY)"
+            and 'refresh_key="refresh_maintenance_diagnostic_task_status"'
             in maintenance_deployment_panel_source
             and "後續診斷結果" in maintenance_deployment_panel_source
-            and 'f"/maintenance/operations/{selected_operation_id}/run"'
+            and 'f"/tasks/maintenance-operation/{selected_operation_id}"'
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source
-            and "timeout=300" in maintenance_deployment_panel_source
         ),
         "ui_maintenance_operations_path": "app/ui/maintenance_deployment_presenter.py",
     }

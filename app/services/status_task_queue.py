@@ -13,6 +13,8 @@ REQUIRED_TASK_EXPORTS = (
     "data_operation_task",
     "report_follow_up_task",
     "maintenance_cleanup_task",
+    "maintenance_operation_task",
+    "maintenance_diagnostic_task",
 )
 
 EXPECTED_TASK_NAMES = {
@@ -21,6 +23,8 @@ EXPECTED_TASK_NAMES = {
     "data_operation_task": "app.tasks.tasks.data_operation_task",
     "report_follow_up_task": "app.tasks.tasks.report_follow_up_task",
     "maintenance_cleanup_task": "app.tasks.tasks.maintenance_cleanup_task",
+    "maintenance_operation_task": "app.tasks.tasks.maintenance_operation_task",
+    "maintenance_diagnostic_task": "app.tasks.tasks.maintenance_diagnostic_task",
 }
 TASK_QUEUE_REPAIR_COMMANDS = {
     "inspect_ping": ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
@@ -113,6 +117,8 @@ def task_queue_status(
             "POST /reports/generate_async",
             "POST /pipeline/run_discovered_async",
             "POST /tasks/data-operation",
+            "POST /tasks/maintenance-operation/{action_id}",
+            "POST /tasks/maintenance-diagnostic/{action_id}",
             "POST /reports/{report_id}/follow-up/run_async",
         ],
         "status_endpoints": [

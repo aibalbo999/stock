@@ -112,24 +112,24 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "task_submission_noop_smoke": {
         "id": "task_submission_noop_smoke",
-        "label": "Task submission no-op submit/wait smoke",
+        "label": "Task submission no-op submit smoke",
         "description": (
             "送出 smoke=true 的 no-op market_refresh，驗證 /tasks/data-operation、"
-            "Celery enqueue、worker 執行與 task polling；不呼叫外部市場資料 API。"
+            "Celery enqueue 與 task wiring；不呼叫外部市場資料 API。完整 submit/wait "
+            "smoke 請從 CLI 執行，避免單 worker 診斷任務自我等待。"
         ),
         "display_command": (
             ".venv/bin/python scripts/task_submission_smoke.py "
-            "--submit --wait --timeout 30 --json --strict"
+            "--submit --timeout 10 --skip-processing-ready --json"
         ),
         "argv": [
             sys.executable,
             "scripts/task_submission_smoke.py",
             "--submit",
-            "--wait",
             "--timeout",
-            "30",
+            "10",
+            "--skip-processing-ready",
             "--json",
-            "--strict",
         ],
         "timeout_seconds": 45,
         "read_only": False,

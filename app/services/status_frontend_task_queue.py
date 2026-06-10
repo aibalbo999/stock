@@ -76,9 +76,12 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and "維護診斷動作" in maintenance_task_panels_source
             and "選擇診斷動作" in maintenance_task_panels_source
             and "maintenance_run_diagnostic_action" in maintenance_task_panels_source
-            and 'f"/maintenance/diagnostics/{selected_action_id}/run"'
+            and 'f"/tasks/maintenance-diagnostic/{selected_action_id}"'
             in maintenance_task_panels_source
-            and "timeout=120" in maintenance_task_panels_source
+            and "task_state_key=MAINTENANCE_DIAGNOSTIC_TASK_KEY"
+            in maintenance_task_panels_source
+            and 'refresh_key="refresh_maintenance_diagnostic_action_status"'
+            in maintenance_task_panels_source
         ),
         "ui_maintenance_safe_noop_diagnostics_enabled": (
             "safe_to_run" in maintenance_task_panels_source

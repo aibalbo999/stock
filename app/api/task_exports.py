@@ -6,6 +6,8 @@ from app.tasks.tasks import (
     discovered_report_task,
     generate_report_task,
     maintenance_cleanup_task,
+    maintenance_diagnostic_task,
+    maintenance_operation_task,
     report_follow_up_task,
 )
 
@@ -16,6 +18,8 @@ TASK_EXPORT_NAMES = (
     "discovered_report_task",
     "generate_report_task",
     "maintenance_cleanup_task",
+    "maintenance_diagnostic_task",
+    "maintenance_operation_task",
     "report_follow_up_task",
 )
 
@@ -25,6 +29,8 @@ __all__ = [
     "discovered_report_task",
     "generate_report_task",
     "maintenance_cleanup_task",
+    "maintenance_diagnostic_task",
+    "maintenance_operation_task",
     "report_follow_up_task",
     "TASK_EXPORT_NAMES",
     "task_export_namespace",

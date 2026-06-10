@@ -69,6 +69,8 @@ class RunTaskApiService:
         discovered_report_task: Any = None,
         data_operation_task: Any = None,
         report_follow_up_task: Any = None,
+        maintenance_operation_task: Any = None,
+        maintenance_diagnostic_task: Any = None,
         celery_app: Any = None,
         serialize_run_func: Callable[[Any], dict] = serialize_run,
         settings_provider: Callable[[], Any] | None = None,
@@ -80,6 +82,8 @@ class RunTaskApiService:
         self.discovered_report_task = discovered_report_task
         self.data_operation_task = data_operation_task
         self.report_follow_up_task = report_follow_up_task
+        self.maintenance_operation_task = maintenance_operation_task
+        self.maintenance_diagnostic_task = maintenance_diagnostic_task
         self.celery_app = celery_app
         self.serialize_run_func = serialize_run_func
         self.settings_provider = settings_provider
@@ -213,6 +217,42 @@ class RunTaskApiService:
             "status": "queued",
             "operation": "report_follow_up",
             "report_id": report_id,
+        }
+
+    def queue_maintenance_operation(
+        self,
+        action_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict:
+        action = str(action_id or "").strip()
+        if not action:
+            raise AsyncReportValidationError("maintenance operation action_id is required")
+        task = self._delay_task(
+            self.maintenance_operation_task,
+            {"action_id": action, "payload": payload or {}},
+            f"maintenance operation {action}",
+        )
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "operation": "maintenance_operation",
+            "action_id": action,
+        }
+
+    def queue_maintenance_diagnostic(self, action_id: str) -> dict:
+        action = str(action_id or "").strip()
+        if not action:
+            raise AsyncReportValidationError("maintenance diagnostic action_id is required")
+        task = self._delay_task(
+            self.maintenance_diagnostic_task,
+            {"action_id": action},
+            f"maintenance diagnostic {action}",
+        )
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "operation": "maintenance_diagnostic",
+            "action_id": action,
         }
 
     def get_task_status(self, task_id: str) -> dict:

@@ -3,7 +3,8 @@ from __future__ import annotations
 import streamlit as st
 
 from app.ui.api_actions import run_api_action_or_none
-from app.ui.api_client import api_post, api_task_post
+from app.ui.api_client import api_task_post
+from app.ui.background_tasks import submit_api_task
 from app.ui.task_failure_diagnostics import (
     task_failure_action_route_rows,
     task_failure_drilldown_rows,
@@ -16,6 +17,8 @@ from app.ui.task_queue_diagnostics import (
     task_queue_smoke_command,
 )
 from app.ui.task_status_panel import render_task_status_panel
+
+MAINTENANCE_DIAGNOSTIC_TASK_KEY = "last_maintenance_diagnostic_task_id"
 
 
 def render_background_task_observability_panel(
@@ -190,16 +193,37 @@ def _render_maintenance_diagnostic_actions(maintenance_diagnostics: dict) -> Non
         key="maintenance_diagnostic_action_select",
     )
     if st.button("執行診斷", key="maintenance_run_diagnostic_action"):
-        result = run_api_action_or_none(
-            lambda: api_post(
-                f"/maintenance/diagnostics/{selected_action_id}/run",
-                {},
-                timeout=120,
-            ),
+        submit_api_task(
+            f"/tasks/maintenance-diagnostic/{selected_action_id}",
+            {},
+            task_state_key=MAINTENANCE_DIAGNOSTIC_TASK_KEY,
+            status_state_keys=("refresh_maintenance_diagnostic_action_status_status",),
+            success_message="已送出維護診斷背景任務",
             error_message="診斷執行失敗",
+            task_type_state_key="last_maintenance_diagnostic_action_type",
+            task_type=str(selected_action_id),
         )
-        if isinstance(result, dict):
-            _render_maintenance_diagnostic_result(result)
+    last_task_id = st.session_state.get(MAINTENANCE_DIAGNOSTIC_TASK_KEY)
+    if last_task_id:
+        with st.expander("維護診斷背景任務狀態", expanded=True):
+            task_status = render_task_status_panel(
+                task_id=str(last_task_id),
+                refresh_key="refresh_maintenance_diagnostic_action_status",
+                task_state_key=MAINTENANCE_DIAGNOSTIC_TASK_KEY,
+            )
+            result = _task_result_payload(task_status)
+            if result:
+                _render_maintenance_diagnostic_result(result)
+
+
+def _task_result_payload(task_status: dict | None) -> dict:
+    if not isinstance(task_status, dict):
+        return {}
+    result = task_status.get("result")
+    if not isinstance(result, dict):
+        return {}
+    nested_result = result.get("result")
+    return nested_result if isinstance(nested_result, dict) else result
 
 
 def _render_maintenance_diagnostic_result(result: dict) -> None:

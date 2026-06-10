@@ -133,6 +133,8 @@ CELERY_TASK_DEPENDENCY_NAMES = (
     "data_operation_task",
     "discovered_report_task",
     "generate_report_task",
+    "maintenance_diagnostic_task",
+    "maintenance_operation_task",
     "report_follow_up_task",
 )
 

@@ -526,27 +526,26 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def maintenance_operation_rows(" in source
     assert "def maintenance_operation_post_run_check_rows(" in source
     assert "def maintenance_operation_post_run_diagnostic_action_ids(" in source
-    assert 'LAST_MAINTENANCE_OPERATION_RESULT_KEY = "last_maintenance_operation_result"' in source
-    assert 'LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY = "last_post_run_diagnostic_result"' in source
+    assert 'LAST_MAINTENANCE_OPERATION_TASK_KEY = "last_maintenance_operation_task_id"' in source
+    assert 'LAST_POST_RUN_DIAGNOSTIC_TASK_KEY = "last_post_run_diagnostic_task_id"' in source
     assert "本機依賴操作" in source
     assert "選擇維護操作" in source
     assert "後續驗證" in source
     assert '"可執行診斷"' in source
     assert "可直接執行的後續診斷" in source
     assert "maintenance_post_run_diagnostic_" in source
-    assert 'f"/maintenance/diagnostics/{action_id}/run"' in source
     assert "confirm_maintenance_operation" in source
     assert "maintenance_run_operation" in source
-    assert "st.session_state[LAST_MAINTENANCE_OPERATION_RESULT_KEY] = result" in source
-    assert "st.session_state.get(LAST_MAINTENANCE_OPERATION_RESULT_KEY)" in source
-    assert "st.session_state[LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY] = result" in source
-    assert "st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_RESULT_KEY)" in source
+    assert "st.session_state.get(LAST_MAINTENANCE_OPERATION_TASK_KEY)" in source
+    assert "st.session_state.get(LAST_POST_RUN_DIAGNOSTIC_TASK_KEY)" in source
     assert "後續診斷結果" in source
     assert "summary_rows" in source
     assert "診斷摘要" in source
-    assert 'f"/maintenance/operations/{selected_operation_id}/run"' in source
+    assert 'f"/tasks/maintenance-operation/{selected_operation_id}"' in source
+    assert "task_state_key=LAST_MAINTENANCE_OPERATION_TASK_KEY" in source
+    assert 'refresh_key="refresh_maintenance_operation_task_status"' in source
     assert '"confirmed": True' in source
-    assert "timeout=300" in source
+    assert "timeout=300" not in source
     assert "def external_deployment_readiness_rows(" in source
     assert "def local_dependency_status_rows(" in source
     assert "def local_dependency_last_start_rows(" in source
@@ -591,8 +590,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "safe_to_run" in source
     assert "安全 no-op" in source
     assert "maintenance_run_diagnostic_action" in source
-    assert 'f"/maintenance/diagnostics/{selected_action_id}/run"' in source
-    assert "timeout=120" in source
+    assert 'f"/tasks/maintenance-diagnostic/{selected_action_id}"' in source
+    assert "task_state_key=MAINTENANCE_DIAGNOSTIC_TASK_KEY" in source
+    assert 'refresh_key="refresh_maintenance_diagnostic_action_status"' in source
+    assert "timeout=120" not in source
     assert (
         "external_deployment_warning_rows(upgrade_audit)"
         not in Path("app/ui/system_settings_maintenance.py").read_text()

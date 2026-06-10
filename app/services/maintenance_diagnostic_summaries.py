@@ -447,13 +447,18 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         )
     task_queue = _dict_value(payload, "task_queue")
     if task_queue:
+        check_processing_ready = bool(payload.get("check_processing_ready", True))
         rows.append(
             _summary_row(
                 "Task queue",
                 "ready" if task_queue.get("ready") else "not_ready",
                 _counts(
-                    processing=task_queue.get("processing_ready"),
-                    worker=task_queue.get("worker_online"),
+                    processing=(
+                        task_queue.get("processing_ready")
+                        if check_processing_ready
+                        else "skipped"
+                    ),
+                    worker=task_queue.get("worker_online") if check_processing_ready else "skipped",
                 ),
                 _counts(legacy_status_shape=task_queue.get("legacy_status_shape")),
                 task_queue.get("status_shape_warning") or "-",

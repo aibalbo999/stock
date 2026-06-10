@@ -7,6 +7,15 @@ from app.ui.operator_status import quota_operator_summary
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
+REPORT_DETAIL_KEYS = {
+    "quality_gate",
+    "tickers",
+    "candidate_whitelist",
+    "auto_follow_up",
+    "promoted_tickers",
+}
+
+
 def operator_next_best_action(
     service_snapshot: dict | None,
     task_summary: dict | None,
@@ -16,8 +25,9 @@ def operator_next_best_action(
     follow_up_plan: dict | None = None,
 ) -> dict[str, Any]:
     latest_report = _latest_report(reports)
-    report_payload = _dict_value(report_result) or latest_report
-    lifecycle = latest_report_lifecycle(report_payload, follow_up_plan)
+    report_payload = _dict_value(report_result)
+    has_report_detail = _has_report_detail_payload(report_payload)
+    lifecycle = latest_report_lifecycle(report_payload, follow_up_plan) if has_report_detail else {}
     incidents = incident_inbox_items(service_snapshot, task_summary, quota, lifecycle)
     queue_incident = _first_incident(incidents, "task_queue", severity="critical")
     if queue_incident:
@@ -33,7 +43,8 @@ def operator_next_best_action(
             source_ids=[queue_incident["source"]],
         )
 
-    if not latest_report and not report_payload:
+    report_id = _report_id(report_payload, latest_report)
+    if not latest_report and not has_report_detail:
         return _action(
             state="attention",
             priority=3,
@@ -46,12 +57,24 @@ def operator_next_best_action(
             source_ids=[],
         )
 
-    report_id = lifecycle.get("report_id") or latest_report.get("id")
+    if not has_report_detail:
+        return _action(
+            state="attention",
+            priority=3,
+            title="先讀取最新版報告狀態",
+            reason="目前只有報告列表摘要，尚未取得品質門檻與補強狀態。",
+            risk="只靠列表摘要無法判斷最新版報告是否可直接採信。",
+            impact="讀取完整報告狀態後再決定閱讀、補強或維護。",
+            action_label="讀取狀態",
+            route_hint=f"report:{report_id}" if report_id is not None else "report_center",
+            source_ids=[f"report:{report_id}"] if report_id is not None else [],
+        )
+
     quality_stage = stage_by_key(lifecycle, "quality")
     if lifecycle.get("overall_state") == "blocked" and quality_stage.get("state") == "blocked":
         return _action(
             state="blocked",
-            priority=5,
+            priority=4,
             title="先確認報告可信度",
             reason="最新版報告目前不可直接採信。",
             risk="直接閱讀可能把候選不足或正式分析 0 檔誤判為投資結論。",
@@ -61,11 +84,24 @@ def operator_next_best_action(
             source_ids=[f"report:{report_id}"] if report_id is not None else [],
         )
 
+    if quality_stage.get("state") == "attention":
+        return _action(
+            state="attention",
+            priority=4,
+            title="先確認報告品質警示",
+            reason=quality_stage.get("detail") or "最新版報告品質門檻有警示。",
+            risk="直接閱讀可能忽略品質門檻保留事項。",
+            impact="先確認品質警示，再決定是否閱讀或補強。",
+            action_label="查看報告生命週期",
+            route_hint=f"report:{report_id}" if report_id is not None else "report_center",
+            source_ids=[f"report:{report_id}"] if report_id is not None else [],
+        )
+
     data_stage = stage_by_key(lifecycle, "data")
     if data_stage.get("state") == "attention":
         return _action(
             state="attention",
-            priority=4,
+            priority=5,
             title="先補強最新版報告資料",
             reason=data_stage.get("detail") or "最新版報告仍有必要資料缺口。",
             risk="未補強前，報告結論需要保留資料限制。",
@@ -88,7 +124,34 @@ def operator_next_best_action(
             source_ids=[f"report:{report_id}"] if report_id is not None else [],
         )
 
+    critical_incident = _first_critical_incident(incidents)
+    if critical_incident:
+        return _action(
+            state="blocked",
+            priority=7,
+            title=critical_incident["title"],
+            reason=critical_incident["impact"],
+            risk="未處理此事件前，系統輸出可能不完整或任務可能失敗。",
+            impact=critical_incident["next_action"],
+            action_label="查看事件",
+            route_hint=critical_incident["route_hint"],
+            source_ids=[critical_incident["source"]],
+        )
+
     quota_payload = _dict_value(quota)
+    if not quota_payload:
+        return _action(
+            state="attention",
+            priority=8,
+            title="確認 AI 額度狀態",
+            reason="目前尚未取得 AI 額度資訊。",
+            risk="缺少額度狀態時，送出高成本任務可能失敗或降級。",
+            impact="確認建議模型與 fallback 後再送出高成本任務。",
+            action_label="查看額度",
+            route_hint="settings:ai_quota",
+            source_ids=[],
+        )
+
     if quota_payload:
         quota_summary = quota_operator_summary(quota_payload)
         if quota_summary.get("state") != "ready":
@@ -124,13 +187,23 @@ def operator_secondary_actions(
     reports: list[dict] | None,
     report_result: dict | None = None,
     follow_up_plan: dict | None = None,
+    primary_action: dict | None = None,
 ) -> list[dict[str, Any]]:
     latest_report = _latest_report(reports)
-    report_payload = _dict_value(report_result) or latest_report
-    lifecycle = latest_report_lifecycle(report_payload, follow_up_plan)
+    report_payload = _dict_value(report_result)
+    has_report_detail = _has_report_detail_payload(report_payload)
+    lifecycle = latest_report_lifecycle(report_payload, follow_up_plan) if has_report_detail else {}
+    primary = primary_action or operator_next_best_action(
+        service_snapshot,
+        task_summary,
+        quota,
+        reports,
+        report_result,
+        follow_up_plan,
+    )
     incidents = top_incidents(
         incident_inbox_items(service_snapshot, task_summary, quota, lifecycle),
-        limit=3,
+        limit=10,
     )
     secondary = [
         {
@@ -140,8 +213,9 @@ def operator_secondary_actions(
             "route_hint": incident["route_hint"],
         }
         for incident in incidents
+        if not _incident_matches_primary(incident, primary)
     ]
-    report_id = lifecycle.get("report_id") or latest_report.get("id")
+    report_id = _report_id(report_payload, latest_report)
     if report_id is not None:
         secondary.append(
             {
@@ -202,6 +276,16 @@ def _first_incident(
     return {}
 
 
+def _first_critical_incident(incidents: list[dict]) -> dict:
+    for incident in incidents:
+        if incident.get("severity") == "critical" and incident.get("category") not in {
+            "task_queue",
+            "report_quality",
+        }:
+            return incident
+    return {}
+
+
 def _incident_state(incident: dict) -> str:
     if incident.get("severity") == "critical":
         return "blocked"
@@ -222,6 +306,18 @@ def _dedupe_secondary_actions(actions: list[dict[str, Any]]) -> list[dict[str, A
     return deduped
 
 
+def _incident_matches_primary(incident: dict, primary_action: dict) -> bool:
+    source = str(incident.get("source") or "").strip()
+    return (
+        bool(primary_action)
+        and (
+            incident.get("title") == primary_action.get("title")
+            or incident.get("route_hint") == primary_action.get("route_hint")
+            or source in set(primary_action.get("source_ids") or [])
+        )
+    )
+
+
 def _latest_report(reports: list[dict] | None) -> dict:
     if not isinstance(reports, list):
         return {}
@@ -229,6 +325,20 @@ def _latest_report(reports: list[dict] | None) -> dict:
         if isinstance(report, dict):
             return report
     return {}
+
+
+def _has_report_detail_payload(report: dict) -> bool:
+    return bool(report) and any(key in report for key in REPORT_DETAIL_KEYS)
+
+
+def _report_id(report_payload: dict, latest_report: dict) -> Any:
+    for report in (report_payload, latest_report):
+        if not isinstance(report, dict):
+            continue
+        for key in ("report_id", "id"):
+            if report.get(key) is not None:
+                return report[key]
+    return None
 
 
 def _dict_value(value: Any) -> dict:

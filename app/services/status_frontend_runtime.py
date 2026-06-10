@@ -58,6 +58,13 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and "min-height: 44px !important" in style_source
             and "min-height: 40px !important" not in style_source
         ),
+        "ui_sidebar_nav_touch_targets_min_size_enabled": (
+            '[data-testid="stSidebarNavLink"] {\n    min-height: 44px !important;'
+            in style_source
+            and "align-items: center !important" in style_source
+            and "touch-action: manipulation" in style_source
+            and '[data-testid="stSidebarNavLink"]:focus-visible' in style_source
+        ),
         "ui_selectbox_touch_targets_min_size_enabled": (
             '[data-baseweb="select"] > div {\n    min-height: 44px !important;'
             in style_source

@@ -43,6 +43,18 @@ a[aria-label="Link to heading"] {
     visibility: hidden !important;
     pointer-events: none !important;
 }
+[data-testid="stSidebarNavLink"] {
+    min-height: 44px !important;
+    align-items: center !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    touch-action: manipulation;
+}
+[data-testid="stSidebarNavLink"]:hover,
+[data-testid="stSidebarNavLink"]:focus-visible {
+    background: #eef4ff !important;
+    color: var(--stock-primary-strong) !important;
+}
 .block-container {
     padding-top: 0.55rem;
     padding-bottom: 3rem;

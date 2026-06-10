@@ -18,6 +18,12 @@ DEFAULT_API_ENDPOINTS = (
     "/services/external-deployment/env-check",
 )
 DEFAULT_VISUAL_TEXT_FRAGMENTS = ("下一步建議",)
+DEFAULT_FORBIDDEN_TEXT_FRAGMENTS = (
+    "Missing Submit Button",
+    "Traceback",
+    "ModuleNotFoundError",
+    "ImportError",
+)
 DEFAULT_REQUIRED_TEXT_MAX_TOP_PX = 560
 DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR = ".operator-decision-card"
 DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX = 900
@@ -49,6 +55,7 @@ def run_frontend_smoke(
     check_runtime_identity: bool = True,
     expected_api_commit: str | None = None,
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
+    forbidden_text_fragments: tuple[str, ...] = DEFAULT_FORBIDDEN_TEXT_FRAGMENTS,
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
@@ -101,6 +108,7 @@ def run_frontend_smoke(
                 check_frontend_runtime_identity=check_runtime_identity,
                 expected_frontend_commit=expected_api_commit,
                 required_text_fragments=required_text_fragments,
+                forbidden_text_fragments=forbidden_text_fragments,
                 required_text_max_top_px=required_text_max_top_px,
                 required_text_scope_selector=required_text_scope_selector,
                 operator_primary_action_max_top_px=operator_primary_action_max_top_px,
@@ -238,6 +246,7 @@ def run_playwright_visual_smoke(
     check_frontend_runtime_identity: bool = True,
     expected_frontend_commit: str | None = None,
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
+    forbidden_text_fragments: tuple[str, ...] = DEFAULT_FORBIDDEN_TEXT_FRAGMENTS,
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
@@ -331,6 +340,10 @@ def run_playwright_visual_smoke(
         }
     nonblank = png_has_nonblank_pixels(screenshot)
     missing_required_text = missing_required_text_fragments(body_text, required_text_fragments)
+    present_forbidden_text = present_forbidden_text_fragments(
+        body_text,
+        forbidden_text_fragments,
+    )
     text_layout_failures = required_text_layout_failures(
         required_text_measurements,
         max_top_px=required_text_max_top_px,
@@ -358,6 +371,7 @@ def run_playwright_visual_smoke(
         and len(screenshot) > 1000
         and len(body_text.strip()) >= 80
         and not missing_required_text
+        and not present_forbidden_text
         and not text_layout_failures
         and not any(operator_primary_action_viewport_layout_failures_result.values())
         and frontend_identity.get("status") in {"passed", "skipped"}
@@ -373,6 +387,8 @@ def run_playwright_visual_smoke(
         "screenshot_bytes": len(screenshot),
         "screenshot_nonblank": nonblank,
         "missing_required_text": missing_required_text,
+        "forbidden_text_fragments": forbidden_text_fragments,
+        "present_forbidden_text": present_forbidden_text,
         "required_text_max_top_px": required_text_max_top_px,
         "required_text_scope_selector": required_text_scope_selector,
         "required_text_measurements": required_text_measurements,
@@ -525,6 +541,12 @@ def missing_required_text_fragments(
     body_text: str, required_text_fragments: tuple[str, ...]
 ) -> list[str]:
     return [fragment for fragment in required_text_fragments if fragment not in body_text]
+
+
+def present_forbidden_text_fragments(
+    body_text: str, forbidden_text_fragments: tuple[str, ...]
+) -> list[str]:
+    return [fragment for fragment in forbidden_text_fragments if fragment in body_text]
 
 
 def _required_text_measurements(
@@ -786,6 +808,8 @@ def format_frontend_smoke_report(report: dict) -> str:
             lines.append(f"  error: {check['error']}")
         for missing_text in check.get("missing_required_text") or []:
             lines.append(f"  missing text: {missing_text}")
+        for forbidden_text in check.get("present_forbidden_text") or []:
+            lines.append(f"  forbidden text: {forbidden_text}")
         for layout_failure in check.get("required_text_layout_failures") or []:
             lines.append(f"  layout: {layout_failure}")
         viewport_failures = check.get("operator_primary_action_viewport_layout_failures")

@@ -5,6 +5,7 @@ import zlib
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    DEFAULT_FORBIDDEN_TEXT_FRAGMENTS,
     DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX,
     DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     DEFAULT_VISUAL_TEXT_FRAGMENTS,
@@ -17,6 +18,7 @@ from app.services.frontend_smoke import (
     operator_primary_action_layout_failures,
     operator_primary_action_viewport_layout_failures,
     png_has_nonblank_pixels,
+    present_forbidden_text_fragments,
     required_text_layout_failures,
     run_frontend_smoke,
 )
@@ -86,6 +88,18 @@ def test_missing_required_text_fragments_reports_absent_operator_markers() -> No
         "今日狀態",
         ("下一步建議", "待處理事件"),
     ) == ["下一步建議", "待處理事件"]
+
+
+def test_present_forbidden_text_fragments_reports_streamlit_and_runtime_warnings() -> None:
+    assert "Missing Submit Button" in DEFAULT_FORBIDDEN_TEXT_FRAGMENTS
+    assert present_forbidden_text_fragments(
+        "建立一次分析\nMissing Submit Button\nTraceback (most recent call last)",
+        DEFAULT_FORBIDDEN_TEXT_FRAGMENTS,
+    ) == ["Missing Submit Button", "Traceback"]
+    assert present_forbidden_text_fragments(
+        "建立一次分析\n下一步建議",
+        DEFAULT_FORBIDDEN_TEXT_FRAGMENTS,
+    ) == []
 
 
 def test_required_text_layout_failures_flags_missing_and_late_operator_markers() -> None:
@@ -385,6 +399,25 @@ def test_format_frontend_smoke_report_includes_mobile_operator_layout_failures()
     )
 
     assert "operator action layout (mobile): primary action button below 720px (top=760px)" in output
+
+
+def test_format_frontend_smoke_report_includes_forbidden_text_failures() -> None:
+    output = format_frontend_smoke_report(
+        {
+            "status": "failed",
+            "failed_count": 1,
+            "skipped_count": 0,
+            "checks": [
+                {
+                    "label": "streamlit_playwright",
+                    "status": "failed",
+                    "present_forbidden_text": ["Missing Submit Button"],
+                }
+            ],
+        }
+    )
+
+    assert "forbidden text: Missing Submit Button" in output
 
 
 def _png(*, width: int, height: int, pixels: list[tuple[int, int, int]]) -> bytes:

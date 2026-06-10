@@ -85,6 +85,19 @@ def operator_next_best_action(
             source_ids=[f"report:{report_id}"] if report_id is not None else [],
         )
 
+    if quality_stage.get("state") == "unknown":
+        return _action(
+            state="attention",
+            priority=4,
+            title="先確認報告品質狀態",
+            reason=quality_stage.get("detail") or "最新版報告尚無法判斷品質門檻。",
+            risk="直接閱讀可能把未驗證 ticker 清單誤判為正式分析結果。",
+            impact="確認品質門檻後再決定閱讀、補強或重跑。",
+            action_label="查看報告生命週期",
+            route_hint=f"report:{report_id}" if report_id is not None else "report_center",
+            source_ids=[f"report:{report_id}"] if report_id is not None else [],
+        )
+
     if quality_stage.get("state") == "attention":
         return _action(
             state="attention",

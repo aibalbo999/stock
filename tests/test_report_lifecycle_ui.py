@@ -133,6 +133,33 @@ def test_latest_report_lifecycle_handles_empty_report() -> None:
     assert stage_by_key(lifecycle, "data")["state"] == "unknown"
 
 
+def test_latest_report_lifecycle_marks_missing_quality_gate_as_unknown_attention() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 29,
+            "topic": "機器人供應鏈",
+            "tickers": ["2357", "2308"],
+            "candidate_whitelist": [{"ticker": "2357"}, {"ticker": "2308"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert lifecycle["overall_state"] == "attention"
+    assert lifecycle["trust_label"] == "可閱讀但需註記"
+    assert "尚無法判斷品質門檻" in lifecycle["trust_explanation"]
+    assert lifecycle["primary_action"] == "確認品質門檻"
+    assert lifecycle["route_hint"] == "report:29"
+    assert stage_by_key(lifecycle, "quality") == {
+        "key": "quality",
+        "title": "品質",
+        "state": "unknown",
+        "label": "尚無 Gate",
+        "detail": "尚無法判斷品質門檻；不要把 ticker 清單視為正式分析結果。",
+    }
+    assert stage_by_key(lifecycle, "readable")["state"] == "attention"
+    assert stage_by_key(lifecycle, "readable")["label"] == "需人工確認"
+
+
 def test_latest_report_lifecycle_reads_nested_selected_required_count() -> None:
     lifecycle = latest_report_lifecycle(
         {

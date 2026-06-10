@@ -176,6 +176,29 @@ def test_operator_next_action_surfaces_quality_warning_before_healthy_read() -> 
     assert action["route_hint"] == "report:15"
 
 
+def test_operator_next_action_surfaces_missing_quality_gate_before_healthy_read() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 29, "title": "機器人供應鏈"}],
+        {
+            "report_id": 29,
+            "topic": "機器人供應鏈",
+            "tickers": ["2357", "2308"],
+            "candidate_whitelist": [{"ticker": "2357"}, {"ticker": "2308"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 4
+    assert action["title"] == "先確認報告品質狀態"
+    assert "品質門檻" in action["reason"]
+    assert action["action_label"] == "查看報告生命週期"
+    assert action["route_hint"] == "report:29"
+
+
 def test_operator_next_action_surfaces_quota_pressure_after_report_gates() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

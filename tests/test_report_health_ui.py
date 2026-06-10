@@ -52,6 +52,25 @@ def test_latest_report_health_summary_marks_required_gaps_as_attention() -> None
     assert result["action_label"] == "補強資料"
 
 
+def test_latest_report_health_summary_marks_missing_quality_gate_as_attention() -> None:
+    result = latest_report_health_summary(
+        {
+            "report_id": 29,
+            "topic": "機器人供應鏈",
+            "tickers": ["2357", "2308"],
+            "candidate_whitelist": [{"ticker": "2357"}, {"ticker": "2308"}],
+        },
+        {"summary": {"required_count": 0}, "status": "ready"},
+    )
+
+    assert result["state"] == "attention"
+    assert result["quality_label"] == "尚無法判斷"
+    assert result["candidate_label"] == "候選 2｜正式 0"
+    assert result["follow_up_state"] == "quality_unknown"
+    assert result["follow_up_label"] == "品質待確認"
+    assert result["action_label"] == "確認品質"
+
+
 def test_latest_report_health_summary_prefills_first_required_data_gap_action() -> None:
     result = latest_report_health_summary(
         {

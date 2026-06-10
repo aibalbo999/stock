@@ -15,6 +15,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_center_source = ui_sources["report_center.py"]
     report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
+    operator_decisions_source = ui_sources["operator_decisions.py"]
     style_source = (
         source_context.style_path.read_text(encoding="utf-8")
         if source_context.style_path.exists()
@@ -82,6 +83,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'summary.get("follow_up_state"' in ui_source
             and "report-health-action" in ui_source
             and ".report-health-action" in style_source
+        ),
+        "ui_report_quality_unknown_guard_enabled": (
+            "def _quality_gate_known(" in report_lifecycle_source
+            and 'quality_state = "unknown"' in report_lifecycle_source
+            and "尚無法判斷品質門檻" in report_lifecycle_source
+            and "確認品質門檻" in report_lifecycle_source
+            and "def _quality_gate_known(" in report_health_source
+            and '"quality_unknown"' in report_health_source
+            and "尚無法判斷" in report_health_source
+            and 'quality_stage.get("state") == "unknown"' in operator_decisions_source
+            and "先確認報告品質狀態" in operator_decisions_source
         ),
         "ui_report_advanced_controls_progressive_disclosure_enabled": (
             'with st.expander("疑難排解：執行紀錄")' in report_center_source

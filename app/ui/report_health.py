@@ -18,9 +18,12 @@ def latest_report_health_summary(
     title = _report_title(report_result, topic)
     generated_at = _format_generated_at(report_result.get("generated_at"))
     quality_gate = _dict_value(report_result.get("quality_gate"))
+    quality_gate_known = _quality_gate_known(quality_gate)
     metrics = _dict_value(quality_gate.get("metrics"))
     candidates = report_result.get("candidate_whitelist") or []
-    promoted_count = _promoted_count(metrics, report_result)
+    promoted_count = (
+        _promoted_count(metrics, report_result) if quality_gate_known else 0
+    )
     candidate_count = len([item for item in candidates if isinstance(item, dict)])
     required_count = _required_follow_up_count(follow_up_plan)
     if not report_id:
@@ -33,6 +36,17 @@ def latest_report_health_summary(
             "follow_up_state": "missing",
             "follow_up_label": "尚無狀態",
             "action_label": "建立分析",
+        }
+    if not quality_gate_known:
+        return {
+            "state": "attention",
+            "quality_label": "尚無法判斷",
+            "report_label": title,
+            "report_meta_label": _report_meta_label(report_id, topic, generated_at),
+            "candidate_label": f"候選 {candidate_count}｜正式 {promoted_count}",
+            "follow_up_state": "quality_unknown",
+            "follow_up_label": "品質待確認",
+            "action_label": "確認品質",
         }
     state, follow_up_state, follow_up_label, action_label = _follow_up_health_state(
         report_result,
@@ -187,6 +201,10 @@ def _boolish(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().casefold() in {"1", "true", "yes", "y"}
     return bool(value)
+
+
+def _quality_gate_known(quality_gate: dict) -> bool:
+    return bool(quality_gate) and bool(_text(quality_gate.get("status")))
 
 
 def _text(value: Any) -> str:

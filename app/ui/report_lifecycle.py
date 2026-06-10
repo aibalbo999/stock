@@ -36,9 +36,10 @@ def latest_report_lifecycle(
     report_id = report.get("report_id") or report.get("id")
     topic = _text(report.get("topic"), default="未命名報告")
     quality_gate = _dict_value(report.get("quality_gate"))
+    quality_gate_known = _quality_gate_known(quality_gate)
     quality_status = _text(quality_gate.get("status"), default="-").casefold()
     metrics = _dict_value(quality_gate.get("metrics"))
-    promoted_count = _promoted_count(report, metrics)
+    promoted_count = _promoted_count(report, metrics) if quality_gate_known else 0
     candidate_count = _candidate_count(report)
     required_count = _required_count(plan)
     follow_up_status = _follow_up_status(report, plan)
@@ -54,7 +55,11 @@ def latest_report_lifecycle(
         else "未發現必補資料缺口。"
     )
 
-    if promoted_count <= 0:
+    if not quality_gate_known:
+        quality_state = "unknown"
+        quality_label = "尚無 Gate"
+        quality_detail = "尚無法判斷品質門檻；不要把 ticker 清單視為正式分析結果。"
+    elif promoted_count <= 0:
         quality_state = "blocked"
         quality_label = "正式分析 0 檔"
         quality_detail = "品質門檻沒有產生正式分析股票，報告不可直接採信。"
@@ -109,6 +114,10 @@ def latest_report_lifecycle(
         readable_state = "blocked"
         readable_label = "不可採信"
         readable_detail = "先處理品質或資料問題，再閱讀投資結論。"
+    elif quality_state == "unknown":
+        readable_state = "attention"
+        readable_label = "需人工確認"
+        readable_detail = "品質門檻缺失，閱讀前需人工確認報告可用性。"
     elif required_count > 0 or quality_state == "attention":
         readable_state = "attention"
         readable_label = "可讀但需註記"
@@ -134,6 +143,7 @@ def latest_report_lifecycle(
         plan=plan,
         required_count=required_count,
         running=running,
+        quality_state=quality_state,
     )
     return {
         "overall_state": overall_state,
@@ -177,7 +187,7 @@ def _overall_state(stage_cards: list[dict[str, str]]) -> str:
         return "blocked"
     if "running" in states:
         return "running"
-    if "attention" in states:
+    if "attention" in states or "unknown" in states:
         return "attention"
     return "ready"
 
@@ -213,7 +223,7 @@ def _trust_explanation(
         attention_stages = [
             stage
             for stage in stage_cards
-            if stage.get("state") == "attention" and stage.get("key") != "readable"
+            if stage.get("state") in {"attention", "unknown"} and stage.get("key") != "readable"
         ]
         if attention_stages:
             details = "；".join(stage["detail"] for stage in attention_stages if stage.get("detail"))
@@ -236,9 +246,18 @@ def _primary_action(
     plan: dict,
     required_count: int,
     running: bool,
+    quality_state: str,
 ) -> tuple[str, str, str]:
     if running or overall_state == "running":
         return "查看補強任務", "settings:maintenance", "補強任務正在背景執行。"
+    if quality_state == "unknown":
+        if report_id is not None:
+            return (
+                "確認品質門檻",
+                f"report:{report_id}",
+                "尚無法判斷品質門檻；請先確認品質門檻再採信。",
+            )
+        return "確認品質門檻", "report_center", "尚無法判斷品質門檻；請先確認品質門檻再採信。"
     if overall_state == "blocked" or required_count > 0:
         gap_action = _primary_data_gap_action(report, plan)
         if gap_action:
@@ -281,6 +300,10 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _quality_gate_known(quality_gate: dict) -> bool:
+    return bool(quality_gate) and bool(_text(quality_gate.get("status")))
 
 
 def _promoted_count(report: dict, metrics: dict) -> int:

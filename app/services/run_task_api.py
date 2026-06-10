@@ -238,7 +238,21 @@ class RunTaskApiService:
             else:
                 response["error"] = self._safe_exception_text(result.result)
         with self.session_scope_factory() as session:
-            run = self.analysis_run_repository_cls(session).get_by_celery_task_id(task_id)
+            repository = self.analysis_run_repository_cls(session)
+            run = repository.get_by_celery_task_id(task_id)
+            if (
+                run is not None
+                and ready
+                and not successful
+                and str(getattr(run, "status", "") or "") == "running"
+            ):
+                repository.mark_failed(
+                    getattr(run, "id"),
+                    response.get("error") or self._safe_exception_text(result.result),
+                )
+                get_run = getattr(repository, "get", None)
+                if callable(get_run):
+                    run = get_run(getattr(run, "id")) or run
         serialized_run = self.serialize_run_func(run) if run is not None else None
         celery_progress = self._celery_progress(getattr(result, "info", None))
         if serialized_run is not None:

@@ -7,6 +7,13 @@ from importlib import import_module
 from typing import Any, Iterable
 
 
+class ChromaCompatibleEmbedding(list):
+    """List-compatible vector that also satisfies Chroma HTTP's tolist() path."""
+
+    def tolist(self) -> list[float]:
+        return list(self)
+
+
 class GoogleGenAIEmbeddingFunction:
     """Chroma-compatible embedding function backed by the official Google GenAI SDK."""
 
@@ -119,7 +126,7 @@ class GoogleGenAIEmbeddingFunction:
             )
             if values is None:
                 values = embedding
-            vectors.append([float(value) for value in values])
+            vectors.append(ChromaCompatibleEmbedding(float(value) for value in values))
         return vectors
 
     @staticmethod

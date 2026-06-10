@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from app.models.schemas import ReportRequest
+from app.services.followup_actions import FollowUpAction
 from app.services.report_followup_runner import ReportFollowUpRunService
 
 
@@ -178,6 +179,74 @@ def test_follow_up_run_service_force_refresh_creates_manual_tracking_actions() -
     assert captured["updated_payload"]["news_limit"] == 100
     assert captured["updated_payload"]["record_noop"] is False
     assert captured["success"] == (43, 7)
+
+
+def test_follow_up_run_service_marks_failed_when_rerun_report_raises_unexpected_error() -> None:
+    failures = []
+
+    class FakeRun:
+        id = 44
+
+    class FakeRunRepository:
+        def __init__(self, session):
+            pass
+
+        def start(self, source, payload):
+            return FakeRun()
+
+    class RerunPlanner:
+        def plan(self, *args, **kwargs):
+            return [
+                FollowUpAction(
+                    "rerun_analysis",
+                    "重跑分析報告",
+                    ("2330",),
+                    "high",
+                    "once",
+                    "tracking",
+                )
+            ]
+
+    async def execute(actions, request, news_limit):
+        return {
+            "results": {},
+            "execution_summary": {
+                "task_result_count": 0,
+                "stored_count": 0,
+                "error_count": 0,
+                "has_errors": False,
+                "rerun_blocked": False,
+            },
+        }
+
+    async def prepare(context, request, actions):
+        return {
+            "request": request,
+            "whitelist": None,
+            "candidate_revalidation": {"candidate_whitelist": []},
+        }
+
+    class BrokenBuildService:
+        def build(self, request, **kwargs):
+            raise AttributeError("'list' object has no attribute 'tolist'")
+
+    service = _service(
+        analysis_run_repository_cls=FakeRunRepository,
+        follow_up_action_planner_cls=RerunPlanner,
+        execute_follow_up_actions_func=execute,
+        prepare_follow_up_report_context_func=prepare,
+        report_build_service_factory=lambda: BrokenBuildService(),
+        safe_mark_run_failed_func=lambda run_id, error: failures.append((run_id, error)),
+    )
+
+    try:
+        run_async(service.run(7, _payload(rerun_report=True)))
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("rerun report failure should propagate to celery")
+
+    assert failures == [(44, "'list' object has no attribute 'tolist'")]
 
 
 def run_async(coro):

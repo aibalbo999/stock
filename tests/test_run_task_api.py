@@ -113,6 +113,26 @@ def _follow_up_run(run_id: int = 22) -> SimpleNamespace:
     )
 
 
+def _running_follow_up_run(run_id: int = 24) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=run_id,
+        source="follow_up_api",
+        status="running",
+        payload_json=json.dumps(
+            {
+                "source_report_id": 7,
+                "purpose": "tracking",
+                "celery_task_id": "task-running-failed",
+            }
+        ),
+        report_id=None,
+        output_path=None,
+        error=None,
+        started_at=datetime(2026, 5, 24, 4, 52, 33),
+        finished_at=None,
+    )
+
+
 def _after_close_run(run_id: int = 23) -> SimpleNamespace:
     return SimpleNamespace(
         id=run_id,
@@ -513,6 +533,59 @@ def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> No
     ]
     assert status["execution_context"]["payload_shape"]["ticker_count"] == 1
     assert status["execution_context"]["payload_shape"]["request_keys"] == ["tickers", "topic"]
+
+
+def test_run_task_service_marks_linked_running_run_failed_when_celery_failed() -> None:
+    captured = {}
+    linked_run = _running_follow_up_run()
+
+    class FakeCeleryApp:
+        def AsyncResult(self, task_id):
+            assert task_id == "task-running-failed"
+            return FakeTaskResult(
+                "FAILURE",
+                True,
+                False,
+                AttributeError("'list' object has no attribute 'tolist'"),
+            )
+
+    class FakeRunRepository:
+        def __init__(self, session: object) -> None:
+            self.session = session
+
+        def get_by_celery_task_id(self, task_id: str):
+            assert task_id == "task-running-failed"
+            return linked_run
+
+        def mark_failed(self, run_id: int, error: str):
+            captured["mark_failed"] = (run_id, error)
+            linked_run.status = "failed"
+            linked_run.error = error
+            linked_run.finished_at = datetime(2026, 5, 24, 4, 52, 50)
+            return linked_run
+
+        def get(self, run_id: int):
+            return linked_run if run_id == linked_run.id else None
+
+    @contextmanager
+    def fake_session_scope():
+        yield "session"
+
+    service = RunTaskApiService(
+        session_scope_factory=fake_session_scope,
+        analysis_run_repository_cls=FakeRunRepository,
+        celery_app=FakeCeleryApp(),
+    )
+
+    status = service.get_task_status("task-running-failed")
+
+    assert captured["mark_failed"] == (
+        24,
+        "'list' object has no attribute 'tolist'",
+    )
+    assert status["run"]["status"] == "failed"
+    assert status["run"]["error"] == "'list' object has no attribute 'tolist'"
+    assert status["execution_context"]["run_status"] == "failed"
 
 
 def test_run_task_service_task_status_execution_context_masks_private_payload() -> None:

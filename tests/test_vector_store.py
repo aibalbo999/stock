@@ -1044,6 +1044,7 @@ def test_google_genai_embedding_function_uses_official_sdk_shape(monkeypatch) ->
     )(["台積電 CoWoS", "台達電 電源"])
 
     assert embeddings == [[0.1, 0.2], [0.3, 0.4]]
+    assert embeddings[0].tolist() == [0.1, 0.2]
     assert captured["client"] == {"api_key": "google-key"}
     assert captured["embed_content"] == {
         "model": "gemini-embedding-001",

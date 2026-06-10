@@ -5,7 +5,6 @@ from typing import Any
 
 from app.services.followup_actions import manual_tracking_follow_up_actions
 from app.services.llm_usage import record_llm_usage_from_report_execution
-from app.services.report_generator import ReportExecutionError
 from app.services.report_followup import (
     can_rerun_candidate_revalidation_from_existing_evidence,
     filter_follow_up_actions,
@@ -332,7 +331,7 @@ class ReportFollowUpRunService:
                     or plan_quality_from_quality_gate(context.get("quality_gate") or {})
                 ),
             )
-        except ReportExecutionError as exc:
+        except Exception as exc:
             self.safe_mark_run_failed_func(run_id, str(exc))
             raise
         response = report_result["response"]

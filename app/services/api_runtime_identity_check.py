@@ -26,12 +26,14 @@ def check_api_runtime_identity(
     expected = str(
         expected_commit if expected_commit is not None else local_identity.get("git_commit") or ""
     )
+    expected_dirty = local_identity.get("git_dirty") if expected_commit is None else None
     url = _join_url(api_url, endpoint)
     result = {
         "label": "api_runtime_identity",
         "url": _iri_to_uri(url),
         "expected_commit": expected,
         "expected_commit_short": expected[:12] if expected else "",
+        "expected_dirty": expected_dirty,
     }
     try:
         payload = _read_json_url(url, timeout_seconds=timeout_seconds, opener=opener)
@@ -59,13 +61,25 @@ def check_api_runtime_identity(
             "actual_commit": "",
         }
     matched = _commits_match(expected, actual)
+    actual_dirty = identity.get("git_dirty")
+    dirty_matched = expected_dirty is None or actual_dirty is None or expected_dirty == actual_dirty
+    if matched and not dirty_matched:
+        return {
+            **result,
+            "status": "failed",
+            "actual_commit": actual,
+            "actual_commit_short": actual[:12],
+            "actual_source": identity.get("source"),
+            "actual_dirty": actual_dirty,
+            "reason": "api_runtime_dirty_mismatch",
+        }
     return {
         **result,
         "status": "passed" if matched else "failed",
         "actual_commit": actual,
         "actual_commit_short": actual[:12],
         "actual_source": identity.get("source"),
-        "actual_dirty": identity.get("git_dirty"),
+        "actual_dirty": actual_dirty,
         "reason": None if matched else "api_runtime_commit_mismatch",
     }
 

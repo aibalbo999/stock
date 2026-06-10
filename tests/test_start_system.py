@@ -368,6 +368,42 @@ def test_ensure_api_process_restarts_unpinned_runtime(monkeypatch, tmp_path) -> 
     assert stopped_ports == [8000]
 
 
+def test_ensure_api_process_restarts_dirty_runtime(monkeypatch, tmp_path) -> None:
+    stopped_ports = []
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8000)
+    monkeypatch.setattr(
+        "scripts.start_system.run_api_runtime_identity_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "api_runtime_identity",
+            "status": "failed",
+            "reason": "api_runtime_dirty_mismatch",
+            "expected_dirty": True,
+            "actual_dirty": False,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.stop_port_processes",
+        lambda port: stopped_ports.append(port)
+        or {"pids": [2345], "terminated": [2345], "killed": []},
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.wait_for_port_closed",
+        lambda _host, port, _timeout_seconds: port == 8000,
+    )
+    monkeypatch.setattr("scripts.start_system.start_process", lambda *_args, **_kwargs: True)
+
+    started, status = start_system_module.ensure_api_process(
+        command=["python", "-m", "uvicorn"],
+        log_path=tmp_path / "api.log",
+        api_url="http://127.0.0.1:8000",
+    )
+
+    assert started is True
+    assert status["status"] == "restarted"
+    assert status["reason"] == "api_runtime_dirty_mismatch"
+    assert stopped_ports == [8000]
+
+
 def test_ensure_api_process_keeps_verified_running_runtime(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8000)
     monkeypatch.setattr(
@@ -486,6 +522,45 @@ def test_ensure_streamlit_process_keeps_verified_running_frontend(monkeypatch, t
     assert started is False
     assert status["status"] == "already_running"
     assert status["reason"] == "frontend_runtime_verified"
+
+
+def test_ensure_streamlit_process_restarts_dirty_frontend(monkeypatch, tmp_path) -> None:
+    stopped_ports = []
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8501)
+    monkeypatch.setattr(
+        "scripts.start_system.run_streamlit_frontend_runtime_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "streamlit_playwright",
+            "status": "failed",
+            "frontend_runtime_identity": {
+                "status": "failed",
+                "reason": "streamlit_runtime_dirty_mismatch",
+                "expected_dirty": True,
+                "actual_dirty": False,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.stop_port_processes",
+        lambda port: stopped_ports.append(port)
+        or {"pids": [1234], "terminated": [1234], "killed": []},
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.wait_for_port_closed",
+        lambda _host, port, _timeout_seconds: port == 8501,
+    )
+    monkeypatch.setattr("scripts.start_system.start_process", lambda *_args, **_kwargs: True)
+
+    started, status = start_system_module.ensure_streamlit_process(
+        command=["python", "-m", "streamlit"],
+        log_path=tmp_path / "streamlit.log",
+        streamlit_url="http://127.0.0.1:8501",
+    )
+
+    assert started is True
+    assert status["status"] == "restarted"
+    assert status["reason"] == "streamlit_runtime_dirty_mismatch"
+    assert stopped_ports == [8501]
 
 
 def test_streamlit_runtime_identity_failure_reason_reads_nested_reason() -> None:

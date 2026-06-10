@@ -44,12 +44,14 @@ LOCAL_POSTGRES_PORT = 5432
 OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
 STALE_API_RESTART_REASONS = {
     "api_runtime_commit_mismatch",
+    "api_runtime_dirty_mismatch",
     "api_runtime_commit_unavailable",
     "api_runtime_identity_unpinned",
 }
 STALE_STREAMLIT_RESTART_REASONS = {
     "streamlit_runtime_identity_marker_missing",
     "streamlit_runtime_commit_mismatch",
+    "streamlit_runtime_dirty_mismatch",
     "streamlit_runtime_commit_unavailable",
     "streamlit_runtime_identity_unpinned",
 }

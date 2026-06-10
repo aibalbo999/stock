@@ -308,6 +308,25 @@ def test_check_api_runtime_identity_fails_on_commit_mismatch() -> None:
     assert result["reason"] == "api_runtime_commit_mismatch"
 
 
+def test_check_api_runtime_identity_fails_on_dirty_mismatch(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.api_runtime_identity_check.runtime_identity_status",
+        lambda: {"git_commit": "commit-main-test", "git_dirty": True},
+    )
+
+    result = check_api_runtime_identity(
+        "http://localhost:8000",
+        opener=lambda *_args, **_kwargs: FakeResponse(
+            b'{"git_commit":"commit-main-test","source":"env","git_dirty":false}'
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "api_runtime_dirty_mismatch"
+    assert result["expected_dirty"] is True
+    assert result["actual_dirty"] is False
+
+
 def test_check_api_runtime_identity_fails_when_runtime_commit_missing() -> None:
     result = check_api_runtime_identity(
         "http://localhost:8000",
@@ -344,6 +363,26 @@ def test_frontend_runtime_identity_result_fails_on_commit_mismatch() -> None:
     assert result["reason"] == "streamlit_runtime_commit_mismatch"
     assert result["expected_commit_short"] == "commit-main-"
     assert result["actual_commit_short"] == "commit-old-t"
+
+
+def test_frontend_runtime_identity_result_fails_on_dirty_mismatch(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.runtime_identity_status",
+        lambda: {"git_commit": "commit-main-test", "git_dirty": True},
+    )
+
+    result = frontend_runtime_identity_result(
+        {
+            "git_commit": "commit-main-test",
+            "source": "env",
+            "git_dirty": "false",
+        }
+    )
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "streamlit_runtime_dirty_mismatch"
+    assert result["expected_dirty"] is True
+    assert result["actual_dirty"] is False
 
 
 def test_frontend_runtime_identity_result_fails_when_marker_missing() -> None:

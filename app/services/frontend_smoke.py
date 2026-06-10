@@ -419,9 +419,11 @@ def frontend_runtime_identity_result(
     expected = str(
         expected_commit if expected_commit is not None else local_identity.get("git_commit") or ""
     )
+    expected_dirty = local_identity.get("git_dirty") if expected_commit is None else None
     result = {
         "expected_commit": expected,
         "expected_commit_short": expected[:12] if expected else "",
+        "expected_dirty": expected_dirty,
     }
     actual = str(marker.get("git_commit") or "")
     if not expected:
@@ -447,13 +449,25 @@ def frontend_runtime_identity_result(
             "actual_commit": "",
         }
     matched = _commits_match(expected, actual)
+    actual_dirty = _marker_bool(marker.get("git_dirty"))
+    dirty_matched = expected_dirty is None or actual_dirty is None or expected_dirty == actual_dirty
+    if matched and not dirty_matched:
+        return {
+            **result,
+            "status": "failed",
+            "actual_commit": actual,
+            "actual_commit_short": actual[:12],
+            "actual_source": marker.get("source"),
+            "actual_dirty": actual_dirty,
+            "reason": "streamlit_runtime_dirty_mismatch",
+        }
     return {
         **result,
         "status": "passed" if matched else "failed",
         "actual_commit": actual,
         "actual_commit_short": actual[:12],
         "actual_source": marker.get("source"),
-        "actual_dirty": _marker_bool(marker.get("git_dirty")),
+        "actual_dirty": actual_dirty,
         "reason": None if matched else "streamlit_runtime_commit_mismatch",
     }
 

@@ -56,7 +56,7 @@ def test_operator_secondary_actions_use_readable_target_captions() -> None:
     assert "data_enrichment:" not in html
 
 
-def test_operator_workbench_renders_decision_before_primary_button(monkeypatch) -> None:
+def test_operator_workbench_renders_primary_button_before_decision_detail(monkeypatch) -> None:
     events: list[tuple[str, str]] = []
 
     def fake_load(endpoint: str, default, **_kwargs):
@@ -103,17 +103,17 @@ def test_operator_workbench_renders_decision_before_primary_button(monkeypatch) 
 
     analysis_workspace._render_operator_workbench()
 
-    decision_index = next(
-        index
-        for index, (kind, body) in enumerate(events)
-        if kind == "markdown" and "operator-decision-card" in body
-    )
     primary_button_index = next(
         index
         for index, (kind, body) in enumerate(events)
         if kind == "button" and body == "建立分析"
     )
-    assert decision_index < primary_button_index
+    decision_index = next(
+        index
+        for index, (kind, body) in enumerate(events)
+        if kind == "markdown" and "operator-decision-card" in body
+    )
+    assert primary_button_index < decision_index
 
 
 def test_operator_workbench_renders_primary_button_before_secondary_cards(monkeypatch) -> None:

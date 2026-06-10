@@ -104,6 +104,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "operator-action-controls" in combined
     assert "_render_operator_primary_action_control(" in source
     assert "_render_operator_action_controls(" in source
+    assert source.index("_render_operator_workbench()") < source.index("workflow-strip")
     assert "operator_route_target(" in source
     assert "st.switch_page(" in source
     assert "pending_selected_report_id" in source

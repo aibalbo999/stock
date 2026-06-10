@@ -51,6 +51,12 @@ def render_analysis_workspace() -> None:
                 <span class="workspace-chip is-accent">缺口自動補強</span>
             </div>
         </section>
+        """.format(today=today_taipei().isoformat()),
+        unsafe_allow_html=True,
+    )
+    _render_operator_workbench()
+    st.markdown(
+        """
         <section class="workflow-strip is-compact" aria-label="分析流程">
             <div class="workflow-step"><span>01</span><strong>主題拆解</strong></div>
             <div class="workflow-step"><span>02</span><strong>來源驗證</strong></div>
@@ -62,10 +68,9 @@ def render_analysis_workspace() -> None:
             <div class="ledger-item"><span>資料來源</span><strong>新聞、市場、財務、公司文件分開查核</strong></div>
             <div class="ledger-item"><span>投資口徑</span><strong>正式分析不等於買進，分數只用於排序</strong></div>
         </section>
-        """.format(today=today_taipei().isoformat()),
+        """,
         unsafe_allow_html=True,
     )
-    _render_operator_workbench()
     render_section_header(
         "建立一次分析", "預設使用 AI 拆解主題並抓取國內外資料；不確定時維持預設即可。"
     )
@@ -343,11 +348,14 @@ def _render_operator_workbench() -> None:
 </div>
 <span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
 </div>
-{_operator_decision_html(primary_action, [], include_secondary=False)}
 </section>""",
         unsafe_allow_html=True,
     )
     _render_operator_primary_action_control(primary_action)
+    st.markdown(
+        _operator_decision_html(primary_action, [], include_secondary=False),
+        unsafe_allow_html=True,
+    )
     if secondary_actions:
         st.markdown(_operator_secondary_actions_html(secondary_actions), unsafe_allow_html=True)
     _render_operator_action_controls(secondary_actions)

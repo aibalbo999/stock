@@ -21,6 +21,8 @@ DEFAULT_VISUAL_TEXT_FRAGMENTS = ("下一步建議",)
 DEFAULT_REQUIRED_TEXT_MAX_TOP_PX = 560
 DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR = ".operator-decision-card"
 DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX = 900
+DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX = 720
+DEFAULT_MOBILE_OPERATOR_VIEWPORT = {"width": 390, "height": 1000}
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",
@@ -50,6 +52,9 @@ def run_frontend_smoke(
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
+    operator_primary_action_mobile_max_top_px: (
+        float | None
+    ) = DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX,
     timeout_seconds: float = 10.0,
 ) -> dict:
     checks = [
@@ -99,6 +104,7 @@ def run_frontend_smoke(
                 required_text_max_top_px=required_text_max_top_px,
                 required_text_scope_selector=required_text_scope_selector,
                 operator_primary_action_max_top_px=operator_primary_action_max_top_px,
+                operator_primary_action_mobile_max_top_px=operator_primary_action_mobile_max_top_px,
                 timeout_seconds=timeout_seconds,
             )
         )
@@ -235,6 +241,9 @@ def run_playwright_visual_smoke(
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
+    operator_primary_action_mobile_max_top_px: (
+        float | None
+    ) = DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX,
     timeout_seconds: float = 10.0,
 ) -> dict:
     url = _iri_to_uri(url)
@@ -251,24 +260,14 @@ def run_playwright_visual_smoke(
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
+            timeout_ms = int(timeout_seconds * 1000)
             page = browser.new_page(viewport={"width": 1440, "height": 1000})
-            response = page.goto(
+            response = _load_streamlit_visual_page(
+                page,
                 url,
-                wait_until="domcontentloaded",
-                timeout=int(timeout_seconds * 1000),
-            )
-            page.wait_for_selector("body", state="attached", timeout=int(timeout_seconds * 1000))
-            try:
-                page.wait_for_selector(
-                    '[data-testid="stApp"], .stApp',
-                    state="attached",
-                    timeout=int(timeout_seconds * 1000),
-                )
-            except Exception:
-                pass
-            page.wait_for_function(
-                "() => document.body && (document.body.innerText || '').trim().length >= 80",
-                timeout=int(timeout_seconds * 1000),
+                required_text_fragments=required_text_fragments,
+                required_text_scope_selector=required_text_scope_selector,
+                timeout_ms=timeout_ms,
             )
             frontend_marker = page.evaluate(
                 """() => {
@@ -295,23 +294,6 @@ def run_playwright_visual_smoke(
                     "reason": "runtime_identity_check_disabled",
                 }
             )
-            if required_text_fragments and frontend_identity.get("status") != "failed":
-                page.wait_for_function(
-                    """({fragments, scopeSelector}) => {
-                        const root = scopeSelector
-                            ? document.querySelector(scopeSelector)
-                            : document.body;
-                        const text = root
-                            ? (root.innerText || root.textContent || "")
-                            : "";
-                        return fragments.every(fragment => text.includes(fragment));
-                    }""",
-                    arg={
-                        "fragments": list(required_text_fragments),
-                        "scopeSelector": required_text_scope_selector,
-                    },
-                    timeout=int(timeout_seconds * 1000),
-                )
             if target:
                 target.parent.mkdir(parents=True, exist_ok=True)
             screenshot = page.screenshot(path=str(target) if target else None, full_page=True)
@@ -325,6 +307,20 @@ def run_playwright_visual_smoke(
                 scope_selector=required_text_scope_selector,
             )
             operator_primary_action_measurement = _operator_primary_action_measurement(page)
+            mobile_screenshot_path = _mobile_screenshot_path(target)
+            mobile_page = browser.new_page(viewport=DEFAULT_MOBILE_OPERATOR_VIEWPORT)
+            _load_streamlit_visual_page(
+                mobile_page,
+                url,
+                required_text_fragments=required_text_fragments,
+                required_text_scope_selector=required_text_scope_selector,
+                timeout_ms=timeout_ms,
+            )
+            if mobile_screenshot_path:
+                mobile_page.screenshot(path=str(mobile_screenshot_path), full_page=True)
+            operator_primary_action_mobile_measurement = _operator_primary_action_measurement(
+                mobile_page
+            )
             browser.close()
     except Exception as exc:
         return {
@@ -343,13 +339,27 @@ def run_playwright_visual_smoke(
         operator_primary_action_measurement,
         max_button_top_px=operator_primary_action_max_top_px,
     )
+    operator_primary_action_viewport_measurements = {
+        "desktop": operator_primary_action_measurement,
+        "mobile": operator_primary_action_mobile_measurement,
+    }
+    operator_primary_action_viewport_max_top_px = {
+        "desktop": operator_primary_action_max_top_px,
+        "mobile": operator_primary_action_mobile_max_top_px,
+    }
+    operator_primary_action_viewport_layout_failures_result = (
+        operator_primary_action_viewport_layout_failures(
+            operator_primary_action_viewport_measurements,
+            max_button_top_px=operator_primary_action_viewport_max_top_px,
+        )
+    )
     passed = bool(
         nonblank
         and len(screenshot) > 1000
         and len(body_text.strip()) >= 80
         and not missing_required_text
         and not text_layout_failures
-        and not operator_primary_action_layout_failures_result
+        and not any(operator_primary_action_viewport_layout_failures_result.values())
         and frontend_identity.get("status") in {"passed", "skipped"}
     )
     return {
@@ -370,6 +380,16 @@ def run_playwright_visual_smoke(
         "operator_primary_action_max_top_px": operator_primary_action_max_top_px,
         "operator_primary_action_measurement": operator_primary_action_measurement,
         "operator_primary_action_layout_failures": operator_primary_action_layout_failures_result,
+        "operator_primary_action_mobile_max_top_px": operator_primary_action_mobile_max_top_px,
+        "operator_primary_action_mobile_measurement": operator_primary_action_mobile_measurement,
+        "operator_primary_action_mobile_screenshot_path": (
+            str(mobile_screenshot_path) if mobile_screenshot_path else None
+        ),
+        "operator_primary_action_viewport_measurements": operator_primary_action_viewport_measurements,
+        "operator_primary_action_viewport_max_top_px": operator_primary_action_viewport_max_top_px,
+        "operator_primary_action_viewport_layout_failures": (
+            operator_primary_action_viewport_layout_failures_result
+        ),
         "frontend_runtime_identity": frontend_identity,
     }
 
@@ -487,6 +507,20 @@ def operator_primary_action_layout_failures(
     return failures
 
 
+def operator_primary_action_viewport_layout_failures(
+    measurements: dict[str, dict[str, Any]],
+    *,
+    max_button_top_px: dict[str, float | None],
+) -> dict[str, list[str]]:
+    return {
+        viewport: operator_primary_action_layout_failures(
+            measurement,
+            max_button_top_px=max_button_top_px.get(viewport),
+        )
+        for viewport, measurement in measurements.items()
+    }
+
+
 def missing_required_text_fragments(
     body_text: str, required_text_fragments: tuple[str, ...]
 ) -> list[str]:
@@ -585,24 +619,132 @@ def _operator_primary_action_measurement(page: Any) -> dict[str, Any]:
                 };
                 const marker = document.querySelector(".operator-action-controls.is-primary");
                 const markerRect = visibleRect(marker);
-                const buttons = Array.from(document.querySelectorAll("button"))
-                    .map(button => ({button, rect: visibleRect(button)}))
-                    .filter(item => item.rect && (item.button.innerText || "").trim())
+                const widget = document.querySelector(".st-key-operator_route_primary_action");
+                const widgetRect = visibleRect(widget);
+                const widgetText = widget
+                    ? (widget.innerText || widget.textContent || "").trim()
+                    : "";
+                const buttonRoots = widget
+                    ? Array.from(widget.querySelectorAll("button"))
+                    : Array.from(document.querySelectorAll("button"));
+                const buttons = buttonRoots
+                    .map(button => ({
+                        rect: visibleRect(button),
+                        text: (button.innerText || button.textContent || "").trim(),
+                    }))
+                    .filter(item => item.rect && item.text)
                     .filter(item => !markerRect || item.rect.top >= markerRect.top - 4)
                     .sort((left, right) => left.rect.top - right.rect.top);
                 const primary = buttons[0] || null;
+                const fallback = !primary && widgetRect && widgetText
+                    ? {rect: widgetRect, text: widgetText, source: "widget_container"}
+                    : null;
+                const target = primary
+                    ? {rect: primary.rect, text: primary.text, source: "button"}
+                    : fallback;
                 return {
                     marker_found: Boolean(markerRect),
                     marker_top: markerRect ? markerRect.top : null,
                     marker_bottom: markerRect ? markerRect.bottom : null,
-                    button_found: Boolean(primary),
-                    button_top: primary ? primary.rect.top : null,
-                    button_bottom: primary ? primary.rect.bottom : null,
-                    button_text: primary ? (primary.button.innerText || "").trim() : "",
+                    button_found: Boolean(target),
+                    button_top: target ? target.rect.top : null,
+                    button_bottom: target ? target.rect.bottom : null,
+                    button_text: target ? target.text : "",
+                    button_source: target ? target.source : "",
                 };
             }"""
         )
     )
+
+
+def _load_streamlit_visual_page(
+    page: Any,
+    url: str,
+    *,
+    required_text_fragments: tuple[str, ...],
+    required_text_scope_selector: str | None,
+    timeout_ms: int,
+) -> Any:
+    response = page.goto(
+        url,
+        wait_until="domcontentloaded",
+        timeout=timeout_ms,
+    )
+    page.wait_for_selector("body", state="attached", timeout=timeout_ms)
+    try:
+        page.wait_for_selector(
+            '[data-testid="stApp"], .stApp',
+            state="attached",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        pass
+    page.wait_for_function(
+        "() => document.body && (document.body.innerText || '').trim().length >= 80",
+        timeout=timeout_ms,
+    )
+    if required_text_fragments:
+        page.wait_for_function(
+            """({fragments, scopeSelector}) => {
+                const root = scopeSelector
+                    ? document.querySelector(scopeSelector)
+                    : document.body;
+                const text = root
+                    ? (root.innerText || root.textContent || "")
+                    : "";
+                return fragments.every(fragment => text.includes(fragment));
+            }""",
+            arg={
+                "fragments": list(required_text_fragments),
+                "scopeSelector": required_text_scope_selector,
+            },
+            timeout=timeout_ms,
+        )
+    _wait_for_operator_primary_action_widget(page, timeout_ms=timeout_ms)
+    return response
+
+
+def _wait_for_operator_primary_action_widget(page: Any, *, timeout_ms: int) -> None:
+    try:
+        page.wait_for_function(
+            """() => {
+                const visible = element => {
+                    if (!element) {
+                        return false;
+                    }
+                    const rect = element.getBoundingClientRect();
+                    const style = window.getComputedStyle(element);
+                    return (
+                        rect.width > 0 &&
+                        rect.height > 0 &&
+                        style.display !== "none" &&
+                        style.visibility !== "hidden"
+                    );
+                };
+                const marker = document.querySelector(".operator-action-controls.is-primary");
+                const widget = document.querySelector(".st-key-operator_route_primary_action");
+                if (!visible(marker) || !visible(widget)) {
+                    return false;
+                }
+                const widgetText = (widget.innerText || widget.textContent || "").trim();
+                if (widgetText) {
+                    return true;
+                }
+                return Array.from(widget.querySelectorAll("button")).some(button => {
+                    return visible(button) && (button.innerText || button.textContent || "").trim();
+                });
+            }""",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        pass
+
+
+def _mobile_screenshot_path(target: Path | None) -> Path | None:
+    if target is None:
+        return None
+    suffix = target.suffix or ".png"
+    return target.with_name(f"{target.stem}_mobile{suffix}")
 
 
 def _px_label(value: float) -> str:
@@ -646,8 +788,16 @@ def format_frontend_smoke_report(report: dict) -> str:
             lines.append(f"  missing text: {missing_text}")
         for layout_failure in check.get("required_text_layout_failures") or []:
             lines.append(f"  layout: {layout_failure}")
-        for layout_failure in check.get("operator_primary_action_layout_failures") or []:
-            lines.append(f"  operator action layout: {layout_failure}")
+        viewport_failures = check.get("operator_primary_action_viewport_layout_failures")
+        if isinstance(viewport_failures, dict):
+            for viewport, failures in viewport_failures.items():
+                for layout_failure in failures or []:
+                    lines.append(
+                        f"  operator action layout ({viewport}): {layout_failure}"
+                    )
+        else:
+            for layout_failure in check.get("operator_primary_action_layout_failures") or []:
+                lines.append(f"  operator action layout: {layout_failure}")
         if check.get("reason"):
             lines.append(f"  reason: {check['reason']}")
         if check.get("expected_commit_short") or check.get("actual_commit_short"):

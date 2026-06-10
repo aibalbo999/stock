@@ -5,6 +5,7 @@ import zlib
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX,
     DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
     DEFAULT_VISUAL_TEXT_FRAGMENTS,
     check_api_runtime_identity,
@@ -14,6 +15,7 @@ from app.services.frontend_smoke import (
     format_frontend_smoke_report,
     missing_required_text_fragments,
     operator_primary_action_layout_failures,
+    operator_primary_action_viewport_layout_failures,
     png_has_nonblank_pixels,
     required_text_layout_failures,
     run_frontend_smoke,
@@ -131,6 +133,34 @@ def test_operator_primary_action_layout_failures_require_visible_button_before_f
         },
         max_button_top_px=900,
     ) == ["primary action button below 900px (top=960px)"]
+
+
+def test_operator_primary_action_viewport_layout_failures_names_mobile_failures() -> None:
+    assert DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX == 720
+
+    assert operator_primary_action_viewport_layout_failures(
+        {
+            "desktop": {
+                "marker_found": True,
+                "button_found": True,
+                "button_top": 825,
+                "button_text": "查看事件",
+            },
+            "mobile": {
+                "marker_found": True,
+                "button_found": True,
+                "button_top": 760,
+                "button_text": "查看事件",
+            },
+        },
+        max_button_top_px={
+            "desktop": 900,
+            "mobile": DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX,
+        },
+    ) == {
+        "desktop": [],
+        "mobile": ["primary action button below 720px (top=760px)"],
+    }
 
 
 def test_check_streamlit_page_import_contract_accepts_project_pages() -> None:
@@ -333,6 +363,28 @@ def test_format_frontend_smoke_report_includes_streamlit_runtime_identity() -> N
 
     assert "frontend commit: expected=commit-main- actual=commit-old-t" in output
     assert "frontend reason: streamlit_runtime_commit_mismatch" in output
+
+
+def test_format_frontend_smoke_report_includes_mobile_operator_layout_failures() -> None:
+    output = format_frontend_smoke_report(
+        {
+            "status": "failed",
+            "failed_count": 1,
+            "skipped_count": 0,
+            "checks": [
+                {
+                    "label": "streamlit_playwright",
+                    "status": "failed",
+                    "operator_primary_action_viewport_layout_failures": {
+                        "desktop": [],
+                        "mobile": ["primary action button below 720px (top=760px)"],
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "operator action layout (mobile): primary action button below 720px (top=760px)" in output
 
 
 def _png(*, width: int, height: int, pixels: list[tuple[int, int, int]]) -> bytes:

@@ -17,6 +17,8 @@ REPORT_CANDIDATE_AUDIT_SOURCE = Path("app/ui/report_candidate_audit.py")
 REPORT_FORMATTERS_SOURCE = Path("app/ui/report_formatters.py")
 REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
+OPERATOR_STATUS_SOURCE = Path("app/ui/operator_status.py")
+REPORT_HEALTH_SOURCE = Path("app/ui/report_health.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
@@ -52,6 +54,8 @@ UI_SOURCE_FILES = [
     REPORT_FORMATTERS_SOURCE,
     REPORT_SECTIONS_SOURCE,
     REPORT_HTML_SOURCE,
+    OPERATOR_STATUS_SOURCE,
+    REPORT_HEALTH_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
     MAINTENANCE_PANELS_SOURCE,

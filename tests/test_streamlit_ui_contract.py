@@ -79,6 +79,18 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_candidate_audit import" in source
     assert "from app.ui.report_formatters import" in source
     assert "from app.ui.report_sections import (" in source
+    assert "from app.ui.operator_status import (" in source
+    assert "operator_status_cards(" in source
+    assert '"今日狀態"' in source
+    assert '"/tasks/summary?days=7&limit=10"' in source
+    assert '"/llm/quota"' in source
+    assert '"/reports?limit=5"' in source
+    assert "operator-status-grid" in combined
+    assert "operator-status-card" in combined
+    assert "from app.ui.report_health import latest_report_health_summary" in source
+    assert "latest_report_health_summary(" in source
+    assert "report-health-strip" in combined
+    assert "report-health-card" in combined
     assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
     assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
     assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source
@@ -138,6 +150,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'settings_tabs = st.tabs(["股票範圍", "自動排程", "維護"])' in source
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
+    assert "會更新最新版報告的股價與成交量判讀" in source
+    assert "會補齊五年財務與品質門檻需要的財報資料" in source
+    assert "會更新本益比、股價淨值比與殖利率判讀" in source
+    assert "會補齊公司文件、法說會或公開資訊缺口" in source
+    assert "action-impact-grid" in combined
+    assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
     assert 'or schedule_task == "latest_report_update"' in source
     assert '"產業分類篩選"' in source

@@ -422,6 +422,107 @@ textarea:focus,
     font-size: 0.9rem;
     line-height: 1.5;
 }
+.operator-workbench,
+.report-health-strip,
+.action-impact-grid {
+    margin: 18px 0;
+}
+.operator-workbench {
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: var(--stock-shadow);
+}
+.operator-workbench-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.operator-workbench-head h2 {
+    margin: 0;
+    font-size: 1.45rem;
+}
+.operator-workbench-head p {
+    margin: 6px 0 0;
+    color: var(--stock-muted);
+}
+.operator-state,
+.operator-card-action {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-weight: 700;
+    border: 1px solid var(--stock-border);
+}
+.operator-state.is-ready,
+.operator-status-card.is-ready .operator-card-action {
+    color: var(--stock-accent);
+    background: var(--stock-accent-soft);
+    border-color: rgba(15, 118, 110, 0.25);
+}
+.operator-state.is-attention,
+.operator-status-card.is-attention .operator-card-action {
+    color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+    border-color: rgba(146, 64, 14, 0.24);
+}
+.operator-state.is-blocked,
+.operator-status-card.is-blocked .operator-card-action {
+    color: var(--stock-danger);
+    background: var(--stock-danger-soft);
+    border-color: rgba(180, 35, 24, 0.24);
+}
+.operator-status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+.operator-status-card,
+.report-health-card,
+.action-impact-grid > div {
+    background: var(--stock-surface-alt);
+    border: 1px solid var(--stock-border-soft);
+    border-radius: 8px;
+    padding: 14px;
+}
+.operator-card-title,
+.report-health-card span,
+.action-impact-grid span {
+    color: var(--stock-muted);
+    font-size: 0.9rem;
+}
+.operator-card-value,
+.report-health-card strong,
+.action-impact-grid strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--stock-text);
+    font-weight: 800;
+}
+.operator-card-caption {
+    margin: 8px 0 12px;
+    color: var(--stock-muted);
+    min-height: 42px;
+}
+.report-health-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+.action-impact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+.action-impact-grid span {
+    display: block;
+    margin-top: 4px;
+}
 .compact-note {
     color: var(--stock-muted);
     font-size: 0.9rem;
@@ -534,6 +635,16 @@ textarea:focus,
     border: 1px solid var(--stock-border);
     border-radius: 8px;
     overflow: hidden;
+}
+@media (max-width: 900px) {
+    .operator-workbench-head {
+        flex-direction: column;
+    }
+    .operator-status-grid,
+    .report-health-strip,
+    .action-impact-grid {
+        grid-template-columns: 1fr;
+    }
 }
 @media (max-width: 640px) {
     .block-container {

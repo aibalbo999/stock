@@ -16,6 +16,7 @@ DEFAULT_API_ENDPOINTS = (
     "/services/status",
     "/services/external-deployment/env-check",
 )
+DEFAULT_VISUAL_TEXT_FRAGMENTS = ("下一步建議",)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",
@@ -41,6 +42,7 @@ def run_frontend_smoke(
     skip_browser: bool = False,
     check_runtime_identity: bool = True,
     expected_api_commit: str | None = None,
+    required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
     timeout_seconds: float = 10.0,
 ) -> dict:
     checks = [
@@ -84,6 +86,7 @@ def run_frontend_smoke(
             run_playwright_visual_smoke(
                 streamlit_url,
                 screenshot_path=screenshot_path,
+                required_text_fragments=required_text_fragments,
                 timeout_seconds=timeout_seconds,
             )
         )
@@ -214,6 +217,7 @@ def run_playwright_visual_smoke(
     url: str,
     *,
     screenshot_path: str | Path | None = "artifacts/frontend_smoke/streamlit.png",
+    required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
     timeout_seconds: float = 10.0,
 ) -> dict:
     url = _iri_to_uri(url)
@@ -249,6 +253,17 @@ def run_playwright_visual_smoke(
                 "() => document.body && (document.body.innerText || '').trim().length >= 80",
                 timeout=int(timeout_seconds * 1000),
             )
+            if required_text_fragments:
+                page.wait_for_function(
+                    """fragments => {
+                        const text = document.body
+                            ? (document.body.innerText || document.body.textContent || "")
+                            : "";
+                        return fragments.every(fragment => text.includes(fragment));
+                    }""",
+                    arg=list(required_text_fragments),
+                    timeout=int(timeout_seconds * 1000),
+                )
             if target:
                 target.parent.mkdir(parents=True, exist_ok=True)
             screenshot = page.screenshot(path=str(target) if target else None, full_page=True)
@@ -265,7 +280,13 @@ def run_playwright_visual_smoke(
             "error": str(exc) or exc.__class__.__name__,
         }
     nonblank = png_has_nonblank_pixels(screenshot)
-    passed = bool(nonblank and len(screenshot) > 1000 and len(body_text.strip()) >= 80)
+    missing_required_text = missing_required_text_fragments(body_text, required_text_fragments)
+    passed = bool(
+        nonblank
+        and len(screenshot) > 1000
+        and len(body_text.strip()) >= 80
+        and not missing_required_text
+    )
     return {
         "label": "streamlit_playwright",
         "status": "passed" if passed else "failed",
@@ -276,7 +297,14 @@ def run_playwright_visual_smoke(
         "screenshot_path": str(target) if target else None,
         "screenshot_bytes": len(screenshot),
         "screenshot_nonblank": nonblank,
+        "missing_required_text": missing_required_text,
     }
+
+
+def missing_required_text_fragments(
+    body_text: str, required_text_fragments: tuple[str, ...]
+) -> list[str]:
+    return [fragment for fragment in required_text_fragments if fragment not in body_text]
 
 
 def png_has_nonblank_pixels(data: bytes) -> bool:

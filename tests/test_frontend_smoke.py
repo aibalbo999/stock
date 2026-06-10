@@ -5,9 +5,11 @@ import zlib
 
 from app.services.frontend_smoke import (
     DEFAULT_API_ENDPOINTS,
+    DEFAULT_VISUAL_TEXT_FRAGMENTS,
     check_api_runtime_identity,
     check_http_target,
     check_streamlit_page_import_contract,
+    missing_required_text_fragments,
     png_has_nonblank_pixels,
     run_frontend_smoke,
 )
@@ -64,6 +66,18 @@ def test_check_http_target_fails_missing_required_fragment() -> None:
 def test_png_has_nonblank_pixels_detects_blank_and_nonblank_png() -> None:
     assert png_has_nonblank_pixels(_png(width=2, height=1, pixels=[(255, 255, 255), (255, 255, 255)])) is False
     assert png_has_nonblank_pixels(_png(width=2, height=1, pixels=[(255, 255, 255), (0, 0, 0)])) is True
+
+
+def test_missing_required_text_fragments_reports_absent_operator_markers() -> None:
+    assert DEFAULT_VISUAL_TEXT_FRAGMENTS == ("下一步建議",)
+    assert missing_required_text_fragments(
+        "今日狀態\n下一步建議\n待處理事件",
+        ("下一步建議", "待處理事件"),
+    ) == []
+    assert missing_required_text_fragments(
+        "今日狀態",
+        ("下一步建議", "待處理事件"),
+    ) == ["下一步建議", "待處理事件"]
 
 
 def test_check_streamlit_page_import_contract_accepts_project_pages() -> None:

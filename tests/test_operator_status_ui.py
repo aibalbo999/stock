@@ -195,7 +195,7 @@ def test_operator_status_overall_stays_ready_when_latest_task_succeeded_after_hi
 
 def test_operator_status_cards_include_queue_report_quota_and_failure_actions() -> None:
     task_summary = _successful_task_summary()
-    task_summary["recent"].append(_payload_validation_failure())
+    task_summary["recent"].insert(0, _payload_validation_failure())
 
     cards = operator_status_cards(
         _healthy_service_snapshot(),
@@ -241,6 +241,41 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
             "route_hint": "task:task-8150",
         },
     ]
+
+
+def test_operator_status_cards_keep_historical_failure_trackable_when_latest_task_healthy() -> None:
+    cards = operator_status_cards(
+        _healthy_service_snapshot(),
+        {
+            "latest": {
+                "task_id": "smoke-ok",
+                "operation": "submission_smoke",
+                "status": "success",
+                "successful": True,
+            },
+            "recent_failures": [
+                {
+                    "task_id": "old-storage",
+                    "status": "failed",
+                    "operation": "report_write",
+                    "retryable": False,
+                    "error_category": "runtime_storage",
+                    "finished_at": "2026-06-09T09:00:00",
+                }
+            ],
+        },
+        _quota(),
+        _reports(),
+    )
+
+    assert cards[3] == {
+        "title": "待處理事項",
+        "value": "歷史失敗可追蹤",
+        "caption": "最新任務已成功；舊失敗保留於維護頁，不影響閱讀最新版報告。",
+        "state": "ready",
+        "action_label": "查看紀錄",
+        "route_hint": "task:old-storage",
+    }
 
 
 def test_operator_status_cards_do_not_report_worker_offline_when_service_status_missing() -> None:

@@ -93,4 +93,15 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "歷史失敗仍可追蹤" in operator_status_source
             and "celery_status" in operator_status_source
         ),
+        "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled": (
+            "def _first_failure_summary(" in operator_status_source
+            and "def _historical_failure_summary(" in operator_status_source
+            and "first_failure and _latest_task_successful(task_summary)"
+            in operator_status_source
+            and "歷史失敗可追蹤" in operator_status_source
+            and "最新任務已成功；舊失敗保留於維護頁，不影響閱讀最新版報告。"
+            in operator_status_source
+            and '"action_label": "查看紀錄"' in operator_status_source
+            and 'route_hint": f"task:{task_id}"' in operator_status_source
+        ),
     }

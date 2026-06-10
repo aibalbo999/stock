@@ -192,6 +192,9 @@ def architecture_capabilities(
             and frontend_status.get(
                 "ui_operator_overall_historical_failure_ready_when_latest_task_healthy_enabled"
             )
+            and frontend_status.get(
+                "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled"
+            )
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_report_rendering_status_extracted")
             and frontend_status.get("frontend_report_workflow_status_extracted")

@@ -375,7 +375,21 @@ def _first_failure_summary(task_summary: dict) -> dict[str, str]:
             "action_label": "查看維護",
             "route_hint": "settings:maintenance",
         }
-    return task_failure_action_summary(_first_failure(task_summary))
+    first_failure = _first_failure(task_summary)
+    if first_failure and _latest_task_successful(task_summary):
+        return _historical_failure_summary(first_failure)
+    return task_failure_action_summary(first_failure)
+
+
+def _historical_failure_summary(failure: dict) -> dict[str, str]:
+    task_id = _text(failure.get("task_id"))
+    return {
+        "state": "ready",
+        "label": "歷史失敗可追蹤",
+        "detail": "最新任務已成功；舊失敗保留於維護頁，不影響閱讀最新版報告。",
+        "action_label": "查看紀錄",
+        "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
+    }
 
 
 def _recommended_quota_row(quota: dict, recommended_model: str) -> dict:

@@ -95,6 +95,16 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'quality_stage.get("state") == "unknown"' in operator_decisions_source
             and "先確認報告品質狀態" in operator_decisions_source
         ),
+        "ui_report_latest_only_picker_enabled": (
+            'load_api_json_or_default(\n        "/reports?limit=5"' in report_center_source
+            and "def latest_report_picker_state(" in report_center_source
+            and '"single_latest"' in report_center_source
+            and '"multi_topic_latest"' in report_center_source
+            and "目前最新版報告" in report_center_source
+            and "選擇主題最新版報告" in report_center_source
+            and "建立分析後，這裡會顯示目前保留的最新版報告。" in report_center_source
+            and ".latest-report-picker" in style_source
+        ),
         "ui_report_advanced_controls_progressive_disclosure_enabled": (
             'with st.expander("疑難排解：執行紀錄")' in report_center_source
             and 'with st.expander("報告管理")' not in report_center_source

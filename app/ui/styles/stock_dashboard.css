@@ -462,6 +462,7 @@ textarea:focus,
 }
 .operator-workbench,
 .operator-decision-card,
+.latest-report-picker,
 .report-health-strip,
 .report-lifecycle-strip,
 .incident-inbox,
@@ -478,6 +479,24 @@ textarea:focus,
     margin: 10px 0 18px;
     padding: 20px;
     box-shadow: var(--stock-shadow);
+}
+.latest-report-picker {
+    display: grid;
+    gap: 4px;
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.latest-report-picker span {
+    color: var(--stock-muted);
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+.latest-report-picker strong {
+    color: var(--stock-text);
+    font-size: 1rem;
+    line-height: 1.45;
 }
 .operator-workbench-head {
     display: flex;

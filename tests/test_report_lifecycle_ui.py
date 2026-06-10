@@ -4,6 +4,55 @@ from app.ui import report_center
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
+def test_latest_report_picker_state_single_latest_report_without_choice() -> None:
+    picker = report_center.latest_report_picker_state(
+        [
+            {
+                "id": 15,
+                "title": "AI 產業鏈",
+                "topic": "AI 產業鏈",
+                "generated_at": "2026-06-10T15:30:00",
+            }
+        ],
+        pending_report_id=None,
+        current_report_id=None,
+    )
+
+    assert picker["mode"] == "single_latest"
+    assert picker["selected_id"] == 15
+    assert picker["selector_label"] == ""
+    assert picker["summary_title"] == "目前最新版報告"
+    assert picker["summary_detail"] == "AI 產業鏈｜2026-06-10 15:30"
+    assert picker["options"][0]["label"] == "2026-06-10 15:30｜AI 產業鏈"
+
+
+def test_latest_report_picker_state_multi_topic_uses_topic_latest_selector() -> None:
+    picker = report_center.latest_report_picker_state(
+        [
+            {
+                "id": 15,
+                "title": "AI 產業鏈",
+                "topic": "AI 產業鏈",
+                "generated_at": "2026-06-10T15:30:00",
+            },
+            {
+                "id": 18,
+                "title": "散熱產業鏈",
+                "topic": "散熱產業鏈",
+                "generated_at": "2026-06-09T16:10:00",
+            },
+        ],
+        pending_report_id=18,
+        current_report_id=15,
+    )
+
+    assert picker["mode"] == "multi_topic_latest"
+    assert picker["selected_id"] == 18
+    assert picker["selector_label"] == "選擇主題最新版報告"
+    assert picker["summary_title"] == "每個主題的最新版"
+    assert picker["summary_detail"] == "共 2 份主題最新版，預設讀取最新產生的一份。"
+
+
 def test_latest_report_lifecycle_marks_ready_report_readable() -> None:
     lifecycle = latest_report_lifecycle(
         {

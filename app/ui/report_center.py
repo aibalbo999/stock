@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from html import escape
+from typing import Any
 
 import streamlit as st
 
@@ -31,34 +32,32 @@ def render_report_center() -> None:
     )
     render_follow_up_flash()
     reports = load_api_json_or_default(
-        "/reports?limit=20",
+        "/reports?limit=5",
         [],
         error_message="讀取報告清單失敗",
     )
-    report_options = [
-        {
-            "id": report.get("id"),
-            "label": f"{str(report.get('generated_at') or '')[:16].replace('T', ' ')}｜{report.get('title') or '未命名報告'}",
-        }
-        for report in reports
-        if isinstance(report, dict) and report.get("id") is not None
-    ]
+    pending_report_id = st.session_state.pop("pending_selected_report_id", None)
+    picker = latest_report_picker_state(
+        reports,
+        pending_report_id=pending_report_id,
+        current_report_id=st.session_state.get("selected_report_id"),
+    )
+    report_options = picker["options"]
 
     if report_options:
         report_ids = [report["id"] for report in report_options]
-        pending_report_id = st.session_state.pop("pending_selected_report_id", None)
-        if pending_report_id in report_ids:
-            st.session_state["selected_report_id"] = pending_report_id
-        if st.session_state.get("selected_report_id") not in report_ids:
-            st.session_state["selected_report_id"] = report_ids[0]
-        selected_id = st.selectbox(
-            "選擇最新版報告",
-            options=report_ids,
-            key="selected_report_id",
-            format_func=lambda report_id: next(
-                report["label"] for report in report_options if report["id"] == report_id
-            ),
-        )
+        selected_id = picker["selected_id"]
+        st.session_state["selected_report_id"] = selected_id
+        _render_latest_report_picker_summary(picker)
+        if picker["mode"] == "multi_topic_latest":
+            selected_id = st.selectbox(
+                picker["selector_label"],
+                options=report_ids,
+                key="selected_report_id",
+                format_func=lambda report_id: next(
+                    report["label"] for report in report_options if report["id"] == report_id
+                ),
+            )
     else:
         selected_id = None
         st.info("尚無最新版報告。")
@@ -146,7 +145,7 @@ def render_report_center() -> None:
             """
                 <div class="result-shell">
                 <div class="section-title">尚未選擇報告</div>
-                <div class="section-note">上方選擇一份最新版報告後，這裡會顯示 HTML 重點版。</div>
+                <div class="section-note">建立分析後，這裡會顯示目前保留的最新版報告。</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -237,6 +236,100 @@ def render_report_center() -> None:
                     st.rerun()
         else:
             st.info("尚無任務執行紀錄。")
+
+
+def latest_report_picker_state(
+    reports: list[dict] | None,
+    *,
+    pending_report_id: Any = None,
+    current_report_id: Any = None,
+) -> dict[str, Any]:
+    options = _latest_report_options(reports)
+    if not options:
+        return {
+            "mode": "empty",
+            "options": [],
+            "selected_id": None,
+            "selector_label": "",
+            "summary_title": "尚無最新版報告",
+            "summary_detail": "建立分析後，這裡會顯示目前保留的最新版報告。",
+        }
+
+    selected_id = (
+        _matching_report_id(options, pending_report_id)
+        or _matching_report_id(options, current_report_id)
+        or options[0]["id"]
+    )
+    if len(options) == 1:
+        return {
+            "mode": "single_latest",
+            "options": options,
+            "selected_id": selected_id,
+            "selector_label": "",
+            "summary_title": "目前最新版報告",
+            "summary_detail": options[0]["summary_detail"],
+        }
+
+    return {
+        "mode": "multi_topic_latest",
+        "options": options,
+        "selected_id": selected_id,
+        "selector_label": "選擇主題最新版報告",
+        "summary_title": "每個主題的最新版",
+        "summary_detail": f"共 {len(options)} 份主題最新版，預設讀取最新產生的一份。",
+    }
+
+
+def _latest_report_options(reports: list[dict] | None) -> list[dict[str, Any]]:
+    if not isinstance(reports, list):
+        return []
+    options: list[dict[str, Any]] = []
+    for report in reports:
+        if not isinstance(report, dict) or report.get("id") is None:
+            continue
+        generated_at = _format_generated_at(report.get("generated_at"))
+        title = _text(report.get("title") or report.get("topic"), default="未命名報告")
+        topic = _text(report.get("topic") or report.get("title"), default="未命名主題")
+        options.append(
+            {
+                "id": report["id"],
+                "label": f"{generated_at}｜{title}",
+                "summary_detail": f"{topic}｜{generated_at}",
+            }
+        )
+    return options
+
+
+def _matching_report_id(options: list[dict[str, Any]], report_id: Any) -> Any:
+    report_id_text = _text(report_id)
+    if not report_id_text:
+        return None
+    for option in options:
+        if _text(option.get("id")) == report_id_text:
+            return option["id"]
+    return None
+
+
+def _format_generated_at(value: Any) -> str:
+    text = _text(value)
+    if not text:
+        return "未標示時間"
+    return text[:16].replace("T", " ")
+
+
+def _text(value: Any, *, default: str = "") -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or default
+
+
+def _render_latest_report_picker_summary(picker: dict[str, Any]) -> None:
+    st.markdown(
+        f"""<section class="latest-report-picker is-{escape(picker.get("mode", "empty"))}" aria-label="最新版報告範圍">
+<span>{escape(picker.get("summary_title", "-"))}</span>
+<strong>{escape(picker.get("summary_detail", ""))}</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_report_lifecycle_strip(lifecycle: dict) -> None:

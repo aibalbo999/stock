@@ -34,6 +34,13 @@ def operator_status_overall(
             "detail": "有任務疑似卡住，請先到維護頁處理。",
         }
 
+    if not _latest_report(reports):
+        return {
+            "state": "attention",
+            "label": "尚無最新版報告",
+            "detail": "系統可執行，請先建立分析報告。",
+        }
+
     failure_count = len(_recent_failures(task_summary))
     if failure_count:
         if _latest_task_successful(task_summary):
@@ -46,12 +53,6 @@ def operator_status_overall(
             "state": "attention",
             "label": "有待處理紀錄",
             "detail": "最近任務可執行，但仍有歷史失敗需要重試或確認。",
-        }
-    if not _latest_report(reports):
-        return {
-            "state": "attention",
-            "label": "尚無最新版報告",
-            "detail": "系統可執行，請先建立分析報告。",
         }
     return dict(READY_OVERALL)
 

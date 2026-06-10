@@ -193,6 +193,34 @@ def test_operator_status_overall_stays_ready_when_latest_task_succeeded_after_hi
     assert "歷史失敗仍可追蹤" in overall["detail"]
 
 
+def test_operator_status_overall_prompts_report_creation_before_historical_failure_ready_state() -> None:
+    task_summary = {
+        "latest": {
+            "task_id": "smoke-ok",
+            "operation": "submission_smoke",
+            "status": "success",
+            "successful": True,
+        },
+        "recent_failures": [
+            {
+                "task_id": "old-storage",
+                "status": "failed",
+                "operation": "report_write",
+                "retryable": False,
+                "error_category": "runtime_storage",
+            }
+        ],
+    }
+
+    overall = operator_status_overall(_healthy_service_snapshot(), task_summary, [])
+
+    assert overall == {
+        "state": "attention",
+        "label": "尚無最新版報告",
+        "detail": "系統可執行，請先建立分析報告。",
+    }
+
+
 def test_operator_status_cards_include_queue_report_quota_and_failure_actions() -> None:
     task_summary = _successful_task_summary()
     task_summary["recent"].insert(0, _payload_validation_failure())

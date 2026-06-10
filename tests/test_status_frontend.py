@@ -198,6 +198,12 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert (
         status["frontend"][
+            "ui_operator_missing_report_prioritized_before_historical_failure_enabled"
+        ]
+        is True
+    )
+    assert (
+        status["frontend"][
             "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled"
         ]
         is True
@@ -473,6 +479,12 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert (
         frontend_arch["evidence"][
             "ui_operator_overall_historical_failure_ready_when_latest_task_healthy_enabled"
+        ]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"][
+            "ui_operator_missing_report_prioritized_before_historical_failure_enabled"
         ]
         is True
     )

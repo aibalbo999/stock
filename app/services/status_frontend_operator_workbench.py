@@ -93,6 +93,21 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "歷史失敗仍可追蹤" in operator_status_source
             and "celery_status" in operator_status_source
         ),
+        "ui_operator_missing_report_prioritized_before_historical_failure_enabled": (
+            "尚無最新版報告" in operator_status_source
+            and "系統可執行，請先建立分析報告。" in operator_status_source
+            and (
+                operator_status_source.find("if not _latest_report(reports):")
+                < operator_status_source.find("failure_count = len(_recent_failures(task_summary))")
+            )
+            and (
+                operator_status_source.find("if not _latest_report(reports):") > -1
+            )
+            and (
+                operator_status_source.find("failure_count = len(_recent_failures(task_summary))")
+                > -1
+            )
+        ),
         "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled": (
             "def _first_failure_summary(" in operator_status_source
             and "def _historical_failure_summary(" in operator_status_source

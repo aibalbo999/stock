@@ -57,6 +57,7 @@ def test_operator_route_target_preserves_task_for_maintenance_drilldown() -> Non
         "page": "pages/04_系統設定.py",
         "session_updates": {
             "maintenance_inspect_task_id": "abc-123",
+            "pending_maintenance_focus": "task_observability",
             "pending_settings_section": "maintenance",
         },
         "caption": "開啟維護頁並檢視任務 abc-123",

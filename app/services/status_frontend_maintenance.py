@@ -8,6 +8,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     ui_source = source_context.ui_source
     ui_sources = source_context.ui_sources
     system_settings_source = ui_sources["system_settings.py"]
+    operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
@@ -29,6 +30,20 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "render_ai_quota_panel(llm_quota, service_snapshot)"
             in system_settings_maintenance_source
             and 'if maintenance_focus != "ai_quota":' in system_settings_maintenance_source
+        ),
+        "ui_settings_task_route_focus_enabled": (
+            '"maintenance_inspect_task_id": task_id' in operator_routes_source
+            and '"pending_maintenance_focus": "task_observability"' in operator_routes_source
+            and 'if maintenance_focus == "task_observability":'
+            in system_settings_maintenance_source
+            and 'if maintenance_focus != "task_observability":'
+            in system_settings_maintenance_source
+            and 'focus in {"ai_quota", "task_observability"}'
+            in system_settings_maintenance_source
+            and system_settings_maintenance_source.count(
+                "render_background_task_observability_panel("
+            )
+            >= 2
         ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
@@ -61,11 +76,10 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         in system_settings_maintenance_source
         and "maintenance_operations,\n        external_env_check,\n    )"
         in system_settings_maintenance_source
-        and "render_background_task_observability_panel(\n        service_snapshot,"
-        in system_settings_maintenance_source
+        and "render_background_task_observability_panel(" in system_settings_maintenance_source
+        and "maintenance_diagnostics," in system_settings_maintenance_source
         and 'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'
         in system_settings_maintenance_source
-        and "maintenance_diagnostics,\n    )" in system_settings_maintenance_source
         and "external_deployment_warning_rows(upgrade_audit)"
         not in system_settings_maintenance_source
         and 'st.expander("背景任務觀測"' not in system_settings_maintenance_source,

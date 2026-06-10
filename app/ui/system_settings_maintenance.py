@@ -95,6 +95,12 @@ def render_maintenance_tab() -> None:
     _render_incident_inbox(incident_inbox_items(service_snapshot, task_summary, llm_quota))
     if maintenance_focus == "ai_quota":
         render_ai_quota_panel(llm_quota, service_snapshot)
+    if maintenance_focus == "task_observability":
+        render_background_task_observability_panel(
+            service_snapshot,
+            task_summary,
+            maintenance_diagnostics,
+        )
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
     render_service_metrics_panel(status, service_snapshot)
@@ -108,11 +114,12 @@ def render_maintenance_tab() -> None:
         render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)
     render_report_generation_observability_panel(report_observability_summary)
-    render_background_task_observability_panel(
-        service_snapshot,
-        task_summary,
-        maintenance_diagnostics,
-    )
+    if maintenance_focus != "task_observability":
+        render_background_task_observability_panel(
+            service_snapshot,
+            task_summary,
+            maintenance_diagnostics,
+        )
     render_report_quality_panel(report_quality_summary)
     render_service_details_panel(status, service_snapshot)
     render_maintenance_cleanup_panel()
@@ -120,8 +127,8 @@ def render_maintenance_tab() -> None:
 
 def _consume_pending_maintenance_focus() -> str | None:
     focus = str(st.session_state.pop("pending_maintenance_focus", "") or "").strip()
-    if focus == "ai_quota":
-        return "ai_quota"
+    if focus in {"ai_quota", "task_observability"}:
+        return focus
     return None
 
 

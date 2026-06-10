@@ -61,6 +61,7 @@ def operator_route_target(route_hint: str | None) -> dict[str, Any]:
             "page": SYSTEM_SETTINGS_PAGE,
             "session_updates": {
                 "maintenance_inspect_task_id": task_id,
+                "pending_maintenance_focus": "task_observability",
                 "pending_settings_section": "maintenance",
             },
             "caption": f"開啟維護頁並檢視任務 {task_id}",

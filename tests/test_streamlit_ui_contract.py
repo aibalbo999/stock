@@ -197,10 +197,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'key="settings_section"' in source
     assert "pending_settings_section" in source
     assert "pending_maintenance_focus" in source
+    assert '"pending_maintenance_focus": "task_observability"' in source
     assert "maintenance_focus_from_pending_section(pending_section)" in source
     assert "def _consume_pending_maintenance_focus(" in source
     assert 'if maintenance_focus == "ai_quota":' in source
     assert 'if maintenance_focus != "ai_quota":' in source
+    assert 'if maintenance_focus == "task_observability":' in source
+    assert 'if maintenance_focus != "task_observability":' in source
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
     assert "會更新最新版報告的股價與成交量判讀" in source
@@ -606,8 +609,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'load_api_json_or_default(\n        "/services/external-deployment/env-check"' in source
     assert "maintenance_operations,\n        external_env_check,\n    )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source
-    assert "render_background_task_observability_panel(\n        service_snapshot," in source
-    assert "maintenance_diagnostics,\n    )" in source
+    assert source.count("render_background_task_observability_panel(") >= 2
+    assert "maintenance_diagnostics," in source
     assert "def maintenance_diagnostic_action_rows(" in source
     assert "維護診斷動作" in source
     assert "選擇診斷動作" in source

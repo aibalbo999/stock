@@ -71,7 +71,9 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
         "ui_maintenance_diagnostic_actions_enabled": (
             'maintenance_diagnostics = load_api_json_or_default(\n        "/maintenance/diagnostics"'
             in system_settings_maintenance_source
-            and "maintenance_diagnostics,\n    )" in system_settings_maintenance_source
+            and "render_background_task_observability_panel("
+            in system_settings_maintenance_source
+            and "maintenance_diagnostics," in system_settings_maintenance_source
             and "def maintenance_diagnostic_action_rows(" in maintenance_task_panels_source
             and "維護診斷動作" in maintenance_task_panels_source
             and "選擇診斷動作" in maintenance_task_panels_source

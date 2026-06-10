@@ -114,6 +114,12 @@ def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
         severity = "critical" if alert.get("severity") == "error" else "warning"
         code = _text(alert.get("code"), default=f"alert_{index}")
         message = _text(alert.get("message"), default=code)
+        category = _task_alert_category(alert)
+        dedupe_key = (
+            "task_queue:stale_running"
+            if _is_stale_running_alert(alert)
+            else f"task_alert:{category}:{code}"
+        )
         next_steps_value = alert.get("next_steps")
         next_steps = (
             [str(step).strip() for step in next_steps_value if str(step).strip()]
@@ -124,7 +130,7 @@ def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
             {
                 "id": f"task_alert_{code}",
                 "severity": severity,
-                "category": "task_queue",
+                "category": category,
                 "title": message,
                 "impact": "背景任務觀測已回報異常。",
                 "next_action": "；".join(next_steps) if next_steps else "到維護頁查看背景任務觀測。",
@@ -132,10 +138,24 @@ def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
                 "retryable": False,
                 "source": code,
                 "created_at": "",
-                "dedupe_key": f"task_alert:{code}",
+                "dedupe_key": dedupe_key,
             }
         )
     return incidents
+
+
+def _task_alert_category(alert: dict) -> str:
+    if _is_stale_running_alert(alert):
+        return "task_queue"
+    if _text(alert.get("error_category")):
+        return _failure_category(alert)
+    return "task_queue"
+
+
+def _is_stale_running_alert(alert: dict) -> bool:
+    code = _text(alert.get("code")).casefold().replace("-", "_")
+    message = _text(alert.get("message")).casefold().replace("-", " ")
+    return "stale_running" in code or "stale running" in message or "疑似卡住" in message
 
 
 def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:

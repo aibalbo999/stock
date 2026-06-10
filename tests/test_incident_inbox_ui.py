@@ -13,7 +13,7 @@ def test_incident_inbox_reports_queue_unavailable() -> None:
             }
         },
         {"totals": {"stale_running_count": 0}},
-        {"models": [], "recommended_model": None},
+        {},
     )
 
     assert incidents[0]["severity"] == "critical"
@@ -32,12 +32,41 @@ def test_incident_inbox_reports_stale_running_task() -> None:
             }
         },
         {"totals": {"stale_running_count": 2}},
-        {"models": [], "recommended_model": None},
+        {},
     )
 
     assert incidents[0]["severity"] == "critical"
     assert incidents[0]["title"] == "有 2 個任務疑似卡住"
     assert incidents[0]["dedupe_key"] == "task_queue:stale_running"
+
+
+def test_incident_inbox_deduplicates_stale_running_alert_with_totals() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "totals": {"stale_running_count": 1},
+            "alerts": [
+                {
+                    "severity": "error",
+                    "code": "task_stale_running",
+                    "message": "stale running task detected",
+                }
+            ],
+        },
+        {},
+    )
+
+    stale_incidents = [
+        item for item in incidents if item["dedupe_key"] == "task_queue:stale_running"
+    ]
+    assert len(incidents) == 1
+    assert len(stale_incidents) == 1
 
 
 def test_incident_inbox_deduplicates_recent_failures() -> None:
@@ -58,7 +87,7 @@ def test_incident_inbox_deduplicates_recent_failures() -> None:
             }
         },
         {"recent_failures": [failure], "recent": [failure]},
-        {"models": [], "recommended_model": None},
+        {},
     )
 
     whitelist_incidents = [item for item in incidents if item["category"] == "whitelist"]
@@ -95,6 +124,33 @@ def test_incident_inbox_reports_quota_pressure() -> None:
     assert incidents[0]["severity"] == "warning"
     assert incidents[0]["title"] == "AI 額度需注意"
     assert incidents[0]["source"] == "gemini-3.5-flash"
+
+
+def test_incident_inbox_maps_task_alert_error_category() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "alerts": [
+                {
+                    "severity": "warning",
+                    "error_category": "quota",
+                    "code": "quota_warning",
+                    "message": "額度不足",
+                }
+            ]
+        },
+        {},
+    )
+
+    assert incidents[0]["category"] == "quota"
+    assert incidents[0]["title"] == "額度不足"
+    assert "quota_warning" in incidents[0]["dedupe_key"]
 
 
 def test_incident_inbox_preserves_allowed_raw_failure_category() -> None:

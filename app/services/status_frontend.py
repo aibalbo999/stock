@@ -6,6 +6,9 @@ from app.services.status_frontend_data_enrichment import (
 from app.services.status_frontend_external_deployment import (
     frontend_external_deployment_status,
 )
+from app.services.status_frontend_operator_workbench import (
+    frontend_operator_workbench_status,
+)
 from app.services.status_frontend_reports import frontend_report_ui_status
 from app.services.status_frontend_runtime import frontend_runtime_status
 from app.services.status_frontend_settings import frontend_settings_ui_status
@@ -64,6 +67,7 @@ def frontend_status() -> dict:
         "dashboard_core_lines": len(dashboard_core_source.splitlines())
         if dashboard_core_source
         else None,
+        **frontend_operator_workbench_status(source_context),
         **frontend_report_ui_status(source_context),
         **frontend_settings_ui_status(source_context),
         **frontend_task_ui_status(source_context),

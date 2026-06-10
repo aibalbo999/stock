@@ -53,10 +53,12 @@ def _reports() -> list[dict]:
 def _quota() -> dict:
     return {
         "recommended_model": "gemini-3.5-flash",
+        "model_order": ["gemini-3.5-flash", "gemma-4-31b-it"],
         "models": [
             {
                 "model": "gemini-3.5-flash",
                 "status": "ready",
+                "rank": 1,
                 "routing_tier": "primary",
                 "requests_remaining": 120,
                 "request_budget": 250,
@@ -64,6 +66,7 @@ def _quota() -> dict:
             {
                 "model": "gemma-4-31b-it",
                 "status": "ready",
+                "rank": 2,
                 "routing_tier": "high_quota_fallback",
                 "requests_remaining": 1000,
                 "request_budget": 1000,
@@ -178,7 +181,10 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
         {
             "title": "AI 額度",
             "value": "gemini-3.5-flash",
-            "caption": "120 / 250｜高額度保底：gemma-4-31b-it",
+            "caption": (
+                "120 / 250｜順序：gemini-3.5-flash → gemma-4-31b-it｜"
+                "受限：無｜高額度保底：gemma-4-31b-it"
+            ),
             "state": "ready",
             "action_label": "查看額度",
             "route_hint": "settings:ai_quota",
@@ -199,7 +205,10 @@ def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback
         "recommended_model": "gemini-3.5-flash",
         "remaining": "120 / 250",
         "state": "ready",
-        "caption": "高額度保底：gemma-4-31b-it",
+        "model_order_label": "順序：gemini-3.5-flash → gemma-4-31b-it",
+        "limited_model_label": "受限：無",
+        "high_quota_fallback_label": "高額度保底：gemma-4-31b-it",
+        "caption": "順序：gemini-3.5-flash → gemma-4-31b-it｜受限：無｜高額度保底：gemma-4-31b-it",
     }
 
 
@@ -207,7 +216,94 @@ def test_quota_operator_summary_uses_exact_caption_when_no_high_quota_fallback()
     quota = _quota()
     quota["models"] = [quota["models"][0]]
 
-    assert quota_operator_summary(quota)["caption"] == "無高額度保底模型"
+    result = quota_operator_summary(quota)
+
+    assert result["high_quota_fallback_label"] == "無高額度保底模型"
+    assert result["caption"] == "順序：gemini-3.5-flash → gemma-4-31b-it｜受限：無｜無高額度保底模型"
+
+
+def test_quota_operator_summary_surfaces_model_order_and_first_exhausted_model() -> None:
+    quota = {
+        "recommended_model": "gemini-2.5-flash",
+        "model_order": [
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemma-4-31b-it",
+        ],
+        "models": [
+            {
+                "model": "gemini-3.5-flash",
+                "status": "exhausted",
+                "rank": 1,
+                "requests_remaining": 0,
+                "request_budget": 1500,
+            },
+            {
+                "model": "gemini-2.5-flash",
+                "status": "available",
+                "rank": 2,
+                "requests_remaining": 1490,
+                "request_budget": 1500,
+            },
+            {
+                "model": "gemini-2.5-flash-lite",
+                "status": "cooldown",
+                "rank": 3,
+                "active_cooldown_seconds": 180,
+                "requests_remaining": 1500,
+                "request_budget": 1500,
+            },
+            {
+                "model": "gemma-4-31b-it",
+                "status": "available",
+                "rank": 4,
+                "routing_tier": "high_quota_fallback",
+                "requests_remaining": 14400,
+                "request_budget": 14400,
+            },
+        ],
+    }
+
+    result = quota_operator_summary(quota)
+
+    assert result["recommended_model"] == "gemini-2.5-flash"
+    assert result["remaining"] == "1490 / 1500"
+    assert result["state"] == "ready"
+    assert result["model_order_label"] == (
+        "順序：gemini-3.5-flash → gemini-2.5-flash → "
+        "gemini-2.5-flash-lite → gemma-4-31b-it"
+    )
+    assert result["limited_model_label"] == "受限：gemini-3.5-flash（耗盡）"
+    assert result["high_quota_fallback_label"] == "高額度保底：gemma-4-31b-it"
+
+
+def test_quota_operator_summary_surfaces_first_cooldown_model_when_no_exhausted() -> None:
+    quota = {
+        "recommended_model": "gemini-2.5-flash",
+        "model_order": ["gemini-3.5-flash", "gemini-2.5-flash"],
+        "models": [
+            {
+                "model": "gemini-3.5-flash",
+                "status": "cooldown",
+                "rank": 1,
+                "active_cooldown_seconds": 90,
+                "requests_remaining": 1500,
+                "request_budget": 1500,
+            },
+            {
+                "model": "gemini-2.5-flash",
+                "status": "available",
+                "rank": 2,
+                "requests_remaining": 1490,
+                "request_budget": 1500,
+            },
+        ],
+    }
+
+    assert quota_operator_summary(quota)["limited_model_label"] == (
+        "受限：gemini-3.5-flash（冷卻 90 秒）"
+    )
 
 
 def test_quota_operator_summary_marks_untracked_when_recommended_model_missing() -> None:

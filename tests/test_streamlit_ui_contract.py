@@ -90,6 +90,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_routes import operator_route_target" in source
     assert "from app.ui.operator_route_controls import render_operator_route_button" in source
     assert "operator_status_cards(" in source
+    assert "model_order_label" in source
+    assert "limited_model_label" in source
+    assert "high_quota_fallback_label" in source
     assert '"今日狀態"' in source
     assert '"/tasks/summary?days=7&limit=10"' in source
     assert '"/llm/quota"' in source

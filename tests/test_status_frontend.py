@@ -37,6 +37,9 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ).read_text()
     status_frontend_reports_source = Path("app/services/status_frontend_reports.py").read_text()
     status_frontend_runtime_source = Path("app/services/status_frontend_runtime.py").read_text()
+    status_frontend_operator_source = Path(
+        "app/services/status_frontend_operator_workbench.py"
+    ).read_text()
     status_frontend_maintenance_source = Path(
         "app/services/status_frontend_maintenance.py"
     ).read_text()
@@ -65,6 +68,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert "def frontend_source_context(" in status_frontend_sources_source
     assert "def frontend_runtime_status(" in status_frontend_runtime_source
     assert "frontend_runtime_status(source_context)" in status_frontend_source
+    assert "def frontend_operator_workbench_status(" in status_frontend_operator_source
+    assert "frontend_operator_workbench_status(source_context)" in status_frontend_source
     assert '"frontend_blocking_call_scan_paths"' not in status_frontend_source
     assert '"asyncio_run_count"' not in status_frontend_source
     assert '"async_task_endpoint_coverage"' not in status_frontend_source
@@ -169,6 +174,11 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_runtime_status_path"] == (
         "app/services/status_frontend_runtime.py"
     )
+    assert status["frontend"]["frontend_operator_workbench_status_extracted"] is True
+    assert status["frontend"]["frontend_operator_workbench_status_path"] == (
+        "app/services/status_frontend_operator_workbench.py"
+    )
+    assert status["frontend"]["ui_operator_quota_summary_enabled"] is True
     assert status["frontend"]["frontend_runtime_identity_marker_enabled"] is True
     assert status["frontend"]["frontend_runtime_identity_marker_path"] == (
         "app/ui/dashboard_core.py"
@@ -413,6 +423,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
     assert frontend_arch["evidence"]["frontend_runtime_status_extracted"] is True
+    assert frontend_arch["evidence"]["frontend_operator_workbench_status_extracted"] is True
+    assert frontend_arch["evidence"]["ui_operator_quota_summary_enabled"] is True
     assert frontend_arch["evidence"]["frontend_runtime_identity_marker_enabled"] is True
     assert frontend_arch["evidence"]["frontend_smoke_checks_runtime_identity_marker"] is True
     assert frontend_arch["evidence"]["frontend_data_enrichment_status_extracted"] is True

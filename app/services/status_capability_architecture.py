@@ -179,6 +179,8 @@ def architecture_capabilities(
             and frontend_status.get("streamlit_page_import_contract_ready")
             and frontend_status.get("frontend_source_context_extracted")
             and frontend_status.get("frontend_runtime_status_extracted")
+            and frontend_status.get("frontend_operator_workbench_status_extracted")
+            and frontend_status.get("ui_operator_quota_summary_enabled")
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_report_rendering_status_extracted")
             and frontend_status.get("frontend_report_workflow_status_extracted")

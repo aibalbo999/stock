@@ -352,6 +352,38 @@ def test_operator_status_cards_show_latest_report_generating_when_first_task_run
     }
 
 
+def test_operator_status_cards_show_pending_task_action_when_latest_task_running() -> None:
+    cards = operator_status_cards(
+        _healthy_service_snapshot(),
+        {
+            "latest": {
+                "task_id": "first-report-task",
+                "operation": "report_generation",
+                "status": "queued",
+                "celery_status": "PENDING",
+            },
+            "totals": {
+                "run_count": 1,
+                "success_count": 0,
+                "failed_count": 0,
+                "running_count": 1,
+                "stale_running_count": 0,
+            },
+        },
+        _quota(),
+        [],
+    )
+
+    assert cards[3] == {
+        "title": "待處理事項",
+        "value": "等待任務完成",
+        "caption": "最新任務正在背景執行；完成前不需要重複送出。",
+        "state": "attention",
+        "action_label": "查看任務",
+        "route_hint": "task:first-report-task",
+    }
+
+
 def test_operator_status_cards_keep_historical_failure_trackable_when_latest_task_healthy() -> None:
     cards = operator_status_cards(
         _healthy_service_snapshot(),

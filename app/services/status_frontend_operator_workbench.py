@@ -120,6 +120,24 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 < operator_status_source.find('"title": "最新版報告"')
             )
         ),
+        "ui_operator_running_task_pending_card_enabled": (
+            "def _running_task_summary(" in operator_status_source
+            and "if not first_failure and _latest_task_running(task_summary):"
+            in operator_status_source
+            and "等待任務完成" in operator_status_source
+            and "最新任務正在背景執行；完成前不需要重複送出。"
+            in operator_status_source
+            and '"action_label": "查看任務"' in operator_status_source
+            and '"route_hint": _task_route_hint(task)' in operator_status_source
+            and (
+                operator_status_source.find(
+                    "if not first_failure and _latest_task_running(task_summary):"
+                )
+                < operator_status_source.find(
+                    "if first_failure and _latest_task_successful(task_summary):"
+                )
+            )
+        ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
             "def _latest_task_successful(" in operator_decisions_source
             and "def _task_row_successful(" in operator_decisions_source

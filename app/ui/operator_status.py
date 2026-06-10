@@ -439,9 +439,21 @@ def _first_failure_summary(task_summary: dict) -> dict[str, str]:
             "route_hint": "settings:maintenance",
         }
     first_failure = _first_failure(task_summary)
+    if not first_failure and _latest_task_running(task_summary):
+        return _running_task_summary(_latest_task(task_summary))
     if first_failure and _latest_task_successful(task_summary):
         return _historical_failure_summary(first_failure)
     return task_failure_action_summary(first_failure)
+
+
+def _running_task_summary(task: dict) -> dict[str, str]:
+    return {
+        "state": "attention",
+        "label": "等待任務完成",
+        "detail": "最新任務正在背景執行；完成前不需要重複送出。",
+        "action_label": "查看任務",
+        "route_hint": _task_route_hint(task),
+    }
 
 
 def _historical_failure_summary(failure: dict) -> dict[str, str]:

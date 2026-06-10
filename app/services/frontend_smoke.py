@@ -20,6 +20,7 @@ DEFAULT_API_ENDPOINTS = (
 DEFAULT_VISUAL_TEXT_FRAGMENTS = ("下一步建議",)
 DEFAULT_REQUIRED_TEXT_MAX_TOP_PX = 560
 DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR = ".operator-decision-card"
+DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX = 900
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",
@@ -48,6 +49,7 @@ def run_frontend_smoke(
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+    operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
     timeout_seconds: float = 10.0,
 ) -> dict:
     checks = [
@@ -96,6 +98,7 @@ def run_frontend_smoke(
                 required_text_fragments=required_text_fragments,
                 required_text_max_top_px=required_text_max_top_px,
                 required_text_scope_selector=required_text_scope_selector,
+                operator_primary_action_max_top_px=operator_primary_action_max_top_px,
                 timeout_seconds=timeout_seconds,
             )
         )
@@ -231,6 +234,7 @@ def run_playwright_visual_smoke(
     required_text_fragments: tuple[str, ...] = DEFAULT_VISUAL_TEXT_FRAGMENTS,
     required_text_max_top_px: float | None = DEFAULT_REQUIRED_TEXT_MAX_TOP_PX,
     required_text_scope_selector: str | None = DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR,
+    operator_primary_action_max_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
     timeout_seconds: float = 10.0,
 ) -> dict:
     url = _iri_to_uri(url)
@@ -320,6 +324,7 @@ def run_playwright_visual_smoke(
                 required_text_fragments,
                 scope_selector=required_text_scope_selector,
             )
+            operator_primary_action_measurement = _operator_primary_action_measurement(page)
             browser.close()
     except Exception as exc:
         return {
@@ -334,12 +339,17 @@ def run_playwright_visual_smoke(
         required_text_measurements,
         max_top_px=required_text_max_top_px,
     )
+    operator_primary_action_layout_failures_result = operator_primary_action_layout_failures(
+        operator_primary_action_measurement,
+        max_button_top_px=operator_primary_action_max_top_px,
+    )
     passed = bool(
         nonblank
         and len(screenshot) > 1000
         and len(body_text.strip()) >= 80
         and not missing_required_text
         and not text_layout_failures
+        and not operator_primary_action_layout_failures_result
         and frontend_identity.get("status") in {"passed", "skipped"}
     )
     return {
@@ -357,6 +367,9 @@ def run_playwright_visual_smoke(
         "required_text_scope_selector": required_text_scope_selector,
         "required_text_measurements": required_text_measurements,
         "required_text_layout_failures": text_layout_failures,
+        "operator_primary_action_max_top_px": operator_primary_action_max_top_px,
+        "operator_primary_action_measurement": operator_primary_action_measurement,
+        "operator_primary_action_layout_failures": operator_primary_action_layout_failures_result,
         "frontend_runtime_identity": frontend_identity,
     }
 
@@ -451,6 +464,29 @@ def required_text_layout_failures(
     return failures
 
 
+def operator_primary_action_layout_failures(
+    measurement: dict[str, Any],
+    *,
+    max_button_top_px: float | None = DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX,
+) -> list[str]:
+    failures = []
+    if not measurement.get("marker_found"):
+        failures.append("primary action marker missing")
+    if not measurement.get("button_found"):
+        failures.append("primary action button missing")
+        return failures
+    top = measurement.get("button_top")
+    if not isinstance(top, int | float):
+        failures.append("primary action button missing")
+        return failures
+    if max_button_top_px is not None and top > max_button_top_px:
+        failures.append(
+            "primary action button below "
+            f"{_px_label(max_button_top_px)}px (top={_px_label(float(top))}px)"
+        )
+    return failures
+
+
 def missing_required_text_fragments(
     body_text: str, required_text_fragments: tuple[str, ...]
 ) -> list[str]:
@@ -521,6 +557,54 @@ def _required_text_measurements(
     )
 
 
+def _operator_primary_action_measurement(page: Any) -> dict[str, Any]:
+    return dict(
+        page.evaluate(
+            """() => {
+                const visibleRect = element => {
+                    if (!element) {
+                        return null;
+                    }
+                    const rect = element.getBoundingClientRect();
+                    const style = window.getComputedStyle(element);
+                    if (
+                        rect.width <= 0 ||
+                        rect.height <= 0 ||
+                        style.display === "none" ||
+                        style.visibility === "hidden"
+                    ) {
+                        return null;
+                    }
+                    return {
+                        top: Math.round(rect.top),
+                        bottom: Math.round(rect.bottom),
+                        left: Math.round(rect.left),
+                        right: Math.round(rect.right),
+                        height: Math.round(rect.height),
+                    };
+                };
+                const marker = document.querySelector(".operator-action-controls.is-primary");
+                const markerRect = visibleRect(marker);
+                const buttons = Array.from(document.querySelectorAll("button"))
+                    .map(button => ({button, rect: visibleRect(button)}))
+                    .filter(item => item.rect && (item.button.innerText || "").trim())
+                    .filter(item => !markerRect || item.rect.top >= markerRect.top - 4)
+                    .sort((left, right) => left.rect.top - right.rect.top);
+                const primary = buttons[0] || null;
+                return {
+                    marker_found: Boolean(markerRect),
+                    marker_top: markerRect ? markerRect.top : null,
+                    marker_bottom: markerRect ? markerRect.bottom : null,
+                    button_found: Boolean(primary),
+                    button_top: primary ? primary.rect.top : null,
+                    button_bottom: primary ? primary.rect.bottom : null,
+                    button_text: primary ? (primary.button.innerText || "").trim() : "",
+                };
+            }"""
+        )
+    )
+
+
 def _px_label(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else f"{value:.1f}"
 
@@ -562,6 +646,8 @@ def format_frontend_smoke_report(report: dict) -> str:
             lines.append(f"  missing text: {missing_text}")
         for layout_failure in check.get("required_text_layout_failures") or []:
             lines.append(f"  layout: {layout_failure}")
+        for layout_failure in check.get("operator_primary_action_layout_failures") or []:
+            lines.append(f"  operator action layout: {layout_failure}")
         if check.get("reason"):
             lines.append(f"  reason: {check['reason']}")
         if check.get("expected_commit_short") or check.get("actual_commit_short"):

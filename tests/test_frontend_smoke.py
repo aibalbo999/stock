@@ -13,6 +13,7 @@ from app.services.frontend_smoke import (
     check_streamlit_page_import_contract,
     format_frontend_smoke_report,
     missing_required_text_fragments,
+    operator_primary_action_layout_failures,
     png_has_nonblank_pixels,
     required_text_layout_failures,
     run_frontend_smoke,
@@ -97,6 +98,39 @@ def test_required_text_layout_failures_flags_missing_and_late_operator_markers()
         "待處理事件 below 560px (top=720px)",
         "資料缺口 missing",
     ]
+
+
+def test_operator_primary_action_layout_failures_require_visible_button_before_fold() -> None:
+    assert operator_primary_action_layout_failures(
+        {
+            "marker_found": True,
+            "marker_top": 790,
+            "button_found": True,
+            "button_top": 825,
+            "button_text": "查看事件",
+        },
+        max_button_top_px=900,
+    ) == []
+    assert operator_primary_action_layout_failures(
+        {
+            "marker_found": False,
+            "button_found": False,
+        },
+        max_button_top_px=900,
+    ) == [
+        "primary action marker missing",
+        "primary action button missing",
+    ]
+    assert operator_primary_action_layout_failures(
+        {
+            "marker_found": True,
+            "marker_top": 930,
+            "button_found": True,
+            "button_top": 960,
+            "button_text": "查看事件",
+        },
+        max_button_top_px=900,
+    ) == ["primary action button below 900px (top=960px)"]
 
 
 def test_check_streamlit_page_import_contract_accepts_project_pages() -> None:

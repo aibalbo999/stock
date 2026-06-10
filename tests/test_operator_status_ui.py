@@ -155,8 +155,9 @@ def test_operator_status_overall_returns_attention_for_latest_failed_task() -> N
     overall = operator_status_overall(_healthy_service_snapshot(), task_summary, _reports())
 
     assert overall["state"] == "attention"
-    assert overall["label"] == "有待處理紀錄"
-    assert "最近任務可執行" in overall["detail"]
+    assert overall["label"] == "最新任務需要確認"
+    assert "最新任務失敗或取消" in overall["detail"]
+    assert "歷史失敗" not in overall["detail"]
 
 
 def test_operator_status_overall_stays_ready_when_latest_task_succeeded_after_historical_failure() -> None:

@@ -195,6 +195,7 @@ def architecture_capabilities(
             and frontend_status.get(
                 "ui_operator_missing_report_prioritized_before_historical_failure_enabled"
             )
+            and frontend_status.get("ui_operator_latest_failure_overall_message_enabled")
             and frontend_status.get(
                 "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled"
             )

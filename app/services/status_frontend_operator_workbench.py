@@ -108,6 +108,18 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 > -1
             )
         ),
+        "ui_operator_latest_failure_overall_message_enabled": (
+            "def _latest_task_failed(" in operator_status_source
+            and "if _latest_task_failed(task_summary):" in operator_status_source
+            and "最新任務需要確認" in operator_status_source
+            and "最新任務失敗或取消；請先查看任務診斷後再重試或重新送出。"
+            in operator_status_source
+            and "歷史失敗" in operator_status_source
+            and (
+                operator_status_source.find("if _latest_task_failed(task_summary):")
+                < operator_status_source.find("if _latest_task_successful(task_summary):")
+            )
+        ),
         "ui_operator_card_historical_failure_trackable_when_latest_task_healthy_enabled": (
             "def _first_failure_summary(" in operator_status_source
             and "def _historical_failure_summary(" in operator_status_source

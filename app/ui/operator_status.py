@@ -43,6 +43,12 @@ def operator_status_overall(
 
     failure_count = len(_recent_failures(task_summary))
     if failure_count:
+        if _latest_task_failed(task_summary):
+            return {
+                "state": "attention",
+                "label": "最新任務需要確認",
+                "detail": "最新任務失敗或取消；請先查看任務診斷後再重試或重新送出。",
+            }
         if _latest_task_successful(task_summary):
             return {
                 "state": "ready",
@@ -275,6 +281,10 @@ def _task_successful(task: dict) -> bool:
 
 def _latest_task_successful(task_summary: dict) -> bool:
     return _task_successful(_latest_task(task_summary))
+
+
+def _latest_task_failed(task_summary: dict) -> bool:
+    return _task_failed(_latest_task(task_summary))
 
 
 def _latest_report(reports: list[dict]) -> dict:

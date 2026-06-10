@@ -83,9 +83,9 @@ def test_incident_inbox_reports_quota_pressure() -> None:
             "models": [
                 {
                     "model": "gemini-3.5-flash",
-                    "state": "blocked",
-                    "remaining": 0,
-                    "limit": 1500,
+                    "status": "blocked",
+                    "requests_remaining": 0,
+                    "request_budget": 1500,
                 }
             ],
         },
@@ -95,6 +95,146 @@ def test_incident_inbox_reports_quota_pressure() -> None:
     assert incidents[0]["severity"] == "warning"
     assert incidents[0]["title"] == "AI 額度需注意"
     assert incidents[0]["source"] == "gemini-3.5-flash"
+
+
+def test_incident_inbox_preserves_allowed_raw_failure_category() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "recent_failures": [
+                {
+                    "id": 31,
+                    "task_id": "quota-task",
+                    "operation": "report_generation",
+                    "status": "failed",
+                    "error_category": "quota",
+                    "finished_at": "2026-06-10T09:30:00",
+                }
+            ]
+        },
+        {},
+    )
+
+    assert incidents[0]["category"] == "quota"
+    assert incidents[0]["source"] == "quota-task"
+    assert incidents[0]["title"] == "AI 額度需注意"
+    assert "unknown" not in incidents[0]["impact"].casefold()
+
+
+def test_incident_inbox_prefers_failure_payload_summary_action_and_severity() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "recent_failures": [
+                {
+                    "id": 41,
+                    "operation": "follow_up_api",
+                    "status": "failed",
+                    "error_category": "external_config",
+                    "error_summary": "Structured API 未設定",
+                    "next_action": "設定 API key",
+                    "error_severity": "error",
+                    "finished_at": "2026-06-10T09:45:00",
+                }
+            ]
+        },
+        {},
+    )
+
+    assert incidents[0]["category"] == "external_config"
+    assert incidents[0]["severity"] == "critical"
+    assert incidents[0]["title"] == "Structured API 未設定"
+    assert incidents[0]["next_action"] == "設定 API key"
+
+
+def test_incident_inbox_dedupes_same_task_id_to_newest_failure() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "recent_failures": [
+                {
+                    "id": 51,
+                    "task_id": "abc",
+                    "operation": "report_generation",
+                    "status": "failed",
+                    "error_category": "external_config",
+                    "error_summary": "舊錯",
+                    "finished_at": "2026-06-10T09:00:00",
+                },
+                {
+                    "id": 52,
+                    "task_id": "abc",
+                    "operation": "report_generation",
+                    "status": "failed",
+                    "error_category": "external_config",
+                    "error_summary": "新錯",
+                    "finished_at": "2026-06-10T10:00:00",
+                },
+            ]
+        },
+        {},
+    )
+
+    matching = [item for item in incidents if item["dedupe_key"] == "failure:external_config:task:abc"]
+    assert len(matching) == 1
+    assert matching[0]["title"] == "新錯"
+    assert matching[0]["created_at"] == "2026-06-10T10:00:00"
+
+
+def test_incident_inbox_keeps_distinct_runs_without_task_id() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "recent_failures": [
+                {
+                    "id": 61,
+                    "operation": "report_generation",
+                    "status": "failed",
+                    "error_category": "external_config",
+                    "error_summary": "run 61",
+                    "finished_at": "2026-06-10T09:00:00",
+                },
+                {
+                    "id": 62,
+                    "operation": "report_generation",
+                    "status": "failed",
+                    "error_category": "external_config",
+                    "error_summary": "run 62",
+                    "finished_at": "2026-06-10T09:05:00",
+                },
+            ]
+        },
+        {},
+    )
+
+    assert {item["dedupe_key"] for item in incidents} == {
+        "failure:external_config:run:61",
+        "failure:external_config:run:62",
+    }
 
 
 def test_incident_inbox_reports_report_lifecycle_blocker() -> None:
@@ -135,3 +275,24 @@ def test_top_incidents_limits_sorted_results() -> None:
         "critical",
         "warning",
     ]
+
+
+def test_top_incidents_sorts_newer_events_before_older_peers() -> None:
+    incidents = [
+        {
+            "id": "old",
+            "severity": "warning",
+            "category": "quota",
+            "retryable": False,
+            "created_at": "2026-06-10T09:00:00",
+        },
+        {
+            "id": "new",
+            "severity": "warning",
+            "category": "quota",
+            "retryable": False,
+            "created_at": "2026-06-10T10:00:00",
+        },
+    ]
+
+    assert [item["id"] for item in top_incidents(incidents)] == ["new", "old"]

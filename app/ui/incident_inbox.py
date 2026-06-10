@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from app.ui.operator_status import quota_operator_summary
@@ -14,13 +15,25 @@ CATEGORY_ORDER = {
     "vector_store": 4,
     "runtime_storage": 5,
     "quota": 6,
-    "unknown": 7,
+    "external_config": 7,
+    "visual_rag": 8,
+    "timeout": 9,
+    "cancelled": 10,
+    "unknown": 11,
 }
 FAILURE_CATEGORY_MAP = {
     "payload_validation": "whitelist",
     "data_source": "data_source",
     "vector_store": "vector_store",
     "runtime_storage": "runtime_storage",
+}
+ALLOWED_RAW_FAILURE_CATEGORIES = {
+    "quota",
+    "task_queue",
+    "visual_rag",
+    "external_config",
+    "timeout",
+    "cancelled",
 }
 
 
@@ -129,22 +142,26 @@ def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:
     incidents = []
     for failure in _recent_failures(task_summary):
         category = _failure_category(failure)
+        identity = _failure_identity(failure)
         task_id = _text(failure.get("task_id"))
         operation = _text(failure.get("operation"), default="task")
         retryable = bool(failure.get("retryable"))
         incidents.append(
             {
-                "id": f"failure_{task_id or operation}_{category}",
-                "severity": "critical" if category == "runtime_storage" else "warning",
+                "id": f"failure_{identity.replace(':', '_')}_{category}",
+                "severity": _failure_severity(failure, category),
                 "category": category,
-                "title": _failure_title(category),
+                "title": _text(failure.get("error_summary"), default=_failure_title(category)),
                 "impact": _failure_impact(category),
-                "next_action": _failure_next_action(category, retryable),
+                "next_action": _text(
+                    failure.get("next_action"),
+                    default=_failure_next_action(category, retryable),
+                ),
                 "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
                 "retryable": retryable,
-                "source": task_id or operation,
+                "source": _failure_source(failure, operation),
                 "created_at": _text(failure.get("finished_at") or failure.get("created_at")),
-                "dedupe_key": f"failure:{category}:{task_id or operation}",
+                "dedupe_key": f"failure:{category}:{identity}",
             }
         )
     return incidents
@@ -195,21 +212,11 @@ def _report_lifecycle_incident(lifecycle: dict) -> dict[str, Any] | None:
 
 def _recent_failures(task_summary: dict) -> list[dict]:
     rows: list[dict] = []
-    seen: set[str] = set()
-    for row in _list_value(task_summary.get("recent_failures")):
-        identity = _failure_identity(row)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        rows.append(row)
+    rows.extend(_list_value(task_summary.get("recent_failures")))
 
     for row in _list_value(task_summary.get("recent")):
         if not _is_failed_task(row):
             continue
-        identity = _failure_identity(row)
-        if identity in seen:
-            continue
-        seen.add(identity)
         rows.append(row)
     return rows
 
@@ -229,8 +236,11 @@ def _is_failed_task(row: dict) -> bool:
 def _failure_identity(row: dict) -> str:
     task_id = _text(row.get("task_id"))
     if task_id:
-        return task_id
-    return ":".join(
+        return f"task:{task_id}"
+    run_id = _text(row.get("id"))
+    if run_id:
+        return f"run:{run_id}"
+    return "row:" + ":".join(
         [
             _text(row.get("operation"), default="task"),
             _text(row.get("error_category"), default="unknown"),
@@ -240,8 +250,35 @@ def _failure_identity(row: dict) -> str:
 
 
 def _failure_category(failure: dict) -> str:
-    raw_category = _text(failure.get("error_category"), default="unknown")
-    return FAILURE_CATEGORY_MAP.get(raw_category, "unknown")
+    raw_category = _text(failure.get("error_category")).casefold()
+    if not raw_category:
+        return "unknown"
+    if raw_category in FAILURE_CATEGORY_MAP:
+        return FAILURE_CATEGORY_MAP[raw_category]
+    if raw_category in ALLOWED_RAW_FAILURE_CATEGORIES:
+        return raw_category
+    return "unknown"
+
+
+def _failure_severity(failure: dict, category: str) -> str:
+    raw_severity = _text(failure.get("error_severity")).casefold()
+    if raw_severity in {"critical", "error"}:
+        return "critical"
+    if raw_severity in {"warning", "warn"}:
+        return "warning"
+    if raw_severity == "info":
+        return "info"
+    return "critical" if category == "runtime_storage" else "warning"
+
+
+def _failure_source(failure: dict, operation: str) -> str:
+    task_id = _text(failure.get("task_id"))
+    if task_id:
+        return task_id
+    run_id = _text(failure.get("id"))
+    if run_id:
+        return f"run:{run_id}"
+    return operation
 
 
 def _failure_title(category: str) -> str:
@@ -250,6 +287,12 @@ def _failure_title(category: str) -> str:
         "data_source": "資料來源抓取失敗",
         "vector_store": "RAG 向量檢索曾降級",
         "runtime_storage": "本機儲存失敗",
+        "quota": "AI 額度需注意",
+        "task_queue": "背景任務失敗",
+        "visual_rag": "Visual RAG 設定需確認",
+        "external_config": "外部配置缺失",
+        "timeout": "任務逾時",
+        "cancelled": "任務已取消",
     }.get(category, "有失敗任務")
 
 
@@ -259,6 +302,12 @@ def _failure_impact(category: str) -> str:
         "data_source": "最新版報告可能缺少最新市場或公司資料。",
         "vector_store": "報告可降級完成，但檢索覆蓋率較低。",
         "runtime_storage": "報告檔案、SQLite 或備份可能沒有寫入成功。",
+        "quota": "AI 模型額度或路由限制導致任務失敗。",
+        "task_queue": "背景任務服務異常導致任務失敗。",
+        "visual_rag": "Visual RAG 設定或文件後援導致任務失敗。",
+        "external_config": "外部服務、API key 或部署設定缺失導致任務失敗。",
+        "timeout": "任務執行時間過長，可能需要重試或縮小輸入範圍。",
+        "cancelled": "任務已取消，需要確認是否重新送出。",
     }.get(category, "近期任務失敗，需查看維護頁。")
 
 
@@ -275,17 +324,38 @@ def _dedupe_incidents(incidents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for incident in incidents:
         key = _text(incident.get("dedupe_key"), default=_text(incident.get("id")))
         current = selected.get(key)
-        if current is None or _incident_sort_key(incident) < _incident_sort_key(current):
+        if current is None or _incident_is_newer(incident, current):
             selected[key] = incident
     return list(selected.values())
 
 
-def _incident_sort_key(incident: dict) -> tuple[int, int, int, str]:
+def _incident_is_newer(candidate: dict, current: dict) -> bool:
+    candidate_time = _created_at_timestamp(candidate.get("created_at"))
+    current_time = _created_at_timestamp(current.get("created_at"))
+    if candidate_time != current_time:
+        return candidate_time > current_time
+    return _incident_sort_key(candidate) < _incident_sort_key(current)
+
+
+def _incident_sort_key(incident: dict) -> tuple[int, int, int, float, str]:
     severity = SEVERITY_ORDER.get(_text(incident.get("severity")), 9)
     category = CATEGORY_ORDER.get(_text(incident.get("category")), 9)
     retry_rank = 0 if incident.get("retryable") else 1
-    created_at = _text(incident.get("created_at"))
-    return (severity, category, retry_rank, created_at)
+    created_at_rank = -_created_at_timestamp(incident.get("created_at"))
+    return (severity, category, retry_rank, created_at_rank, _text(incident.get("id")))
+
+
+def _created_at_timestamp(value: Any) -> float:
+    text = _text(value)
+    if not text:
+        return 0.0
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def _queue_ready(task_queue: dict) -> bool:

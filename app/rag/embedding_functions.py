@@ -76,7 +76,14 @@ class GoogleGenAIEmbeddingFunction:
                     contents=contents,
                     config=config,
                 )
-                return self._extract_embeddings(response)
+                vectors = self._extract_embeddings(response)
+                if len(vectors) != len(contents):
+                    raise ValueError(
+                        "embedding_count_mismatch: "
+                        f"expected {len(contents)} embeddings but got {len(vectors)} "
+                        f"for model {self.model_name}"
+                    )
+                return vectors
             except Exception as exc:
                 if attempt >= self.MAX_RETRIES - 1 or not self._is_retryable_quota_error(exc):
                     raise

@@ -186,6 +186,34 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
 def test_run_task_api_classifies_common_task_failure_causes() -> None:
     cases = [
         ("failed", "RESOURCE_EXHAUSTED quota exceeded", "report_generation", True, "quota"),
+        (
+            "failed",
+            "'list' object has no attribute 'tolist'",
+            "follow_up_api",
+            True,
+            "vector_store",
+        ),
+        (
+            "failed",
+            "Inconsistent number of IDs, embeddings, documents, URIs and metadatas",
+            "after_close_report_update",
+            False,
+            "vector_store",
+        ),
+        (
+            "failed",
+            "[Errno 2] No such file or directory",
+            "after_close_report_update",
+            False,
+            "runtime_storage",
+        ),
+        (
+            "failed",
+            "報告產生中止：以下指定股票未進入目前白名單：8150。",
+            "after_close_report_update",
+            False,
+            "payload_validation",
+        ),
         ("failed", "Redis broker connection refused", "market_refresh", True, "task_queue"),
         (
             "failed",
@@ -325,3 +353,39 @@ def test_run_task_api_summary_prefers_persisted_failure_diagnostics() -> None:
     assert row["error_summary"] == "持久化資料源診斷"
     assert row["next_steps"] == ["使用持久化建議。"]
     assert row["next_action"] == "使用持久化 next action"
+
+
+def test_run_task_api_summary_recomputes_persisted_unknown_failure_diagnostics() -> None:
+    now = utc_now_naive()
+    run = {
+        "id": 45,
+        "source": "celery_after_close",
+        "status": "failed",
+        "payload": json.dumps(
+            {
+                "task": "after_close_report_update",
+                "celery_task_id": "task-vector",
+                "task_failure_diagnostic": {
+                    "operation": "after_close_report_update",
+                    "error_category": "unknown",
+                    "error_severity": "error",
+                    "error_summary": "未分類任務失敗",
+                    "next_steps": ["舊版 unknown 建議。"],
+                    "retryable": False,
+                    "retry_kind": None,
+                    "next_action": "舊版 unknown next action",
+                },
+            }
+        ),
+        "report_id": None,
+        "error": "Inconsistent number of IDs, embeddings, documents, URIs and metadatas",
+        "started_at": now.isoformat(),
+        "finished_at": now.isoformat(),
+    }
+
+    row = RunTaskApiService._run_summary_row(run, stale_after_minutes=60, now=now)
+
+    assert row["error_category"] == "vector_store"
+    assert row["error_summary"] == "RAG/Chroma 向量庫或 embedding 相容性異常"
+    assert row["next_steps"] != ["舊版 unknown 建議。"]
+    assert row["next_action"] != "舊版 unknown next action"

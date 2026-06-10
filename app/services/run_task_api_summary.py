@@ -282,7 +282,11 @@ def run_summary_row(run: dict, *, stale_after_minutes: int, now: datetime) -> di
 
 def persistent_task_failure_detail(payload: dict) -> dict:
     detail = payload.get("task_failure_diagnostic") if isinstance(payload, dict) else None
-    return detail if isinstance(detail, dict) else {}
+    if not isinstance(detail, dict):
+        return {}
+    if str(detail.get("error_category") or "").casefold() == "unknown":
+        return {}
+    return detail
 
 
 def diagnostic_from_failure_detail(detail: dict) -> dict | None:

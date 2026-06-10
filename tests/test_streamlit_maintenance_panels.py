@@ -763,6 +763,40 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error": "structured_api_configuration: missing_structured_api_token",
                 "started_at": "2026-06-07T14:00:00",
             },
+            {
+                "id": 27,
+                "operation": "after_close_report_update",
+                "status": "failed",
+                "task_id": "task-vector",
+                "retryable": False,
+                "retry_kind": None,
+                "error_category": "vector_store",
+                "error_severity": "warning",
+                "error_summary": "RAG/Chroma 向量庫或 embedding 相容性異常",
+                "next_steps": [
+                    "確認 RAG embedding 模型、Chroma client/server 版本與向量庫連線狀態。",
+                    "若任務已降級為關鍵字檢索仍可繼續；修復 embedding 後重新補索引或重送任務。",
+                ],
+                "error": "Inconsistent number of IDs, embeddings, documents, URIs and metadatas",
+                "started_at": "2026-06-07T15:00:00",
+            },
+            {
+                "id": 28,
+                "operation": "after_close_report_update",
+                "status": "failed",
+                "task_id": "task-storage",
+                "retryable": False,
+                "retry_kind": None,
+                "error_category": "runtime_storage",
+                "error_severity": "error",
+                "error_summary": "本機檔案或資料庫儲存異常",
+                "next_steps": [
+                    "確認 report_dir、SQLite/資料庫檔案與備份目錄存在且目前程序有讀寫權限。",
+                    "若剛重啟過 Redis/Celery/API，重新啟動服務並重送任務以取得新的完整 traceback。",
+                ],
+                "error": "[Errno 2] No such file or directory",
+                "started_at": "2026-06-07T16:00:00",
+            },
         ]
     }
 
@@ -794,6 +828,12 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[4]["category"] == "external_config"
     assert rows[4]["action_route"] == "外部配置缺失"
     assert "外部部署 readiness" in rows[4]["next_steps"]
+    assert rows[5]["category"] == "vector_store"
+    assert rows[5]["action_route"] == "需人工處理"
+    assert "Chroma client/server" in rows[5]["action_route_detail"]
+    assert rows[6]["category"] == "runtime_storage"
+    assert rows[6]["action_route"] == "需人工處理"
+    assert "SQLite" in rows[6]["action_route_detail"]
     assert action_rows == [
         {
             "處理路徑": "一鍵重試",
@@ -809,9 +849,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "處理路徑": "需人工處理",
-            "數量": 1,
-            "說明": "payload、輸入範圍或取消狀態需人工檢查，修正後從原工作流程重送。",
-            "代表任務": "after_close_report_update｜task-after-close",
+            "數量": 3,
+            "說明": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
+            "代表任務": "after_close_report_update｜task-after-close；after_close_report_update｜task-vector；after_close_report_update｜task-storage",
         },
     ]
     assert options == [

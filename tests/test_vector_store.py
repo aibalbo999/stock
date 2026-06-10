@@ -2,6 +2,8 @@ import sys
 from datetime import date
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from app.core.config import get_settings
 from app.data_sources.news import NewsFetcher
 from app.rag.embedding_functions import GoogleGenAIEmbeddingFunction
@@ -451,6 +453,32 @@ def test_upsert_documents_degrades_when_embedding_quota_is_exhausted() -> None:
     assert store.collection is None
     assert store._fallback_docs == documents
     assert "Quota exceeded" in store.last_upsert_error
+
+
+def test_upsert_documents_degrades_when_embedding_count_mismatch() -> None:
+    class FakeCollection:
+        def upsert(self, **kwargs):
+            raise ValueError("embedding_count_mismatch: expected 2 embeddings but got 1")
+
+    store = object.__new__(VectorStore)
+    store.collection = FakeCollection()
+    store._fallback_docs = []
+    store.last_upsert_error = None
+    documents = [
+        NewsFetcher.from_manual_text(
+            title=f"台積電 CoWoS 測試 {index}",
+            text="2330 台積電 CoWoS 產能。",
+            publisher="測試來源",
+            published_at=date(2026, 5, 21),
+        )
+        for index in range(2)
+    ]
+
+    store.upsert_documents(documents)
+
+    assert store.collection is None
+    assert store._fallback_docs == documents
+    assert "embedding_count_mismatch" in store.last_upsert_error
 
 
 def test_upsert_documents_degrades_when_chroma_upsert_times_out(monkeypatch) -> None:
@@ -1053,6 +1081,34 @@ def test_google_genai_embedding_function_uses_official_sdk_shape(monkeypatch) ->
     }
     assert hasattr(GoogleGenAIEmbeddingFunction, "embed_query")
     assert hasattr(GoogleGenAIEmbeddingFunction, "embed_documents")
+
+
+def test_google_genai_embedding_function_rejects_partial_batch_response(monkeypatch) -> None:
+    class FakeModels:
+        def embed_content(self, **kwargs):
+            return SimpleNamespace(embeddings=[SimpleNamespace(values=[0.1, 0.2])])
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.models = FakeModels()
+
+    fake_genai = SimpleNamespace(Client=FakeClient)
+    fake_types = SimpleNamespace(EmbedContentConfig=lambda **kwargs: {"config": kwargs})
+
+    def fake_import_module(name: str):
+        if name == "google.genai":
+            return fake_genai
+        if name == "google.genai.types":
+            return fake_types
+        raise ImportError(name)
+
+    monkeypatch.setattr("app.rag.embedding_functions.import_module", fake_import_module)
+
+    with pytest.raises(ValueError, match="embedding_count_mismatch"):
+        GoogleGenAIEmbeddingFunction(
+            api_key="google-key",
+            model_name="gemini-embedding-001",
+        )(["台積電 CoWoS", "台達電 電源"])
 
 
 def test_google_genai_embedding_function_batches_large_requests(monkeypatch) -> None:

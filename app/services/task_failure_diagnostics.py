@@ -33,6 +33,23 @@ TASK_FAILURE_CATEGORIES = {
             "確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL、vision LLM key/gateway 與免費額度；額度用完時等待重置或切換已配置 fallback 模型。",
         ],
     },
+    "vector_store": {
+        "severity": "warning",
+        "summary": "RAG/Chroma 向量庫或 embedding 相容性異常",
+        "keywords": (
+            "embedding_count_mismatch",
+            "inconsistent number of ids, embeddings",
+            "has no attribute 'tolist'",
+            'has no attribute "tolist"',
+            "convert_np_embeddings_to_list",
+            "chroma_upsert",
+            "chroma_query",
+        ),
+        "next_steps": [
+            "確認 RAG embedding 模型、Chroma client/server 版本與向量庫連線狀態。",
+            "若任務已降級為關鍵字檢索仍可繼續；修復 embedding 後重新補索引或重送任務。",
+        ],
+    },
     "quota": {
         "severity": "warning",
         "summary": "模型/API 額度或速率限制",
@@ -68,6 +85,22 @@ TASK_FAILURE_CATEGORIES = {
             "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
         ],
     },
+    "runtime_storage": {
+        "severity": "error",
+        "summary": "本機檔案或資料庫儲存異常",
+        "keywords": (
+            "[errno 2]",
+            "no such file or directory",
+            "filenotfounderror",
+            "disk i/o error",
+            "readonly database",
+            "attempt to write a readonly database",
+        ),
+        "next_steps": [
+            "確認 report_dir、SQLite/資料庫檔案與備份目錄存在且目前程序有讀寫權限。",
+            "若剛重啟過 Redis/Celery/API，重新啟動服務並重送任務以取得新的完整 traceback。",
+        ],
+    },
     "external_config": {
         "severity": "warning",
         "summary": "外部資料源或文件後援配置缺失",
@@ -101,6 +134,9 @@ TASK_FAILURE_CATEGORIES = {
             "unsupported",
             "invalid",
             "whitelist",
+            "白名單",
+            "未進入目前白名單",
+            "outside the static whitelist",
             "missing required",
             "not retryable",
         ),

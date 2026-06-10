@@ -19,6 +19,7 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
+data/local_dependency_start_status.json
 .chroma/
 chroma/
 faiss_index/

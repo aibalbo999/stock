@@ -123,7 +123,10 @@ class VectorStore:
                 self._fallback_docs.extend(documents[start:])
                 return
             except Exception as exc:
-                if not self._is_embedding_quota_error(exc):
+                if not (
+                    self._is_embedding_quota_error(exc)
+                    or self._is_vector_store_compatibility_error(exc)
+                ):
                     raise
                 self.last_upsert_error = str(exc)
                 self.collection = None
@@ -169,9 +172,13 @@ class VectorStore:
                 started_at=started_at,
             )
         except Exception as exc:
-            if not self._is_embedding_quota_error(exc):
+            if not (
+                self._is_embedding_quota_error(exc)
+                or self._is_vector_store_compatibility_error(exc)
+            ):
                 raise
             self.last_upsert_error = str(exc)
+            self._chroma_query_disabled_for_session = True
             return self._hybrid_rank(
                 query,
                 [],
@@ -266,6 +273,20 @@ class VectorStore:
         status_code = getattr(exc, "status_code", None)
         text = str(exc)
         return status_code == 429 or "RESOURCE_EXHAUSTED" in text or "Quota exceeded" in text
+
+    @staticmethod
+    def _is_vector_store_compatibility_error(exc: Exception) -> bool:
+        text = str(exc).casefold()
+        return any(
+            marker in text
+            for marker in (
+                "embedding_count_mismatch",
+                "inconsistent number of ids, embeddings",
+                "has no attribute 'tolist'",
+                "has no attribute \"tolist\"",
+                "convert_np_embeddings_to_list",
+            )
+        )
 
     @staticmethod
     def _stored_document_body(text: str) -> str:

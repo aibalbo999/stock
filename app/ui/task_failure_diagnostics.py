@@ -8,6 +8,13 @@ EXTERNAL_CONFIG_FAILURE_CATEGORIES = {
     "visual_rag",
 }
 
+MANUAL_FAILURE_CATEGORIES = {
+    "cancelled",
+    "payload_validation",
+    "runtime_storage",
+    "vector_store",
+}
+
 TASK_FAILURE_ACTION_ROUTE_ORDER = (
     "一鍵重試",
     "外部配置缺失",
@@ -17,7 +24,12 @@ TASK_FAILURE_ACTION_ROUTE_ORDER = (
 TASK_FAILURE_ACTION_ROUTE_DETAILS = {
     "一鍵重試": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
     "外部配置缺失": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
-    "需人工處理": "payload、輸入範圍或取消狀態需人工檢查，修正後從原工作流程重送。",
+    "需人工處理": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
+}
+
+CATEGORY_ACTION_ROUTE_DETAILS = {
+    "vector_store": "確認 RAG embedding 模型、Chroma client/server 版本與向量庫連線；修復後重新補索引或重送任務。",
+    "runtime_storage": "確認 report_dir、SQLite/資料庫檔案與備份目錄存在且程序具讀寫權限；修復後重送任務。",
 }
 
 
@@ -97,6 +109,9 @@ def task_failure_action_route(row: dict) -> str:
 
 
 def task_failure_action_route_detail(row: dict) -> str:
+    category = str(row.get("error_category") or "").strip()
+    if category in CATEGORY_ACTION_ROUTE_DETAILS:
+        return CATEGORY_ACTION_ROUTE_DETAILS[category]
     return TASK_FAILURE_ACTION_ROUTE_DETAILS.get(task_failure_action_route(row), "-")
 
 
@@ -128,6 +143,8 @@ def _task_retry_option_label(row: dict) -> str:
 
 def _is_external_config_failure(row: dict) -> bool:
     category = str(row.get("error_category") or "").strip()
+    if category in MANUAL_FAILURE_CATEGORIES:
+        return False
     if category in EXTERNAL_CONFIG_FAILURE_CATEGORIES:
         return True
     next_steps_text = _task_next_steps_text(row)

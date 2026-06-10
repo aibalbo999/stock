@@ -375,6 +375,70 @@ def test_operator_next_action_promotes_non_queue_critical_incident() -> None:
     assert action["route_hint"] == "task:disk-1"
 
 
+def test_operator_next_action_does_not_promote_historical_failure_when_latest_task_healthy() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {
+            "latest": {
+                "task_id": "smoke-ok",
+                "operation": "submission_smoke",
+                "status": "success",
+                "successful": True,
+            },
+            "recent_failures": [
+                {
+                    "task_id": "old-disk-1",
+                    "operation": "report_write",
+                    "status": "failed",
+                    "error_category": "runtime_storage",
+                    "error_severity": "error",
+                    "retryable": False,
+                    "finished_at": "2026-06-09T09:00:00",
+                }
+            ],
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "ready"
+    assert action["priority"] == 10
+    assert action["title"] == "閱讀最新版報告"
+    assert action["route_hint"] == "report:15"
+
+
+def test_operator_secondary_actions_keep_historical_failure_when_latest_task_healthy() -> None:
+    actions = operator_secondary_actions(
+        READY_QUEUE,
+        {
+            "latest": {
+                "task_id": "smoke-ok",
+                "operation": "submission_smoke",
+                "celery_status": "SUCCESS",
+            },
+            "recent_failures": [
+                {
+                    "task_id": "old-disk-1",
+                    "operation": "report_write",
+                    "status": "failed",
+                    "error_category": "runtime_storage",
+                    "error_severity": "error",
+                    "retryable": False,
+                    "finished_at": "2026-06-09T09:00:00",
+                }
+            ],
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert any(action["title"] == "本機儲存失敗" for action in actions)
+
+
 def test_operator_next_action_reads_latest_when_healthy() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

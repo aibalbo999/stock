@@ -71,4 +71,17 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "task_summary_unavailable(task_summary)" in operator_status_source
             and '"route_hint": "settings:maintenance"' in operator_status_source
         ),
+        "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
+            "def _latest_task_successful(" in operator_decisions_source
+            and "def _task_row_successful(" in operator_decisions_source
+            and "def _critical_incident_should_block(" in operator_decisions_source
+            and "def _is_task_failure_incident(" in operator_decisions_source
+            and "critical_incident and _critical_incident_should_block("
+            in operator_decisions_source
+            and "not _latest_task_successful(task_summary)" in operator_decisions_source
+            and 'dedupe_key.startswith("failure:")' in operator_decisions_source
+            and 'incident_id.startswith("failure_")' in operator_decisions_source
+            and "successful" in operator_decisions_source
+            and "celery_status" in operator_decisions_source
+        ),
     }

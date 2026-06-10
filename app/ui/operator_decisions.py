@@ -222,7 +222,7 @@ def operator_next_best_action(
         )
 
     critical_incident = _first_critical_incident(incidents)
-    if critical_incident:
+    if critical_incident and _critical_incident_should_block(critical_incident, task_summary):
         return _action(
             state="blocked",
             priority=7,
@@ -391,6 +391,18 @@ def _first_critical_incident(incidents: list[dict]) -> dict:
     return {}
 
 
+def _critical_incident_should_block(incident: dict, task_summary: dict | None) -> bool:
+    if not _latest_task_successful(task_summary):
+        return True
+    return not _is_task_failure_incident(incident)
+
+
+def _is_task_failure_incident(incident: dict) -> bool:
+    dedupe_key = _text(incident.get("dedupe_key"))
+    incident_id = _text(incident.get("id"))
+    return dedupe_key.startswith("failure:") or incident_id.startswith("failure_")
+
+
 def _incident_state(incident: dict) -> str:
     if incident.get("severity") == "critical":
         return "blocked"
@@ -500,6 +512,31 @@ def _task_row_failed(row: dict) -> bool:
         or celery_status in {"failed", "failure", "revoked"}
         or row.get("error")
         or row.get("error_category")
+    )
+
+
+def _latest_task_successful(task_summary: dict | None) -> bool:
+    if not isinstance(task_summary, dict):
+        return False
+    for key in ("latest", "latest_task"):
+        row = task_summary.get(key)
+        if isinstance(row, dict):
+            return _task_row_successful(row)
+    recent = task_summary.get("recent")
+    if isinstance(recent, list):
+        for row in recent:
+            if isinstance(row, dict):
+                return _task_row_successful(row)
+    return False
+
+
+def _task_row_successful(row: dict) -> bool:
+    if row.get("successful") is True:
+        return True
+    status = _text(row.get("status")).casefold()
+    celery_status = _text(row.get("celery_status")).casefold()
+    return status in {"success", "successful", "succeeded", "completed", "done"} or (
+        celery_status in {"success", "successful", "succeeded"}
     )
 
 

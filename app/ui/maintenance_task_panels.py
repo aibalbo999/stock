@@ -6,8 +6,10 @@ from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_task_post
 from app.ui.background_tasks import submit_api_task
 from app.ui.task_failure_diagnostics import (
+    recommended_task_retry_option,
     task_failure_action_route_rows,
     task_failure_drilldown_rows,
+    task_retry_option_index,
     task_retry_options,
 )
 from app.ui.task_queue_diagnostics import (
@@ -26,7 +28,10 @@ def render_background_task_observability_panel(
     task_summary: dict,
     maintenance_diagnostics: dict | None = None,
 ) -> None:
-    with st.expander("背景任務觀測", expanded=False):
+    with st.expander(
+        "背景任務觀測",
+        expanded=task_observability_expander_expanded(task_summary),
+    ):
         st.caption("Queue / Worker readiness")
         st.dataframe(task_queue_health_rows(service_snapshot), width="stretch", hide_index=True)
         repair_rows = task_queue_repair_rows(service_snapshot)
@@ -52,6 +57,20 @@ def render_background_task_observability_panel(
         _render_task_summary_alerts(task_summary)
         _render_task_summary_metrics(task_summary)
         _render_task_failure_drilldown(task_summary)
+
+
+def task_observability_expander_expanded(task_summary: dict) -> bool:
+    if not isinstance(task_summary, dict):
+        return False
+    if task_summary.get("recent_failures"):
+        return True
+    if task_summary.get("alerts"):
+        return True
+    totals = task_summary.get("totals") if isinstance(task_summary.get("totals"), dict) else {}
+    return bool(
+        int(totals.get("failed_count") or 0)
+        or int(totals.get("stale_running_count") or 0)
+    )
 
 
 def _render_task_summary_alerts(task_summary: dict) -> None:
@@ -120,11 +139,19 @@ def _render_task_failure_drilldown(task_summary: dict) -> None:
 def _render_task_retry_controls(retry_options: list[dict]) -> None:
     retry_options_by_id = {str(option["task_id"]): option for option in retry_options}
     retry_labels = {task_id: option["label"] for task_id, option in retry_options_by_id.items()}
+    preferred_task_id = str(st.session_state.get("maintenance_inspect_task_id") or "").strip()
+    recommended_retry_option = recommended_task_retry_option(
+        retry_options,
+        preferred_task_id=preferred_task_id,
+    )
+    if recommended_retry_option:
+        _render_recommended_task_retry_control(recommended_retry_option)
     selected_retry_task_id = st.selectbox(
         "選擇要重試的失敗任務",
         options=[option["task_id"] for option in retry_options],
         format_func=lambda task_id: retry_labels.get(str(task_id), str(task_id)),
         key="maintenance_retry_task_select",
+        index=task_retry_option_index(retry_options, preferred_task_id=preferred_task_id),
     )
     selected_retry_option = retry_options_by_id.get(str(selected_retry_task_id), {})
     selected_retry_guarded = bool(selected_retry_option.get("retry_guarded"))
@@ -138,20 +165,36 @@ def _render_task_retry_controls(retry_options: list[dict]) -> None:
             key="maintenance_retry_failed_task",
             disabled=selected_retry_guarded,
         ):
-            retry_response = run_api_action_or_none(
-                lambda: api_task_post(
-                    f"/tasks/{selected_retry_task_id}/retry",
-                    {},
-                ),
-                error_message="重試失敗",
-            )
-            if isinstance(retry_response, dict):
-                retry_task_id = str(retry_response.get("task_id") or selected_retry_task_id)
-                st.session_state["maintenance_inspect_task_id"] = retry_task_id
-                st.success(f"已送出重試任務：{retry_task_id}")
+            _submit_task_retry(str(selected_retry_task_id))
     with retry_cols[1]:
         if st.button("查看選取任務", key="maintenance_inspect_failed_task"):
             st.session_state["maintenance_inspect_task_id"] = selected_retry_task_id
+
+
+def _render_recommended_task_retry_control(retry_option: dict) -> None:
+    label = str(retry_option.get("label") or retry_option.get("task_id") or "建議任務")
+    st.caption(f"建議處理：{label}")
+    if st.button(
+        "一鍵重試建議任務",
+        key="maintenance_retry_recommended_task",
+        type="primary",
+        use_container_width=True,
+    ):
+        _submit_task_retry(str(retry_option["task_id"]))
+
+
+def _submit_task_retry(task_id: str) -> None:
+    retry_response = run_api_action_or_none(
+        lambda: api_task_post(
+            f"/tasks/{task_id}/retry",
+            {},
+        ),
+        error_message="重試失敗",
+    )
+    if isinstance(retry_response, dict):
+        retry_task_id = str(retry_response.get("task_id") or task_id)
+        st.session_state["maintenance_inspect_task_id"] = retry_task_id
+        st.success(f"已送出重試任務：{retry_task_id}")
 
 
 def maintenance_diagnostic_action_rows(maintenance_diagnostics: dict) -> list[dict]:

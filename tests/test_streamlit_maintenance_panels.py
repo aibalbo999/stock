@@ -29,6 +29,11 @@ from app.ui.maintenance_deployment_panel import (
     recommended_maintenance_operation_id,
 )
 from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
+from app.ui.maintenance_task_panels import task_observability_expander_expanded
+from app.ui.task_failure_diagnostics import (
+    recommended_task_retry_option,
+    task_retry_option_index,
+)
 from streamlit_ui_test_helpers import load_report_helpers
 
 
@@ -889,6 +894,139 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
         },
     ]
+
+
+def test_task_observability_expander_opens_when_operator_action_is_needed() -> None:
+    assert task_observability_expander_expanded(
+        {"recent_failures": [{"task_id": "task-1", "retryable": True}]}
+    ) is True
+    assert task_observability_expander_expanded(
+        {"alerts": [{"severity": "warning", "message": "quota"}]}
+    ) is True
+    assert task_observability_expander_expanded(
+        {"totals": {"failed_count": 1, "stale_running_count": 0}}
+    ) is True
+    assert task_observability_expander_expanded(
+        {"totals": {"failed_count": 0, "stale_running_count": 0}, "recent_failures": []}
+    ) is False
+
+
+def test_recommended_task_retry_option_prefers_safe_inspected_task() -> None:
+    retry_options = [
+        {
+            "task_id": "task-safe-old",
+            "label": "report_generation｜run #21｜task-safe-old",
+            "retry_guarded": False,
+        },
+        {
+            "task_id": "task-guarded",
+            "label": "company_filings_fetch｜run #22｜task-guarded",
+            "retry_guarded": True,
+        },
+        {
+            "task_id": "task-safe-selected",
+            "label": "report_generation｜run #23｜task-safe-selected",
+            "retry_guarded": False,
+        },
+    ]
+
+    assert recommended_task_retry_option(
+        retry_options,
+        preferred_task_id="task-safe-selected",
+    )["task_id"] == "task-safe-selected"
+    assert recommended_task_retry_option(
+        retry_options,
+        preferred_task_id="task-guarded",
+    )["task_id"] == "task-safe-old"
+    assert task_retry_option_index(retry_options, preferred_task_id="task-safe-selected") == 2
+    assert task_retry_option_index(retry_options, preferred_task_id="missing") == 0
+
+
+def test_task_retry_controls_one_click_retries_recommended_task(monkeypatch) -> None:
+    from app.ui import maintenance_task_panels
+
+    class FakeColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {"maintenance_inspect_task_id": "task-safe-selected"}
+            self.buttons: list[dict] = []
+            self.captions: list[str] = []
+            self.successes: list[str] = []
+            self.warnings: list[str] = []
+            self.selectboxes: list[dict] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") == "maintenance_retry_recommended_task"
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def warning(self, body: str) -> None:
+            self.warnings.append(str(body))
+
+        def success(self, body: str) -> None:
+            self.successes.append(str(body))
+
+        def columns(self, _spec):
+            return [FakeColumn(), FakeColumn()]
+
+        def selectbox(self, label, options, *, format_func, key, index=0):
+            self.selectboxes.append(
+                {
+                    "label": label,
+                    "options": list(options),
+                    "key": key,
+                    "index": index,
+                    "selected_label": format_func(options[index]),
+                }
+            )
+            return options[index]
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple[str, dict]] = []
+    monkeypatch.setattr(maintenance_task_panels, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "run_api_action_or_none",
+        lambda action, **_kwargs: action(),
+    )
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "api_task_post",
+        lambda endpoint, payload: posted.append((endpoint, payload))
+        or {"task_id": "task-retry-new"},
+    )
+
+    maintenance_task_panels._render_task_retry_controls(
+        [
+            {
+                "task_id": "task-safe-old",
+                "label": "report_generation｜run #21｜task-safe-old",
+                "retry_guarded": False,
+                "retry_guard_message": "",
+            },
+            {
+                "task_id": "task-safe-selected",
+                "label": "report_generation｜run #23｜task-safe-selected",
+                "retry_guarded": False,
+                "retry_guard_message": "",
+            },
+        ]
+    )
+
+    assert posted == [("/tasks/task-safe-selected/retry", {})]
+    assert fake_st.session_state["maintenance_inspect_task_id"] == "task-retry-new"
+    assert fake_st.successes == ["已送出重試任務：task-retry-new"]
+    assert fake_st.selectboxes[0]["index"] == 1
+    assert fake_st.buttons[0]["label"] == "一鍵重試建議任務"
+    assert fake_st.buttons[0]["type"] == "primary"
 
 
 def test_external_deployment_warning_rows_include_optional_and_smoke_commands() -> None:

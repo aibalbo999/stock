@@ -219,6 +219,8 @@ def architecture_capabilities(
             and frontend_status.get("ui_maintenance_operations_enabled")
             and frontend_status.get("ui_external_deployment_domain_helpers_extracted")
             and frontend_status.get("ui_task_failure_drilldown_enabled")
+            and frontend_status.get("ui_task_failure_recommended_retry_enabled")
+            and frontend_status.get("ui_task_observability_auto_expand_enabled")
             and frontend_status.get("ui_task_failure_diagnostics_extracted")
             and frontend_status.get("ui_task_failure_category_display_enabled")
             and frontend_status.get("ui_task_failure_trend_enabled")

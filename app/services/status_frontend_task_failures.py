@@ -11,6 +11,24 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
     task_status_panel_source = ui_sources["task_status_panel.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
+    retry_submission_enabled = 'f"/tasks/{task_id}/retry"' in ui_source and (
+        "_submit_task_retry(str(selected_retry_task_id))" in ui_source
+    )
+    recommended_retry_enabled = (
+        "def recommended_task_retry_option(" in task_failure_diagnostics_source
+        and "def task_retry_option_index(" in task_failure_diagnostics_source
+        and "recommended_task_retry_option(" in ui_source
+        and "task_retry_option_index(" in ui_source
+        and "maintenance_retry_recommended_task" in ui_source
+        and "一鍵重試建議任務" in ui_source
+        and "_submit_task_retry(str(retry_option" in ui_source
+    )
+    task_observability_auto_expand_enabled = (
+        "def task_observability_expander_expanded(" in ui_source
+        and "expanded=task_observability_expander_expanded(task_summary)" in ui_source
+        and 'totals.get("failed_count")' in ui_source
+        and 'totals.get("stale_running_count")' in ui_source
+    )
     return {
         "frontend_task_failure_status_extracted": True,
         "frontend_task_failure_status_path": "app/services/status_frontend_task_failures.py",
@@ -21,8 +39,10 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "task_failure_drilldown_rows(task_summary)" in ui_source
         and "task_retry_options(task_summary)" in ui_source
         and "task_failure_action_route_rows(task_summary)" in ui_source
-        and 'f"/tasks/{selected_retry_task_id}/retry"' in ui_source
+        and retry_submission_enabled
         and "render_task_status_panel(" in ui_source,
+        "ui_task_failure_recommended_retry_enabled": recommended_retry_enabled,
+        "ui_task_observability_auto_expand_enabled": task_observability_auto_expand_enabled,
         "ui_task_failure_diagnostics_extracted": (ui_dir / "task_failure_diagnostics.py").exists()
         and "from app.ui.task_failure_diagnostics import (" in ui_source
         and "def task_failure_drilldown_rows(" in task_failure_diagnostics_source

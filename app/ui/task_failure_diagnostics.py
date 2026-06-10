@@ -79,6 +79,34 @@ def task_retry_options(task_summary: dict) -> list[dict]:
     return options
 
 
+def recommended_task_retry_option(
+    retry_options: list[dict],
+    *,
+    preferred_task_id: str | None = None,
+) -> dict:
+    safe_options = [option for option in retry_options if not option.get("retry_guarded")]
+    preferred = str(preferred_task_id or "").strip()
+    if preferred:
+        for option in safe_options:
+            if str(option.get("task_id") or "").strip() == preferred:
+                return option
+    return safe_options[0] if safe_options else {}
+
+
+def task_retry_option_index(
+    retry_options: list[dict],
+    *,
+    preferred_task_id: str | None = None,
+) -> int:
+    preferred = str(preferred_task_id or "").strip()
+    if not preferred:
+        return 0
+    for index, option in enumerate(retry_options):
+        if str(option.get("task_id") or "").strip() == preferred:
+            return index
+    return 0
+
+
 def task_failure_action_route_rows(task_summary: dict) -> list[dict]:
     grouped = {route: {"count": 0, "examples": []} for route in TASK_FAILURE_ACTION_ROUTE_ORDER}
     for row in _task_summary_failures(task_summary):

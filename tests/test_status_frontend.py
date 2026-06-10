@@ -307,6 +307,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/external_deployment_structured_api.py",
     ]
     assert status["frontend"]["ui_task_failure_drilldown_enabled"] is True
+    assert status["frontend"]["ui_task_failure_recommended_retry_enabled"] is True
+    assert status["frontend"]["ui_task_observability_auto_expand_enabled"] is True
     assert status["frontend"]["ui_task_failure_diagnostics_extracted"] is True
     assert status["frontend"]["ui_task_failure_diagnostics_path"] == (
         "app/ui/task_failure_diagnostics.py"
@@ -441,6 +443,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_maintenance_operations_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_domain_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_recommended_retry_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_observability_auto_expand_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_action_routes_enabled"] is True

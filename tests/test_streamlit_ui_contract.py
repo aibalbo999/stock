@@ -125,8 +125,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"title": report_payload.get("title")' in source
     assert '"generated_at": report_payload.get("generated_at")' in source
     assert "report_meta_label" in source
+    assert "follow_up_state" in source
+    assert "summary.get(\"action_label\"" in source
     assert "report-health-strip" in combined
     assert "report-health-card" in combined
+    assert "report-health-action" in combined
     assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source
     assert "latest_report_lifecycle(" in source
     assert "from app.ui.data_gap_actions import data_gap_action_items" in source

@@ -67,6 +67,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'summary.get("report_meta_label"' in ui_source
             and ".report-health-card em" in style_source
         ),
+        "ui_report_health_action_enabled": (
+            "def _follow_up_health_state(" in report_health_source
+            and '"follow_up_state": follow_up_state' in report_health_source
+            and '"rerun_running"' in report_health_source
+            and '"blocked"' in report_health_source
+            and "data_gap_action_items(" in report_health_source
+            and 'summary.get("action_label"' in ui_source
+            and 'summary.get("follow_up_state"' in ui_source
+            and "report-health-action" in ui_source
+            and ".report-health-action" in style_source
+        ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"
         ).exists()

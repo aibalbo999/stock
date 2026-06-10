@@ -745,8 +745,20 @@ textarea:focus,
 }
 .report-health-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(180px, 1.25fr) repeat(4, minmax(130px, 1fr));
     gap: 12px;
+}
+.report-health-action strong {
+    color: var(--stock-accent);
+}
+.report-health-action.is-blocked strong {
+    color: var(--stock-danger);
+}
+.report-health-action.is-rerun_running,
+.report-health-action.is-needs_data,
+.report-health-action.is-needs_retry {
+    border-color: rgba(146, 64, 14, 0.24);
+    background: var(--stock-warning-soft);
 }
 .report-lifecycle-strip {
     display: grid;

@@ -352,6 +352,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_observability_recommendations_enabled"] is True
     assert status["frontend"]["ui_report_observability_graphrag_metrics_enabled"] is True
     assert status["frontend"]["ui_report_health_identity_enabled"] is True
+    assert status["frontend"]["ui_report_health_action_enabled"] is True
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
     assert status["frontend"]["ui_report_state_extracted"] is True
     assert status["frontend"]["ui_report_state_path"] == "app/ui/report_state.py"
@@ -419,6 +420,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_report_workflow_status_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_identity_enabled"] is True
+    assert frontend_arch["evidence"]["ui_report_health_action_enabled"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True

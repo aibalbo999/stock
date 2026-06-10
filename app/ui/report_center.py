@@ -309,6 +309,10 @@ def _render_report_health_strip(summary: dict[str, str]) -> None:
 <span>補強狀態</span>
 <strong>{escape(summary.get("follow_up_label", "-"))}</strong>
 </article>
+<article class="report-health-card report-health-action is-{escape(summary.get("follow_up_state", "unknown"))}">
+<span>建議操作</span>
+<strong>{escape(summary.get("action_label", "-"))}</strong>
+</article>
 </section>""",
         unsafe_allow_html=True,
     )

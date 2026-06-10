@@ -3,42 +3,38 @@ from __future__ import annotations
 from typing import Any
 
 
+VALID_PURPOSES = {"required", "tracking", "all"}
+
 ACTION_OPERATION_MAP = {
     "refresh_market": {
         "gap_type": "price",
         "action_label": "刷新股價",
         "operation": "market_refresh",
-        "route_hint": "data_enrichment:market",
+        "route_hint": "data_enrichment",
     },
     "refresh_financial_metrics": {
         "gap_type": "financials",
         "action_label": "刷新 5 年財報",
         "operation": "fundamentals_refresh",
-        "route_hint": "data_enrichment:market",
-    },
-    "refresh_monthly_revenue": {
-        "gap_type": "financials",
-        "action_label": "刷新月營收",
-        "operation": "fundamentals_refresh",
-        "route_hint": "data_enrichment:market",
+        "route_hint": "data_enrichment",
     },
     "refresh_valuations": {
         "gap_type": "valuation",
         "action_label": "刷新估值",
         "operation": "valuation_refresh",
-        "route_hint": "data_enrichment:market",
+        "route_hint": "data_enrichment",
     },
     "ingest_company_filings": {
         "gap_type": "filing",
         "action_label": "補抓公司文件",
         "operation": "company_filings_fetch",
-        "route_hint": "data_enrichment:market",
+        "route_hint": "data_enrichment",
     },
     "ingest_news": {
         "gap_type": "news",
         "action_label": "匯入新聞/研究摘要",
         "operation": "manual_ingest",
-        "route_hint": "data_enrichment:manual",
+        "route_hint": "data_enrichment",
     },
     "rerun_analysis": {
         "gap_type": "rag",
@@ -59,15 +55,21 @@ def data_gap_action_items(
     report_id = report.get("report_id") or report.get("id") or plan.get("report_id")
     topic = report.get("topic") or request.get("topic") or "最新版報告"
     items = []
+    seen = set()
     for row in _list_value(plan.get("next_actions")):
         action = _text(row.get("action"))
         metadata = ACTION_OPERATION_MAP.get(action)
         if not metadata:
             continue
         tickers = _tickers(row, request)
+        purpose = _purpose(row)
         route_hint = metadata["route_hint"]
         if action == "rerun_analysis" and report_id is not None:
             route_hint = f"report:{report_id}"
+        dedupe_key = _dedupe_key(action, metadata, row, tickers, purpose)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
         items.append(
             {
                 "report_id": report_id,
@@ -80,11 +82,11 @@ def data_gap_action_items(
                 "impact": _impact(row, metadata["action_label"]),
                 "post_action_hint": _post_action_hint(action),
                 "route_hint": route_hint,
-                "purpose": _text(row.get("purpose") or row.get("priority"), default="tracking"),
-                "priority": _text(row.get("priority") or row.get("purpose"), default="tracking"),
+                "purpose": purpose,
+                "priority": _priority(row, purpose),
             }
         )
-    return _dedupe_items(items)
+    return items
 
 
 def data_gap_action_summary(items: list[dict]) -> dict[str, str]:
@@ -130,16 +132,33 @@ def _tickers(row: dict, request: dict) -> list[str]:
     return [str(ticker).strip() for ticker in tickers if str(ticker).strip()]
 
 
-def _dedupe_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    deduped = []
-    seen = set()
-    for item in items:
-        key = (item.get("operation"), tuple(item.get("tickers") or []), item.get("purpose"))
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-    return deduped
+def _purpose(row: dict) -> str:
+    purpose = _text(row.get("purpose")).casefold()
+    if purpose in VALID_PURPOSES:
+        return purpose
+    return "tracking"
+
+
+def _priority(row: dict, purpose: str) -> str:
+    return _text(row.get("priority"), default=purpose or "tracking")
+
+
+def _dedupe_key(
+    action: str,
+    metadata: dict[str, str],
+    row: dict,
+    tickers: list[str],
+    purpose: str,
+) -> tuple[str, str, str, tuple[str, ...], str, str, str]:
+    return (
+        action,
+        metadata["operation"],
+        metadata["gap_type"],
+        tuple(tickers),
+        purpose,
+        _text(row.get("target")),
+        _text(row.get("reason")),
+    )
 
 
 def _dict_value(value: Any) -> dict:

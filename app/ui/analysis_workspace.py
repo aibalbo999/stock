@@ -343,11 +343,13 @@ def _render_operator_workbench() -> None:
 </div>
 <span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
 </div>
-{_operator_decision_html(primary_action, secondary_actions)}
+{_operator_decision_html(primary_action, [], include_secondary=False)}
 </section>""",
         unsafe_allow_html=True,
     )
     _render_operator_primary_action_control(primary_action)
+    if secondary_actions:
+        st.markdown(_operator_secondary_actions_html(secondary_actions), unsafe_allow_html=True)
     _render_operator_action_controls(secondary_actions)
     st.markdown(
         f"""<section class="operator-status-grid" aria-label="狀態摘要">
@@ -368,8 +370,17 @@ def _latest_report_id(reports: list[dict]) -> int | None:
     return None
 
 
-def _operator_decision_html(primary_action: dict, secondary_actions: list[dict]) -> str:
-    secondary_html = "\n".join(_secondary_action_html(action) for action in secondary_actions)
+def _operator_decision_html(
+    primary_action: dict,
+    secondary_actions: list[dict],
+    *,
+    include_secondary: bool = True,
+) -> str:
+    secondary_block = (
+        _operator_secondary_actions_html(secondary_actions)
+        if include_secondary and secondary_actions
+        else ""
+    )
     source_ids = primary_action.get("source_ids") or []
     source_text = _operator_source_text(source_ids)
     target = operator_route_target(primary_action.get("route_hint"))
@@ -389,10 +400,15 @@ def _operator_decision_html(primary_action: dict, secondary_actions: list[dict])
 <strong>{escape(primary_action.get("action_label", "-"))}</strong>
 <span>{escape(target_caption)}</span>
 </div>
-<div class="operator-secondary-actions" aria-label="次要建議">
-{secondary_html}
-</div>
+{secondary_block}
 </section>"""
+
+
+def _operator_secondary_actions_html(secondary_actions: list[dict]) -> str:
+    secondary_html = "\n".join(_secondary_action_html(action) for action in secondary_actions)
+    return f"""<div class="operator-secondary-actions" aria-label="次要建議">
+{secondary_html}
+</div>"""
 
 
 def _operator_source_text(source_ids: object) -> str:

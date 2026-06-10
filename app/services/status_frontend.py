@@ -30,6 +30,8 @@ def frontend_status() -> dict:
         == "FrontendSourceContext"
         and "dashboard_core.py" in ui_sources
         and "api_loaders.py" in ui_sources
+        and "operator_decisions.py" in ui_sources
+        and "data_gap_actions.py" in ui_sources
         and "maintenance_cleanup_panel.py" in ui_sources
         and bool(frontend_blocking_call_scan_paths),
         "frontend_source_context_path": "app/services/status_frontend_sources.py",

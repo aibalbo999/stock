@@ -99,6 +99,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_decisions import (" in source
     assert "operator_next_best_action(" in source
     assert "operator_secondary_actions(" in source
+    assert "from app.ui.data_gap_actions import data_gap_action_items" in source
+    assert "def _primary_data_gap_action(" in source
+    assert 'data_gap_action.get("route_hint")' in source
     assert "operator-decision-card" in combined
     assert "operator-secondary-actions" in combined
     assert "operator-action-controls" in combined

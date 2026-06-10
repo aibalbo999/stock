@@ -10,10 +10,26 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 
 def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> dict:
+    operator_decisions_source = source_context.ui_sources["operator_decisions.py"]
+    data_gap_actions_source = source_context.ui_sources["data_gap_actions.py"]
+    operator_routes_source = source_context.ui_sources["operator_routes.py"]
+    data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
     return {
         "frontend_data_enrichment_status_extracted": True,
         "frontend_data_enrichment_status_path": (
             "app/services/status_frontend_data_enrichment.py"
+        ),
+        "ui_operator_data_gap_prefill_enabled": (
+            "from app.ui.data_gap_actions import data_gap_action_items"
+            in operator_decisions_source
+            and "def _primary_data_gap_action(" in operator_decisions_source
+            and 'data_gap_action.get("route_hint")' in operator_decisions_source
+            and 'f"data_enrichment:{operation}:{ticker_suffix}"' in data_gap_actions_source
+            and "def _data_enrichment_route_hint(" in data_gap_actions_source
+            and '"pending_data_enrichment_operation": operation' in operator_routes_source
+            and '"pending_data_enrichment_tickers"' in operator_routes_source
+            and "pending_data_enrichment_operation" in data_enrichment_market_source
+            and "pending_data_enrichment_tickers" in data_enrichment_market_source
         ),
         **frontend_data_enrichment_tabs_status(source_context),
         **frontend_data_enrichment_runtime_status(source_context),

@@ -113,6 +113,48 @@ def test_operator_next_action_prioritizes_required_data_gaps() -> None:
     assert action["route_hint"] == "data_enrichment"
 
 
+def test_operator_next_action_prefills_first_required_data_gap_action() -> None:
+    action = operator_next_best_action(
+        READY_QUEUE,
+        {},
+        READY_QUOTA,
+        [{"id": 12, "title": "AI 產業鏈"}],
+        {
+            "report_id": 12,
+            "topic": "AI 產業鏈",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
+            "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
+        },
+        {
+            "summary": {"required_count": 2},
+            "status": "needs_follow_up",
+            "next_actions": [
+                {
+                    "action": "refresh_market",
+                    "tickers": ["2330"],
+                    "purpose": "required",
+                    "target": "股價與量能",
+                    "reason": "缺少最新股價",
+                },
+                {
+                    "action": "ingest_company_filings",
+                    "tickers": ["2382"],
+                    "purpose": "required",
+                    "target": "公司公開文件",
+                    "reason": "缺少法說會簡報",
+                },
+            ],
+        },
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 5
+    assert action["action_label"] == "刷新股價"
+    assert action["route_hint"] == "data_enrichment:market_refresh:2330"
+    assert "刷新股價可改善" in action["impact"]
+    assert "2330" in action["source_ids"]
+
+
 def test_operator_next_action_surfaces_quality_warning_before_healthy_read() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

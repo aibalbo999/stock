@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
+
 from app.ui.data_enrichment import (
     company_filing_runtime_rows,
     company_filing_visual_rag_model_chain_rows,
 )
+from app.ui import data_enrichment_market
 from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
 
@@ -104,6 +107,71 @@ def test_market_data_operation_button_type_prioritizes_pending_operation() -> No
     assert market_data_operation_button_type("valuation_refresh", "valuation_refresh") == (
         "primary"
     )
+
+
+def test_market_operation_readiness_rows_show_pending_operation_and_ready_state() -> None:
+    assert hasattr(data_enrichment_market, "market_operation_readiness_rows")
+    rows = data_enrichment_market.market_operation_readiness_rows(
+        selected_market_tickers=["2330", "2382"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation="valuation_refresh",
+    )
+
+    assert [row["operation"] for row in rows] == [
+        "market_refresh",
+        "fundamentals_refresh",
+        "valuation_refresh",
+        "company_filings_fetch",
+    ]
+    assert rows[0] == {
+        "operation": "market_refresh",
+        "label": "刷新股價",
+        "state": "ready",
+        "selected": "no",
+        "caption": "2 檔｜2026-06-01 → 2026-06-10",
+        "disabled_reason": "可送出背景任務",
+        "impact": "更新最新版報告的股價與成交量判讀。",
+        "post_action_hint": "完成後回報告中心確認是否需要重跑。",
+        "button_type": "secondary",
+    }
+    assert rows[2]["operation"] == "valuation_refresh"
+    assert rows[2]["selected"] == "yes"
+    assert rows[2]["button_type"] == "primary"
+    assert rows[2]["disabled_reason"] == "可送出背景任務"
+
+
+def test_market_operation_readiness_rows_explain_missing_tickers() -> None:
+    rows = data_enrichment_market.market_operation_readiness_rows(
+        selected_market_tickers=[],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation=None,
+    )
+
+    assert {row["state"] for row in rows} == {"attention"}
+    assert {row["disabled_reason"] for row in rows} == {"請先選擇至少一檔股票"}
+    assert rows[0]["button_type"] == "primary"
+    assert rows[1]["button_type"] == "secondary"
+
+
+def test_market_operation_readiness_rows_explain_invalid_date_range_only_where_needed() -> None:
+    rows = data_enrichment_market.market_operation_readiness_rows(
+        selected_market_tickers=["2330"],
+        market_start=date(2026, 6, 10),
+        market_end=date(2026, 6, 1),
+        pending_operation="market_refresh",
+    )
+
+    by_operation = {row["operation"]: row for row in rows}
+    assert by_operation["market_refresh"]["state"] == "attention"
+    assert by_operation["market_refresh"]["disabled_reason"] == "起始日期不可晚於結束日期"
+    assert by_operation["valuation_refresh"]["state"] == "attention"
+    assert by_operation["valuation_refresh"]["disabled_reason"] == "起始日期不可晚於結束日期"
+    assert by_operation["fundamentals_refresh"]["state"] == "ready"
+    assert by_operation["fundamentals_refresh"]["disabled_reason"] == "可送出背景任務"
+    assert by_operation["company_filings_fetch"]["state"] == "ready"
+    assert by_operation["company_filings_fetch"]["disabled_reason"] == "可送出背景任務"
 
 
 def test_market_cache_operator_summary_flags_stale_and_missing_cache() -> None:

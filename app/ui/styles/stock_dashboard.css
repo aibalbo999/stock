@@ -467,6 +467,7 @@ textarea:focus,
 .incident-inbox,
 .data-gap-action-map,
 .market-cache-readiness,
+.market-operation-readiness,
 .action-impact-grid {
     margin: 18px 0;
 }
@@ -506,7 +507,8 @@ textarea:focus,
 .report-lifecycle-summary strong,
 .incident-inbox h3,
 .data-gap-action-head h3,
-.market-cache-readiness-head h3 {
+.market-cache-readiness-head h3,
+.market-operation-readiness-head h3 {
     margin: 4px 0 6px;
     color: var(--stock-text);
 }
@@ -515,7 +517,8 @@ textarea:focus,
 .report-lifecycle-summary p,
 .report-lifecycle-step p,
 .data-gap-action-head p,
-.market-cache-readiness-head p {
+.market-cache-readiness-head p,
+.market-operation-readiness-head p {
     color: var(--stock-muted);
     line-height: 1.5;
 }
@@ -622,7 +625,8 @@ textarea:focus,
 .operator-secondary-action,
 .report-lifecycle-step,
 .incident-card,
-.data-gap-action-card {
+.data-gap-action-card,
+.market-operation-card {
     background: var(--stock-surface-alt);
     border: 1px solid var(--stock-border-soft);
     border-radius: 8px;
@@ -637,19 +641,26 @@ textarea:focus,
 .incident-card small,
 .data-gap-action-card strong,
 .data-gap-action-card span,
-.data-gap-action-card em {
+.data-gap-action-card em,
+.market-operation-card strong,
+.market-operation-card span,
+.market-operation-card em,
+.market-operation-card small {
     display: block;
 }
 .operator-secondary-action span,
 .incident-card span,
-.data-gap-action-card span {
+.data-gap-action-card span,
+.market-operation-card span {
     margin-top: 5px;
     color: var(--stock-muted);
 }
 .operator-secondary-action em,
 .incident-card em,
 .incident-card small,
-.data-gap-action-card em {
+.data-gap-action-card em,
+.market-operation-card em,
+.market-operation-card small {
     margin-top: 7px;
     color: #334155;
     font-style: normal;
@@ -788,7 +799,8 @@ textarea:focus,
 }
 .incident-inbox,
 .data-gap-action-map,
-.market-cache-readiness {
+.market-cache-readiness,
+.market-operation-readiness {
     background: var(--stock-surface);
     border: 1px solid var(--stock-border);
     border-radius: 8px;
@@ -799,14 +811,16 @@ textarea:focus,
 }
 .incident-inbox-head,
 .data-gap-action-head,
-.market-cache-readiness-head {
+.market-cache-readiness-head,
+.market-operation-readiness-head {
     display: flex;
     justify-content: space-between;
     gap: 12px;
     align-items: flex-start;
     margin-bottom: 12px;
 }
-.market-cache-readiness-head {
+.market-cache-readiness-head,
+.market-operation-readiness-head {
     display: block;
 }
 .incident-counts {
@@ -825,7 +839,8 @@ textarea:focus,
 }
 .incident-list,
 .data-gap-action-list,
-.market-cache-readiness-list {
+.market-cache-readiness-list,
+.market-operation-readiness-list {
     display: grid;
     gap: 10px;
 }
@@ -835,6 +850,19 @@ textarea:focus,
 }
 .market-cache-readiness-list {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.market-operation-readiness-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.market-operation-card.is-selected {
+    border-color: var(--stock-accent);
+    box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.18);
+}
+.market-operation-card.is-ready strong {
+    color: var(--stock-accent);
+}
+.market-operation-card.is-attention strong {
+    color: var(--stock-warning);
 }
 .is-critical,
 .is-blocked {
@@ -983,6 +1011,7 @@ textarea:focus,
     .incident-list,
     .data-gap-action-list,
     .market-cache-readiness-list,
+    .market-operation-readiness-list,
     .action-impact-grid {
         grid-template-columns: 1fr;
     }

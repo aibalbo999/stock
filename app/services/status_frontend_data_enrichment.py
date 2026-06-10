@@ -44,6 +44,15 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "return \"primary\" if pending == operation else \"secondary\""
             in data_enrichment_market_source
         ),
+        "ui_data_enrichment_operation_readiness_enabled": (
+            "def market_operation_readiness_rows(" in data_enrichment_market_source
+            and "def _render_market_operation_readiness(" in data_enrichment_market_source
+            and "def _market_operation_readiness_card_html(" in data_enrichment_market_source
+            and 'class="market-operation-readiness"' in data_enrichment_market_source
+            and "執行前檢查" in data_enrichment_market_source
+            and "可送出背景任務" in data_enrichment_market_source
+            and "disabled_reason" in data_enrichment_market_source
+        ),
         "ui_market_cache_operator_summary_enabled": (
             "def market_cache_operator_summary(" in data_enrichment_market_source
             and "def _render_market_cache_operator_summary(" in data_enrichment_market_source

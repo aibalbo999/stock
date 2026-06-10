@@ -36,6 +36,36 @@ MARKET_DATA_OPERATIONS = {
     "company_filings_fetch",
 }
 
+MARKET_OPERATION_METADATA = {
+    "market_refresh": {
+        "label": "刷新股價",
+        "impact": "更新最新版報告的股價與成交量判讀。",
+        "date_mode": "range",
+    },
+    "fundamentals_refresh": {
+        "label": "刷新 5 年財報",
+        "impact": "補齊五年財務與品質門檻需要的財報資料。",
+        "date_mode": "six_years",
+    },
+    "valuation_refresh": {
+        "label": "刷新估值",
+        "impact": "更新本益比、股價淨值比與殖利率判讀。",
+        "date_mode": "range",
+    },
+    "company_filings_fetch": {
+        "label": "補抓公司文件",
+        "impact": "補齊公司文件、法說會或公開資訊缺口。",
+        "date_mode": "none",
+    },
+}
+
+MARKET_OPERATION_ORDER = [
+    "market_refresh",
+    "fundamentals_refresh",
+    "valuation_refresh",
+    "company_filings_fetch",
+]
+
 
 def render_market_data_tab(allowed_tickers: list[str]) -> None:
     render_section_header(
@@ -97,10 +127,17 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
 
     has_market_selection = bool(selected_market_tickers)
     has_valid_market_range = market_start <= market_end
+    operation_readiness = market_operation_readiness_rows(
+        selected_market_tickers=selected_market_tickers,
+        market_start=market_start,
+        market_end=market_end,
+        pending_operation=pending_operation,
+    )
     if not has_market_selection:
         st.caption("請先選擇至少一檔股票。")
     if not has_valid_market_range:
         st.error("起始日期不可晚於結束日期。")
+    _render_market_operation_readiness(operation_readiness)
 
     refresh_cols = st.columns(4)
     refresh_price = refresh_cols[0].button(
@@ -297,6 +334,46 @@ def market_data_operation_button_type(
     return "primary" if operation == "market_refresh" else "secondary"
 
 
+def market_operation_readiness_rows(
+    *,
+    selected_market_tickers: list[str],
+    market_start: Any,
+    market_end: Any,
+    pending_operation: str | None,
+) -> list[dict[str, str]]:
+    selected_count = len([ticker for ticker in selected_market_tickers if str(ticker).strip()])
+    has_market_selection = selected_count > 0
+    has_valid_market_range = market_start <= market_end
+
+    rows = []
+    for operation in MARKET_OPERATION_ORDER:
+        metadata = MARKET_OPERATION_METADATA[operation]
+        disabled_reason = _market_operation_disabled_reason(
+            operation,
+            has_market_selection=has_market_selection,
+            has_valid_market_range=has_valid_market_range,
+        )
+        rows.append(
+            {
+                "operation": operation,
+                "label": metadata["label"],
+                "state": "ready" if not disabled_reason else "attention",
+                "selected": "yes" if str(pending_operation or "").strip() == operation else "no",
+                "caption": _market_operation_caption(
+                    selected_count,
+                    date_mode=metadata["date_mode"],
+                    market_start=market_start,
+                    market_end=market_end,
+                ),
+                "disabled_reason": disabled_reason or "可送出背景任務",
+                "impact": metadata["impact"],
+                "post_action_hint": "完成後回報告中心確認是否需要重跑。",
+                "button_type": market_data_operation_button_type(pending_operation, operation),
+            }
+        )
+    return rows
+
+
 def market_cache_operator_summary(cache_summary: dict) -> list[dict[str, str]]:
     ticker_count = _ticker_count(cache_summary)
     snapshots = _dict_rows(cache_summary.get("market_snapshots"))
@@ -352,6 +429,40 @@ def market_cache_operator_summary(cache_summary: dict) -> list[dict[str, str]]:
     ]
 
 
+def _market_operation_disabled_reason(
+    operation: str,
+    *,
+    has_market_selection: bool,
+    has_valid_market_range: bool,
+) -> str:
+    if not has_market_selection:
+        return "請先選擇至少一檔股票"
+    if operation in {"market_refresh", "valuation_refresh"} and not has_valid_market_range:
+        return "起始日期不可晚於結束日期"
+    return ""
+
+
+def _market_operation_caption(
+    selected_count: int,
+    *,
+    date_mode: str,
+    market_start: Any,
+    market_end: Any,
+) -> str:
+    ticker_label = f"{selected_count} 檔" if selected_count else "尚未選擇股票"
+    if date_mode == "range":
+        return f"{ticker_label}｜{_date_text(market_start)} → {_date_text(market_end)}"
+    if date_mode == "six_years":
+        return f"{ticker_label}｜近 6 年至 {_date_text(market_end)}"
+    return f"{ticker_label}｜不需日期範圍"
+
+
+def _date_text(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return str(value.isoformat())
+    return str(value)
+
+
 def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str | None:
     pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
     if not pending_operation:
@@ -360,6 +471,33 @@ def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str 
     ticker_label = "、".join(selected_market_tickers) if selected_market_tickers else "尚未選擇股票"
     st.info(f"已依建議準備「{operation_label}」，股票：{ticker_label}。確認日期後按下對應按鈕送出背景任務。")
     return str(pending_operation)
+
+
+def _render_market_operation_readiness(rows: list[dict[str, str]]) -> None:
+    cards_html = "\n".join(_market_operation_readiness_card_html(row) for row in rows)
+    st.markdown(
+        f"""<section class="market-operation-readiness" aria-label="資料補強執行前檢查">
+<div class="market-operation-readiness-head">
+<div class="workspace-kicker">執行前檢查</div>
+<h3>先確認能否送出背景任務</h3>
+<p>每個刷新操作會先檢查股票、日期與目前建議操作；可送出時再按下方按鈕。</p>
+</div>
+<div class="market-operation-readiness-list">
+{cards_html}
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _market_operation_readiness_card_html(row: dict[str, str]) -> str:
+    selected_class = " is-selected" if row.get("selected") == "yes" else ""
+    return f"""<article class="market-operation-card is-{escape(row.get("state", "attention"))}{selected_class}">
+<span>{escape(row.get("label", "-"))}</span>
+<strong>{escape(row.get("disabled_reason", ""))}</strong>
+<em>{escape(row.get("caption", ""))}</em>
+<small>{escape(row.get("impact", ""))} {escape(row.get("post_action_hint", ""))}</small>
+</article>"""
 
 
 def _allowed_pending_tickers(value: object, allowed_tickers: list[str]) -> list[str]:

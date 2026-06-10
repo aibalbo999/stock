@@ -220,6 +220,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "會更新本益比、股價淨值比與殖利率判讀" in source
     assert "會補齊公司文件、法說會或公開資訊缺口" in source
     assert "action-impact-grid" in combined
+    assert "market_operation_readiness_rows(" in source
+    assert "_render_market_operation_readiness(" in source
+    assert "market-operation-readiness" in combined
+    assert "執行前檢查" in source
+    assert "可送出背景任務" in source
     assert "from app.ui.data_gap_actions import (" in source
     assert "data_gap_action_items(" in source
     assert "data_gap_action_summary(" in source

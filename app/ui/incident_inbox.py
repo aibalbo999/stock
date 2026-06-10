@@ -1,0 +1,316 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.ui.operator_status import quota_operator_summary
+
+
+SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
+CATEGORY_ORDER = {
+    "task_queue": 0,
+    "report_quality": 1,
+    "whitelist": 2,
+    "data_source": 3,
+    "vector_store": 4,
+    "runtime_storage": 5,
+    "quota": 6,
+    "unknown": 7,
+}
+FAILURE_CATEGORY_MAP = {
+    "payload_validation": "whitelist",
+    "data_source": "data_source",
+    "vector_store": "vector_store",
+    "runtime_storage": "runtime_storage",
+}
+
+
+def incident_inbox_items(
+    service_snapshot: dict | None,
+    task_summary: dict | None,
+    quota: dict | None = None,
+    report_lifecycle: dict | None = None,
+) -> list[dict[str, Any]]:
+    incidents: list[dict[str, Any]] = []
+    service = _dict_value(service_snapshot)
+    summary = _dict_value(task_summary)
+    task_queue = _dict_value(service.get("task_queue"))
+    totals = _dict_value(summary.get("totals"))
+
+    if not _queue_ready(task_queue):
+        incidents.append(
+            {
+                "id": "task_queue_unavailable",
+                "severity": "critical",
+                "category": "task_queue",
+                "title": "背景任務未就緒",
+                "impact": "分析、補強與資料刷新可能無法完成。",
+                "next_action": "到維護頁檢查 Redis/Celery worker。",
+                "route_hint": "settings:maintenance",
+                "retryable": False,
+                "source": "task_queue",
+                "created_at": "",
+                "dedupe_key": "task_queue:unavailable",
+            }
+        )
+
+    stale_count = _int_value(totals.get("stale_running_count"))
+    if stale_count > 0:
+        incidents.append(
+            {
+                "id": "task_queue_stale_running",
+                "severity": "critical",
+                "category": "task_queue",
+                "title": f"有 {stale_count} 個任務疑似卡住",
+                "impact": "新的補強或報告任務可能排隊等待過久。",
+                "next_action": "到維護頁查看任務狀態並重試可重試任務。",
+                "route_hint": "settings:maintenance",
+                "retryable": False,
+                "source": "task_queue",
+                "created_at": "",
+                "dedupe_key": "task_queue:stale_running",
+            }
+        )
+
+    incidents.extend(_task_alert_incidents(summary))
+    incidents.extend(_failure_incidents(summary))
+    quota_incident = _quota_incident(_dict_value(quota))
+    if quota_incident:
+        incidents.append(quota_incident)
+    lifecycle_incident = _report_lifecycle_incident(_dict_value(report_lifecycle))
+    if lifecycle_incident:
+        incidents.append(lifecycle_incident)
+
+    return top_incidents(_dedupe_incidents(incidents), limit=50)
+
+
+def top_incidents(incidents: list[dict], limit: int = 3) -> list[dict]:
+    return sorted(incidents, key=_incident_sort_key)[:limit]
+
+
+def incident_counts(incidents: list[dict]) -> dict[str, int]:
+    return {
+        "critical": sum(1 for incident in incidents if incident.get("severity") == "critical"),
+        "warning": sum(1 for incident in incidents if incident.get("severity") == "warning"),
+        "info": sum(1 for incident in incidents if incident.get("severity") == "info"),
+    }
+
+
+def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
+    incidents: list[dict[str, Any]] = []
+    for index, alert in enumerate(_list_value(task_summary.get("alerts"))):
+        severity = "critical" if alert.get("severity") == "error" else "warning"
+        code = _text(alert.get("code"), default=f"alert_{index}")
+        message = _text(alert.get("message"), default=code)
+        next_steps_value = alert.get("next_steps")
+        next_steps = (
+            [str(step).strip() for step in next_steps_value if str(step).strip()]
+            if isinstance(next_steps_value, list)
+            else []
+        )
+        incidents.append(
+            {
+                "id": f"task_alert_{code}",
+                "severity": severity,
+                "category": "task_queue",
+                "title": message,
+                "impact": "背景任務觀測已回報異常。",
+                "next_action": "；".join(next_steps) if next_steps else "到維護頁查看背景任務觀測。",
+                "route_hint": "settings:maintenance",
+                "retryable": False,
+                "source": code,
+                "created_at": "",
+                "dedupe_key": f"task_alert:{code}",
+            }
+        )
+    return incidents
+
+
+def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:
+    incidents = []
+    for failure in _recent_failures(task_summary):
+        category = _failure_category(failure)
+        task_id = _text(failure.get("task_id"))
+        operation = _text(failure.get("operation"), default="task")
+        retryable = bool(failure.get("retryable"))
+        incidents.append(
+            {
+                "id": f"failure_{task_id or operation}_{category}",
+                "severity": "critical" if category == "runtime_storage" else "warning",
+                "category": category,
+                "title": _failure_title(category),
+                "impact": _failure_impact(category),
+                "next_action": _failure_next_action(category, retryable),
+                "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
+                "retryable": retryable,
+                "source": task_id or operation,
+                "created_at": _text(failure.get("finished_at") or failure.get("created_at")),
+                "dedupe_key": f"failure:{category}:{task_id or operation}",
+            }
+        )
+    return incidents
+
+
+def _quota_incident(quota: dict) -> dict[str, Any] | None:
+    if not quota:
+        return None
+    summary = quota_operator_summary(quota)
+    if summary.get("state") == "ready":
+        return None
+    model = summary.get("recommended_model") or "-"
+    return {
+        "id": f"quota_{model}",
+        "severity": "warning",
+        "category": "quota",
+        "title": "AI 額度需注意",
+        "impact": f"目前建議模型 {model} 額度狀態為 {summary.get('remaining') or '-'}。",
+        "next_action": "查看額度頁，等待重置或確認 fallback 模型。",
+        "route_hint": "settings:ai_quota",
+        "retryable": False,
+        "source": model,
+        "created_at": "",
+        "dedupe_key": f"quota:{model}",
+    }
+
+
+def _report_lifecycle_incident(lifecycle: dict) -> dict[str, Any] | None:
+    state = _text(lifecycle.get("overall_state"))
+    if state not in {"blocked", "attention"}:
+        return None
+    report_id = lifecycle.get("report_id")
+    source = f"report:{report_id}" if report_id is not None else "report"
+    return {
+        "id": f"report_quality_{report_id or 'latest'}",
+        "severity": "critical" if state == "blocked" else "warning",
+        "category": "report_quality",
+        "title": lifecycle.get("trust_label") or "報告品質需確認",
+        "impact": lifecycle.get("trust_explanation") or "最新版報告需要人工確認。",
+        "next_action": lifecycle.get("primary_action") or "查看報告中心",
+        "route_hint": lifecycle.get("route_hint") or "report_center",
+        "retryable": False,
+        "source": source,
+        "created_at": "",
+        "dedupe_key": f"report_quality:{source}:{state}",
+    }
+
+
+def _recent_failures(task_summary: dict) -> list[dict]:
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for row in _list_value(task_summary.get("recent_failures")):
+        identity = _failure_identity(row)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        rows.append(row)
+
+    for row in _list_value(task_summary.get("recent")):
+        if not _is_failed_task(row):
+            continue
+        identity = _failure_identity(row)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        rows.append(row)
+    return rows
+
+
+def _is_failed_task(row: dict) -> bool:
+    status = _text(row.get("status")).casefold()
+    celery_status = _text(row.get("celery_status")).casefold()
+    if status in {"failed", "failure", "cancelled", "error"} or celery_status in {
+        "failed",
+        "failure",
+        "revoked",
+    }:
+        return True
+    return bool(row.get("error") or row.get("error_category"))
+
+
+def _failure_identity(row: dict) -> str:
+    task_id = _text(row.get("task_id"))
+    if task_id:
+        return task_id
+    return ":".join(
+        [
+            _text(row.get("operation"), default="task"),
+            _text(row.get("error_category"), default="unknown"),
+            _text(row.get("finished_at") or row.get("created_at")),
+        ]
+    )
+
+
+def _failure_category(failure: dict) -> str:
+    raw_category = _text(failure.get("error_category"), default="unknown")
+    return FAILURE_CATEGORY_MAP.get(raw_category, "unknown")
+
+
+def _failure_title(category: str) -> str:
+    return {
+        "whitelist": "白名單或輸入擋下任務",
+        "data_source": "資料來源抓取失敗",
+        "vector_store": "RAG 向量檢索曾降級",
+        "runtime_storage": "本機儲存失敗",
+    }.get(category, "有失敗任務")
+
+
+def _failure_impact(category: str) -> str:
+    return {
+        "whitelist": "補強或重跑沒有進入有效資料流程。",
+        "data_source": "最新版報告可能缺少最新市場或公司資料。",
+        "vector_store": "報告可降級完成，但檢索覆蓋率較低。",
+        "runtime_storage": "報告檔案、SQLite 或備份可能沒有寫入成功。",
+    }.get(category, "近期任務失敗，需查看維護頁。")
+
+
+def _failure_next_action(category: str, retryable: bool) -> str:
+    if category == "whitelist":
+        return "修正輸入後重試" if retryable else "檢查輸入與白名單"
+    if retryable:
+        return "到維護頁重試此任務"
+    return "到維護頁查看失敗診斷"
+
+
+def _dedupe_incidents(incidents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    selected: dict[str, dict[str, Any]] = {}
+    for incident in incidents:
+        key = _text(incident.get("dedupe_key"), default=_text(incident.get("id")))
+        current = selected.get(key)
+        if current is None or _incident_sort_key(incident) < _incident_sort_key(current):
+            selected[key] = incident
+    return list(selected.values())
+
+
+def _incident_sort_key(incident: dict) -> tuple[int, int, int, str]:
+    severity = SEVERITY_ORDER.get(_text(incident.get("severity")), 9)
+    category = CATEGORY_ORDER.get(_text(incident.get("category")), 9)
+    retry_rank = 0 if incident.get("retryable") else 1
+    created_at = _text(incident.get("created_at"))
+    return (severity, category, retry_rank, created_at)
+
+
+def _queue_ready(task_queue: dict) -> bool:
+    return bool(
+        task_queue.get("ready")
+        and task_queue.get("processing_ready")
+        and task_queue.get("worker_online")
+    )
+
+
+def _dict_value(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_value(value: Any) -> list[dict]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _text(value: Any, *, default: str = "") -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or default
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

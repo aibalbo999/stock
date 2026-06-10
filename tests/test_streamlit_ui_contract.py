@@ -211,6 +211,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_route_controls import render_operator_route_button" in source
     assert "_render_data_gap_action_controls(" in source
     assert 'key=f"data_gap_action_{index}"' in source
+    assert "def market_data_operation_button_type(" in source
+    assert "MARKET_DATA_OPERATIONS = {" in source
+    assert 'type=market_data_operation_button_type(pending_operation, "market_refresh")' in source
+    assert (
+        'type=market_data_operation_button_type(pending_operation, "company_filings_fetch")'
+        in source
+    )
     assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source

@@ -28,6 +28,13 @@ from app.ui.data_enrichment_runtime import (
 from app.ui.operator_route_controls import render_operator_route_button
 from app.ui.operator_routes import DATA_ENRICHMENT_OPERATION_LABELS
 
+MARKET_DATA_OPERATIONS = {
+    "market_refresh",
+    "fundamentals_refresh",
+    "valuation_refresh",
+    "company_filings_fetch",
+}
+
 
 def render_market_data_tab(allowed_tickers: list[str]) -> None:
     render_section_header(
@@ -78,7 +85,7 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
         options=allowed_tickers,
         key="market_data_tickers",
     )
-    _render_pending_operation_notice(selected_market_tickers)
+    pending_operation = _render_pending_operation_notice(selected_market_tickers)
     col_start, col_end = st.columns(2)
     with col_start:
         market_start = st.date_input(
@@ -97,15 +104,24 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     refresh_cols = st.columns(4)
     refresh_price = refresh_cols[0].button(
         "刷新股價",
-        type="primary",
+        type=market_data_operation_button_type(pending_operation, "market_refresh"),
         disabled=not (has_market_selection and has_valid_market_range),
     )
-    refresh_financials = refresh_cols[1].button("刷新 5 年財報", disabled=not has_market_selection)
+    refresh_financials = refresh_cols[1].button(
+        "刷新 5 年財報",
+        type=market_data_operation_button_type(pending_operation, "fundamentals_refresh"),
+        disabled=not has_market_selection,
+    )
     refresh_valuations = refresh_cols[2].button(
         "刷新估值",
+        type=market_data_operation_button_type(pending_operation, "valuation_refresh"),
         disabled=not (has_market_selection and has_valid_market_range),
     )
-    refresh_filings = refresh_cols[3].button("補抓公司文件", disabled=not has_market_selection)
+    refresh_filings = refresh_cols[3].button(
+        "補抓公司文件",
+        type=market_data_operation_button_type(pending_operation, "company_filings_fetch"),
+        disabled=not has_market_selection,
+    )
     st.markdown(
         """<div class="action-impact-grid" aria-label="資料補強影響">
 <div><strong>刷新股價</strong><span>會更新最新版報告的股價與成交量判讀</span></div>
@@ -270,13 +286,24 @@ def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
     )
 
 
-def _render_pending_operation_notice(selected_market_tickers: list[str]) -> None:
+def market_data_operation_button_type(
+    pending_operation: str | None,
+    operation: str,
+) -> str:
+    pending = str(pending_operation or "").strip()
+    if pending in MARKET_DATA_OPERATIONS:
+        return "primary" if pending == operation else "secondary"
+    return "primary" if operation == "market_refresh" else "secondary"
+
+
+def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str | None:
     pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
     if not pending_operation:
-        return
+        return None
     operation_label = DATA_ENRICHMENT_OPERATION_LABELS.get(pending_operation, "資料補強")
     ticker_label = "、".join(selected_market_tickers) if selected_market_tickers else "尚未選擇股票"
     st.info(f"已依建議準備「{operation_label}」，股票：{ticker_label}。確認日期後按下對應按鈕送出背景任務。")
+    return str(pending_operation)
 
 
 def _allowed_pending_tickers(value: object, allowed_tickers: list[str]) -> list[str]:

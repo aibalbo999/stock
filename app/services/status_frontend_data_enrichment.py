@@ -31,6 +31,19 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "pending_data_enrichment_operation" in data_enrichment_market_source
             and "pending_data_enrichment_tickers" in data_enrichment_market_source
         ),
+        "ui_data_enrichment_pending_operation_button_priority_enabled": (
+            "def market_data_operation_button_type(" in data_enrichment_market_source
+            and "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_source
+            and "type=market_data_operation_button_type(pending_operation, \"market_refresh\")"
+            in data_enrichment_market_source
+            and (
+                "type=market_data_operation_button_type("
+                "pending_operation, \"company_filings_fetch\""
+            )
+            in data_enrichment_market_source
+            and "return \"primary\" if pending == operation else \"secondary\""
+            in data_enrichment_market_source
+        ),
         **frontend_data_enrichment_tabs_status(source_context),
         **frontend_data_enrichment_runtime_status(source_context),
     }

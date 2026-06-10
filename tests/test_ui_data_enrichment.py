@@ -4,6 +4,7 @@ from app.ui.data_enrichment import (
     company_filing_runtime_rows,
     company_filing_visual_rag_model_chain_rows,
 )
+from app.ui.data_enrichment_market import market_data_operation_button_type
 
 
 def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks() -> None:
@@ -87,6 +88,21 @@ def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks()
             "下一步": "若 MOPS/IR 常被擋，可串接 TEJ 或專業文件 API。",
         },
     ]
+
+
+def test_market_data_operation_button_type_prioritizes_pending_operation() -> None:
+    assert market_data_operation_button_type(None, "market_refresh") == "primary"
+    assert market_data_operation_button_type(None, "valuation_refresh") == "secondary"
+    assert (
+        market_data_operation_button_type("company_filings_fetch", "company_filings_fetch")
+        == "primary"
+    )
+    assert market_data_operation_button_type("company_filings_fetch", "market_refresh") == (
+        "secondary"
+    )
+    assert market_data_operation_button_type("valuation_refresh", "valuation_refresh") == (
+        "primary"
+    )
 
 
 def test_company_filing_runtime_rows_hide_when_service_status_missing() -> None:

@@ -191,6 +191,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_data_enrichment_runtime_status_extracted")
             and frontend_status.get("ui_operator_data_gap_prefill_enabled")
             and frontend_status.get("ui_data_enrichment_pending_operation_button_priority_enabled")
+            and frontend_status.get("ui_market_cache_operator_summary_enabled")
             and frontend_status.get("frontend_settings_ui_status_extracted")
             and frontend_status.get("frontend_settings_core_status_extracted")
             and frontend_status.get("frontend_maintenance_ui_status_extracted")

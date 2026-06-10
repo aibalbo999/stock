@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from html import escape
+from typing import Any
 
 import streamlit as st
 
@@ -296,6 +297,61 @@ def market_data_operation_button_type(
     return "primary" if operation == "market_refresh" else "secondary"
 
 
+def market_cache_operator_summary(cache_summary: dict) -> list[dict[str, str]]:
+    ticker_count = _ticker_count(cache_summary)
+    snapshots = _dict_rows(cache_summary.get("market_snapshots"))
+    valuations = _dict_rows(cache_summary.get("valuations"))
+    filings = _dict_rows(cache_summary.get("company_filings"))
+    financial_count = _int_value(cache_summary.get("financial_metric_count"))
+
+    return [
+        _market_cache_row(
+            title="股價快取",
+            rows=snapshots,
+            ticker_count=ticker_count,
+            date_key="trade_date",
+            missing_action="刷新股價",
+            empty_caption="尚無股價快取；建議刷新股價。",
+            ready_action="可沿用",
+        ),
+        _market_cache_row(
+            title="估值快取",
+            rows=valuations,
+            ticker_count=ticker_count,
+            date_key="trade_date",
+            missing_action="刷新估值",
+            empty_caption="尚無估值快取；建議刷新估值。",
+            ready_action="可沿用",
+        ),
+        {
+            "title": "財報快取",
+            "value": f"{financial_count} 筆",
+            "state": "ready" if financial_count else "attention",
+            "caption": (
+                f"財報三表科目快取 {financial_count} 筆。"
+                if financial_count
+                else "尚無財報三表科目快取；建議刷新 5 年財報。"
+            ),
+            "action_label": "可沿用" if financial_count else "刷新 5 年財報",
+        },
+        {
+            "title": "公司文件",
+            "value": f"{len(filings)} 筆",
+            "state": "ready" if filings else "attention",
+            "caption": (
+                f"最新文件日期 {_latest_date(filings, 'published_at')}。"
+                if filings and _latest_date(filings, "published_at")
+                else (
+                    f"公司文件快取 {len(filings)} 筆。"
+                    if filings
+                    else "尚無公司文件快取；若報告缺法說或公開資訊，請補抓公司文件。"
+                )
+            ),
+            "action_label": "可沿用" if filings else "補抓公司文件",
+        },
+    ]
+
+
 def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str | None:
     pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
     if not pending_operation:
@@ -328,6 +384,7 @@ def _render_cache_summary(allowed_tickers: list[str]) -> None:
         },
         error_message="讀取市場快取失敗",
     )
+    _render_market_cache_operator_summary(cache_summary)
     cached_snapshots = cache_summary.get("market_snapshots") or []
     cached_valuations = cache_summary.get("valuations") or []
     cached_filings = cache_summary.get("company_filings") or []
@@ -396,3 +453,112 @@ def _render_cache_summary(allowed_tickers: list[str]) -> None:
             )
         else:
             st.info("尚無公司文件快取。")
+
+
+def _render_market_cache_operator_summary(cache_summary: dict) -> None:
+    rows = market_cache_operator_summary(cache_summary if isinstance(cache_summary, dict) else {})
+    cards_html = "\n".join(_market_cache_card_html(row) for row in rows)
+    st.markdown(
+        f"""<section class="market-cache-readiness" aria-label="市場快取新鮮度">
+<div class="market-cache-readiness-head">
+<div class="workspace-kicker">市場快取新鮮度</div>
+<h3>先刷新最會影響報告判讀的資料</h3>
+<p>股價、估值、財報與公司文件會影響最新版報告的品質門檻與補強建議。</p>
+</div>
+<div class="market-cache-readiness-list">
+{cards_html}
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _market_cache_card_html(row: dict[str, str]) -> str:
+    return f"""<article class="market-cache-card is-{escape(row.get("state", "attention"))}">
+<span>{escape(row.get("title", "-"))}</span>
+<strong>{escape(row.get("value", "-"))}</strong>
+<em>{escape(row.get("caption", ""))}</em>
+<small>{escape(row.get("action_label", ""))}</small>
+</article>"""
+
+
+def _market_cache_row(
+    *,
+    title: str,
+    rows: list[dict],
+    ticker_count: int,
+    date_key: str,
+    missing_action: str,
+    empty_caption: str,
+    ready_action: str,
+) -> dict[str, str]:
+    row_count = len(rows)
+    value = _coverage_value(row_count, ticker_count)
+    if not rows:
+        return {
+            "title": title,
+            "value": value,
+            "state": "attention",
+            "caption": empty_caption,
+            "action_label": missing_action,
+        }
+
+    missing_count = max(0, ticker_count - row_count) if ticker_count else 0
+    stale = _has_stale_cache_source(rows)
+    if stale or missing_count:
+        reasons = []
+        if stale:
+            reasons.append("含快取救援資料")
+        if missing_count:
+            reasons.append(f"缺 {missing_count} 檔")
+        return {
+            "title": title,
+            "value": value,
+            "state": "attention",
+            "caption": "，".join(reasons) + f"；建議{missing_action}。",
+            "action_label": missing_action,
+        }
+
+    latest_date = _latest_date(rows, date_key)
+    return {
+        "title": title,
+        "value": value,
+        "state": "ready",
+        "caption": f"最新交易日 {latest_date}。" if latest_date else f"已有 {row_count} 檔快取。",
+        "action_label": ready_action,
+    }
+
+
+def _coverage_value(row_count: int, ticker_count: int) -> str:
+    if ticker_count:
+        return f"{row_count} / {ticker_count} 檔"
+    return f"{row_count} 檔"
+
+
+def _has_stale_cache_source(rows: list[dict]) -> bool:
+    return any("cached-stale" in str(row.get("source") or "") for row in rows)
+
+
+def _latest_date(rows: list[dict], key: str) -> str:
+    dates = sorted(
+        str(row.get(key) or "")[:10]
+        for row in rows
+        if isinstance(row, dict) and str(row.get(key) or "").strip()
+    )
+    return dates[-1] if dates else ""
+
+
+def _ticker_count(cache_summary: dict) -> int:
+    tickers = cache_summary.get("tickers") if isinstance(cache_summary, dict) else []
+    return len(tickers) if isinstance(tickers, list) else 0
+
+
+def _dict_rows(value: Any) -> list[dict]:
+    return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0

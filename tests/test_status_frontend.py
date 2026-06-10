@@ -191,6 +191,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         status["frontend"]["ui_data_enrichment_pending_operation_button_priority_enabled"]
         is True
     )
+    assert status["frontend"]["ui_market_cache_operator_summary_enabled"] is True
     assert status["frontend"]["frontend_external_deployment_status_extracted"] is True
     assert status["frontend"]["frontend_external_deployment_status_path"] == (
         "app/services/status_frontend_external_deployment.py"
@@ -434,6 +435,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         ]
         is True
     )
+    assert frontend_arch["evidence"]["ui_market_cache_operator_summary_enabled"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_domain_status_extracted"] is True
     assert (
         frontend_arch["evidence"]["frontend_external_deployment_readiness_status_extracted"] is True

@@ -44,6 +44,14 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "return \"primary\" if pending == operation else \"secondary\""
             in data_enrichment_market_source
         ),
+        "ui_market_cache_operator_summary_enabled": (
+            "def market_cache_operator_summary(" in data_enrichment_market_source
+            and "def _render_market_cache_operator_summary(" in data_enrichment_market_source
+            and "market_cache_operator_summary(cache_summary" in data_enrichment_market_source
+            and 'class="market-cache-readiness"' in data_enrichment_market_source
+            and "cached-stale" in data_enrichment_market_source
+            and "市場快取新鮮度" in data_enrichment_market_source
+        ),
         **frontend_data_enrichment_tabs_status(source_context),
         **frontend_data_enrichment_runtime_status(source_context),
     }

@@ -221,6 +221,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_route_controls import render_operator_route_button" in source
     assert "_render_data_gap_action_controls(" in source
     assert 'key=f"data_gap_action_{index}"' in source
+    assert "def market_cache_operator_summary(" in source
+    assert "def _render_market_cache_operator_summary(" in source
+    assert "market_cache_operator_summary(cache_summary" in source
+    assert "市場快取新鮮度" in source
+    assert "cached-stale" in source
+    assert "market-cache-readiness" in combined
+    assert "market-cache-card" in combined
     assert "def market_data_operation_button_type(" in source
     assert "MARKET_DATA_OPERATIONS = {" in source
     assert 'type=market_data_operation_button_type(pending_operation, "market_refresh")' in source

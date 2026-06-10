@@ -466,6 +466,7 @@ textarea:focus,
 .report-lifecycle-strip,
 .incident-inbox,
 .data-gap-action-map,
+.market-cache-readiness,
 .action-impact-grid {
     margin: 18px 0;
 }
@@ -504,7 +505,8 @@ textarea:focus,
 .operator-decision-card h3,
 .report-lifecycle-summary strong,
 .incident-inbox h3,
-.data-gap-action-head h3 {
+.data-gap-action-head h3,
+.market-cache-readiness-head h3 {
     margin: 4px 0 6px;
     color: var(--stock-text);
 }
@@ -512,7 +514,8 @@ textarea:focus,
 .operator-decision-meta,
 .report-lifecycle-summary p,
 .report-lifecycle-step p,
-.data-gap-action-head p {
+.data-gap-action-head p,
+.market-cache-readiness-head p {
     color: var(--stock-muted);
     line-height: 1.5;
 }
@@ -687,6 +690,7 @@ textarea:focus,
 }
 .operator-status-card,
 .report-health-card,
+.market-cache-card,
 .action-impact-grid > div {
     background: var(--stock-surface-alt);
     border: 1px solid var(--stock-border-soft);
@@ -695,17 +699,43 @@ textarea:focus,
 }
 .operator-card-title,
 .report-health-card span,
+.market-cache-card span,
 .action-impact-grid span {
     color: var(--stock-muted);
     font-size: 0.9rem;
 }
 .operator-card-value,
 .report-health-card strong,
+.market-cache-card strong,
 .action-impact-grid strong {
     display: block;
     margin-top: 4px;
     color: var(--stock-text);
     font-weight: 800;
+}
+.market-cache-card em,
+.market-cache-card small {
+    display: block;
+    margin-top: 8px;
+    color: var(--stock-muted);
+    font-style: normal;
+    line-height: 1.45;
+}
+.market-cache-card small {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-weight: 700;
+    border: 1px solid rgba(146, 64, 14, 0.24);
+    color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+}
+.market-cache-card.is-ready small {
+    color: var(--stock-accent);
+    background: var(--stock-accent-soft);
+    border-color: rgba(15, 118, 110, 0.25);
 }
 .operator-card-caption {
     margin: 8px 0 12px;
@@ -744,7 +774,8 @@ textarea:focus,
     color: var(--stock-text);
 }
 .incident-inbox,
-.data-gap-action-map {
+.data-gap-action-map,
+.market-cache-readiness {
     background: var(--stock-surface);
     border: 1px solid var(--stock-border);
     border-radius: 8px;
@@ -754,12 +785,16 @@ textarea:focus,
     margin-top: 8px;
 }
 .incident-inbox-head,
-.data-gap-action-head {
+.data-gap-action-head,
+.market-cache-readiness-head {
     display: flex;
     justify-content: space-between;
     gap: 12px;
     align-items: flex-start;
     margin-bottom: 12px;
+}
+.market-cache-readiness-head {
+    display: block;
 }
 .incident-counts {
     display: flex;
@@ -776,10 +811,17 @@ textarea:focus,
     font-weight: 700;
 }
 .incident-list,
-.data-gap-action-list {
+.data-gap-action-list,
+.market-cache-readiness-list {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+}
+.incident-list,
+.data-gap-action-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.market-cache-readiness-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .is-critical,
 .is-blocked {
@@ -927,6 +969,7 @@ textarea:focus,
     .report-lifecycle-steps,
     .incident-list,
     .data-gap-action-list,
+    .market-cache-readiness-list,
     .action-impact-grid {
         grid-template-columns: 1fr;
     }

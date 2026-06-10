@@ -5,6 +5,7 @@ from app.ui.data_enrichment import (
     company_filing_visual_rag_model_chain_rows,
 )
 from app.ui.data_enrichment_market import market_data_operation_button_type
+from app.ui.data_enrichment_market import market_cache_operator_summary
 
 
 def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks() -> None:
@@ -103,6 +104,58 @@ def test_market_data_operation_button_type_prioritizes_pending_operation() -> No
     assert market_data_operation_button_type("valuation_refresh", "valuation_refresh") == (
         "primary"
     )
+
+
+def test_market_cache_operator_summary_flags_stale_and_missing_cache() -> None:
+    rows = market_cache_operator_summary(
+        {
+            "tickers": ["2330", "2382"],
+            "market_snapshots": [
+                {
+                    "ticker": "2330",
+                    "trade_date": "2026-06-05",
+                    "source": "FinMind TaiwanStockPrice; cached-stale",
+                }
+            ],
+            "valuations": [
+                {"ticker": "2330", "trade_date": "2026-06-04", "source": "FinMind"},
+                {"ticker": "2382", "trade_date": "2026-06-04", "source": "FinMind"},
+            ],
+            "company_filings": [],
+            "financial_metric_count": 0,
+        }
+    )
+
+    assert rows == [
+        {
+            "title": "股價快取",
+            "value": "1 / 2 檔",
+            "state": "attention",
+            "caption": "含快取救援資料，缺 1 檔；建議刷新股價。",
+            "action_label": "刷新股價",
+        },
+        {
+            "title": "估值快取",
+            "value": "2 / 2 檔",
+            "state": "ready",
+            "caption": "最新交易日 2026-06-04。",
+            "action_label": "可沿用",
+        },
+        {
+            "title": "財報快取",
+            "value": "0 筆",
+            "state": "attention",
+            "caption": "尚無財報三表科目快取；建議刷新 5 年財報。",
+            "action_label": "刷新 5 年財報",
+        },
+        {
+            "title": "公司文件",
+            "value": "0 筆",
+            "state": "attention",
+            "caption": "尚無公司文件快取；若報告缺法說或公開資訊，請補抓公司文件。",
+            "action_label": "補抓公司文件",
+        },
+    ]
 
 
 def test_company_filing_runtime_rows_hide_when_service_status_missing() -> None:

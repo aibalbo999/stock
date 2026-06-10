@@ -4,7 +4,7 @@ from typing import Any
 
 from app.ui.data_gap_actions import data_gap_action_items
 from app.ui.incident_inbox import incident_inbox_items, top_incidents
-from app.ui.operator_status import quota_operator_summary
+from app.ui.operator_status import quota_operator_summary, service_status_unavailable
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
@@ -29,6 +29,19 @@ def operator_next_best_action(
     report_payload = _dict_value(report_result)
     has_report_detail = _has_report_detail_payload(report_payload)
     lifecycle = latest_report_lifecycle(report_payload, follow_up_plan) if has_report_detail else {}
+    if service_status_unavailable(service_snapshot):
+        return _action(
+            state="attention",
+            priority=1,
+            title="確認系統狀態",
+            reason="目前無法讀取系統狀態；請先到維護頁確認 API 與背景任務觀測。",
+            risk="這不代表背景任務已壞掉，但暫時無法判斷新的分析或補強能否送出。",
+            impact="確認 /services/status 恢復後，再送出新的長時間任務。",
+            action_label="查看維護",
+            route_hint="settings:maintenance",
+            source_ids=["services_status"],
+        )
+
     incidents = incident_inbox_items(service_snapshot, task_summary, quota, lifecycle)
     queue_unavailable_incident = _first_incident_by_id(incidents, "task_queue_unavailable")
     if queue_unavailable_incident:

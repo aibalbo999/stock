@@ -112,6 +112,14 @@ def test_operator_status_overall_blocks_when_any_queue_readiness_flag_is_false()
         }
 
 
+def test_operator_status_overall_marks_missing_service_status_as_attention() -> None:
+    assert operator_status_overall({}, _successful_task_summary(), _reports()) == {
+        "state": "attention",
+        "label": "系統狀態暫不可讀",
+        "detail": "目前無法讀取 /services/status；請到維護頁確認 API 與背景任務狀態。",
+    }
+
+
 def test_operator_status_overall_blocks_for_stale_running_before_failures_or_reports() -> None:
     task_summary = _successful_task_summary()
     task_summary["totals"]["stale_running_count"] = 1
@@ -198,6 +206,19 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
             "route_hint": "task:task-8150",
         },
     ]
+
+
+def test_operator_status_cards_do_not_report_worker_offline_when_service_status_missing() -> None:
+    cards = operator_status_cards({}, _successful_task_summary(), _quota(), _reports())
+
+    assert cards[0] == {
+        "title": "系統狀態",
+        "value": "狀態未知",
+        "caption": "無法讀取 /services/status",
+        "state": "attention",
+        "action_label": "查看維護",
+        "route_hint": "settings:maintenance",
+    }
 
 
 def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback_caption() -> None:

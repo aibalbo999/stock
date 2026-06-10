@@ -40,6 +40,25 @@ def test_operator_next_action_prioritizes_queue_blocker() -> None:
     assert action["route_hint"] == "settings:maintenance"
 
 
+def test_operator_next_action_treats_missing_service_status_as_attention_not_queue_failure() -> None:
+    action = operator_next_best_action(
+        {},
+        {},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert action["state"] == "attention"
+    assert action["priority"] == 1
+    assert action["title"] == "確認系統狀態"
+    assert "目前無法讀取系統狀態" in action["reason"]
+    assert "不代表背景任務已壞掉" in action["risk"]
+    assert action["action_label"] == "查看維護"
+    assert action["route_hint"] == "settings:maintenance"
+
+
 def test_operator_next_action_distinguishes_stale_running_from_queue_unavailable() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

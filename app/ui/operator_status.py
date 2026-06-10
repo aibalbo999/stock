@@ -11,6 +11,13 @@ PAYLOAD_VALIDATION_DETAIL = "補強或重跑任務曾被 payload 驗證擋下；
 def operator_status_overall(
     service_snapshot: dict, task_summary: dict, reports: list[dict]
 ) -> dict[str, str]:
+    if service_status_unavailable(service_snapshot):
+        return {
+            "state": "attention",
+            "label": "系統狀態暫不可讀",
+            "detail": "目前無法讀取 /services/status；請到維護頁確認 API 與背景任務狀態。",
+        }
+
     task_queue = _task_queue_from_snapshot(service_snapshot)
     totals = _dict_value(task_summary.get("totals") if isinstance(task_summary, dict) else None)
     if not _queue_ready(task_queue):
@@ -49,20 +56,29 @@ def operator_status_cards(
     quota: dict,
     reports: list[dict],
 ) -> list[dict[str, str]]:
+    service_status_missing = service_status_unavailable(service_snapshot)
     task_queue = _task_queue_from_snapshot(service_snapshot)
     report = _latest_report(reports)
     quota_summary = quota_operator_summary(quota)
     failure_summary = _first_failure_summary(task_summary)
-    queue_state = "ready" if _queue_ready(task_queue) else "blocked"
+    queue_state = (
+        "attention" if service_status_missing else "ready" if _queue_ready(task_queue) else "blocked"
+    )
 
     return [
         {
             "title": "系統狀態",
-            "value": "可送任務" if queue_state == "ready" else "需維護",
-            "caption": "Worker 線上" if task_queue.get("worker_online") else "Worker 離線",
+            "value": _queue_card_value(queue_state),
+            "caption": (
+                "無法讀取 /services/status"
+                if service_status_missing
+                else "Worker 線上"
+                if task_queue.get("worker_online")
+                else "Worker 離線"
+            ),
             "state": queue_state,
-            "action_label": "查看維護" if queue_state == "blocked" else "開始使用",
-            "route_hint": "settings:maintenance" if queue_state == "blocked" else "analysis",
+            "action_label": "開始使用" if queue_state == "ready" else "查看維護",
+            "route_hint": "analysis" if queue_state == "ready" else "settings:maintenance",
         },
         {
             "title": "最新版報告",
@@ -89,6 +105,12 @@ def operator_status_cards(
             "route_hint": failure_summary["route_hint"],
         },
     ]
+
+
+def service_status_unavailable(service_snapshot: dict | None) -> bool:
+    return not isinstance(service_snapshot, dict) or not isinstance(
+        service_snapshot.get("task_queue"), dict
+    )
 
 
 def quota_operator_summary(quota: dict) -> dict[str, str]:
@@ -198,6 +220,14 @@ def _queue_value(task_queue: dict) -> str:
     if _queue_submission_ready(task_queue):
         return "可提交"
     return "需修復"
+
+
+def _queue_card_value(queue_state: str) -> str:
+    if queue_state == "ready":
+        return "可送任務"
+    if queue_state == "attention":
+        return "狀態未知"
+    return "需維護"
 
 
 def _latest_task(task_summary: dict) -> dict:

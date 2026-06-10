@@ -546,7 +546,9 @@ textarea:focus,
     color: var(--stock-muted);
 }
 .operator-action-controls.is-primary {
-    margin: 8px 0 6px;
+    min-height: 1px;
+    margin: 0 0 2px;
+    padding: 0;
 }
 .operator-action-controls span {
     color: var(--stock-accent);
@@ -930,6 +932,11 @@ textarea:focus,
     }
     .operator-decision-card {
         grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px;
+    }
+    .operator-decision-action {
+        display: none;
     }
 }
 @media (max-width: 640px) {

@@ -339,6 +339,14 @@ def _render_operator_workbench() -> None:
     cards = operator_status_cards(service_snapshot, task_summary, quota, reports)
     card_html = "\n".join(_operator_card_html(card) for card in cards)
     st.markdown(
+        _operator_decision_html(primary_action, [], include_secondary=False),
+        unsafe_allow_html=True,
+    )
+    _render_operator_primary_action_control(primary_action)
+    if secondary_actions:
+        st.markdown(_operator_secondary_actions_html(secondary_actions), unsafe_allow_html=True)
+    _render_operator_action_controls(secondary_actions)
+    st.markdown(
         f"""<section class="operator-workbench" aria-label="今日狀態">
 <div class="operator-workbench-head">
 <div>
@@ -351,14 +359,6 @@ def _render_operator_workbench() -> None:
 </section>""",
         unsafe_allow_html=True,
     )
-    st.markdown(
-        _operator_decision_html(primary_action, [], include_secondary=False),
-        unsafe_allow_html=True,
-    )
-    _render_operator_primary_action_control(primary_action)
-    if secondary_actions:
-        st.markdown(_operator_secondary_actions_html(secondary_actions), unsafe_allow_html=True)
-    _render_operator_action_controls(secondary_actions)
     st.markdown(
         f"""<section class="operator-status-grid" aria-label="狀態摘要">
 {card_html}
@@ -443,10 +443,7 @@ def _looks_like_operator_route(value: str) -> bool:
 
 def _render_operator_primary_action_control(primary_action: dict) -> None:
     st.markdown(
-        """<section class="operator-action-controls is-primary" aria-label="主要建議操作">
-<span>主要操作</span>
-<strong>按下後會帶你到對應頁面</strong>
-</section>""",
+        """<section class="operator-action-controls is-primary" aria-label="主要建議操作"></section>""",
         unsafe_allow_html=True,
     )
     _render_operator_route_button(

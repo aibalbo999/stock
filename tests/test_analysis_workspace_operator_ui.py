@@ -116,6 +116,73 @@ def test_operator_workbench_renders_decision_detail_before_primary_button(monkey
     assert decision_index < primary_button_index
 
 
+def test_operator_workbench_renders_primary_recommendation_before_status_overview(
+    monkeypatch,
+) -> None:
+    events: list[tuple[str, str]] = []
+
+    def fake_load(endpoint: str, default, **_kwargs):
+        if endpoint == "/reports?limit=5":
+            return []
+        return default
+
+    monkeypatch.setattr(analysis_workspace, "load_api_json_or_default", fake_load)
+    monkeypatch.setattr(
+        analysis_workspace,
+        "operator_next_best_action",
+        lambda *_args, **_kwargs: {
+            "title": "建立第一份分析",
+            "reason": "目前尚未有最新版報告。",
+            "risk": "沒有可讀報告。",
+            "impact": "建立分析後才能閱讀。",
+            "action_label": "建立分析",
+            "route_hint": "analysis",
+            "source_ids": [],
+            "state": "attention",
+        },
+    )
+    monkeypatch.setattr(analysis_workspace, "operator_secondary_actions", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        analysis_workspace,
+        "operator_status_overall",
+        lambda *_args, **_kwargs: {
+            "label": "尚未有最新版報告",
+            "detail": "先建立分析。",
+            "state": "attention",
+        },
+    )
+    monkeypatch.setattr(analysis_workspace, "operator_status_cards", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        analysis_workspace.st,
+        "markdown",
+        lambda body, **_kwargs: events.append(("markdown", str(body))),
+    )
+    monkeypatch.setattr(
+        analysis_workspace,
+        "render_operator_route_button",
+        lambda action, **_kwargs: events.append(("button", str(action.get("action_label")))),
+    )
+
+    analysis_workspace._render_operator_workbench()
+
+    decision_index = next(
+        index
+        for index, (kind, body) in enumerate(events)
+        if kind == "markdown" and "operator-decision-card" in body
+    )
+    primary_button_index = next(
+        index
+        for index, (kind, body) in enumerate(events)
+        if kind == "button" and body == "建立分析"
+    )
+    status_overview_index = next(
+        index
+        for index, (kind, body) in enumerate(events)
+        if kind == "markdown" and "operator-workbench" in body
+    )
+    assert decision_index < primary_button_index < status_overview_index
+
+
 def test_operator_workbench_renders_primary_button_between_decision_and_secondary_cards(
     monkeypatch,
 ) -> None:

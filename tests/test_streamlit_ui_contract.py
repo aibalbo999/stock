@@ -105,6 +105,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "operator-decision-card" in combined
     assert "operator-secondary-actions" in combined
     assert "operator-action-controls" in combined
+    assert "operator-action-controls is-primary" in source
+    assert "按下後會帶你到對應頁面" not in source
     assert "_render_operator_primary_action_control(" in source
     assert "_render_operator_action_controls(" in source
     assert source.index("_render_operator_workbench()") < source.index("workflow-strip")

@@ -26,6 +26,30 @@ def test_operator_route_target_opens_data_enrichment_and_analysis_pages() -> Non
     }
 
 
+def test_operator_route_target_prefills_data_enrichment_operation() -> None:
+    assert operator_route_target("data_enrichment:market_refresh:2330,2382") == {
+        "page": "pages/03_資料補強.py",
+        "session_updates": {
+            "pending_data_enrichment_section": "market",
+            "pending_data_enrichment_operation": "market_refresh",
+            "pending_data_enrichment_tickers": ["2330", "2382"],
+        },
+        "caption": "開啟資料補強，準備刷新股價：2330、2382",
+    }
+
+
+def test_operator_route_target_prefills_manual_ingest_section() -> None:
+    assert operator_route_target("data_enrichment:manual_ingest:2330") == {
+        "page": "pages/03_資料補強.py",
+        "session_updates": {
+            "pending_data_enrichment_section": "manual",
+            "pending_data_enrichment_operation": "manual_ingest",
+            "pending_data_enrichment_tickers": ["2330"],
+        },
+        "caption": "開啟資料補強，準備匯入新聞/研究摘要：2330",
+    }
+
+
 def test_operator_route_target_preserves_task_for_maintenance_drilldown() -> None:
     target = operator_route_target("task:abc-123")
 

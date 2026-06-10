@@ -66,6 +66,8 @@ def data_gap_action_items(
         route_hint = metadata["route_hint"]
         if action == "rerun_analysis" and report_id is not None:
             route_hint = f"report:{report_id}"
+        elif route_hint == "data_enrichment":
+            route_hint = _data_enrichment_route_hint(metadata["operation"], tickers)
         dedupe_key = _dedupe_key(action, metadata, row, tickers, purpose)
         if dedupe_key in seen:
             continue
@@ -121,6 +123,13 @@ def _post_action_hint(action: str) -> str:
     if action == "rerun_analysis":
         return "補強完成後重跑報告"
     return "補完後建議重跑報告"
+
+
+def _data_enrichment_route_hint(operation: str, tickers: list[str]) -> str:
+    ticker_suffix = ",".join(tickers)
+    if ticker_suffix:
+        return f"data_enrichment:{operation}:{ticker_suffix}"
+    return f"data_enrichment:{operation}"
 
 
 def _tickers(row: dict, request: dict) -> list[str]:

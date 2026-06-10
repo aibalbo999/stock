@@ -25,6 +25,8 @@ from app.ui.data_enrichment_runtime import (
     company_filing_runtime_rows,
     company_filing_visual_rag_model_chain_rows,
 )
+from app.ui.operator_route_controls import render_operator_route_button
+from app.ui.operator_routes import DATA_ENRICHMENT_OPERATION_LABELS
 
 
 def render_market_data_tab(allowed_tickers: list[str]) -> None:
@@ -70,12 +72,13 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     latest_report_payload, latest_follow_up_plan = _latest_report_follow_up_context()
     _render_data_gap_action_map(data_gap_action_items(latest_report_payload, latest_follow_up_plan))
 
-    default_market_tickers = ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
+    _apply_pending_market_data_selection(allowed_tickers)
     selected_market_tickers = st.multiselect(
         "選擇要刷新或補文件的股票",
         options=allowed_tickers,
-        default=default_market_tickers,
+        key="market_data_tickers",
     )
+    _render_pending_operation_notice(selected_market_tickers)
     col_start, col_end = st.columns(2)
     with col_start:
         market_start = st.date_input(
@@ -216,6 +219,7 @@ def _render_data_gap_action_map(items: list[dict]) -> None:
 </section>""",
         unsafe_allow_html=True,
     )
+    _render_data_gap_action_controls(items)
 
 
 def _data_gap_action_card_html(item: dict) -> str:
@@ -224,6 +228,66 @@ def _data_gap_action_card_html(item: dict) -> str:
 <span>{escape(item.get("ticker", "全部"))}｜{escape(item.get("impact", ""))}</span>
 <em>{escape(item.get("post_action_hint", ""))}</em>
 </article>"""
+
+
+def _render_data_gap_action_controls(items: list[dict]) -> None:
+    actionable_items = [item for item in items if item.get("route_hint")]
+    if not actionable_items:
+        return
+    st.markdown(
+        """<div class="data-gap-action-controls" aria-label="資料缺口快捷處理">
+<span>可直接處理</span>
+<strong>選一個缺口開始補強</strong>
+</div>""",
+        unsafe_allow_html=True,
+    )
+    columns = st.columns(min(3, len(actionable_items)))
+    for index, item in enumerate(actionable_items[:3]):
+        with columns[index]:
+            render_operator_route_button(
+                {
+                    "action_label": item.get("action_label"),
+                    "route_hint": item.get("route_hint"),
+                },
+                key=f"data_gap_action_{index}",
+                primary=index == 0,
+                show_caption=True,
+            )
+
+
+def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
+    pending_tickers = st.session_state.pop("pending_data_enrichment_tickers", None)
+    selected_tickers = _allowed_pending_tickers(pending_tickers, allowed_tickers)
+    if selected_tickers:
+        st.session_state["market_data_tickers"] = selected_tickers
+        return
+    if "market_data_tickers" not in st.session_state:
+        st.session_state["market_data_tickers"] = _default_market_tickers(allowed_tickers)
+        return
+    st.session_state["market_data_tickers"] = _allowed_pending_tickers(
+        st.session_state.get("market_data_tickers"),
+        allowed_tickers,
+    )
+
+
+def _render_pending_operation_notice(selected_market_tickers: list[str]) -> None:
+    pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
+    if not pending_operation:
+        return
+    operation_label = DATA_ENRICHMENT_OPERATION_LABELS.get(pending_operation, "資料補強")
+    ticker_label = "、".join(selected_market_tickers) if selected_market_tickers else "尚未選擇股票"
+    st.info(f"已依建議準備「{operation_label}」，股票：{ticker_label}。確認日期後按下對應按鈕送出背景任務。")
+
+
+def _allowed_pending_tickers(value: object, allowed_tickers: list[str]) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    allowed = set(allowed_tickers)
+    return [str(ticker).strip() for ticker in value if str(ticker).strip() in allowed]
+
+
+def _default_market_tickers(allowed_tickers: list[str]) -> list[str]:
+    return ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
 
 
 def _render_cache_summary(allowed_tickers: list[str]) -> None:

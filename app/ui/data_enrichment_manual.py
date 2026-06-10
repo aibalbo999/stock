@@ -17,6 +17,7 @@ from app.ui.data_enrichment_common import (
 
 def render_manual_ingest_tab(whitelist: Any, allowed_tickers: list[str]) -> None:
     render_section_header("手動補充", "補充新聞、法說或研究摘要，讓報告可以引用具體來源。")
+    _render_pending_manual_ingest_notice()
     input_tabs = st.tabs(["新聞/研究摘要", "公司公開文件"])
     with input_tabs[0]:
         _render_manual_news_form()
@@ -134,6 +135,21 @@ def _render_company_filing_form(whitelist: Any, allowed_tickers: list[str]) -> N
             success_message="已送出 URL 公司文件匯入背景任務",
             error_message="URL 公司文件匯入任務送出失敗",
         )
+
+
+def _render_pending_manual_ingest_notice() -> None:
+    pending_operation = st.session_state.get("pending_data_enrichment_operation")
+    if pending_operation != "manual_ingest":
+        return
+    st.session_state.pop("pending_data_enrichment_operation", None)
+    pending_tickers = st.session_state.pop("pending_data_enrichment_tickers", None)
+    tickers = (
+        [str(ticker).strip() for ticker in pending_tickers if str(ticker).strip()]
+        if isinstance(pending_tickers, list)
+        else []
+    )
+    ticker_label = "、".join(tickers) if tickers else "最新版報告相關股票"
+    st.info(f"已依資料缺口準備匯入新聞/研究摘要，股票：{ticker_label}。請貼上標題與內文後送出。")
 
 
 def _submit_manual_company_filing(

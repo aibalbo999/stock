@@ -557,6 +557,23 @@ textarea:focus,
     color: var(--stock-text);
     font-size: 0.9rem;
 }
+.data-gap-action-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 0;
+    color: var(--stock-muted);
+}
+.data-gap-action-controls span {
+    color: var(--stock-accent);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.data-gap-action-controls strong {
+    color: var(--stock-text);
+    font-size: 0.9rem;
+}
 .report-lifecycle-action {
     display: flex;
     align-items: center;

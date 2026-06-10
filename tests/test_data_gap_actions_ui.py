@@ -60,7 +60,7 @@ def test_data_gap_action_items_map_follow_up_next_actions() -> None:
         "priority",
     }
     assert items[0]["gap_type"] == "price"
-    assert items[0]["route_hint"] == "data_enrichment"
+    assert items[0]["route_hint"] == "data_enrichment:market_refresh:2330"
     assert items[1]["action_label"] == "補抓公司文件"
     assert items[2]["route_hint"] == "report:12"
     assert items[2]["post_action_hint"] == "補強完成後重跑報告"
@@ -192,7 +192,7 @@ def test_data_gap_action_items_do_not_treat_priority_as_purpose() -> None:
     }
 
 
-def test_data_gap_action_items_use_available_data_enrichment_route() -> None:
+def test_data_gap_action_items_use_prefilled_data_enrichment_routes() -> None:
     items = data_gap_action_items(
         {"report_id": 12, "topic": "AI 產業鏈"},
         {
@@ -203,4 +203,7 @@ def test_data_gap_action_items_use_available_data_enrichment_route() -> None:
         },
     )
 
-    assert [item["route_hint"] for item in items] == ["data_enrichment", "data_enrichment"]
+    assert [item["route_hint"] for item in items] == [
+        "data_enrichment:market_refresh:2330",
+        "data_enrichment:manual_ingest:2330",
+    ]

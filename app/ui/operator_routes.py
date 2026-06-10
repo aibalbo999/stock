@@ -8,6 +8,22 @@ ANALYSIS_PAGE = "pages/01_分析工作區.py"
 DATA_ENRICHMENT_PAGE = "pages/03_資料補強.py"
 SYSTEM_SETTINGS_PAGE = "pages/04_系統設定.py"
 
+DATA_ENRICHMENT_OPERATION_LABELS = {
+    "market_refresh": "刷新股價",
+    "fundamentals_refresh": "刷新 5 年財報",
+    "valuation_refresh": "刷新估值",
+    "company_filings_fetch": "補抓公司文件",
+    "manual_ingest": "匯入新聞/研究摘要",
+}
+
+DATA_ENRICHMENT_SECTION_BY_OPERATION = {
+    "market_refresh": "market",
+    "fundamentals_refresh": "market",
+    "valuation_refresh": "market",
+    "company_filings_fetch": "market",
+    "manual_ingest": "manual",
+}
+
 
 def operator_route_target(route_hint: str | None) -> dict[str, Any]:
     route = str(route_hint or "").strip()
@@ -31,6 +47,8 @@ def operator_route_target(route_hint: str | None) -> dict[str, Any]:
             "session_updates": {},
             "caption": "開啟資料補強",
         }
+    if route.startswith("data_enrichment:"):
+        return _data_enrichment_route_target(route)
     if route == "analysis":
         return {
             "page": ANALYSIS_PAGE,
@@ -75,3 +93,27 @@ def _int_or_text(value: str) -> int | str:
         return int(value)
     except ValueError:
         return value
+
+
+def _data_enrichment_route_target(route: str) -> dict[str, Any]:
+    parts = route.split(":", 2)
+    operation = parts[1].strip() if len(parts) > 1 else ""
+    tickers = _csv_values(parts[2]) if len(parts) > 2 else []
+    section = DATA_ENRICHMENT_SECTION_BY_OPERATION.get(operation, "market")
+    label = DATA_ENRICHMENT_OPERATION_LABELS.get(operation, "資料補強")
+    session_updates: dict[str, Any] = {
+        "pending_data_enrichment_section": section,
+        "pending_data_enrichment_operation": operation,
+    }
+    if tickers:
+        session_updates["pending_data_enrichment_tickers"] = tickers
+    ticker_caption = f"：{'、'.join(tickers)}" if tickers else ""
+    return {
+        "page": DATA_ENRICHMENT_PAGE,
+        "session_updates": session_updates,
+        "caption": f"開啟資料補強，準備{label}{ticker_caption}",
+    }
+
+
+def _csv_values(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]

@@ -181,7 +181,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert Path("pages/02_報告中心.py").exists()
     assert Path("pages/03_資料補強.py").exists()
     assert Path("pages/04_系統設定.py").exists()
-    assert 'data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])' in source
+    assert 'key="data_enrichment_section"' in source
+    assert "pending_data_enrichment_section" in source
+    assert 'data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])' not in source
     assert 'settings_section = st.radio(' in source
     assert 'key="settings_section"' in source
     assert "pending_settings_section" in source
@@ -197,7 +199,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "data_gap_action_summary(" in source
     assert "data-gap-action-map" in combined
     assert "data-gap-action-card" in combined
+    assert "data-gap-action-controls" in combined
     assert "資料缺口行動地圖" in source
+    assert "from app.ui.operator_route_controls import render_operator_route_button" in source
+    assert "_render_data_gap_action_controls(" in source
+    assert 'key=f"data_gap_action_{index}"' in source
+    assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
     assert 'or schedule_task == "latest_report_update"' in source

@@ -13,7 +13,7 @@ from app.ui.operator_decisions import (
     operator_next_best_action,
     operator_secondary_actions,
 )
-from app.ui.operator_routes import operator_route_target
+from app.ui.operator_route_controls import render_operator_route_button
 from app.ui.operator_status import (
     operator_status_cards,
     operator_status_overall,
@@ -435,25 +435,12 @@ def _render_operator_route_button(
     primary: bool = False,
     show_caption: bool = True,
 ) -> None:
-    target = operator_route_target(action.get("route_hint"))
-    label = str(
-        action.get("action_label")
-        or action.get("title")
-        or target.get("caption")
-        or "開啟"
-    )
-    if st.button(
-        label,
+    render_operator_route_button(
+        action,
         key=key,
-        type="primary" if primary else "secondary",
-        use_container_width=True,
-        help=str(target.get("caption") or ""),
-    ):
-        for state_key, value in (target.get("session_updates") or {}).items():
-            st.session_state[state_key] = value
-        st.switch_page(str(target["page"]))
-    if show_caption:
-        st.caption(str(target.get("caption") or ""))
+        primary=primary,
+        show_caption=show_caption,
+    )
 
 
 def _secondary_action_html(action: dict) -> str:

@@ -87,6 +87,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_sections import (" in source
     assert "from app.ui.operator_status import (" in source
     assert "from app.ui.operator_routes import operator_route_target" in source
+    assert "from app.ui.operator_route_controls import render_operator_route_button" in source
     assert "operator_status_cards(" in source
     assert '"今日狀態"' in source
     assert '"/tasks/summary?days=7&limit=10"' in source
@@ -115,6 +116,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "report-health-card" in combined
     assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source
     assert "latest_report_lifecycle(" in source
+    assert "_render_report_lifecycle_action(" in source
+    assert 'key="report_lifecycle_primary_action"' in source
+    assert 'lifecycle.get("route_hint")' in source
     assert "report-lifecycle-strip" in combined
     assert "report-lifecycle-step" in combined
     assert "報告生命週期" in source

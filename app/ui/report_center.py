@@ -10,6 +10,7 @@ from app.ui.api_actions import run_api_action_or_none
 from app.ui.api_client import api_delete
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
+from app.ui.operator_route_controls import render_operator_route_button
 from app.ui.report_health import latest_report_health_summary
 from app.ui.report_lifecycle import latest_report_lifecycle
 from app.ui.report_panels import (
@@ -98,7 +99,9 @@ def render_report_center() -> None:
             error_message="讀取補強計畫失敗",
             notify="warning",
         )
-        _render_report_lifecycle_strip(latest_report_lifecycle(history_result or {}, follow_up_plan))
+        lifecycle = latest_report_lifecycle(history_result or {}, follow_up_plan)
+        _render_report_lifecycle_strip(lifecycle)
+        _render_report_lifecycle_action(lifecycle)
         _render_report_health_strip(
             latest_report_health_summary(history_result or {}, follow_up_plan)
         )
@@ -248,6 +251,29 @@ def _render_report_lifecycle_strip(lifecycle: dict) -> None:
 </div>
 </section>""",
         unsafe_allow_html=True,
+    )
+
+
+def _render_report_lifecycle_action(lifecycle: dict) -> None:
+    route_hint = lifecycle.get("route_hint")
+    primary_action = lifecycle.get("primary_action")
+    if not route_hint or not primary_action:
+        return
+    st.markdown(
+        """<section class="report-lifecycle-action" aria-label="報告生命週期操作">
+<span>建議操作</span>
+<strong>依照生命週期狀態開啟下一步</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    render_operator_route_button(
+        {
+            "action_label": primary_action,
+            "route_hint": route_hint,
+        },
+        key="report_lifecycle_primary_action",
+        primary=True,
+        show_caption=True,
     )
 
 

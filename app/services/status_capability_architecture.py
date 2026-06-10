@@ -185,6 +185,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_lifecycle_data_gap_prefill_enabled")
             and frontend_status.get("ui_report_health_identity_enabled")
             and frontend_status.get("ui_report_health_action_enabled")
+            and frontend_status.get("ui_report_advanced_controls_progressive_disclosure_enabled")
             and frontend_status.get("frontend_task_ui_status_extracted")
             and frontend_status.get("frontend_task_queue_status_extracted")
             and frontend_status.get("frontend_task_failure_status_extracted")

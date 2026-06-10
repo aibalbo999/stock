@@ -109,31 +109,21 @@ def render_report_center() -> None:
             latest_report_health_summary(history_result or {}, follow_up_plan)
         )
         history_html = report_html(report_markdown, history_result)
-        report_action_cols = st.columns([0.16, 0.16, 0.68], gap="small")
-        with report_action_cols[0]:
+        report_download_cols = st.columns(2, gap="small")
+        with report_download_cols[0]:
             st.download_button(
                 "下載 HTML",
                 data=history_html,
                 file_name=f"report_{selected_id}.html",
                 mime="text/html",
             )
-        with report_action_cols[1]:
+        with report_download_cols[1]:
             st.download_button(
                 "下載 Markdown",
                 data=report_markdown,
                 file_name=f"report_{selected_id}.md",
                 mime="text/markdown",
             )
-        with report_action_cols[2]:
-            with st.expander("報告管理"):
-                if st.button("刪除此報告"):
-                    deleted = run_api_action_or_none(
-                        lambda: api_delete(f"/reports/{int(selected_id)}"),
-                        error_message="刪除失敗",
-                    )
-                    if isinstance(deleted, dict):
-                        st.success(f"已刪除報告 #{selected_id}｜{report_title}")
-                        st.rerun()
 
         history_tabs = st.tabs(["重點報告", "資料查核", "完整文字"])
         with history_tabs[0]:
@@ -166,6 +156,18 @@ def render_report_center() -> None:
         render_section_header(
             "執行紀錄", "一般閱讀報告不需要查看；舊版報告與背景任務只在這裡查錯或追蹤。"
         )
+        if selected_id is not None:
+            st.markdown("#### 報告管理")
+            st.caption("進階操作，只在需要移除最新版報告時使用。")
+            if st.button("刪除此報告", key=f"delete_report_{selected_id}"):
+                deleted = run_api_action_or_none(
+                    lambda: api_delete(f"/reports/{int(selected_id)}"),
+                    error_message="刪除失敗",
+                )
+                if isinstance(deleted, dict):
+                    st.success(f"已刪除報告 #{selected_id}｜{report_title}")
+                    st.rerun()
+            st.divider()
         runs = load_api_json_or_default(
             "/runs?limit=20",
             [],

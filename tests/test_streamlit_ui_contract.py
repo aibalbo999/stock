@@ -247,7 +247,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'or schedule_task == "latest_report_update"' in source
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source
-    assert 'report_action_cols = st.columns([0.16, 0.16, 0.68], gap="small")' in source
+    assert 'report_download_cols = st.columns(2, gap="small")' in source
+    assert 'report_action_cols = st.columns([0.16, 0.16, 0.68], gap="small")' not in source
     assert ".report { max-width:1360px" in report_styles
     assert ".report-grid { display:block" in report_styles
     assert "<style>\n  :root" not in source
@@ -414,6 +415,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     report_center_source = Path("app/ui/report_center.py").read_text()
     assert "from app.ui.task_status_panel import render_task_status_panel" in report_center_source
+    assert 'with st.expander("報告管理")' not in report_center_source
+    assert 'with st.expander("疑難排解：執行紀錄")' in report_center_source
+    assert report_center_source.index('with st.expander("疑難排解：執行紀錄")') < (
+        report_center_source.index('st.button("刪除此報告"')
+    )
+    assert "進階操作，只在需要移除最新版報告時使用。" in report_center_source
     assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
     assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
     assert 'st.button("查詢背景任務狀態")' not in report_center_source

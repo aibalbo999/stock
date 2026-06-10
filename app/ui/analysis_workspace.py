@@ -295,31 +295,27 @@ def _render_operator_workbench() -> None:
     cards = operator_status_cards(service_snapshot, task_summary, quota, reports)
     card_html = "\n".join(_operator_card_html(card) for card in cards)
     st.markdown(
-        f"""
-        <section class="operator-workbench" aria-label="今日狀態">
-            <div class="operator-workbench-head">
-                <div>
-                    <div class="workspace-kicker">今日狀態</div>
-                    <h2>{escape(overall["label"])}</h2>
-                    <p>{escape(overall["detail"])}</p>
-                </div>
-                <span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
-            </div>
-            <div class="operator-status-grid">
-                {card_html}
-            </div>
-        </section>
-        """,
+        f"""<section class="operator-workbench" aria-label="今日狀態">
+<div class="operator-workbench-head">
+<div>
+<div class="workspace-kicker">今日狀態</div>
+<h2>{escape(overall["label"])}</h2>
+<p>{escape(overall["detail"])}</p>
+</div>
+<span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
+</div>
+<div class="operator-status-grid">
+{card_html}
+</div>
+</section>""",
         unsafe_allow_html=True,
     )
 
 
 def _operator_card_html(card: dict[str, str]) -> str:
-    return f"""
-    <article class="operator-status-card is-{escape(card.get("state", "attention"))}">
-        <div class="operator-card-title">{escape(card.get("title", "-"))}</div>
-        <div class="operator-card-value">{escape(card.get("value", "-"))}</div>
-        <div class="operator-card-caption">{escape(card.get("caption", ""))}</div>
-        <div class="operator-card-action">{escape(card.get("action_label", ""))}</div>
-    </article>
-    """
+    return f"""<article class="operator-status-card is-{escape(card.get("state", "attention"))}">
+<div class="operator-card-title">{escape(card.get("title", "-"))}</div>
+<div class="operator-card-value">{escape(card.get("value", "-"))}</div>
+<div class="operator-card-caption">{escape(card.get("caption", ""))}</div>
+<div class="operator-card-action">{escape(card.get("action_label", ""))}</div>
+</article>"""

@@ -231,25 +231,23 @@ def render_report_center() -> None:
 
 def _render_report_health_strip(summary: dict[str, str]) -> None:
     st.markdown(
-        f"""
-        <section class="report-health-strip is-{escape(summary.get("state", "attention"))}">
-            <article class="report-health-card">
-                <span>最新版</span>
-                <strong>{escape(summary.get("report_label", "-"))}</strong>
-            </article>
-            <article class="report-health-card">
-                <span>品質門檻</span>
-                <strong>{escape(summary.get("quality_label", "-"))}</strong>
-            </article>
-            <article class="report-health-card">
-                <span>股票範圍</span>
-                <strong>{escape(summary.get("candidate_label", "-"))}</strong>
-            </article>
-            <article class="report-health-card">
-                <span>補強狀態</span>
-                <strong>{escape(summary.get("follow_up_label", "-"))}</strong>
-            </article>
-        </section>
-        """,
+        f"""<section class="report-health-strip is-{escape(summary.get("state", "attention"))}">
+<article class="report-health-card">
+<span>最新版</span>
+<strong>{escape(summary.get("report_label", "-"))}</strong>
+</article>
+<article class="report-health-card">
+<span>品質門檻</span>
+<strong>{escape(summary.get("quality_label", "-"))}</strong>
+</article>
+<article class="report-health-card">
+<span>股票範圍</span>
+<strong>{escape(summary.get("candidate_label", "-"))}</strong>
+</article>
+<article class="report-health-card">
+<span>補強狀態</span>
+<strong>{escape(summary.get("follow_up_label", "-"))}</strong>
+</article>
+</section>""",
         unsafe_allow_html=True,
     )

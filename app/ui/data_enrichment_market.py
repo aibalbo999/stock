@@ -96,14 +96,12 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     )
     refresh_filings = refresh_cols[3].button("補抓公司文件", disabled=not has_market_selection)
     st.markdown(
-        """
-        <div class="action-impact-grid" aria-label="資料補強影響">
-            <div><strong>刷新股價</strong><span>會更新最新版報告的股價與成交量判讀</span></div>
-            <div><strong>刷新 5 年財報</strong><span>會補齊五年財務與品質門檻需要的財報資料</span></div>
-            <div><strong>刷新估值</strong><span>會更新本益比、股價淨值比與殖利率判讀</span></div>
-            <div><strong>補抓公司文件</strong><span>會補齊公司文件、法說會或公開資訊缺口</span></div>
-        </div>
-        """,
+        """<div class="action-impact-grid" aria-label="資料補強影響">
+<div><strong>刷新股價</strong><span>會更新最新版報告的股價與成交量判讀</span></div>
+<div><strong>刷新 5 年財報</strong><span>會補齊五年財務與品質門檻需要的財報資料</span></div>
+<div><strong>刷新估值</strong><span>會更新本益比、股價淨值比與殖利率判讀</span></div>
+<div><strong>補抓公司文件</strong><span>會補齊公司文件、法說會或公開資訊缺口</span></div>
+</div>""",
         unsafe_allow_html=True,
     )
 

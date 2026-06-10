@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from html import escape
 
 import streamlit as st
 
@@ -12,6 +13,10 @@ from app.ui.api_client import (
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
+from app.ui.data_gap_actions import (
+    data_gap_action_items,
+    data_gap_action_summary,
+)
 from app.ui.data_enrichment_common import (
     DATA_TASK_STATUS_STATE_KEYS,
     render_last_data_task_status,
@@ -61,6 +66,9 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
             if visual_rag_chain_rows:
                 st.caption("Visual RAG 模型鏈")
                 st.dataframe(visual_rag_chain_rows, width="stretch", hide_index=True)
+
+    latest_report_payload, latest_follow_up_plan = _latest_report_follow_up_context()
+    _render_data_gap_action_map(data_gap_action_items(latest_report_payload, latest_follow_up_plan))
 
     default_market_tickers = ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
     selected_market_tickers = st.multiselect(
@@ -154,6 +162,68 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
         expanded=True,
     )
     _render_cache_summary(allowed_tickers)
+
+
+def _latest_report_follow_up_context() -> tuple[dict, dict]:
+    reports = load_api_json_or_default(
+        "/reports?limit=1",
+        [],
+        error_message="讀取最新版報告失敗",
+        notify="warning",
+    )
+    if not isinstance(reports, list) or not reports:
+        return {}, {}
+    latest_report_id = reports[0].get("id") if isinstance(reports[0], dict) else None
+    if latest_report_id is None:
+        return {}, {}
+    report_payload = load_api_json_or_default(
+        f"/reports/{int(latest_report_id)}",
+        {},
+        error_message="讀取最新版報告內容失敗",
+        notify="warning",
+    )
+    follow_up_plan = load_api_json_or_default(
+        f"/reports/{int(latest_report_id)}/follow-up/plan",
+        {},
+        error_message="讀取最新版補強計畫失敗",
+        notify="warning",
+    )
+    return (
+        report_payload if isinstance(report_payload, dict) else {},
+        follow_up_plan if isinstance(follow_up_plan, dict) else {},
+    )
+
+
+def _render_data_gap_action_map(items: list[dict]) -> None:
+    summary = data_gap_action_summary(items)
+    cards_html = "\n".join(_data_gap_action_card_html(item) for item in items[:6])
+    if not cards_html:
+        cards_html = """<article class="data-gap-action-card is-ready">
+<strong>目前沒有必要資料缺口</strong>
+<span>最新版報告沒有必補資料行動。</span>
+<em>可依例行需求刷新市場資料。</em>
+</article>"""
+    st.markdown(
+        f"""<section class="data-gap-action-map is-{escape(summary.get("state", "ready"))}" aria-label="資料缺口行動地圖">
+<div class="data-gap-action-head">
+<div class="workspace-kicker">資料缺口行動地圖</div>
+<h3>{escape(summary.get("label", "-"))}</h3>
+<p>{escape(summary.get("detail", ""))}</p>
+</div>
+<div class="data-gap-action-list">
+{cards_html}
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _data_gap_action_card_html(item: dict) -> str:
+    return f"""<article class="data-gap-action-card is-{escape(item.get("purpose", "tracking"))}">
+<strong>{escape(item.get("action_label", "-"))}</strong>
+<span>{escape(item.get("ticker", "全部"))}｜{escape(item.get("impact", ""))}</span>
+<em>{escape(item.get("post_action_hint", ""))}</em>
+</article>"""
 
 
 def _render_cache_summary(allowed_tickers: list[str]) -> None:

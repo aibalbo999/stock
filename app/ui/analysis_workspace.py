@@ -9,6 +9,10 @@ from app.services.whitelist import SupplyChainWhitelist
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.dashboard_core import render_section_header
+from app.ui.operator_decisions import (
+    operator_next_best_action,
+    operator_secondary_actions,
+)
 from app.ui.operator_status import (
     operator_status_cards,
     operator_status_overall,
@@ -291,6 +295,39 @@ def _render_operator_workbench() -> None:
     )
     if not isinstance(reports, list):
         reports = []
+    latest_report_id = _latest_report_id(reports)
+    latest_report_payload = {}
+    latest_follow_up_plan = {}
+    if latest_report_id is not None:
+        latest_report_payload = load_api_json_or_default(
+            f"/reports/{int(latest_report_id)}",
+            {},
+            error_message="讀取首頁報告狀態失敗",
+            notify="warning",
+        )
+        latest_follow_up_plan = load_api_json_or_default(
+            f"/reports/{int(latest_report_id)}/follow-up/plan",
+            {},
+            error_message="讀取首頁補強計畫失敗",
+            notify="warning",
+        )
+    primary_action = operator_next_best_action(
+        service_snapshot,
+        task_summary,
+        quota,
+        reports,
+        latest_report_payload,
+        latest_follow_up_plan,
+    )
+    secondary_actions = operator_secondary_actions(
+        service_snapshot,
+        task_summary,
+        quota,
+        reports,
+        latest_report_payload,
+        latest_follow_up_plan,
+        primary_action=primary_action,
+    )
     overall = operator_status_overall(service_snapshot, task_summary, reports)
     cards = operator_status_cards(service_snapshot, task_summary, quota, reports)
     card_html = "\n".join(_operator_card_html(card) for card in cards)
@@ -304,12 +341,57 @@ def _render_operator_workbench() -> None:
 </div>
 <span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
 </div>
+{_operator_decision_html(primary_action, secondary_actions)}
 <div class="operator-status-grid">
 {card_html}
 </div>
 </section>""",
         unsafe_allow_html=True,
     )
+
+
+def _latest_report_id(reports: list[dict]) -> int | None:
+    for report in reports:
+        if not isinstance(report, dict) or report.get("id") is None:
+            continue
+        try:
+            return int(report["id"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _operator_decision_html(primary_action: dict, secondary_actions: list[dict]) -> str:
+    secondary_html = "\n".join(_secondary_action_html(action) for action in secondary_actions)
+    source_ids = primary_action.get("source_ids") or []
+    source_text = "、".join(str(source_id) for source_id in source_ids) if source_ids else "系統狀態"
+    return f"""<section class="operator-decision-card is-{escape(primary_action.get("state", "attention"))}">
+<div class="operator-decision-copy">
+<div class="workspace-kicker">下一步建議</div>
+<h3>{escape(primary_action.get("title", "-"))}</h3>
+<p>{escape(primary_action.get("reason", ""))}</p>
+<div class="operator-decision-meta">
+<span>風險：{escape(primary_action.get("risk", ""))}</span>
+<span>影響：{escape(primary_action.get("impact", ""))}</span>
+<span>來源：{escape(source_text)}</span>
+</div>
+</div>
+<div class="operator-decision-action">
+<strong>{escape(primary_action.get("action_label", "-"))}</strong>
+<span>{escape(primary_action.get("route_hint", ""))}</span>
+</div>
+<div class="operator-secondary-actions" aria-label="次要建議">
+{secondary_html}
+</div>
+</section>"""
+
+
+def _secondary_action_html(action: dict) -> str:
+    return f"""<article class="operator-secondary-action is-{escape(action.get("state", "attention"))}">
+<strong>{escape(action.get("title", "-"))}</strong>
+<span>{escape(action.get("detail", ""))}</span>
+<em>{escape(action.get("route_hint", ""))}</em>
+</article>"""
 
 
 def _operator_card_html(card: dict[str, str]) -> str:

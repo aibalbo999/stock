@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
+from app.ui.incident_inbox import (
+    incident_counts,
+    incident_inbox_items,
+)
 from app.ui.maintenance_panels import (
     render_ai_quota_panel,
     render_ai_usage_panel,
@@ -84,6 +90,7 @@ def render_maintenance_tab() -> None:
         error_message="讀取升級稽核失敗",
     )
 
+    _render_incident_inbox(incident_inbox_items(service_snapshot, task_summary, llm_quota))
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
     render_service_metrics_panel(status, service_snapshot)
@@ -104,3 +111,41 @@ def render_maintenance_tab() -> None:
     render_report_quality_panel(report_quality_summary)
     render_service_details_panel(status, service_snapshot)
     render_maintenance_cleanup_panel()
+
+
+def _render_incident_inbox(incidents: list[dict]) -> None:
+    counts = incident_counts(incidents)
+    incident_html = "\n".join(_incident_card_html(incident) for incident in incidents[:8])
+    if not incident_html:
+        incident_html = """<article class="incident-card is-ready">
+<strong>目前沒有待處理事件</strong>
+<span>背景任務、近期失敗與 AI 額度沒有主要阻塞。</span>
+</article>"""
+    st.markdown(
+        f"""<section class="incident-inbox" aria-label="待處理事件">
+<div class="incident-inbox-head">
+<div>
+<div class="workspace-kicker">待處理事件</div>
+<h3>事件收件匣</h3>
+</div>
+<div class="incident-counts">
+<span>Critical {counts["critical"]}</span>
+<span>Warning {counts["warning"]}</span>
+<span>Info {counts["info"]}</span>
+</div>
+</div>
+<div class="incident-list">
+{incident_html}
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _incident_card_html(incident: dict) -> str:
+    return f"""<article class="incident-card is-{escape(incident.get("severity", "info"))}">
+<strong>{escape(incident.get("title", "-"))}</strong>
+<span>{escape(incident.get("impact", ""))}</span>
+<em>{escape(incident.get("next_action", ""))}</em>
+<small>{escape(incident.get("route_hint", ""))}</small>
+</article>"""

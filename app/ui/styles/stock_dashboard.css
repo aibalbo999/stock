@@ -423,7 +423,11 @@ textarea:focus,
     line-height: 1.5;
 }
 .operator-workbench,
+.operator-decision-card,
 .report-health-strip,
+.report-lifecycle-strip,
+.incident-inbox,
+.data-gap-action-map,
 .action-impact-grid {
     margin: 18px 0;
 }
@@ -448,6 +452,93 @@ textarea:focus,
 .operator-workbench-head p {
     margin: 6px 0 0;
     color: var(--stock-muted);
+}
+.operator-decision-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.4fr);
+    gap: 14px;
+    background: #ffffff;
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    padding: 16px;
+}
+.operator-decision-card h3,
+.report-lifecycle-summary strong,
+.incident-inbox h3,
+.data-gap-action-head h3 {
+    margin: 4px 0 6px;
+    color: var(--stock-text);
+}
+.operator-decision-copy p,
+.operator-decision-meta,
+.report-lifecycle-summary p,
+.report-lifecycle-step p,
+.data-gap-action-head p {
+    color: var(--stock-muted);
+    line-height: 1.5;
+}
+.operator-decision-meta {
+    display: grid;
+    gap: 4px;
+    font-size: 0.88rem;
+}
+.operator-decision-action {
+    align-self: start;
+    background: var(--stock-surface-alt);
+    border: 1px solid var(--stock-border-soft);
+    border-radius: 8px;
+    padding: 12px;
+}
+.operator-decision-action strong,
+.operator-decision-action span {
+    display: block;
+}
+.operator-decision-action span {
+    margin-top: 4px;
+    color: var(--stock-muted);
+    font-size: 0.85rem;
+}
+.operator-secondary-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+.operator-secondary-action,
+.report-lifecycle-step,
+.incident-card,
+.data-gap-action-card {
+    background: var(--stock-surface-alt);
+    border: 1px solid var(--stock-border-soft);
+    border-radius: 8px;
+    padding: 12px;
+}
+.operator-secondary-action strong,
+.operator-secondary-action span,
+.operator-secondary-action em,
+.incident-card strong,
+.incident-card span,
+.incident-card em,
+.incident-card small,
+.data-gap-action-card strong,
+.data-gap-action-card span,
+.data-gap-action-card em {
+    display: block;
+}
+.operator-secondary-action span,
+.incident-card span,
+.data-gap-action-card span {
+    margin-top: 5px;
+    color: var(--stock-muted);
+}
+.operator-secondary-action em,
+.incident-card em,
+.incident-card small,
+.data-gap-action-card em {
+    margin-top: 7px;
+    color: #334155;
+    font-style: normal;
+    font-size: 0.84rem;
 }
 .operator-state,
 .operator-card-action {
@@ -513,6 +604,80 @@ textarea:focus,
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
+}
+.report-lifecycle-strip {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
+    gap: 12px;
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    padding: 16px;
+}
+.report-lifecycle-summary span,
+.report-lifecycle-summary em,
+.report-lifecycle-step span {
+    color: var(--stock-muted);
+    font-style: normal;
+    font-size: 0.88rem;
+}
+.report-lifecycle-steps {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+.report-lifecycle-step strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--stock-text);
+}
+.incident-inbox,
+.data-gap-action-map {
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    padding: 16px;
+}
+.incident-inbox-head,
+.data-gap-action-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+.incident-counts {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.incident-counts span {
+    border: 1px solid var(--stock-border);
+    border-radius: 999px;
+    padding: 4px 9px;
+    color: #334155;
+    background: #ffffff;
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+.incident-list,
+.data-gap-action-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.is-critical,
+.is-blocked {
+    border-color: rgba(180, 35, 24, 0.32);
+}
+.is-warning,
+.is-attention,
+.is-required {
+    border-color: rgba(146, 64, 14, 0.28);
+}
+.is-ready,
+.is-done {
+    border-color: rgba(15, 118, 110, 0.25);
 }
 .action-impact-grid {
     display: grid;
@@ -641,8 +806,16 @@ textarea:focus,
         flex-direction: column;
     }
     .operator-status-grid,
+    .operator-secondary-actions,
     .report-health-strip,
+    .report-lifecycle-strip,
+    .report-lifecycle-steps,
+    .incident-list,
+    .data-gap-action-list,
     .action-impact-grid {
+        grid-template-columns: 1fr;
+    }
+    .operator-decision-card {
         grid-template-columns: 1fr;
     }
 }

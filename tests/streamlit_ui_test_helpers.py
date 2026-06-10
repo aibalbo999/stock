@@ -19,6 +19,10 @@ REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 OPERATOR_STATUS_SOURCE = Path("app/ui/operator_status.py")
 REPORT_HEALTH_SOURCE = Path("app/ui/report_health.py")
+REPORT_LIFECYCLE_SOURCE = Path("app/ui/report_lifecycle.py")
+INCIDENT_INBOX_SOURCE = Path("app/ui/incident_inbox.py")
+OPERATOR_DECISIONS_SOURCE = Path("app/ui/operator_decisions.py")
+DATA_GAP_ACTIONS_SOURCE = Path("app/ui/data_gap_actions.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
@@ -56,6 +60,10 @@ UI_SOURCE_FILES = [
     REPORT_HTML_SOURCE,
     OPERATOR_STATUS_SOURCE,
     REPORT_HEALTH_SOURCE,
+    REPORT_LIFECYCLE_SOURCE,
+    INCIDENT_INBOX_SOURCE,
+    OPERATOR_DECISIONS_SOURCE,
+    DATA_GAP_ACTIONS_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
     MAINTENANCE_PANELS_SOURCE,

@@ -11,6 +11,7 @@ from app.ui.api_client import api_delete
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.dashboard_core import render_section_header
 from app.ui.report_health import latest_report_health_summary
+from app.ui.report_lifecycle import latest_report_lifecycle
 from app.ui.report_panels import (
     candidate_rows,
     render_company_data_audit,
@@ -97,6 +98,7 @@ def render_report_center() -> None:
             error_message="讀取補強計畫失敗",
             notify="warning",
         )
+        _render_report_lifecycle_strip(latest_report_lifecycle(history_result or {}, follow_up_plan))
         _render_report_health_strip(
             latest_report_health_summary(history_result or {}, follow_up_plan)
         )
@@ -227,6 +229,34 @@ def render_report_center() -> None:
                     st.rerun()
         else:
             st.info("尚無任務執行紀錄。")
+
+
+def _render_report_lifecycle_strip(lifecycle: dict) -> None:
+    stage_html = "\n".join(
+        _report_lifecycle_stage_html(stage) for stage in lifecycle.get("stage_cards") or []
+    )
+    st.markdown(
+        f"""<section class="report-lifecycle-strip is-{escape(lifecycle.get("overall_state", "attention"))}" aria-label="報告生命週期">
+<div class="report-lifecycle-summary">
+<span>報告生命週期</span>
+<strong>{escape(lifecycle.get("trust_label", "-"))}</strong>
+<p>{escape(lifecycle.get("trust_explanation", ""))}</p>
+<em>{escape(lifecycle.get("primary_action", ""))}</em>
+</div>
+<div class="report-lifecycle-steps">
+{stage_html}
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _report_lifecycle_stage_html(stage: dict) -> str:
+    return f"""<article class="report-lifecycle-step is-{escape(stage.get("state", "unknown"))}">
+<span>{escape(stage.get("title", "-"))}</span>
+<strong>{escape(stage.get("label", "-"))}</strong>
+<p>{escape(stage.get("detail", ""))}</p>
+</article>"""
 
 
 def _render_report_health_strip(summary: dict[str, str]) -> None:

@@ -87,10 +87,23 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"/reports?limit=5"' in source
     assert "operator-status-grid" in combined
     assert "operator-status-card" in combined
+    assert "from app.ui.operator_decisions import (" in source
+    assert "operator_next_best_action(" in source
+    assert "operator_secondary_actions(" in source
+    assert "operator-decision-card" in combined
+    assert "operator-secondary-actions" in combined
+    assert "下一步建議" in source
+    assert 'f"/reports/{int(latest_report_id)}"' in source
+    assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source
     assert "from app.ui.report_health import latest_report_health_summary" in source
     assert "latest_report_health_summary(" in source
     assert "report-health-strip" in combined
     assert "report-health-card" in combined
+    assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source
+    assert "latest_report_lifecycle(" in source
+    assert "report-lifecycle-strip" in combined
+    assert "report-lifecycle-step" in combined
+    assert "報告生命週期" in source
     assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
     assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
     assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source
@@ -155,6 +168,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "會更新本益比、股價淨值比與殖利率判讀" in source
     assert "會補齊公司文件、法說會或公開資訊缺口" in source
     assert "action-impact-grid" in combined
+    assert "from app.ui.data_gap_actions import (" in source
+    assert "data_gap_action_items(" in source
+    assert "data_gap_action_summary(" in source
+    assert "data-gap-action-map" in combined
+    assert "data-gap-action-card" in combined
+    assert "資料缺口行動地圖" in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
     assert 'or schedule_task == "latest_report_update"' in source
@@ -407,6 +426,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "估算成本 USD" in source
     assert "/tasks/summary?days=7" in source
     assert "背景任務觀測" in source
+    assert "from app.ui.incident_inbox import (" in source
+    assert "incident_inbox_items(" in source
+    assert "incident_counts(" in source
+    assert "incident-inbox" in combined
+    assert "incident-card" in combined
+    assert "待處理事件" in source
     assert "/reports/observability/summary?limit=20" in source
     assert "報告生成觀測" in source
     assert "trace_captured_count" in source

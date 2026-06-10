@@ -212,15 +212,53 @@ def _latest_report(reports: list[dict]) -> dict:
 def _recent_failures(task_summary: dict) -> list[dict]:
     if not isinstance(task_summary, dict):
         return []
-    failures = task_summary.get("recent_failures")
-    if not isinstance(failures, list):
-        return []
-    return [failure for failure in failures if isinstance(failure, dict)]
+    failure_rows: list[dict] = []
+    seen = set()
+
+    explicit_failures = task_summary.get("recent_failures")
+    if isinstance(explicit_failures, list):
+        for failure in explicit_failures:
+            if not isinstance(failure, dict):
+                continue
+            seen.add(_failure_identity(failure))
+            failure_rows.append(failure)
+
+    recent = task_summary.get("recent")
+    if isinstance(recent, list):
+        for row in recent:
+            if not isinstance(row, dict) or not _task_failed(row):
+                continue
+            identity = _failure_identity(row)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            failure_rows.append(row)
+    return failure_rows
 
 
 def _first_failure(task_summary: dict) -> dict:
     failures = _recent_failures(task_summary)
     return failures[0] if failures else {}
+
+
+def _task_failed(task: dict) -> bool:
+    status = _text(task.get("status")).casefold()
+    celery_status = _text(task.get("celery_status")).casefold()
+    if status in {"failed", "failure", "cancelled", "error"}:
+        return True
+    if celery_status in {"failed", "failure", "revoked"}:
+        return True
+    return bool(task.get("error") or task.get("error_category"))
+
+
+def _failure_identity(failure: dict) -> tuple[str, str]:
+    task_id = _text(failure.get("task_id"))
+    if task_id:
+        return ("task", task_id)
+    run_id = _text(failure.get("id"))
+    if run_id:
+        return ("run", run_id)
+    return ("row", repr(sorted(failure.items())))
 
 
 def _report_id(report: dict) -> str:
@@ -284,6 +322,18 @@ def _quota_state(model_row: dict) -> str:
 def _high_quota_fallback_models(quota: dict) -> list[str]:
     if not isinstance(quota, dict):
         return []
+    model_rows = quota.get("models")
+    if isinstance(model_rows, list):
+        models = [
+            _text(row.get("model"))
+            for row in model_rows
+            if isinstance(row, dict)
+            and _text(row.get("routing_tier")) == "high_quota_fallback"
+        ]
+        models = [model for model in models if model]
+        if models:
+            return models
+
     routing_policy = quota.get("routing_policy")
     if not isinstance(routing_policy, dict):
         return []

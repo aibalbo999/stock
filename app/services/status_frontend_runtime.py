@@ -16,6 +16,7 @@ ASYNC_TASK_ENDPOINTS = [
 def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
     root = source_context.root
     style_path = source_context.style_path
+    style_source = _read_text(style_path)
     ui_source = source_context.ui_source
     dashboard_core_source = source_context.ui_sources["dashboard_core.py"]
     frontend_smoke_source = _read_text(root / "app" / "services" / "frontend_smoke.py")
@@ -38,6 +39,15 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
         "external_css_loaded": style_path.exists()
         and "STYLE_PATH.read_text" in ui_source
         and "unsafe_allow_html=True" in ui_source,
+        "ui_streamlit_operator_chrome_hidden": (
+            '[data-testid="stToolbar"]' in style_source
+            and '[data-testid="stDecoration"]' in style_source
+            and '[data-testid="stStatusWidget"]' in style_source
+            and '[data-testid="stSidebarCollapseButton"]' in style_source
+            and ".stDeployButton" in style_source
+            and "display: none !important" in style_source
+            and "pointer-events: none !important" in style_source
+        ),
         "frontend_runtime_identity_marker_enabled": (
             'data-stock-frontend-runtime="true"' in dashboard_core_source
             and "runtime_identity_status()" in dashboard_core_source

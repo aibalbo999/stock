@@ -29,6 +29,15 @@ html, body, [class*="css"] {
 /* Hide Streamlit header/footer for cleaner app-like feel */
 header {visibility: hidden;}
 footer {visibility: hidden;}
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="stSidebarCollapseButton"],
+.stDeployButton {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 .block-container {
     padding-top: 0.55rem;
     padding-bottom: 3rem;

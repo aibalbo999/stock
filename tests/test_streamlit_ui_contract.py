@@ -156,6 +156,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "F405" not in source
     assert "upgrade-audit-grid" in combined
     assert '[data-baseweb="tab"] p' in combined
+    assert '[data-testid="stToolbar"]' in styles
+    assert '[data-testid="stDecoration"]' in styles
+    assert '[data-testid="stStatusWidget"]' in styles
+    assert '[data-testid="stSidebarCollapseButton"]' in styles
+    assert ".stDeployButton" in styles
     assert "def render_analysis_workspace() -> None:" in source
     assert "def render_report_center() -> None:" in source
     assert "def render_data_enrichment() -> None:" in source

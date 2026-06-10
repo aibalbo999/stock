@@ -220,6 +220,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_runtime_identity_marker_path"] == (
         "app/ui/dashboard_core.py"
     )
+    assert status["frontend"]["ui_streamlit_operator_chrome_hidden"] is True
     assert status["frontend"]["frontend_smoke_checks_runtime_identity_marker"] is True
     assert status["frontend"]["frontend_data_enrichment_status_extracted"] is True
     assert status["frontend"]["frontend_data_enrichment_status_path"] == (

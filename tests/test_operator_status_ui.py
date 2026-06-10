@@ -40,7 +40,14 @@ def _successful_task_summary() -> dict:
 
 
 def _reports() -> list[dict]:
-    return [{"id": 15, "topic": "AI 供應鏈", "created_at": "2026-06-10T08:00:00"}]
+    return [
+        {
+            "id": 15,
+            "title": "記憶體產業鏈 自動分析報告",
+            "topic": "記憶體產業鏈",
+            "generated_at": "2026-06-06T16:31:24",
+        }
+    ]
 
 
 def _quota() -> dict:
@@ -69,7 +76,7 @@ def _payload_validation_failure() -> dict:
     return {
         "task_id": "task-8150",
         "status": "failed",
-        "operation": "report_generation",
+        "operation": "follow_up_api",
         "retryable": True,
         "error_category": "payload_validation",
         "error_summary": "輸入或白名單已擋下任務",
@@ -82,6 +89,36 @@ def test_operator_status_overall_returns_ready_when_queue_task_and_reports_ready
         _successful_task_summary(),
         _reports(),
     ) == {"state": "ready", "label": "可執行", "detail": "背景任務與最新版報告都可用。"}
+
+
+def test_operator_status_overall_blocks_when_any_queue_readiness_flag_is_false() -> None:
+    for task_queue in [
+        {"ready": False, "processing_ready": True, "worker_online": True},
+        {"ready": True, "processing_ready": False, "worker_online": True},
+        {"ready": True, "processing_ready": True, "worker_online": False},
+        {"ready": True, "worker_online": True},
+    ]:
+        assert operator_status_overall(
+            {"task_queue": task_queue},
+            _successful_task_summary(),
+            _reports(),
+        ) == {
+            "state": "blocked",
+            "label": "背景任務未就緒",
+            "detail": "請先到系統設定檢查 Redis/Celery worker。",
+        }
+
+
+def test_operator_status_overall_blocks_for_stale_running_before_failures_or_reports() -> None:
+    task_summary = _successful_task_summary()
+    task_summary["totals"]["stale_running_count"] = 1
+    task_summary["recent"].append(_payload_validation_failure())
+
+    assert operator_status_overall(_healthy_service_snapshot(), task_summary, []) == {
+        "state": "blocked",
+        "label": "有卡住任務",
+        "detail": "有任務疑似卡住，請先到維護頁處理。",
+    }
 
 
 def test_operator_status_overall_returns_attention_for_historical_failed_task() -> None:
@@ -121,16 +158,40 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
         _reports(),
     )
 
-    assert [card["title"] for card in cards] == ["系統狀態", "最新版報告", "AI 額度", "待處理事項"]
-    assert cards[0]["queue_state"] == "ready"
-    assert cards[1]["report_id"] == "15"
-    assert cards[1]["value"] == "#15"
-    assert cards[2]["value"] == "gemini-3.5-flash"
-    assert cards[2]["recommended_model"] == "gemini-3.5-flash"
-    assert cards[2]["remaining"] == "120 / 250"
-    assert cards[3]["action_label"] == "可重試"
-    assert cards[3]["failure_action"] == "可重試"
-    assert cards[3]["route_hint"] == "task:task-8150"
+    assert cards == [
+        {
+            "title": "系統狀態",
+            "value": "可送任務",
+            "caption": "Worker 線上",
+            "state": "ready",
+            "action_label": "開始使用",
+            "route_hint": "analysis",
+        },
+        {
+            "title": "最新版報告",
+            "value": "#15",
+            "caption": "記憶體產業鏈",
+            "state": "ready",
+            "action_label": "讀報告",
+            "route_hint": "report:15",
+        },
+        {
+            "title": "AI 額度",
+            "value": "gemini-3.5-flash",
+            "caption": "120 / 250｜高額度保底：gemma-4-31b-it",
+            "state": "ready",
+            "action_label": "查看額度",
+            "route_hint": "settings:ai_quota",
+        },
+        {
+            "title": "待處理事項",
+            "value": "輸入或白名單已擋下任務",
+            "caption": "補強或重跑任務曾被 payload 驗證擋下；修正後可重試。",
+            "state": "attention",
+            "action_label": "可重試",
+            "route_hint": "task:task-8150",
+        },
+    ]
 
 
 def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback_caption() -> None:
@@ -140,6 +201,13 @@ def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback
         "state": "ready",
         "caption": "高額度保底：gemma-4-31b-it",
     }
+
+
+def test_quota_operator_summary_uses_exact_caption_when_no_high_quota_fallback() -> None:
+    quota = _quota()
+    quota["models"] = [quota["models"][0]]
+
+    assert quota_operator_summary(quota)["caption"] == "無高額度保底模型"
 
 
 def test_task_failure_action_summary_maps_payload_validation_retryable_failure() -> None:

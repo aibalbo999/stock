@@ -12,31 +12,19 @@ def operator_status_overall(
     service_snapshot: dict, task_summary: dict, reports: list[dict]
 ) -> dict[str, str]:
     task_queue = _task_queue_from_snapshot(service_snapshot)
-    if not _queue_submission_ready(task_queue):
+    totals = _dict_value(task_summary.get("totals") if isinstance(task_summary, dict) else None)
+    if not _queue_ready(task_queue):
         return {
             "state": "blocked",
-            "label": "Queue 需修復",
-            "detail": "背景任務 queue 尚不可提交，請先修復 Redis/Celery 狀態。",
-        }
-    if not _queue_processing_ready(task_queue):
-        return {
-            "state": "attention",
-            "label": "等待 Worker",
-            "detail": "Queue 可提交，但 worker 尚未確認可接手執行。",
+            "label": "背景任務未就緒",
+            "detail": "請先到系統設定檢查 Redis/Celery worker。",
         }
 
-    latest_task = _latest_task(task_summary)
-    if latest_task and not _task_successful(latest_task):
+    if _int_value(totals.get("stale_running_count")) > 0:
         return {
-            "state": "attention",
-            "label": "最近任務需確認",
-            "detail": "Queue 可執行，但最近任務尚未成功完成。",
-        }
-    if not _latest_report(reports):
-        return {
-            "state": "attention",
-            "label": "缺最新版報告",
-            "detail": "最近任務可執行，但尚未取得最新版報告。",
+            "state": "blocked",
+            "label": "有卡住任務",
+            "detail": "有任務疑似卡住，請先到維護頁處理。",
         }
 
     failure_count = len(_recent_failures(task_summary))
@@ -44,7 +32,13 @@ def operator_status_overall(
         return {
             "state": "attention",
             "label": "有待處理紀錄",
-            "detail": f"最近任務可執行，仍有 {failure_count} 筆歷史失敗紀錄待處理。",
+            "detail": "最近任務可執行，但仍有歷史失敗需要重試或確認。",
+        }
+    if not _latest_report(reports):
+        return {
+            "state": "attention",
+            "label": "尚無最新版報告",
+            "detail": "系統可執行，請先建立分析報告。",
         }
     return dict(READY_OVERALL)
 
@@ -55,51 +49,42 @@ def operator_status_cards(
     quota: dict,
     reports: list[dict],
 ) -> list[dict[str, str]]:
-    overall = operator_status_overall(service_snapshot, task_summary, reports)
     task_queue = _task_queue_from_snapshot(service_snapshot)
     report = _latest_report(reports)
     quota_summary = quota_operator_summary(quota)
-    failure_summary = task_failure_action_summary(_first_failure(task_summary))
+    failure_summary = _first_failure_summary(task_summary)
+    queue_state = "ready" if _queue_ready(task_queue) else "blocked"
 
     return [
         {
             "title": "系統狀態",
-            "state": overall["state"],
-            "label": overall["label"],
-            "value": _queue_value(task_queue),
-            "detail": overall["detail"],
-            "queue_state": "ready" if _queue_processing_ready(task_queue) else "attention",
-            "action_label": "",
-            "route_hint": "",
+            "value": "可送任務" if queue_state == "ready" else "需維護",
+            "caption": "Worker 線上" if task_queue.get("worker_online") else "Worker 離線",
+            "state": queue_state,
+            "action_label": "查看維護" if queue_state == "blocked" else "開始使用",
+            "route_hint": "settings:maintenance" if queue_state == "blocked" else "analysis",
         },
         {
             "title": "最新版報告",
-            "state": "ready" if report else "attention",
-            "label": "可查看" if report else "尚未產生",
             "value": _report_value(report),
-            "detail": _report_detail(report),
-            "report_id": _report_id(report),
-            "action_label": "查看報告" if report else "產生報告",
+            "caption": _report_caption(report),
+            "state": "ready" if report else "attention",
+            "action_label": "讀報告" if report else "建立分析",
             "route_hint": _report_route_hint(report),
         },
         {
             "title": "AI 額度",
-            "state": quota_summary["state"],
-            "label": "可用" if quota_summary["state"] == "ready" else "需確認",
             "value": quota_summary["recommended_model"],
-            "detail": quota_summary["caption"],
-            "recommended_model": quota_summary["recommended_model"],
-            "remaining": quota_summary["remaining"],
+            "caption": f"{quota_summary['remaining']}｜{quota_summary['caption']}",
+            "state": quota_summary["state"],
             "action_label": "查看額度",
-            "route_hint": "quota",
+            "route_hint": "settings:ai_quota",
         },
         {
             "title": "待處理事項",
+            "value": failure_summary["label"],
+            "caption": failure_summary["detail"],
             "state": failure_summary["state"],
-            "label": failure_summary["label"],
-            "value": failure_summary["action_label"],
-            "detail": failure_summary["detail"],
-            "failure_action": failure_summary["action_label"],
             "action_label": failure_summary["action_label"],
             "route_hint": failure_summary["route_hint"],
         },
@@ -112,7 +97,7 @@ def quota_operator_summary(quota: dict) -> dict[str, str]:
     remaining = _quota_remaining_text(recommended_row)
     state = _quota_state(recommended_row)
     fallback_models = _high_quota_fallback_models(quota)
-    caption = "高額度保底：" + "、".join(fallback_models) if fallback_models else "高額度保底：-"
+    caption = "高額度保底：" + "、".join(fallback_models) if fallback_models else "無高額度保底模型"
     return {
         "recommended_model": recommended_model,
         "remaining": remaining,
@@ -125,10 +110,10 @@ def task_failure_action_summary(failure: dict) -> dict[str, str]:
     if not isinstance(failure, dict) or not failure:
         return {
             "state": "ready",
-            "label": "無待處理",
-            "detail": "沒有待處理的失敗任務。",
-            "action_label": "",
-            "route_hint": "",
+            "label": "無阻塞",
+            "detail": "最近任務沒有需要立即處理的失敗。",
+            "action_label": "繼續",
+            "route_hint": "analysis",
         }
 
     category = _text(failure.get("error_category"))
@@ -139,16 +124,32 @@ def task_failure_action_summary(failure: dict) -> dict[str, str]:
             "state": "attention",
             "label": _text(failure.get("error_summary"), default="輸入或白名單已擋下任務"),
             "detail": PAYLOAD_VALIDATION_DETAIL,
-            "action_label": "可重試" if retryable else "需修正",
-            "route_hint": f"task:{task_id}" if task_id else "",
+            "action_label": "可重試" if retryable else "檢查輸入",
+            "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
+        }
+    if category == "vector_store":
+        return {
+            "state": "attention",
+            "label": "RAG 向量檢索曾降級",
+            "detail": "報告仍可用關鍵字檢索降級完成；修復索引後可重送任務。",
+            "action_label": "查看維護",
+            "route_hint": "settings:maintenance",
+        }
+    if category == "runtime_storage":
+        return {
+            "state": "blocked",
+            "label": "本機儲存曾失敗",
+            "detail": "請確認報告目錄、SQLite 或備份目錄可讀寫。",
+            "action_label": "查看維護",
+            "route_hint": "settings:maintenance",
         }
 
     return {
         "state": "attention",
-        "label": _failure_label(category, failure),
-        "detail": _failure_detail(category, retryable),
-        "action_label": "可重試" if retryable else "需人工處理",
-        "route_hint": f"task:{task_id}" if task_id else "",
+        "label": "有失敗任務",
+        "detail": _text(failure.get("next_action"), default="請到維護頁查看任務細節。"),
+        "action_label": "查看維護",
+        "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
     }
 
 
@@ -157,6 +158,18 @@ def _task_queue_from_snapshot(service_snapshot: dict) -> dict:
         return {}
     task_queue = service_snapshot.get("task_queue")
     return task_queue if isinstance(task_queue, dict) else {}
+
+
+def _dict_value(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _queue_ready(task_queue: dict) -> bool:
+    return bool(
+        task_queue.get("ready")
+        and task_queue.get("processing_ready")
+        and task_queue.get("worker_online")
+    )
 
 
 def _queue_submission_ready(task_queue: dict) -> bool:
@@ -279,9 +292,19 @@ def _report_detail(report: dict) -> str:
     return topic or "最新版報告可用。"
 
 
+def _report_caption(report: dict) -> str:
+    if not isinstance(report, dict) or not report:
+        return "尚無最新版報告"
+    return _text(report.get("topic") or report.get("title"), default="未命名報告")
+
+
 def _report_route_hint(report: dict) -> str:
     report_id = _report_id(report)
-    return f"report:{report_id}" if report_id else "report:new"
+    return f"report:{report_id}" if report_id else "analysis"
+
+
+def _first_failure_summary(task_summary: dict) -> dict[str, str]:
+    return task_failure_action_summary(_first_failure(task_summary))
 
 
 def _recommended_quota_row(quota: dict, recommended_model: str) -> dict:
@@ -344,37 +367,13 @@ def _high_quota_fallback_models(quota: dict) -> list[str]:
     ]
 
 
-def _failure_label(category: str, failure: dict) -> str:
-    summary = _text(failure.get("error_summary"))
-    if summary:
-        return summary
-    labels = {
-        "quota": "AI 額度限制",
-        "task_queue": "Queue 或 Worker 異常",
-        "external_config": "外部配置缺失",
-        "data_source": "資料源異常",
-        "runtime_storage": "本機儲存異常",
-        "vector_store": "向量庫異常",
-    }
-    return labels.get(category, "任務失敗待確認")
-
-
-def _failure_detail(category: str, retryable: bool) -> str:
-    details = {
-        "quota": "AI 額度或速率限制曾擋下任務；等額度恢復或切換 fallback 後可重試。",
-        "task_queue": "Redis/Celery queue 或 worker 異常曾擋下任務；修復後再重送。",
-        "external_config": "外部服務或文件後援設定缺失；補齊設定後再重送。",
-        "data_source": "市場資料、公司文件或新聞來源異常；可縮小範圍或重刷快取後重試。",
-        "runtime_storage": "本機檔案或資料庫儲存異常；確認權限與路徑後再重送。",
-        "vector_store": "RAG/Chroma 向量庫或 embedding 相容性需檢查。",
-    }
-    if category in details:
-        return details[category]
-    if retryable:
-        return "任務曾失敗但可重試；請檢查錯誤內容後重新送出。"
-    return "任務曾失敗且需要人工確認；請檢查錯誤內容後處理。"
-
-
 def _text(value: Any, *, default: str = "") -> str:
     text = str(value or "").strip()
     return text or default
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0

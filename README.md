@@ -104,7 +104,7 @@ macOS 一鍵啟動：
 ./start_system.command
 ```
 
-也可以在 Finder 直接雙擊 `start_system.command`。它會啟動 API 與 Streamlit，避免重複開相同 port，並在視窗中顯示本機與同網路手機可用網址；若偵測到 8501 上的既有 Streamlit 是舊前端 runtime，會先停止舊程序再重新啟動。
+也可以在 Finder 直接雙擊 `start_system.command`。它會啟動 API 與 Streamlit，避免重複開相同 port，並在視窗中顯示本機與同網路手機可用網址；若偵測到 8000 API 或 8501 Streamlit 是舊 runtime，會先停止舊程序再重新啟動。
 需要停止背景服務時，雙擊 `stop_system.command`。
 
 啟動 Redis / PostgreSQL / Neo4j / Browserless / Chroma：
@@ -348,7 +348,7 @@ AIRFLOW_TIMEOUT_SECONDS=15.0
 .venv/bin/python scripts/start_system.py --open-browser --start-dependencies --prefer-unlocker
 ```
 
-若第一次啟動時本機尚未有 Redis / Postgres / Neo4j / Browserless / Chroma image，一鍵啟動會提示先 pull，並在 dependency/migration 前停止，避免後續錯誤誤指向 API 或 Alembic。若 8501 已有 Streamlit 程序，一鍵啟動會用 frontend runtime marker 確認它是否屬於目前工作樹；遇到 `streamlit_runtime_identity_marker_missing` 或 `streamlit_runtime_commit_mismatch` 會自動重啟 8501，無法釋放 port 時會在啟動結果列出人工處理提示。自動下載、`--prefer-unlocker`、FlareSolverr fallback、本機 defaults 與維護頁後續診斷請見 [deployment readiness runbook](docs/runbooks/deployment-readiness.md)。
+若第一次啟動時本機尚未有 Redis / Postgres / Neo4j / Browserless / Chroma image，一鍵啟動會提示先 pull，並在 dependency/migration 前停止，避免後續錯誤誤指向 API 或 Alembic。若 8000 已有 API 程序，一鍵啟動會用 `/services/runtime-identity` 確認它是否屬於目前工作樹；遇到 `api_runtime_commit_mismatch` 或 `api_runtime_commit_unavailable` 會自動重啟 8000。若 8501 已有 Streamlit 程序，則會用 frontend runtime marker 驗證；遇到 `streamlit_runtime_identity_marker_missing` 或 `streamlit_runtime_commit_mismatch` 會自動重啟 8501。無法釋放 port 時會在啟動結果列出人工處理提示。自動下載、`--prefer-unlocker`、FlareSolverr fallback、本機 defaults 與維護頁後續診斷請見 [deployment readiness runbook](docs/runbooks/deployment-readiness.md)。
 
 升級目標稽核：
 

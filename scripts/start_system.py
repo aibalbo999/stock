@@ -42,6 +42,10 @@ STREAMLIT_PORT = 8501
 LOCAL_REDIS_PORT = 6379
 LOCAL_POSTGRES_PORT = 5432
 OPTIONAL_RENDER_DEPENDENCY_SERVICES = {"browserless", "flaresolverr"}
+STALE_API_RESTART_REASONS = {
+    "api_runtime_commit_mismatch",
+    "api_runtime_commit_unavailable",
+}
 STALE_STREAMLIT_RESTART_REASONS = {
     "streamlit_runtime_identity_marker_missing",
     "streamlit_runtime_commit_mismatch",
@@ -162,9 +166,7 @@ def main() -> int:
             strict_external=bool(args.strict_upgrade_check),
         )
 
-    api_started = ensure_process(
-        name="api",
-        port=API_PORT,
+    api_started, api_runtime_status = ensure_api_process(
         command=[
             str(python),
             "-m",
@@ -176,6 +178,7 @@ def main() -> int:
             str(API_PORT),
         ],
         log_path=LOG_DIR / "api.log",
+        api_url=f"http://{API_HOST}:{API_PORT}",
     )
     streamlit_started, streamlit_runtime_status = ensure_streamlit_process(
         command=[
@@ -230,8 +233,11 @@ def main() -> int:
             print(f"- 依賴啟動紀錄：{dependency_start_record['path']}")
     print(f"- 資料庫 migration：{migration_status['status']}，{migration_status['message']}")
     print(
-        f"- API: {'已啟動' if api_started else '已在執行'}，健康檢查：{'正常' if api_ok else '尚未回應'}"
+        f"- API: {api_process_label(api_started, api_runtime_status)}，"
+        f"健康檢查：{'正常' if api_ok else '尚未回應'}"
     )
+    for line in api_runtime_status_lines(api_runtime_status):
+        print(line)
     print(
         f"- Streamlit: {streamlit_process_label(streamlit_started, streamlit_runtime_status)}，"
         f"連線檢查：{'正常' if streamlit_ok else '尚未回應'}"
@@ -1331,6 +1337,100 @@ def start_process(name: str, command: list[str], log_path: Path) -> bool:
         )
     (RUN_DIR / f"{name}.pid").write_text(str(process.pid), encoding="utf-8")
     return True
+
+
+def ensure_api_process(
+    command: list[str],
+    log_path: Path,
+    *,
+    api_url: str,
+    smoke_timeout_seconds: float = 6.0,
+) -> tuple[bool, dict]:
+    if not is_port_open("127.0.0.1", API_PORT):
+        started = start_process("api", command, log_path)
+        return started, {"status": "started", "reason": "port_closed"}
+
+    smoke_check = run_api_runtime_identity_smoke(
+        api_url,
+        timeout_seconds=smoke_timeout_seconds,
+    )
+    stale_reason = api_runtime_identity_failure_reason(smoke_check)
+    if stale_reason in STALE_API_RESTART_REASONS:
+        stop_result = stop_port_processes(API_PORT)
+        if not wait_for_port_closed("127.0.0.1", API_PORT, 8):
+            return (
+                False,
+                {
+                    "status": "stale_restart_blocked",
+                    "reason": stale_reason,
+                    "stop_result": stop_result,
+                    "smoke_check": smoke_check,
+                },
+            )
+        started = start_process("api", command, log_path)
+        return (
+            started,
+            {
+                "status": "restarted",
+                "reason": stale_reason,
+                "stop_result": stop_result,
+                "smoke_check": smoke_check,
+            },
+        )
+
+    if smoke_check.get("status") == "passed":
+        reason = "api_runtime_verified"
+    else:
+        reason = str(smoke_check.get("reason") or smoke_check.get("error") or "api_runtime_unverified")
+    return (
+        False,
+        {
+            "status": "already_running",
+            "reason": reason,
+            "smoke_check": smoke_check,
+        },
+    )
+
+
+def run_api_runtime_identity_smoke(
+    api_url: str,
+    *,
+    timeout_seconds: float = 6.0,
+) -> dict:
+    from app.services.api_runtime_identity_check import check_api_runtime_identity
+
+    return check_api_runtime_identity(api_url, timeout_seconds=timeout_seconds)
+
+
+def api_runtime_identity_failure_reason(smoke_check: dict) -> str:
+    if smoke_check.get("status") == "failed":
+        return str(smoke_check.get("reason") or "")
+    return ""
+
+
+def api_process_label(started: bool, runtime_status: dict) -> str:
+    if runtime_status.get("status") == "restarted":
+        return "已重啟"
+    if started:
+        return "已啟動"
+    return "已在執行"
+
+
+def api_runtime_status_lines(runtime_status: dict) -> list[str]:
+    status = str(runtime_status.get("status") or "")
+    reason = str(runtime_status.get("reason") or "")
+    if status == "restarted":
+        pids = (runtime_status.get("stop_result") or {}).get("terminated") or []
+        pid_text = f"；已停止 PID {', '.join(str(pid) for pid in pids)}" if pids else ""
+        return [f"- API runtime：偵測到舊 API（{reason}），已重新啟動 8000{pid_text}。"]
+    if status == "stale_restart_blocked":
+        return [
+            "- API runtime：偵測到舊 API，但無法自動釋放 8000；"
+            "請手動停止佔用該 port 的 API 後重跑啟動指令。"
+        ]
+    if status == "already_running" and reason not in {"", "api_runtime_verified"}:
+        return [f"- API runtime：既有程序保留，runtime smoke 未完成確認（{reason}）。"]
+    return []
 
 
 def ensure_streamlit_process(

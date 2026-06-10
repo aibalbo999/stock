@@ -261,6 +261,90 @@ def test_ensure_background_process_starts_and_writes_pid(monkeypatch, tmp_path) 
     assert (tmp_path / "celery.pid").read_text(encoding="utf-8") == "456"
 
 
+def test_ensure_api_process_restarts_stale_runtime(monkeypatch, tmp_path) -> None:
+    started_commands = []
+    stopped_ports = []
+    monkeypatch.setattr("scripts.start_system.ROOT", tmp_path)
+    monkeypatch.setattr("scripts.start_system.RUN_DIR", tmp_path)
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8000)
+    monkeypatch.setattr(
+        "scripts.start_system.run_api_runtime_identity_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "api_runtime_identity",
+            "status": "failed",
+            "reason": "api_runtime_commit_mismatch",
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.stop_port_processes",
+        lambda port: stopped_ports.append(port)
+        or {"pids": [2345], "terminated": [2345], "killed": []},
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.wait_for_port_closed",
+        lambda _host, port, _timeout_seconds: port == 8000,
+    )
+    monkeypatch.setattr(
+        "scripts.start_system.start_process",
+        lambda name, command, log_path: started_commands.append((name, command, log_path)) or True,
+    )
+
+    started, status = start_system_module.ensure_api_process(
+        command=["python", "-m", "uvicorn"],
+        log_path=tmp_path / "api.log",
+        api_url="http://127.0.0.1:8000",
+    )
+
+    assert started is True
+    assert status["status"] == "restarted"
+    assert status["reason"] == "api_runtime_commit_mismatch"
+    assert stopped_ports == [8000]
+    assert started_commands == [("api", ["python", "-m", "uvicorn"], tmp_path / "api.log")]
+
+
+def test_ensure_api_process_keeps_verified_running_runtime(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("scripts.start_system.is_port_open", lambda _host, port: port == 8000)
+    monkeypatch.setattr(
+        "scripts.start_system.run_api_runtime_identity_smoke",
+        lambda *_args, **_kwargs: {
+            "label": "api_runtime_identity",
+            "status": "passed",
+            "reason": None,
+        },
+    )
+
+    def fail_if_stopped(_port):
+        raise AssertionError("verified API should not be stopped")
+
+    def fail_if_started(_name, _command, _log_path):
+        raise AssertionError("verified API should not be started again")
+
+    monkeypatch.setattr("scripts.start_system.stop_port_processes", fail_if_stopped)
+    monkeypatch.setattr("scripts.start_system.start_process", fail_if_started)
+
+    started, status = start_system_module.ensure_api_process(
+        command=["python", "-m", "uvicorn"],
+        log_path=tmp_path / "api.log",
+        api_url="http://127.0.0.1:8000",
+    )
+
+    assert started is False
+    assert status["status"] == "already_running"
+    assert status["reason"] == "api_runtime_verified"
+
+
+def test_api_runtime_identity_failure_reason_reads_direct_reason() -> None:
+    reason = start_system_module.api_runtime_identity_failure_reason(
+        {
+            "label": "api_runtime_identity",
+            "status": "failed",
+            "reason": "api_runtime_commit_unavailable",
+        }
+    )
+
+    assert reason == "api_runtime_commit_unavailable"
+
+
 def test_ensure_streamlit_process_restarts_stale_frontend(monkeypatch, tmp_path) -> None:
     started_commands = []
     stopped_ports = []

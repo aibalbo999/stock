@@ -86,6 +86,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_formatters import" in source
     assert "from app.ui.report_sections import (" in source
     assert "from app.ui.operator_status import (" in source
+    assert "from app.ui.operator_routes import operator_route_target" in source
     assert "operator_status_cards(" in source
     assert '"今日狀態"' in source
     assert '"/tasks/summary?days=7&limit=10"' in source
@@ -98,6 +99,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "operator_secondary_actions(" in source
     assert "operator-decision-card" in combined
     assert "operator-secondary-actions" in combined
+    assert "operator-action-controls" in combined
+    assert "_render_operator_primary_action_control(" in source
+    assert "_render_operator_action_controls(" in source
+    assert "operator_route_target(" in source
+    assert "st.switch_page(" in source
+    assert "pending_selected_report_id" in source
+    assert "maintenance_inspect_task_id" in source
     assert "下一步建議" in source
     assert 'f"/reports/{int(latest_report_id)}"' in source
     assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source
@@ -166,7 +174,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert Path("pages/03_資料補強.py").exists()
     assert Path("pages/04_系統設定.py").exists()
     assert 'data_tabs = st.tabs(["市場快取與刷新", "手動補充", "RSS 匯入"])' in source
-    assert 'settings_tabs = st.tabs(["股票範圍", "自動排程", "維護"])' in source
+    assert 'settings_section = st.radio(' in source
+    assert 'key="settings_section"' in source
+    assert "pending_settings_section" in source
     assert '"匯入新聞/研究摘要"' in source
     assert '"匯入 RAG"' not in source
     assert "會更新最新版報告的股價與成交量判讀" in source

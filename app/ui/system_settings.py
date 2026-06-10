@@ -8,15 +8,36 @@ from app.ui.system_settings_schedule import render_schedule_tab
 from app.ui.system_settings_scope import render_scope_tab
 
 
+SETTINGS_SECTION_LABELS = ("股票範圍", "自動排程", "維護")
+
+
 def render_system_settings() -> None:
     settings_whitelist = SupplyChainWhitelist()
-    settings_tabs = st.tabs(["股票範圍", "自動排程", "維護"])
+    pending_section = st.session_state.pop("pending_settings_section", None)
+    if pending_section is not None or st.session_state.get("settings_section") not in (
+        SETTINGS_SECTION_LABELS
+    ):
+        st.session_state["settings_section"] = settings_section_label(pending_section)
+    settings_section = st.radio(
+        "系統設定區塊",
+        SETTINGS_SECTION_LABELS,
+        horizontal=True,
+        key="settings_section",
+        label_visibility="collapsed",
+    )
 
-    with settings_tabs[0]:
+    if settings_section == "股票範圍":
         render_scope_tab(settings_whitelist)
-
-    with settings_tabs[1]:
+    elif settings_section == "自動排程":
         render_schedule_tab(sorted(settings_whitelist.allowed_tickers()))
-
-    with settings_tabs[2]:
+    else:
         render_maintenance_tab()
+
+
+def settings_section_label(pending_section: str | None) -> str:
+    section = str(pending_section or "").strip()
+    if section in {"maintenance", "ai_quota"}:
+        return "維護"
+    if section == "schedule":
+        return "自動排程"
+    return "股票範圍"

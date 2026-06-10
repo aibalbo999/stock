@@ -13,6 +13,7 @@ from app.ui.operator_decisions import (
     operator_next_best_action,
     operator_secondary_actions,
 )
+from app.ui.operator_routes import operator_route_target
 from app.ui.operator_status import (
     operator_status_cards,
     operator_status_overall,
@@ -331,6 +332,7 @@ def _render_operator_workbench() -> None:
     overall = operator_status_overall(service_snapshot, task_summary, reports)
     cards = operator_status_cards(service_snapshot, task_summary, quota, reports)
     card_html = "\n".join(_operator_card_html(card) for card in cards)
+    _render_operator_primary_action_control(primary_action)
     st.markdown(
         f"""<section class="operator-workbench" aria-label="今日狀態">
 <div class="operator-workbench-head">
@@ -342,9 +344,13 @@ def _render_operator_workbench() -> None:
 <span class="operator-state is-{escape(overall["state"])}">{escape(overall["state"])}</span>
 </div>
 {_operator_decision_html(primary_action, secondary_actions)}
-<div class="operator-status-grid">
+</section>""",
+        unsafe_allow_html=True,
+    )
+    _render_operator_action_controls(secondary_actions)
+    st.markdown(
+        f"""<section class="operator-status-grid" aria-label="狀態摘要">
 {card_html}
-</div>
 </section>""",
         unsafe_allow_html=True,
     )
@@ -384,6 +390,70 @@ def _operator_decision_html(primary_action: dict, secondary_actions: list[dict])
 {secondary_html}
 </div>
 </section>"""
+
+
+def _render_operator_primary_action_control(primary_action: dict) -> None:
+    st.markdown(
+        """<section class="operator-action-controls is-primary" aria-label="主要建議操作">
+<span>主要操作</span>
+<strong>按下後會帶你到對應頁面</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    _render_operator_route_button(
+        primary_action,
+        key="operator_route_primary_action",
+        primary=True,
+        show_caption=False,
+    )
+
+
+def _render_operator_action_controls(secondary_actions: list[dict]) -> None:
+    if not secondary_actions:
+        return
+    st.markdown(
+        """<section class="operator-action-controls" aria-label="建議操作">
+<span>次要操作</span>
+<strong>其他可開啟的處理頁面</strong>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    actions = secondary_actions[:3]
+    columns = st.columns(len(actions), gap="small")
+    for index, action in enumerate(actions):
+        with columns[index]:
+            _render_operator_route_button(
+                action,
+                key=f"operator_route_action_{index}",
+            )
+
+
+def _render_operator_route_button(
+    action: dict,
+    *,
+    key: str,
+    primary: bool = False,
+    show_caption: bool = True,
+) -> None:
+    target = operator_route_target(action.get("route_hint"))
+    label = str(
+        action.get("action_label")
+        or action.get("title")
+        or target.get("caption")
+        or "開啟"
+    )
+    if st.button(
+        label,
+        key=key,
+        type="primary" if primary else "secondary",
+        use_container_width=True,
+        help=str(target.get("caption") or ""),
+    ):
+        for state_key, value in (target.get("session_updates") or {}).items():
+            st.session_state[state_key] = value
+        st.switch_page(str(target["page"]))
+    if show_caption:
+        st.caption(str(target.get("caption") or ""))
 
 
 def _secondary_action_html(action: dict) -> str:

@@ -17,6 +17,11 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     maintenance_cleanup_panel_source = ui_sources["maintenance_cleanup_panel.py"]
     llm_quota_panel_source = ui_sources["llm_quota_panel.py"]
+    style_source = (
+        source_context.style_path.read_text(encoding="utf-8")
+        if source_context.style_path.exists()
+        else ""
+    )
     return {
         "frontend_maintenance_ui_status_extracted": True,
         "frontend_maintenance_ui_status_path": "app/services/status_frontend_maintenance.py",
@@ -122,6 +127,21 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in system_settings_maintenance_source
             and "latest_report_lifecycle_snapshot,\n        )"
             in system_settings_maintenance_source
+        ),
+        "ui_incident_grouped_summary_enabled": (
+            "def incident_summary_cards(" in system_settings_maintenance_source
+            and "incident_summary_cards(incidents)" in system_settings_maintenance_source
+            and "top_incidents(summaries, limit=limit)" in system_settings_maintenance_source
+            and "repeat_count" in system_settings_maintenance_source
+            and "hidden_count" in system_settings_maintenance_source
+            and "route_hints" in system_settings_maintenance_source
+            and "source_ids" in system_settings_maintenance_source
+            and "同類事件" in system_settings_maintenance_source
+            and "另有 {hidden_count} 筆同類事件" in system_settings_maintenance_source
+            and "_render_incident_action_controls(incidents)" in system_settings_maintenance_source
+            and "def _incident_summary_key(" in system_settings_maintenance_source
+            and ".incident-card-head" in style_source
+            and ".incident-card .incident-repeat-badge" in style_source
         ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()

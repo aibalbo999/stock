@@ -244,6 +244,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_maintenance_ui_status_extracted")
             and frontend_status.get("ui_incident_action_labels_enabled")
             and frontend_status.get("ui_incident_report_lifecycle_enabled")
+            and frontend_status.get("ui_incident_grouped_summary_enabled")
             and frontend_status.get("ui_settings_ai_quota_route_focus_enabled")
             and frontend_status.get("ui_settings_task_route_focus_enabled")
             and frontend_status.get("ui_settings_local_defaults_route_focus_enabled")

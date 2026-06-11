@@ -3,6 +3,85 @@ from __future__ import annotations
 import app.ui.system_settings_maintenance as maintenance
 
 
+def test_incident_summary_cards_group_repeated_operator_noise() -> None:
+    incidents = [
+        {
+            "severity": "warning",
+            "category": "data_source",
+            "title": "資料來源抓取失敗",
+            "impact": "最新版報告可能缺少最新市場或公司資料。",
+            "next_action": "到維護頁重試此任務",
+            "action_label": "重試任務",
+            "route_hint": f"task:refresh-{index}",
+            "retryable": True,
+        }
+        for index in range(3)
+    ]
+    incidents.append(
+        {
+            "severity": "critical",
+            "category": "runtime_storage",
+            "title": "本機儲存失敗",
+            "impact": "報告檔案、SQLite 或備份可能沒有寫入成功。",
+            "next_action": "到維護頁查看失敗診斷",
+            "action_label": "檢查任務",
+            "route_hint": "task:storage-1",
+            "retryable": False,
+        }
+    )
+
+    summaries = maintenance.incident_summary_cards(incidents)
+
+    assert len(summaries) == 2
+    repeated = summaries[1]
+    assert repeated["title"] == "資料來源抓取失敗"
+    assert repeated["repeat_count"] == 3
+    assert repeated["hidden_count"] == 2
+    assert repeated["route_hint"] == "task:refresh-0"
+    assert repeated["route_hints"] == ["task:refresh-0", "task:refresh-1", "task:refresh-2"]
+
+
+def test_render_incident_inbox_uses_grouped_cards_without_losing_counts(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.markdown_calls: list[str] = []
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdown_calls.append(body)
+
+    incidents = [
+        {
+            "severity": "warning",
+            "category": "data_source",
+            "title": "資料來源抓取失敗",
+            "impact": "最新版報告可能缺少最新市場或公司資料。",
+            "next_action": "到維護頁重試此任務",
+            "action_label": "重試任務",
+            "route_hint": f"task:refresh-{index}",
+            "retryable": True,
+        }
+        for index in range(3)
+    ]
+    captured_action_incidents: list[dict] = []
+    fake_st = FakeStreamlit()
+
+    monkeypatch.setattr(maintenance, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance,
+        "_render_incident_action_controls",
+        lambda action_incidents: captured_action_incidents.extend(action_incidents),
+    )
+
+    maintenance._render_incident_inbox(incidents)
+
+    combined = "\n".join(fake_st.markdown_calls)
+    assert "Warning 3" in combined
+    assert combined.count("資料來源抓取失敗") == 1
+    assert "同類事件 3 筆" in combined
+    assert "另有 2 筆同類事件" in combined
+    assert captured_action_incidents == incidents
+
+
 def test_render_maintenance_tab_promotes_ai_quota_panel_when_requested(monkeypatch) -> None:
     class FakeStreamlit:
         def __init__(self) -> None:

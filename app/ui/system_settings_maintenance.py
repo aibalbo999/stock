@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from html import escape
 
 import streamlit as st
@@ -9,6 +10,7 @@ from app.ui.dashboard_core import render_section_header
 from app.ui.incident_inbox import (
     incident_counts,
     incident_inbox_items,
+    top_incidents,
 )
 from app.ui.maintenance_panels import (
     render_ai_quota_panel,
@@ -214,7 +216,9 @@ def _latest_report_lifecycle_for_maintenance() -> dict:
 
 def _render_incident_inbox(incidents: list[dict]) -> None:
     counts = incident_counts(incidents)
-    incident_html = "\n".join(_incident_card_html(incident) for incident in incidents[:8])
+    incident_html = "\n".join(
+        _incident_card_html(incident) for incident in incident_summary_cards(incidents)
+    )
     if not incident_html:
         incident_html = """<article class="incident-card is-ready">
 <strong>目前沒有待處理事件</strong>
@@ -247,13 +251,83 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
     )
 
 
+def incident_summary_cards(incidents: list[dict], limit: int = 8) -> list[dict]:
+    grouped: dict[tuple[str, ...], list[dict]] = {}
+    for incident in incidents:
+        grouped.setdefault(_incident_summary_key(incident), []).append(incident)
+
+    summaries: list[dict] = []
+    for group in grouped.values():
+        representative = dict(top_incidents(group, limit=1)[0])
+        route_hints = _unique_texts(row.get("route_hint") for row in group)
+        sources = _unique_texts(row.get("source") or row.get("id") for row in group)
+        repeat_count = len(group)
+        representative["repeat_count"] = repeat_count
+        representative["hidden_count"] = max(0, repeat_count - 1)
+        representative["route_hints"] = route_hints
+        representative["source_ids"] = sources
+        summaries.append(representative)
+
+    return top_incidents(summaries, limit=limit)
+
+
+def _incident_summary_key(incident: dict) -> tuple[str, ...]:
+    return (
+        str(incident.get("severity") or "").strip(),
+        str(incident.get("category") or "").strip(),
+        str(incident.get("title") or "").strip(),
+        str(incident.get("impact") or "").strip(),
+        str(incident.get("next_action") or "").strip(),
+        str(incident.get("action_label") or "").strip(),
+        str(bool(incident.get("retryable"))),
+    )
+
+
+def _unique_texts(values: Iterable[object]) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        selected.append(text)
+    return selected
+
+
 def _incident_card_html(incident: dict) -> str:
-    return f"""<article class="incident-card is-{escape(incident.get("severity", "info"))}">
-<strong>{escape(incident.get("title", "-"))}</strong>
-<span>{escape(incident.get("impact", ""))}</span>
-<em>{escape(incident.get("next_action", ""))}</em>
-<small>{escape(incident.get("route_hint", ""))}</small>
+    repeat_count = _incident_count_value(incident.get("repeat_count"), default=1)
+    hidden_count = _incident_count_value(
+        incident.get("hidden_count"),
+        default=max(0, repeat_count - 1),
+    )
+    repeat_badge = ""
+    if repeat_count > 1:
+        repeat_badge = (
+            f'<span class="incident-repeat-badge">同類事件 {escape(str(repeat_count))} 筆</span>'
+        )
+    route_hint = str(incident.get("route_hint") or "").strip()
+    route_text = route_hint
+    if hidden_count > 0:
+        hidden_text = f"另有 {hidden_count} 筆同類事件"
+        route_text = f"{route_hint}；{hidden_text}" if route_hint else hidden_text
+    return f"""<article class="incident-card is-{escape(str(incident.get("severity") or "info"))}">
+<div class="incident-card-head">
+<strong>{escape(str(incident.get("title") or "-"))}</strong>
+{repeat_badge}
+</div>
+<span>{escape(str(incident.get("impact") or ""))}</span>
+<em>{escape(str(incident.get("next_action") or ""))}</em>
+<small>{escape(route_text)}</small>
 </article>"""
+
+
+def _incident_count_value(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0, parsed)
 
 
 def _render_incident_action_controls(incidents: list[dict]) -> None:

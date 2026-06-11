@@ -749,7 +749,6 @@ textarea:focus,
 .operator-secondary-action strong,
 .operator-secondary-action span,
 .operator-secondary-action em,
-.incident-card strong,
 .incident-card span,
 .incident-card em,
 .incident-card small,
@@ -761,6 +760,29 @@ textarea:focus,
 .market-operation-card em,
 .market-operation-card small {
     display: block;
+}
+.incident-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.incident-card-head strong {
+    display: block;
+    min-width: 0;
+}
+.incident-card .incident-repeat-badge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(14, 165, 233, 0.28);
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-top: 0;
+    background: rgba(14, 165, 233, 0.08);
+    color: #0369a1;
+    font-size: 0.76rem;
+    font-weight: 800;
+    line-height: 1.5;
+    white-space: nowrap;
 }
 .operator-secondary-action span,
 .incident-card span,

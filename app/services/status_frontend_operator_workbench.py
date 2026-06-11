@@ -22,6 +22,11 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
             and "我了解這會送出分析背景任務並消耗 AI/API 額度"
             in analysis_workspace_source
+            and "分析會在背景執行，送出後可用任務編號查詢進度。"
+            in analysis_workspace_source
+            and "分析任務一律交由 FastAPI / Celery 背景執行"
+            not in analysis_workspace_source
+            and "送出後可用 task id 查詢進度" not in analysis_workspace_source
             and "避免誤觸與免費額度消耗" in analysis_workspace_source
             and "disabled=not analysis_submission_ready(" in analysis_workspace_source
             and "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_workspace_source

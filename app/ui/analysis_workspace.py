@@ -279,9 +279,7 @@ def render_analysis_workspace() -> None:
                     options=sorted(SupplyChainWhitelist().allowed_tickers()),
                     default=[],
                 )
-                st.caption(
-                    "分析任務一律交由 FastAPI / Celery 背景執行，送出後可用 task id 查詢進度。"
-                )
+                st.caption("分析會在背景執行，送出後可用任務編號查詢進度。")
 
             analysis_quota_confirmed = st.checkbox(
                 "我了解這會送出分析背景任務並消耗 AI/API 額度",

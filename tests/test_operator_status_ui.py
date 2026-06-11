@@ -108,7 +108,7 @@ def test_operator_status_overall_blocks_when_any_queue_readiness_flag_is_false()
         ) == {
             "state": "blocked",
             "label": "背景任務未就緒",
-            "detail": "請先到系統設定檢查 Redis/Celery worker。",
+            "detail": "請先到系統設定檢查背景任務佇列與背景執行器。",
         }
 
 

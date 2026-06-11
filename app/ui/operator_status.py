@@ -25,7 +25,7 @@ def operator_status_overall(
         return {
             "state": "blocked",
             "label": "背景任務未就緒",
-            "detail": "請先到系統設定檢查 Redis/Celery worker。",
+            "detail": "請先到系統設定檢查背景任務佇列與背景執行器。",
         }
 
     if _int_value(totals.get("stale_running_count")) > 0:

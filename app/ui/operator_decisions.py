@@ -37,7 +37,7 @@ def operator_next_best_action(
             title="確認系統狀態",
             reason="目前無法讀取系統狀態；請先到維護頁確認 API 與背景任務觀測。",
             risk="這不代表背景任務已壞掉，但暫時無法判斷新的分析或補強能否送出。",
-            impact="確認 /services/status 恢復後，再送出新的長時間任務。",
+            impact="確認系統狀態恢復後，再送出新的長時間任務。",
             action_label="查看維護",
             route_hint="settings:maintenance",
             source_ids=["services_status"],

@@ -201,6 +201,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "service_status_unavailable(service_snapshot)" in operator_decisions_source
             and "確認系統狀態" in operator_decisions_source
             and "這不代表背景任務已壞掉" in operator_decisions_source
+            and "確認系統狀態恢復後，再送出新的長時間任務。"
+            in operator_decisions_source
+            and "確認 /services/status 恢復後" not in operator_decisions_source
             and 'source_ids=["services_status"]' in operator_decisions_source
         ),
         "ui_operator_task_summary_unknown_guard_enabled": (

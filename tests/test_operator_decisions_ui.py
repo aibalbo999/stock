@@ -55,6 +55,8 @@ def test_operator_next_action_treats_missing_service_status_as_attention_not_que
     assert action["title"] == "確認系統狀態"
     assert "目前無法讀取系統狀態" in action["reason"]
     assert "不代表背景任務已壞掉" in action["risk"]
+    assert action["impact"] == "確認系統狀態恢復後，再送出新的長時間任務。"
+    assert "/services/status" not in action["impact"]
     assert action["action_label"] == "查看維護"
     assert action["route_hint"] == "settings:maintenance"
 

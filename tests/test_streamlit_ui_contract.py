@@ -198,6 +198,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     maintenance_progress_presenter_source = (
         ui.MAINTENANCE_PROGRESS_PRESENTER_SOURCE.read_text()
     )
+    maintenance_incident_presenter_source = (
+        ui.MAINTENANCE_INCIDENT_PRESENTER_SOURCE.read_text()
+    )
+    system_settings_maintenance_source = Path(
+        "app/ui/system_settings_maintenance.py"
+    ).read_text()
     assert "def optimization_progress_operator_summary(" in maintenance_progress_presenter_source
     assert "def optimization_progress_scope_summary(" in maintenance_progress_presenter_source
     assert "def optimization_progress_metric_values(" in maintenance_progress_presenter_source
@@ -207,15 +213,23 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'summary["free_validation"] = free_validation' in maintenance_progress_presenter_source
     assert 'summary.get("free_validation")' in source
     assert "_render_incident_priority_summary(incidents)" in source
-    assert "def incident_action_priority_summary(" in source
+    assert "from app.ui.maintenance_incident_presenter import (" in (
+        system_settings_maintenance_source
+    )
+    assert "import streamlit" not in maintenance_incident_presenter_source
+    assert "def incident_action_priority_summary(" in maintenance_incident_presenter_source
     assert "先處理 {critical} 個 Critical 事件" in source
     assert "歷史趨勢/觀測" in source
     assert "incident_action_summaries(incidents)" in source
-    assert "def incident_action_summaries(" in source
-    assert "def incident_action_caption(" in source
-    assert 'key=f"incident_action_{index}"' in source
-    assert '"action_label": incident_action_label(incident, index)' in source
-    assert "def incident_action_label(" in source
+    assert "def incident_action_summaries(" in maintenance_incident_presenter_source
+    assert "def incident_action_caption(" in maintenance_incident_presenter_source
+    assert 'key=f"incident_action_{index}"' in system_settings_maintenance_source
+    assert '"action_label": incident_action_label(incident, index)' in (
+        system_settings_maintenance_source
+    )
+    assert "def incident_action_label(" in maintenance_incident_presenter_source
+    assert "def incident_summary_cards(" not in system_settings_maintenance_source
+    assert "def incident_action_priority_summary(" not in system_settings_maintenance_source
     assert "下一步建議" in source
     assert 'f"/reports/{int(latest_report_id)}"' in source
     assert 'f"/reports/{int(latest_report_id)}/follow-up/plan"' in source

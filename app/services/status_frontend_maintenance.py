@@ -10,6 +10,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     system_settings_source = ui_sources["system_settings.py"]
     operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
+    maintenance_incident_presenter_source = ui_sources["maintenance_incident_presenter.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     maintenance_progress_presenter_source = ui_sources["maintenance_progress_presenter.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
@@ -109,7 +110,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         "ui_incident_action_labels_enabled": (
             '"action_label": incident_action_label(incident, index)'
             in system_settings_maintenance_source
-            and "def incident_action_label(" in system_settings_maintenance_source
+            and "def incident_action_label(" in maintenance_incident_presenter_source
             and '"action_label": _failure_action_label(category, retryable)' in ui_source
             and "def _failure_action_label(" in ui_source
             and 'return "重試任務"' in ui_source
@@ -134,56 +135,60 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         "ui_incident_priority_summary_enabled": (
             "_render_incident_priority_summary(incidents)" in system_settings_maintenance_source
             and "def _render_incident_priority_summary(" in system_settings_maintenance_source
-            and "def incident_action_priority_summary(" in system_settings_maintenance_source
+            and "def incident_action_priority_summary("
+            in maintenance_incident_presenter_source
             and "Critical {critical} / Warning {warning} / Info {info}"
-            in system_settings_maintenance_source
-            and "retryable_count" in system_settings_maintenance_source
-            and "task_linked_count" in system_settings_maintenance_source
-            and "passive_count" in system_settings_maintenance_source
-            and "歷史趨勢/觀測" in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
+            and "retryable_count" in maintenance_incident_presenter_source
+            and "task_linked_count" in maintenance_incident_presenter_source
+            and "passive_count" in maintenance_incident_presenter_source
+            and "歷史趨勢/觀測" in maintenance_incident_presenter_source
             and ".incident-priority-summary" in style_source
         ),
         "ui_incident_historical_context_enabled": (
             "def _latest_success_timestamp(" in ui_source
             and "historical_after_latest_success" in ui_source
             and "trend_only" in ui_source
-            and "def _historical_incident(" in system_settings_maintenance_source
-            and "historical_count" in system_settings_maintenance_source
-            and "目前任務健康，追蹤" in system_settings_maintenance_source
-            and "當前 Critical 事件" in system_settings_maintenance_source
+            and "def _historical_incident(" in maintenance_incident_presenter_source
+            and "historical_count" in maintenance_incident_presenter_source
+            and "目前任務健康，追蹤" in maintenance_incident_presenter_source
+            and "當前 Critical 事件" in maintenance_incident_presenter_source
             and "最新任務已成功；先確認是否影響最新版報告"
-            in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
         ),
         "ui_incident_header_current_context_enabled": (
-            "def incident_inbox_header_badges(" in system_settings_maintenance_source
-            and "incident_inbox_header_badges(incidents)" in system_settings_maintenance_source
-            and "當前 Critical" in system_settings_maintenance_source
-            and "當前 Warning" in system_settings_maintenance_source
-            and "歷史/趨勢" in system_settings_maintenance_source
-            and "historical_count" in system_settings_maintenance_source
+            "def incident_inbox_header_badges(" in maintenance_incident_presenter_source
+            and "incident_inbox_header_html(incidents)" in system_settings_maintenance_source
+            and "incident_inbox_header_badges(incidents)"
+            in maintenance_incident_presenter_source
+            and "當前 Critical" in maintenance_incident_presenter_source
+            and "當前 Warning" in maintenance_incident_presenter_source
+            and "歷史/趨勢" in maintenance_incident_presenter_source
+            and "historical_count" in maintenance_incident_presenter_source
         ),
         "ui_incident_grouped_summary_enabled": (
-            "def incident_summary_cards(" in system_settings_maintenance_source
-            and "incident_summary_cards(incidents)" in system_settings_maintenance_source
-            and "top_incidents(summaries, limit=limit)" in system_settings_maintenance_source
-            and "repeat_count" in system_settings_maintenance_source
-            and "hidden_count" in system_settings_maintenance_source
-            and "route_hints" in system_settings_maintenance_source
-            and "source_ids" in system_settings_maintenance_source
-            and "同類事件" in system_settings_maintenance_source
-            and "另有 {hidden_count} 筆同類事件" in system_settings_maintenance_source
+            "def incident_summary_cards(" in maintenance_incident_presenter_source
+            and "incident_summary_cards(incidents)" in maintenance_incident_presenter_source
+            and "top_incidents(summaries, limit=limit)"
+            in maintenance_incident_presenter_source
+            and "repeat_count" in maintenance_incident_presenter_source
+            and "hidden_count" in maintenance_incident_presenter_source
+            and "route_hints" in maintenance_incident_presenter_source
+            and "source_ids" in maintenance_incident_presenter_source
+            and "同類事件" in maintenance_incident_presenter_source
+            and "另有 {hidden_count} 筆同類事件" in maintenance_incident_presenter_source
             and "_render_incident_action_controls(incidents)" in system_settings_maintenance_source
-            and "def _incident_summary_key(" in system_settings_maintenance_source
+            and "def _incident_summary_key(" in maintenance_incident_presenter_source
             and ".incident-card-head" in style_source
             and ".incident-card .incident-repeat-badge" in style_source
         ),
         "ui_incident_grouped_action_controls_enabled": (
-            "def incident_action_summaries(" in system_settings_maintenance_source
+            "def incident_action_summaries(" in maintenance_incident_presenter_source
             and "incident_action_summaries(incidents)" in system_settings_maintenance_source
             and "for incident in incident_summary_cards(incidents, limit=limit)"
-            in system_settings_maintenance_source
-            and "def incident_action_caption(" in system_settings_maintenance_source
-            and "同類事件 {repeat_count} 筆" in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
+            and "def incident_action_caption(" in maintenance_incident_presenter_source
+            and "同類事件 {repeat_count} 筆" in maintenance_incident_presenter_source
             and "st.caption(incident_action_caption(incident))"
             in system_settings_maintenance_source
             and "actionable = incident_action_summaries(incidents)"
@@ -191,14 +196,28 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         ),
         "ui_incident_route_captions_enabled": (
             "from app.ui.operator_routes import operator_route_target"
-            in system_settings_maintenance_source
-            and "def incident_route_caption(" in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
+            and "def incident_route_caption(" in maintenance_incident_presenter_source
             and "operator_route_target(route).get(\"caption\")"
-            in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
             and "route_text = incident_route_caption(route_hint)"
-            in system_settings_maintenance_source
+            in maintenance_incident_presenter_source
             and "route_text = f\"{route_text}；{hidden_text}\""
+            in maintenance_incident_presenter_source
+        ),
+        "ui_maintenance_incident_presenter_extracted": (
+            (ui_dir / "maintenance_incident_presenter.py").exists()
+            and "from app.ui.maintenance_incident_presenter import ("
             in system_settings_maintenance_source
+            and "import streamlit" not in maintenance_incident_presenter_source
+            and "def incident_inbox_header_html(" in maintenance_incident_presenter_source
+            and "def incident_list_html(" in maintenance_incident_presenter_source
+            and "def incident_priority_summary_html(" in maintenance_incident_presenter_source
+            and "def incident_action_controls_intro_html("
+            in maintenance_incident_presenter_source
+            and "def incident_summary_cards(" not in system_settings_maintenance_source
+            and "def incident_action_priority_summary("
+            not in system_settings_maintenance_source
         ),
         "ui_optimization_progress_operator_summary_enabled": (
             "def optimization_progress_operator_summary("

@@ -226,6 +226,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_selectbox_touch_targets_min_size_enabled"] is True
     assert status["frontend"]["ui_form_input_touch_targets_min_size_enabled"] is True
     assert status["frontend"]["ui_choice_control_touch_targets_min_size_enabled"] is True
+    assert status["frontend"]["ui_expander_touch_targets_min_size_enabled"] is True
     assert status["frontend"]["ui_streamlit_heading_anchor_noise_hidden"] is True
     assert status["frontend"]["frontend_smoke_checks_runtime_identity_marker"] is True
     assert status["frontend"]["frontend_data_enrichment_status_extracted"] is True

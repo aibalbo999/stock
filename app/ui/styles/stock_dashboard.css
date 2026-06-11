@@ -1085,6 +1085,12 @@ textarea:focus,
     border: 1px solid var(--stock-border) !important;
     border-radius: 8px !important;
 }
+[data-testid="stExpander"],
+[data-testid="stExpander"] summary {
+    min-height: 44px !important;
+    align-items: center !important;
+    touch-action: manipulation;
+}
 [data-testid="stDataFrame"] {
     border: 1px solid var(--stock-border);
     border-radius: 8px;

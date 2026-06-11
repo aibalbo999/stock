@@ -91,6 +91,13 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and "touch-action: manipulation" in style_source
             and "min-height: 40px !important" not in style_source
         ),
+        "ui_expander_touch_targets_min_size_enabled": (
+            '[data-testid="stExpander"],' in style_source
+            and '[data-testid="stExpander"] summary {\n    min-height: 44px !important;'
+            in style_source
+            and "touch-action: manipulation" in style_source
+            and "min-height: 40px !important" not in style_source
+        ),
         "ui_streamlit_heading_anchor_noise_hidden": (
             'a[aria-label="Link to heading"]' in style_source
             and "display: none !important" in style_source

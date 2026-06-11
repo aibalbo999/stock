@@ -15,6 +15,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     report_center_source = ui_sources["report_center.py"]
     report_center_presenter_source = ui_sources["report_center_presenter.py"]
+    report_center_view_source = ui_sources["report_center_view.py"]
     report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
     operator_decisions_source = ui_sources["operator_decisions.py"]
@@ -39,6 +40,21 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "def report_run_history_rows(" in report_center_presenter_source
             and "def empty_report_action_summary(" in report_center_presenter_source
             and "def report_reader_decision_summary(" in report_center_presenter_source
+        ),
+        "ui_report_center_view_extracted": (
+            "from app.ui.report_center_view import (" in report_center_source
+            and "import streamlit" not in report_center_view_source
+            and "def latest_report_picker_html(" in report_center_view_source
+            and "def empty_report_result_html(" in report_center_view_source
+            and "def report_lifecycle_strip_html(" in report_center_view_source
+            and "def report_reader_decision_html(" in report_center_view_source
+            and "def report_health_strip_html(" in report_center_view_source
+            and 'class="latest-report-picker' in report_center_view_source
+            and 'class="report-lifecycle-strip' in report_center_view_source
+            and 'class="report-reader-decision' in report_center_view_source
+            and 'class="report-health-strip' in report_center_view_source
+            and 'class="report-reader-decision' not in report_center_source
+            and "def _report_lifecycle_stage_html(" not in report_center_source
         ),
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"
         in ui_source
@@ -168,8 +184,8 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "health_summary = latest_report_health_summary(" in report_center_source
             and "report_reader_decision_summary(lifecycle, health_summary)"
             in report_center_source
-            and 'class="report-reader-decision' in report_center_source
-            and "閱讀決策" in report_center_source
+            and 'class="report-reader-decision' in report_center_view_source
+            and "閱讀決策" in report_center_view_source
             and "可先閱讀，但投資判斷需標示限制" in report_center_presenter_source
             and "暫停採信，先處理阻塞" in report_center_presenter_source
             and ".report-reader-decision" in style_source
@@ -214,7 +230,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             in report_center_presenter_source
             and "此頁只顯示目前保留的最新版" in report_center_presenter_source
             and "報告中心不需要手動整理歷史版本" in report_center_presenter_source
-            and "latest-report-picker-note" in report_center_source
+            and "latest-report-picker-note" in report_center_view_source
             and ".latest-report-picker-note" in style_source
         ),
         "ui_report_empty_create_analysis_action_enabled": (

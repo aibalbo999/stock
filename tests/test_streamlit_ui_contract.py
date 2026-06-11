@@ -732,14 +732,28 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'st.button("查詢背景任務狀態")' not in report_center_source
     assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
     report_center_presenter_source = ui.REPORT_CENTER_PRESENTER_SOURCE.read_text()
+    report_center_view_source = ui.REPORT_CENTER_VIEW_SOURCE.read_text()
     assert "from app.ui.report_center_presenter import (" in report_center_source
+    assert "from app.ui.report_center_view import (" in report_center_source
     assert "import streamlit" not in report_center_presenter_source
+    assert "import streamlit" not in report_center_view_source
     assert "def latest_report_picker_state(" in report_center_presenter_source
     assert "def report_run_history_rows(" in report_center_presenter_source
     assert "def empty_report_action_summary(" in report_center_presenter_source
     assert "def report_reader_decision_summary(" in report_center_presenter_source
+    assert "def latest_report_picker_html(" in report_center_view_source
+    assert "def empty_report_result_html(" in report_center_view_source
+    assert "def report_lifecycle_strip_html(" in report_center_view_source
+    assert "def report_reader_decision_html(" in report_center_view_source
+    assert "def report_health_strip_html(" in report_center_view_source
+    assert 'class="latest-report-picker' in report_center_view_source
+    assert 'class="report-lifecycle-strip' in report_center_view_source
+    assert 'class="report-reader-decision' in report_center_view_source
+    assert 'class="report-health-strip' in report_center_view_source
     assert "def latest_report_picker_state(" not in report_center_source
     assert "def report_run_history_rows(" not in report_center_source
+    assert "def _report_lifecycle_stage_html(" not in report_center_source
+    assert 'class="report-reader-decision' not in report_center_source
     task_status_presenter_source = ui.TASK_STATUS_PRESENTER_SOURCE.read_text()
     task_status_view_source = ui.TASK_STATUS_VIEW_SOURCE.read_text()
     assert "from app.ui.task_status_presenter import (" in ui.TASK_STATUS_PANEL_SOURCE.read_text()

@@ -309,6 +309,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_report_workflow.py"
     )
     assert status["frontend"]["ui_report_center_presenter_extracted"] is True
+    assert status["frontend"]["ui_report_center_view_extracted"] is True
     assert "import streamlit" not in report_center_presenter_source
     assert status["frontend"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert status["frontend"]["ui_report_delete_confirmation_gate_enabled"] is True
@@ -731,6 +732,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_report_rendering_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_report_workflow_status_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_center_presenter_extracted"] is True
+    assert frontend_arch["evidence"]["ui_report_center_view_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_identity_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_action_enabled"] is True

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from html import escape
 from typing import Any
 
 import streamlit as st
@@ -32,6 +31,15 @@ from app.ui.report_follow_up_controls import render_follow_up_controls, render_f
 from app.ui.report_html import report_html
 from app.ui.report_state import parse_json_object
 from app.ui.task_status_panel import render_task_status_panel
+from app.ui.report_center_view import (
+    empty_report_action_html,
+    empty_report_result_html,
+    latest_report_picker_html,
+    report_health_strip_html,
+    report_lifecycle_action_html,
+    report_lifecycle_strip_html,
+    report_reader_decision_html,
+)
 
 
 def render_report_center() -> None:
@@ -164,12 +172,7 @@ def render_report_center() -> None:
             st.markdown(report_markdown)
     else:
         st.markdown(
-            f"""
-                <div class="result-shell">
-                <div class="section-title">{escape(str(picker.get("summary_title") or "尚未選擇報告"))}</div>
-                <div class="section-note">{escape(str(picker.get("summary_detail") or "建立分析後，這裡會顯示目前保留的最新版報告。"))}</div>
-            </div>
-            """,
+            empty_report_result_html(picker),
             unsafe_allow_html=True,
         )
         _render_empty_report_action(picker)
@@ -272,32 +275,14 @@ def render_report_center() -> None:
 
 def _render_latest_report_picker_summary(picker: dict[str, Any]) -> None:
     st.markdown(
-        f"""<section class="latest-report-picker is-{escape(picker.get("mode", "empty"))}" aria-label="最新版報告範圍">
-<span>{escape(picker.get("summary_title", "-"))}</span>
-<strong>{escape(picker.get("summary_detail", ""))}</strong>
-<em class="latest-report-picker-note">{escape(picker.get("scope_note", ""))}</em>
-</section>""",
+        latest_report_picker_html(picker),
         unsafe_allow_html=True,
     )
 
 
 def _render_report_lifecycle_strip(lifecycle: dict) -> None:
-    stage_html = "\n".join(
-        _report_lifecycle_stage_html(stage) for stage in lifecycle.get("stage_cards") or []
-    )
     st.markdown(
-        f"""<section class="report-lifecycle-strip is-{escape(lifecycle.get("overall_state", "attention"))}" aria-label="報告生命週期">
-<div class="report-lifecycle-summary">
-<span>報告生命週期</span>
-<strong>{escape(lifecycle.get("trust_label", "-"))}</strong>
-<p>{escape(lifecycle.get("trust_explanation", ""))}</p>
-<em>{escape(lifecycle.get("primary_action", ""))}</em>
-<small>{escape(lifecycle.get("primary_action_detail", ""))}</small>
-</div>
-<div class="report-lifecycle-steps">
-{stage_html}
-</div>
-</section>""",
+        report_lifecycle_strip_html(lifecycle),
         unsafe_allow_html=True,
     )
 
@@ -308,10 +293,7 @@ def _render_report_lifecycle_action(lifecycle: dict) -> None:
     if not route_hint or not primary_action:
         return
     st.markdown(
-        """<section class="report-lifecycle-action" aria-label="報告生命週期操作">
-<span>建議操作</span>
-<strong>依照生命週期狀態開啟下一步</strong>
-</section>""",
+        report_lifecycle_action_html(),
         unsafe_allow_html=True,
     )
     render_operator_route_button(
@@ -330,11 +312,7 @@ def _render_empty_report_action(picker: dict[str, Any]) -> None:
     if not summary:
         return
     st.markdown(
-        f"""<section class="report-lifecycle-action is-{escape(summary.get("state", "empty"))}" aria-label="報告空狀態操作">
-<span>{escape(summary.get("eyebrow", "建議操作"))}</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<em>{escape(summary.get("caption", ""))}</em>
-</section>""",
+        empty_report_action_html(summary),
         unsafe_allow_html=True,
     )
     render_operator_route_button(
@@ -352,68 +330,13 @@ def _render_report_reader_decision_summary(summary: dict[str, str]) -> None:
     if not summary:
         return
     st.markdown(
-        f"""<section class="report-reader-decision is-{escape(summary.get("state", "attention"))}" aria-label="報告閱讀決策摘要">
-<div class="report-reader-decision-main">
-<span>{escape(summary.get("eyebrow", "閱讀決策"))}</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("caption", ""))}</p>
-</div>
-<div class="report-reader-decision-grid">
-<article>
-<span>最新版證據</span>
-<strong>{escape(summary.get("evidence", ""))}</strong>
-</article>
-<article>
-<span>品質與股票</span>
-<strong>{escape(summary.get("quality", ""))}</strong>
-</article>
-<article>
-<span>補強</span>
-<strong>{escape(summary.get("follow_up", ""))}</strong>
-</article>
-<article>
-<span>下一步</span>
-<strong>{escape(summary.get("action_label", ""))}</strong>
-<em>{escape(summary.get("action_detail", ""))}</em>
-</article>
-</div>
-</section>""",
+        report_reader_decision_html(summary),
         unsafe_allow_html=True,
     )
 
 
-def _report_lifecycle_stage_html(stage: dict) -> str:
-    return f"""<article class="report-lifecycle-step is-{escape(stage.get("state", "unknown"))}">
-<span>{escape(stage.get("title", "-"))}</span>
-<strong>{escape(stage.get("label", "-"))}</strong>
-<p>{escape(stage.get("detail", ""))}</p>
-</article>"""
-
-
 def _render_report_health_strip(summary: dict[str, str]) -> None:
     st.markdown(
-        f"""<section class="report-health-strip is-{escape(summary.get("state", "attention"))}">
-<article class="report-health-card">
-<span>最新版</span>
-<strong>{escape(summary.get("report_label", "-"))}</strong>
-<em>{escape(summary.get("report_meta_label", ""))}</em>
-</article>
-<article class="report-health-card">
-<span>品質門檻</span>
-<strong>{escape(summary.get("quality_label", "-"))}</strong>
-</article>
-<article class="report-health-card">
-<span>股票範圍</span>
-<strong>{escape(summary.get("candidate_label", "-"))}</strong>
-</article>
-<article class="report-health-card">
-<span>補強狀態</span>
-<strong>{escape(summary.get("follow_up_label", "-"))}</strong>
-</article>
-<article class="report-health-card report-health-action is-{escape(summary.get("follow_up_state", "unknown"))}">
-<span>建議操作</span>
-<strong>{escape(summary.get("action_label", "-"))}</strong>
-</article>
-</section>""",
+        report_health_strip_html(summary),
         unsafe_allow_html=True,
     )

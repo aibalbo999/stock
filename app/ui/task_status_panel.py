@@ -59,6 +59,17 @@ RUN_SOURCE_LABELS = {
     "celery_maintenance_diagnostic": "維護診斷背景任務",
 }
 
+TASK_PROGRESS_STEP_LABELS = {
+    "waiting_for_worker": "等待背景執行器",
+    "worker_started": "背景執行器已接手",
+    "task_retrying": "任務重試中",
+    "task_completed": "任務完成",
+    "task_failed": "任務失敗",
+    "task_cancelled": "任務已取消",
+    "fetch_market_data": "抓取市場資料",
+    "market_data_refresh": "刷新市場資料",
+}
+
 
 def task_status_operation_label(task_status: dict | None) -> str:
     if not isinstance(task_status, dict):
@@ -249,8 +260,17 @@ def task_status_progress_caption(task_status: dict) -> str:
     if not progress:
         return ""
     status = task_status_state_label(progress.get("status") or task_status.get("status") or "UNKNOWN")
-    step = progress.get("current_step") or progress.get("next_incomplete_step") or "等待中"
+    step = task_status_progress_step_label(
+        progress.get("current_step") or progress.get("next_incomplete_step") or "等待中"
+    )
     return f"進度：{status}｜{step}"
+
+
+def task_status_progress_step_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "等待中"
+    return TASK_PROGRESS_STEP_LABELS.get(text, text)
 
 
 def render_task_status(task_status: dict) -> None:

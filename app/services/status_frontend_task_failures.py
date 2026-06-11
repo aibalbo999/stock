@@ -167,6 +167,11 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         "ui_task_status_autorefresh_feedback_enabled": "def task_status_poll_caption("
         in task_status_panel_source
         and "狀態輪詢：" in task_status_panel_source
+        and "TASK_PROGRESS_STEP_LABELS = {" in task_status_panel_source
+        and "def task_status_progress_step_label(" in task_status_panel_source
+        and "task_status_progress_step_label(" in task_status_panel_source
+        and "等待背景執行器" in task_status_panel_source
+        and "背景執行器已接手" in task_status_panel_source
         and "fragment_supported" in task_status_panel_source
         and "st.caption(\n        task_status_poll_caption(" in task_status_panel_source,
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows("

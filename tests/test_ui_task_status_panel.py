@@ -717,7 +717,23 @@ def test_task_status_progress_caption_labels_status_for_operator() -> None:
             "status": "STARTED",
             "progress": {"status": "STARTED", "current_step": "fetch_market_data"},
         }
-    ) == "進度：執行中｜fetch_market_data"
+    ) == "進度：執行中｜抓取市場資料"
+    queued_caption = task_status_progress_caption(
+        {
+            "status": "PENDING",
+            "progress": {"status": "PENDING", "current_step": "waiting_for_worker"},
+        }
+    )
+    assert queued_caption == "進度：等待中｜等待背景執行器"
+    assert "waiting_for_worker" not in queued_caption
+    started_caption = task_status_progress_caption(
+        {
+            "status": "STARTED",
+            "progress": {"status": "STARTED", "current_step": "worker_started"},
+        }
+    )
+    assert started_caption == "進度：執行中｜背景執行器已接手"
+    assert "worker_started" not in started_caption
     assert task_status_progress_caption({"status": "SUCCESS"}) == ""
 
 

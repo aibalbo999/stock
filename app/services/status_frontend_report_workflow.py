@@ -206,6 +206,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         and "def render_quality_gate(" not in dashboard_core_source
         and "from app.ui.report_panels import (" in ui_source,
         "ui_report_panels_path": "app/ui/report_panels.py",
+        "ui_report_preview_iframe_renderer_enabled": (
+            "def render_report_document(" in report_panels_source
+            and "render_report_document(report_html(markdown, result), height=820)"
+            in report_panels_source
+            and 'getattr(streamlit_module, "iframe", None)' in report_panels_source
+            and 'iframe(document_html, width="stretch", height=height)'
+            in report_panels_source
+            and "components_module.html(document_html, height=height, scrolling=True)"
+            in report_panels_source
+            and "components.html(report_html(" not in report_panels_source
+        ),
         "ui_report_follow_up_controls_extracted": (
             ui_dir / "report_follow_up_controls.py"
         ).exists()

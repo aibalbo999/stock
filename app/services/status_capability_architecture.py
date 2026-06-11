@@ -301,6 +301,7 @@ def architecture_capabilities(
             and frontend_status.get("task_retry_uses_scoped_state_key")
             and frontend_status.get("ui_report_state_extracted")
             and frontend_status.get("ui_report_panels_extracted")
+            and frontend_status.get("ui_report_preview_iframe_renderer_enabled")
             and frontend_status.get("ui_report_follow_up_controls_extracted")
             and frontend_status.get("ui_report_follow_up_submission_confirmation_enabled")
             and frontend_status.get("ui_report_markdown_helpers_extracted")

@@ -81,6 +81,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.task_status_panel import" in source
     assert "from app.ui.report_state import " in source
     assert "from app.ui.report_panels import (" in source
+    assert "def render_report_document(" in source
+    assert "render_report_document(report_html(markdown, result), height=820)" in source
+    assert 'getattr(streamlit_module, "iframe", None)' in source
+    assert "iframe(document_html, width=\"stretch\", height=height)" in source
+    assert "components_module.html(document_html, height=height, scrolling=True)" in source
+    assert "components.html(report_html(" not in source
     assert "from app.ui.report_follow_up_controls import" in source
     assert "from app.ui.report_markdown import (" in source
     assert "from app.ui.report_candidate_audit import" in source

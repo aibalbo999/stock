@@ -13,7 +13,21 @@ from app.ui.report_formatters import confidence_label, metric_int, metric_percen
 
 
 def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
-    components.html(report_html(markdown, result), height=820, scrolling=True)
+    render_report_document(report_html(markdown, result), height=820)
+
+
+def render_report_document(
+    document_html: str,
+    *,
+    height: int = 820,
+    streamlit_module=st,
+    components_module=components,
+) -> None:
+    iframe = getattr(streamlit_module, "iframe", None)
+    if callable(iframe):
+        iframe(document_html, width="stretch", height=height)
+        return
+    components_module.html(document_html, height=height, scrolling=True)
 
 
 def candidate_rows(candidates: list[dict]) -> list[dict]:

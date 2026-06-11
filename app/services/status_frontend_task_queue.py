@@ -114,6 +114,12 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and 'refresh_key="refresh_maintenance_diagnostic_action_status"'
             in maintenance_task_panels_source
         ),
+        "ui_maintenance_diagnostic_action_operator_labels_enabled": (
+            "def maintenance_diagnostic_action_rows(" in maintenance_task_panels_source
+            and '"逾時秒數": int(action.get("timeout_seconds") or 0)'
+            in maintenance_task_panels_source
+            and '"Timeout"' not in maintenance_task_panels_source
+        ),
         "ui_maintenance_diagnostic_confirmation_gate_enabled": (
             "diagnostic_confirmed = st.checkbox(" in maintenance_task_panels_source
             and 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"'

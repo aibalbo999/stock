@@ -235,7 +235,7 @@ def maintenance_diagnostic_action_rows(maintenance_diagnostics: dict) -> list[di
             "效果": action.get("effect") or "-",
             "說明": action.get("description") or "-",
             "指令": action.get("display_command") or "-",
-            "Timeout": int(action.get("timeout_seconds") or 0),
+            "逾時秒數": int(action.get("timeout_seconds") or 0),
         }
         for action in actions
         if isinstance(action, dict)

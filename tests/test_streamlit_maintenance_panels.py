@@ -806,7 +806,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "效果": "read_only",
             "說明": "檢查核心升級能力與外部部署選配狀態。",
             "指令": ".venv/bin/python scripts/upgrade_audit.py",
-            "Timeout": 90,
+            "逾時秒數": 90,
         },
         {
             "動作": "背景任務 no-op 送出測試",
@@ -814,7 +814,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "效果": "safe_noop_task_submission",
             "說明": "送出 smoke=true 的 no-op market_refresh。",
             "指令": ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
-            "Timeout": 45,
+            "逾時秒數": 45,
         },
         {
             "動作": "GraphRAG 匯入後查詢測試",
@@ -822,7 +822,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "效果": "safe_local_neo4j_import_smoke",
             "說明": "匯入 bundled graph payload 後驗證 live Cypher。",
             "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
-            "Timeout": 120,
+            "逾時秒數": 120,
         },
         {
             "動作": "Unsafe action",
@@ -830,9 +830,10 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "效果": "-",
             "說明": "-",
             "指令": "-",
-            "Timeout": 0,
+            "逾時秒數": 0,
         },
     ]
+    assert "Timeout" not in str(rows)
 
 
 def test_maintenance_diagnostic_actions_require_confirmation_before_submit(monkeypatch) -> None:

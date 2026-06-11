@@ -297,10 +297,15 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in maintenance_panels_source
             and "def submission_guard_metric_values(" in maintenance_panels_source
             and "def submission_guard_rows(" in maintenance_panels_source
+            and "def submission_guard_status_message(" in maintenance_panels_source
             and "高風險操作保護" in maintenance_panels_source
             and "ui_risky_submission_guard_rows" in maintenance_panels_source
             and "確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門"
             in maintenance_panels_source
+            and "尚未取得高風險操作保護狀態；請先確認系統狀態。"
+            in maintenance_panels_source
+            and "尚未取得高風險操作保護狀態；請先確認 /services/status。"
+            not in maintenance_panels_source
             and all(
                 label in maintenance_panels_source
                 for label in ("完整", "需處理", "已保護", "缺保護", "未知")

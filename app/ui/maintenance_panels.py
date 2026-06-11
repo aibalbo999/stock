@@ -248,6 +248,14 @@ def submission_guard_rows(service_snapshot: dict) -> list[dict[str, object]]:
     return rows
 
 
+def submission_guard_status_message(status_label: str) -> str:
+    if status_label == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["ready"]:
+        return "目前所有高風險操作都已配置確認保護。"
+    if status_label == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["unknown"]:
+        return "尚未取得高風險操作保護狀態；請先確認系統狀態。"
+    return "仍有高風險操作缺少確認保護，請先修復缺口再交給一般操作者使用。"
+
+
 def render_submission_guard_panel(service_snapshot: dict) -> None:
     metrics = submission_guard_metric_values(service_snapshot)
     rows = submission_guard_rows(service_snapshot)
@@ -258,11 +266,11 @@ def render_submission_guard_panel(service_snapshot: dict) -> None:
             column.metric(label, value)
         st.caption("確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門。")
         if metrics["狀態"] == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["ready"]:
-            st.caption("目前所有高風險操作都已配置確認保護。")
+            st.caption(submission_guard_status_message(metrics["狀態"]))
         elif metrics["狀態"] == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["unknown"]:
-            st.warning("尚未取得高風險操作保護狀態；請先確認 /services/status。")
+            st.warning(submission_guard_status_message(metrics["狀態"]))
         else:
-            st.warning("仍有高風險操作缺少確認保護，請先修復缺口再交給一般操作者使用。")
+            st.warning(submission_guard_status_message(metrics["狀態"]))
         if rows:
             st.dataframe(rows, width="stretch", hide_index=True)
 

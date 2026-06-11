@@ -233,6 +233,13 @@ def test_submission_guard_summary_handles_missing_frontend_snapshot() -> None:
         "缺口": 0,
     }
     assert maintenance_panels.submission_guard_rows({}) == []
+    assert (
+        maintenance_panels.submission_guard_status_message("未知")
+        == "尚未取得高風險操作保護狀態；請先確認系統狀態。"
+    )
+    assert "/services/status" not in maintenance_panels.submission_guard_status_message(
+        "未知"
+    )
 
 
 def test_report_quality_metric_values_use_operator_labels() -> None:

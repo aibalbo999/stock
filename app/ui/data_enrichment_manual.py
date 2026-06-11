@@ -99,6 +99,13 @@ def _render_company_filing_form(whitelist: Any, allowed_tickers: list[str]) -> N
     filing_url_ready = bool(filing_url.strip())
     if not filing_text_ready and not filing_url_ready:
         st.caption("貼上文件文字時需有標題；或提供文件 URL 後從 URL 匯入。")
+    filing_url_confirmed = st.checkbox(
+        "我了解這會送出 URL 公司文件匯入背景任務",
+        value=False,
+        key="confirm_company_filing_url_import",
+    )
+    if filing_url_ready and not filing_url_confirmed:
+        st.caption("避免誤觸 URL 匯入；確認網址、股票與文件類型後才會送出背景任務。")
     filing_import_cols = st.columns(2)
     import_text_filing = filing_import_cols[0].button(
         "匯入公司文件",
@@ -107,7 +114,7 @@ def _render_company_filing_form(whitelist: Any, allowed_tickers: list[str]) -> N
     )
     import_url_filing = filing_import_cols[1].button(
         "從 URL 抓取並匯入",
-        disabled=not filing_url_ready,
+        disabled=not filing_url_ready or not filing_url_confirmed,
     )
     if import_text_filing:
         _submit_manual_company_filing(

@@ -14,6 +14,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     data_gap_actions_source = source_context.ui_sources["data_gap_actions.py"]
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
+    data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
     return {
         "frontend_data_enrichment_status_extracted": True,
         "frontend_data_enrichment_status_path": (
@@ -72,6 +73,16 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "我了解這會送出資料補強背景任務" in data_enrichment_market_source
             and "避免誤觸刷新" in data_enrichment_market_source
             and "or not market_operation_confirmed" in data_enrichment_market_source
+        ),
+        "ui_company_filing_url_import_confirmation_enabled": (
+            "filing_url_confirmed = st.checkbox(" in data_enrichment_manual_source
+            and 'key="confirm_company_filing_url_import"' in data_enrichment_manual_source
+            and "我了解這會送出 URL 公司文件匯入背景任務" in data_enrichment_manual_source
+            and "避免誤觸 URL 匯入" in data_enrichment_manual_source
+            and "disabled=not filing_url_ready or not filing_url_confirmed"
+            in data_enrichment_manual_source
+            and 'submit_data_operation_task(\n            "company_filing_from_url"'
+            in data_enrichment_manual_source
         ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_source

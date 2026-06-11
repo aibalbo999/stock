@@ -7,6 +7,7 @@ from app.ui.data_enrichment import (
     company_filing_runtime_rows,
     company_filing_visual_rag_model_chain_rows,
 )
+from app.ui import data_enrichment_manual
 from app.ui import data_enrichment_market
 from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
@@ -425,6 +426,174 @@ def test_render_market_data_tab_submits_after_confirmation(monkeypatch) -> None:
                 "status_state_keys": data_enrichment_market.DATA_TASK_STATUS_STATE_KEYS,
                 "success_message": "已送出股價刷新背景任務",
                 "error_message": "股價刷新任務送出失敗",
+            },
+        )
+    ]
+
+
+def test_company_filing_url_import_requires_confirmation(monkeypatch) -> None:
+    class Company:
+        ticker = "2330"
+        name = "台積電"
+
+    class Whitelist:
+        def companies(self):
+            return [Company()]
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict[str, Any]] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
+            return list(options)[index]
+
+        def text_area(self, label: str, **_kwargs):
+            return "" if label == "文件文字" else ""
+
+        def text_input(self, label: str, *, value: str = "", key: str | None = None):
+            if label == "文件 URL":
+                return "https://example.com/ir.pdf"
+            return value
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "從 URL 抓取並匯入" and not kwargs.get("disabled")
+
+        def success(self, body: str) -> None:
+            raise AssertionError(f"unexpected success: {body}")
+
+        def warning(self, body: str) -> None:
+            raise AssertionError(f"unexpected warning: {body}")
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_manual._render_company_filing_form(Whitelist(), ["2330"])
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出 URL 公司文件匯入背景任務",
+            "value": False,
+            "key": "confirm_company_filing_url_import",
+        }
+    ]
+    assert any("避免誤觸 URL 匯入" in caption for caption in fake_st.captions)
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["從 URL 抓取並匯入"]["disabled"] is True
+    assert submitted == []
+
+
+def test_company_filing_url_import_submits_after_confirmation(monkeypatch) -> None:
+    class Company:
+        ticker = "2330"
+        name = "台積電"
+
+    class Whitelist:
+        def companies(self):
+            return [Company()]
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def checkbox(self, _label: str, *, value: bool = False, key: str):
+            return key == "confirm_company_filing_url_import"
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
+            return list(options)[index]
+
+        def text_area(self, label: str, **_kwargs):
+            return "" if label == "文件文字" else ""
+
+        def text_input(self, label: str, *, value: str = "", key: str | None = None):
+            if label == "文件 URL":
+                return "https://example.com/ir.pdf"
+            return value
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "從 URL 抓取並匯入" and not kwargs.get("disabled")
+
+        def success(self, body: str) -> None:
+            raise AssertionError(f"unexpected success: {body}")
+
+        def warning(self, body: str) -> None:
+            raise AssertionError(f"unexpected warning: {body}")
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_manual._render_company_filing_form(Whitelist(), ["2330"])
+
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["從 URL 抓取並匯入"]["disabled"] is False
+    assert submitted == [
+        (
+            (
+                "company_filing_from_url",
+                {
+                    "url": "https://example.com/ir.pdf",
+                    "ticker": "2330",
+                    "company_name": "台積電",
+                    "document_type": "annual_report",
+                    "publisher": "公司 IR / MOPS",
+                    "published_at": data_enrichment_manual.today_taipei().isoformat(),
+                },
+            ),
+            {
+                "status_state_keys": data_enrichment_manual.DATA_TASK_STATUS_STATE_KEYS,
+                "success_message": "已送出 URL 公司文件匯入背景任務",
+                "error_message": "URL 公司文件匯入任務送出失敗",
             },
         )
     ]

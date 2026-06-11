@@ -270,6 +270,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "我了解這會送出資料補強背景任務" in source
     assert "避免誤觸刷新" in source
     assert "or not market_operation_confirmed" in source
+    assert "filing_url_confirmed = st.checkbox(" in source
+    assert 'key="confirm_company_filing_url_import"' in source
+    assert "我了解這會送出 URL 公司文件匯入背景任務" in source
+    assert "避免誤觸 URL 匯入" in source
+    assert "disabled=not filing_url_ready or not filing_url_confirmed" in source
     assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source

@@ -284,35 +284,43 @@ def document_sample(document: Any) -> dict[str, Any]:
 def format_structured_company_filing_smoke(report: dict[str, Any]) -> str:
     lines = [
         f"公司文件結構化 API 檢查: {report['status']}",
-        f"- ready: {str(bool(report.get('ready'))).lower()}",
+        f"- 就緒: {_yes_no(report.get('ready'))}",
     ]
     runtime = report.get("runtime") or {}
     if report.get("mode"):
-        lines.append(f"- mode: {report['mode']}")
+        lines.append(f"- 模式: {report['mode']}")
     if report.get("sample_path"):
-        lines.append(f"- sample: {report['sample_path']}")
-    lines.append(f"- provider: {runtime.get('provider') or '-'}")
-    lines.append(f"- url configured: {str(bool(runtime.get('url_configured'))).lower()}")
+        lines.append(f"- 樣本: {report['sample_path']}")
+    lines.append(f"- 提供者: {runtime.get('provider') or '-'}")
+    lines.append(f"- URL 已設定: {_yes_no(runtime.get('url_configured'))}")
     if "raw_row_count" in report:
-        lines.append(f"- raw rows: {report.get('raw_row_count', 0)}")
+        lines.append(f"- 原始列數: {report.get('raw_row_count', 0)}")
     if "document_count" in report:
-        lines.append(f"- documents: {report.get('document_count', 0)}")
-        lines.append(f"- errors: {report.get('error_count', 0)}")
+        lines.append(f"- 文件數: {report.get('document_count', 0)}")
+        lines.append(f"- 錯誤數: {report.get('error_count', 0)}")
     diagnostics = report.get("contract_diagnostics") or {}
     if diagnostics:
-        lines.append(f"- row container: {diagnostics.get('row_container') or '-'}")
-        lines.append(f"- conversion ratio: {diagnostics.get('conversion_ratio', 0)}")
+        lines.append(f"- 資料列容器: {diagnostics.get('row_container') or '-'}")
+        lines.append(f"- 轉換比例: {diagnostics.get('conversion_ratio', 0)}")
         field_coverage = diagnostics.get("field_coverage") or {}
         if field_coverage:
             lines.append(
-                "- field coverage: "
+                "- 欄位覆蓋: "
                 + ", ".join(f"{key}={value}" for key, value in field_coverage.items())
             )
     if report.get("remediation"):
-        lines.append(f"- remediation: {report['remediation']}")
+        lines.append(f"- 修復建議: {report['remediation']}")
     if report.get("smoke_command"):
-        lines.append(f"- command: {report['smoke_command']}")
+        lines.append(f"- 驗證指令: {report['smoke_command']}")
     return "\n".join(lines)
+
+
+def _yes_no(value: object) -> str:
+    if value is True:
+        return "是"
+    if value is False:
+        return "否"
+    return str(value if value is not None else "-")
 
 
 def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:

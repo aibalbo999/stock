@@ -106,9 +106,14 @@ def test_structured_company_filing_smoke_validates_sample_json_without_live_conf
     assert f"--sample-json {sample_path}" in report["smoke_command"]
     formatted = smoke.format_structured_company_filing_smoke(report)
     assert "sample_json_contract" in formatted
-    assert "raw rows: 1" in formatted
-    assert "row container: documents" in formatted
-    assert "conversion ratio: 1.0" in formatted
+    assert "原始列數: 1" in formatted
+    assert "資料列容器: documents" in formatted
+    assert "轉換比例: 1.0" in formatted
+    assert "驗證指令:" in formatted
+    assert "raw rows:" not in formatted
+    assert "row container:" not in formatted
+    assert "conversion ratio:" not in formatted
+    assert "- command:" not in formatted
     assert smoke.smoke_exit_code(report, strict=True) == 0
 
 

@@ -237,6 +237,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "st.dataframe(segment_rows" not in ui.SYSTEM_SETTINGS_SOURCE.read_text()
     assert 'api_put("/schedule"' in ui.SYSTEM_SETTINGS_SCHEDULE_SOURCE.read_text()
     assert "st.dataframe(segment_rows" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
+    assert "def scope_source_summary(" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
+    assert "def _render_scope_source_summary(" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
+    assert "scope-source-summary" in combined
+    assert "系統靜態股票範圍" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
+    assert "不是本次報告的動態候選名單" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "def company_filing_visual_rag_model_chain_rows(" in source
     assert "from app.services.company_filing_runtime_rows import (" in source
     assert "visual_rag_runtime_available" in company_filing_runtime_rows_service_source

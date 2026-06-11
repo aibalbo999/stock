@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import app.ui.system_settings as system_settings
+import app.ui.system_settings_scope as system_settings_scope
 import app.ui.system_settings_maintenance as system_settings_maintenance
 from app.ui.system_settings import (
     external_deployment_focus_from_pending_section,
@@ -43,6 +47,95 @@ def test_external_deployment_focus_from_pending_section_preserves_structured_api
 def test_settings_section_label_defaults_to_scope_for_unknown_route() -> None:
     assert settings_section_label(None) == "股票範圍"
     assert settings_section_label("unknown") == "股票範圍"
+
+
+def test_scope_source_summary_distinguishes_static_scope_from_report_candidates() -> None:
+    whitelist = SimpleNamespace(
+        path=Path("data/ai_supply_chain_whitelist.json"),
+        segments=[
+            SimpleNamespace(name="散熱", companies=[SimpleNamespace(), SimpleNamespace()]),
+            SimpleNamespace(name="電源", companies=[]),
+        ],
+        risk_keywords=["毛利率", "匯率", "庫存"],
+        companies=lambda: [SimpleNamespace(ticker="3017"), SimpleNamespace(ticker="2308")],
+    )
+
+    summary = system_settings_scope.scope_source_summary(whitelist)
+
+    assert summary["state"] == "ready"
+    assert summary["title"] == "系統靜態股票範圍"
+    assert summary["detail"] == "目前可辨識 2 檔股票、2 個產業分類、3 個風險詞組。"
+    assert summary["source"] == "來源：data/ai_supply_chain_whitelist.json"
+    assert "不是本次報告的動態候選名單" in summary["next_step"]
+    assert "若任務被白名單或輸入擋下" in summary["fallback_hint"]
+
+
+def test_render_scope_tab_shows_static_scope_source_summary(monkeypatch) -> None:
+    class FakeColumn:
+        def __init__(self, sink: list[tuple[str, str, object]]) -> None:
+            self.sink = sink
+
+        def metric(self, label, value):
+            self.sink.append(("metric", label, value))
+
+    class FakeExpander:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, object]] = []
+
+        def markdown(self, html, **_kwargs):
+            self.calls.append(("markdown", html))
+
+        def columns(self, count):
+            return [FakeColumn(self.calls) for _ in range(count)]
+
+        def selectbox(self, _label, options, **_kwargs):
+            return options[0]
+
+        def dataframe(self, rows, **_kwargs):
+            self.calls.append(("dataframe", rows))
+
+        def info(self, message):
+            self.calls.append(("info", message))
+
+        def expander(self, _label):
+            return FakeExpander()
+
+        def json(self, payload):
+            self.calls.append(("json", payload))
+
+    fake_st = FakeStreamlit()
+    whitelist = SimpleNamespace(
+        path=Path("data/ai_supply_chain_whitelist.json"),
+        raw={"segments": [], "risk_keywords": []},
+        segments=[
+            SimpleNamespace(
+                name="散熱",
+                companies=[
+                    SimpleNamespace(ticker="3017", name="奇鋐", evidence_keywords=["散熱"]),
+                ],
+            )
+        ],
+        risk_keywords=["毛利率"],
+        companies=lambda: [SimpleNamespace(ticker="3017")],
+    )
+
+    monkeypatch.setattr(system_settings_scope, "st", fake_st)
+    monkeypatch.setattr(system_settings_scope, "render_section_header", lambda *_args: None)
+
+    system_settings_scope.render_scope_tab(whitelist)
+
+    markdown_calls = [call[1] for call in fake_st.calls if call[0] == "markdown"]
+    assert any('class="scope-source-summary is-ready"' in html for html in markdown_calls)
+    assert any("系統靜態股票範圍" in html for html in markdown_calls)
+    assert any("不是本次報告的動態候選名單" in html for html in markdown_calls)
+    assert any("若任務被白名單或輸入擋下" in html for html in markdown_calls)
 
 
 def test_render_system_settings_preserves_ai_quota_focus(monkeypatch) -> None:

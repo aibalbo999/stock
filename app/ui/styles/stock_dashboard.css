@@ -519,6 +519,7 @@ textarea:focus,
 .analysis-submission-summary,
 .data-task-followup-summary,
 .data-ingest-submission-summary,
+.scope-source-summary,
 .latest-report-picker,
 .report-reader-decision,
 .report-health-strip,
@@ -528,6 +529,7 @@ textarea:focus,
 .data-gap-action-map,
 .market-allowlist-warning,
 .data-ingest-submission-summary,
+.scope-source-summary,
 .market-handoff-banner,
 .market-submission-summary,
 .market-cache-readiness,
@@ -1053,6 +1055,7 @@ textarea:focus,
 .data-gap-action-map,
 .data-task-followup-summary,
 .data-ingest-submission-summary,
+.scope-source-summary,
 .market-allowlist-warning,
 .market-handoff-banner,
 .market-submission-summary,
@@ -1083,7 +1086,8 @@ textarea:focus,
     line-height: 1.5;
 }
 .data-task-followup-summary,
-.data-ingest-submission-summary {
+.data-ingest-submission-summary,
+.scope-source-summary {
     display: grid;
     gap: 6px;
     border-left: 4px solid var(--stock-accent);
@@ -1099,7 +1103,8 @@ textarea:focus,
     background: var(--stock-danger-soft);
 }
 .data-task-followup-summary span,
-.data-ingest-submission-summary span {
+.data-ingest-submission-summary span,
+.scope-source-summary span {
     color: var(--stock-accent);
     font-size: 0.82rem;
     font-weight: 800;
@@ -1113,23 +1118,32 @@ textarea:focus,
     color: var(--stock-danger);
 }
 .data-task-followup-summary strong,
-.data-ingest-submission-summary strong {
+.data-ingest-submission-summary strong,
+.scope-source-summary strong {
     color: var(--stock-text);
     font-size: 1rem;
     line-height: 1.35;
 }
 .data-task-followup-summary p,
-.data-ingest-submission-summary p {
+.data-ingest-submission-summary p,
+.scope-source-summary p {
     color: var(--stock-muted);
     line-height: 1.5;
     margin: 0;
 }
 .data-task-followup-summary em,
-.data-ingest-submission-summary em {
+.data-ingest-submission-summary em,
+.scope-source-summary em {
     color: var(--stock-text);
     font-size: 0.86rem;
     font-style: normal;
     font-weight: 700;
+    line-height: 1.45;
+}
+.scope-source-summary small {
+    color: var(--stock-muted);
+    display: block;
+    font-size: 0.84rem;
     line-height: 1.45;
 }
 .data-ingest-submission-summary small {

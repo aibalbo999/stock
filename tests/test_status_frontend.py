@@ -357,6 +357,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/system_settings_scope.py",
         "app/ui/system_settings_schedule.py",
     ]
+    assert status["frontend"]["ui_scope_static_whitelist_source_summary_enabled"] is True
     assert status["frontend"]["ui_schedule_settings_save_confirmation_enabled"] is True
     assert status["frontend"]["ui_api_client_extracted"] is True
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
@@ -712,6 +713,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_system_settings_tabs_extracted"] is True
+    assert (
+        frontend_arch["evidence"]["ui_scope_static_whitelist_source_summary_enabled"]
+        is True
+    )
     assert (
         frontend_arch["evidence"]["ui_schedule_settings_save_confirmation_enabled"]
         is True

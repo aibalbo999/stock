@@ -1,13 +1,71 @@
 from __future__ import annotations
 
+from html import escape
+from typing import Any
+
 import streamlit as st
 
 from app.services.whitelist import SupplyChainWhitelist
 from app.ui.dashboard_core import render_section_header
 
 
+def _whitelist_source_label(settings_whitelist: SupplyChainWhitelist) -> str:
+    for attr_name in ("path", "source_path", "whitelist_path"):
+        source_path = getattr(settings_whitelist, attr_name, None)
+        if source_path:
+            return str(source_path)
+
+    raw = getattr(settings_whitelist, "raw", {})
+    if isinstance(raw, dict):
+        for key in ("source_path", "_source", "path"):
+            source_path = raw.get(key)
+            if source_path:
+                return str(source_path)
+
+    return "data/ai_supply_chain_whitelist.json"
+
+
+def scope_source_summary(settings_whitelist: SupplyChainWhitelist) -> dict[str, str]:
+    segments = list(getattr(settings_whitelist, "segments", []) or [])
+    companies_fn = getattr(settings_whitelist, "companies", None)
+    companies = list(companies_fn() if callable(companies_fn) else [])
+    risk_keywords = list(getattr(settings_whitelist, "risk_keywords", []) or [])
+    source_path = _whitelist_source_label(settings_whitelist)
+
+    return {
+        "state": "ready",
+        "title": "系統靜態股票範圍",
+        "detail": (
+            f"目前可辨識 {len(companies)} 檔股票、{len(segments)} 個產業分類、"
+            f"{len(risk_keywords)} 個風險詞組。"
+        ),
+        "source": f"來源：{source_path}",
+        "next_step": (
+            "本頁不是本次報告的動態候選名單；動態候選與採信狀態請在報告中心的生命週期查看。"
+        ),
+        "fallback_hint": (
+            "若任務被白名單或輸入擋下，請先回分析工作區調整股票，或到維護頁查看任務診斷。"
+        ),
+    }
+
+
+def _render_scope_source_summary(summary: dict[str, Any]) -> None:
+    st.markdown(
+        f"""<section class="scope-source-summary is-{escape(str(summary.get("state", "ready")))}" aria-label="白名單來源摘要">
+  <span>白名單來源摘要</span>
+  <strong>{escape(str(summary.get("title", "")))}</strong>
+  <p>{escape(str(summary.get("detail", "")))}</p>
+  <em>{escape(str(summary.get("source", "")))}</em>
+  <small>{escape(str(summary.get("next_step", "")))}</small>
+  <small>{escape(str(summary.get("fallback_hint", "")))}</small>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
 def render_scope_tab(settings_whitelist: SupplyChainWhitelist) -> None:
     render_section_header("股票範圍", "這裡是系統可辨識的台股公司範圍；正式報告仍會再用資料證據篩選。")
+    _render_scope_source_summary(scope_source_summary(settings_whitelist))
     segments = settings_whitelist.segments
     scope_cols = st.columns(3)
     scope_cols[0].metric("產業分類", len(segments))

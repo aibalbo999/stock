@@ -45,6 +45,14 @@ def frontend_settings_core_status(source_context: FrontendSourceContext) -> dict
             "app/ui/system_settings_scope.py",
             "app/ui/system_settings_schedule.py",
         ],
+        "ui_scope_static_whitelist_source_summary_enabled": (
+            "def scope_source_summary(" in system_settings_scope_source
+            and "def _render_scope_source_summary(" in system_settings_scope_source
+            and 'class="scope-source-summary' in system_settings_scope_source
+            and "系統靜態股票範圍" in system_settings_scope_source
+            and "不是本次報告的動態候選名單" in system_settings_scope_source
+            and "若任務被白名單或輸入擋下" in system_settings_scope_source
+        ),
         "ui_schedule_settings_save_confirmation_enabled": (
             "schedule_save_confirmed = st.checkbox(" in system_settings_schedule_source
             and 'key="confirm_schedule_settings_save"' in system_settings_schedule_source

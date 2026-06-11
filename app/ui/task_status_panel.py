@@ -597,9 +597,11 @@ def _task_context_success_label(value: object) -> str:
 def _task_exception_text(context: dict) -> str:
     exception_type = str(context.get("exception_type") or "").strip()
     preview = str(context.get("exception_message_preview") or "").strip()
-    if exception_type and preview:
-        return f"{exception_type}: {preview}"
-    return exception_type or preview or "-"
+    if preview:
+        return f"執行錯誤：{preview}"
+    if exception_type:
+        return "執行錯誤"
+    return "-"
 
 
 def _task_status_ready(task_status: dict | None) -> bool:

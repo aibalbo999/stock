@@ -729,9 +729,10 @@ def test_task_execution_context_rows_summarize_payload_and_exception() -> None:
                 "任務欄位：已遮蔽敏感欄位、tickers；已遮蔽敏感欄位 1 個"
             ),
             "celery_info": "回報型態：dict；回報欄位：progress；進度欄位：current_step",
-            "exception": "RuntimeError: api_key=<redacted> timeout",
+            "exception": "執行錯誤：api_key=<redacted> timeout",
         }
     ]
+    assert "RuntimeError" not in rows[0]["exception"]
 
 
 def test_task_execution_context_rows_hide_without_context() -> None:

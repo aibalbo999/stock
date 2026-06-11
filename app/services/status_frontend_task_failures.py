@@ -200,6 +200,8 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "資料欄位：" in task_status_panel_source
             and "回報型態：" in task_status_panel_source
             and "已遮蔽敏感欄位" in task_status_panel_source
+            and "執行錯誤：" in task_status_panel_source
+            and 'return f"{exception_type}: {preview}"' not in task_status_panel_source
         ),
         "ui_task_status_metric_operator_labels_enabled": (
             "def task_status_metric_values(" in task_status_panel_source

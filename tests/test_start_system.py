@@ -447,6 +447,16 @@ def test_api_runtime_identity_failure_reason_reads_direct_reason() -> None:
     assert reason == "api_runtime_commit_unavailable"
 
 
+def test_api_runtime_status_lines_use_operator_language_for_unverified_runtime() -> None:
+    lines = start_system_module.api_runtime_status_lines(
+        {"status": "already_running", "reason": "api_runtime_unverified"}
+    )
+
+    assert lines == ["- API：既有程序仍在執行，尚未完成版本確認（api_runtime_unverified）。"]
+    assert "API runtime" not in lines[0]
+    assert "runtime smoke" not in lines[0]
+
+
 def test_ensure_streamlit_process_restarts_stale_frontend(monkeypatch, tmp_path) -> None:
     started_commands = []
     stopped_ports = []
@@ -522,6 +532,16 @@ def test_ensure_streamlit_process_keeps_verified_running_frontend(monkeypatch, t
     assert started is False
     assert status["status"] == "already_running"
     assert status["reason"] == "frontend_runtime_verified"
+
+
+def test_streamlit_runtime_status_lines_use_operator_language_for_unverified_runtime() -> None:
+    lines = start_system_module.streamlit_runtime_status_lines(
+        {"status": "already_running", "reason": "frontend_runtime_unverified"}
+    )
+
+    assert lines == ["- 前端：既有程序仍在執行，尚未完成版本確認（frontend_runtime_unverified）。"]
+    assert "Streamlit runtime" not in lines[0]
+    assert "runtime smoke" not in lines[0]
 
 
 def test_ensure_streamlit_process_restarts_dirty_frontend(monkeypatch, tmp_path) -> None:

@@ -1448,14 +1448,14 @@ def api_runtime_status_lines(runtime_status: dict) -> list[str]:
     if status == "restarted":
         pids = (runtime_status.get("stop_result") or {}).get("terminated") or []
         pid_text = f"；已停止 PID {', '.join(str(pid) for pid in pids)}" if pids else ""
-        return [f"- API runtime：偵測到舊 API（{reason}），已重新啟動 8000{pid_text}。"]
+        return [f"- API：偵測到舊版本服務（{reason}），已重新啟動 8000{pid_text}。"]
     if status == "stale_restart_blocked":
         return [
-            "- API runtime：偵測到舊 API，但無法自動釋放 8000；"
+            "- API：偵測到舊版本服務，但無法自動釋放 8000；"
             "請手動停止佔用該 port 的 API 後重跑啟動指令。"
         ]
     if status == "already_running" and reason not in {"", "api_runtime_verified"}:
-        return [f"- API runtime：既有程序保留，runtime smoke 未完成確認（{reason}）。"]
+        return [f"- API：既有程序仍在執行，尚未完成版本確認（{reason}）。"]
     return []
 
 
@@ -1565,14 +1565,14 @@ def streamlit_runtime_status_lines(runtime_status: dict) -> list[str]:
     if status == "restarted":
         pids = (runtime_status.get("stop_result") or {}).get("terminated") or []
         pid_text = f"；已停止 PID {', '.join(str(pid) for pid in pids)}" if pids else ""
-        return [f"- Streamlit runtime：偵測到舊前端（{reason}），已重新啟動 8501{pid_text}。"]
+        return [f"- 前端：偵測到舊版本畫面（{reason}），已重新啟動 8501{pid_text}。"]
     if status == "stale_restart_blocked":
         return [
-            "- Streamlit runtime：偵測到舊前端，但無法自動釋放 8501；"
+            "- 前端：偵測到舊版本畫面，但無法自動釋放 8501；"
             "請手動停止佔用該 port 的 Streamlit 後重跑啟動指令。"
         ]
     if status == "already_running" and reason not in {"", "frontend_runtime_verified"}:
-        return [f"- Streamlit runtime：既有程序保留，runtime smoke 未完成確認（{reason}）。"]
+        return [f"- 前端：既有程序仍在執行，尚未完成版本確認（{reason}）。"]
     return []
 
 

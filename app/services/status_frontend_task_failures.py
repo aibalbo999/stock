@@ -202,6 +202,8 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and '"source": task_run_source_label(' in task_status_panel_source
             and '"operation": task_failure_operation_label(' in task_status_panel_source
             and "資料欄位：" in task_status_panel_source
+            and "沒有任務輸入紀錄" in task_status_panel_source
+            and "沒有 run payload" not in task_status_panel_source
             and "回報型態：" in task_status_panel_source
             and "已遮蔽敏感欄位" in task_status_panel_source
             and "執行錯誤：" in task_status_panel_source

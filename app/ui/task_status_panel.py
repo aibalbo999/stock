@@ -548,7 +548,7 @@ def _task_status_next_steps_text(task_status: dict) -> str:
 
 def _task_payload_shape_text(payload_shape: dict) -> str:
     if not payload_shape.get("present"):
-        return "沒有 run payload"
+        return "沒有任務輸入紀錄"
     parts = [
         f"資料欄位：{_join_display_values(payload_shape.get('top_level_keys'))}",
         f"股票 {int(payload_shape.get('ticker_count') or 0)} 檔",

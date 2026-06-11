@@ -773,6 +773,18 @@ def test_task_execution_context_rows_summarize_payload_and_exception() -> None:
     ]
     assert "RuntimeError" not in rows[0]["exception"]
 
+    missing_payload_rows = task_execution_context_rows(
+        {
+            "status": "FAILURE",
+            "execution_context": {
+                "payload_shape": {"present": False},
+            },
+        }
+    )
+
+    assert missing_payload_rows[0]["payload"] == "沒有任務輸入紀錄"
+    assert "run payload" not in missing_payload_rows[0]["payload"]
+
 
 def test_task_execution_context_rows_hide_without_context() -> None:
     assert task_execution_context_rows({"status": "SUCCESS"}) == []

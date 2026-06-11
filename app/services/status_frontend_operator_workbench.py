@@ -264,9 +264,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "task_summary_unavailable(task_summary)" in operator_status_source
             and '"route_hint": "settings:maintenance"' in operator_status_source
         ),
+        "ui_operator_status_task_state_helpers_reused": (
+            "from app.ui.operator_task_state import (" in operator_status_source
+            and "def latest_task_running(" in operator_task_state_source
+            and "def latest_task_successful(" in operator_task_state_source
+            and "def task_summary_failures(" in operator_task_state_source
+            and "def _latest_task(" not in operator_status_source
+            and "def _task_successful(" not in operator_status_source
+            and "def _task_running(" not in operator_status_source
+            and "def _task_failed(" not in operator_status_source
+            and "def _recent_failures(" not in operator_status_source
+        ),
         "ui_operator_running_task_overall_message_enabled": (
-            "def _latest_task_running(" in operator_status_source
-            and "def _task_running(" in operator_status_source
+            "def latest_task_running(" in operator_task_state_source
+            and "def task_row_running(" in operator_task_state_source
             and "if _latest_task_running(task_summary):" in operator_status_source
             and "最新任務執行中" in operator_status_source
             and "背景任務正在處理；完成前先等待結果，不要重複送出同類任務。"
@@ -364,12 +375,12 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         ),
         "ui_operator_overall_historical_failure_ready_when_latest_task_healthy_enabled": (
             "def operator_status_overall(" in operator_status_source
-            and "def _latest_task_successful(" in operator_status_source
-            and "def _task_successful(" in operator_status_source
+            and "def latest_task_successful(" in operator_task_state_source
+            and "def task_row_successful(" in operator_task_state_source
             and "if _latest_task_successful(task_summary):" in operator_status_source
             and '"state": "ready"' in operator_status_source
             and "歷史失敗仍可追蹤" in operator_status_source
-            and "celery_status" in operator_status_source
+            and "celery_status" in operator_task_state_source
         ),
         "ui_operator_missing_report_prioritized_before_historical_failure_enabled": (
             "尚無最新版報告" in operator_status_source

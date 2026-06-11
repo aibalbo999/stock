@@ -135,32 +135,32 @@ EXTERNAL_CHECKS = (
     (
         "ai_rag",
         "neo4j_import",
-        "Neo4j live import",
-        "Set NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD and start Neo4j.",
+        "Neo4j 圖譜匯入檢查",
+        "設定 NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD 並啟動 Neo4j。",
     ),
     (
         "ai_rag",
         "graphrag_live_cypher_query",
-        "GraphRAG live read-only Cypher query",
-        "Start Neo4j and keep /supply-chain/graph/cypher-query on guarded plans.",
+        "GraphRAG Neo4j 只讀查詢檢查",
+        "啟動 Neo4j，並維持 /supply-chain/graph/cypher-query 只執行安全只讀查詢計畫。",
     ),
     (
         "data_business_logic",
         "company_filing_browser_or_proxy_fallback",
-        "Company filing browser/proxy render fallback",
-        "Enable Browserless, Playwright, FlareSolverr, ScrapingBee, BrightData, or proxy URLs.",
+        "公司文件瀏覽器/代理後援",
+        "啟用 Browserless、Playwright、FlareSolverr、ScrapingBee、BrightData 或代理 URL。",
     ),
     (
         "data_business_logic",
         "company_filing_high_risk_unlocker",
-        "MOPS/TWSE/TPEx high-risk filing unlocker",
-        "Enable FlareSolverr, ScrapingBee, or BrightData for CAPTCHA/anti-bot filing sources.",
+        "公開資訊高風險來源解鎖",
+        "針對 CAPTCHA 或防爬較嚴格的公開資訊來源啟用 FlareSolverr、ScrapingBee 或 BrightData。",
     ),
     (
         "data_business_logic",
         "company_filing_structured_api_fallback",
-        "Structured company filing API fallback",
-        "Configure COMPANY_FILING_STRUCTURED_API_PROVIDER/URL/TOKEN for TEJ or another provider.",
+        "公司文件結構化資料 API 備援",
+        "設定 COMPANY_FILING_STRUCTURED_API_PROVIDER/URL/TOKEN 串接 TEJ 或其他資料商。",
     ),
 )
 SMOKE_COMMAND_KEYS = frozenset(
@@ -384,7 +384,7 @@ def neo4j_payload_export_contract_check(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "area": "ai_rag",
         "capability": "neo4j_payload_export_contract",
-        "label": "Neo4j payload local contract",
+        "label": "Neo4j 圖譜輸出格式檢查",
         "status": status,
         "ready": ready,
         "evidence": {
@@ -393,7 +393,7 @@ def neo4j_payload_export_contract_check(item: dict[str, Any]) -> dict[str, Any]:
         },
         "smoke_commands": [NEO4J_PAYLOAD_DRY_RUN_COMMAND],
         "remediation": item.get("remediation")
-        or "Keep /supply-chain/graph/neo4j producing parameterized neo4j_cypher_v1 payloads.",
+        or "維持 /supply-chain/graph/neo4j 可輸出參數化 neo4j_cypher_v1 圖譜資料。",
     }
 
 
@@ -416,7 +416,7 @@ def graphrag_local_cypher_dry_run_check(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "area": "ai_rag",
         "capability": "graphrag_local_cypher_dry_run",
-        "label": "GraphRAG local guarded Cypher dry-run",
+        "label": "GraphRAG 本機只讀查詢模擬",
         "status": status,
         "ready": ready,
         "evidence": {
@@ -425,7 +425,7 @@ def graphrag_local_cypher_dry_run_check(item: dict[str, Any]) -> dict[str, Any]:
         },
         "smoke_commands": [NEO4J_LOCAL_CONTRACT_SMOKE_COMMAND],
         "remediation": item.get("remediation")
-        or "Keep GraphRAG guarded Cypher planning and in-memory dry-run validation healthy.",
+        or "維持 GraphRAG 只讀查詢計畫與本機模擬驗證正常。",
     }
 
 
@@ -701,23 +701,23 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         if smoke_commands:
             lines.append("  smoke:")
             lines.extend(f"    - {command}" for command in smoke_commands)
-    lines.append(f"Local start: {report['local_start_command']}")
-    lines.append(f"Neo4j GraphRAG smoke: {report['neo4j_graphrag_smoke_command']}")
-    lines.append(f"Neo4j local contract: {report['neo4j_local_contract_smoke_command']}")
-    lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
+    lines.append(f"本機依賴啟動: {report['local_start_command']}")
+    lines.append(f"Neo4j GraphRAG 連線查詢檢查: {report['neo4j_graphrag_smoke_command']}")
+    lines.append(f"Neo4j GraphRAG 本機格式檢查: {report['neo4j_local_contract_smoke_command']}")
+    lines.append(f"公司文件渲染檢查: {report['company_filing_render_smoke_command']}")
     lines.append(
         "公司文件渲染提供者格式檢查: "
         f"{report['company_filing_render_provider_contract_command']}"
     )
     lines.append(
-        f"High-risk filing unlocker smoke: {report['high_risk_company_filing_render_smoke_command']}"
+        f"高風險公司文件解鎖檢查: {report['high_risk_company_filing_render_smoke_command']}"
     )
-    lines.append(f"Structured filing sample: {report['structured_company_filing_sample_command']}")
+    lines.append(f"結構化公司文件樣本檢查: {report['structured_company_filing_sample_command']}")
     lines.append(
-        "Structured filing provider-profile fixture: "
+        "結構化公司文件資料商格式檢查: "
         f"{report['structured_company_filing_local_provider_profile_smoke_command']}"
     )
-    lines.append(f"Structured filing smoke: {report['structured_company_filing_smoke_command']}")
+    lines.append(f"結構化公司文件 API 檢查: {report['structured_company_filing_smoke_command']}")
     return "\n".join(lines)
 
 

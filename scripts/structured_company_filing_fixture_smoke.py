@@ -280,7 +280,7 @@ def _wait_for_fixture(
         "ready": False,
         "status": "failed",
         "category": "fixture_startup_timeout",
-        "message": f"Local structured filing fixture was not ready within {timeout_seconds:g}s.",
+        "message": f"本機結構化文件測試 API 在 {timeout_seconds:g} 秒內未就緒。",
     }
 
 
@@ -612,8 +612,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_SMOKE_TIMEOUT_SECONDS,
         help="Seconds to wait for structured_company_filing_smoke.py.",
     )
-    parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="未就緒時回傳非 0 結束碼。")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     report = structured_company_filing_fixture_smoke_report(

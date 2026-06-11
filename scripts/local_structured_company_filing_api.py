@@ -331,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true", help="Print one fixture response and exit.")
     parser.add_argument("--print-env", action="store_true", help="Print local env exports and exit.")
     parser.add_argument("--quiet", action="store_true", help="Suppress HTTP request logs.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON in --once.")
+    parser.add_argument("--json", action="store_true", help="搭配 --once 輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     if args.print_env:

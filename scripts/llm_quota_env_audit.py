@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Update tracked public Free Tier request budgets in the env file.",
     )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     parser.add_argument(
         "--strict",
         action="store_true",

@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Remove the plain backup directory after creating the archive. Intended for encrypted archives.",
     )
     create_parser.add_argument("--keep", type=int, help="Keep only the newest N backup sets.")
-    create_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    create_parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
 
     restore_parser = subparsers.add_parser("restore", help="Dry-run or apply a backup restore.")
     restore_parser.add_argument("backup_dir", help="Backup directory containing manifest.json.")
@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Apply restore operations. Omit this flag to run a dry-run only.",
     )
-    restore_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    restore_parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
 
     decrypt_parser = subparsers.add_parser("decrypt", help="Decrypt an encrypted backup archive.")
     decrypt_parser.add_argument("encrypted_archive", help="Encrypted .zip.enc archive.")
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Environment variable containing the encryption passphrase.",
     )
-    decrypt_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    decrypt_parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
 
     schedule_parser = subparsers.add_parser(
         "schedule-command",
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         default="STOCK_AI_BACKUP_PASSPHRASE",
         help="Passphrase env var to include in the generated command. Empty disables encryption.",
     )
-    schedule_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    schedule_parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
 
     args = parser.parse_args(argv)
     service = SystemBackupService()
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     elif args.command == "schedule-command":
-        print("Backup command:")
+        print("備份指令:")
         print(result["command"])
         print("")
         print("Cron:")

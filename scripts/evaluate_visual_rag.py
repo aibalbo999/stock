@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
         default=1.0,
         help="Fail when aggregate score is below this value.",
     )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     cases = load_visual_rag_golden_cases(args.golden)

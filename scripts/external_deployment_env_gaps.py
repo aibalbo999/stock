@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Return non-zero when any env gap is present.",
     )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
         "--env-template",

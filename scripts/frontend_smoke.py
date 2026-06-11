@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Expected API runtime git commit. Defaults to the current working tree commit.",
     )
     parser.add_argument("--timeout", type=float, default=10.0, help="Per-check timeout in seconds.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
     if args.no_required_text:
         required_text_fragments = ()

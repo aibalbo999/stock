@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Apply the plan. Without this flag the script only prints the plan.",
     )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     plan = plan_python_runtime_bootstrap(

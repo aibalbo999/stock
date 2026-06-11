@@ -548,14 +548,14 @@ def _restore_operations(
                 "action": "restore_sqlite_database",
                 "source": str(backup_dir / str(database_artifact)),
                 "target": target_path,
-                "description": f"Restore SQLite database to {target_path}",
+                "description": f"還原 SQLite 資料庫到 {target_path}",
             }
         )
     elif database.get("status") == "external_dump_required":
         operations.append(
             {
                 "action": "restore_external_database_manually",
-                "description": "Use the matching database restore tool for the external dump.",
+                "description": "請使用對應的資料庫還原工具處理外部 dump。",
             }
         )
     reports = manifest.get("reports") if isinstance(manifest.get("reports"), dict) else {}
@@ -568,7 +568,7 @@ def _restore_operations(
                 "target": current_reports.get("source_dir"),
                 "file_count": len(artifacts),
                 "description": (
-                    f"Restore {len(artifacts)} report files to {current_reports.get('source_dir')}"
+                    f"還原 {len(artifacts)} 個報告檔到 {current_reports.get('source_dir')}"
                 ),
             }
         )

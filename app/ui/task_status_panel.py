@@ -12,6 +12,11 @@ from app.ui.follow_up_status import company_filing_action_label
 from app.ui.task_failure_diagnostics import (
     task_failure_action_route,
     task_failure_action_route_detail,
+    task_failure_category_label,
+    task_failure_next_steps_text,
+    task_failure_operation_label,
+    task_failure_retry_kind_label,
+    task_failure_severity_label,
 )
 
 
@@ -223,16 +228,16 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
         return []
     return [
         {
-            "operation": task_status.get("operation") or "-",
-            "category": task_status.get("error_category") or "-",
-            "severity": task_status.get("error_severity") or "-",
+            "operation": task_failure_operation_label(task_status.get("operation")),
+            "category": task_failure_category_label(task_status.get("error_category")),
+            "severity": task_failure_severity_label(task_status.get("error_severity")),
             "summary": task_status.get("error_summary") or "-",
             "retry": "可重試" if task_status.get("retryable") else "需人工",
-            "retry_kind": task_status.get("retry_kind") or "-",
+            "retry_kind": task_failure_retry_kind_label(task_status.get("retry_kind")),
             "action_route": task_failure_action_route(task_status),
             "action_route_detail": task_failure_action_route_detail(task_status),
             "next_action": task_status.get("next_action") or "-",
-            "next_steps": _task_status_next_steps_text(task_status),
+            "next_steps": task_failure_next_steps_text(task_status),
         }
     ]
 

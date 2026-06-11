@@ -54,13 +54,29 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "def task_failure_drilldown_rows(" not in maintenance_status_source
         and "def task_retry_options(" not in maintenance_status_source,
         "ui_task_failure_diagnostics_path": "app/ui/task_failure_diagnostics.py",
-        "ui_task_failure_category_display_enabled": '"category": row.get("error_category")'
+        "ui_task_failure_category_display_enabled": '"category": task_failure_category_label(row.get("error_category"))'
         in task_failure_diagnostics_source
-        and '"severity": row.get("error_severity")' in task_failure_diagnostics_source
+        and '"severity": task_failure_severity_label(row.get("error_severity"))'
+        in task_failure_diagnostics_source
         and '"summary": row.get("error_summary")' in task_failure_diagnostics_source
-        and '"next_steps": _task_next_steps_text(row)' in task_failure_diagnostics_source
+        and '"next_steps": task_failure_next_steps_text(row)' in task_failure_diagnostics_source
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
+        "ui_task_failure_operator_labels_enabled": (
+            "CATEGORY_LABELS = {" in task_failure_diagnostics_source
+            and "SEVERITY_LABELS = {" in task_failure_diagnostics_source
+            and "OPERATION_LABELS = {" in task_failure_diagnostics_source
+            and "def task_failure_operation_label(" in task_failure_diagnostics_source
+            and "def task_failure_category_label(" in task_failure_diagnostics_source
+            and "def task_failure_severity_label(" in task_failure_diagnostics_source
+            and "def task_failure_next_steps_text(" in task_failure_diagnostics_source
+            and "task_failure_operation_label(task_status.get(\"operation\"))"
+            in task_status_panel_source
+            and "task_failure_category_label(task_status.get(\"error_category\"))"
+            in task_status_panel_source
+            and "task_failure_next_steps_text(task_status)" in task_status_panel_source
+            and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
+        ),
         "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
         in task_failure_diagnostics_source
         and "一鍵重試" in task_failure_diagnostics_source
@@ -107,10 +123,12 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows("
         in task_status_panel_source
         and "失敗診斷" in task_status_panel_source
-        and '"category": task_status.get("error_category")' in task_status_panel_source
+        and "task_failure_category_label(task_status.get(\"error_category\"))"
+        in task_status_panel_source
         and '"action_route": task_failure_action_route(task_status)' in task_status_panel_source
         and "task_failure_action_route_detail(task_status)" in task_status_panel_source
-        and '"next_steps": _task_status_next_steps_text(task_status)' in task_status_panel_source,
+        and '"next_steps": task_failure_next_steps_text(task_status)'
+        in task_status_panel_source,
         "ui_task_execution_context_enabled": "def task_execution_context_rows("
         in task_status_panel_source
         and "執行上下文" in task_status_panel_source

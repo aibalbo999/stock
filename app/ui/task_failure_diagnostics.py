@@ -27,6 +27,38 @@ TASK_FAILURE_ACTION_ROUTE_DETAILS = {
     "需人工處理": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
 }
 
+CATEGORY_LABELS = {
+    "quota": "模型/API 額度",
+    "task_queue": "背景任務服務",
+    "data_source": "資料來源",
+    "external_config": "外部設定",
+    "payload_validation": "輸入/白名單",
+    "runtime_storage": "儲存/資料庫",
+    "vector_store": "向量資料庫",
+    "visual_rag": "Visual RAG",
+    "stale_running": "長時間執行",
+    "cancelled": "已取消",
+    "unknown": "未知",
+}
+
+SEVERITY_LABELS = {
+    "critical": "嚴重",
+    "error": "錯誤",
+    "warning": "警告",
+    "warn": "警告",
+    "info": "資訊",
+}
+
+OPERATION_LABELS = {
+    "report_generation": "報告生成",
+    "data_operation": "資料補強",
+    "market_refresh": "市場資料刷新",
+    "company_filings_fetch": "公司文件抓取",
+    "manual_ingest": "手動資料匯入",
+    "rss_fetch": "RSS 抓取",
+    "visual_rag": "Visual RAG",
+}
+
 CATEGORY_ACTION_ROUTE_DETAILS = {
     "vector_store": "確認 RAG embedding 模型、Chroma client/server 版本與向量庫連線；修復後重新補索引或重送任務。",
     "runtime_storage": "確認 report_dir、SQLite/資料庫檔案與備份目錄存在且程序具讀寫權限；修復後重送任務。",
@@ -38,18 +70,18 @@ def task_failure_drilldown_rows(task_summary: dict) -> list[dict]:
     return [
         {
             "run_id": row.get("id") or "-",
-            "operation": row.get("operation") or "-",
+            "operation": task_failure_operation_label(row.get("operation")),
             "status": row.get("status") or "-",
             "task_id": row.get("task_id") or "-",
-            "category": row.get("error_category") or "-",
-            "severity": row.get("error_severity") or "-",
+            "category": task_failure_category_label(row.get("error_category")),
+            "severity": task_failure_severity_label(row.get("error_severity")),
             "summary": row.get("error_summary") or "-",
             "retry": "可重試" if row.get("retryable") else "需人工",
-            "retry_kind": row.get("retry_kind") or "-",
+            "retry_kind": task_failure_retry_kind_label(row.get("retry_kind")),
             "action_route": task_failure_action_route(row),
             "action_route_detail": task_failure_action_route_detail(row),
             "next_action": row.get("next_action") or _fallback_failure_next_action(row),
-            "next_steps": _task_next_steps_text(row),
+            "next_steps": task_failure_next_steps_text(row),
             "error": row.get("error") or "-",
             "started_at": row.get("started_at") or "-",
         }
@@ -141,6 +173,41 @@ def task_failure_action_route_detail(row: dict) -> str:
     if category in CATEGORY_ACTION_ROUTE_DETAILS:
         return CATEGORY_ACTION_ROUTE_DETAILS[category]
     return TASK_FAILURE_ACTION_ROUTE_DETAILS.get(task_failure_action_route(row), "-")
+
+
+def task_failure_operation_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return OPERATION_LABELS.get(text, text)
+
+
+def task_failure_category_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return CATEGORY_LABELS.get(text, text)
+
+
+def task_failure_severity_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return SEVERITY_LABELS.get(text, text)
+
+
+def task_failure_retry_kind_label(value: object) -> str:
+    return task_failure_operation_label(value)
+
+
+def task_failure_next_steps_text(row: dict) -> str:
+    category = str(row.get("error_category") or "").strip()
+    if category == "task_queue":
+        return (
+            "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+            "修復後重新送出任務。"
+        )
+    return _task_next_steps_text(row)
 
 
 def task_failure_retry_guarded(row: dict) -> bool:

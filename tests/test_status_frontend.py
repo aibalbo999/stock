@@ -472,6 +472,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/task_failure_diagnostics.py"
     )
     assert status["frontend"]["ui_task_failure_category_display_enabled"] is True
+    assert status["frontend"]["ui_task_failure_operator_labels_enabled"] is True
     assert status["frontend"]["ui_task_failure_trend_enabled"] is True
     assert status["frontend"]["ui_task_failure_alerts_enabled"] is True
     assert status["frontend"]["ui_maintenance_task_retry_confirmation_gate_enabled"] is True
@@ -815,6 +816,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_observability_auto_expand_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_operator_labels_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_action_routes_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_retry_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_trend_enabled"] is True

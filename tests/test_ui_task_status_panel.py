@@ -539,12 +539,12 @@ def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> N
 
     assert rows == [
         {
-            "operation": "report_generation",
-            "category": "quota",
-            "severity": "warning",
+            "operation": "報告生成",
+            "category": "模型/API 額度",
+            "severity": "警告",
             "summary": "模型/API 額度或速率限制",
             "retry": "可重試",
-            "retry_kind": "report_generation",
+            "retry_kind": "報告生成",
             "action_route": "一鍵重試",
             "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
             "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-quota/retry",
@@ -571,7 +571,13 @@ def test_task_status_diagnostic_rows_show_external_config_action_route() -> None
     )
 
     assert rows[0]["action_route"] == "外部配置缺失"
+    assert rows[0]["operation"] == "資料補強"
+    assert rows[0]["category"] == "背景任務服務"
+    assert rows[0]["severity"] == "錯誤"
     assert "Redis/Celery" in rows[0]["action_route_detail"]
+    assert "/services/status" not in rows[0]["next_steps"]
+    assert "task_queue.ready" not in rows[0]["next_steps"]
+    assert "系統設定 > 維護 > 背景任務觀測" in rows[0]["next_steps"]
 
 
 def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:

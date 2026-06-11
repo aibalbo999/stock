@@ -351,6 +351,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_llm_quota_model_row_operator_labels_enabled")
             and frontend_status.get("ui_llm_quota_caption_operator_labels_enabled")
             and frontend_status.get("ui_llm_usage_routing_operator_labels_enabled")
+            and frontend_status.get("ui_llm_usage_alert_operator_labels_enabled")
             and frontend_status.get("ui_report_observability_panel_extracted")
             and frontend_status.get("ui_report_observability_metric_operator_labels_enabled")
             and frontend_status.get("ui_report_observability_row_operator_labels_enabled")

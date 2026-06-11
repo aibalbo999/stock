@@ -32,6 +32,46 @@ USAGE_OPERATION_LABELS = {
     "data_enrichment": "資料補強",
 }
 
+USAGE_ALERT_SEVERITY_LABELS = {
+    "error": "需處理",
+    "warning": "需注意",
+    "info": "資訊",
+}
+
+USAGE_ALERT_LABELS = {
+    "llm_cost_budget_exceeded": {
+        "提醒": "成本預算已超出",
+        "下一步": "先暫停非必要分析，確認是否調高 LLM 成本預算。",
+    },
+    "llm_cost_budget_warning": {
+        "提醒": "成本接近預算",
+        "下一步": "先保留額度給必要任務，避免批次重跑。",
+    },
+    "llm_cost_rate_card_missing": {
+        "提醒": "成本費率尚未設定",
+        "下一步": "目前只能估 Token；設定費率後才能追蹤美元成本。",
+    },
+    "llm_fallback_used": {
+        "提醒": "曾使用後援模型",
+        "下一步": "檢查主力模型是否額度用完、冷卻中或暫時失敗。",
+    },
+    "llm_retryable_failures": {
+        "提醒": "有可重試的 LLM 失敗",
+        "下一步": "查看最近任務，必要時重試或降低並行。",
+    },
+    "llm_quota_routing_skips": {
+        "提醒": "路由曾略過不可用模型",
+        "下一步": "通常代表額度或冷卻保護生效；確認目前推薦模型即可。",
+    },
+}
+
+COST_BUDGET_STATUS_LABELS = {
+    "exceeded": "已超出成本預算",
+    "warning": "接近成本預算",
+    "ok": "預算內",
+    "not_configured": "未設定成本預算",
+}
+
 
 def render_ai_quota_panel(llm_quota: dict, service_snapshot: dict) -> None:
     with st.expander("AI 額度與模型路由", expanded=True):
@@ -86,22 +126,20 @@ def render_ai_usage_panel(llm_usage_summary: dict) -> None:
             st.dataframe(recent_routing_rows, width="stretch", hide_index=True)
         if not (daily_usage_rows or model_usage_rows or operation_usage_rows):
             st.info("尚未有可彙總的 AI 用量紀錄。")
-        usage_alerts = llm_usage_summary.get("alerts") or []
-        for alert in usage_alerts:
-            message = str(alert.get("message") or alert.get("code") or "")
-            if alert.get("severity") == "error":
+        for alert in llm_usage_alert_rows(llm_usage_summary):
+            message = str(alert["提醒"])
+            next_action = str(alert["下一步"])
+            if next_action != "-":
+                message += f"；{next_action}"
+            if alert["嚴重度"] == "需處理":
                 st.error(message)
-            elif alert.get("severity") == "warning":
+            elif alert["嚴重度"] == "需注意":
                 st.warning(message)
             else:
                 st.caption(message)
-        cost_budget = llm_usage_summary.get("cost_budget")
-        if isinstance(cost_budget, dict):
-            st.caption(
-                "成本預算："
-                f"{cost_budget.get('status')}｜"
-                f"window ${float(cost_budget.get('window_cost_budget_usd') or 0.0):.4f}"
-            )
+        cost_budget_caption = llm_usage_cost_budget_caption(llm_usage_summary)
+        if cost_budget_caption:
+            st.caption(cost_budget_caption)
 
 
 def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
@@ -116,6 +154,50 @@ def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
         "額度略過": int(totals.get("quota_skip_count") or 0),
         "模型降級": int(totals.get("degraded_from_primary_count") or 0),
     }
+
+
+def llm_usage_alert_rows(llm_usage_summary: dict) -> list[dict[str, str]]:
+    rows = []
+    for alert in llm_usage_summary.get("alerts") or []:
+        if not isinstance(alert, dict):
+            continue
+        code = str(alert.get("code") or "").strip()
+        labels = USAGE_ALERT_LABELS.get(code) or {
+            "提醒": "AI 用量提醒",
+            "下一步": "查看系統狀態或最近任務紀錄。",
+        }
+        rows.append(
+            {
+                "嚴重度": _label(
+                    USAGE_ALERT_SEVERITY_LABELS,
+                    alert.get("severity") or "info",
+                )
+                or "資訊",
+                "提醒": labels["提醒"],
+                "下一步": labels["下一步"],
+            }
+        )
+    return rows
+
+
+def llm_usage_cost_budget_caption(llm_usage_summary: dict) -> str:
+    cost_budget = _dict_value(llm_usage_summary.get("cost_budget"))
+    status = str(cost_budget.get("status") or "").strip()
+    if not status:
+        return ""
+    status_label = _label(COST_BUDGET_STATUS_LABELS, status) or status
+    estimated = _format_usd(cost_budget.get("estimated_cost_usd"))
+    window_budget = cost_budget.get("window_cost_budget_usd")
+    if status == "not_configured" or window_budget in {None, ""}:
+        return (
+            f"成本預算：{status_label}｜本期估算 {estimated}"
+            "｜設定每日成本預算後可提示超支"
+        )
+    caption = f"成本預算：{status_label}｜本期估算 {estimated} / 預算 {_format_usd(window_budget)}"
+    used_ratio = _format_ratio(cost_budget.get("budget_used_ratio"))
+    if used_ratio:
+        caption += f"｜已用 {used_ratio}"
+    return caption
 
 
 def llm_usage_routing_captions(llm_usage_summary: dict) -> list[str]:
@@ -237,3 +319,19 @@ def _display_budget_value(value: Any, *, zero_when_missing: bool = False) -> Any
     if isinstance(value, str) and not value.strip():
         return 0 if zero_when_missing else "-"
     return value
+
+
+def _format_usd(value: Any) -> str:
+    try:
+        amount = float(value or 0.0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    return f"${amount:.4f}"
+
+
+def _format_ratio(value: Any) -> str:
+    try:
+        ratio = float(value)
+    except (TypeError, ValueError):
+        return ""
+    return f"{ratio * 100:.1f}%"

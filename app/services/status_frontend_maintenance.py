@@ -399,5 +399,22 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and '"Quota skip"' not in maintenance_ai_panels_source
             and '"Fallback 次數"' not in maintenance_ai_panels_source
         ),
+        "ui_llm_usage_alert_operator_labels_enabled": (
+            "USAGE_ALERT_LABELS = {" in maintenance_ai_panels_source
+            and "COST_BUDGET_STATUS_LABELS = {" in maintenance_ai_panels_source
+            and "def llm_usage_alert_rows(" in maintenance_ai_panels_source
+            and "def llm_usage_cost_budget_caption(" in maintenance_ai_panels_source
+            and '"成本預算已超出"' in maintenance_ai_panels_source
+            and '"路由曾略過不可用模型"' in maintenance_ai_panels_source
+            and "本期估算" in maintenance_ai_panels_source
+            and '"未設定成本預算"' in maintenance_ai_panels_source
+            and "llm_usage_alert_rows(llm_usage_summary)" in maintenance_ai_panels_source
+            and "llm_usage_cost_budget_caption(llm_usage_summary)"
+            in maintenance_ai_panels_source
+            and 'alert.get("message") or alert.get("code")'
+            not in maintenance_ai_panels_source
+            and "cost_budget.get('status')" not in maintenance_ai_panels_source
+            and "window $" not in maintenance_ai_panels_source
+        ),
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
     }

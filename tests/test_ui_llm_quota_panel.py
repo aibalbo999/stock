@@ -6,6 +6,8 @@ from app.ui.llm_quota_panel import (
     llm_quota_model_rows,
 )
 from app.ui.maintenance_ai_panels import (
+    llm_usage_alert_rows,
+    llm_usage_cost_budget_caption,
     llm_usage_metric_values,
     llm_usage_recent_routing_rows,
     llm_usage_routing_captions,
@@ -377,3 +379,85 @@ def test_llm_usage_routing_captions_show_unavailable_reason() -> None:
         "模型降級": 0,
     }
     assert llm_usage_recent_routing_rows({}) == []
+
+
+def test_llm_usage_alert_rows_localize_codes_and_operator_actions() -> None:
+    rows = llm_usage_alert_rows(
+        {
+            "alerts": [
+                {
+                    "severity": "error",
+                    "code": "llm_cost_budget_exceeded",
+                    "message": "LLM estimated cost is above the configured window budget.",
+                },
+                {
+                    "severity": "warning",
+                    "code": "llm_fallback_used",
+                    "message": "Some LLM calls required fallback routing.",
+                },
+                {
+                    "severity": "info",
+                    "code": "llm_quota_routing_skips",
+                    "message": (
+                        "Some calls skipped exhausted or cooling-down models before "
+                        "selecting a fallback."
+                    ),
+                },
+                "ignored",
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "嚴重度": "需處理",
+            "提醒": "成本預算已超出",
+            "下一步": "先暫停非必要分析，確認是否調高 LLM 成本預算。",
+        },
+        {
+            "嚴重度": "需注意",
+            "提醒": "曾使用後援模型",
+            "下一步": "檢查主力模型是否額度用完、冷卻中或暫時失敗。",
+        },
+        {
+            "嚴重度": "資訊",
+            "提醒": "路由曾略過不可用模型",
+            "下一步": "通常代表額度或冷卻保護生效；確認目前推薦模型即可。",
+        },
+    ]
+    rendered = str(rows)
+    assert "llm_cost_budget_exceeded" not in rendered
+    assert "LLM estimated cost" not in rendered
+    assert "fallback routing" not in rendered
+    assert "cooling-down" not in rendered
+
+
+def test_llm_usage_cost_budget_caption_localizes_status_and_budget_window() -> None:
+    caption = llm_usage_cost_budget_caption(
+        {
+            "cost_budget": {
+                "status": "exceeded",
+                "window_cost_budget_usd": 0.01,
+                "estimated_cost_usd": 0.025,
+                "budget_used_ratio": 2.5,
+            }
+        }
+    )
+
+    assert caption == (
+        "成本預算：已超出成本預算｜本期估算 $0.0250 / 預算 $0.0100｜已用 250.0%"
+    )
+    assert "exceeded" not in caption
+    assert "window $" not in caption
+
+    assert (
+        llm_usage_cost_budget_caption(
+            {
+                "cost_budget": {
+                    "status": "not_configured",
+                    "estimated_cost_usd": 0.0,
+                }
+            }
+        )
+        == "成本預算：未設定成本預算｜本期估算 $0.0000｜設定每日成本預算後可提示超支"
+    )

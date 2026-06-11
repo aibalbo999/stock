@@ -27,6 +27,7 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
     operator_decisions_source = ui.OPERATOR_DECISIONS_SOURCE.read_text()
+    operator_optimization_actions_source = ui.OPERATOR_OPTIMIZATION_ACTIONS_SOURCE.read_text()
     operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
@@ -118,6 +119,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_decisions import (" in source
     assert "operator_next_best_action(" in source
     assert "operator_secondary_actions(" in source
+    assert "from app.ui.operator_optimization_actions import (" in source
+    assert "import streamlit" not in operator_optimization_actions_source
+    assert "def optimization_local_defaults_action(" in operator_optimization_actions_source
+    assert "def optimization_free_validation_action(" in operator_optimization_actions_source
+    assert "def _optimization_actions(" in operator_optimization_actions_source
+    assert "def _optimization_local_defaults_action(" not in operator_decisions_source
+    assert "def _optimization_free_validation_action(" not in operator_decisions_source
+    assert "def _optimization_actions(" not in operator_decisions_source
     assert "from app.ui.operator_task_state import (" in source
     assert "import streamlit" not in operator_task_state_source
     assert "def task_summary_failures(" in operator_task_state_source

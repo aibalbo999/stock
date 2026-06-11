@@ -12,6 +12,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "data_enrichment_common.py", ""
     )
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
+    operator_optimization_actions_source = source_context.ui_sources.get(
+        "operator_optimization_actions.py", ""
+    )
     operator_task_state_source = source_context.ui_sources.get("operator_task_state.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
 
@@ -202,26 +205,39 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'if value == "services_status":' in analysis_workspace_source
             and "優化目標缺口" in analysis_workspace_source
         ),
+        "ui_operator_optimization_actions_extracted": (
+            "from app.ui.operator_optimization_actions import ("
+            in operator_decisions_source
+            and "import streamlit" not in operator_optimization_actions_source
+            and "def optimization_local_defaults_action("
+            in operator_optimization_actions_source
+            and "def optimization_free_validation_action("
+            in operator_optimization_actions_source
+            and "def _optimization_actions(" in operator_optimization_actions_source
+            and "def _optimization_local_defaults_action(" not in operator_decisions_source
+            and "def _optimization_free_validation_action(" not in operator_decisions_source
+            and "def _optimization_actions(" not in operator_decisions_source
+        ),
         "ui_operator_local_defaults_secondary_action_enabled": (
-            "def _optimization_local_defaults_action(" in operator_decisions_source
+            "def optimization_local_defaults_action(" in operator_optimization_actions_source
             and "local_defaults_action = _optimization_local_defaults_action(service_snapshot)"
             in operator_decisions_source
-            and '"驗證本機 defaults"' in operator_decisions_source
-            and '"settings:maintenance:local_defaults"' in operator_decisions_source
-            and '"optimization:auto_local_defaults"' in operator_decisions_source
-            and '"查看本機操作"' in operator_decisions_source
+            and '"驗證本機 defaults"' in operator_optimization_actions_source
+            and '"settings:maintenance:local_defaults"' in operator_optimization_actions_source
+            and '"optimization:auto_local_defaults"' in operator_optimization_actions_source
+            and '"查看本機操作"' in operator_optimization_actions_source
         ),
         "ui_operator_free_validation_secondary_action_enabled": (
-            "def _optimization_free_validation_action(" in operator_decisions_source
-            and "def _optimization_actions(" in operator_decisions_source
+            "def optimization_free_validation_action(" in operator_optimization_actions_source
+            and "def _optimization_actions(" in operator_optimization_actions_source
             and "free_validation_action = _optimization_free_validation_action(service_snapshot)"
             in operator_decisions_source
-            and '"驗證公司文件 API 格式"' in operator_decisions_source
-            and '"settings:maintenance:structured_api"' in operator_decisions_source
+            and '"驗證公司文件 API 格式"' in operator_optimization_actions_source
+            and '"settings:maintenance:structured_api"' in operator_optimization_actions_source
             and '"optimization:company_filing_structured_api_fallback"'
-            in operator_decisions_source
-            and '"查看免費驗證"' in operator_decisions_source
-            and "正式串 TEJ 或付費資料商前" in operator_decisions_source
+            in operator_optimization_actions_source
+            and '"查看免費驗證"' in operator_optimization_actions_source
+            and "正式串 TEJ 或付費資料商前" in operator_optimization_actions_source
         ),
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source

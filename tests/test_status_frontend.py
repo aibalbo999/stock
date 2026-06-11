@@ -197,6 +197,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_operator_market_freshness_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_secondary_action_labels_enabled"] is True
     assert status["frontend"]["ui_operator_source_labels_enabled"] is True
+    assert status["frontend"]["ui_operator_optimization_actions_extracted"] is True
     assert status["frontend"]["ui_operator_local_defaults_secondary_action_enabled"] is True
     assert status["frontend"]["ui_operator_free_validation_secondary_action_enabled"] is True
     assert status["frontend"]["ui_operator_service_status_unknown_guard_enabled"] is True
@@ -658,6 +659,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_operator_source_labels_enabled"] is True
+    assert frontend_arch["evidence"]["ui_operator_optimization_actions_extracted"] is True
     assert (
         frontend_arch["evidence"]["ui_operator_local_defaults_secondary_action_enabled"]
         is True

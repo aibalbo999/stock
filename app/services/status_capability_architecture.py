@@ -194,6 +194,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_operator_market_freshness_primary_action_enabled")
             and frontend_status.get("ui_operator_secondary_action_labels_enabled")
             and frontend_status.get("ui_operator_source_labels_enabled")
+            and frontend_status.get("ui_operator_optimization_actions_extracted")
             and frontend_status.get("ui_operator_local_defaults_secondary_action_enabled")
             and frontend_status.get("ui_operator_free_validation_secondary_action_enabled")
             and frontend_status.get("ui_operator_service_status_unknown_guard_enabled")

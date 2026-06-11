@@ -22,6 +22,8 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
     assert callable(streamlit_dashboard.render_report_center)
     assert callable(streamlit_dashboard.render_data_enrichment)
     assert callable(streamlit_dashboard.render_system_settings)
+    assert not hasattr(streamlit_dashboard, "render_legacy_tabbed_app")
+    assert "render_legacy_tabbed_app" not in getattr(streamlit_dashboard, "__all__", [])
 
 
 def test_streamlit_shell_uses_operational_workspace_header() -> None:

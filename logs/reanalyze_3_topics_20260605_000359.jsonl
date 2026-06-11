@@ -1,8 +1,0 @@
-{"event": "start", "log": "logs/reanalyze_3_topics_20260605_000359.jsonl", "topics": ["AI 產業鏈低關注潛力股", "機器人 產業鏈", "記憶體產業鏈"]}
-{"event": "topic_start", "index": 1, "topic": "AI 產業鏈低關注潛力股"}
-{"event": "topic_done", "index": 1, "topic": "AI 產業鏈低關注潛力股", "run_id": 1, "report_id": 1, "active_report_id": 2, "promoted_tickers": [], "quality_status": "insufficient", "quality_action_status": null, "candidate_coverage": null, "evidence_count": 829, "auto_follow_up_status": "started", "auto_follow_up_rerun_report_id": null, "report_title": "AI 產業鏈低關注潛力股 自動分析報告"}
-{"event": "topic_start", "index": 2, "topic": "機器人 產業鏈"}
-{"event": "topic_done", "index": 2, "topic": "機器人 產業鏈", "run_id": 3, "report_id": 3, "active_report_id": 4, "promoted_tickers": [], "quality_status": "insufficient", "quality_action_status": null, "candidate_coverage": null, "evidence_count": 830, "auto_follow_up_status": "started", "auto_follow_up_rerun_report_id": null, "report_title": "機器人 產業鏈 自動分析報告"}
-{"event": "topic_start", "index": 3, "topic": "記憶體產業鏈"}
-{"event": "topic_done", "index": 3, "topic": "記憶體產業鏈", "run_id": 5, "report_id": 5, "active_report_id": 6, "promoted_tickers": ["2408", "2344", "8299", "2451", "3260", "4967", "2337", "8150"], "quality_status": "caution", "quality_action_status": null, "candidate_coverage": null, "evidence_count": 863, "auto_follow_up_status": "started", "auto_follow_up_rerun_report_id": null, "report_title": "記憶體產業鏈 自動分析報告"}
-{"event": "finish", "log": "logs/reanalyze_3_topics_20260605_000359.jsonl"}

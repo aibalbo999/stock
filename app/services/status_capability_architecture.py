@@ -186,6 +186,7 @@ def architecture_capabilities(
             and frontend_status.get(
                 "ui_data_task_followup_failure_operator_guidance_enabled"
             )
+            and frontend_status.get("ui_operator_quota_presenter_extracted")
             and frontend_status.get("ui_operator_quota_summary_enabled")
             and frontend_status.get("ui_operator_quota_step_caption_enabled")
             and frontend_status.get("ui_operator_task_state_helpers_extracted")

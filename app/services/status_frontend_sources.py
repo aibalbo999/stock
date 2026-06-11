@@ -22,6 +22,7 @@ UI_MODULE_NAMES = (
     "follow_up_status.py",
     "llm_quota_panel.py",
     "operator_status.py",
+    "operator_quota_presenter.py",
     "operator_optimization_actions.py",
     "operator_task_state.py",
     "operator_routes.py",

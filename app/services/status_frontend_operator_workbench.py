@@ -15,6 +15,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "data_enrichment_common.py", ""
     )
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
+    operator_quota_presenter_source = source_context.ui_sources.get(
+        "operator_quota_presenter.py", ""
+    )
     operator_optimization_actions_source = source_context.ui_sources.get(
         "operator_optimization_actions.py", ""
     )
@@ -119,14 +122,26 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             in data_enrichment_common_source
             and "呼叫 POST /tasks/" not in data_enrichment_common_source
         ),
+        "ui_operator_quota_presenter_extracted": (
+            "from app.ui.operator_quota_presenter import quota_operator_summary"
+            in operator_status_source
+            and "import streamlit" not in operator_quota_presenter_source
+            and "def quota_operator_summary(" in operator_quota_presenter_source
+            and "def _model_order_label(" in operator_quota_presenter_source
+            and "def _limited_model_label(" in operator_quota_presenter_source
+            and "def _first_limited_quota_model(" in operator_quota_presenter_source
+            and "def quota_operator_summary(" not in operator_status_source
+            and "def _model_order_label(" not in operator_status_source
+            and "def _limited_model_label(" not in operator_status_source
+        ),
         "ui_operator_quota_summary_enabled": (
-            "def quota_operator_summary(" in operator_status_source
-            and "model_order_label" in operator_status_source
-            and "limited_model_label" in operator_status_source
-            and "high_quota_fallback_label" in operator_status_source
-            and "def _model_order_label(" in operator_status_source
-            and "def _limited_model_label(" in operator_status_source
-            and "def _first_limited_quota_model(" in operator_status_source
+            "def quota_operator_summary(" in operator_quota_presenter_source
+            and "model_order_label" in operator_quota_presenter_source
+            and "limited_model_label" in operator_quota_presenter_source
+            and "high_quota_fallback_label" in operator_quota_presenter_source
+            and "def _model_order_label(" in operator_quota_presenter_source
+            and "def _limited_model_label(" in operator_quota_presenter_source
+            and "def _first_limited_quota_model(" in operator_quota_presenter_source
             and (
                 "quota_summary[\"caption\"]" in operator_status_source
                 or "quota_summary['caption']" in operator_status_source
@@ -135,14 +150,14 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             )
         ),
         "ui_operator_quota_step_caption_enabled": (
-            "operator_caption" in operator_status_source
-            and "next_model_label" in operator_status_source
-            and "def _next_quota_model_label(" in operator_status_source
-            and "def _quota_operator_card_caption(" in operator_status_source
-            and "聰明優先" in operator_status_source
-            and "免費額度" in operator_status_source
-            and "下一順位" in operator_status_source
-            and "保底 " in operator_status_source
+            "operator_caption" in operator_quota_presenter_source
+            and "next_model_label" in operator_quota_presenter_source
+            and "def _next_quota_model_label(" in operator_quota_presenter_source
+            and "def _quota_operator_card_caption(" in operator_quota_presenter_source
+            and "聰明優先" in operator_quota_presenter_source
+            and "免費額度" in operator_quota_presenter_source
+            and "下一順位" in operator_quota_presenter_source
+            and "保底 " in operator_quota_presenter_source
             and 'quota_summary["operator_caption"]' in operator_status_source
         ),
         "ui_operator_task_state_helpers_extracted": (

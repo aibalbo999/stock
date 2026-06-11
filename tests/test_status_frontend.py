@@ -372,6 +372,29 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_maintenance_operations_path"] == (
         "app/ui/maintenance_deployment_presenter.py"
     )
+    assert status["frontend"]["frontend_submission_guard_status_extracted"] is True
+    assert status["frontend"]["frontend_submission_guard_status_path"] == (
+        "app/services/status_frontend_submission_guards.py"
+    )
+    assert status["frontend"]["ui_risky_submission_guard_coverage_enabled"] is True
+    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 12
+    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 12
+    assert status["frontend"]["ui_risky_submission_guard_missing"] == []
+    guard_rows = status["frontend"]["ui_risky_submission_guard_rows"]
+    assert {
+        "analysis_submission",
+        "market_data_operation",
+        "company_filing_url_import",
+        "rss_fetch",
+        "report_follow_up_run",
+        "report_delete",
+        "maintenance_cleanup",
+        "maintenance_operation",
+        "maintenance_diagnostic",
+        "maintenance_post_run_diagnostic",
+        "maintenance_task_retry",
+        "task_status_operation",
+    } == {row["id"] for row in guard_rows}
     assert status["frontend"]["ui_external_deployment_diagnostics_path"] == (
         "app/ui/external_deployment_diagnostics.py"
     )
@@ -634,6 +657,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         ]
         is True
     )
+    assert frontend_arch["evidence"]["ui_risky_submission_guard_coverage_enabled"] is True
+    assert frontend_arch["evidence"]["ui_risky_submission_guard_missing"] == []
     assert frontend_arch["evidence"]["ui_external_deployment_domain_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_recommended_retry_enabled"] is True

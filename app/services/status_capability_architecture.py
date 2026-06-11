@@ -271,6 +271,7 @@ def architecture_capabilities(
             and frontend_status.get(
                 "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"
             )
+            and frontend_status.get("ui_risky_submission_guard_coverage_enabled")
             and frontend_status.get("ui_external_deployment_domain_helpers_extracted")
             and frontend_status.get("ui_task_failure_drilldown_enabled")
             and frontend_status.get("ui_task_failure_recommended_retry_enabled")

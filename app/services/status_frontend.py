@@ -13,6 +13,9 @@ from app.services.status_frontend_reports import frontend_report_ui_status
 from app.services.status_frontend_runtime import frontend_runtime_status
 from app.services.status_frontend_settings import frontend_settings_ui_status
 from app.services.status_frontend_sources import frontend_source_context
+from app.services.status_frontend_submission_guards import (
+    frontend_submission_guard_status,
+)
 from app.services.status_frontend_tasks import frontend_task_ui_status
 
 
@@ -27,7 +30,7 @@ def frontend_status() -> dict:
     pages = source_context.pages
     streamlit_pages_source = source_context.streamlit_pages_source
     frontend_blocking_call_scan_paths = source_context.frontend_blocking_call_scan_paths
-    return {
+    status = {
         "collector_path": "app/services/status_frontend.py",
         "frontend_source_context_extracted": source_context.__class__.__name__
         == "FrontendSourceContext"
@@ -75,3 +78,5 @@ def frontend_status() -> dict:
         **frontend_data_enrichment_status(source_context),
         **frontend_runtime_status(source_context),
     }
+    status.update(frontend_submission_guard_status(status))
+    return status

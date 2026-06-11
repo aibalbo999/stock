@@ -312,7 +312,7 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
         {
             "title": "待處理事項",
             "value": "輸入或白名單已擋下任務",
-            "caption": "補強或重跑任務曾被 payload 驗證擋下；修正後可重試。",
+            "caption": "補強或重跑任務曾被輸入驗證擋下；修正後可重試。",
             "state": "attention",
             "action_label": "可重試",
             "route_hint": "task:task-8150",
@@ -682,7 +682,7 @@ def test_task_failure_action_summary_maps_payload_validation_retryable_failure()
     assert task_failure_action_summary(_payload_validation_failure()) == {
         "state": "attention",
         "label": "輸入或白名單已擋下任務",
-        "detail": "補強或重跑任務曾被 payload 驗證擋下；修正後可重試。",
+        "detail": "補強或重跑任務曾被輸入驗證擋下；修正後可重試。",
         "action_label": "可重試",
         "route_hint": "task:task-8150",
     }

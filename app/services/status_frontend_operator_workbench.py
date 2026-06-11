@@ -362,6 +362,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "歷史失敗可追蹤" in operator_status_source
             and "最新任務已成功；舊失敗保留於維護頁，不影響閱讀最新版報告。"
             in operator_status_source
+            and "補強或重跑任務曾被輸入驗證擋下；修正後可重試。"
+            in operator_status_source
+            and "payload 驗證" not in operator_status_source
             and '"action_label": "查看紀錄"' in operator_status_source
             and 'route_hint": f"task:{task_id}"' in operator_status_source
         ),

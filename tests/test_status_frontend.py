@@ -178,6 +178,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["frontend_operator_workbench_status_path"] == (
         "app/services/status_frontend_operator_workbench.py"
     )
+    assert status["frontend"]["ui_analysis_submission_quota_confirmation_enabled"] is True
     assert status["frontend"]["ui_operator_quota_summary_enabled"] is True
     assert status["frontend"]["ui_operator_retryable_failure_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_stale_running_primary_action_enabled"] is True
@@ -485,6 +486,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_source_context_extracted"] is True
     assert frontend_arch["evidence"]["frontend_runtime_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_operator_workbench_status_extracted"] is True
+    assert frontend_arch["evidence"]["ui_analysis_submission_quota_confirmation_enabled"] is True
     assert frontend_arch["evidence"]["ui_operator_quota_summary_enabled"] is True
     assert (
         frontend_arch["evidence"]["ui_operator_retryable_failure_primary_action_enabled"]

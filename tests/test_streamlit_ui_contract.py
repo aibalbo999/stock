@@ -165,6 +165,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'a[aria-label="Link to heading"]' in styles
     assert "pointer-events: none !important" in styles
     assert "def render_analysis_workspace() -> None:" in source
+    assert "def analysis_submission_ready(" in source
+    assert "analysis_quota_confirmed = st.checkbox(" in source
+    assert 'key="confirm_analysis_submission_quota_usage"' in source
+    assert "我了解這會送出分析背景任務並消耗 AI/API 額度" in source
+    assert "避免誤觸與免費額度消耗" in source
+    assert "disabled=not analysis_submission_ready(topic, analysis_quota_confirmed)" in source
     assert "def render_report_center() -> None:" in source
     assert "def render_data_enrichment() -> None:" in source
     assert "def render_system_settings() -> None:" in source

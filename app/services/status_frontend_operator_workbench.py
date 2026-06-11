@@ -4,6 +4,7 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
+    analysis_workspace_source = source_context.ui_sources.get("analysis_workspace.py", "")
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
 
@@ -11,6 +12,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "frontend_operator_workbench_status_extracted": True,
         "frontend_operator_workbench_status_path": (
             "app/services/status_frontend_operator_workbench.py"
+        ),
+        "ui_analysis_submission_quota_confirmation_enabled": (
+            "def analysis_submission_ready(" in analysis_workspace_source
+            and "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source
+            and 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
+            and "我了解這會送出分析背景任務並消耗 AI/API 額度"
+            in analysis_workspace_source
+            and "避免誤觸與免費額度消耗" in analysis_workspace_source
+            and "disabled=not analysis_submission_ready(topic, analysis_quota_confirmed)"
+            in analysis_workspace_source
+            and 'submit_api_task(\n                    "/pipeline/run_discovered_async"'
+            in analysis_workspace_source
+            and 'submit_api_task(\n                    "/reports/generate_async"'
+            in analysis_workspace_source
         ),
         "ui_operator_quota_summary_enabled": (
             "def quota_operator_summary(" in operator_status_source

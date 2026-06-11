@@ -34,6 +34,10 @@ from app.ui.report_state import hydrate_active_report_result
 from app.ui.task_status_panel import render_task_status_panel
 
 
+def analysis_submission_ready(topic: str, quota_confirmed: bool) -> bool:
+    return bool(topic.strip() and quota_confirmed)
+
+
 def render_analysis_workspace() -> None:
     st.markdown(
         """
@@ -141,7 +145,20 @@ def render_analysis_workspace() -> None:
                     "分析任務一律交由 FastAPI / Celery 背景執行，送出後可用 task id 查詢進度。"
                 )
 
-            run_sync = st.form_submit_button("執行分析", type="primary")
+            analysis_quota_confirmed = st.checkbox(
+                "我了解這會送出分析背景任務並消耗 AI/API 額度",
+                value=False,
+                key="confirm_analysis_submission_quota_usage",
+            )
+            if not topic.strip():
+                st.caption("請先輸入分析主題。")
+            elif not analysis_quota_confirmed:
+                st.caption("避免誤觸與免費額度消耗；確認主題、分析強度與資料抓取強度後才會送出。")
+            run_sync = st.form_submit_button(
+                "執行分析",
+                type="primary",
+                disabled=not analysis_submission_ready(topic, analysis_quota_confirmed),
+            )
 
         if run_sync:
             if ai_discovery_mode:

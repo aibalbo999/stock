@@ -3,6 +3,12 @@ from __future__ import annotations
 import app.ui.analysis_workspace as analysis_workspace
 
 
+def test_analysis_submission_ready_requires_topic_and_quota_confirmation() -> None:
+    assert analysis_workspace.analysis_submission_ready("AI 產業鏈", True) is True
+    assert analysis_workspace.analysis_submission_ready("AI 產業鏈", False) is False
+    assert analysis_workspace.analysis_submission_ready("  ", True) is False
+
+
 def test_operator_decision_card_uses_readable_target_caption() -> None:
     html = analysis_workspace._operator_decision_html(
         {

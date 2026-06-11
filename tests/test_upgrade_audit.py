@@ -284,6 +284,30 @@ def test_upgrade_audit_treats_live_cypher_query_as_deployment_hardening() -> Non
     assert "neo4j_graphrag_smoke.py --import-first --json" in warning["remediation"]
 
 
+def test_upgrade_audit_live_cypher_fallback_remediation_uses_operator_language() -> None:
+    audit = audit_upgrade_capabilities(
+        _fake_status(
+            {
+                "ai_rag.graphrag_live_cypher_query": {
+                    "status": "degraded",
+                    "evidence": {"endpoint": "/supply-chain/graph/cypher-query"},
+                }
+            }
+        )
+    )
+
+    warning = next(
+        item
+        for item in audit["optional_warnings"]
+        if item["capability"] == "graphrag_live_cypher_query"
+    )
+
+    assert "Neo4j GraphRAG 檢查指令" in warning["remediation"]
+    assert "只讀查詢計畫" in warning["remediation"]
+    assert "Neo4j GraphRAG smoke" not in warning["remediation"]
+    assert "read-only plan" not in warning["remediation"]
+
+
 def test_upgrade_audit_treats_company_filing_render_fallback_as_deployment_hardening() -> None:
     audit = audit_upgrade_capabilities(
         _fake_status(

@@ -569,7 +569,7 @@ def _remediation_for_requirement(requirement: UpgradeAuditRequirement, evidence:
                 f"{requirement.remediation} 可先以 {endpoint} 驗證 API contract；"
                 f"驗證指令：{command_text}"
             )
-        return f"{requirement.remediation} 可先以 {endpoint} 或 Neo4j GraphRAG smoke 指令驗證 read-only plan。"
+        return f"{requirement.remediation} 可先以 {endpoint} 或 Neo4j GraphRAG 檢查指令驗證只讀查詢計畫。"
     if requirement.capability == "company_filing_browser_or_proxy_fallback":
         return _append_smoke_command(
             requirement.remediation,

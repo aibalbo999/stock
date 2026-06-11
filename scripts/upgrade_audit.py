@@ -334,7 +334,7 @@ def _format_text(audit: dict) -> str:
         ),
         (
             f"檢查結果: {summary.get('ready', 0)} 就緒，"
-            f"{warning_text}, "
+            f"{warning_text}，"
             f"{summary.get('failures', 0)} 失敗"
         ),
     ]
@@ -461,9 +461,9 @@ def _format_text(audit: dict) -> str:
         open_services = ", ".join(local_runtime.get("open_services") or []) or "-"
         missing_core = ", ".join(local_runtime.get("missing_core_services") or []) or "-"
         lines.append(
-            "Local dependency runtime: "
-            f"{local_runtime.get('status', 'unknown')}; "
-            f"open={open_services}; missing_core={missing_core}"
+            "本機依賴狀態: "
+            f"{local_runtime.get('status', 'unknown')}；"
+            f"已開啟={open_services}；缺少核心={missing_core}"
         )
         last_start = (
             local_runtime.get("last_start")
@@ -472,9 +472,10 @@ def _format_text(audit: dict) -> str:
         )
         if last_start.get("available"):
             lines.append(
-                "Local dependency last start: "
-                f"{last_start.get('status', 'unknown')} at {last_start.get('updated_at', '-')}; "
-                f"path={last_start.get('path', '-')}"
+                "本機依賴上次啟動: "
+                f"{last_start.get('status', 'unknown')}；"
+                f"時間={last_start.get('updated_at', '-')}；"
+                f"路徑={last_start.get('path', '-')}"
             )
     local_images = audit.get("local_docker_images")
     if local_images:
@@ -482,9 +483,9 @@ def _format_text(audit: dict) -> str:
             f"{row['service']}={'present' if row.get('present') else 'missing'}"
             for row in local_images.get("images", [])
         ]
-        lines.append("Local docker images: " + ", ".join(image_lines))
+        lines.append("本機 Docker image: " + ", ".join(image_lines))
         if local_images.get("remediation"):
-            lines.append("  fix: " + str(local_images["remediation"]))
+            lines.append("  修復建議: " + str(local_images["remediation"]))
     pending_gap_rows = _pending_gap_rows_by_capability(audit)
     for check in audit["checks"]:
         marker = (
@@ -494,7 +495,7 @@ def _format_text(audit: dict) -> str:
             if check["severity"] == "warn"
             else "FAIL"
         )
-        optional = " optional" if check["optional"] else ""
+        optional = " 選配" if check["optional"] else ""
         lines.append(
             f"- [{marker}{optional}] {check['area']}.{check['capability']}: "
             f"{check['label']} ({check['status']})"
@@ -506,21 +507,21 @@ def _format_text(audit: dict) -> str:
         )
         if enablement:
             lines.append(
-                "  enablement: "
-                f"{enablement.get('group_label')}; cost: {enablement.get('cost_label')}"
+                "  啟用分類: "
+                f"{enablement.get('group_label')}；成本: {enablement.get('cost_label')}"
             )
         if check["remediation"]:
-            lines.append(f"  fix: {check['remediation']}")
+            lines.append(f"  修復建議: {check['remediation']}")
         gap_row = pending_gap_rows.get(str(check.get("capability") or ""))
         if gap_row and check["severity"] != "pass":
             lines.append(
-                "  action: "
+                "  缺口處理: "
                 f"{gap_row.get('action_type')} "
-                f"({gap_row.get('decision')}; {gap_row.get('local_action_state')})"
+                f"({gap_row.get('decision')}；{gap_row.get('local_action_state')})"
             )
             local_command = str(gap_row.get("local_action_command") or "-")
             if local_command != "-":
-                lines.append(f"  command: {local_command}")
+                lines.append(f"  指令: {local_command}")
     return "\n".join(lines)
 
 
@@ -543,12 +544,12 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
     )
     lines = [
         (
-            "Optimization objective progress: "
+            "優化目標進度: "
             f"{progress.get('status', 'unknown')} "
-            f"({ready_checks}/{total_checks} ready; "
-            f"blocking={blocking_gaps}; optional={optional_gaps}; "
-            f"local_resolvable={local_resolvable}; "
-            f"effective_optional={effective_optional})"
+            f"({ready_checks}/{total_checks} 就緒；"
+            f"阻塞={blocking_gaps}；選配={optional_gaps}；"
+            f"本機可解={local_resolvable}；"
+            f"有效選配={effective_optional})"
         )
     ]
     scope = (
@@ -564,10 +565,10 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
         ]
         outside_objective = ", ".join(excluded) if excluded else "-"
         lines.append(
-            "Optimization scope: "
-            f"{int(scope.get('optimization_check_count') or 0)} objective checks; "
-            f"{int(scope.get('audit_check_count') or 0)} audit checks; "
-            f"deployment preflight outside objective={outside_objective}"
+            "優化範圍: "
+            f"{int(scope.get('optimization_check_count') or 0)} 個目標檢查；"
+            f"{int(scope.get('audit_check_count') or 0)} 個升級檢查；"
+            f"部署預檢不列入目標={outside_objective}"
         )
     primary_action = (
         progress.get("primary_next_action")
@@ -576,14 +577,14 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
     )
     action_label = str(primary_action.get("label") or "").strip()
     if action_label:
-        lines.append("Optimization next action: " + action_label)
+        lines.append("優化建議: " + action_label)
     command = str(
         primary_action.get("verify_command")
         or progress.get("local_defaults_verify_command")
         or ""
     ).strip()
     if command:
-        lines.append("Optimization command: " + command)
+        lines.append("優化指令: " + command)
     return lines
 
 

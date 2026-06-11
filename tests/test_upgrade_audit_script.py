@@ -163,49 +163,49 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "Upgrade audit: ready" in output
-    assert "Core implementation: ready (1/1 ready)" in output
-    assert "External integrations: caution (0/1 ready; blocking=ready)" in output
+    assert "升級檢查: ready" in output
+    assert "核心實作: ready (1/1 就緒)" in output
+    assert "外部部署選配: caution (0/1 就緒；阻塞=ready)" in output
     assert (
-        "Deployment note: no blocking deployment gaps; remaining warnings are optional external integrations."
+        "部署提醒: 沒有阻塞型部署缺口；剩餘提醒都是外部整合選配。"
         in output
     )
-    assert "Checks: 1 ready, 0 warnings, 1 optional deployment warnings, 0 failures" in output
+    assert "檢查結果: 1 就緒，0 警示，1 個外部部署選配提醒，0 失敗" in output
     assert (
-        "External enablement: pending=1; blocking_pending=0; optional_pending=1; "
-        "free_local=1; local_action=1; "
-        "quota_or_external=0; paid_external=0"
+        "外部選配啟用摘要: 待處理=1；阻塞=0；選配=1；"
+        "本機免費=1；可本機處理=1；"
+        "需額度/外部=0；付費外部=0"
     ) in output
-    assert "External next action: 先處理本機免費可補強項目" in output
+    assert "外部選配建議: 先處理本機免費可補強項目" in output
     assert (
-        "External gap actions: local_action=1; quota_or_external=0; "
-        "paid_external=0; manual_configuration=0"
-    ) in output
-    assert (
-        "Effective external gaps: pending=1 -> 0 after available local defaults; "
-        "blocking=0; optional=0; paid_external=0; local_defaults=1"
-    ) in output
-    assert "Effective next action: 套用已偵測本機 defaults 可消除 1 項外部選配缺口。" in output
-    assert (
-        "Optimization objective progress: ready_with_optional_gaps "
-        "(29/33 ready; blocking=0; optional=4; local_resolvable=3; "
-        "effective_optional=1)"
+        "外部缺口分類: 本機動作=1；額度/外部=0；"
+        "付費外部=0；手動設定=0"
     ) in output
     assert (
-        "Optimization scope: 33 objective checks; 34 audit checks; "
-        "deployment preflight outside objective=architecture.python_runtime"
+        "套用本機預設後的外部缺口: 待處理=1 -> 0；"
+        "阻塞=0；選配=0；付費外部=0；本機預設=1"
     ) in output
-    assert "Optimization next action: 本機 defaults 可驗證" in output
-    assert "Optimization command: .venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --prefer-unlocker --json" in output
-    assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
+    assert "有效建議: 套用已偵測本機 defaults 可消除 1 項外部選配缺口。" in output
     assert (
-        "Local dependency last start: 已啟動 at 2026-06-09T01:02:03Z; "
-        "path=data/local_dependency_start_status.json"
+        "優化目標進度: ready_with_optional_gaps "
+        "(29/33 就緒；阻塞=0；選配=4；本機可解=3；"
+        "有效選配=1)"
     ) in output
-    assert "[WARN optional] ai_rag.neo4j_import" in output
-    assert "enablement: 可本機免費啟用; cost: 本機 Neo4j 免費" in output
-    assert "action: local_action (需要該能力時配置; 可啟動)" in output
-    assert "command: .venv/bin/python scripts/start_system.py --start-dependencies" in output
+    assert (
+        "優化範圍: 33 個目標檢查；34 個升級檢查；"
+        "部署預檢不列入目標=architecture.python_runtime"
+    ) in output
+    assert "優化建議: 本機 defaults 可驗證" in output
+    assert "優化指令: .venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --prefer-unlocker --json" in output
+    assert "本機依賴狀態: partial；已開啟=redis；缺少核心=neo4j" in output
+    assert (
+        "本機依賴上次啟動: 已啟動；時間=2026-06-09T01:02:03Z；"
+        "路徑=data/local_dependency_start_status.json"
+    ) in output
+    assert "[WARN 選配] ai_rag.neo4j_import" in output
+    assert "啟用分類: 可本機免費啟用；成本: 本機 Neo4j 免費" in output
+    assert "缺口處理: local_action (需要該能力時配置；可啟動)" in output
+    assert "指令: .venv/bin/python scripts/start_system.py --start-dependencies" in output
 
 
 def test_upgrade_audit_script_returns_failure_when_required_check_fails(monkeypatch) -> None:
@@ -515,7 +515,7 @@ def test_upgrade_audit_script_waits_for_local_chroma(monkeypatch, capsys) -> Non
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "Local Chroma wait: ready within 7s" in output
+    assert "本機 Chroma 等待: 就緒，7 秒內" in output
     os.environ.pop("USE_CHROMA", None)
     os.environ.pop("CHROMA_API_URL", None)
 
@@ -558,7 +558,7 @@ def test_upgrade_audit_script_checks_core_images_plus_unlocker(monkeypatch, caps
         "redis",
     ]
     output = capsys.readouterr().out
-    assert "Local docker images: browserless=present" in output
+    assert "本機 Docker image: browserless=present" in output
     assert "chroma=present" in output
     assert "flaresolverr=present" in output
 
@@ -692,7 +692,7 @@ def test_upgrade_audit_script_can_wait_for_local_neo4j(monkeypatch, capsys) -> N
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "Local Neo4j wait: ready within 2s" in output
+    assert "本機 Neo4j 等待: 就緒，2 秒內" in output
 
 
 def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
@@ -742,7 +742,7 @@ def test_upgrade_audit_script_can_wait_for_browserless_before_applying_defaults(
     assert captured["browser_render_enabled"] == "true"
     assert captured["browser_render_url"].startswith("http://127.0.0.1:3000/content")
     output = capsys.readouterr().out
-    assert "Local Browserless wait: ready within 3s" in output
+    assert "本機 Browserless 等待: 就緒，3 秒內" in output
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)
@@ -799,7 +799,7 @@ def test_upgrade_audit_script_can_wait_for_flaresolverr_before_applying_defaults
         "browser_render_url": "http://127.0.0.1:8191/v1",
     }
     output = capsys.readouterr().out
-    assert "Local FlareSolverr wait: ready within 3s" in output
+    assert "本機 FlareSolverr 等待: 就緒，3 秒內" in output
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_ENABLED", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_PROVIDER", None)
     os.environ.pop("COMPANY_FILING_BROWSER_RENDER_URL", None)

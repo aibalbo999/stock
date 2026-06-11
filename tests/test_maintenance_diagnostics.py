@@ -85,6 +85,16 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         llm_quota_action["display_command"]
     )
     assert "不顯示密鑰" in llm_quota_action["description"]
+    celery_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["celery_inspect_ping"]
+    assert celery_action["label"] == "背景執行器連線檢查"
+    assert celery_action["description"] == (
+        "檢查背景執行器是否回應目前設定的 Redis 訊息佇列。"
+    )
+    assert "celery -A app.tasks.celery_app.celery_app inspect ping" in (
+        celery_action["display_command"]
+    )
     chroma_action = {
         action["id"]: action for action in catalog["actions"]
     }["local_chroma_upgrade_audit"]
@@ -129,20 +139,43 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     task_submission_action = {
         action["id"]: action for action in catalog["actions"]
     }["task_submission_smoke"]
+    assert task_submission_action["label"] == "背景任務送出準備度檢查"
     assert "task_submission_smoke.py --json" in (
         task_submission_action["display_command"]
     )
-    assert "不送出 Celery 任務" in task_submission_action["description"]
+    assert "只讀檢查 API 執行版本" in task_submission_action["description"]
+    assert "背景任務佇列準備度" in task_submission_action["description"]
+    assert "不送出背景任務" in task_submission_action["description"]
     task_noop_action = {
         action["id"]: action for action in catalog["actions"]
     }["task_submission_noop_smoke"]
+    assert task_noop_action["label"] == "背景任務空跑送出測試"
     assert task_noop_action["read_only"] is False
     assert task_noop_action["effect"] == "safe_noop_task_submission"
     assert task_noop_action["safe_to_run"] is True
     assert "--submit --timeout 10 --skip-processing-ready --json" in (
         task_noop_action["display_command"]
     )
+    assert "驗證背景任務送出、排隊與任務註冊" in task_noop_action["description"]
     assert "不呼叫外部市場資料 API" in task_noop_action["description"]
+    rendered_task_diagnostic_copy = " ".join(
+        [
+            celery_action["label"],
+            celery_action["description"],
+            task_submission_action["label"],
+            task_submission_action["description"],
+            task_noop_action["label"],
+            task_noop_action["description"],
+        ]
+    )
+    assert "/tasks/data-operation" not in rendered_task_diagnostic_copy
+    assert "readiness smoke" not in rendered_task_diagnostic_copy
+    assert "no-op" not in rendered_task_diagnostic_copy
+    assert "Celery worker" not in rendered_task_diagnostic_copy
+    assert "Redis broker" not in rendered_task_diagnostic_copy
+    assert "Celery enqueue" not in rendered_task_diagnostic_copy
+    assert "task wiring" not in rendered_task_diagnostic_copy
+    assert "單 worker" not in rendered_task_diagnostic_copy
     structured_sample_action = {
         action["id"]: action for action in catalog["actions"]
     }["structured_company_filing_sample_contract_smoke"]

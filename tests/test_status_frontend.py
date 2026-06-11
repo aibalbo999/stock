@@ -603,6 +603,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     ]
 
     assert frontend_arch["status"] == "ready"
+    assert "安全空跑送出" in frontend_arch["detail"]
+    assert "safe no-op submission smoke" not in frontend_arch["detail"]
     assert frontend_arch["evidence"]["streamlit_entry_uses_navigation"] is True
     assert frontend_arch["evidence"]["expected_pages_present"] is True
     assert frontend_arch["evidence"]["streamlit_page_import_contract_ready"] is True

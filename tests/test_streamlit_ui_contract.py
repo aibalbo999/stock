@@ -890,7 +890,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "維護診斷動作" in source
     assert "選擇診斷動作" in source
     assert "safe_to_run" in source
-    assert "安全 no-op" in source
+    assert "安全空跑" in source
     assert "maintenance_run_diagnostic_action" in source
     assert "diagnostic_confirmed = st.checkbox(" in source
     assert 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"' in source

@@ -806,8 +806,8 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
                 },
                 {
                     "id": "task_submission_noop_smoke",
-                    "label": "背景任務 no-op 送出測試",
-                    "description": "送出 smoke=true 的 no-op market_refresh。",
+                    "label": "背景任務空跑送出測試",
+                    "description": "送出空跑的股價刷新任務。",
                     "display_command": ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
                     "timeout_seconds": 45,
                     "read_only": False,
@@ -846,10 +846,10 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "逾時秒數": 90,
         },
         {
-            "動作": "背景任務 no-op 送出測試",
-            "狀態": "安全 no-op",
-            "效果": "安全 no-op 送出",
-            "說明": "送出 smoke=true 的 no-op market_refresh。",
+            "動作": "背景任務空跑送出測試",
+            "狀態": "安全空跑",
+            "效果": "安全空跑送出",
+            "說明": "送出空跑的股價刷新任務。",
             "指令": ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
             "逾時秒數": 45,
         },
@@ -874,6 +874,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
     assert "Timeout" not in rendered
     assert "read_only" not in rendered
     assert "safe_noop_task_submission" not in rendered
+    assert "no-op" not in rendered
     assert "safe_local_neo4j_import_smoke" not in rendered
 
 
@@ -979,7 +980,7 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
 
         def selectbox(self, _label, options, *, format_func, key):
             assert key == "maintenance_diagnostic_action_select"
-            assert format_func(options[0]) == "背景任務 no-op 送出測試"
+            assert format_func(options[0]) == "背景任務空跑送出測試"
             return options[0]
 
         def checkbox(self, label: str, *, value: bool = False, key: str):
@@ -1006,8 +1007,8 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
             "actions": [
                 {
                     "id": "task_submission_noop_smoke",
-                    "label": "背景任務 no-op 送出測試",
-                    "description": "送出 smoke=true 的 no-op market_refresh。",
+                    "label": "背景任務空跑送出測試",
+                    "description": "送出空跑的股價刷新任務。",
                     "display_command": ".venv/bin/python scripts/task_submission_smoke.py",
                     "timeout_seconds": 45,
                     "read_only": False,
@@ -1020,7 +1021,7 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
 
     assert fake_st.buttons == [
         {
-            "label": "執行 背景任務 no-op 送出測試",
+            "label": "執行 背景任務空跑送出測試",
             "key": "maintenance_run_diagnostic_action",
             "disabled": False,
             "help": ".venv/bin/python scripts/task_submission_smoke.py",

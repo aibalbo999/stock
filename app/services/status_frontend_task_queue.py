@@ -133,7 +133,7 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and '"效果": maintenance_diagnostic_effect_label(action.get("effect"))'
             in maintenance_task_panels_source
             and '"read_only": "只讀檢查"' in maintenance_task_panels_source
-            and '"safe_noop_task_submission": "安全 no-op 送出"'
+            and '"safe_noop_task_submission": "安全空跑送出"'
             in maintenance_task_panels_source
             and '"safe_local_neo4j_import_smoke": "本機 Neo4j smoke"'
             in maintenance_task_panels_source
@@ -151,7 +151,7 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
         "ui_maintenance_safe_noop_diagnostics_enabled": (
             "safe_to_run" in maintenance_task_panels_source
             and "safe_noop_task_submission" in maintenance_task_panels_source
-            and "安全 no-op" in maintenance_task_panels_source
+            and "安全空跑" in maintenance_task_panels_source
         ),
         "ui_maintenance_diagnostic_actions_path": "app/ui/maintenance_task_panels.py",
         "uses_background_task_submit_helper": "submit_api_task(" in ui_source

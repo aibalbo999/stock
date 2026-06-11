@@ -395,7 +395,7 @@ def architecture_capabilities(
                 "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
                 "polling, frontend/API runtime identity smoke checks, queue health diagnostics, "
                 "allowlisted maintenance diagnostic "
-                "actions including safe no-op submission smoke, confirmed local dependency "
+                "actions including 安全空跑送出 diagnostics, confirmed local dependency "
                 "operations, categorized failed-task retry drilldown, and safe task execution "
                 "context summaries instead of running long ingestion/report calls inline."
             ),

@@ -81,8 +81,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "celery_inspect_ping": {
         "id": "celery_inspect_ping",
-        "label": "Celery worker 連線檢查",
-        "description": "檢查 Celery worker 是否回應目前設定的 Redis broker。",
+        "label": "背景執行器連線檢查",
+        "description": "檢查背景執行器是否回應目前設定的 Redis 訊息佇列。",
         "display_command": (
             ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
         ),
@@ -100,10 +100,10 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "task_submission_smoke": {
         "id": "task_submission_smoke",
-        "label": "背景任務送出 readiness smoke",
+        "label": "背景任務送出準備度檢查",
         "description": (
-            "只讀檢查 /services/runtime-identity、/services/status 的 task_queue readiness "
-            "與背景任務提交 smoke 指令，不送出 Celery 任務。"
+            "只讀檢查 API 執行版本、背景任務佇列準備度"
+            "與背景任務提交檢查指令，不送出背景任務。"
         ),
         "display_command": ".venv/bin/python scripts/task_submission_smoke.py --json",
         "argv": [sys.executable, "scripts/task_submission_smoke.py", "--json"],
@@ -112,11 +112,11 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "task_submission_noop_smoke": {
         "id": "task_submission_noop_smoke",
-        "label": "背景任務 no-op 送出測試",
+        "label": "背景任務空跑送出測試",
         "description": (
-            "送出 smoke=true 的 no-op market_refresh，驗證 /tasks/data-operation、"
-            "Celery enqueue 與 task wiring；不呼叫外部市場資料 API。完整 submit/wait "
-            "smoke 請從 CLI 執行，避免單 worker 診斷任務自我等待。"
+            "送出空跑的股價刷新任務，驗證背景任務送出、排隊與任務註冊；"
+            "不呼叫外部市場資料 API。完整送出後等待檢查請從 CLI 執行，"
+            "避免診斷任務等待自身執行。"
         ),
         "display_command": (
             ".venv/bin/python scripts/task_submission_smoke.py "

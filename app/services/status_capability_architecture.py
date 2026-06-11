@@ -332,6 +332,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_failure_operator_labels_enabled")
             and frontend_status.get("ui_task_observability_summary_operator_labels_enabled")
             and frontend_status.get("ui_task_observability_alert_operator_guidance_enabled")
+            and frontend_status.get("ui_task_observability_alert_queue_operator_labels_enabled")
             and frontend_status.get("ui_task_failure_trend_enabled")
             and frontend_status.get("ui_task_failure_alerts_enabled")
             and frontend_status.get("ui_maintenance_task_retry_confirmation_gate_enabled")

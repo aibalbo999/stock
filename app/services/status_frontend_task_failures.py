@@ -97,11 +97,25 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def task_summary_alert_next_steps(" in task_failure_diagnostics_source
             and "task_failure_next_steps_text(alert)" in task_failure_diagnostics_source
             and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
-            and "Queue 提交狀態" in task_failure_diagnostics_source
-            and "Celery worker 是否在線" in task_failure_diagnostics_source
+            and "背景任務提交狀態" in task_failure_diagnostics_source
+            and "背景執行器是否在線" in task_failure_diagnostics_source
             and "task_summary_alert_rows(task_summary)" in maintenance_task_panels_source
             and 'alert.get("code")' not in maintenance_task_panels_source
             and 'alert.get("next_steps") or []' not in maintenance_task_panels_source
+        ),
+        "ui_task_observability_alert_queue_operator_labels_enabled": (
+            "背景任務提交狀態" in task_failure_diagnostics_source
+            and "背景任務執行狀態" in task_failure_diagnostics_source
+            and "背景執行器是否在線" in task_failure_diagnostics_source
+            and "Redis 訊息佇列連線" in task_failure_diagnostics_source
+            and "Redis 結果儲存連線" in task_failure_diagnostics_source
+            and "背景任務送出契約" in task_failure_diagnostics_source
+            and "Queue 提交狀態" not in task_failure_diagnostics_source
+            and "Queue 執行狀態" not in task_failure_diagnostics_source
+            and "Celery worker 是否在線" not in task_failure_diagnostics_source
+            and "Redis broker 連線" not in task_failure_diagnostics_source
+            and "Redis backend 連線" not in task_failure_diagnostics_source
+            and "Celery 任務契約" not in task_failure_diagnostics_source
         ),
         "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
         in task_failure_diagnostics_source

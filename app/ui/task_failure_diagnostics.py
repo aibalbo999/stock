@@ -284,6 +284,8 @@ def task_summary_alert_message(alert: dict) -> str:
     message = str(alert.get("message") or "").strip()
     count = int(alert.get("count") or 0)
     if _has_raw_operator_diagnostics(message):
+        if not category:
+            return _operator_alert_text(message)
         label = task_failure_category_label(category or "unknown")
         count_text = f"近期出現 {count} 次" if count else "需要處理"
         return f"{label}{count_text}，請先依下方步驟處理。"
@@ -404,12 +406,12 @@ def _has_raw_operator_diagnostics(text: str) -> bool:
 def _operator_alert_text(text: str) -> str:
     replacements = {
         "/services/status": "系統設定 > 維護 > 背景任務觀測",
-        "task_queue.ready": "Queue 提交狀態",
-        "worker_online": "Celery worker 是否在線",
-        "processing_ready": "Queue 執行狀態",
-        "broker_ok": "Redis broker 連線",
-        "backend_ok": "Redis backend 連線",
-        "submission_contract_ready": "Celery 任務契約",
+        "task_queue.ready": "背景任務提交狀態",
+        "processing_ready": "背景任務執行狀態",
+        "worker_online": "背景執行器是否在線",
+        "broker_ok": "Redis 訊息佇列連線",
+        "backend_ok": "Redis 結果儲存連線",
+        "submission_contract_ready": "背景任務送出契約",
     }
     result = str(text or "").strip()
     for raw, label in replacements.items():

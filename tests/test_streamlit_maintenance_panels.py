@@ -1495,6 +1495,54 @@ def test_task_observability_alert_rows_hide_raw_diagnostic_keys() -> None:
     assert "worker_online" not in rendered
 
 
+def test_task_observability_alert_rows_use_operator_queue_labels() -> None:
+    task_summary = {
+        "alerts": [
+            {
+                "severity": "warning",
+                "message": (
+                    "task_queue.ready=false; processing_ready=false; "
+                    "worker_online=false; broker_ok=false; backend_ok=false; "
+                    "submission_contract_ready=false; see /services/status"
+                ),
+                "next_steps": [
+                    (
+                        "確認 task_queue.ready、processing_ready、worker_online、"
+                        "broker_ok、backend_ok、submission_contract_ready。"
+                    )
+                ],
+            }
+        ]
+    }
+
+    rows = task_summary_alert_rows(task_summary)
+
+    assert rows == [
+        {
+            "severity": "warning",
+            "severity_label": "警告",
+            "message": (
+                "背景任務提交狀態=false; 背景任務執行狀態=false; "
+                "背景執行器是否在線=false; Redis 訊息佇列連線=false; "
+                "Redis 結果儲存連線=false; 背景任務送出契約=false; "
+                "see 系統設定 > 維護 > 背景任務觀測"
+            ),
+            "next_steps": (
+                "確認 背景任務提交狀態、背景任務執行狀態、背景執行器是否在線、"
+                "Redis 訊息佇列連線、Redis 結果儲存連線、背景任務送出契約。"
+            ),
+        }
+    ]
+    rendered = str(rows)
+    assert "Queue" not in rendered
+    assert "task_queue.ready" not in rendered
+    assert "processing_ready" not in rendered
+    assert "worker_online" not in rendered
+    assert "broker_ok" not in rendered
+    assert "backend_ok" not in rendered
+    assert "submission_contract_ready" not in rendered
+
+
 def test_task_observability_expander_opens_when_operator_action_is_needed() -> None:
     assert task_observability_expander_expanded(
         {"recent_failures": [{"task_id": "task-1", "retryable": True}]}

@@ -333,6 +333,9 @@ def operator_secondary_actions(
         for incident in incidents
         if not _incident_matches_primary(incident, primary)
     ]
+    local_defaults_action = _optimization_local_defaults_action(service_snapshot)
+    if local_defaults_action:
+        _append_secondary_action(secondary, primary, local_defaults_action)
     report_id = _report_id(report_payload, latest_report)
     if report_id is not None:
         _append_secondary_action(
@@ -503,6 +506,46 @@ def _data_gap_action_source_ids(action: dict, report_id: Any) -> list[Any]:
         source_ids.append(f"report:{report_id}")
     source_ids.extend(action.get("tickers") or [])
     return source_ids
+
+
+def _optimization_local_defaults_action(service_snapshot: dict | None) -> dict[str, Any]:
+    snapshot = _dict_value(service_snapshot)
+    progress = _dict_value(snapshot.get("optimization_progress"))
+    primary_action = _dict_value(progress.get("primary_next_action"))
+    local_projection = _dict_value(progress.get("local_resolution_projection"))
+    if primary_action.get("capability") != "auto_local_defaults":
+        return {}
+    local_count = _int_value(
+        progress.get("local_resolvable_gap_count")
+        or local_projection.get("local_resolvable_gap_count")
+    )
+    if local_count <= 0:
+        return {}
+    remaining_optional = _int_value(
+        progress.get("effective_optional_gap_count_after_available_local_defaults")
+        if progress.get("effective_optional_gap_count_after_available_local_defaults") is not None
+        else local_projection.get("projected_optional_gap_count")
+    )
+    command = _text(
+        progress.get("local_defaults_verify_command")
+        or local_projection.get("local_defaults_verify_command")
+        or primary_action.get("verify_command")
+    )
+    detail = f"可用本機 defaults 驗證 {local_count} 項外部選配"
+    if remaining_optional:
+        detail += f"，驗證後剩餘 {remaining_optional} 項外部/付費選配。"
+    else:
+        detail += "，驗證後沒有剩餘 blocking 缺口。"
+    if command:
+        detail += " 維護頁已整理對應操作與驗證指令。"
+    return {
+        "title": "驗證本機 defaults",
+        "detail": detail,
+        "state": "ready",
+        "route_hint": "settings:maintenance:local_defaults",
+        "action_label": "查看本機操作",
+        "source_ids": ["optimization:auto_local_defaults"],
+    }
 
 
 def _healthy_read_reason(*, quota_missing: bool) -> str:

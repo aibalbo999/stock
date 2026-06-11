@@ -72,6 +72,12 @@ def operator_route_target(route_hint: str | None) -> dict[str, Any]:
             "session_updates": {"pending_settings_section": "ai_quota"},
             "caption": "開啟系統設定的 AI 額度區",
         }
+    if route == "settings:maintenance:local_defaults":
+        return {
+            "page": SYSTEM_SETTINGS_PAGE,
+            "session_updates": {"pending_settings_section": "maintenance_local_defaults"},
+            "caption": "開啟維護頁的本機 defaults 操作區",
+        }
     if route == "settings:scope":
         return {
             "page": SYSTEM_SETTINGS_PAGE,

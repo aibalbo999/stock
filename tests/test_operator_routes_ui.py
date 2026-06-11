@@ -80,3 +80,8 @@ def test_operator_route_target_maps_settings_sections() -> None:
         "session_updates": {"pending_settings_section": "maintenance"},
         "caption": "開啟系統設定的維護區",
     }
+    assert operator_route_target("settings:maintenance:local_defaults") == {
+        "page": "pages/04_系統設定.py",
+        "session_updates": {"pending_settings_section": "maintenance_local_defaults"},
+        "caption": "開啟維護頁的本機 defaults 操作區",
+    }

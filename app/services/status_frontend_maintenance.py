@@ -38,11 +38,26 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in system_settings_maintenance_source
             and 'if maintenance_focus != "task_observability":'
             in system_settings_maintenance_source
-            and 'focus in {"ai_quota", "task_observability"}'
+            and 'focus in {"ai_quota", "task_observability", "external_deployment"}'
             in system_settings_maintenance_source
             and system_settings_maintenance_source.count(
                 "render_background_task_observability_panel("
             )
+            >= 2
+        ),
+        "ui_settings_local_defaults_route_focus_enabled": (
+            '"settings:maintenance:local_defaults"' in operator_routes_source
+            and '"pending_settings_section": "maintenance_local_defaults"'
+            in operator_routes_source
+            and '"maintenance_local_defaults"' in system_settings_source
+            and 'return "external_deployment"' in system_settings_source
+            and 'if maintenance_focus == "external_deployment":'
+            in system_settings_maintenance_source
+            and 'if maintenance_focus != "external_deployment":'
+            in system_settings_maintenance_source
+            and 'focus in {"ai_quota", "task_observability", "external_deployment"}'
+            in system_settings_maintenance_source
+            and system_settings_maintenance_source.count("render_external_deployment_panel(")
             >= 2
         ),
         "ui_incident_action_labels_enabled": (
@@ -93,13 +108,14 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         and "def render_report_quality_panel(" in maintenance_panels_source
         and "def render_maintenance_cleanup_panel(" in maintenance_cleanup_panel_source
         and "from app.ui.maintenance_panels import (" in system_settings_maintenance_source
-        and "render_external_deployment_panel(\n        upgrade_audit,"
+        and system_settings_maintenance_source.count("render_external_deployment_panel(") >= 2
+        and "upgrade_audit,\n            service_snapshot,\n            maintenance_operations,\n            external_env_check,"
         in system_settings_maintenance_source
         and 'maintenance_operations = load_api_json_or_default(\n        "/maintenance/operations"'
         in system_settings_maintenance_source
         and 'external_env_check = load_api_json_or_default(\n        "/services/external-deployment/env-check"'
         in system_settings_maintenance_source
-        and "maintenance_operations,\n        external_env_check,\n    )"
+        and "maintenance_operations,\n            external_env_check,\n        )"
         in system_settings_maintenance_source
         and "render_background_task_observability_panel(" in system_settings_maintenance_source
         and "maintenance_diagnostics," in system_settings_maintenance_source

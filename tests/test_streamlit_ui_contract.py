@@ -762,10 +762,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "端口已啟動，需驗證" in external_readiness_service_source
     assert "local_dependency_wait" in external_readiness_service_source
     assert '"驗證指令"' in external_readiness_service_source
-    assert "render_external_deployment_panel(\n        upgrade_audit," in source
+    assert source.count("render_external_deployment_panel(") >= 2
+    assert 'if maintenance_focus == "external_deployment":' in source
+    assert 'if maintenance_focus != "external_deployment":' in source
+    assert '"settings:maintenance:local_defaults"' in source
+    assert '"maintenance_local_defaults"' in source
     assert "render_submission_guard_panel(service_snapshot)" in source
     assert 'load_api_json_or_default(\n        "/services/external-deployment/env-check"' in source
-    assert "maintenance_operations,\n        external_env_check,\n    )" in source
+    assert "maintenance_operations,\n            external_env_check,\n        )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source
     assert source.count("render_background_task_observability_panel(") >= 2
     assert "maintenance_diagnostics," in source

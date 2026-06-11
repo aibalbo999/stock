@@ -96,6 +96,15 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 "operator_route_controls.py", ""
             )
         ),
+        "ui_operator_local_defaults_secondary_action_enabled": (
+            "def _optimization_local_defaults_action(" in operator_decisions_source
+            and "local_defaults_action = _optimization_local_defaults_action(service_snapshot)"
+            in operator_decisions_source
+            and '"驗證本機 defaults"' in operator_decisions_source
+            and '"settings:maintenance:local_defaults"' in operator_decisions_source
+            and '"optimization:auto_local_defaults"' in operator_decisions_source
+            and '"查看本機操作"' in operator_decisions_source
+        ),
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source
             and "系統狀態暫不可讀" in operator_status_source

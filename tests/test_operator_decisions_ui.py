@@ -511,6 +511,37 @@ def test_operator_secondary_actions_keep_historical_failure_when_latest_task_hea
     assert any(action["title"] == "本機儲存失敗" for action in actions)
 
 
+def test_operator_secondary_actions_surface_local_defaults_when_report_healthy() -> None:
+    actions = operator_secondary_actions(
+        {
+            **READY_QUEUE,
+            "optimization_progress": {
+                "primary_next_action": {
+                    "capability": "auto_local_defaults",
+                    "label": "本機 defaults 可驗證",
+                },
+                "local_resolvable_gap_count": 3,
+                "effective_optional_gap_count_after_available_local_defaults": 1,
+                "local_defaults_verify_command": (
+                    ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+                ),
+            },
+        },
+        {},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert actions[0]["title"] == "驗證本機 defaults"
+    assert "3 項外部選配" in actions[0]["detail"]
+    assert "剩餘 1 項" in actions[0]["detail"]
+    assert actions[0]["state"] == "ready"
+    assert actions[0]["action_label"] == "查看本機操作"
+    assert actions[0]["route_hint"] == "settings:maintenance:local_defaults"
+
+
 def test_operator_next_action_reads_latest_when_healthy() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

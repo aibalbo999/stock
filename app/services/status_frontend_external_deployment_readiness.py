@@ -106,7 +106,7 @@ def frontend_external_deployment_readiness_status(
             in system_settings_maintenance_source
             and 'external_env_check = load_api_json_or_default(\n        "/services/external-deployment/env-check"'
             in system_settings_maintenance_source
-            and "maintenance_operations,\n        external_env_check,\n    )"
+            and "maintenance_operations,\n            external_env_check,\n        )"
             in system_settings_maintenance_source
             and "from app.ui.maintenance_deployment_presenter import"
             in maintenance_deployment_panel_source

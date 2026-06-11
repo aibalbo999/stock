@@ -113,14 +113,22 @@ def render_maintenance_tab() -> None:
         )
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
+    if maintenance_focus == "external_deployment":
+        render_external_deployment_panel(
+            upgrade_audit,
+            service_snapshot,
+            maintenance_operations,
+            external_env_check,
+        )
     render_service_metrics_panel(status, service_snapshot)
     render_submission_guard_panel(service_snapshot)
-    render_external_deployment_panel(
-        upgrade_audit,
-        service_snapshot,
-        maintenance_operations,
-        external_env_check,
-    )
+    if maintenance_focus != "external_deployment":
+        render_external_deployment_panel(
+            upgrade_audit,
+            service_snapshot,
+            maintenance_operations,
+            external_env_check,
+        )
     if maintenance_focus != "ai_quota":
         render_ai_quota_panel(llm_quota, service_snapshot)
     render_ai_usage_panel(llm_usage_summary)
@@ -138,7 +146,7 @@ def render_maintenance_tab() -> None:
 
 def _consume_pending_maintenance_focus() -> str | None:
     focus = str(st.session_state.pop("pending_maintenance_focus", "") or "").strip()
-    if focus in {"ai_quota", "task_observability"}:
+    if focus in {"ai_quota", "task_observability", "external_deployment"}:
         return focus
     return None
 

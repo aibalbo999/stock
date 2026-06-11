@@ -62,8 +62,12 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "結構化文件 API 操作提示" in ui_source
         and "設定檢查" in external_deployment_structured_api_source
         and "configuration_check" in external_deployment_structured_api_source
+        and "請重跑系統狀態檢查" in external_deployment_structured_api_source
+        and "請重跑 /services/status" not in external_deployment_structured_api_source
         and "設定檢查" in external_deployment_unlocker_source
         and "configuration_check" in external_deployment_unlocker_source
+        and "重跑系統狀態檢查" in external_deployment_unlocker_source
+        and "重跑 /services/status" not in external_deployment_unlocker_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
         "ui_external_deployment_diagnostics_extracted": (

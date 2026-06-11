@@ -20,6 +20,8 @@ from app.services.external_deployment_readiness import (
     local_dependency_repair_rows,
     local_dependency_status_rows,
 )
+from app.ui.external_deployment_structured_api import structured_filing_api_operation_rows
+from app.ui.external_deployment_unlocker import high_risk_filing_unlocker_rows
 from app.ui.maintenance_deployment_panel import (
     external_deployment_metric_values,
     external_deployment_effective_gap_rows,
@@ -43,6 +45,33 @@ from app.ui.task_failure_diagnostics import (
     task_retry_option_index,
 )
 from streamlit_ui_test_helpers import load_report_helpers
+
+
+def test_external_deployment_fallback_messages_hide_status_endpoint() -> None:
+    audit = {
+        "warnings": [
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_structured_api_fallback",
+                "external_integration": True,
+                "evidence": {"runtime": {}},
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "external_integration": True,
+                "evidence": {},
+            },
+        ]
+    }
+
+    structured_text = str(structured_filing_api_operation_rows(audit))
+    unlocker_text = str(high_risk_filing_unlocker_rows(audit))
+
+    assert "重跑系統狀態檢查" in structured_text
+    assert "重跑系統狀態檢查" in unlocker_text
+    assert "/services/status" not in structured_text
+    assert "/services/status" not in unlocker_text
 
 
 def test_external_deployment_item_logic_lives_outside_readiness_facade() -> None:

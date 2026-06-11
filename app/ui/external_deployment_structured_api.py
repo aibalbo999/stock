@@ -161,7 +161,7 @@ def _structured_filing_provider_setup_command(preview: dict, runtime: dict) -> s
 
 def _structured_filing_provider_setup_detail(preview: dict) -> str:
     if not preview:
-        return "缺少 provider_setup_preview；請重跑 /services/status 或 upgrade audit。"
+        return "缺少 provider_setup_preview；請重跑系統狀態檢查或 upgrade audit。"
     params = preview.get("params") if isinstance(preview.get("params"), dict) else {}
     headers = preview.get("headers") if isinstance(preview.get("headers"), dict) else {}
     param_keys = ",".join(str(key) for key in params)
@@ -253,7 +253,7 @@ def _structured_filing_provider_matrix_status(runtime: dict) -> str:
 def _structured_filing_provider_matrix_detail(runtime: dict) -> str:
     matrix = runtime.get("provider_decision_matrix")
     if not isinstance(matrix, list) or not matrix:
-        return "缺少 provider_decision_matrix；請重跑 /services/status。"
+        return "缺少 provider_decision_matrix；請重跑系統狀態檢查。"
     provider_summaries = []
     for row in matrix[:4]:
         if not isinstance(row, dict):
@@ -370,7 +370,7 @@ def _structured_filing_status_label(value: object) -> str:
 
 def _structured_filing_configuration_detail(configuration_check: dict) -> str:
     if not configuration_check:
-        return "缺少 configuration_check；請重跑 /services/status 或 upgrade audit。"
+        return "缺少 configuration_check；請重跑系統狀態檢查或 upgrade audit。"
     missing = string_list(configuration_check.get("missing_env_keys"))
     configured = string_list(configuration_check.get("configured_env_keys"))
     token_state = "required" if configuration_check.get("token_required") else "optional"

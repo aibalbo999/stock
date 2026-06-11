@@ -194,7 +194,7 @@ def _high_risk_unlocker_configuration_current(configuration_check: dict) -> str:
 
 def _high_risk_unlocker_configuration_detail(configuration_check: dict) -> str:
     if not configuration_check:
-        return "缺少 configuration_check；請重跑 /services/status 或 upgrade audit。"
+        return "缺少 configuration_check；請重跑系統狀態檢查或 upgrade audit。"
     token_state = "required" if configuration_check.get("token_required") else "optional"
     endpoint_configured = bool(configuration_check.get("endpoint_configured"))
     endpoint_valid = bool(configuration_check.get("endpoint_valid"))
@@ -211,7 +211,7 @@ def _high_risk_unlocker_configuration_detail(configuration_check: dict) -> str:
 
 def _high_risk_unlocker_configuration_next_action(configuration_check: dict) -> str:
     if not configuration_check:
-        return "重跑 /services/status 或 upgrade audit，確認 unlocker 配置檢查結果。"
+        return "重跑系統狀態檢查或 upgrade audit，確認 unlocker 配置檢查結果。"
     if configuration_check.get("ready"):
         return "配置完整；重跑 high-risk filing unlocker smoke 驗證入口頁。"
     missing = string_list(configuration_check.get("missing_env_keys"))

@@ -323,6 +323,11 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ]
     assert status["frontend"]["ui_maintenance_panels_extracted"] is True
     assert status["frontend"]["ui_submission_guard_panel_enabled"] is True
+    assert '"完整"' in status_frontend_maintenance_source
+    assert '"需處理"' in status_frontend_maintenance_source
+    assert '"已保護"' in status_frontend_maintenance_source
+    assert '"缺保護"' in status_frontend_maintenance_source
+    assert '"未知"' in status_frontend_maintenance_source
     assert status["frontend"]["ui_maintenance_panels_path"] == "app/ui/maintenance_panels.py"
     assert status["frontend"]["ui_maintenance_panel_module_paths"] == [
         "app/ui/maintenance_deployment_panel.py",

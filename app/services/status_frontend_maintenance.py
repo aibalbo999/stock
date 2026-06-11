@@ -108,6 +108,10 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "ui_risky_submission_guard_rows" in maintenance_panels_source
             and "確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門"
             in maintenance_panels_source
+            and all(
+                label in maintenance_panels_source
+                for label in ("完整", "需處理", "已保護", "缺保護", "未知")
+            )
             and "render_submission_guard_panel(service_snapshot)"
             in system_settings_maintenance_source
         ),

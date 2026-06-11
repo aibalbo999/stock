@@ -69,6 +69,17 @@ SUBMISSION_GUARD_SURFACES = {
     "system_settings_schedule": "系統設定：排程",
 }
 
+SUBMISSION_GUARD_OVERALL_STATUS_LABELS = {
+    "ready": "完整",
+    "missing": "需處理",
+    "unknown": "未知",
+}
+
+SUBMISSION_GUARD_ROW_STATUS_LABELS = {
+    True: "已保護",
+    False: "缺保護",
+}
+
 
 def render_upgrade_audit_panel(upgrade_audit: dict) -> None:
     st.markdown(upgrade_audit_html(upgrade_audit), unsafe_allow_html=True)
@@ -163,11 +174,11 @@ def submission_guard_metric_values(service_snapshot: dict) -> dict[str, object]:
     missing = frontend.get("ui_risky_submission_guard_missing")
     missing_count = len(missing) if isinstance(missing, list) else max(total - ready, 0)
     if total <= 0:
-        status = "unknown"
+        status = SUBMISSION_GUARD_OVERALL_STATUS_LABELS["unknown"]
     elif missing_count:
-        status = "missing"
+        status = SUBMISSION_GUARD_OVERALL_STATUS_LABELS["missing"]
     else:
-        status = "ready"
+        status = SUBMISSION_GUARD_OVERALL_STATUS_LABELS["ready"]
     return {
         "狀態": status,
         "完成": f"{ready}/{total}",
@@ -187,7 +198,7 @@ def submission_guard_rows(service_snapshot: dict) -> list[dict[str, object]]:
             {
                 "操作": SUBMISSION_GUARD_LABELS.get(guard_id, guard_id or "-"),
                 "區域": SUBMISSION_GUARD_SURFACES.get(surface, surface or "-"),
-                "狀態": "protected" if row.get("ready") else "missing",
+                "狀態": SUBMISSION_GUARD_ROW_STATUS_LABELS[bool(row.get("ready"))],
                 "Evidence": str(row.get("guard_key") or "-"),
             }
         )
@@ -197,15 +208,15 @@ def submission_guard_rows(service_snapshot: dict) -> list[dict[str, object]]:
 def render_submission_guard_panel(service_snapshot: dict) -> None:
     metrics = submission_guard_metric_values(service_snapshot)
     rows = submission_guard_rows(service_snapshot)
-    expanded = metrics["狀態"] != "ready"
+    expanded = metrics["狀態"] != SUBMISSION_GUARD_OVERALL_STATUS_LABELS["ready"]
     with st.expander("高風險操作保護", expanded=expanded):
         cols = st.columns(3)
         for column, (label, value) in zip(cols, metrics.items()):
             column.metric(label, value)
         st.caption("確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門。")
-        if metrics["狀態"] == "ready":
+        if metrics["狀態"] == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["ready"]:
             st.caption("目前所有高風險操作都已配置確認保護。")
-        elif metrics["狀態"] == "unknown":
+        elif metrics["狀態"] == SUBMISSION_GUARD_OVERALL_STATUS_LABELS["unknown"]:
             st.warning("尚未取得高風險操作保護狀態；請先確認 /services/status。")
         else:
             st.warning("仍有高風險操作缺少確認保護，請先修復缺口再交給一般操作者使用。")

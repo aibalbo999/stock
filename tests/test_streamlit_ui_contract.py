@@ -183,6 +183,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "高風險操作保護" in source
     assert "submission_guard_metric_values(service_snapshot)" in source
     assert "submission_guard_rows(service_snapshot)" in source
+    assert "完整" in source
+    assert "需處理" in source
+    assert "已保護" in source
+    assert "缺保護" in source
+    assert "未知" in source
     assert "def render_maintenance_cleanup_panel() -> None:" in source
     assert "def render_external_deployment_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
     assert "def render_ai_usage_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()

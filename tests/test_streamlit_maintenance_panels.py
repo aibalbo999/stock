@@ -164,7 +164,7 @@ def test_submission_guard_summary_rows_show_operator_ready_and_missing() -> None
     }
 
     assert maintenance_panels.submission_guard_metric_values(service_snapshot) == {
-        "狀態": "missing",
+        "狀態": "需處理",
         "完成": "1/2",
         "缺口": 1,
     }
@@ -172,23 +172,55 @@ def test_submission_guard_summary_rows_show_operator_ready_and_missing() -> None
         {
             "操作": "送出分析任務",
             "區域": "分析工作區",
-            "狀態": "protected",
+            "狀態": "已保護",
             "Evidence": "ui_analysis_submission_quota_confirmation_enabled",
         },
         {
             "操作": "刪除分析紀錄",
             "區域": "報告中心",
-            "狀態": "missing",
+            "狀態": "缺保護",
             "Evidence": "ui_run_delete_confirmation_gate_enabled",
         },
     ]
+
+
+def test_submission_guard_summary_uses_operator_ready_label() -> None:
+    from app.ui import maintenance_panels
+
+    service_snapshot = {
+        "frontend": {
+            "ui_risky_submission_guard_ready_count": 2,
+            "ui_risky_submission_guard_total_count": 2,
+            "ui_risky_submission_guard_missing": [],
+            "ui_risky_submission_guard_rows": [
+                {
+                    "id": "analysis_submission",
+                    "surface": "analysis_workspace",
+                    "guard_key": "ui_analysis_submission_quota_confirmation_enabled",
+                    "ready": True,
+                },
+                {
+                    "id": "run_delete",
+                    "surface": "report_center",
+                    "guard_key": "ui_run_delete_confirmation_gate_enabled",
+                    "ready": True,
+                },
+            ],
+        }
+    }
+
+    assert maintenance_panels.submission_guard_metric_values(service_snapshot) == {
+        "狀態": "完整",
+        "完成": "2/2",
+        "缺口": 0,
+    }
 
 
 def test_submission_guard_summary_handles_missing_frontend_snapshot() -> None:
     from app.ui import maintenance_panels
 
     assert maintenance_panels.submission_guard_metric_values({}) == {
-        "狀態": "unknown",
+        "狀態": "未知",
         "完成": "0/0",
         "缺口": 0,
     }

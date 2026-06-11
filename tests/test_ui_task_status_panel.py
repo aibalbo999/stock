@@ -36,6 +36,7 @@ class FakeTaskStatusStreamlit:
         self.captions: list[str] = []
         self.markdowns: list[str] = []
         self.successes: list[str] = []
+        self.warnings: list[str] = []
 
     def columns(self, spec):
         count = spec if isinstance(spec, int) else len(spec)
@@ -63,6 +64,9 @@ class FakeTaskStatusStreamlit:
 
     def success(self, text: str) -> None:
         self.successes.append(text)
+
+    def warning(self, text: str) -> None:
+        self.warnings.append(text)
 
 
 def test_task_action_preflight_summary_warns_before_retry_confirmation() -> None:
@@ -134,6 +138,23 @@ def test_task_action_preflight_summary_blocks_retry_for_successful_task() -> Non
         "next_step": "若需要重新執行，請回原本功能入口建立新任務。",
         "impact": "不會送出重試；避免對已成功任務重複消耗模型、外部資料源或 API 額度。",
     }
+
+
+def test_task_action_preflight_summary_uses_operator_task_number_language() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-quota",
+            "status": "FAILURE",
+            "operation": "report_generation",
+            "retryable": True,
+            "retry_kind": "report_generation",
+        },
+        action="retry",
+        confirmed=True,
+    )
+
+    assert summary["next_step"] == "按「重試任務」重新送出；送出後請查看新的任務編號與輪詢狀態。"
+    assert "task id" not in summary["next_step"]
 
 
 def test_task_action_preflight_summary_blocks_cancel_for_finished_task() -> None:
@@ -283,6 +304,24 @@ def test_fetch_task_status_ignores_non_dict_loader_fallback(monkeypatch) -> None
 
     assert _fetch_task_status("task-1", "task_status") is None
     assert "task_status" not in fake_st.session_state
+
+
+def test_render_task_status_panel_asks_for_operator_task_number(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit()
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+
+    assert (
+        task_status_panel.render_task_status_panel(
+            task_id="",
+            refresh_key="task_panel",
+            apply_result_key=None,
+            task_state_key="last_task_id",
+        )
+        is None
+    )
+    assert fake_st.warnings == ["請輸入任務編號。"]
 
 
 def test_task_status_controls_require_confirmation_before_cancel_or_retry(monkeypatch) -> None:

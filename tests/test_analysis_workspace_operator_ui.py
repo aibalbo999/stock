@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import app.ui.analysis_workspace as analysis_workspace
 
 
@@ -25,6 +27,13 @@ def test_analysis_submission_ready_requires_topic_and_quota_confirmation() -> No
         )
         is True
     )
+
+
+def test_analysis_task_lookup_uses_operator_task_number_language() -> None:
+    source = inspect.getsource(analysis_workspace.render_analysis_workspace)
+
+    assert 'st.warning("請輸入任務編號。")' in source
+    assert "請輸入 task id。" not in source
 
 
 def test_analysis_submission_summary_shows_ready_configuration() -> None:

@@ -377,7 +377,7 @@ def _task_failure_route_example(row: dict) -> str:
 def _fallback_failure_next_action(row: dict) -> str:
     if row.get("task_id"):
         return "查看任務狀態，確認 payload 是否支援自動重試。"
-    return "缺少 task id；請從 run 明細檢查。"
+    return "缺少任務編號；請從 run 明細檢查。"
 
 
 def _has_raw_task_action_endpoint(text: str) -> bool:

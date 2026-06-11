@@ -159,7 +159,7 @@ def task_action_preflight_summary(
             "label": "任務操作摘要",
             "title": "可以重試背景任務",
             "detail": detail,
-            "next_step": "按「重試任務」重新送出；送出後請查看新的 task id 與輪詢狀態。",
+            "next_step": "按「重試任務」重新送出；送出後請查看新的任務編號與輪詢狀態。",
             "impact": "會重新排隊並可能再次消耗模型、外部資料源或 API 額度；完成前避免重複按重試。",
         }
 
@@ -780,7 +780,7 @@ def render_task_status_panel(
     auto_refresh_seconds: int = 5,
 ) -> dict | None:
     if not task_id:
-        st.warning("請輸入 task id。")
+        st.warning("請輸入任務編號。")
         return None
     status_state_key = f"{refresh_key}_status"
     task_status = st.session_state.get(status_state_key)

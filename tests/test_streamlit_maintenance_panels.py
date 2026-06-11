@@ -1358,6 +1358,18 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error": "[Errno 2] No such file or directory",
                 "started_at": "2026-06-07T16:00:00",
             },
+            {
+                "id": 29,
+                "operation": "report_generation",
+                "status": "failed",
+                "task_id": "",
+                "retryable": False,
+                "retry_kind": None,
+                "error_category": "unknown",
+                "error_severity": "error",
+                "error": "unknown failure",
+                "started_at": "2026-06-07T17:00:00",
+            },
         ]
     }
 
@@ -1402,6 +1414,8 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[6]["category"] == "儲存/資料庫"
     assert rows[6]["action_route"] == "需人工處理"
     assert "SQLite" in rows[6]["action_route_detail"]
+    assert rows[7]["next_action"] == "缺少任務編號；請從 run 明細檢查。"
+    assert "task id" not in rows[7]["next_action"]
     assert "POST /tasks" not in str([row["next_action"] for row in rows])
     assert action_rows == [
         {
@@ -1418,7 +1432,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "處理路徑": "需人工處理",
-            "數量": 3,
+            "數量": 4,
             "說明": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
             "代表任務": "收盤後報告更新｜task-after-close；收盤後報告更新｜task-vector；收盤後報告更新｜task-storage",
         },

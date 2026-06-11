@@ -374,7 +374,7 @@ def render_analysis_workspace() -> None:
             )
             if st.button("查詢紀錄", key="lookup_analysis_task_run"):
                 if not task_id:
-                    st.warning("請輸入 task id。")
+                    st.warning("請輸入任務編號。")
                 else:
                     task_run = load_api_json_or_default(
                         f"/tasks/{task_id}/run",

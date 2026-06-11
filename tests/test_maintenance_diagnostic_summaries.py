@@ -43,13 +43,14 @@ def test_diagnostic_summary_rows_extracts_json_from_noisy_stdout() -> None:
     assert rows[0] == {
         "項目": "外部 env 檢查",
         "狀態": "action_required",
-        "Ready": "target=all；gaps=1",
-        "數量": "targets=1；env_file=.env",
-        "下一步": "補齊 missing；確認 different；密鑰只顯示是否已設定。",
+        "Ready": "目標=all；缺口=1",
+        "數量": "檢查目標=1；環境檔=.env",
+        "下一步": "補齊缺少；確認值不同；密鑰只顯示是否已設定。",
     }
     assert rows[1]["項目"] == "host env"
     assert rows[1]["Ready"] == "1/2"
-    assert "missing=1" in rows[1]["數量"]
+    assert "缺少=1" in rows[1]["數量"]
+    assert "missing=1" not in rows[1]["數量"]
     assert "COMPOSE_NEO4J_URI" in rows[1]["下一步"]
 
 

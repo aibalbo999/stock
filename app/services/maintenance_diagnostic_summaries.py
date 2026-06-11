@@ -163,9 +163,9 @@ def _external_env_check_summary_rows(payload: dict) -> list[dict]:
         _summary_row(
             "外部 env 檢查",
             payload.get("status") or "-",
-            _counts(target=payload.get("target"), gaps=payload.get("gap_count")),
-            _counts(targets=len(checks), env_file=payload.get("env_file")),
-            "補齊 missing；確認 different；密鑰只顯示是否已設定。",
+            _labeled_counts(("目標", payload.get("target")), ("缺口", payload.get("gap_count"))),
+            _labeled_counts(("檢查目標", len(checks)), ("環境檔", payload.get("env_file"))),
+            "補齊缺少；確認值不同；密鑰只顯示是否已設定。",
         )
     ]
     if checks:
@@ -184,10 +184,10 @@ def _external_env_check_target_summary_row(check: dict) -> dict:
         f"{check.get('target') or '-'} env",
         check.get("status") or "-",
         _ready_count(check.get("set_count"), check.get("checked_count")),
-        _counts(
-            missing=check.get("missing_count"),
-            different=check.get("different_count"),
-            env_exists=check.get("env_file_exists"),
+        _labeled_counts(
+            ("缺少", check.get("missing_count")),
+            ("值不同", check.get("different_count")),
+            ("環境檔", check.get("env_file_exists")),
         ),
         _external_env_check_next_action(check),
     )
@@ -215,10 +215,10 @@ def _llm_quota_env_audit_summary_rows(payload: dict) -> list[dict]:
             "LLM 額度環境稽核",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
-            _counts(
-                models=payload.get("model_count"),
-                drift=payload.get("drift_count"),
-                invalid=payload.get("invalid_count"),
+            _labeled_counts(
+                ("模型", payload.get("model_count")),
+                ("差異", payload.get("drift_count")),
+                ("格式錯誤", payload.get("invalid_count")),
             ),
             payload.get("next_action") or "-",
         )
@@ -234,9 +234,9 @@ def _llm_quota_env_audit_summary_rows(payload: dict) -> list[dict]:
                 row.get("model_key") or f"token {row.get('token_index') or '-'}",
                 status,
                 row.get("configured_request_budget") or "-",
-                _counts(
-                    official=row.get("official_free_tier_request_budget_reference"),
-                    source=row.get("quota_reference_source"),
+                _labeled_counts(
+                    ("官方參考", row.get("official_free_tier_request_budget_reference")),
+                    ("來源", row.get("quota_reference_source")),
                 ),
                 row.get("reason") or row.get("quota_reference_note") or "-",
             )

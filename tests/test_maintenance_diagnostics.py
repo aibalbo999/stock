@@ -781,12 +781,13 @@ def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(
     rows = result["summary_rows"]
     assert rows[0]["項目"] == "外部 env 檢查"
     assert rows[0]["狀態"] == "action_required"
-    assert "target=all" in rows[0]["Ready"]
+    assert "目標=all" in rows[0]["Ready"]
+    assert "target=all" not in rows[0]["Ready"]
     assert rows[1]["項目"] == "host env"
     assert rows[1]["Ready"] == "1/2"
-    assert "different=1" in rows[1]["數量"]
+    assert "值不同=1" in rows[1]["數量"]
     assert rows[2]["項目"] == "compose env"
-    assert "missing=2" in rows[2]["數量"]
+    assert "缺少=2" in rows[2]["數量"]
     assert "COMPOSE_NEO4J_URI" in rows[2]["下一步"]
     assert "real-secret" not in str(rows)
 
@@ -840,10 +841,11 @@ def test_run_maintenance_diagnostic_action_summarizes_llm_quota_env_audit_json(
     assert rows[0]["項目"] == "LLM 額度環境稽核"
     assert rows[0]["狀態"] == "drift_detected"
     assert rows[0]["Ready"] == "否"
-    assert "drift=1" in rows[0]["數量"]
+    assert "差異=1" in rows[0]["數量"]
     assert rows[1]["項目"] == "gemini-2.5-flash-lite"
     assert rows[1]["狀態"] == "drift"
-    assert "official=1000" in rows[1]["數量"]
+    assert "官方參考=1000" in rows[1]["數量"]
+    assert "official=1000" not in rows[1]["數量"]
     assert "gemini-3.5-flash" not in str(rows[1:])
 
 

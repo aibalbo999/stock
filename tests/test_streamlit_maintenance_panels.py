@@ -2724,20 +2724,26 @@ def test_local_neo4j_operation_rows_include_actionable_commands() -> None:
     assert [row["項目"] for row in rows] == [
         "一鍵啟動",
         "本機稽核",
-        "Payload dry-run",
-        "Live query smoke",
-        "Import-first smoke",
+        "圖譜匯入預檢",
+        "Live 查詢驗證",
+        "先匯入再查詢驗證",
         "容器診斷",
     ]
     assert rows[0]["狀態"] == "待啟動"
     assert "scripts/start_system.py --start-dependencies" in rows[0]["指令"]
     assert "--local-neo4j-defaults --wait-local-neo4j 20" in rows[1]["指令"]
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in rows[2]["指令"]
+    assert "payload 可用" in rows[2]["說明"]
     assert "nodes=27" in rows[2]["說明"]
     assert "neo4j_graphrag_smoke.py" in rows[3]["指令"]
     assert "--import-first" in rows[4]["指令"]
     assert "docker compose logs neo4j" in rows[5]["指令"]
     assert "missing_settings:neo4j_uri" in rows[5]["說明"]
+    rendered = str(rows)
+    assert "Payload dry-run" not in rendered
+    assert "Live query smoke" not in rendered
+    assert "Import-first smoke" not in rendered
+    assert "payload ready" not in rendered
 
 
 def test_structured_filing_api_operation_rows_include_actionable_commands() -> None:

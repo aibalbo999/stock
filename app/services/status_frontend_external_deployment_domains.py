@@ -168,6 +168,16 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and '"項目": "Provider"' not in external_deployment_unlocker_source
             and "browser render fallback" not in external_deployment_unlocker_source
         ),
+        "ui_neo4j_operation_operator_labels_enabled": (
+            '"圖譜匯入預檢"' in external_deployment_neo4j_source
+            and '"Live 查詢驗證"' in external_deployment_neo4j_source
+            and '"先匯入再查詢驗證"' in external_deployment_neo4j_source
+            and "payload 可用" in external_deployment_neo4j_source
+            and "Payload dry-run" not in external_deployment_neo4j_source
+            and "Live query smoke" not in external_deployment_neo4j_source
+            and "Import-first smoke" not in external_deployment_neo4j_source
+            and "payload ready" not in external_deployment_neo4j_source
+        ),
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",
             "app/services/external_deployment_readiness.py",

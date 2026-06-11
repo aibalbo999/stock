@@ -52,19 +52,19 @@ def local_neo4j_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": "等待 localhost:7687 後套用本機 Neo4j defaults；不改寫 .env。",
         },
         {
-            "項目": "Payload dry-run",
+            "項目": "圖譜匯入預檢",
             "狀態": "可執行" if import_evidence.get("payload_export_ready") else "檢查",
             "指令": neo4j_payload_dry_run_command(import_evidence, cypher_evidence),
             "說明": _neo4j_payload_summary(import_evidence),
         },
         {
-            "項目": "Live query smoke",
+            "項目": "Live 查詢驗證",
             "狀態": "可執行" if neo4j_ready else "需 Neo4j",
             "指令": neo4j_live_smoke_command(import_evidence, cypher_evidence),
             "說明": "驗證 guarded read-only Cypher plan 與 Neo4j 查詢契約。",
         },
         {
-            "項目": "Import-first smoke",
+            "項目": "先匯入再查詢驗證",
             "狀態": "可執行" if neo4j_ready else "需 Neo4j",
             "指令": neo4j_import_first_smoke_command(import_evidence, cypher_evidence),
             "說明": "先匯入目前 GraphRAG payload，再執行 guarded live Cypher 查詢。",
@@ -116,7 +116,7 @@ def _neo4j_payload_summary(import_evidence: dict) -> str:
     peer_edges = int(import_evidence.get("payload_peer_edge_count") or 0)
     statements = int(import_evidence.get("payload_statement_count") or 0)
     return (
-        f"payload ready：nodes={node_count}、structural_edges={structural_edges}、"
+        f"payload 可用：nodes={node_count}、structural_edges={structural_edges}、"
         f"peer_edges={peer_edges}、statements={statements}。"
     )
 

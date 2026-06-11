@@ -11,6 +11,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
+    maintenance_progress_presenter_source = ui_sources["maintenance_progress_presenter.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
@@ -200,58 +201,81 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in system_settings_maintenance_source
         ),
         "ui_optimization_progress_operator_summary_enabled": (
-            "def optimization_progress_operator_summary(" in maintenance_status_source
+            "def optimization_progress_operator_summary("
+            in maintenance_progress_presenter_source
             and "optimization_progress_operator_summary(progress)" in maintenance_panels_source
             and "def _render_optimization_progress_operator_summary("
             in maintenance_panels_source
             and "optimization-progress-operator-summary" in maintenance_panels_source
             and ".optimization-progress-operator-summary" in style_source
-            and "核心優化已可用，先驗證本機選配" in maintenance_status_source
-            and "付費/API 選配" in maintenance_status_source
+            and "核心優化已可用，先驗證本機選配"
+            in maintenance_progress_presenter_source
+            and "付費/API 選配" in maintenance_progress_presenter_source
         ),
         "ui_optimization_progress_metric_labels_enabled": (
-            "def optimization_progress_metric_values(" in maintenance_status_source
-            and "def optimization_progress_status_label(" in maintenance_status_source
+            "def optimization_progress_metric_values("
+            in maintenance_progress_presenter_source
+            and "def optimization_progress_status_label("
+            in maintenance_progress_presenter_source
             and "optimization_progress_metric_values(progress)" in maintenance_panels_source
             and 'metrics["狀態"]' in maintenance_panels_source
-            and "核心完成/外部選配" in maintenance_status_source
-            and "未評估" in maintenance_status_source
+            and "核心完成/外部選配" in maintenance_progress_presenter_source
+            and "未評估" in maintenance_progress_presenter_source
         ),
         "ui_optimization_progress_next_action_labels_enabled": (
             '"狀態": optimization_progress_status_label(action.get("status"))'
-            in maintenance_status_source
-            and '"能力狀態": optimization_progress_status_label(' in maintenance_status_source
-            and '"not_configured": "未設定"' in maintenance_status_source
+            in maintenance_progress_presenter_source
+            and '"能力狀態": optimization_progress_status_label('
+            in maintenance_progress_presenter_source
+            and '"not_configured": "未設定"' in maintenance_progress_presenter_source
         ),
         "ui_optimization_progress_compact_action_rows_enabled": (
             "def optimization_progress_next_action_rows(\n    progress: dict, *, compact: bool = False\n)"
-            in maintenance_status_source
+            in maintenance_progress_presenter_source
             and "optimization_progress_next_action_rows(progress, compact=True)"
             in maintenance_panels_source
-            and "return f\"{len(commands)} 組免費檢查\"" in maintenance_status_source
+            and "return f\"{len(commands)} 組免費檢查\""
+            in maintenance_progress_presenter_source
         ),
         "ui_optimization_progress_paid_external_only_summary_enabled": (
-            "本機優化已完成，剩下外部資料 API 決策" in maintenance_status_source
-            and "本機 defaults 已無待處理項目" in maintenance_status_source
-            and "需外部資料商或正式 API" in maintenance_status_source
-            and "def _first_paid_external_progress_action(" in maintenance_status_source
+            "本機優化已完成，剩下外部資料 API 決策"
+            in maintenance_progress_presenter_source
+            and "本機 defaults 已無待處理項目"
+            in maintenance_progress_presenter_source
+            and "需外部資料商或正式 API" in maintenance_progress_presenter_source
+            and "def _first_paid_external_progress_action("
+            in maintenance_progress_presenter_source
         ),
         "ui_optimization_progress_paid_external_free_validation_summary_enabled": (
-            "def _action_free_validation_summary(" in maintenance_status_source
+            "def _action_free_validation_summary(" in maintenance_progress_presenter_source
             and 'summary["free_validation"] = free_validation'
-            in maintenance_status_source
+            in maintenance_progress_presenter_source
             and 'summary.get("free_validation")' in maintenance_panels_source
         ),
         "ui_optimization_progress_scope_summary_enabled": (
-            "def optimization_progress_scope_summary(" in maintenance_status_source
+            "def optimization_progress_scope_summary("
+            in maintenance_progress_presenter_source
             and "optimization_progress_scope_summary(service_snapshot)"
             in maintenance_panels_source
             and "def _render_optimization_progress_scope_summary("
             in maintenance_panels_source
             and "optimization-progress-scope-summary" in maintenance_panels_source
             and ".optimization-progress-scope-summary" in style_source
-            and "優化進度與升級稽核分母不同" in maintenance_status_source
-            and "python_runtime 屬部署前檢查" in maintenance_status_source
+            and "優化進度與升級稽核分母不同"
+            in maintenance_progress_presenter_source
+            and "python_runtime 屬部署前檢查" in maintenance_progress_presenter_source
+        ),
+        "ui_optimization_progress_presenter_extracted": (
+            (ui_dir / "maintenance_progress_presenter.py").exists()
+            and "from app.ui.maintenance_progress_presenter import ("
+            in maintenance_status_source
+            and "def optimization_progress_operator_summary("
+            not in maintenance_status_source
+            and "def optimization_progress_metric_values(" not in maintenance_status_source
+            and "def optimization_progress_next_action_rows("
+            not in maintenance_status_source
+            and "def optimization_progress_scope_summary("
+            not in maintenance_status_source
         ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()

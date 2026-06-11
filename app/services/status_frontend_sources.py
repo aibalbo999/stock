@@ -42,6 +42,7 @@ UI_MODULE_NAMES = (
     "task_queue_diagnostics.py",
     "task_failure_diagnostics.py",
     "maintenance_status.py",
+    "maintenance_progress_presenter.py",
     "analysis_workspace_presenter.py",
     "analysis_workspace.py",
     "report_center.py",

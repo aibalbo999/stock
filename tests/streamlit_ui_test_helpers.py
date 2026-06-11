@@ -34,6 +34,7 @@ DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE = Path("app/ui/data_enrichment_manual_pr
 DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE = Path("app/ui/data_enrichment_market_presenter.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
+MAINTENANCE_PROGRESS_PRESENTER_SOURCE = Path("app/ui/maintenance_progress_presenter.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
 MAINTENANCE_DEPLOYMENT_PANEL_SOURCE = Path("app/ui/maintenance_deployment_panel.py")
 MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE = Path("app/ui/maintenance_deployment_presenter.py")
@@ -83,6 +84,7 @@ UI_SOURCE_FILES = [
     DATA_GAP_ACTIONS_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
+    MAINTENANCE_PROGRESS_PRESENTER_SOURCE,
     MAINTENANCE_PANELS_SOURCE,
     MAINTENANCE_DEPLOYMENT_PANEL_SOURCE,
     MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE,

@@ -167,9 +167,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def _render_optimization_progress_operator_summary(" in source
     assert "def _render_optimization_progress_scope_summary(" in source
     maintenance_status_source = ui.MAINTENANCE_STATUS_SOURCE.read_text()
-    assert "def optimization_progress_operator_summary(" in maintenance_status_source
-    assert "def optimization_progress_scope_summary(" in ui.MAINTENANCE_STATUS_SOURCE.read_text()
-    assert 'summary["free_validation"] = free_validation' in maintenance_status_source
+    maintenance_progress_presenter_source = (
+        ui.MAINTENANCE_PROGRESS_PRESENTER_SOURCE.read_text()
+    )
+    assert "def optimization_progress_operator_summary(" in maintenance_progress_presenter_source
+    assert "def optimization_progress_scope_summary(" in maintenance_progress_presenter_source
+    assert "def optimization_progress_metric_values(" in maintenance_progress_presenter_source
+    assert "def optimization_progress_next_action_rows(" in maintenance_progress_presenter_source
+    assert "def optimization_progress_operator_summary(" not in maintenance_status_source
+    assert "def optimization_progress_scope_summary(" not in maintenance_status_source
+    assert 'summary["free_validation"] = free_validation' in maintenance_progress_presenter_source
     assert 'summary.get("free_validation")' in source
     assert "_render_incident_priority_summary(incidents)" in source
     assert "def incident_action_priority_summary(" in source

@@ -136,7 +136,7 @@ def structured_company_filing_fixture_smoke_report(
         return _fixture_smoke_error_report(
             status="failed",
             category="smoke_timeout",
-            message=f"Structured fixture HTTP smoke timed out after {smoke_timeout_seconds:g}s.",
+            message=f"本機測試 API 檢查逾時（{smoke_timeout_seconds:g}s）。",
             fixture_url=fixture_url,
             sample_path=sample_path,
             ticker=ticker,
@@ -234,18 +234,18 @@ def fixture_smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> 
 
 def format_structured_company_filing_fixture_smoke(report: dict[str, Any]) -> str:
     lines = [
-        f"Structured company filing fixture HTTP smoke: {report['status']}",
-        f"- ready: {str(bool(report.get('ready'))).lower()}",
-        f"- fixture url: {report.get('fixture_url') or '-'}",
-        f"- provider profile: {report.get('provider_profile') or '-'}",
-        f"- fixture started: {str(bool(report.get('fixture_started'))).lower()}",
-        f"- reused existing fixture: {str(bool(report.get('reused_existing_fixture'))).lower()}",
-        f"- documents: {report.get('document_count', 0)}",
-        f"- errors: {report.get('error_count', 0)}",
-        f"- command: {report.get('smoke_command') or '-'}",
+        f"公司文件本機測試 API 檢查: {report['status']}",
+        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
+        f"- 本機 API URL: {report.get('fixture_url') or '-'}",
+        f"- 提供者設定: {report.get('provider_profile') or '-'}",
+        f"- 本機服務已啟動: {str(bool(report.get('fixture_started'))).lower()}",
+        f"- 沿用既有服務: {str(bool(report.get('reused_existing_fixture'))).lower()}",
+        f"- 文件數: {report.get('document_count', 0)}",
+        f"- 錯誤數: {report.get('error_count', 0)}",
+        f"- 指令: {report.get('smoke_command') or '-'}",
     ]
     if report.get("remediation"):
-        lines.append(f"- remediation: {report['remediation']}")
+        lines.append(f"- 修復建議: {report['remediation']}")
     return "\n".join(lines)
 
 
@@ -570,8 +570,8 @@ def _terminate_process(process) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Start the local structured company filing API fixture, run the live HTTP smoke "
-            "against it, and stop the fixture."
+            "Start the local structured company filing API test server, run the HTTP check, "
+            "and stop the local server."
         )
     )
     parser.add_argument("--host", default=STRUCTURED_API_LOCAL_FIXTURE_HOST, help="Fixture host.")
@@ -596,8 +596,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_PROVIDER_PROFILE,
         choices=sorted(STRUCTURED_API_PROVIDER_PROFILES),
         help=(
-            "Structured API provider profile to validate against the local fixture. "
-            "Profiles that require auth receive a local dummy token in the child process."
+            "Structured API provider setting to validate against the local test server. "
+            "Settings that require auth receive a local dummy token in the child process."
         ),
     )
     parser.add_argument(

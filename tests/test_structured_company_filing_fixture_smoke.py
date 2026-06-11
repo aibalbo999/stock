@@ -126,6 +126,27 @@ def test_fixture_smoke_starts_fixture_runs_live_smoke_and_cleans_up(tmp_path) ->
     assert "COMPANY_FILING_STRUCTURED_API_TOKEN" not in captured["smoke_env"]
 
 
+def test_fixture_smoke_format_uses_operator_language() -> None:
+    rendered = fixture_smoke.format_structured_company_filing_fixture_smoke(
+        {
+            "status": "ready",
+            "ready": True,
+            "fixture_url": "http://127.0.0.1:8794/filings",
+            "provider_profile": "tej",
+            "fixture_started": True,
+            "reused_existing_fixture": False,
+            "document_count": 1,
+            "error_count": 0,
+            "smoke_command": "cmd",
+        }
+    )
+
+    assert "公司文件本機測試 API 檢查: ready" in rendered
+    assert "- 提供者設定: tej" in rendered
+    assert "Structured company filing fixture HTTP smoke" not in rendered
+    assert "provider profile" not in rendered
+
+
 def test_fixture_smoke_can_validate_tej_profile_without_exposing_token(tmp_path) -> None:
     process = FakeFixtureProcess()
     captured = {}

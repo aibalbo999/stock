@@ -143,6 +143,18 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and ".incident-card-head" in style_source
             and ".incident-card .incident-repeat-badge" in style_source
         ),
+        "ui_incident_grouped_action_controls_enabled": (
+            "def incident_action_summaries(" in system_settings_maintenance_source
+            and "incident_action_summaries(incidents)" in system_settings_maintenance_source
+            and "for incident in incident_summary_cards(incidents, limit=limit)"
+            in system_settings_maintenance_source
+            and "def incident_action_caption(" in system_settings_maintenance_source
+            and "同類事件 {repeat_count} 筆" in system_settings_maintenance_source
+            and "st.caption(incident_action_caption(incident))"
+            in system_settings_maintenance_source
+            and "actionable = incident_action_summaries(incidents)"
+            in system_settings_maintenance_source
+        ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
         and (ui_dir / "maintenance_ai_panels.py").exists()

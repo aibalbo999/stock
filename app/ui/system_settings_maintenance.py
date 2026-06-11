@@ -331,7 +331,7 @@ def _incident_count_value(value: object, *, default: int) -> int:
 
 
 def _render_incident_action_controls(incidents: list[dict]) -> None:
-    actionable = [incident for incident in incidents if incident.get("route_hint")][:3]
+    actionable = incident_action_summaries(incidents)
     if not actionable:
         return
     st.markdown(
@@ -353,7 +353,24 @@ def _render_incident_action_controls(incidents: list[dict]) -> None:
                 primary=index == 0,
                 show_caption=False,
             )
-            st.caption(str(incident.get("title") or incident.get("route_hint") or ""))
+            st.caption(incident_action_caption(incident))
+
+
+def incident_action_summaries(incidents: list[dict], limit: int = 3) -> list[dict]:
+    return [
+        incident
+        for incident in incident_summary_cards(incidents, limit=limit)
+        if incident.get("route_hint")
+    ][:limit]
+
+
+def incident_action_caption(incident: dict) -> str:
+    title = str(incident.get("title") or incident.get("route_hint") or "").strip()
+    repeat_count = _incident_count_value(incident.get("repeat_count"), default=1)
+    if repeat_count > 1:
+        repeat_text = f"同類事件 {repeat_count} 筆"
+        return f"{title}｜{repeat_text}" if title else repeat_text
+    return title
 
 
 def incident_action_label(incident: dict, index: int) -> str:

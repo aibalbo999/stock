@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui import system_settings_maintenance
 from app.ui.incident_inbox import incident_counts, incident_inbox_items, top_incidents
 
 
@@ -380,3 +381,45 @@ def test_top_incidents_sorts_newer_events_before_older_peers() -> None:
     ]
 
     assert [item["id"] for item in top_incidents(incidents)] == ["new", "old"]
+
+
+def test_incident_action_summaries_use_grouped_incident_cards() -> None:
+    incidents = [
+        {
+            "id": "old",
+            "severity": "warning",
+            "category": "quota",
+            "title": "AI 額度需注意",
+            "impact": "模型額度不足。",
+            "next_action": "查看額度頁。",
+            "action_label": "查看額度",
+            "route_hint": "settings:ai_quota",
+            "retryable": False,
+            "source": "gemini-3.5-flash",
+            "created_at": "2026-06-10T09:00:00",
+        },
+        {
+            "id": "new",
+            "severity": "warning",
+            "category": "quota",
+            "title": "AI 額度需注意",
+            "impact": "模型額度不足。",
+            "next_action": "查看額度頁。",
+            "action_label": "查看額度",
+            "route_hint": "settings:ai_quota",
+            "retryable": False,
+            "source": "gemini-2.5-flash",
+            "created_at": "2026-06-10T10:00:00",
+        },
+    ]
+
+    summaries = system_settings_maintenance.incident_action_summaries(incidents)
+
+    assert len(summaries) == 1
+    assert summaries[0]["id"] == "new"
+    assert summaries[0]["repeat_count"] == 2
+    assert summaries[0]["hidden_count"] == 1
+    assert summaries[0]["source_ids"] == ["gemini-3.5-flash", "gemini-2.5-flash"]
+    assert system_settings_maintenance.incident_action_caption(summaries[0]) == (
+        "AI 額度需注意｜同類事件 2 筆"
+    )

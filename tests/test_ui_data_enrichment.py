@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from app.ui.data_enrichment import (
     company_filing_runtime_rows,
@@ -220,6 +221,213 @@ def test_market_operation_readiness_rows_show_queue_status_when_unavailable() ->
     assert {row["disabled_reason"] for row in rows} == {
         "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
     }
+
+
+def test_render_market_data_tab_requires_confirmation_before_submit(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {"pending_data_enrichment_operation": "market_refresh"}
+            self.buttons: list[dict[str, Any]] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict[str, Any]] = []
+            self.infos: list[str] = []
+            self.markdowns: list[str] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def error(self, body: str) -> None:
+            raise AssertionError(f"unexpected error: {body}")
+
+        def info(self, body: str) -> None:
+            self.infos.append(str(body))
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
+
+        def metric(self, *_args, **_kwargs) -> None:
+            return None
+
+        def multiselect(self, _label: str, *, options: list[str], key: str):
+            return list(self.session_state.get(key) or options[:1])
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "刷新股價" and not kwargs.get("disabled")
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_market, "st", fake_st)
+    monkeypatch.setattr(data_enrichment_market, "render_section_header", lambda *_args: None)
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "load_api_json_or_default",
+        lambda endpoint, default, **_kwargs: (
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "worker_online": True,
+                }
+            }
+            if endpoint == "/services/status"
+            else default
+        ),
+    )
+    monkeypatch.setattr(data_enrichment_market, "company_filing_runtime_rows", lambda _status: [])
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "company_filing_visual_rag_model_chain_rows",
+        lambda _status: [],
+    )
+    monkeypatch.setattr(data_enrichment_market, "_latest_report_follow_up_context", lambda: ({}, {}))
+    monkeypatch.setattr(data_enrichment_market, "_render_data_gap_action_map", lambda _items: None)
+    monkeypatch.setattr(data_enrichment_market, "_render_cache_summary", lambda _tickers: None)
+    monkeypatch.setattr(data_enrichment_market, "render_last_data_task_status", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_market.render_market_data_tab(["2330", "2382"])
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出資料補強背景任務",
+            "value": False,
+            "key": "confirm_market_data_operation_submission",
+        }
+    ]
+    assert any("避免誤觸刷新" in caption for caption in fake_st.captions)
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["刷新股價"]["disabled"] is True
+    assert by_label["刷新 5 年財報"]["disabled"] is True
+    assert by_label["刷新估值"]["disabled"] is True
+    assert by_label["補抓公司文件"]["disabled"] is True
+    assert submitted == []
+
+
+def test_render_market_data_tab_submits_after_confirmation(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {"pending_data_enrichment_operation": "market_refresh"}
+            self.buttons: list[dict[str, Any]] = []
+            self.checkboxes: list[dict[str, Any]] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def error(self, body: str) -> None:
+            raise AssertionError(f"unexpected error: {body}")
+
+        def info(self, _body: str) -> None:
+            return None
+
+        def markdown(self, _body: str, **_kwargs) -> None:
+            return None
+
+        def metric(self, *_args, **_kwargs) -> None:
+            return None
+
+        def multiselect(self, _label: str, *, options: list[str], key: str):
+            return list(self.session_state.get(key) or options[:1])
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return key == "confirm_market_data_operation_submission"
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "刷新股價" and not kwargs.get("disabled")
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_market, "st", fake_st)
+    monkeypatch.setattr(data_enrichment_market, "render_section_header", lambda *_args: None)
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "load_api_json_or_default",
+        lambda endpoint, default, **_kwargs: (
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "worker_online": True,
+                }
+            }
+            if endpoint == "/services/status"
+            else default
+        ),
+    )
+    monkeypatch.setattr(data_enrichment_market, "company_filing_runtime_rows", lambda _status: [])
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "company_filing_visual_rag_model_chain_rows",
+        lambda _status: [],
+    )
+    monkeypatch.setattr(data_enrichment_market, "_latest_report_follow_up_context", lambda: ({}, {}))
+    monkeypatch.setattr(data_enrichment_market, "_render_data_gap_action_map", lambda _items: None)
+    monkeypatch.setattr(data_enrichment_market, "_render_cache_summary", lambda _tickers: None)
+    monkeypatch.setattr(data_enrichment_market, "render_last_data_task_status", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        data_enrichment_market,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_market.render_market_data_tab(["2330", "2382"])
+
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["刷新股價"]["disabled"] is False
+    today = data_enrichment_market.today_taipei()
+    assert submitted == [
+        (
+            (
+                "market_refresh",
+                {
+                    "tickers": ["2330"],
+                    "start_date": today.replace(day=1).isoformat(),
+                    "end_date": today.isoformat(),
+                },
+            ),
+            {
+                "status_state_keys": data_enrichment_market.DATA_TASK_STATUS_STATE_KEYS,
+                "success_message": "已送出股價刷新背景任務",
+                "error_message": "股價刷新任務送出失敗",
+            },
+        )
+    ]
 
 
 def test_market_cache_operator_summary_flags_stale_and_missing_cache() -> None:

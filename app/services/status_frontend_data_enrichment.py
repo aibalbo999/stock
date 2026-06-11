@@ -65,6 +65,14 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
             in data_enrichment_market_source
         ),
+        "ui_data_enrichment_market_submission_confirmation_enabled": (
+            "market_operation_confirmed = st.checkbox(" in data_enrichment_market_source
+            and 'key="confirm_market_data_operation_submission"'
+            in data_enrichment_market_source
+            and "我了解這會送出資料補強背景任務" in data_enrichment_market_source
+            and "避免誤觸刷新" in data_enrichment_market_source
+            and "or not market_operation_confirmed" in data_enrichment_market_source
+        ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_source
             and "def _normalized_pending_tickers(" in data_enrichment_market_source

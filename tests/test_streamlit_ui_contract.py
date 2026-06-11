@@ -265,6 +265,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         'type=market_data_operation_button_type(pending_operation, "company_filings_fetch")'
         in source
     )
+    assert "market_operation_confirmed = st.checkbox(" in source
+    assert 'key="confirm_market_data_operation_submission"' in source
+    assert "我了解這會送出資料補強背景任務" in source
+    assert "避免誤觸刷新" in source
+    assert "or not market_operation_confirmed" in source
     assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source

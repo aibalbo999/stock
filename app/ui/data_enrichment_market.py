@@ -142,29 +142,42 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
     if not has_valid_market_range:
         st.error("起始日期不可晚於結束日期。")
     _render_market_operation_readiness(operation_readiness)
+    market_operation_confirmed = st.checkbox(
+        "我了解這會送出資料補強背景任務",
+        value=False,
+        key="confirm_market_data_operation_submission",
+    )
+    if not market_operation_confirmed:
+        st.caption("避免誤觸刷新；確認股票、日期與操作後才會送出背景任務。")
 
     refresh_cols = st.columns(4)
     refresh_price = refresh_cols[0].button(
         "刷新股價",
         type=market_data_operation_button_type(pending_operation, "market_refresh"),
         disabled=task_queue_blocks_submission
+        or not market_operation_confirmed
         or not (has_market_selection and has_valid_market_range),
     )
     refresh_financials = refresh_cols[1].button(
         "刷新 5 年財報",
         type=market_data_operation_button_type(pending_operation, "fundamentals_refresh"),
-        disabled=task_queue_blocks_submission or not has_market_selection,
+        disabled=task_queue_blocks_submission
+        or not market_operation_confirmed
+        or not has_market_selection,
     )
     refresh_valuations = refresh_cols[2].button(
         "刷新估值",
         type=market_data_operation_button_type(pending_operation, "valuation_refresh"),
         disabled=task_queue_blocks_submission
+        or not market_operation_confirmed
         or not (has_market_selection and has_valid_market_range),
     )
     refresh_filings = refresh_cols[3].button(
         "補抓公司文件",
         type=market_data_operation_button_type(pending_operation, "company_filings_fetch"),
-        disabled=task_queue_blocks_submission or not has_market_selection,
+        disabled=task_queue_blocks_submission
+        or not market_operation_confirmed
+        or not has_market_selection,
     )
     st.markdown(
         """<div class="action-impact-grid" aria-label="資料補強影響">

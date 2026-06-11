@@ -208,6 +208,80 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
     assert "指令: .venv/bin/python scripts/start_system.py --start-dependencies" in output
 
 
+def test_upgrade_audit_script_surfaces_paid_external_free_validation(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        upgrade_audit,
+        "audit_upgrade_capabilities",
+        lambda strict_external=False: {
+            "overall_status": "ready",
+            "summary": {
+                "ready": 32,
+                "warnings": 0,
+                "optional_warnings": 1,
+                "total_warnings": 1,
+                "failures": 0,
+                "deployment_blocking_status": "ready",
+                "deployment_optional_only": True,
+            },
+            "implementation": {"status": "ready", "ready": 32, "total_checks": 32},
+            "deployment": {
+                "status": "caution",
+                "blocking_status": "ready",
+                "optional_only": True,
+                "ready": 0,
+                "total_checks": 1,
+            },
+            "optimization_progress": {
+                "status": "ready_with_optional_gaps",
+                "total_checks": 32,
+                "ready_checks": 31,
+                "blocking_gap_count": 0,
+                "optional_gap_count": 1,
+                "local_resolvable_gap_count": 0,
+                "effective_optional_gap_count_after_available_local_defaults": 1,
+                "primary_next_action": {
+                    "label": "核心已完成",
+                    "action_type": "optional_review",
+                    "next_action": "目前沒有 blocking 程式缺口；剩餘 1 項依需求再啟用。",
+                },
+                "prioritized_next_actions": [
+                    {
+                        "capability": "company_filing_structured_api_fallback",
+                        "label": "公司文件結構化 API 備援",
+                        "action_type": "paid_external",
+                        "cost_profile": "paid_external",
+                        "next_action": "需要穩定法說會簡報時再串 TEJ 或專業資料 API。",
+                        "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
+                        "free_validation_commands": [
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
+                        ],
+                    },
+                ],
+            },
+            "checks": [],
+            "failures": [],
+            "warnings": [],
+            "optional_warnings": [],
+        },
+    )
+
+    assert upgrade_audit.main([]) == 0
+    output = capsys.readouterr().out
+
+    assert "優化建議: 核心已完成" in output
+    assert (
+        "優化免費驗證: 樣本資料 + 本機測試 API + 提供者設定可驗證；2 組檢查可先跑"
+        in output
+    )
+    assert (
+        "優化免費驗證指令: .venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"
+        in output
+    )
+
+
 def test_upgrade_audit_script_returns_failure_when_required_check_fails(monkeypatch) -> None:
     monkeypatch.setattr(
         upgrade_audit,

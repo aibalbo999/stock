@@ -578,6 +578,22 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
     action_label = str(primary_action.get("label") or "").strip()
     if action_label:
         lines.append("優化建議: " + action_label)
+    free_validation_action = _optimization_progress_free_validation_action(progress)
+    free_validation_label = str(
+        free_validation_action.get("free_validation_label") or ""
+    ).strip()
+    free_validation_commands = _free_validation_commands(free_validation_action)
+    if free_validation_label and free_validation_commands:
+        lines.append(
+            "優化免費驗證: "
+            f"{free_validation_label}；{len(free_validation_commands)} 組檢查可先跑"
+        )
+    elif free_validation_label:
+        lines.append("優化免費驗證: " + free_validation_label)
+    elif free_validation_commands:
+        lines.append(f"優化免費驗證: {len(free_validation_commands)} 組檢查可先跑")
+    if free_validation_commands:
+        lines.append("優化免費驗證指令: " + free_validation_commands[0])
     command = str(
         primary_action.get("verify_command")
         or progress.get("local_defaults_verify_command")
@@ -586,6 +602,39 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
     if command:
         lines.append("優化指令: " + command)
     return lines
+
+
+def _free_validation_commands(action: dict) -> list[str]:
+    commands = action.get("free_validation_commands")
+    if not isinstance(commands, list):
+        return []
+    return [str(command).strip() for command in commands if str(command).strip()]
+
+
+def _optimization_progress_free_validation_action(progress: dict) -> dict:
+    for action in _optimization_progress_actions(progress):
+        if str(action.get("free_validation_label") or "").strip() or _free_validation_commands(
+            action
+        ):
+            return action
+    return {}
+
+
+def _optimization_progress_actions(progress: dict) -> list[dict]:
+    actions: list[dict] = []
+    primary = (
+        progress.get("primary_next_action")
+        if isinstance(progress.get("primary_next_action"), dict)
+        else {}
+    )
+    if primary:
+        actions.append(primary)
+    for key in ("prioritized_next_actions", "next_actions"):
+        value = progress.get(key)
+        if not isinstance(value, list):
+            continue
+        actions.extend(action for action in value if isinstance(action, dict))
+    return actions
 
 
 def _pending_gap_rows_by_capability(audit: dict) -> dict[str, dict]:

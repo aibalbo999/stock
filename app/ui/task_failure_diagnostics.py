@@ -58,6 +58,9 @@ OPERATION_LABELS = {
     "rss_fetch": "RSS 抓取",
     "visual_rag": "Visual RAG",
     "after_close_report_update": "收盤後報告更新",
+    "maintenance_cleanup": "維護清理",
+    "maintenance_operation": "維護操作",
+    "maintenance_diagnostic": "維護診斷",
 }
 
 CATEGORY_ACTION_ROUTE_DETAILS = {

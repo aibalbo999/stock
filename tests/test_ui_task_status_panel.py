@@ -80,7 +80,7 @@ def test_task_action_preflight_summary_warns_before_retry_confirmation() -> None
         "state": "attention",
         "label": "任務操作摘要",
         "title": "準備重試背景任務",
-        "detail": "Task task-quota｜狀態 FAILURE｜操作 report_generation｜重試類型 report_generation",
+        "detail": "Task task-quota｜狀態 失敗｜操作 報告生成｜重試類型 報告生成",
         "next_step": "勾選確認後，再按「重試任務」重新送出背景任務。",
         "impact": "會重新排隊並可能再次消耗模型、外部資料源或 API 額度；若錯誤類型是 quota，建議先確認額度是否恢復。",
     }
@@ -104,7 +104,7 @@ def test_task_action_preflight_summary_blocks_explicitly_non_retryable_task() ->
         "state": "blocked",
         "label": "任務操作摘要",
         "title": "此任務不支援一鍵重試",
-        "detail": "Task task-bad-payload｜狀態 FAILURE｜操作 data_operation｜重試類型 -",
+        "detail": "Task task-bad-payload｜狀態 失敗｜操作 資料補強｜重試類型 -",
         "next_step": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
         "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
     }
@@ -127,7 +127,7 @@ def test_task_action_preflight_summary_blocks_retry_for_successful_task() -> Non
         "state": "blocked",
         "label": "任務操作摘要",
         "title": "此任務已成功，不需要一鍵重試",
-        "detail": "Task task-success｜狀態 SUCCESS｜操作 market_refresh｜重試類型 -",
+        "detail": "Task task-success｜狀態 成功｜操作 市場資料刷新｜重試類型 -",
         "next_step": "若需要重新執行，請回原本功能入口建立新任務。",
         "impact": "不會送出重試；避免對已成功任務重複消耗模型、外部資料源或 API 額度。",
     }
@@ -150,7 +150,7 @@ def test_task_action_preflight_summary_blocks_cancel_for_finished_task() -> None
         "state": "blocked",
         "label": "任務操作摘要",
         "title": "此任務已結束，不能取消",
-        "detail": "Task task-success｜狀態 SUCCESS｜操作 market_refresh",
+        "detail": "Task task-success｜狀態 成功｜操作 市場資料刷新",
         "next_step": "不需取消；若結果失敗且支援重試，請使用重試或回原入口重新送出。",
         "impact": "不會送出取消要求；避免改動已完成任務紀錄。",
     }
@@ -172,7 +172,7 @@ def test_task_action_preflight_summary_uses_execution_context_operation() -> Non
         confirmed=True,
     )
 
-    assert summary["detail"] == "Task task-maintenance｜狀態 SUCCESS｜操作 maintenance_cleanup"
+    assert summary["detail"] == "Task task-maintenance｜狀態 成功｜操作 維護清理"
 
 
 def test_task_action_preflight_summary_infers_operation_from_run_payload() -> None:
@@ -196,7 +196,7 @@ def test_task_action_preflight_summary_infers_operation_from_run_payload() -> No
 
     assert (
         summary["detail"]
-        == "Task task-maintenance｜狀態 SUCCESS｜操作 maintenance_cleanup｜重試類型 -"
+        == "Task task-maintenance｜狀態 成功｜操作 維護清理｜重試類型 -"
     )
 
 
@@ -215,7 +215,7 @@ def test_task_action_preflight_summary_allows_confirmed_cancel() -> None:
         "state": "ready",
         "label": "任務操作摘要",
         "title": "可以送出取消要求",
-        "detail": "Task task-running｜狀態 STARTED｜操作 market_refresh",
+        "detail": "Task task-running｜狀態 執行中｜操作 市場資料刷新",
         "next_step": "按「取消任務」通知背景任務停止；取消後請刷新狀態確認是否已停止。",
         "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
     }
@@ -644,18 +644,18 @@ def test_task_execution_context_rows_summarize_payload_and_exception() -> None:
 
     assert rows == [
         {
-            "celery_status": "FAILURE",
-            "ready": "True",
-            "successful": "False",
+            "celery_status": "失敗",
+            "ready": "已結束",
+            "successful": "未成功",
             "run": "#35",
-            "run_status": "failed",
-            "source": "celery_data_operation",
-            "operation": "market_refresh",
+            "run_status": "失敗",
+            "source": "資料補強背景任務",
+            "operation": "市場資料刷新",
             "payload": (
-                "keys=celery_task_id、operation、payload、task；tickers=2；"
-                "payload=<sensitive>、tickers；sensitive_keys_masked=1"
+                "資料欄位：celery_task_id、operation、payload、task；股票 2 檔；"
+                "任務欄位：已遮蔽敏感欄位、tickers；已遮蔽敏感欄位 1 個"
             ),
-            "celery_info": "type=dict；keys=progress；progress=current_step",
+            "celery_info": "回報型態：dict；回報欄位：progress；進度欄位：current_step",
             "exception": "RuntimeError: api_key=<redacted> timeout",
         }
     ]

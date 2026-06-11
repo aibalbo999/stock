@@ -333,6 +333,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_status_operation_confirmation_gate_enabled")
             and frontend_status.get("ui_task_status_operation_preflight_summary_enabled")
             and frontend_status.get("ui_task_status_operation_label_inference_enabled")
+            and frontend_status.get("ui_task_status_operator_context_labels_enabled")
             and frontend_status.get("ui_task_status_terminal_task_action_guard_enabled")
             and frontend_status.get("ui_task_execution_context_enabled")
             and frontend_status.get("ui_llm_quota_panel_extracted")

@@ -23,6 +23,41 @@ from app.ui.task_failure_diagnostics import (
 TASK_STATUS_QUEUED_POLL_SECONDS = 8
 TASK_STATUS_RETRY_POLL_SECONDS = 15
 
+TASK_STATUS_LABELS = {
+    "PENDING": "等待中",
+    "QUEUED": "排隊中",
+    "RECEIVED": "已接收",
+    "STARTED": "執行中",
+    "RETRY": "等待重試",
+    "SUCCESS": "成功",
+    "FAILURE": "失敗",
+    "REVOKED": "已取消",
+}
+
+RUN_STATUS_LABELS = {
+    "pending": "等待中",
+    "queued": "排隊中",
+    "running": "執行中",
+    "started": "執行中",
+    "retry": "等待重試",
+    "completed": "完成",
+    "success": "成功",
+    "successful": "成功",
+    "failed": "失敗",
+    "failure": "失敗",
+    "cancelled": "已取消",
+    "canceled": "已取消",
+    "revoked": "已取消",
+}
+
+RUN_SOURCE_LABELS = {
+    "celery_data_operation": "資料補強背景任務",
+    "celery_report_generation": "報告生成背景任務",
+    "celery_maintenance_cleanup": "維護清理背景任務",
+    "celery_maintenance_operation": "維護操作背景任務",
+    "celery_maintenance_diagnostic": "維護診斷背景任務",
+}
+
 
 def task_status_operation_label(task_status: dict | None) -> str:
     if not isinstance(task_status, dict):
@@ -32,7 +67,7 @@ def task_status_operation_label(task_status: dict | None) -> str:
         task_status.get("operation"),
         _nested_text(task_status.get("execution_context"), "operation"),
     ):
-        label = _clean_task_operation_label(value)
+        label = _task_operation_display_label(value)
         if label:
             return label
 
@@ -40,12 +75,12 @@ def task_status_operation_label(task_status: dict | None) -> str:
     if isinstance(run, dict):
         payload = _task_run_payload(run)
         for key in ("operation", "task", "workflow_name"):
-            label = _clean_task_operation_label(payload.get(key))
+            label = _task_operation_display_label(payload.get(key))
             if label:
                 return label
 
         workflow = run.get("workflow")
-        label = _clean_task_operation_label(_nested_text(workflow, "name"))
+        label = _task_operation_display_label(_nested_text(workflow, "name"))
         if label:
             return label
 
@@ -53,9 +88,9 @@ def task_status_operation_label(task_status: dict | None) -> str:
         _nested_text(task_status.get("execution_context"), "run_source"),
         _nested_text(run, "source") if isinstance(run, dict) else None,
     ):
-        label = _clean_task_operation_label(value)
-        if label:
-            return _operator_operation_from_source(label)
+        raw_source = _clean_task_operation_text(value)
+        if raw_source:
+            return task_failure_operation_label(_operator_operation_from_source(raw_source))
 
     return "-"
 
@@ -68,7 +103,7 @@ def task_action_preflight_summary(
 ) -> dict[str, str]:
     action_key = str(action or "").strip().casefold()
     task_id = str(task_status.get("task_id") or "-")
-    status = str(task_status.get("status") or "UNKNOWN").upper()
+    status = task_status_state_label(task_status.get("status") or "UNKNOWN")
     operation = task_status_operation_label(task_status)
     detail_parts = [
         f"Task {task_id}",
@@ -77,7 +112,7 @@ def task_action_preflight_summary(
     ]
 
     if action_key == "retry":
-        retry_kind = str(task_status.get("retry_kind") or "-")
+        retry_kind = task_failure_retry_kind_label(task_status.get("retry_kind"))
         detail = "｜".join([*detail_parts, f"重試類型 {retry_kind}"])
         if task_status.get("retryable") is False:
             return {
@@ -258,13 +293,21 @@ def task_execution_context_rows(task_status: dict) -> list[dict]:
     )
     return [
         {
-            "celery_status": context.get("celery_status") or task_status.get("status") or "-",
-            "ready": str(context.get("ready", task_status.get("ready", False))),
-            "successful": str(context.get("successful", task_status.get("successful", False))),
+            "celery_status": task_status_state_label(
+                context.get("celery_status") or task_status.get("status") or "-"
+            ),
+            "ready": _task_context_ready_label(
+                context.get("ready", task_status.get("ready", False))
+            ),
+            "successful": _task_context_success_label(
+                context.get("successful", task_status.get("successful", False))
+            ),
             "run": f"#{context['run_id']}" if context.get("run_id") else "-",
-            "run_status": context.get("run_status") or "-",
-            "source": context.get("run_source") or "-",
-            "operation": context.get("operation") or task_status.get("operation") or "-",
+            "run_status": task_run_status_label(context.get("run_status")),
+            "source": task_run_source_label(context.get("run_source")),
+            "operation": task_failure_operation_label(
+                context.get("operation") or task_status.get("operation")
+            ),
             "payload": _task_payload_shape_text(payload_shape),
             "celery_info": _celery_info_shape_text(celery_info_shape),
             "exception": _task_exception_text(context),
@@ -379,11 +422,44 @@ def _nested_text(value: object, key: str) -> object:
     return None
 
 
-def _clean_task_operation_label(value: object) -> str:
-    label = str(value or "").strip()
-    if not label or label in {"-", "unknown", "UNKNOWN"}:
+def _clean_task_operation_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text in {"-", "unknown", "UNKNOWN"}:
         return ""
-    return label
+    return text
+
+
+def _task_operation_display_label(value: object) -> str:
+    text = _clean_task_operation_text(value)
+    if not text:
+        return ""
+    return task_failure_operation_label(text)
+
+
+def task_status_state_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return TASK_STATUS_LABELS.get(text.upper(), text)
+
+
+def task_run_status_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return RUN_STATUS_LABELS.get(text.casefold(), task_status_state_label(text))
+
+
+def task_run_source_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    label = RUN_SOURCE_LABELS.get(text)
+    if label:
+        return label
+    if text.startswith("celery_"):
+        return f"{task_failure_operation_label(text.removeprefix('celery_'))}背景任務"
+    return text
 
 
 def _task_run_payload(run: dict) -> dict:
@@ -414,6 +490,17 @@ def _string_values(value: object) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _display_string_values(value: object) -> list[str]:
+    return [_display_shape_value(item) for item in _string_values(value)]
+
+
+def _display_shape_value(value: object) -> str:
+    text = str(value or "").strip()
+    if text in {"<sensitive>", "[sensitive]", "sensitive"}:
+        return "已遮蔽敏感欄位"
+    return text
+
+
 def _task_status_next_steps_text(task_status: dict) -> str:
     next_steps = task_status.get("next_steps")
     if not isinstance(next_steps, list):
@@ -424,37 +511,50 @@ def _task_status_next_steps_text(task_status: dict) -> str:
 
 def _task_payload_shape_text(payload_shape: dict) -> str:
     if not payload_shape.get("present"):
-        return "無 run payload"
+        return "沒有 run payload"
     parts = [
-        f"keys={_join_values(payload_shape.get('top_level_keys'))}",
-        f"tickers={int(payload_shape.get('ticker_count') or 0)}",
+        f"資料欄位：{_join_display_values(payload_shape.get('top_level_keys'))}",
+        f"股票 {int(payload_shape.get('ticker_count') or 0)} 檔",
     ]
-    request_keys = _join_values(payload_shape.get("request_keys"))
-    operation_payload_keys = _join_values(payload_shape.get("operation_payload_keys"))
+    request_keys = _join_display_values(payload_shape.get("request_keys"))
+    operation_payload_keys = _join_display_values(payload_shape.get("operation_payload_keys"))
     if request_keys != "-":
-        parts.append(f"request={request_keys}")
+        parts.append(f"請求欄位：{request_keys}")
     if operation_payload_keys != "-":
-        parts.append(f"payload={operation_payload_keys}")
+        parts.append(f"任務欄位：{operation_payload_keys}")
     sensitive_count = int(payload_shape.get("sensitive_key_count") or 0)
     if sensitive_count:
-        parts.append(f"sensitive_keys_masked={sensitive_count}")
+        parts.append(f"已遮蔽敏感欄位 {sensitive_count} 個")
     return "；".join(parts)
 
 
 def _celery_info_shape_text(celery_info_shape: dict) -> str:
     if not celery_info_shape.get("present"):
         return "-"
-    parts = [f"type={celery_info_shape.get('type') or '-'}"]
-    top_level_keys = _join_values(celery_info_shape.get("top_level_keys"))
-    progress_keys = _join_values(celery_info_shape.get("progress_keys"))
+    parts = [f"回報型態：{celery_info_shape.get('type') or '-'}"]
+    top_level_keys = _join_display_values(celery_info_shape.get("top_level_keys"))
+    progress_keys = _join_display_values(celery_info_shape.get("progress_keys"))
     if top_level_keys != "-":
-        parts.append(f"keys={top_level_keys}")
+        parts.append(f"回報欄位：{top_level_keys}")
     if progress_keys != "-":
-        parts.append(f"progress={progress_keys}")
+        parts.append(f"進度欄位：{progress_keys}")
     sensitive_count = int(celery_info_shape.get("sensitive_key_count") or 0)
     if sensitive_count:
-        parts.append(f"sensitive_keys_masked={sensitive_count}")
+        parts.append(f"已遮蔽敏感欄位 {sensitive_count} 個")
     return "；".join(parts)
+
+
+def _join_display_values(value: object) -> str:
+    values = _display_string_values(value)
+    return "、".join(values) if values else "-"
+
+
+def _task_context_ready_label(value: object) -> str:
+    return "已結束" if bool(value) else "未結束"
+
+
+def _task_context_success_label(value: object) -> str:
+    return "成功" if bool(value) else "未成功"
 
 
 def _task_exception_text(context: dict) -> str:

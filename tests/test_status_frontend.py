@@ -482,6 +482,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_status_autorefresh_feedback_enabled"] is True
     assert status["frontend"]["ui_task_status_failure_diagnostics_enabled"] is True
     assert status["frontend"]["ui_task_execution_context_enabled"] is True
+    assert status["frontend"]["ui_task_status_operator_context_labels_enabled"] is True
     assert status["frontend"]["ui_task_status_operation_confirmation_gate_enabled"] is True
     assert status["frontend"]["ui_task_status_operation_preflight_summary_enabled"] is True
     assert status["frontend"]["ui_task_status_operation_label_inference_enabled"] is True
@@ -834,6 +835,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_status_operation_confirmation_gate_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_operation_preflight_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_status_operation_label_inference_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_task_status_operator_context_labels_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_task_status_terminal_task_action_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_llm_quota_panel_extracted"] is True
     assert frontend_arch["evidence"]["ui_report_observability_panel_extracted"] is True

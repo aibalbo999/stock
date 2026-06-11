@@ -149,8 +149,27 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "execution_context" in task_status_panel_source
         and "payload_shape" in task_status_panel_source
         and "celery_info_shape" in task_status_panel_source
-        and "sensitive_keys_masked" in task_status_panel_source
+        and "已遮蔽敏感欄位" in task_status_panel_source
         and "exception_message_preview" in task_status_panel_source,
+        "ui_task_status_operator_context_labels_enabled": (
+            "TASK_STATUS_LABELS = {" in task_status_panel_source
+            and "RUN_STATUS_LABELS = {" in task_status_panel_source
+            and "RUN_SOURCE_LABELS = {" in task_status_panel_source
+            and "def task_status_state_label(" in task_status_panel_source
+            and "def task_run_status_label(" in task_status_panel_source
+            and "def task_run_source_label(" in task_status_panel_source
+            and "task_failure_operation_label(_operator_operation_from_source(raw_source))"
+            in task_status_panel_source
+            and '"celery_status": task_status_state_label(' in task_status_panel_source
+            and '"ready": _task_context_ready_label(' in task_status_panel_source
+            and '"successful": _task_context_success_label(' in task_status_panel_source
+            and '"run_status": task_run_status_label(' in task_status_panel_source
+            and '"source": task_run_source_label(' in task_status_panel_source
+            and '"operation": task_failure_operation_label(' in task_status_panel_source
+            and "資料欄位：" in task_status_panel_source
+            and "回報型態：" in task_status_panel_source
+            and "已遮蔽敏感欄位" in task_status_panel_source
+        ),
         "ui_task_status_operation_confirmation_gate_enabled": (
             "cancel_confirmed = st.checkbox(" in task_status_panel_source
             and 'key=f"{refresh_key}_confirm_cancel"' in task_status_panel_source

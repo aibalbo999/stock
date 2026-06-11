@@ -243,6 +243,8 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "render_task_action_preflight_summary(" in task_status_panel_source
             and "task_action_preflight_summary(" in task_status_panel_source
             and 'class="task-action-preflight-summary' in task_status_panel_source
+            and 'f"任務編號 {task_id}"' in task_status_panel_source
+            and 'f"Task {task_id}"' not in task_status_panel_source
             and "會重新排隊並可能再次消耗模型、外部資料源或 API 額度"
             in task_status_panel_source
             and "此任務不支援一鍵重試" in task_status_panel_source

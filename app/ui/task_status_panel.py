@@ -107,7 +107,7 @@ def task_action_preflight_summary(
     status = task_status_state_label(task_status.get("status") or "UNKNOWN")
     operation = task_status_operation_label(task_status)
     detail_parts = [
-        f"Task {task_id}",
+        f"任務編號 {task_id}",
         f"狀態 {status}",
         f"操作 {operation}",
     ]

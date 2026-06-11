@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
+import app.ui.analysis_operator_workbench as analysis_operator_workbench
 import app.ui.analysis_workspace as analysis_workspace
 
 
@@ -257,9 +258,9 @@ def test_operator_workbench_renders_decision_detail_before_primary_button(monkey
             return []
         return default
 
-    monkeypatch.setattr(analysis_workspace, "load_api_json_or_default", fake_load)
+    monkeypatch.setattr(analysis_operator_workbench, "load_api_json_or_default", fake_load)
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "operator_next_best_action",
         lambda *_args, **_kwargs: {
             "title": "建立第一份分析",
@@ -272,9 +273,11 @@ def test_operator_workbench_renders_decision_detail_before_primary_button(monkey
             "state": "attention",
         },
     )
-    monkeypatch.setattr(analysis_workspace, "operator_secondary_actions", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench, "operator_secondary_actions", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        analysis_operator_workbench,
         "operator_status_overall",
         lambda *_args, **_kwargs: {
             "label": "尚未有最新版報告",
@@ -282,19 +285,21 @@ def test_operator_workbench_renders_decision_detail_before_primary_button(monkey
             "state": "attention",
         },
     )
-    monkeypatch.setattr(analysis_workspace, "operator_status_cards", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
-        analysis_workspace.st,
+        analysis_operator_workbench, "operator_status_cards", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        analysis_operator_workbench.st,
         "markdown",
         lambda body, **_kwargs: events.append(("markdown", str(body))),
     )
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "render_operator_route_button",
         lambda action, **_kwargs: events.append(("button", str(action.get("action_label")))),
     )
 
-    analysis_workspace._render_operator_workbench()
+    analysis_operator_workbench.render_analysis_operator_workbench()
 
     primary_button_index = next(
         index
@@ -319,9 +324,9 @@ def test_operator_workbench_renders_primary_recommendation_before_status_overvie
             return []
         return default
 
-    monkeypatch.setattr(analysis_workspace, "load_api_json_or_default", fake_load)
+    monkeypatch.setattr(analysis_operator_workbench, "load_api_json_or_default", fake_load)
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "operator_next_best_action",
         lambda *_args, **_kwargs: {
             "title": "建立第一份分析",
@@ -334,9 +339,11 @@ def test_operator_workbench_renders_primary_recommendation_before_status_overvie
             "state": "attention",
         },
     )
-    monkeypatch.setattr(analysis_workspace, "operator_secondary_actions", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench, "operator_secondary_actions", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        analysis_operator_workbench,
         "operator_status_overall",
         lambda *_args, **_kwargs: {
             "label": "尚未有最新版報告",
@@ -344,19 +351,21 @@ def test_operator_workbench_renders_primary_recommendation_before_status_overvie
             "state": "attention",
         },
     )
-    monkeypatch.setattr(analysis_workspace, "operator_status_cards", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
-        analysis_workspace.st,
+        analysis_operator_workbench, "operator_status_cards", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        analysis_operator_workbench.st,
         "markdown",
         lambda body, **_kwargs: events.append(("markdown", str(body))),
     )
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "render_operator_route_button",
         lambda action, **_kwargs: events.append(("button", str(action.get("action_label")))),
     )
 
-    analysis_workspace._render_operator_workbench()
+    analysis_operator_workbench.render_analysis_operator_workbench()
 
     decision_index = next(
         index
@@ -386,9 +395,9 @@ def test_operator_workbench_renders_primary_button_between_decision_and_secondar
             return []
         return default
 
-    monkeypatch.setattr(analysis_workspace, "load_api_json_or_default", fake_load)
+    monkeypatch.setattr(analysis_operator_workbench, "load_api_json_or_default", fake_load)
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "operator_next_best_action",
         lambda *_args, **_kwargs: {
             "title": "處理任務失敗",
@@ -402,7 +411,7 @@ def test_operator_workbench_renders_primary_button_between_decision_and_secondar
         },
     )
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "operator_secondary_actions",
         lambda *_args, **_kwargs: [
             {
@@ -414,7 +423,7 @@ def test_operator_workbench_renders_primary_button_between_decision_and_secondar
         ],
     )
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "operator_status_overall",
         lambda *_args, **_kwargs: {
             "label": "有待處理紀錄",
@@ -422,19 +431,21 @@ def test_operator_workbench_renders_primary_button_between_decision_and_secondar
             "state": "attention",
         },
     )
-    monkeypatch.setattr(analysis_workspace, "operator_status_cards", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
-        analysis_workspace.st,
+        analysis_operator_workbench, "operator_status_cards", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        analysis_operator_workbench.st,
         "markdown",
         lambda body, **_kwargs: events.append(("markdown", str(body))),
     )
     monkeypatch.setattr(
-        analysis_workspace,
+        analysis_operator_workbench,
         "render_operator_route_button",
         lambda action, **_kwargs: events.append(("button", str(action.get("action_label")))),
     )
 
-    analysis_workspace._render_operator_workbench()
+    analysis_operator_workbench.render_analysis_operator_workbench()
 
     primary_button_index = next(
         index

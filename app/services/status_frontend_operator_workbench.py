@@ -5,6 +5,9 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
     analysis_workspace_source = source_context.ui_sources.get("analysis_workspace.py", "")
+    analysis_operator_workbench_source = source_context.ui_sources.get(
+        "analysis_operator_workbench.py", ""
+    )
     analysis_operator_presenter_source = source_context.ui_sources.get(
         "analysis_operator_presenter.py", ""
     )
@@ -131,6 +134,35 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "last_analysis_result" not in analysis_workspace_source
             and "render_reader_report(report_markdown, result)" not in analysis_workspace_source
             and 'scope="analysis_result"' not in analysis_workspace_source
+        ),
+        "ui_analysis_operator_workbench_extracted": (
+            "from app.ui.analysis_operator_workbench import render_analysis_operator_workbench"
+            in analysis_workspace_source
+            and "render_analysis_operator_workbench()" in analysis_workspace_source
+            and "def render_analysis_operator_workbench("
+            in analysis_operator_workbench_source
+            and 'load_api_json_or_default(\n        "/services/status"'
+            in analysis_operator_workbench_source
+            and 'load_api_json_or_default(\n        "/tasks/summary?days=7&limit=10"'
+            in analysis_operator_workbench_source
+            and 'load_api_json_or_default(\n        "/llm/quota"'
+            in analysis_operator_workbench_source
+            and 'load_api_json_or_default(\n        "/reports?limit=5"'
+            in analysis_operator_workbench_source
+            and "operator_next_best_action(" in analysis_operator_workbench_source
+            and "operator_secondary_actions(" in analysis_operator_workbench_source
+            and "operator_status_overall(" in analysis_operator_workbench_source
+            and "operator_status_cards(" in analysis_operator_workbench_source
+            and "operator_decision_html(primary_action, [], include_secondary=False)"
+            in analysis_operator_workbench_source
+            and "_render_operator_primary_action_control("
+            in analysis_operator_workbench_source
+            and "_render_operator_action_controls(" in analysis_operator_workbench_source
+            and "def _render_operator_workbench(" not in analysis_workspace_source
+            and 'load_api_json_or_default(\n        "/services/status"'
+            not in analysis_workspace_source
+            and "operator_next_best_action(" not in analysis_workspace_source
+            and "operator_status_cards(" not in analysis_workspace_source
         ),
         "ui_analysis_operator_presenter_extracted": (
             "from app.ui.analysis_operator_presenter import ("
@@ -332,9 +364,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             '"action_label": incident.get("action_label") or "查看事件"'
             in operator_decisions_source
             and "operator_secondary_actions(" in operator_decisions_source
-            and "render_operator_route_button(" in source_context.ui_sources.get(
-                "analysis_workspace.py", ""
-            )
+            and "render_operator_route_button(" in analysis_operator_workbench_source
             and "action.get(\"action_label\")" in source_context.ui_sources.get(
                 "operator_route_controls.py", ""
             )

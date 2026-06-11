@@ -33,6 +33,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     operator_optimization_actions_source = ui.OPERATOR_OPTIMIZATION_ACTIONS_SOURCE.read_text()
     operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
+    analysis_operator_workbench_source = ui.ANALYSIS_OPERATOR_WORKBENCH_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
     analysis_form_panel_source = ui.ANALYSIS_FORM_PANEL_SOURCE.read_text()
@@ -177,8 +178,18 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "operator-action-controls" in combined
     assert "operator-action-controls is-primary" in source
     assert "按下後會帶你到對應頁面" not in source
-    assert "_render_operator_primary_action_control(" in source
-    assert "_render_operator_action_controls(" in source
+    assert "_render_operator_primary_action_control(" in analysis_operator_workbench_source
+    assert "_render_operator_action_controls(" in analysis_operator_workbench_source
+    assert (
+        "from app.ui.analysis_operator_workbench import render_analysis_operator_workbench"
+        in analysis_workspace_source
+    )
+    assert "render_analysis_operator_workbench()" in analysis_workspace_source
+    assert "def render_analysis_operator_workbench(" in analysis_operator_workbench_source
+    assert "def _render_operator_workbench(" not in analysis_workspace_source
+    assert 'load_api_json_or_default(\n        "/services/status"' not in analysis_workspace_source
+    assert "operator_next_best_action(" not in analysis_workspace_source
+    assert "operator_status_cards(" not in analysis_workspace_source
     assert "from app.ui.analysis_operator_presenter import (" in analysis_workspace_source
     assert "def operator_decision_html(" in analysis_operator_presenter_source
     assert "def operator_secondary_actions_html(" in analysis_operator_presenter_source
@@ -192,7 +203,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         analysis_operator_presenter_source
     )
     assert "公司文件結構化 API 選配" in analysis_operator_presenter_source
-    assert source.index("_render_operator_workbench()") < source.index("workflow-strip")
+    assert source.index("render_analysis_operator_workbench()") < source.index("workflow-strip")
     assert "operator_route_target(" in source
     assert "st.switch_page(" in source
     assert "pending_selected_report_id" in source

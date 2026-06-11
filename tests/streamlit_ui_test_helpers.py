@@ -63,6 +63,7 @@ EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path("app/ui/external_deployment_str
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
 TASK_FAILURE_DIAGNOSTICS_SOURCE = Path("app/ui/task_failure_diagnostics.py")
 ANALYSIS_OPERATOR_PRESENTER_SOURCE = Path("app/ui/analysis_operator_presenter.py")
+ANALYSIS_OPERATOR_WORKBENCH_SOURCE = Path("app/ui/analysis_operator_workbench.py")
 ANALYSIS_WORKSPACE_PRESENTER_SOURCE = Path("app/ui/analysis_workspace_presenter.py")
 ANALYSIS_FORM_PANEL_SOURCE = Path("app/ui/analysis_form_panel.py")
 ANALYSIS_RESULT_PANEL_SOURCE = Path("app/ui/analysis_result_panel.py")
@@ -130,6 +131,7 @@ UI_SOURCE_FILES = [
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
     TASK_FAILURE_DIAGNOSTICS_SOURCE,
     ANALYSIS_OPERATOR_PRESENTER_SOURCE,
+    ANALYSIS_OPERATOR_WORKBENCH_SOURCE,
     ANALYSIS_WORKSPACE_PRESENTER_SOURCE,
     ANALYSIS_FORM_PANEL_SOURCE,
     ANALYSIS_RESULT_PANEL_SOURCE,

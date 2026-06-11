@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from app.ui.data_enrichment import (
@@ -13,6 +15,93 @@ from app.ui import data_enrichment_rss
 from app.ui import data_enrichment_common
 from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
+
+
+def test_allowlist_scope_summary_explains_static_source_and_next_step() -> None:
+    assert hasattr(data_enrichment_common, "allowlist_scope_summary")
+
+    whitelist = SimpleNamespace(
+        path=Path("data/ai_supply_chain_whitelist.json"),
+        candidate_audit=lambda: [],
+    )
+
+    summary = data_enrichment_common.allowlist_scope_summary(
+        whitelist,
+        ["2330", "2382"],
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "目前使用靜態白名單",
+        "detail": "可補強 2 檔｜來源：data/ai_supply_chain_whitelist.json",
+        "next_step": "若股票被白名單擋下，先到系統設定的股票範圍確認；需要新候選時，回分析工作區重跑主題拆解。",
+        "action_label": "檢查股票範圍",
+        "route_hint": "settings:scope",
+    }
+
+
+def test_allowlist_scope_summary_identifies_dynamic_candidate_source() -> None:
+    whitelist = SimpleNamespace(
+        path=Path("data/ai_supply_chain_whitelist.json"),
+        candidate_audit=lambda: [{"ticker": "3017", "status": "evidence_supported"}],
+    )
+
+    summary = data_enrichment_common.allowlist_scope_summary(
+        whitelist,
+        ["2330", "2382"],
+    )
+
+    assert summary == {
+        "state": "ready",
+        "title": "目前使用動態候選白名單",
+        "detail": "可補強 2 檔｜來源：本次候選白名單",
+        "next_step": "若股票被白名單擋下，先到系統設定的股票範圍確認；需要新候選時，回分析工作區重跑主題拆解。",
+        "action_label": "檢查股票範圍",
+        "route_hint": "settings:scope",
+    }
+
+
+def test_render_allowlist_scope_summary_shows_route_action(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.markdowns: list[str] = []
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
+
+    fake_st = FakeStreamlit()
+    routed: list[tuple[dict, dict]] = []
+    whitelist = SimpleNamespace(
+        path=Path("data/ai_supply_chain_whitelist.json"),
+        candidate_audit=lambda: [],
+    )
+
+    monkeypatch.setattr(data_enrichment_common, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_common,
+        "render_operator_route_button",
+        lambda action, **kwargs: routed.append((action, kwargs)),
+    )
+
+    data_enrichment_common.render_allowlist_scope_summary(whitelist, ["2330", "2382"])
+
+    assert any(
+        'class="allowlist-scope-summary is-attention"' in markdown
+        and "目前使用靜態白名單" in markdown
+        and "可補強 2 檔" in markdown
+        and "系統設定的股票範圍" in markdown
+        for markdown in fake_st.markdowns
+    )
+    assert routed == [
+        (
+            {"action_label": "檢查股票範圍", "route_hint": "settings:scope"},
+            {
+                "key": "data_enrichment_allowlist_scope_route",
+                "primary": False,
+                "show_caption": True,
+            },
+        )
+    ]
 
 
 def test_data_task_followup_summary_routes_success_to_latest_report() -> None:

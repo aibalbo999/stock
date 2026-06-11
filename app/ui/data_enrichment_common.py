@@ -16,6 +16,54 @@ DATA_TASK_STATUS_STATE_KEYS = (
 )
 
 
+def allowlist_scope_summary(whitelist: Any, allowed_tickers: list[str]) -> dict[str, str]:
+    allowed = _normalized_tickers(allowed_tickers)
+    candidate_audit = _candidate_audit(whitelist)
+    has_dynamic_candidates = bool(candidate_audit)
+    source = "本次候選白名單" if has_dynamic_candidates else _allowlist_source_label(whitelist)
+    state = "ready" if has_dynamic_candidates and allowed else "attention"
+    title = "目前使用動態候選白名單" if has_dynamic_candidates else "目前使用靜態白名單"
+    if not allowed:
+        state = "blocked"
+
+    return {
+        "state": state,
+        "title": title,
+        "detail": f"可補強 {len(allowed)} 檔｜來源：{source}",
+        "next_step": "若股票被白名單擋下，先到系統設定的股票範圍確認；需要新候選時，回分析工作區重跑主題拆解。",
+        "action_label": "檢查股票範圍",
+        "route_hint": "settings:scope",
+    }
+
+
+def render_allowlist_scope_summary(
+    whitelist: Any,
+    allowed_tickers: list[str],
+    *,
+    key: str = "data_enrichment_allowlist_scope_route",
+) -> None:
+    summary = allowlist_scope_summary(whitelist, allowed_tickers)
+    st.markdown(
+        f"""<section class="allowlist-scope-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料補強白名單來源摘要">
+<span>白名單來源摘要</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+</section>""",
+        unsafe_allow_html=True,
+    )
+    if summary.get("route_hint"):
+        render_operator_route_button(
+            {
+                "action_label": summary.get("action_label"),
+                "route_hint": summary.get("route_hint"),
+            },
+            key=key,
+            primary=False,
+            show_caption=True,
+        )
+
+
 def render_last_data_task_status(*, label: str, key: str, expanded: bool = False) -> None:
     last_data_task_id = st.session_state.get("last_data_task_id")
     if not last_data_task_id:
@@ -160,6 +208,41 @@ def _data_task_report_id(task_status: dict) -> str:
         if text:
             return text
     return ""
+
+
+def _candidate_audit(whitelist: Any) -> list[dict]:
+    candidate_audit_fn = getattr(whitelist, "candidate_audit", None)
+    if callable(candidate_audit_fn):
+        candidates = candidate_audit_fn()
+    else:
+        raw = getattr(whitelist, "raw", {})
+        candidates = raw.get("candidate_audit") if isinstance(raw, dict) else []
+    return list(candidates or [])
+
+
+def _allowlist_source_label(whitelist: Any) -> str:
+    for attr_name in ("path", "source_path", "whitelist_path"):
+        source_path = getattr(whitelist, attr_name, None)
+        if source_path:
+            return str(source_path)
+
+    raw = getattr(whitelist, "raw", {})
+    if isinstance(raw, dict):
+        for key in ("source_path", "_source", "path"):
+            source_path = raw.get(key)
+            if source_path:
+                return str(source_path)
+
+    return "data/ai_supply_chain_whitelist.json"
+
+
+def _normalized_tickers(tickers: list[str]) -> list[str]:
+    normalized = []
+    for ticker in tickers:
+        text = str(ticker).strip()
+        if text:
+            normalized.append(text)
+    return normalized
 
 
 def _text(value: Any, *, default: str = "") -> str:

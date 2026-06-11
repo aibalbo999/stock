@@ -517,6 +517,7 @@ textarea:focus,
 .operator-workbench,
 .operator-decision-card,
 .analysis-submission-summary,
+.allowlist-scope-summary,
 .data-task-followup-summary,
 .data-ingest-submission-summary,
 .scope-source-summary,
@@ -1192,6 +1193,7 @@ textarea:focus,
 }
 .incident-inbox,
 .data-gap-action-map,
+.allowlist-scope-summary,
 .data-task-followup-summary,
 .data-ingest-submission-summary,
 .scope-source-summary,
@@ -1226,38 +1228,45 @@ textarea:focus,
 }
 .data-task-followup-summary,
 .data-ingest-submission-summary,
+.allowlist-scope-summary,
 .scope-source-summary {
     display: grid;
     gap: 6px;
     border-left: 4px solid var(--stock-accent);
 }
 .data-task-followup-summary.is-attention,
-.data-ingest-submission-summary.is-attention {
+.data-ingest-submission-summary.is-attention,
+.allowlist-scope-summary.is-attention {
     border-left-color: var(--stock-warning);
     background: var(--stock-warning-soft);
 }
 .data-task-followup-summary.is-blocked,
-.data-ingest-submission-summary.is-blocked {
+.data-ingest-submission-summary.is-blocked,
+.allowlist-scope-summary.is-blocked {
     border-left-color: var(--stock-danger);
     background: var(--stock-danger-soft);
 }
 .data-task-followup-summary span,
 .data-ingest-submission-summary span,
+.allowlist-scope-summary span,
 .scope-source-summary span {
     color: var(--stock-accent);
     font-size: 0.82rem;
     font-weight: 800;
 }
 .data-task-followup-summary.is-attention span,
-.data-ingest-submission-summary.is-attention span {
+.data-ingest-submission-summary.is-attention span,
+.allowlist-scope-summary.is-attention span {
     color: var(--stock-warning);
 }
 .data-task-followup-summary.is-blocked span,
-.data-ingest-submission-summary.is-blocked span {
+.data-ingest-submission-summary.is-blocked span,
+.allowlist-scope-summary.is-blocked span {
     color: var(--stock-danger);
 }
 .data-task-followup-summary strong,
 .data-ingest-submission-summary strong,
+.allowlist-scope-summary strong,
 .scope-source-summary strong {
     color: var(--stock-text);
     font-size: 1rem;
@@ -1265,6 +1274,7 @@ textarea:focus,
 }
 .data-task-followup-summary p,
 .data-ingest-submission-summary p,
+.allowlist-scope-summary p,
 .scope-source-summary p {
     color: var(--stock-muted);
     line-height: 1.5;
@@ -1272,6 +1282,7 @@ textarea:focus,
 }
 .data-task-followup-summary em,
 .data-ingest-submission-summary em,
+.allowlist-scope-summary em,
 .scope-source-summary em {
     color: var(--stock-text);
     font-size: 0.86rem;

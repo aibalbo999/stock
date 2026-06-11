@@ -171,6 +171,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
     assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
     assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source
+    assert "render_allowlist_scope_summary(whitelist, allowed_tickers)" in source
     assert "from app.ui.dashboard_core import configure_page" in source
     assert "from app.ui.dashboard_core import *" not in source
     assert "import *" not in source
@@ -922,6 +923,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def data_task_followup_summary(" in source
     assert "def _render_data_task_followup_summary(" in source
     assert "data_task_followup_summary(task_status)" in source
+    assert "def allowlist_scope_summary(" in source
+    assert "def render_allowlist_scope_summary(" in source
+    assert "allowlist-scope-summary" in combined
+    assert "目前使用靜態白名單" in source
+    assert "目前使用動態候選白名單" in source
+    assert "系統設定的股票範圍" in source
     assert "data-task-followup-summary" in combined
     assert "資料任務後續處理" in source
     assert "資料補強完成" in source

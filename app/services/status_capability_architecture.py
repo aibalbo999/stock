@@ -248,6 +248,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_rss_fetch_confirmation_enabled")
             and frontend_status.get("ui_manual_data_ingest_preflight_summary_enabled")
             and frontend_status.get("ui_rss_data_ingest_preflight_summary_enabled")
+            and frontend_status.get("ui_data_enrichment_allowlist_scope_summary_enabled")
             and frontend_status.get("ui_data_enrichment_pending_ticker_allowlist_guard_enabled")
             and frontend_status.get("ui_market_cache_operator_summary_enabled")
             and frontend_status.get("frontend_settings_ui_status_extracted")

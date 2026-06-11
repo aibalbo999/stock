@@ -264,6 +264,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_rss_fetch_confirmation_enabled"] is True
     assert status["frontend"]["ui_manual_data_ingest_preflight_summary_enabled"] is True
     assert status["frontend"]["ui_rss_data_ingest_preflight_summary_enabled"] is True
+    assert status["frontend"]["ui_data_enrichment_allowlist_scope_summary_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_pending_ticker_allowlist_guard_enabled"] is True
     assert status["frontend"]["ui_market_cache_operator_summary_enabled"] is True
     assert status["frontend"]["frontend_external_deployment_status_extracted"] is True
@@ -709,6 +710,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_rss_data_ingest_preflight_summary_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_data_enrichment_allowlist_scope_summary_enabled"]
+        is True
+    )
     assert (
         frontend_arch["evidence"]["ui_data_enrichment_pending_ticker_allowlist_guard_enabled"]
         is True

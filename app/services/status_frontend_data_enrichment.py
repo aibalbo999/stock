@@ -13,6 +13,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     operator_decisions_source = source_context.ui_sources["operator_decisions.py"]
     data_gap_actions_source = source_context.ui_sources["data_gap_actions.py"]
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
+    data_enrichment_source = source_context.ui_sources["data_enrichment.py"]
     data_enrichment_common_source = source_context.ui_sources["data_enrichment_common.py"]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
     data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
@@ -152,6 +153,19 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "render_data_ingest_submission_summary(" in data_enrichment_rss_source
             and "背景任務會排隊抓取與匯入文本" in data_enrichment_rss_source
             and "完成前不要重複送出同一個 RSS" in data_enrichment_rss_source
+        ),
+        "ui_data_enrichment_allowlist_scope_summary_enabled": (
+            "from app.ui.data_enrichment_common import render_allowlist_scope_summary"
+            in data_enrichment_source
+            and "render_allowlist_scope_summary(whitelist, allowed_tickers)"
+            in data_enrichment_source
+            and "def allowlist_scope_summary(" in data_enrichment_common_source
+            and "def render_allowlist_scope_summary(" in data_enrichment_common_source
+            and 'class="allowlist-scope-summary' in data_enrichment_common_source
+            and "目前使用靜態白名單" in data_enrichment_common_source
+            and "目前使用動態候選白名單" in data_enrichment_common_source
+            and "系統設定的股票範圍" in data_enrichment_common_source
+            and '"route_hint": "settings:scope"' in data_enrichment_common_source
         ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_source

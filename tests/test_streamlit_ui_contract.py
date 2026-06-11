@@ -603,6 +603,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
     assert 'st.button("查詢背景任務狀態")' not in report_center_source
     assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
+    report_center_presenter_source = ui.REPORT_CENTER_PRESENTER_SOURCE.read_text()
+    assert "from app.ui.report_center_presenter import (" in report_center_source
+    assert "import streamlit" not in report_center_presenter_source
+    assert "def latest_report_picker_state(" in report_center_presenter_source
+    assert "def report_run_history_rows(" in report_center_presenter_source
+    assert "def empty_report_action_summary(" in report_center_presenter_source
+    assert "def report_reader_decision_summary(" in report_center_presenter_source
+    assert "def latest_report_picker_state(" not in report_center_source
+    assert "def report_run_history_rows(" not in report_center_source
     task_status_presenter_source = ui.TASK_STATUS_PRESENTER_SOURCE.read_text()
     assert "from app.ui.task_status_presenter import (" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "import streamlit" not in task_status_presenter_source

@@ -23,6 +23,7 @@ OPERATOR_ROUTES_SOURCE = Path("app/ui/operator_routes.py")
 OPERATOR_ROUTE_CONTROLS_SOURCE = Path("app/ui/operator_route_controls.py")
 REPORT_HEALTH_SOURCE = Path("app/ui/report_health.py")
 REPORT_LIFECYCLE_SOURCE = Path("app/ui/report_lifecycle.py")
+REPORT_CENTER_PRESENTER_SOURCE = Path("app/ui/report_center_presenter.py")
 INCIDENT_INBOX_SOURCE = Path("app/ui/incident_inbox.py")
 OPERATOR_DECISIONS_SOURCE = Path("app/ui/operator_decisions.py")
 DATA_GAP_ACTIONS_SOURCE = Path("app/ui/data_gap_actions.py")
@@ -68,6 +69,7 @@ UI_SOURCE_FILES = [
     OPERATOR_ROUTE_CONTROLS_SOURCE,
     REPORT_HEALTH_SOURCE,
     REPORT_LIFECYCLE_SOURCE,
+    REPORT_CENTER_PRESENTER_SOURCE,
     INCIDENT_INBOX_SOURCE,
     OPERATOR_DECISIONS_SOURCE,
     DATA_GAP_ACTIONS_SOURCE,

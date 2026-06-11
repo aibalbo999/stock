@@ -26,6 +26,7 @@ UI_MODULE_NAMES = (
     "operator_decisions.py",
     "report_health.py",
     "report_lifecycle.py",
+    "report_center_presenter.py",
     "incident_inbox.py",
     "data_gap_actions.py",
     "report_observability_panel.py",

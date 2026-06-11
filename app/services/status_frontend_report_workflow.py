@@ -13,6 +13,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     report_center_source = ui_sources["report_center.py"]
+    report_center_presenter_source = ui_sources["report_center_presenter.py"]
     report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
     operator_decisions_source = ui_sources["operator_decisions.py"]
@@ -29,6 +30,14 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         "frontend_report_workflow_status_extracted": True,
         "frontend_report_workflow_status_path": (
             "app/services/status_frontend_report_workflow.py"
+        ),
+        "ui_report_center_presenter_extracted": (
+            "from app.ui.report_center_presenter import (" in report_center_source
+            and "import streamlit" not in report_center_presenter_source
+            and "def latest_report_picker_state(" in report_center_presenter_source
+            and "def report_run_history_rows(" in report_center_presenter_source
+            and "def empty_report_action_summary(" in report_center_presenter_source
+            and "def report_reader_decision_summary(" in report_center_presenter_source
         ),
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"
         in ui_source
@@ -153,15 +162,15 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and ".report-health-action" in style_source
         ),
         "ui_report_reader_decision_summary_enabled": (
-            "def report_reader_decision_summary(" in report_center_source
+            "def report_reader_decision_summary(" in report_center_presenter_source
             and "def _render_report_reader_decision_summary(" in report_center_source
             and "health_summary = latest_report_health_summary(" in report_center_source
             and "report_reader_decision_summary(lifecycle, health_summary)"
             in report_center_source
             and 'class="report-reader-decision' in report_center_source
             and "閱讀決策" in report_center_source
-            and "可先閱讀，但投資判斷需標示限制" in report_center_source
-            and "暫停採信，先處理阻塞" in report_center_source
+            and "可先閱讀，但投資判斷需標示限制" in report_center_presenter_source
+            and "暫停採信，先處理阻塞" in report_center_presenter_source
             and ".report-reader-decision" in style_source
             and ".report-reader-decision-grid" in style_source
         ),
@@ -190,43 +199,45 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_report_latest_only_picker_enabled": (
             'load_api_json_or_default(\n        "/reports?limit=5"' in report_center_source
-            and "def latest_report_picker_state(" in report_center_source
-            and '"single_latest"' in report_center_source
-            and '"multi_topic_latest"' in report_center_source
-            and "目前最新版報告" in report_center_source
-            and "選擇主題最新版報告" in report_center_source
-            and "建立分析後，這裡會顯示目前保留的最新版報告。" in report_center_source
+            and "def latest_report_picker_state(" in report_center_presenter_source
+            and '"single_latest"' in report_center_presenter_source
+            and '"multi_topic_latest"' in report_center_presenter_source
+            and "目前最新版報告" in report_center_presenter_source
+            and "選擇主題最新版報告" in report_center_presenter_source
+            and "建立分析後，這裡會顯示目前保留的最新版報告。"
+            in report_center_presenter_source
             and ".latest-report-picker" in style_source
         ),
         "ui_report_latest_only_scope_note_enabled": (
             '"scope_note": "這不是歷史版本清單；每個主題只顯示最新一份可讀報告。"'
-            in report_center_source
-            and "此頁只顯示目前保留的最新版" in report_center_source
-            and "報告中心不需要手動整理歷史版本" in report_center_source
+            in report_center_presenter_source
+            and "此頁只顯示目前保留的最新版" in report_center_presenter_source
+            and "報告中心不需要手動整理歷史版本" in report_center_presenter_source
             and "latest-report-picker-note" in report_center_source
             and ".latest-report-picker-note" in style_source
         ),
         "ui_report_empty_create_analysis_action_enabled": (
-            "def empty_report_action_summary(" in report_center_source
-            and '"mode": "empty"' in report_center_source
-            and '"action_label": "建立分析"' in report_center_source
-            and '"route_hint": "analysis"' in report_center_source
-            and "建立第一份最新版報告" in report_center_source
+            "def empty_report_action_summary(" in report_center_presenter_source
+            and '"mode": "empty"' in report_center_presenter_source
+            and '"action_label": "建立分析"' in report_center_presenter_source
+            and '"route_hint": "analysis"' in report_center_presenter_source
+            and "建立第一份最新版報告" in report_center_presenter_source
             and "前往分析工作區建立報告；完成後回到這裡閱讀最新版。"
-            in report_center_source
+            in report_center_presenter_source
             and 'key="report_empty_state_primary_action"' in report_center_source
             and ".report-lifecycle-action em" in style_source
         ),
         "ui_report_empty_running_task_state_enabled": (
             '"/tasks/summary?days=7&limit=10"' in report_center_source
             and "task_summary=task_summary" in report_center_source
-            and "def _latest_task_running(" in report_center_source
-            and "def _task_running(" in report_center_source
-            and "最新版報告生成中" in report_center_source
+            and "def _latest_task_running(" in report_center_presenter_source
+            and "def _task_running(" in report_center_presenter_source
+            and "最新版報告生成中" in report_center_presenter_source
             and "最新任務正在背景執行；完成前不需要重複建立分析。"
-            in report_center_source
-            and '"action_label": "查看任務"' in report_center_source
-            and '"route_hint": _task_route_hint(latest_running_task)' in report_center_source
+            in report_center_presenter_source
+            and '"action_label": "查看任務"' in report_center_presenter_source
+            and '"route_hint": _task_route_hint(latest_running_task)'
+            in report_center_presenter_source
             and 'key="report_empty_state_primary_action"' in report_center_source
             and (
                 report_center_source.find('"/tasks/summary?days=7&limit=10"')
@@ -245,14 +256,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
         ),
         "ui_report_run_history_operator_labels_enabled": (
-            "def report_run_history_rows(" in report_center_source
-            and "def report_run_history_ids(" in report_center_source
-            and "RUN_SOURCE_LABELS = {" in report_center_source
-            and "RUN_STATUS_LABELS = {" in report_center_source
-            and "RUN_ERROR_LABELS = {" in report_center_source
-            and '"來源": _run_source_label(run.get("source"))' in report_center_source
-            and '"狀態": _run_status_label(run.get("status"))' in report_center_source
-            and '"錯誤": _run_error_label(run.get("error"))' in report_center_source
+            "def report_run_history_rows(" in report_center_presenter_source
+            and "def report_run_history_ids(" in report_center_presenter_source
+            and "RUN_SOURCE_LABELS = {" in report_center_presenter_source
+            and "RUN_STATUS_LABELS = {" in report_center_presenter_source
+            and "RUN_ERROR_LABELS = {" in report_center_presenter_source
+            and '"來源": _run_source_label(run.get("source"))'
+            in report_center_presenter_source
+            and '"狀態": _run_status_label(run.get("status"))'
+            in report_center_presenter_source
+            and '"錯誤": _run_error_label(run.get("error"))'
+            in report_center_presenter_source
             and "run_rows = report_run_history_rows(runs)" in report_center_source
             and "run_ids = report_run_history_ids(runs)" in report_center_source
             and "options=run_ids" in report_center_source
@@ -261,8 +275,8 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and '"error": run.get("error")' not in report_center_source
         ),
         "ui_report_run_detail_error_operator_label_enabled": (
-            "def report_run_detail_error_message(" in report_center_source
-            and "執行紀錄錯誤：" in report_center_source
+            "def report_run_detail_error_message(" in report_center_presenter_source
+            and "執行紀錄錯誤：" in report_center_presenter_source
             and "st.error(report_run_detail_error_message(selected_run_error))"
             in report_center_source
             and '"查看執行紀錄"' in report_center_source

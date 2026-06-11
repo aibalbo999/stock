@@ -217,6 +217,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_report_ui_status_extracted")
             and frontend_status.get("frontend_report_rendering_status_extracted")
             and frontend_status.get("frontend_report_workflow_status_extracted")
+            and frontend_status.get("ui_report_center_presenter_extracted")
             and frontend_status.get("ui_report_lifecycle_data_gap_prefill_enabled")
             and frontend_status.get("ui_report_health_identity_enabled")
             and frontend_status.get("ui_report_health_action_enabled")

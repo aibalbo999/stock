@@ -72,6 +72,28 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                 "available_local_default_gap_count": 1,
                 "next_action": "套用已偵測本機 defaults 可消除 1 項外部選配缺口。",
             },
+            "optimization_progress": {
+                "status": "ready_with_optional_gaps",
+                "total_checks": 33,
+                "ready_checks": 29,
+                "completion_ratio": 0.8788,
+                "blocking_gap_count": 0,
+                "optional_gap_count": 4,
+                "local_resolvable_gap_count": 3,
+                "effective_blocking_gap_count_after_available_local_defaults": 0,
+                "effective_optional_gap_count_after_available_local_defaults": 1,
+                "primary_next_action": {
+                    "label": "本機 defaults 可驗證",
+                    "next_action": (
+                        "先執行本機 defaults audit；可用本機 defaults 驗證 3 項缺口，"
+                        "之後剩餘 1 項外部/付費選配。"
+                    ),
+                    "verify_command": (
+                        ".venv/bin/python scripts/upgrade_audit.py "
+                        "--local-neo4j-defaults --prefer-unlocker --json"
+                    ),
+                },
+            },
             "external_deployment_pending_gaps": [
                 {
                     "capability": "neo4j_import",
@@ -148,6 +170,13 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
         "blocking=0; optional=0; paid_external=0; local_defaults=1"
     ) in output
     assert "Effective next action: 套用已偵測本機 defaults 可消除 1 項外部選配缺口。" in output
+    assert (
+        "Optimization progress: ready_with_optional_gaps "
+        "(29/33 ready; blocking=0; optional=4; local_resolvable=3; "
+        "effective_optional=1)"
+    ) in output
+    assert "Optimization next action: 本機 defaults 可驗證" in output
+    assert "Optimization command: .venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --prefer-unlocker --json" in output
     assert "Local dependency runtime: partial; open=redis; missing_core=neo4j" in output
     assert (
         "Local dependency last start: 已啟動 at 2026-06-09T01:02:03Z; "
@@ -227,6 +256,10 @@ def test_upgrade_audit_script_can_apply_local_neo4j_defaults(monkeypatch, capsys
     assert '"local_dependency_defaults"' in output
     assert "NEO4J_PASSWORD" in output
     assert "stock_ai_neo4j_password" not in output
+    assert os.environ.get("NEO4J_URI") is None
+    assert os.environ.get("NEO4J_USER") is None
+    assert os.environ.get("NEO4J_PASSWORD") is None
+    assert os.environ.get("NEO4J_DATABASE") is None
 
 
 def test_upgrade_audit_script_can_apply_local_browser_render_defaults(monkeypatch, capsys) -> None:

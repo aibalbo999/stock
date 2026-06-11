@@ -505,6 +505,76 @@ def test_upgrade_audit_projects_effective_external_gaps_after_local_defaults() -
     assert "有效剩餘 1 項付費外部資料 API 選配" in projection["next_action"]
 
 
+def test_upgrade_audit_includes_optimization_progress_for_operator_json() -> None:
+    status = _fake_status(
+        {
+            "ai_rag.neo4j_import": {
+                "status": "degraded",
+                "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
+            "ai_rag.graphrag_live_cypher_query": {
+                "status": "degraded",
+                "evidence": {"fallback_reason": "missing_settings:neo4j_uri"},
+            },
+            "data_business_logic.company_filing_high_risk_unlocker": {
+                "status": "not_configured",
+                "evidence": {},
+            },
+            "data_business_logic.company_filing_structured_api_fallback": {
+                "status": "not_configured",
+                "evidence": {},
+            },
+        }
+    )
+    status["local_dependency_auto_defaults"] = {
+        "mode": "status_preview",
+        "capability_matches": [
+            {
+                "area": "ai_rag",
+                "capability": "neo4j_import",
+                "group": "neo4j",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "ai_rag",
+                "capability": "graphrag_live_cypher_query",
+                "group": "neo4j",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+            {
+                "area": "data_business_logic",
+                "capability": "company_filing_high_risk_unlocker",
+                "group": "flaresolverr",
+                "state": "would_apply",
+                "would_apply": True,
+                "verify_command": ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json",
+            },
+        ],
+    }
+
+    audit = audit_upgrade_capabilities(status)
+
+    progress = audit["optimization_progress"]
+    assert progress["status"] == "ready_with_optional_gaps"
+    assert progress["blocking_gap_count"] == 0
+    assert progress["optional_gap_count"] == 4
+    assert progress["local_resolvable_gap_count"] == 3
+    assert (
+        progress["effective_optional_gap_count_after_available_local_defaults"] == 1
+    )
+    assert progress["primary_next_action"]["capability"] == "auto_local_defaults"
+    assert progress["primary_next_action"]["label"] == "本機 defaults 可驗證"
+    assert progress["summary"]["primary_next_action_label"] == "本機 defaults 可驗證"
+    assert (
+        ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
+        in progress["local_default_verify_commands"]
+    )
+
+
 def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:
     audit = audit_upgrade_capabilities(
         _fake_status(

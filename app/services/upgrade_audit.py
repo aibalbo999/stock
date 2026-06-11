@@ -11,6 +11,7 @@ from app.services.external_deployment_readiness import (
     external_deployment_pending_gap_action_counts,
     external_deployment_pending_gap_rows,
 )
+from app.services.optimization_progress import optimization_progress_status
 from app.services.service_status import service_status
 
 
@@ -366,6 +367,11 @@ def audit_upgrade_capabilities(
         if isinstance(local_dependencies.get("auto_defaults_preview"), dict)
         else {}
     )
+    optimization_progress = (
+        status.get("optimization_progress")
+        if isinstance(status.get("optimization_progress"), dict)
+        else optimization_progress_status(status)
+    )
     checks = [
         _requirement_result(requirement, status, strict_external=strict_external)
         for requirement in REQUIREMENTS
@@ -436,6 +442,7 @@ def audit_upgrade_capabilities(
         },
         "implementation": implementation,
         "deployment": deployment,
+        "optimization_progress": optimization_progress,
         "local_dependencies": local_dependencies,
         "local_dependency_auto_defaults": local_dependency_auto_defaults,
         "areas": dict(sorted(areas.items())),

@@ -308,7 +308,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(_format_text(audit))
-    return 1 if audit["failures"] else 0
+    exit_code = 1 if audit["failures"] else 0
+    restore_applied_env_defaults(applied_defaults)
+    return exit_code
 
 
 def _format_text(audit: dict) -> str:
@@ -390,6 +392,7 @@ def _format_text(audit: dict) -> str:
         )
         if local_projection.get("next_action"):
             lines.append("Effective next action: " + str(local_projection["next_action"]))
+    lines.extend(_format_optimization_progress_lines(audit))
     auto_defaults = audit.get("local_dependency_auto_defaults")
     if auto_defaults:
         detected = auto_defaults.get("detected") or {}
@@ -522,6 +525,51 @@ def _format_text(audit: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_optimization_progress_lines(audit: dict) -> list[str]:
+    progress = (
+        audit.get("optimization_progress")
+        if isinstance(audit.get("optimization_progress"), dict)
+        else {}
+    )
+    if not progress:
+        return []
+    total_checks = int(progress.get("total_checks") or 0)
+    ready_checks = int(progress.get("ready_checks") or 0)
+    blocking_gaps = int(progress.get("blocking_gap_count") or 0)
+    optional_gaps = int(progress.get("optional_gap_count") or 0)
+    local_resolvable = int(progress.get("local_resolvable_gap_count") or 0)
+    effective_optional = int(
+        progress.get("effective_optional_gap_count_after_available_local_defaults")
+        or 0
+    )
+    lines = [
+        (
+            "Optimization progress: "
+            f"{progress.get('status', 'unknown')} "
+            f"({ready_checks}/{total_checks} ready; "
+            f"blocking={blocking_gaps}; optional={optional_gaps}; "
+            f"local_resolvable={local_resolvable}; "
+            f"effective_optional={effective_optional})"
+        )
+    ]
+    primary_action = (
+        progress.get("primary_next_action")
+        if isinstance(progress.get("primary_next_action"), dict)
+        else {}
+    )
+    action_label = str(primary_action.get("label") or "").strip()
+    if action_label:
+        lines.append("Optimization next action: " + action_label)
+    command = str(
+        primary_action.get("verify_command")
+        or progress.get("local_defaults_verify_command")
+        or ""
+    ).strip()
+    if command:
+        lines.append("Optimization command: " + command)
+    return lines
+
+
 def _pending_gap_rows_by_capability(audit: dict) -> dict[str, dict]:
     rows = audit.get("external_deployment_pending_gaps")
     if not isinstance(rows, list):
@@ -617,6 +665,13 @@ def clear_settings_cache() -> None:
     cache_clear = getattr(get_settings, "cache_clear", None)
     if callable(cache_clear):
         cache_clear()
+
+
+def restore_applied_env_defaults(applied_defaults: dict[str, str]) -> None:
+    for key in applied_defaults:
+        os.environ.pop(key, None)
+    if applied_defaults:
+        clear_settings_cache()
 
 
 def is_local_neo4j_uri(uri: str) -> bool:

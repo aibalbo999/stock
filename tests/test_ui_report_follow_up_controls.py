@@ -120,6 +120,81 @@ def test_render_follow_up_submission_summary_outputs_operator_card(monkeypatch) 
     )
 
 
+def test_follow_up_plan_tables_hide_raw_action_codes(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state: dict[str, Any] = {}
+            self.dataframes: list[Any] = []
+
+        def button(self, *_args, **_kwargs):
+            return False
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def checkbox(self, _label: str, *, value: bool = False, key: str):
+            return key == "followup_rerun_report_7"
+
+        def columns(self, count_or_spec):
+            count = count_or_spec if isinstance(count_or_spec, int) else len(count_or_spec)
+            return [self for _ in range(count)]
+
+        def dataframe(self, rows, **_kwargs) -> None:
+            self.dataframes.append(rows)
+
+        def info(self, body: str) -> None:
+            raise AssertionError(f"unexpected info: {body}")
+
+        def markdown(self, *_args, **_kwargs) -> None:
+            return None
+
+        def number_input(self, *_args, **_kwargs):
+            return 30
+
+        def radio(self, _label: str, *, options, index: int = 0, **_kwargs):
+            return list(options)[index]
+
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(report_follow_up_controls, "st", fake_st)
+    monkeypatch.setattr(report_follow_up_controls, "markdown_table_rows", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        report_follow_up_controls,
+        "load_api_json_or_default",
+        lambda *_args, **_kwargs: {
+            "actions": [
+                {
+                    "action_type": "ingest_company_filings",
+                    "tickers": ["2382"],
+                    "purpose": "required",
+                    "priority": "high",
+                    "frequency": "once",
+                    "reason": "正式文件缺口",
+                }
+            ],
+            "next_actions": [
+                {
+                    "action": "ingest_company_filings",
+                    "tickers": ["2382"],
+                    "next_step": "抓取公開資訊觀測站文件",
+                    "target": "formal_filings",
+                    "completion_criteria": "至少補齊 1 篇正式文件",
+                    "priority": "high",
+                    "reason": "candidate_evidence_gap",
+                }
+            ],
+            "freshness": {},
+        },
+    )
+
+    report_follow_up_controls.render_follow_up_controls(7, "", scope="report")
+
+    rendered_rows = str(fake_st.dataframes)
+    assert "補抓公司公開文件" in rendered_rows
+    assert "ingest_company_filings" not in rendered_rows
+    assert "formal_filings" not in rendered_rows
+    assert "candidate_evidence_gap" not in rendered_rows
+
+
 def test_follow_up_run_requires_confirmation_before_submit(monkeypatch) -> None:
     class FakeStreamlit:
         def __init__(self) -> None:

@@ -282,6 +282,21 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "尚未送出背景任務；先確認範圍可避免空任務與額度浪費"
             in report_follow_up_controls_source
         ),
+        "ui_report_follow_up_action_operator_labels_enabled": (
+            "from app.services.followup_models import FOLLOW_UP_ACTION_LABELS"
+            in report_follow_up_controls_source
+            and "def _follow_up_task_label(" in report_follow_up_controls_source
+            and "def _labeled_value(" in report_follow_up_controls_source
+            and "FOLLOW_UP_ACTION_LABELS.get(action_type" in report_follow_up_controls_source
+            and '"任務": _follow_up_task_label(action)' in report_follow_up_controls_source
+            and '"正式文件"' in report_follow_up_controls_source
+            and '"候選證據缺口"' in report_follow_up_controls_source
+            and '"高"' in report_follow_up_controls_source
+            and '"一次"' in report_follow_up_controls_source
+            and 'action.get("action_type", "-")' not in report_follow_up_controls_source
+            and 'action.get("target") or "-"' not in report_follow_up_controls_source
+            and 'action.get("reason", "-")' not in report_follow_up_controls_source
+        ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"
         ).exists()

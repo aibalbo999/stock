@@ -5,6 +5,7 @@ from typing import Any
 
 import streamlit as st
 
+from app.services.followup_models import FOLLOW_UP_ACTION_LABELS
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.follow_up_status import (
@@ -20,6 +21,36 @@ PURPOSE_LABELS = {
     "all": "全部任務",
     "required": "只補資料缺口",
     "tracking": "只做追蹤更新",
+}
+
+FOLLOW_UP_PRIORITY_LABELS = {
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+}
+
+FOLLOW_UP_FREQUENCY_LABELS = {
+    "once": "一次",
+    "daily": "每日",
+    "weekly": "每週",
+    "monthly": "每月",
+}
+
+FOLLOW_UP_TARGET_LABELS = {
+    "formal_filings": "正式文件",
+    "market_data": "股價/量能",
+    "monthly_revenue": "月營收",
+    "financial_metrics": "五年財務",
+    "valuation": "估值",
+    "news": "新聞與產業資料",
+    "candidate_evidence": "候選證據",
+}
+
+FOLLOW_UP_REASON_LABELS = {
+    "candidate_evidence_gap": "候選證據缺口",
+    "formal_filing_gap": "正式文件缺口",
+    "market_freshness_gap": "股價/量能過期",
+    "tracking_refresh": "追蹤更新",
 }
 
 
@@ -119,12 +150,16 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         st.dataframe(
             [
                 {
-                    "任務": action.get("label") or action.get("action_type", "-"),
+                    "任務": _follow_up_task_label(action),
                     "股票": "、".join(action.get("tickers") or []) or "全主題",
                     "性質": "資料缺口補強" if action.get("purpose") == "required" else "追蹤更新",
-                    "優先級": action.get("priority", "-"),
-                    "頻率": action.get("frequency", "-"),
-                    "觸發原因": action.get("reason", "-"),
+                    "優先級": _labeled_value(
+                        action.get("priority"), FOLLOW_UP_PRIORITY_LABELS
+                    ),
+                    "頻率": _labeled_value(action.get("frequency"), FOLLOW_UP_FREQUENCY_LABELS),
+                    "觸發原因": _labeled_value(
+                        action.get("reason"), FOLLOW_UP_REASON_LABELS
+                    ),
                 }
                 for action in planned_actions
             ],
@@ -138,10 +173,14 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                     {
                         "股票": "、".join(action.get("tickers") or []) or "全主題",
                         "下一步": action.get("next_step"),
-                        "補強目標": action.get("target") or "-",
+                        "補強目標": _labeled_value(
+                            action.get("target"), FOLLOW_UP_TARGET_LABELS
+                        ),
                         "完成條件": action.get("completion_criteria") or "-",
-                        "優先級": action.get("priority", "-"),
-                        "原因": action.get("reason", "-"),
+                        "優先級": _labeled_value(
+                            action.get("priority"), FOLLOW_UP_PRIORITY_LABELS
+                        ),
+                        "原因": _labeled_value(action.get("reason"), FOLLOW_UP_REASON_LABELS),
                     }
                     for action in plan_next_actions
                 ],
@@ -174,7 +213,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
                 st.dataframe(
                     [
                         {
-                            "任務": action.get("label") or action.get("action_type", "-"),
+                            "任務": _follow_up_task_label(action),
                             "股票": "、".join(action.get("tickers") or []) or "全主題",
                             "最新日期": "、".join(
                                 f"{ticker}:{date_value}"
@@ -432,3 +471,20 @@ def _markdown_row_purpose(row: Any) -> str:
         if purpose == "required" or "資料缺口" in purpose:
             return "required"
     return "tracking"
+
+
+def _follow_up_task_label(action: dict[str, Any]) -> str:
+    action_type = _text(action.get("action_type") or action.get("action"))
+    label = _text(action.get("label"))
+    if label and label != action_type:
+        return label
+    return FOLLOW_UP_ACTION_LABELS.get(action_type, action_type or "-")
+
+
+def _labeled_value(value: Any, labels: dict[str, str]) -> str:
+    text = _text(value)
+    return labels.get(text, text or "-")
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()

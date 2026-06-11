@@ -48,7 +48,7 @@ def submit_background_task(
 
     task_id = _task_id(task_response)
     if not task_id:
-        st.error(f"{error_message}：API 回傳缺少 task_id。")
+        st.error(f"{error_message}：服務回傳缺少任務編號。")
         return None
 
     st.session_state[task_state_key] = task_id
@@ -156,22 +156,22 @@ def cached_task_queue_status() -> dict:
 def task_queue_unready_message(task_queue: dict) -> str:
     reasons = []
     if not task_queue.get("broker_configured"):
-        reasons.append("Redis broker 尚未設定")
+        reasons.append("背景任務佇列尚未設定")
     if not task_queue.get("broker_ok"):
-        reasons.append("Redis broker/backend 未連線")
+        reasons.append("背景任務佇列或結果儲存未連線")
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-        reasons.append("Celery worker 未回應")
+        reasons.append("背景執行器未回應")
     if not task_queue.get("celery_app_available"):
-        reasons.append("Celery app 匯出不可用")
+        reasons.append("背景任務服務匯出不可用")
     missing_exports = task_queue.get("missing_task_exports") or []
     if missing_exports:
-        reasons.append("缺少 task 匯出：" + "、".join(str(item) for item in missing_exports))
+        reasons.append("缺少背景任務項目：" + "、".join(str(item) for item in missing_exports))
     if not task_queue.get("task_names_match_expected", True):
-        reasons.append("Celery task 名稱與 API wiring 不一致")
+        reasons.append("背景任務名稱與服務設定不一致")
     if not task_queue.get("submission_contract_ready", True) and not reasons:
         reasons.append("背景任務提交契約尚未就緒")
     if not reasons:
-        reasons.append("背景任務 queue 尚未就緒")
+        reasons.append("背景任務佇列尚未就緒")
     return "；".join(reasons) + "。" + task_queue_operator_hint(task_queue)
 
 
@@ -183,7 +183,7 @@ def task_queue_worker_warning(task_queue: dict) -> str:
     else:
         detail = ""
     return (
-        "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待"
+        "背景任務佇列可送出，但背景執行器未回應，任務可能會排隊等待"
         f"{detail}。{task_queue_operator_hint(task_queue)}"
     )
 
@@ -191,7 +191,7 @@ def task_queue_worker_warning(task_queue: dict) -> str:
 def task_queue_submission_success_note(task_queue: dict | None) -> str:
     if not task_queue_accepts_submission_but_worker_offline(task_queue):
         return ""
-    return "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+    return "（已排隊；背景執行器未回應，可能尚未開始執行。）"
 
 
 def task_queue_accepts_submission_but_worker_offline(task_queue: dict | None) -> bool:
@@ -230,7 +230,7 @@ def task_queue_smoke_label(task_queue: dict | None) -> str:
     if "task_submission_smoke.py" in command:
         return "任務送出 smoke"
     if "inspect ping" in command or "celery" in command:
-        return "Celery worker ping"
+        return "背景執行器連線檢查"
     if "upgrade_audit.py" in command:
         return "升級稽核"
     return "背景任務 smoke"

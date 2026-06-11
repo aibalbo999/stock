@@ -122,7 +122,7 @@ def test_submit_background_task_rejects_response_without_task_id(monkeypatch) ->
 
     assert result is None
     assert "last_async_task_id" not in fake_st.session_state
-    assert fake_st.errors == ["分析背景任務送出失敗：API 回傳缺少 task_id。"]
+    assert fake_st.errors == ["分析背景任務送出失敗：服務回傳缺少任務編號。"]
 
 
 def test_submit_data_operation_task_delegates_to_data_operation_api(monkeypatch) -> None:
@@ -190,7 +190,7 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
     assert called["submit"] is False
     assert "last_data_task_id" not in fake_st.session_state
     assert fake_st.errors == [
-        "股價刷新任務送出失敗：Redis broker/backend 未連線。 "
+        "股價刷新任務送出失敗：背景任務佇列或結果儲存未連線。 "
         "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
     ]
     assert fake_st.successes == []
@@ -281,12 +281,12 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
     assert result == {"task_id": "task-queued-without-worker"}
     assert fake_st.session_state["last_data_task_id"] == "task-queued-without-worker"
     assert fake_st.warnings == [
-        "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待。 "
+        "背景任務佇列可送出，但背景執行器未回應，任務可能會排隊等待。 "
         "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
     ]
     assert fake_st.successes == [
         "已送出股價刷新背景任務：task-queued-without-worker"
-        "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+        "（已排隊；背景執行器未回應，可能尚未開始執行。）"
     ]
 
 
@@ -314,7 +314,7 @@ def test_task_queue_submission_success_note_explains_worker_offline_queue_state(
         background_tasks.task_queue_submission_success_note(
             {"ready": True, "worker_ping_checked": True, "worker_online": False}
         )
-        == "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
+        == "（已排隊；背景執行器未回應，可能尚未開始執行。）"
     )
     assert (
         background_tasks.task_queue_submission_success_note(
@@ -341,6 +341,19 @@ def test_task_queue_smoke_hint_prefers_submission_smoke_and_falls_back_to_first_
         }
     ) == ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
     assert background_tasks.task_queue_smoke_hint({}) == ""
+
+
+def test_task_queue_smoke_label_uses_operator_worker_language() -> None:
+    assert (
+        background_tasks.task_queue_smoke_label(
+            {
+                "smoke_commands": [
+                    ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
+                ]
+            }
+        )
+        == "背景執行器連線檢查"
+    )
 
 
 def test_task_queue_preflight_reuses_ready_status_cache(monkeypatch) -> None:

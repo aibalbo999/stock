@@ -48,6 +48,7 @@ UI_MODULE_NAMES = (
     "external_deployment_neo4j.py",
     "external_deployment_structured_api.py",
     "task_queue_diagnostics.py",
+    "task_failure_catalog.py",
     "task_failure_diagnostics.py",
     "analysis_operator_presenter.py",
     "analysis_task_lookup_panel.py",

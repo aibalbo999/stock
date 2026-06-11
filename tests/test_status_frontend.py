@@ -521,6 +521,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_failure_recommended_retry_enabled"] is True
     assert status["frontend"]["ui_task_observability_auto_expand_enabled"] is True
     assert status["frontend"]["ui_task_failure_diagnostics_extracted"] is True
+    assert status["frontend"]["ui_task_failure_catalog_extracted"] is True
     assert status["frontend"]["ui_task_failure_diagnostics_path"] == (
         "app/ui/task_failure_diagnostics.py"
     )
@@ -995,6 +996,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_failure_recommended_retry_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_observability_auto_expand_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_diagnostics_extracted"] is True
+    assert frontend_arch["evidence"]["ui_task_failure_catalog_extracted"] is True
     assert frontend_arch["evidence"]["ui_task_failure_category_display_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_operator_labels_enabled"] is True
     assert (

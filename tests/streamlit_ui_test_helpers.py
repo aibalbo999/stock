@@ -64,6 +64,7 @@ EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE = Path("app/ui/external_deployment_unlocker.
 EXTERNAL_DEPLOYMENT_NEO4J_SOURCE = Path("app/ui/external_deployment_neo4j.py")
 EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path("app/ui/external_deployment_structured_api.py")
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
+TASK_FAILURE_CATALOG_SOURCE = Path("app/ui/task_failure_catalog.py")
 TASK_FAILURE_DIAGNOSTICS_SOURCE = Path("app/ui/task_failure_diagnostics.py")
 ANALYSIS_OPERATOR_PRESENTER_SOURCE = Path("app/ui/analysis_operator_presenter.py")
 ANALYSIS_OPERATOR_WORKBENCH_SOURCE = Path("app/ui/analysis_operator_workbench.py")
@@ -135,6 +136,7 @@ UI_SOURCE_FILES = [
     EXTERNAL_DEPLOYMENT_NEO4J_SOURCE,
     EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE,
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
+    TASK_FAILURE_CATALOG_SOURCE,
     TASK_FAILURE_DIAGNOSTICS_SOURCE,
     ANALYSIS_OPERATOR_PRESENTER_SOURCE,
     ANALYSIS_OPERATOR_WORKBENCH_SOURCE,

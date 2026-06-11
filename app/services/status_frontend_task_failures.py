@@ -12,6 +12,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
     task_status_panel_source = ui_sources["task_status_panel.py"]
     task_status_presenter_source = ui_sources["task_status_presenter.py"]
     task_status_view_source = ui_sources["task_status_view.py"]
+    task_failure_catalog_source = ui_sources["task_failure_catalog.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     retry_submission_enabled = 'f"/tasks/{task_id}/retry"' in ui_source and (
@@ -56,6 +57,19 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "def task_failure_drilldown_rows(" not in maintenance_status_source
         and "def task_retry_options(" not in maintenance_status_source,
         "ui_task_failure_diagnostics_path": "app/ui/task_failure_diagnostics.py",
+        "ui_task_failure_catalog_extracted": (
+            (ui_dir / "task_failure_catalog.py").exists()
+            and "from app.ui.task_failure_catalog import ("
+            in task_failure_diagnostics_source
+            and "def task_failure_action_route(" in task_failure_catalog_source
+            and "def task_failure_action_route_detail(" in task_failure_catalog_source
+            and "def task_failure_operation_label(" in task_failure_catalog_source
+            and "def task_failure_category_label(" in task_failure_catalog_source
+            and "def task_failure_severity_label(" in task_failure_catalog_source
+            and "TASK_FAILURE_ACTION_ROUTE_DETAILS" in task_failure_catalog_source
+            and "CATEGORY_LABELS = {" not in task_failure_diagnostics_source
+            and "def _is_external_config_failure(" not in task_failure_diagnostics_source
+        ),
         "ui_task_failure_category_display_enabled": '"category": task_failure_category_label(row.get("error_category"))'
         in task_failure_diagnostics_source
         and '"severity": task_failure_severity_label(row.get("error_severity"))'
@@ -65,12 +79,12 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
         "ui_task_failure_operator_labels_enabled": (
-            "CATEGORY_LABELS = {" in task_failure_diagnostics_source
-            and "SEVERITY_LABELS = {" in task_failure_diagnostics_source
-            and "OPERATION_LABELS = {" in task_failure_diagnostics_source
-            and "def task_failure_operation_label(" in task_failure_diagnostics_source
-            and "def task_failure_category_label(" in task_failure_diagnostics_source
-            and "def task_failure_severity_label(" in task_failure_diagnostics_source
+            "CATEGORY_LABELS = {" in task_failure_catalog_source
+            and "SEVERITY_LABELS = {" in task_failure_catalog_source
+            and "OPERATION_LABELS = {" in task_failure_catalog_source
+            and "def task_failure_operation_label(" in task_failure_catalog_source
+            and "def task_failure_category_label(" in task_failure_catalog_source
+            and "def task_failure_severity_label(" in task_failure_catalog_source
             and "def task_failure_summary_text(" in task_failure_diagnostics_source
             and "def task_failure_next_action_text(" in task_failure_diagnostics_source
             and "def task_failure_next_steps_text(" in task_failure_diagnostics_source
@@ -86,7 +100,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "task_failure_next_action_text(task_status)" in task_status_view_source
             and "task_failure_next_steps_text(task_status)" in task_status_view_source
             and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
-            and "背景任務佇列/執行器" in task_failure_diagnostics_source
+            and "背景任務佇列/執行器" in task_failure_catalog_source
             and "先修復 Redis/Celery" not in task_failure_diagnostics_source
             and '"next_action": task_status.get("next_action")' not in task_status_view_source
         ),
@@ -132,11 +146,11 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         ),
         "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
         in task_failure_diagnostics_source
-        and "一鍵重試" in task_failure_diagnostics_source
-        and "外部配置缺失" in task_failure_diagnostics_source
-        and "需人工處理" in task_failure_diagnostics_source
+        and "一鍵重試" in task_failure_catalog_source
+        and "外部配置缺失" in task_failure_catalog_source
+        and "需人工處理" in task_failure_catalog_source
         and "任務輸入、範圍、向量庫/本機儲存或取消狀態需人工檢查"
-        in task_failure_diagnostics_source
+        in task_failure_catalog_source
         and "payload、輸入範圍" not in task_failure_diagnostics_source
         and "payload 是否支援" not in task_failure_diagnostics_source
         and "失敗處理路徑" in ui_source,

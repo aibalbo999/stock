@@ -2920,35 +2920,35 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     rows = helpers["structured_filing_api_operation_rows"](audit)
 
     assert [row["項目"] for row in rows] == [
-        "Configuration check",
-        "Provider profile",
-        "Provider decision matrix",
-        "Provider setup preview",
-        "Sample contract",
-        "Local fixture HTTP",
-        "Live smoke",
-        "Request contract",
-        "Required fields",
-        "Fallback 判斷",
+        "設定檢查",
+        "資料商設定檔",
+        "資料商選擇矩陣",
+        "資料商設定預覽",
+        "範例 JSON 合約",
+        "本機 fixture HTTP",
+        "正式 API smoke",
+        "請求格式",
+        "必備欄位",
+        "備援判斷",
     ]
-    assert rows[0]["狀態"] == "missing_required_env"
+    assert rows[0]["狀態"] == "缺少必要設定"
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in rows[0]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_TOKEN=<token>" in rows[0]["指令"]
     assert "missing=COMPANY_FILING_STRUCTURED_API_PROVIDER" in rows[0]["說明"]
     assert "endpoint=missing/invalid" in rows[0]["說明"]
     assert rows[1]["狀態"] == "待設定"
     assert "supported=tej、scrapingbee_dataset、brightdata_dataset、custom" in rows[1]["說明"]
-    assert rows[2]["狀態"] == "4 profiles / 3 token-required"
+    assert rows[2]["狀態"] == "4 組 profile / 3 組需 token"
     assert "tej:token/document_type" in rows[2]["說明"]
     assert "custom:no-token/document_types" in rows[2]["說明"]
     assert "custom local fixture" in rows[2]["說明"]
-    assert rows[3]["狀態"] == "tej / redacted"
+    assert rows[3]["狀態"] == "tej / token 已遮蔽"
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in rows[3]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_TOKEN=<token>" in rows[3]["指令"]
     assert "Authorization" in rows[3]["說明"]
     assert "token=redacted" in rows[3]["說明"]
     assert "document_type" in rows[3]["說明"]
-    assert rows[4]["狀態"] == "ready"
+    assert rows[4]["狀態"] == "可用"
     assert "--sample-json examples/structured_company_filing_sample.json" in rows[4]["指令"]
     assert "raw_rows=1；documents=1；errors=0" in rows[4]["說明"]
     assert "row_container=documents" in rows[4]["說明"]
@@ -2968,8 +2968,22 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "auth=bearer_optional" in rows[7]["說明"]
     assert "ticker,company_name,limit,document_types" in rows[7]["說明"]
     assert "title/name/headline/doc_title" in rows[8]["說明"]
-    assert rows[9]["狀態"] == "not_configured"
+    assert rows[9]["狀態"] == "未設定"
     assert "missing_structured_api_provider_or_url" in rows[9]["說明"]
+    rendered = str(rows)
+    for raw_label in (
+        "Configuration check",
+        "Provider profile",
+        "Provider decision matrix",
+        "Provider setup preview",
+        "Sample contract",
+        "Live smoke",
+        "Request contract",
+        "Required fields",
+        "missing_required_env",
+        "not_configured",
+    ):
+        assert raw_label not in rendered
 
 
 def test_upgrade_audit_html_is_readable_and_not_color_only() -> None:

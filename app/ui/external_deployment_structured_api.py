@@ -40,13 +40,15 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
     )
     return [
         {
-            "項目": "Configuration check",
-            "狀態": _structured_filing_configuration_status(configuration_check),
+            "項目": "設定檢查",
+            "狀態": _structured_filing_status_label(
+                _structured_filing_configuration_status(configuration_check)
+            ),
             "指令": structured_filing_env_hint(runtime),
             "說明": _structured_filing_configuration_detail(configuration_check),
         },
         {
-            "項目": "Provider profile",
+            "項目": "資料商設定檔",
             "狀態": "已完整" if runtime.get("configuration_ready") else "待設定",
             "指令": structured_filing_env_hint(runtime),
             "說明": _structured_filing_provider_detail(
@@ -56,13 +58,13 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             ),
         },
         {
-            "項目": "Provider decision matrix",
+            "項目": "資料商選擇矩陣",
             "狀態": _structured_filing_provider_matrix_status(runtime),
             "指令": structured_filing_env_hint(runtime),
             "說明": _structured_filing_provider_matrix_detail(runtime),
         },
         {
-            "項目": "Provider setup preview",
+            "項目": "資料商設定預覽",
             "狀態": _structured_filing_provider_setup_status(provider_setup_preview),
             "指令": _structured_filing_provider_setup_command(
                 provider_setup_preview,
@@ -71,38 +73,40 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": _structured_filing_provider_setup_detail(provider_setup_preview),
         },
         {
-            "項目": "Sample contract",
-            "狀態": str(sample_contract.get("status") or "可執行"),
+            "項目": "範例 JSON 合約",
+            "狀態": _structured_filing_status_label(sample_contract.get("status") or "可執行"),
             "指令": structured_filing_sample_command(runtime),
             "說明": _structured_filing_sample_contract_detail(sample_contract),
         },
         {
-            "項目": "Local fixture HTTP",
+            "項目": "本機 fixture HTTP",
             "狀態": _structured_filing_local_fixture_status(runtime),
             "指令": structured_filing_local_fixture_command(runtime),
             "說明": _structured_filing_local_fixture_detail(runtime),
         },
         {
-            "項目": "Live smoke",
+            "項目": "正式 API smoke",
             "狀態": "可執行" if runtime.get("configured") else "待設定",
             "指令": structured_filing_live_smoke_command(runtime),
             "說明": "設定 provider URL/token 後，驗證 live API、欄位轉換與公司/文件類型命中。",
         },
         {
-            "項目": "Request contract",
+            "項目": "請求格式",
             "狀態": str(contract.get("method") or "GET"),
             "指令": "-",
             "說明": _structured_filing_request_contract_detail(contract),
         },
         {
-            "項目": "Required fields",
+            "項目": "必備欄位",
             "狀態": "必備",
             "指令": "-",
             "說明": _structured_filing_required_fields_detail(evidence, runtime),
         },
         {
-            "項目": "Fallback 判斷",
-            "狀態": "ready" if runtime.get("configured") else "not_configured",
+            "項目": "備援判斷",
+            "狀態": _structured_filing_status_label(
+                "ready" if runtime.get("configured") else "not_configured"
+            ),
             "指令": "-",
             "說明": _structured_filing_fallback_detail(runtime),
         },
@@ -145,7 +149,7 @@ def _structured_filing_provider_setup_status(preview: dict) -> str:
     if not preview:
         return "未提供"
     provider = str(preview.get("profile_key") or preview.get("provider") or "-")
-    return f"{provider} / redacted" if preview.get("token_redacted") else provider
+    return f"{provider} / token 已遮蔽" if preview.get("token_redacted") else provider
 
 
 def _structured_filing_provider_setup_command(preview: dict, runtime: dict) -> str:
@@ -243,7 +247,7 @@ def _structured_filing_provider_matrix_status(runtime: dict) -> str:
     if not isinstance(matrix, list) or not matrix:
         return "未提供"
     paid_count = sum(1 for row in matrix if isinstance(row, dict) and row.get("token_required"))
-    return f"{len(matrix)} profiles / {paid_count} token-required"
+    return f"{len(matrix)} 組 profile / {paid_count} 組需 token"
 
 
 def _structured_filing_provider_matrix_detail(runtime: dict) -> str:
@@ -348,6 +352,20 @@ def _structured_filing_configuration_status(configuration_check: dict) -> str:
     if configuration_check.get("ready"):
         return "ready"
     return str(configuration_check.get("status") or "missing_required_env")
+
+
+def _structured_filing_status_label(value: object) -> str:
+    status_labels = {
+        "ready": "可用",
+        "missing_required_env": "缺少必要設定",
+        "not_configured": "未設定",
+        "configured": "已設定",
+        "degraded": "需處理",
+        "failed": "需處理",
+        "unknown": "未評估",
+    }
+    text = str(value or "unknown")
+    return status_labels.get(text, text)
 
 
 def _structured_filing_configuration_detail(configuration_check: dict) -> str:

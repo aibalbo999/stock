@@ -60,7 +60,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "def structured_filing_api_operation_rows(" in external_deployment_source
         and "structured_filing_api_operation_rows(upgrade_audit)" in ui_source
         and "結構化文件 API 操作提示" in ui_source
-        and "Configuration check" in external_deployment_structured_api_source
+        and "設定檢查" in external_deployment_structured_api_source
         and "configuration_check" in external_deployment_structured_api_source
         and "Configuration check" in external_deployment_unlocker_source
         and "configuration_check" in external_deployment_unlocker_source
@@ -131,6 +131,29 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "from app.ui.external_deployment_unlocker import" in external_deployment_source
         and "from app.ui.external_deployment_neo4j import" in external_deployment_source
         and "from app.ui.external_deployment_structured_api import" in external_deployment_source,
+        "ui_structured_filing_api_operation_operator_labels_enabled": (
+            "def _structured_filing_status_label(" in external_deployment_structured_api_source
+            and '"設定檢查"' in external_deployment_structured_api_source
+            and '"資料商設定檔"' in external_deployment_structured_api_source
+            and '"資料商選擇矩陣"' in external_deployment_structured_api_source
+            and '"資料商設定預覽"' in external_deployment_structured_api_source
+            and '"範例 JSON 合約"' in external_deployment_structured_api_source
+            and '"正式 API smoke"' in external_deployment_structured_api_source
+            and '"請求格式"' in external_deployment_structured_api_source
+            and '"必備欄位"' in external_deployment_structured_api_source
+            and '"備援判斷"' in external_deployment_structured_api_source
+            and '"missing_required_env": "缺少必要設定"'
+            in external_deployment_structured_api_source
+            and '"not_configured": "未設定"' in external_deployment_structured_api_source
+            and "Configuration check" not in external_deployment_structured_api_source
+            and "Provider profile" not in external_deployment_structured_api_source
+            and "Provider decision matrix" not in external_deployment_structured_api_source
+            and "Provider setup preview" not in external_deployment_structured_api_source
+            and "Sample contract" not in external_deployment_structured_api_source
+            and "Live smoke" not in external_deployment_structured_api_source
+            and "Request contract" not in external_deployment_structured_api_source
+            and "Required fields" not in external_deployment_structured_api_source
+        ),
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",
             "app/services/external_deployment_readiness.py",

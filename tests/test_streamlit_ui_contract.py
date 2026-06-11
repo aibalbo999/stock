@@ -204,6 +204,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     maintenance_progress_presenter_source = (
         ui.MAINTENANCE_PROGRESS_PRESENTER_SOURCE.read_text()
     )
+    maintenance_progress_view_source = ui.MAINTENANCE_PROGRESS_VIEW_SOURCE.read_text()
+    maintenance_panels_source = ui.MAINTENANCE_PANELS_SOURCE.read_text()
     maintenance_incident_presenter_source = (
         ui.MAINTENANCE_INCIDENT_PRESENTER_SOURCE.read_text()
     )
@@ -218,7 +220,17 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def optimization_progress_operator_summary(" not in maintenance_status_source
     assert "def optimization_progress_scope_summary(" not in maintenance_status_source
     assert 'summary["free_validation"] = free_validation' in maintenance_progress_presenter_source
-    assert 'summary.get("free_validation")' in source
+    assert "from app.ui.maintenance_progress_view import (" in maintenance_panels_source
+    assert "optimization_progress_operator_summary_html(summary)" in maintenance_panels_source
+    assert "optimization_progress_scope_summary_html(summary)" in maintenance_panels_source
+    assert "import streamlit" not in maintenance_progress_view_source
+    assert "def optimization_progress_operator_summary_html(" in maintenance_progress_view_source
+    assert "def optimization_progress_scope_summary_html(" in maintenance_progress_view_source
+    assert 'summary.get("free_validation")' in maintenance_progress_view_source
+    assert 'class="optimization-progress-operator-summary' in maintenance_progress_view_source
+    assert 'class="optimization-progress-scope-summary' in maintenance_progress_view_source
+    assert 'class="optimization-progress-operator-summary' not in maintenance_panels_source
+    assert 'class="optimization-progress-scope-summary' not in maintenance_panels_source
     assert "_render_incident_priority_summary(incidents)" in source
     assert "from app.ui.maintenance_incident_presenter import (" in (
         system_settings_maintenance_source

@@ -41,6 +41,7 @@ DATA_ENRICHMENT_COMMON_VIEW_SOURCE = Path("app/ui/data_enrichment_common_view.py
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PROGRESS_PRESENTER_SOURCE = Path("app/ui/maintenance_progress_presenter.py")
+MAINTENANCE_PROGRESS_VIEW_SOURCE = Path("app/ui/maintenance_progress_view.py")
 MAINTENANCE_PANELS_SOURCE = Path("app/ui/maintenance_panels.py")
 MAINTENANCE_DEPLOYMENT_PANEL_SOURCE = Path("app/ui/maintenance_deployment_panel.py")
 MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE = Path("app/ui/maintenance_deployment_presenter.py")
@@ -102,6 +103,7 @@ UI_SOURCE_FILES = [
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,
     MAINTENANCE_PROGRESS_PRESENTER_SOURCE,
+    MAINTENANCE_PROGRESS_VIEW_SOURCE,
     MAINTENANCE_PANELS_SOURCE,
     MAINTENANCE_DEPLOYMENT_PANEL_SOURCE,
     MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE,

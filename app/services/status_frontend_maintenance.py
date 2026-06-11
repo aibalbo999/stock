@@ -14,6 +14,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     maintenance_incident_view_source = ui_sources["maintenance_incident_view.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     maintenance_progress_presenter_source = ui_sources["maintenance_progress_presenter.py"]
+    maintenance_progress_view_source = ui_sources["maintenance_progress_view.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
@@ -238,13 +239,34 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and 'class="incident-card' not in maintenance_incident_presenter_source
             and 'class="incident-inbox' not in maintenance_incident_presenter_source
         ),
+        "ui_optimization_progress_view_extracted": (
+            (ui_dir / "maintenance_progress_view.py").exists()
+            and "from app.ui.maintenance_progress_view import ("
+            in maintenance_panels_source
+            and "import streamlit" not in maintenance_progress_view_source
+            and "def optimization_progress_operator_summary_html("
+            in maintenance_progress_view_source
+            and "def optimization_progress_scope_summary_html("
+            in maintenance_progress_view_source
+            and 'class="optimization-progress-operator-summary'
+            in maintenance_progress_view_source
+            and 'class="optimization-progress-scope-summary'
+            in maintenance_progress_view_source
+            and 'class="optimization-progress-operator-summary'
+            not in maintenance_panels_source
+            and 'class="optimization-progress-scope-summary'
+            not in maintenance_panels_source
+        ),
         "ui_optimization_progress_operator_summary_enabled": (
             "def optimization_progress_operator_summary("
             in maintenance_progress_presenter_source
             and "optimization_progress_operator_summary(progress)" in maintenance_panels_source
             and "def _render_optimization_progress_operator_summary("
             in maintenance_panels_source
-            and "optimization-progress-operator-summary" in maintenance_panels_source
+            and "optimization_progress_operator_summary_html(summary)"
+            in maintenance_panels_source
+            and "optimization-progress-operator-summary"
+            in maintenance_progress_view_source
             and ".optimization-progress-operator-summary" in style_source
             and "核心優化已可用，先驗證本機選配"
             in maintenance_progress_presenter_source
@@ -288,7 +310,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             "def _action_free_validation_summary(" in maintenance_progress_presenter_source
             and 'summary["free_validation"] = free_validation'
             in maintenance_progress_presenter_source
-            and 'summary.get("free_validation")' in maintenance_panels_source
+            and 'summary.get("free_validation")' in maintenance_progress_view_source
         ),
         "ui_optimization_progress_scope_summary_enabled": (
             "def optimization_progress_scope_summary("
@@ -297,7 +319,9 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in maintenance_panels_source
             and "def _render_optimization_progress_scope_summary("
             in maintenance_panels_source
-            and "optimization-progress-scope-summary" in maintenance_panels_source
+            and "optimization_progress_scope_summary_html(summary)"
+            in maintenance_panels_source
+            and "optimization-progress-scope-summary" in maintenance_progress_view_source
             and ".optimization-progress-scope-summary" in style_source
             and "優化進度與升級稽核分母不同"
             in maintenance_progress_presenter_source

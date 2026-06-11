@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 import streamlit as st
 
 from app.ui.maintenance_ai_panels import (
@@ -10,6 +8,10 @@ from app.ui.maintenance_ai_panels import (
 )
 from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel
 from app.ui.maintenance_deployment_panel import render_external_deployment_panel
+from app.ui.maintenance_progress_view import (
+    optimization_progress_operator_summary_html,
+    optimization_progress_scope_summary_html,
+)
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
     maintenance_overview_status_label,
@@ -156,19 +158,7 @@ def _render_optimization_progress_scope_summary(summary: dict[str, str]) -> None
     if not summary:
         return
     st.markdown(
-        f"""<section class="optimization-progress-scope-summary is-{escape(summary.get("state", "info"))}" aria-label="優化進度範圍說明">
-<div>
-<span>範圍說明</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-</div>
-<ul>
-<li>{escape(summary.get("objective", ""))}</li>
-<li>{escape(summary.get("audit", ""))}</li>
-<li>{escape(summary.get("excluded", ""))}</li>
-</ul>
-<p>{escape(summary.get("note", ""))}</p>
-</section>""",
+        optimization_progress_scope_summary_html(summary),
         unsafe_allow_html=True,
     )
 
@@ -176,31 +166,8 @@ def _render_optimization_progress_scope_summary(summary: dict[str, str]) -> None
 def _render_optimization_progress_operator_summary(summary: dict[str, str]) -> None:
     if not summary:
         return
-    command = str(summary.get("command") or "-").strip()
-    command_html = ""
-    if command and command != "-":
-        command_html = f"<code>{escape(command)}</code>"
-    action_items = [
-        str(summary.get("local_action") or "").strip(),
-        str(summary.get("paid_external") or "").strip(),
-        str(summary.get("free_validation") or "").strip(),
-        str(summary.get("next_step") or "").strip(),
-    ]
-    action_items_html = "".join(
-        f"<li>{escape(item)}</li>" for item in action_items if item
-    )
     st.markdown(
-        f"""<section class="optimization-progress-operator-summary is-{escape(summary.get("state", "ready"))}" aria-label="優化進度操作者摘要">
-<div>
-<span>操作者摘要</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-</div>
-<ul>
-{action_items_html}
-</ul>
-{command_html}
-</section>""",
+        optimization_progress_operator_summary_html(summary),
         unsafe_allow_html=True,
     )
 

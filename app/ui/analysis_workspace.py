@@ -35,8 +35,78 @@ from app.ui.report_state import hydrate_active_report_result
 from app.ui.task_status_panel import render_task_status_panel
 
 
-def analysis_submission_ready(topic: str, quota_confirmed: bool) -> bool:
-    return bool(topic.strip() and quota_confirmed)
+def analysis_submission_ready(
+    topic: str,
+    quota_confirmed: bool,
+    *,
+    ai_discovery_mode: bool = True,
+    manual_tickers: list[str] | None = None,
+) -> bool:
+    if not topic.strip() or not quota_confirmed:
+        return False
+    if not ai_discovery_mode and not _selected_manual_tickers(manual_tickers):
+        return False
+    return True
+
+
+def analysis_submission_summary(
+    *,
+    topic: str,
+    analysis_mode_label: str,
+    discovery_limit: int,
+    evidence_limit: int,
+    lookback_days: int,
+    ai_discovery_mode: bool,
+    manual_tickers: list[str] | None,
+    quota_confirmed: bool,
+) -> dict[str, str]:
+    topic_label = topic.strip() or "尚未輸入主題"
+    manual_ticker_count = len(_selected_manual_tickers(manual_tickers))
+    mode_parts = (
+        [analysis_mode_label]
+        if ai_discovery_mode
+        else [f"手動個股 {manual_ticker_count} 檔", analysis_mode_label]
+    )
+    detail = "｜".join(
+        [
+            topic_label,
+            *mode_parts,
+            f"資料抓取 {int(discovery_limit)}",
+            f"引用上限 {int(evidence_limit)}",
+            f"回看 {int(lookback_days)} 天",
+        ]
+    )
+    if not topic.strip():
+        return {
+            "state": "attention",
+            "title": "先補齊送出條件",
+            "detail": detail,
+            "next_step": "請先輸入分析主題。",
+            "disabled_reason": "尚未輸入分析主題",
+        }
+    if not quota_confirmed:
+        return {
+            "state": "attention",
+            "title": "先確認額度消耗",
+            "detail": detail,
+            "next_step": "勾選額度確認後才能送出背景任務。",
+            "disabled_reason": "尚未確認 AI/API 額度消耗",
+        }
+    if not ai_discovery_mode and manual_ticker_count == 0:
+        return {
+            "state": "attention",
+            "title": "先補齊送出條件",
+            "detail": detail,
+            "next_step": "手動模式請先選擇至少一檔股票。",
+            "disabled_reason": "手動模式尚未選擇股票",
+        }
+    return {
+        "state": "ready",
+        "title": "可送出分析背景任務",
+        "detail": detail,
+        "next_step": "按「執行分析」送出背景任務。",
+        "disabled_reason": "",
+    }
 
 
 def render_analysis_workspace() -> None:
@@ -155,10 +225,26 @@ def render_analysis_workspace() -> None:
                 st.caption("請先輸入分析主題。")
             elif not analysis_quota_confirmed:
                 st.caption("避免誤觸與免費額度消耗；確認主題、分析強度與資料抓取強度後才會送出。")
+            submission_summary = analysis_submission_summary(
+                topic=topic,
+                analysis_mode_label=analysis_mode_label,
+                discovery_limit=int(discovery_limit),
+                evidence_limit=int(evidence_limit),
+                lookback_days=int(lookback_days),
+                ai_discovery_mode=bool(ai_discovery_mode),
+                manual_tickers=tickers,
+                quota_confirmed=bool(analysis_quota_confirmed),
+            )
+            _render_analysis_submission_summary(submission_summary)
             run_sync = st.form_submit_button(
                 "執行分析",
                 type="primary",
-                disabled=not analysis_submission_ready(topic, analysis_quota_confirmed),
+                disabled=not analysis_submission_ready(
+                    topic,
+                    analysis_quota_confirmed,
+                    ai_discovery_mode=bool(ai_discovery_mode),
+                    manual_tickers=tickers,
+                ),
             )
 
         if run_sync:
@@ -291,6 +377,24 @@ def render_analysis_workspace() -> None:
                 """,
                 unsafe_allow_html=True,
             )
+
+
+def _selected_manual_tickers(manual_tickers: list[str] | None) -> list[str]:
+    if not isinstance(manual_tickers, list):
+        return []
+    return [ticker for ticker in (str(value).strip() for value in manual_tickers) if ticker]
+
+
+def _render_analysis_submission_summary(summary: dict[str, str]) -> None:
+    st.markdown(
+        f"""<section class="analysis-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="分析送出前確認">
+<span>送出前確認</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_operator_workbench() -> None:

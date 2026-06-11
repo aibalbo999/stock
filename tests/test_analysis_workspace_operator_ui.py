@@ -7,6 +7,86 @@ def test_analysis_submission_ready_requires_topic_and_quota_confirmation() -> No
     assert analysis_workspace.analysis_submission_ready("AI 產業鏈", True) is True
     assert analysis_workspace.analysis_submission_ready("AI 產業鏈", False) is False
     assert analysis_workspace.analysis_submission_ready("  ", True) is False
+    assert (
+        analysis_workspace.analysis_submission_ready(
+            "AI 產業鏈",
+            True,
+            ai_discovery_mode=False,
+            manual_tickers=[],
+        )
+        is False
+    )
+    assert (
+        analysis_workspace.analysis_submission_ready(
+            "AI 產業鏈",
+            True,
+            ai_discovery_mode=False,
+            manual_tickers=["2330"],
+        )
+        is True
+    )
+
+
+def test_analysis_submission_summary_shows_ready_configuration() -> None:
+    assert hasattr(analysis_workspace, "analysis_submission_summary")
+
+    summary = analysis_workspace.analysis_submission_summary(
+        topic="AI 伺服器供應鏈",
+        analysis_mode_label="深度研究",
+        discovery_limit=12,
+        evidence_limit=180,
+        lookback_days=30,
+        ai_discovery_mode=True,
+        manual_tickers=[],
+        quota_confirmed=True,
+    )
+
+    assert summary == {
+        "state": "ready",
+        "title": "可送出分析背景任務",
+        "detail": "AI 伺服器供應鏈｜深度研究｜資料抓取 12｜引用上限 180｜回看 30 天",
+        "next_step": "按「執行分析」送出背景任務。",
+        "disabled_reason": "",
+    }
+
+
+def test_analysis_submission_summary_explains_missing_manual_tickers() -> None:
+    summary = analysis_workspace.analysis_submission_summary(
+        topic="AI 伺服器供應鏈",
+        analysis_mode_label="標準研究",
+        discovery_limit=5,
+        evidence_limit=120,
+        lookback_days=14,
+        ai_discovery_mode=False,
+        manual_tickers=[],
+        quota_confirmed=True,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "先補齊送出條件",
+        "detail": "AI 伺服器供應鏈｜手動個股 0 檔｜標準研究｜資料抓取 5｜引用上限 120｜回看 14 天",
+        "next_step": "手動模式請先選擇至少一檔股票。",
+        "disabled_reason": "手動模式尚未選擇股票",
+    }
+
+
+def test_analysis_submission_summary_explains_quota_confirmation() -> None:
+    summary = analysis_workspace.analysis_submission_summary(
+        topic="AI 伺服器供應鏈",
+        analysis_mode_label="快速預覽",
+        discovery_limit=2,
+        evidence_limit=80,
+        lookback_days=7,
+        ai_discovery_mode=True,
+        manual_tickers=[],
+        quota_confirmed=False,
+    )
+
+    assert summary["state"] == "attention"
+    assert summary["title"] == "先確認額度消耗"
+    assert summary["next_step"] == "勾選額度確認後才能送出背景任務。"
+    assert summary["disabled_reason"] == "尚未確認 AI/API 額度消耗"
 
 
 def test_operator_decision_card_uses_readable_target_caption() -> None:

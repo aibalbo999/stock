@@ -516,6 +516,7 @@ textarea:focus,
 }
 .operator-workbench,
 .operator-decision-card,
+.analysis-submission-summary,
 .latest-report-picker,
 .report-health-strip,
 .report-lifecycle-strip,
@@ -592,6 +593,44 @@ textarea:focus,
 .latest-report-picker strong {
     color: var(--stock-text);
     font-size: 1rem;
+    line-height: 1.45;
+}
+.analysis-submission-summary {
+    display: grid;
+    gap: 5px;
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-left: 4px solid var(--stock-accent);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.analysis-submission-summary.is-attention {
+    border-left-color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+}
+.analysis-submission-summary span {
+    color: var(--stock-accent);
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+.analysis-submission-summary.is-attention span {
+    color: var(--stock-warning);
+}
+.analysis-submission-summary strong {
+    color: var(--stock-text);
+    font-size: 0.96rem;
+    line-height: 1.35;
+}
+.analysis-submission-summary p {
+    color: var(--stock-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+.analysis-submission-summary em {
+    color: var(--stock-text);
+    font-size: 0.86rem;
+    font-style: normal;
+    font-weight: 700;
     line-height: 1.45;
 }
 .operator-workbench-head {

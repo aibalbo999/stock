@@ -20,12 +20,24 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "我了解這會送出分析背景任務並消耗 AI/API 額度"
             in analysis_workspace_source
             and "避免誤觸與免費額度消耗" in analysis_workspace_source
-            and "disabled=not analysis_submission_ready(topic, analysis_quota_confirmed)"
-            in analysis_workspace_source
+            and "disabled=not analysis_submission_ready(" in analysis_workspace_source
+            and "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_workspace_source
+            and "manual_tickers=tickers" in analysis_workspace_source
             and 'submit_api_task(\n                    "/pipeline/run_discovered_async"'
             in analysis_workspace_source
             and 'submit_api_task(\n                    "/reports/generate_async"'
             in analysis_workspace_source
+        ),
+        "ui_analysis_submission_preflight_summary_enabled": (
+            "def analysis_submission_summary(" in analysis_workspace_source
+            and "def _render_analysis_submission_summary(" in analysis_workspace_source
+            and "analysis_submission_summary(" in analysis_workspace_source
+            and "_render_analysis_submission_summary(submission_summary)"
+            in analysis_workspace_source
+            and 'class="analysis-submission-summary' in analysis_workspace_source
+            and "送出前確認" in analysis_workspace_source
+            and "可送出分析背景任務" in analysis_workspace_source
+            and "手動模式請先選擇至少一檔股票" in analysis_workspace_source
         ),
         "ui_operator_quota_summary_enabled": (
             "def quota_operator_summary(" in operator_status_source

@@ -38,6 +38,7 @@ from app.ui.task_failure_diagnostics import (
     task_failure_category_daily_rows,
     task_failure_category_summary_rows,
     task_operation_summary_rows,
+    task_summary_alert_rows,
     task_retry_option_index,
 )
 from streamlit_ui_test_helpers import load_report_helpers
@@ -1376,6 +1377,45 @@ def test_task_observability_summary_rows_use_operator_labels() -> None:
     ]
     assert "task_queue" not in str(category_rows)
     assert "market_refresh" not in str(operation_rows)
+
+
+def test_task_observability_alert_rows_hide_raw_diagnostic_keys() -> None:
+    task_summary = {
+        "alerts": [
+            {
+                "severity": "error",
+                "code": "task_failure_task_queue",
+                "error_category": "task_queue",
+                "count": 1,
+                "message": (
+                    "task_queue.ready=false; worker_online=false; "
+                    "see /services/status"
+                ),
+                "next_steps": [
+                    "確認 /services/status 的 task_queue.ready 與 worker_online。",
+                    "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
+                ],
+            }
+        ]
+    }
+
+    rows = task_summary_alert_rows(task_summary)
+
+    assert rows == [
+        {
+            "severity": "error",
+            "severity_label": "錯誤",
+            "message": "背景任務服務近期出現 1 次，請先依下方步驟處理。",
+            "next_steps": (
+                "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+                "修復後重新送出任務。"
+            ),
+        }
+    ]
+    rendered = str(rows)
+    assert "/services/status" not in rendered
+    assert "task_queue.ready" not in rendered
+    assert "worker_online" not in rendered
 
 
 def test_task_observability_expander_opens_when_operator_action_is_needed() -> None:

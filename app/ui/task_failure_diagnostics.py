@@ -213,6 +213,22 @@ def task_failure_category_daily_rows(task_summary: dict) -> list[dict]:
     ]
 
 
+def task_summary_alert_rows(task_summary: dict) -> list[dict]:
+    alerts = task_summary.get("alerts") if isinstance(task_summary, dict) else None
+    if not isinstance(alerts, list):
+        return []
+    return [
+        {
+            "severity": _task_alert_severity(alert),
+            "severity_label": task_failure_severity_label(alert.get("severity")),
+            "message": task_summary_alert_message(alert),
+            "next_steps": task_summary_alert_next_steps(alert),
+        }
+        for alert in alerts
+        if isinstance(alert, dict)
+    ]
+
+
 def task_failure_action_route(row: dict) -> str:
     if _is_external_config_failure(row):
         return "外部配置缺失"
@@ -261,6 +277,30 @@ def task_failure_next_steps_text(row: dict) -> str:
             "修復後重新送出任務。"
         )
     return _task_next_steps_text(row)
+
+
+def task_summary_alert_message(alert: dict) -> str:
+    category = str(alert.get("error_category") or "").strip()
+    message = str(alert.get("message") or "").strip()
+    count = int(alert.get("count") or 0)
+    if _has_raw_operator_diagnostics(message):
+        label = task_failure_category_label(category or "unknown")
+        count_text = f"近期出現 {count} 次" if count else "需要處理"
+        return f"{label}{count_text}，請先依下方步驟處理。"
+    if message:
+        return _operator_alert_text(message)
+    code = str(alert.get("code") or "").strip()
+    if code:
+        return _operator_alert_text(code.replace("_", " "))
+    return "背景任務需要檢查，請先查看下方處理步驟。"
+
+
+def task_summary_alert_next_steps(alert: dict) -> str:
+    category = str(alert.get("error_category") or "").strip()
+    if category:
+        return task_failure_next_steps_text(alert)
+    next_steps = _task_next_steps_text(alert)
+    return _operator_alert_text(next_steps) if next_steps != "-" else "-"
 
 
 def task_failure_retry_guarded(row: dict) -> bool:
@@ -335,3 +375,43 @@ def _task_next_steps_text(row: dict) -> str:
         return "-"
     steps = [str(step).strip() for step in next_steps if str(step).strip()]
     return "；".join(steps) if steps else "-"
+
+
+def _task_alert_severity(alert: dict) -> str:
+    severity = str(alert.get("severity") or "info").strip().casefold()
+    if severity in {"error", "warning", "success", "info"}:
+        return severity
+    if severity == "warn":
+        return "warning"
+    return "info"
+
+
+def _has_raw_operator_diagnostics(text: str) -> bool:
+    return any(
+        marker in text
+        for marker in (
+            "/services/status",
+            "task_queue.",
+            "worker_online",
+            "processing_ready",
+            "broker_ok",
+            "backend_ok",
+            "submission_contract_ready",
+        )
+    )
+
+
+def _operator_alert_text(text: str) -> str:
+    replacements = {
+        "/services/status": "系統設定 > 維護 > 背景任務觀測",
+        "task_queue.ready": "Queue 提交狀態",
+        "worker_online": "Celery worker 是否在線",
+        "processing_ready": "Queue 執行狀態",
+        "broker_ok": "Redis broker 連線",
+        "backend_ok": "Redis backend 連線",
+        "submission_contract_ready": "Celery 任務契約",
+    }
+    result = str(text or "").strip()
+    for raw, label in replacements.items():
+        result = result.replace(raw, label)
+    return result

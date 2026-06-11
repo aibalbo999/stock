@@ -91,6 +91,18 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and 'st.dataframe(task_summary["error_category_daily"]'
             not in maintenance_task_panels_source
         ),
+        "ui_task_observability_alert_operator_guidance_enabled": (
+            "def task_summary_alert_rows(" in task_failure_diagnostics_source
+            and "def task_summary_alert_message(" in task_failure_diagnostics_source
+            and "def task_summary_alert_next_steps(" in task_failure_diagnostics_source
+            and "task_failure_next_steps_text(alert)" in task_failure_diagnostics_source
+            and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
+            and "Queue 提交狀態" in task_failure_diagnostics_source
+            and "Celery worker 是否在線" in task_failure_diagnostics_source
+            and "task_summary_alert_rows(task_summary)" in maintenance_task_panels_source
+            and 'alert.get("code")' not in maintenance_task_panels_source
+            and 'alert.get("next_steps") or []' not in maintenance_task_panels_source
+        ),
         "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
         in task_failure_diagnostics_source
         and "一鍵重試" in task_failure_diagnostics_source

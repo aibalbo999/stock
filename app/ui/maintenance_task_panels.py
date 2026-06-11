@@ -12,6 +12,7 @@ from app.ui.task_failure_diagnostics import (
     task_failure_category_summary_rows,
     task_failure_drilldown_rows,
     task_operation_summary_rows,
+    task_summary_alert_rows,
     task_retry_option_index,
     task_retry_options,
 )
@@ -77,16 +78,18 @@ def task_observability_expander_expanded(task_summary: dict) -> bool:
 
 
 def _render_task_summary_alerts(task_summary: dict) -> None:
-    task_alerts = [alert for alert in task_summary.get("alerts") or [] if isinstance(alert, dict)]
+    task_alerts = task_summary_alert_rows(task_summary)
     for alert in task_alerts:
-        message = str(alert.get("message") or alert.get("code") or "")
-        next_steps = [str(step) for step in alert.get("next_steps") or [] if str(step).strip()]
-        if next_steps:
-            message = f"{message} 建議：" + "；".join(next_steps)
+        message = str(alert.get("message") or "")
+        next_steps = str(alert.get("next_steps") or "").strip()
+        if next_steps and next_steps != "-":
+            message = f"{message} 建議：{next_steps}"
         if alert.get("severity") == "error":
             st.error(message)
         elif alert.get("severity") == "warning":
             st.warning(message)
+        elif alert.get("severity") == "success":
+            st.success(message)
         else:
             st.info(message)
 

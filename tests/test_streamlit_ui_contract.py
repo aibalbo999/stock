@@ -300,6 +300,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "避免誤觸公司文件匯入" in source
     assert "disabled=not filing_text_ready or not filing_text_confirmed" in source
     assert 'or schedule_task == "latest_report_update"' in source
+    assert "schedule_save_confirmed = st.checkbox(" in source
+    assert 'key="confirm_schedule_settings_save"' in source
+    assert "我了解這會更新自動排程與每日維護設定" in source
+    assert "避免誤觸排程變更" in source
+    assert "disabled=not schedule_ready or not schedule_save_confirmed" in source
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source
     assert 'report_download_cols = st.columns(2, gap="small")' in source

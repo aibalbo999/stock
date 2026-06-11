@@ -45,6 +45,15 @@ def frontend_settings_core_status(source_context: FrontendSourceContext) -> dict
             "app/ui/system_settings_scope.py",
             "app/ui/system_settings_schedule.py",
         ],
+        "ui_schedule_settings_save_confirmation_enabled": (
+            "schedule_save_confirmed = st.checkbox(" in system_settings_schedule_source
+            and 'key="confirm_schedule_settings_save"' in system_settings_schedule_source
+            and "我了解這會更新自動排程與每日維護設定"
+            in system_settings_schedule_source
+            and "避免誤觸排程變更" in system_settings_schedule_source
+            and "disabled=not schedule_ready or not schedule_save_confirmed"
+            in system_settings_schedule_source
+        ),
         "ui_api_client_extracted": (ui_dir / "api_client.py").exists()
         and "def api_task_post(" in api_client_source
         and "def request_error_message(" in api_client_source

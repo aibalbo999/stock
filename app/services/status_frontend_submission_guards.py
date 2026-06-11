@@ -75,6 +75,11 @@ RISKY_SUBMISSION_GUARDS: tuple[dict[str, str], ...] = (
         "guard_key": "ui_task_status_operation_confirmation_gate_enabled",
         "surface": "task_status_panel",
     },
+    {
+        "id": "schedule_settings_save",
+        "guard_key": "ui_schedule_settings_save_confirmation_enabled",
+        "surface": "system_settings_schedule",
+    },
 )
 
 

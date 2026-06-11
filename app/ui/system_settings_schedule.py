@@ -119,7 +119,21 @@ def render_schedule_tab(settings_tickers: list[str]) -> None:
     )
     if not schedule_ready:
         st.caption("固定主題每日產報需填入主題並至少選擇一檔白名單股票。")
-    if st.button("儲存排程設定", type="primary", disabled=not schedule_ready):
+    schedule_save_confirmed = False
+    if schedule_ready:
+        schedule_save_confirmed = st.checkbox(
+            "我了解這會更新自動排程與每日維護設定",
+            value=False,
+            key="confirm_schedule_settings_save",
+        )
+        st.caption(
+            "避免誤觸排程變更；確認每日排程、資料刷新、重跑報告與自動維護清理設定後再儲存。"
+        )
+    if st.button(
+        "儲存排程設定",
+        type="primary",
+        disabled=not schedule_ready or not schedule_save_confirmed,
+    ):
         _save_schedule_config(
             enabled=schedule_enabled,
             task=schedule_task,

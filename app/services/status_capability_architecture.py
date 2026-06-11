@@ -252,6 +252,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_maintenance_panels_extracted")
             and frontend_status.get("ui_maintenance_cleanup_confirmation_gate_enabled")
             and frontend_status.get("ui_system_settings_tabs_extracted")
+            and frontend_status.get("ui_schedule_settings_save_confirmation_enabled")
             and frontend_status.get("ui_api_client_extracted")
             and frontend_status.get("ui_api_loaders_extracted")
             and frontend_status.get("ui_background_task_client_extracted")

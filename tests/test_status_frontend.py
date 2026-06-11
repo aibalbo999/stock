@@ -333,6 +333,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/system_settings_scope.py",
         "app/ui/system_settings_schedule.py",
     ]
+    assert status["frontend"]["ui_schedule_settings_save_confirmation_enabled"] is True
     assert status["frontend"]["ui_api_client_extracted"] is True
     assert status["frontend"]["ui_api_client_path"] == "app/ui/api_client.py"
     assert status["frontend"]["ui_api_loaders_extracted"] is True
@@ -379,8 +380,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_submission_guards.py"
     )
     assert status["frontend"]["ui_risky_submission_guard_coverage_enabled"] is True
-    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 14
-    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 14
+    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 15
+    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 15
     assert status["frontend"]["ui_risky_submission_guard_missing"] == []
     guard_rows = status["frontend"]["ui_risky_submission_guard_rows"]
     assert {
@@ -398,6 +399,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "maintenance_post_run_diagnostic",
         "maintenance_task_retry",
         "task_status_operation",
+        "schedule_settings_save",
     } == {row["id"] for row in guard_rows}
     assert status["frontend"]["ui_external_deployment_diagnostics_path"] == (
         "app/ui/external_deployment_diagnostics.py"
@@ -641,6 +643,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_system_settings_tabs_extracted"] is True
+    assert (
+        frontend_arch["evidence"]["ui_schedule_settings_save_confirmation_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_loaders_extracted"] is True
     assert frontend_arch["evidence"]["ui_background_task_client_extracted"] is True

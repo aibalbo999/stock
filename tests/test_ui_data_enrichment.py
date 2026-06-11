@@ -14,6 +14,51 @@ from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
 
 
+def test_pending_market_handoff_summary_surfaces_selected_operation_and_next_step() -> None:
+    assert hasattr(data_enrichment_market, "pending_market_handoff_summary")
+
+    summary = data_enrichment_market.pending_market_handoff_summary(
+        selected_market_tickers=["2330", "2382"],
+        pending_operation="market_refresh",
+        selection_state={
+            "selected": ["2330", "2382"],
+            "rejected": [],
+            "state": "ready",
+        },
+    )
+
+    assert summary == {
+        "state": "ready",
+        "title": "已帶入刷新股價",
+        "detail": "股票：2330、2382｜更新最新版報告的股價與成交量判讀。",
+        "next_step": "確認背景任務後按「刷新股價」。",
+        "action_label": "刷新股價",
+        "rejected_detail": "",
+    }
+
+
+def test_pending_market_handoff_summary_flags_rejected_tickers() -> None:
+    summary = data_enrichment_market.pending_market_handoff_summary(
+        selected_market_tickers=["2330"],
+        pending_operation="company_filings_fetch",
+        selection_state={
+            "selected": ["2330"],
+            "rejected": ["9999"],
+            "state": "attention",
+            "detail": "建議股票未在目前白名單：9999。已先選取可用股票：2330。",
+        },
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "已帶入補抓公司文件",
+        "detail": "股票：2330｜補齊公司文件、法說會或公開資訊缺口。",
+        "next_step": "先處理白名單提醒，再確認背景任務後按「補抓公司文件」。",
+        "action_label": "補抓公司文件",
+        "rejected_detail": "建議股票未在目前白名單：9999。已先選取可用股票：2330。",
+    }
+
+
 def test_company_filing_runtime_rows_surface_pdf_visual_and_external_fallbacks() -> None:
     rows = company_filing_runtime_rows(
         {
@@ -311,6 +356,12 @@ def test_render_market_data_tab_requires_confirmation_before_submit(monkeypatch)
 
     data_enrichment_market.render_market_data_tab(["2330", "2382"])
 
+    assert any(
+        'class="market-handoff-banner is-ready"' in markdown
+        and "已帶入刷新股價" in markdown
+        and "確認背景任務後按「刷新股價」" in markdown
+        for markdown in fake_st.markdowns
+    )
     assert fake_st.checkboxes == [
         {
             "label": "我了解這會送出資料補強背景任務",

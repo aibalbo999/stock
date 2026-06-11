@@ -27,7 +27,6 @@ from app.ui.data_enrichment_runtime import (
     company_filing_visual_rag_model_chain_rows,
 )
 from app.ui.operator_route_controls import render_operator_route_button
-from app.ui.operator_routes import DATA_ENRICHMENT_OPERATION_LABELS
 
 MARKET_DATA_OPERATIONS = {
     "market_refresh",
@@ -360,6 +359,34 @@ def pending_market_selection_state(
     }
 
 
+def pending_market_handoff_summary(
+    *,
+    selected_market_tickers: list[str],
+    pending_operation: str | None,
+    selection_state: dict | None = None,
+) -> dict[str, str]:
+    operation = str(pending_operation or "").strip()
+    if operation not in MARKET_OPERATION_METADATA:
+        return {}
+
+    metadata = MARKET_OPERATION_METADATA[operation]
+    action_label = metadata["label"]
+    selected = _normalized_pending_tickers(selected_market_tickers)
+    ticker_label = "、".join(selected) if selected else "尚未選擇股票"
+    rejected_detail = ""
+    if isinstance(selection_state, dict) and selection_state.get("rejected"):
+        rejected_detail = str(selection_state.get("detail") or "").strip()
+    next_prefix = "先處理白名單提醒，再" if rejected_detail else ""
+    return {
+        "state": "attention" if rejected_detail else "ready",
+        "title": f"已帶入{action_label}",
+        "detail": f"股票：{ticker_label}｜{metadata['impact']}",
+        "next_step": f"{next_prefix}確認背景任務後按「{action_label}」。",
+        "action_label": action_label,
+        "rejected_detail": rejected_detail,
+    }
+
+
 def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
     pending_tickers = st.session_state.pop("pending_data_enrichment_tickers", None)
     if pending_tickers is not None:
@@ -585,10 +612,34 @@ def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str 
     pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
     if not pending_operation:
         return None
-    operation_label = DATA_ENRICHMENT_OPERATION_LABELS.get(pending_operation, "資料補強")
-    ticker_label = "、".join(selected_market_tickers) if selected_market_tickers else "尚未選擇股票"
-    st.info(f"已依建議準備「{operation_label}」，股票：{ticker_label}。確認日期後按下對應按鈕送出背景任務。")
+    _render_pending_market_handoff(
+        pending_market_handoff_summary(
+            selected_market_tickers=selected_market_tickers,
+            pending_operation=str(pending_operation),
+            selection_state=st.session_state.get("pending_market_selection_state"),
+        )
+    )
     return str(pending_operation)
+
+
+def _render_pending_market_handoff(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    rejected_html = ""
+    if summary.get("rejected_detail"):
+        rejected_html = f"<small>{escape(summary['rejected_detail'])}</small>"
+    st.markdown(
+        f"""<section class="market-handoff-banner is-{escape(summary.get("state", "ready"))}" aria-label="資料補強交接">
+<div>
+<span>補強導引</span>
+<strong>{escape(summary.get("title", "已帶入資料補強"))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+{rejected_html}
+</div>
+<em>{escape(summary.get("next_step", ""))}</em>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_market_operation_readiness(rows: list[dict[str, str]]) -> None:

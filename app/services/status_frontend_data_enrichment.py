@@ -46,6 +46,15 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "return \"primary\" if pending == operation else \"secondary\""
             in data_enrichment_market_source
         ),
+        "ui_data_enrichment_pending_handoff_banner_enabled": (
+            "def pending_market_handoff_summary(" in data_enrichment_market_source
+            and "def _render_pending_market_handoff(" in data_enrichment_market_source
+            and "pending_market_handoff_summary(" in data_enrichment_market_source
+            and 'class="market-handoff-banner' in data_enrichment_market_source
+            and "補強導引" in data_enrichment_market_source
+            and "先處理白名單提醒，再" in data_enrichment_market_source
+            and '"next_step": f"{next_prefix}確認背景任務後按' in data_enrichment_market_source
+        ),
         "ui_data_enrichment_operation_readiness_enabled": (
             "def market_operation_readiness_rows(" in data_enrichment_market_source
             and "def _render_market_operation_readiness(" in data_enrichment_market_source

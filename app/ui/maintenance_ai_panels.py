@@ -100,9 +100,9 @@ def render_ai_usage_panel(llm_usage_summary: dict) -> None:
         usage_cols = st.columns(len(usage_metrics))
         for column, (label, value) in zip(usage_cols, usage_metrics.items()):
             column.metric(label, value)
-        daily_usage_rows = llm_usage_summary.get("daily") or []
-        model_usage_rows = llm_usage_summary.get("by_model") or []
-        operation_usage_rows = llm_usage_summary.get("by_operation") or []
+        daily_usage_rows = llm_usage_daily_rows(llm_usage_summary)
+        model_usage_rows = llm_usage_model_rows(llm_usage_summary)
+        operation_usage_rows = llm_usage_operation_rows(llm_usage_summary)
         recent_routing_rows = llm_usage_recent_routing_rows(llm_usage_summary)
         if daily_usage_rows:
             st.caption("每日 token / request 趨勢")
@@ -154,6 +154,36 @@ def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
         "額度略過": int(totals.get("quota_skip_count") or 0),
         "模型降級": int(totals.get("degraded_from_primary_count") or 0),
     }
+
+
+def llm_usage_daily_rows(llm_usage_summary: dict) -> list[dict]:
+    return [
+        {
+            "日期": row.get("date"),
+            **_usage_summary_values(row),
+        }
+        for row in _dict_rows(llm_usage_summary.get("daily"))
+    ]
+
+
+def llm_usage_model_rows(llm_usage_summary: dict) -> list[dict]:
+    return [
+        {
+            "模型": row.get("model"),
+            **_usage_summary_values(row),
+        }
+        for row in _dict_rows(llm_usage_summary.get("by_model"))
+    ]
+
+
+def llm_usage_operation_rows(llm_usage_summary: dict) -> list[dict]:
+    return [
+        {
+            "任務": _label(USAGE_OPERATION_LABELS, row.get("operation")),
+            **_usage_summary_values(row),
+        }
+        for row in _dict_rows(llm_usage_summary.get("by_operation"))
+    ]
 
 
 def llm_usage_alert_rows(llm_usage_summary: dict) -> list[dict[str, str]]:
@@ -292,6 +322,23 @@ def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _dict_rows(value: Any) -> list[dict]:
+    return [item for item in value or [] if isinstance(item, dict)]
+
+
+def _usage_summary_values(row: dict) -> dict:
+    return {
+        "請求": int(row.get("request_count") or 0),
+        "Token": int(row.get("total_token_estimate") or 0),
+        "估算成本 USD": _format_cost(row.get("estimated_cost_usd")),
+        "P95 延遲 ms": _display_value(row.get("p95_latency_ms")),
+        "後援": int(row.get("fallback_path_count") or 0),
+        "可重試失敗": int(row.get("retryable_failure_count") or 0),
+        "額度略過": int(row.get("quota_skip_count") or 0),
+        "模型降級": int(row.get("degraded_from_primary_count") or 0),
+    }
+
+
 def _label(labels: dict[str, str], value: Any) -> str:
     text = str(value or "").strip()
     if not text:
@@ -327,6 +374,14 @@ def _format_usd(value: Any) -> str:
     except (TypeError, ValueError):
         amount = 0.0
     return f"${amount:.4f}"
+
+
+def _format_cost(value: Any) -> str:
+    try:
+        amount = float(value or 0.0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    return f"{amount:.4f}"
 
 
 def _format_ratio(value: Any) -> str:

@@ -8,7 +8,10 @@ from app.ui.llm_quota_panel import (
 from app.ui.maintenance_ai_panels import (
     llm_usage_alert_rows,
     llm_usage_cost_budget_caption,
+    llm_usage_daily_rows,
     llm_usage_metric_values,
+    llm_usage_model_rows,
+    llm_usage_operation_rows,
     llm_usage_recent_routing_rows,
     llm_usage_routing_captions,
     llm_usage_routing_rows,
@@ -430,6 +433,99 @@ def test_llm_usage_alert_rows_localize_codes_and_operator_actions() -> None:
     assert "LLM estimated cost" not in rendered
     assert "fallback routing" not in rendered
     assert "cooling-down" not in rendered
+
+
+def test_llm_usage_summary_rows_localize_daily_model_and_operation_tables() -> None:
+    summary = {
+        "daily": [
+            {
+                "date": "2026-06-09",
+                "request_count": 7,
+                "total_token_estimate": 1234,
+                "estimated_cost_usd": 0.0123,
+                "p95_latency_ms": 456.78,
+                "fallback_path_count": 2,
+                "retryable_failure_count": 4,
+                "quota_skip_count": 3,
+                "degraded_from_primary_count": 1,
+            }
+        ],
+        "by_model": [
+            {
+                "model": "gemini-3.5-flash",
+                "request_count": 5,
+                "total_token_estimate": 1000,
+                "estimated_cost_usd": 0.01,
+                "p95_latency_ms": 300,
+                "fallback_path_count": 1,
+                "retryable_failure_count": 2,
+                "quota_skip_count": 1,
+                "degraded_from_primary_count": 1,
+            }
+        ],
+        "by_operation": [
+            {
+                "operation": "report_generation",
+                "request_count": 4,
+                "total_token_estimate": 900,
+                "estimated_cost_usd": 0.009,
+                "p95_latency_ms": 250,
+                "fallback_path_count": 1,
+                "retryable_failure_count": 0,
+                "quota_skip_count": 1,
+                "degraded_from_primary_count": 1,
+            }
+        ],
+    }
+
+    assert llm_usage_daily_rows(summary) == [
+        {
+            "日期": "2026-06-09",
+            "請求": 7,
+            "Token": 1234,
+            "估算成本 USD": "0.0123",
+            "P95 延遲 ms": 456.78,
+            "後援": 2,
+            "可重試失敗": 4,
+            "額度略過": 3,
+            "模型降級": 1,
+        }
+    ]
+    assert llm_usage_model_rows(summary) == [
+        {
+            "模型": "gemini-3.5-flash",
+            "請求": 5,
+            "Token": 1000,
+            "估算成本 USD": "0.0100",
+            "P95 延遲 ms": 300,
+            "後援": 1,
+            "可重試失敗": 2,
+            "額度略過": 1,
+            "模型降級": 1,
+        }
+    ]
+    assert llm_usage_operation_rows(summary) == [
+        {
+            "任務": "報告生成",
+            "請求": 4,
+            "Token": 900,
+            "估算成本 USD": "0.0090",
+            "P95 延遲 ms": 250,
+            "後援": 1,
+            "可重試失敗": 0,
+            "額度略過": 1,
+            "模型降級": 1,
+        }
+    ]
+    rendered = str(
+        llm_usage_daily_rows(summary)
+        + llm_usage_model_rows(summary)
+        + llm_usage_operation_rows(summary)
+    )
+    assert "request_count" not in rendered
+    assert "estimated_cost_usd" not in rendered
+    assert "fallback_path_count" not in rendered
+    assert "report_generation" not in rendered
 
 
 def test_llm_usage_cost_budget_caption_localizes_status_and_budget_window() -> None:

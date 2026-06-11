@@ -416,5 +416,27 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "cost_budget.get('status')" not in maintenance_ai_panels_source
             and "window $" not in maintenance_ai_panels_source
         ),
+        "ui_llm_usage_summary_row_operator_labels_enabled": (
+            "def llm_usage_daily_rows(" in maintenance_ai_panels_source
+            and "def llm_usage_model_rows(" in maintenance_ai_panels_source
+            and "def llm_usage_operation_rows(" in maintenance_ai_panels_source
+            and "daily_usage_rows = llm_usage_daily_rows(llm_usage_summary)"
+            in maintenance_ai_panels_source
+            and "model_usage_rows = llm_usage_model_rows(llm_usage_summary)"
+            in maintenance_ai_panels_source
+            and "operation_usage_rows = llm_usage_operation_rows(llm_usage_summary)"
+            in maintenance_ai_panels_source
+            and '"請求"' in maintenance_ai_panels_source
+            and '"Token"' in maintenance_ai_panels_source
+            and '"估算成本 USD"' in maintenance_ai_panels_source
+            and '"P95 延遲 ms"' in maintenance_ai_panels_source
+            and '"後援"' in maintenance_ai_panels_source
+            and 'daily_usage_rows = llm_usage_summary.get("daily")'
+            not in maintenance_ai_panels_source
+            and 'model_usage_rows = llm_usage_summary.get("by_model")'
+            not in maintenance_ai_panels_source
+            and 'operation_usage_rows = llm_usage_summary.get("by_operation")'
+            not in maintenance_ai_panels_source
+        ),
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
     }

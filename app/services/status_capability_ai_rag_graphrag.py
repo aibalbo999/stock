@@ -46,7 +46,7 @@ def graphrag_capabilities(*, graph_status: dict) -> dict:
                     "neo4j_shortest_path_template"
                 ),
             },
-            detail="GraphRAG can compute shortest-path impact context for LLM reasoning while preserving evidence guardrails.",
+            detail="GraphRAG 可計算最短路徑衝擊脈絡給 LLM 推理使用，同時保留證據護欄。",
         ),
         "graphrag_agentic_cypher": _capability(
             "ready"
@@ -80,9 +80,9 @@ def graphrag_capabilities(*, graph_status: dict) -> dict:
                 ),
             },
             detail=(
-                "LLM-generated Cypher is supported through a guarded planner that validates "
-                "read-only operations, labels, relationship types, parameters, and path depth; "
-                "a local in-memory dry-run validates plan semantics before Neo4j is configured."
+                "支援 LLM 產生 Cypher，但必須先通過受控 planner 驗證唯讀操作、label、"
+                "relationship type、參數與路徑深度；Neo4j 尚未設定前，會用本機記憶體 "
+                "dry-run 驗證查詢計畫語意。"
             ),
         ),
         "neo4j_payload_export": _capability(
@@ -99,12 +99,12 @@ def graphrag_capabilities(*, graph_status: dict) -> dict:
                 "payload_export_endpoint": neo4j_import.get("payload_export_endpoint"),
                 "payload_dry_run_cli": neo4j_import.get("payload_dry_run_cli"),
             },
-            detail="Ready means GraphRAG can produce parameterized Neo4j Cypher payloads without requiring a live Neo4j connection.",
+            detail="就緒代表 GraphRAG 可產生參數化 Neo4j Cypher 匯入 payload，不需要 live Neo4j 連線。",
         ),
         "neo4j_import": _capability(
             _neo4j_import_capability_status(neo4j_import),
             evidence=neo4j_import,
-            detail="External Neo4j import is ready only when URI, dependency, auth, and connection checks are available.",
+            detail="外部 Neo4j 匯入需 URI、依賴套件、認證與連線檢查都可用才算就緒。",
         ),
         "graphrag_live_cypher_query": _capability(
             "ready"
@@ -135,8 +135,8 @@ def graphrag_capabilities(*, graph_status: dict) -> dict:
                 "import_smoke_cli": neo4j_import.get("import_smoke_cli"),
             },
             detail=(
-                "Live GraphRAG Cypher execution only runs server-generated guarded plans; "
-                "without Neo4j it remains available as a validated plan plus clear degraded status."
+                "Live GraphRAG Cypher 執行只會跑伺服端產生且通過護欄的計畫；"
+                "沒有 Neo4j 時仍會提供已驗證計畫與清楚的 degraded 狀態。"
             ),
         ),
     }

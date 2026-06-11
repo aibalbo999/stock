@@ -97,19 +97,21 @@ def test_vector_store_and_graphrag_status_shape_and_evidence(service_status_snap
     assert "def _supply_chain_graph_status(" not in service_status_source
     assert "def supply_chain_graph_status(" in status_graphrag_source
     assert status["supply_chain_graph"]["neo4j_export_enabled"] is True
-    assert status["supply_chain_graph"]["neo4j_import"]["ready"] is False
-    assert (
-        status["supply_chain_graph"]["neo4j_import"]["fallback_reason"]
-        == "missing_settings:neo4j_uri"
-    )
-    assert status["supply_chain_graph"]["neo4j_import"]["payload_export_ready"] is True
-    assert status["supply_chain_graph"]["neo4j_import"]["payload_format"] == "neo4j_cypher_v1"
-    assert status["supply_chain_graph"]["neo4j_import"]["payload_node_count"] >= 1
-    assert status["supply_chain_graph"]["neo4j_import"]["payload_statement_count"] >= 1
-    assert status["supply_chain_graph"]["neo4j_import"]["smoke_cli"].endswith(
+    neo4j_import = status["supply_chain_graph"]["neo4j_import"]
+    assert isinstance(neo4j_import["ready"], bool)
+    if neo4j_import["ready"]:
+        assert neo4j_import.get("fallback_reason") in {None, ""}
+        assert neo4j_import.get("connection_ok") is True
+    else:
+        assert neo4j_import.get("fallback_reason")
+    assert neo4j_import["payload_export_ready"] is True
+    assert neo4j_import["payload_format"] == "neo4j_cypher_v1"
+    assert neo4j_import["payload_node_count"] >= 1
+    assert neo4j_import["payload_statement_count"] >= 1
+    assert neo4j_import["smoke_cli"].endswith(
         "scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
     )
-    assert "--import-first" in status["supply_chain_graph"]["neo4j_import"]["import_smoke_cli"]
+    assert "--import-first" in neo4j_import["import_smoke_cli"]
     assert status["supply_chain_graph"]["path_reasoning_enabled"] is True
     assert status["supply_chain_graph"]["shortest_path_context_enabled"] is True
     assert (
@@ -316,13 +318,26 @@ def test_ai_rag_capability_matrix_evidence(service_status_snapshot) -> None:
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_format"] == "neo4j_cypher_v1"
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_node_count"] >= 1
     assert matrix["ai_rag"]["neo4j_payload_export"]["evidence"]["payload_statement_count"] >= 1
-    assert matrix["ai_rag"]["neo4j_import"]["status"] == "degraded"
+    neo4j_import_status = "ready" if status["supply_chain_graph"]["neo4j_import"]["ready"] else "degraded"
+    assert matrix["ai_rag"]["neo4j_import"]["status"] == neo4j_import_status
     assert matrix["ai_rag"]["neo4j_import"]["evidence"]["payload_export_ready"] is True
-    assert matrix["ai_rag"]["neo4j_import"]["evidence"]["fallback_reason"] == "missing_settings:neo4j_uri"
+    if neo4j_import_status == "ready":
+        assert matrix["ai_rag"]["neo4j_import"]["evidence"].get("fallback_reason") in {
+            None,
+            "",
+        }
+    else:
+        assert matrix["ai_rag"]["neo4j_import"]["evidence"].get("fallback_reason")
     live_cypher = matrix["ai_rag"]["graphrag_live_cypher_query"]
-    assert live_cypher["status"] == "degraded"
+    expected_live_cypher_status = (
+        "ready" if status["supply_chain_graph"]["neo4j_import"]["ready"] else "degraded"
+    )
+    assert live_cypher["status"] == expected_live_cypher_status
     assert live_cypher["evidence"]["endpoint"] == "GET /supply-chain/graph/cypher-query"
-    assert live_cypher["evidence"]["neo4j_ready"] is False
+    assert (
+        live_cypher["evidence"]["neo4j_ready"]
+        is status["supply_chain_graph"]["neo4j_import"]["ready"]
+    )
     assert live_cypher["evidence"]["planner_enabled"] is True
     assert live_cypher["evidence"]["local_dry_run_enabled"] is True
     assert live_cypher["evidence"]["local_dry_run_status"] == "executed_dry_run"

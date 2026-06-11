@@ -116,9 +116,9 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
             else "not_configured",
             evidence=company_filing_status.get("high_risk_source_policy") or {},
             detail=(
-                "MOPS/TWSE/TPEx high-risk disclosure sources need an unlocker-grade "
-                "provider such as FlareSolverr, ScrapingBee, or BrightData for CAPTCHA/anti-bot challenges; "
-                "Playwright/Browserless remain useful browser render fallbacks but are not counted as CAPTCHA unlockers."
+                "MOPS/TWSE/TPEx 高風險揭露來源若遇到 CAPTCHA/anti-bot，需使用 unlocker 等級提供者，"
+                "例如 FlareSolverr、ScrapingBee 或 BrightData；Playwright/Browserless 仍是有用的"
+                "瀏覽器渲染 fallback，但不計入 CAPTCHA unlocker。"
             ),
         ),
         "company_filing_pdf_table_parser_runtime": _capability(
@@ -234,8 +234,8 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 ),
             },
             detail=(
-                "Optional deployment hardening for blocked, placeholder, or dynamic filing pages. "
-                "Core fetch remains usable through browser-like User-Agent rotation and retries."
+                "這是針對被封鎖、placeholder 或動態文件頁的選配部署強化；"
+                "核心抓取仍可透過類瀏覽器 User-Agent 輪替與重試維持可用。"
             ),
         ),
         "company_filing_official_material_information_openapi": _capability(
@@ -247,8 +247,8 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
             )
             or {},
             detail=(
-                "Built-in TWSE/TPEx official OpenAPI fallback for daily material information rows. "
-                "This covers recent major announcements without an external paid filing API key."
+                "內建 TWSE/TPEx 官方 OpenAPI 重大訊息 fallback，可取得近期每日重大訊息；"
+                "不需要額外付費公司文件 API key。"
             ),
         ),
         "company_filing_structured_api_fallback": _capability(
@@ -295,8 +295,7 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "runtime": structured_api_runtime,
             },
             detail=(
-                "Optional paid/professional company filing source for investor presentations, "
-                "material information, and hard-to-scrape MOPS disclosures."
+                "選配的付費或專業公司文件來源，適用於法說會簡報、重大訊息與難爬取的 MOPS 揭露。"
             ),
         ),
         "company_filing_structured_api_sample_contract": _capability(

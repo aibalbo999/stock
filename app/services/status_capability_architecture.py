@@ -75,8 +75,8 @@ def architecture_capabilities(
             else "degraded",
             evidence=api_status,
             detail=(
-                "FastAPI main is a thin app entry; routers, app assembly, legacy helper exports, "
-                "use-case services, and opt-in sync report network refresh wiring live in separate modules."
+                "FastAPI main 只保留薄入口；router、app 組裝、legacy helper export、"
+                "use-case service，以及同步報告網路刷新 opt-in wiring 都已拆到獨立模組。"
             ),
         ),
         "workflow_orchestration": _capability(
@@ -164,11 +164,9 @@ def architecture_capabilities(
                 "runtime_repair_plan": task_queue_status.get("repair_plan"),
             },
             detail=(
-                "Background task implementation readiness covers Celery exports, named task wiring, "
-                "status endpoints, structured submission errors, source diagnostics, and persisted "
-                "failure diagnostics. Live Redis/Celery runtime readiness is reported separately for "
-                "operator repair without turning an offline local dependency into an implementation "
-                "failure."
+                "背景任務實作就緒檢查涵蓋 Celery export、具名 task wiring、狀態端點、"
+                "結構化送出錯誤、來源診斷與持久化失敗診斷。Live Redis/Celery runtime "
+                "就緒度會分開回報，讓操作者修復 runtime，而不把離線本機依賴誤判成實作失敗。"
             ),
         ),
         "streamlit_mpa_background_tasks": _capability(
@@ -391,13 +389,10 @@ def architecture_capabilities(
             else "degraded",
             evidence=frontend_status,
             detail=(
-                "Streamlit uses a multi-page shell, explicit page imports, external CSS, "
-                "extracted API/task/report helpers, and FastAPI/Celery task enqueue/status "
-                "polling, frontend/API runtime identity smoke checks, queue health diagnostics, "
-                "allowlisted maintenance diagnostic "
-                "actions including 安全空跑送出 diagnostics, confirmed local dependency "
-                "operations, categorized failed-task retry drilldown, and safe task execution "
-                "context summaries instead of running long ingestion/report calls inline."
+                "Streamlit 已採多頁 shell、明確 page import、外部 CSS、抽出的 API/task/report helper，"
+                "並透過 FastAPI/Celery 送出任務與輪詢狀態；另有前端/API runtime identity smoke、"
+                "佇列健康診斷、allowlist 維護診斷動作（含安全空跑送出）、已確認的本機依賴操作、"
+                "分類失敗任務重試 drilldown，以及安全任務執行脈絡摘要，避免在前端 inline 執行長時間 ingestion/report 呼叫。"
             ),
         ),
         "python_runtime": _capability(
@@ -407,8 +402,8 @@ def architecture_capabilities(
             else "degraded",
             evidence=python_runtime_status,
             detail=(
-                "Runtime preflight compares the active Python interpreter with the "
-                "project's Python 3.11+ target declared in pyproject, .python-version, CI, and Docker."
+                "Runtime preflight 會比對目前 Python interpreter 是否符合 pyproject、"
+                ".python-version、CI 與 Docker 宣告的 Python 3.11+ 目標。"
             ),
         ),
         "database_migrations": _capability(
@@ -424,7 +419,7 @@ def architecture_capabilities(
                 "up_to_date": migration_status.get("up_to_date"),
                 "version_table_present": migration_status.get("version_table_present"),
             },
-            detail="Alembic is present; current DB may still need upgrade/stamp when up_to_date=false.",
+            detail="Alembic 已存在；若 up_to_date=false，目前資料庫可能仍需 upgrade 或 stamp。",
         ),
         "secret_scanning": _capability(
             "ready"
@@ -440,8 +435,8 @@ def architecture_capabilities(
             else "degraded",
             evidence=security_scan_status,
             detail=(
-                "Secret scanning prefers external tools such as detect-secrets/gitleaks, "
-                "runs through a pre-commit gate, and only treats local regex as a degraded fallback."
+                "密鑰掃描優先使用 detect-secrets/gitleaks 等外部工具，並透過 pre-commit gate 執行；"
+                "本機 regex 只作為 degraded fallback。"
             ),
         ),
     }

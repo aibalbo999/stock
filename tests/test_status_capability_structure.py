@@ -85,3 +85,40 @@ def test_upgrade_capability_domain_builders_own_their_detail_checks() -> None:
     )
 
     assert "def capability(" in helpers_source
+
+
+def test_status_capability_details_use_operator_language() -> None:
+    source_by_path = {
+        path: Path(path).read_text()
+        for path in [
+            "app/services/status_capability_ai_rag.py",
+            "app/services/status_capability_ai_rag_graphrag.py",
+            "app/services/status_capability_architecture.py",
+            "app/services/status_capability_data_business_filings.py",
+            "app/services/status_graphrag.py",
+        ]
+    }
+    forbidden_phrases = [
+        "Chroma uses an explicit multilingual/provider embedding function when enabled.",
+        "LiteLLM / Google GenAI SDK path is selected",
+        "Quota governance keeps the smartest configured report model first",
+        "Ready only when a learned/API reranker is configured and available",
+        "Local traces capture LLM latency",
+        "Optional Visual RAG fallback/augmentation converts PDF pages to images",
+        "GraphRAG context for structural upstream/downstream retrieval",
+        "LLM-generated Cypher is supported through a guarded planner",
+        "Ready means GraphRAG can produce parameterized Neo4j Cypher payloads",
+        "External Neo4j import is ready only when URI, dependency, auth, and connection checks are available.",
+        "FastAPI main is a thin app entry",
+        "Background task implementation readiness covers Celery exports",
+        "Streamlit uses a multi-page shell",
+        "Secret scanning prefers external tools such as detect-secrets/gitleaks",
+        "MOPS/TWSE/TPEx high-risk disclosure sources need an unlocker-grade",
+        "Built-in TWSE/TPEx official OpenAPI fallback for daily material information rows.",
+        "Optional paid/professional company filing source for investor presentations",
+    ]
+
+    combined_source = "\n".join(source_by_path.values())
+
+    for phrase in forbidden_phrases:
+        assert phrase not in combined_source

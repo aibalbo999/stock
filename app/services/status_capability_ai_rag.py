@@ -46,7 +46,7 @@ def ai_rag_capabilities(
                 "custom_embedding_enabled": embedding_status.get("custom_embedding_enabled"),
                 "fallback_reason": embedding_status.get("fallback_reason"),
             },
-            detail="Chroma uses an explicit multilingual/provider embedding function when enabled.",
+            detail="啟用自訂 embedding 時，Chroma 會明確使用多語或指定 provider 的 embedding 函式。",
         ),
         "llm_sdk_and_fallback": _capability(
             "ready" if llm_sdk_ready and llm_fallback_ready else "degraded",
@@ -64,18 +64,18 @@ def ai_rag_capabilities(
                 "provider_keys_configured": llm_keys,
             },
             detail=(
-                "LiteLLM / Google GenAI SDK path is selected; status is ready only when at least one "
-                "configured fallback model has a matching provider key; only explicit local/ollama/lm_studio "
-                "models are treated as no-key local gateways."
+                "已選擇 LiteLLM 或 Google GenAI SDK 路徑；至少一個已設定的 fallback 模型"
+                "必須有對應 provider key 才算就緒。只有明確標記為 local、ollama 或 lm_studio "
+                "的模型會被視為不需 API key 的本機 gateway。"
             ),
         ),
         "llm_quota_routing": _capability(
             "ready" if llm_quota_routing.get("ready") else "degraded",
             evidence=llm_quota_routing,
             detail=(
-                "Quota governance keeps the smartest configured report model first, tracks official or "
-                "project-configured request budgets, skips exhausted models through hard routing/cooldown, "
-                "and keeps high-volume Gemma as the last text fallback."
+                "額度治理會把已設定且最聰明的報告模型排在最前面，追蹤官方或專案設定的"
+                "請求額度；額度用完的模型會透過硬路由或冷卻略過，並把高額度 Gemma "
+                "保留為最後文字 fallback。"
             ),
         ),
         "hybrid_search": _capability(
@@ -112,8 +112,8 @@ def ai_rag_capabilities(
                 "fallback_reason": reranker_status.get("fallback_reason"),
             },
             detail=(
-                "Ready only when a learned/API reranker is configured and available; "
-                "keyword mode remains an operational fallback but is not counted as model reranking."
+                "只有已設定且可用的 learned/API reranker 才算就緒；"
+                "關鍵字模式會保留為操作 fallback，但不計入模型級 reranking。"
             ),
         ),
         "llm_observability": _capability(
@@ -170,9 +170,9 @@ def ai_rag_capabilities(
                 "cost_warning_ratio": llm_observability.get("cost_warning_ratio"),
             },
             detail=(
-                "Local traces capture LLM latency, token estimates, configurable cost estimates, "
-                "retrieval latency, and reranker status; LangSmith/Phoenix exports run through a "
-                "best-effort timeout boundary and keep local traces active when external sinks are pending."
+                "本機 trace 會記錄 LLM 延遲、token 估算、可設定的成本估算、檢索延遲與 "
+                "reranker 狀態；LangSmith/Phoenix 匯出會走 best-effort timeout 邊界，"
+                "外部 sink 尚未就緒時仍保留本機 trace。"
             ),
         ),
         "visual_rag": _capability(
@@ -205,8 +205,8 @@ def ai_rag_capabilities(
                 "runtime": company_filing_status.get("visual_rag_runtime"),
             },
             detail=(
-                "Optional Visual RAG fallback/augmentation converts PDF pages to images and "
-                "uses a vision-capable LLM to preserve complex financial tables."
+                "選配 Visual RAG fallback/augmentation 會把 PDF 頁面轉成圖片，"
+                "再交給具備 vision 能力的 LLM，以保留複雜財務表格結構。"
             ),
         ),
         **graphrag_capabilities(graph_status=graph_status),

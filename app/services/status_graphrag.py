@@ -91,7 +91,7 @@ def supply_chain_graph_status() -> dict:
             "prompt_context_enabled": True,
             "neo4j_export_enabled": True,
             "neo4j_import": neo4j_import,
-            "purpose": "GraphRAG context for structural upstream/downstream retrieval, not direct supplier proof.",
+            "purpose": "GraphRAG 脈絡用於結構性上下游檢索，不作為直接供應商證明。",
         }
     except Exception as exc:
         return {

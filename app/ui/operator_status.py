@@ -95,11 +95,11 @@ def operator_status_cards(
             "caption": (
                 "無法讀取系統狀態"
                 if service_status_missing
-                else "Worker 線上，最新任務執行中"
+                else "背景執行器在線，最新任務執行中"
                 if queue_running
-                else "Worker 線上"
+                else "背景執行器在線"
                 if task_queue.get("worker_online")
-                else "Worker 離線"
+                else "背景執行器離線"
             ),
             "state": "attention" if queue_running else queue_state,
             "action_label": (

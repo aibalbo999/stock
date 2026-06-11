@@ -288,7 +288,7 @@ def test_operator_status_cards_include_queue_report_quota_and_failure_actions() 
         {
             "title": "系統狀態",
             "value": "可送任務",
-            "caption": "Worker 線上",
+            "caption": "背景執行器在線",
             "state": "ready",
             "action_label": "開始使用",
             "route_hint": "analysis",
@@ -377,7 +377,7 @@ def test_operator_status_cards_show_queue_processing_when_latest_task_running() 
     assert cards[0] == {
         "title": "系統狀態",
         "value": "處理中",
-        "caption": "Worker 線上，最新任務執行中",
+        "caption": "背景執行器在線，最新任務執行中",
         "state": "attention",
         "action_label": "查看任務",
         "route_hint": "task:first-report-task",

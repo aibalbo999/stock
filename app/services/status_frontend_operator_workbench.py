@@ -286,7 +286,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             "queue_running = queue_state == \"ready\" and bool(running_task)"
             in operator_status_source
             and "處理中" in operator_status_source
-            and "Worker 線上，最新任務執行中" in operator_status_source
+            and "背景執行器在線，最新任務執行中" in operator_status_source
+            and "Worker 線上" not in operator_status_source
             and '"查看任務" if queue_running' in operator_status_source
             and "_task_route_hint(running_task)" in operator_status_source
             and (

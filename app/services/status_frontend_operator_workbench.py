@@ -11,6 +11,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     analysis_workspace_presenter_source = source_context.ui_sources.get(
         "analysis_workspace_presenter.py", ""
     )
+    analysis_form_panel_source = source_context.ui_sources.get("analysis_form_panel.py", "")
     analysis_task_lookup_panel_source = source_context.ui_sources.get(
         "analysis_task_lookup_panel.py", ""
     )
@@ -52,6 +53,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         ),
         "ui_analysis_workspace_view_extracted": (
             "from app.ui.analysis_workspace_view import (" in analysis_workspace_source
+            and "from app.ui.analysis_form_panel import render_analysis_form_panel"
+            in analysis_workspace_source
             and "import streamlit" not in analysis_workspace_view_source
             and "def workspace_topbar_html(" in analysis_workspace_view_source
             and "def workspace_flow_html(" in analysis_workspace_view_source
@@ -60,7 +63,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def operator_workbench_header_html(" in analysis_workspace_view_source
             and "workspace_topbar_html(today_taipei().isoformat())"
             in analysis_workspace_source
-            and "analysis_form_intro_html()" in analysis_workspace_source
+            and "analysis_form_intro_html()" in analysis_form_panel_source
             and "workspace-topbar is-compact" not in analysis_workspace_source
             and "compact-note" not in analysis_workspace_source
             and 'class="analysis-submission-summary'
@@ -69,8 +72,26 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "ui_analysis_form_intro_view_extracted": (
             "def analysis_form_intro_html(" in analysis_workspace_view_source
             and 'class="compact-note"' in analysis_workspace_view_source
-            and "analysis_form_intro_html()" in analysis_workspace_source
+            and "analysis_form_intro_html()" in analysis_form_panel_source
             and "compact-note" not in analysis_workspace_source
+        ),
+        "ui_analysis_form_panel_extracted": (
+            "from app.ui.analysis_form_panel import render_analysis_form_panel"
+            in analysis_workspace_source
+            and "investor_capital = render_analysis_form_panel()" in analysis_workspace_source
+            and "def render_analysis_form_panel(" in analysis_form_panel_source
+            and 'with st.form("analysis_form")' in analysis_form_panel_source
+            and "analysis_form_intro_html()" in analysis_form_panel_source
+            and "analysis_quota_confirmed = st.checkbox(" in analysis_form_panel_source
+            and 'key="confirm_analysis_submission_quota_usage"'
+            in analysis_form_panel_source
+            and 'submit_api_task(\n                "/pipeline/run_discovered_async"'
+            in analysis_form_panel_source
+            and 'submit_api_task(\n                "/reports/generate_async"'
+            in analysis_form_panel_source
+            and 'with st.form("analysis_form")' not in analysis_workspace_source
+            and "analysis_quota_confirmed = st.checkbox("
+            not in analysis_workspace_source
         ),
         "ui_analysis_task_lookup_panel_extracted": (
             "from app.ui.analysis_task_lookup_panel import render_analysis_task_lookup_panel"
@@ -127,30 +148,33 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         ),
         "ui_analysis_submission_quota_confirmation_enabled": (
             "def analysis_submission_ready(" in analysis_workspace_presenter_source
-            and "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source
-            and 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
+            and "analysis_quota_confirmed = st.checkbox(" in analysis_form_panel_source
+            and 'key="confirm_analysis_submission_quota_usage"'
+            in analysis_form_panel_source
             and "我了解這會送出分析背景任務並消耗 AI/API 額度"
-            in analysis_workspace_source
+            in analysis_form_panel_source
             and "分析會在背景執行，送出後可用任務編號查詢進度。"
-            in analysis_workspace_source
+            in analysis_form_panel_source
             and "分析任務一律交由 FastAPI / Celery 背景執行"
+            not in analysis_form_panel_source
+            and "送出後可用 task id 查詢進度" not in analysis_form_panel_source
+            and "避免誤觸與免費額度消耗" in analysis_form_panel_source
+            and "disabled=not analysis_submission_ready(" in analysis_form_panel_source
+            and "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_form_panel_source
+            and "manual_tickers=tickers" in analysis_form_panel_source
+            and 'submit_api_task(\n                "/pipeline/run_discovered_async"'
+            in analysis_form_panel_source
+            and 'submit_api_task(\n                "/reports/generate_async"'
+            in analysis_form_panel_source
+            and "analysis_quota_confirmed = st.checkbox("
             not in analysis_workspace_source
-            and "送出後可用 task id 查詢進度" not in analysis_workspace_source
-            and "避免誤觸與免費額度消耗" in analysis_workspace_source
-            and "disabled=not analysis_submission_ready(" in analysis_workspace_source
-            and "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_workspace_source
-            and "manual_tickers=tickers" in analysis_workspace_source
-            and 'submit_api_task(\n                    "/pipeline/run_discovered_async"'
-            in analysis_workspace_source
-            and 'submit_api_task(\n                    "/reports/generate_async"'
-            in analysis_workspace_source
         ),
         "ui_analysis_submission_preflight_summary_enabled": (
             "def analysis_submission_summary(" in analysis_workspace_presenter_source
-            and "def _render_analysis_submission_summary(" in analysis_workspace_source
-            and "analysis_submission_summary(" in analysis_workspace_source
+            and "def _render_analysis_submission_summary(" in analysis_form_panel_source
+            and "analysis_submission_summary(" in analysis_form_panel_source
             and "_render_analysis_submission_summary(submission_summary)"
-            in analysis_workspace_source
+            in analysis_form_panel_source
             and 'class="analysis-submission-summary' in analysis_workspace_view_source
             and "送出前確認" in analysis_workspace_view_source
             and "可送出分析背景任務" in analysis_workspace_presenter_source

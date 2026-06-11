@@ -56,6 +56,7 @@ UI_MODULE_NAMES = (
     "maintenance_progress_view.py",
     "analysis_workspace_presenter.py",
     "analysis_workspace.py",
+    "analysis_form_panel.py",
     "analysis_result_panel.py",
     "analysis_task_lookup_panel.py",
     "analysis_workspace_view.py",
@@ -90,6 +91,7 @@ UI_MODULE_NAMES = (
 
 PAGE_UI_MODULE_NAMES = (
     "analysis_workspace.py",
+    "analysis_form_panel.py",
     "analysis_result_panel.py",
     "analysis_task_lookup_panel.py",
     "analysis_workspace_view.py",

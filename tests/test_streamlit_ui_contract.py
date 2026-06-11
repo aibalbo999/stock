@@ -35,6 +35,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    analysis_form_panel_source = ui.ANALYSIS_FORM_PANEL_SOURCE.read_text()
     analysis_result_panel_source = ui.ANALYSIS_RESULT_PANEL_SOURCE.read_text()
     analysis_task_lookup_panel_source = ui.ANALYSIS_TASK_LOOKUP_PANEL_SOURCE.read_text()
     analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
@@ -333,9 +334,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def analysis_submission_ready(" not in analysis_workspace_source
     assert "def analysis_submission_summary(" not in analysis_workspace_source
     assert "def analysis_submission_quota_pressure(" not in analysis_workspace_source
-    assert "analysis_form_intro_html()" in analysis_workspace_source
+    assert "analysis_form_intro_html()" in analysis_form_panel_source
     assert 'class="compact-note"' in analysis_view_source
     assert "compact-note" not in analysis_workspace_source
+    assert "from app.ui.analysis_form_panel import render_analysis_form_panel" in (
+        analysis_workspace_source
+    )
+    assert "investor_capital = render_analysis_form_panel()" in analysis_workspace_source
+    assert "def render_analysis_form_panel(" in analysis_form_panel_source
+    assert 'with st.form("analysis_form")' in analysis_form_panel_source
+    assert 'with st.form("analysis_form")' not in analysis_workspace_source
     assert (
         "from app.ui.analysis_task_lookup_panel import render_analysis_task_lookup_panel"
         in analysis_workspace_source
@@ -371,7 +379,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "last_analysis_result" not in analysis_workspace_source
     assert "render_reader_report(report_markdown, result)" not in analysis_workspace_source
     assert 'scope="analysis_result"' not in analysis_workspace_source
-    assert "def _render_analysis_submission_summary(" in analysis_workspace_source
+    assert "def _render_analysis_submission_summary(" in analysis_form_panel_source
     assert "analysis-submission-summary" in combined
     assert "quota-pressure" in combined
     assert "額度壓力：" in analysis_presenter_source
@@ -381,13 +389,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "送出前確認" not in analysis_workspace_source
     assert "可送出分析背景任務" in analysis_presenter_source
     assert "手動模式請先選擇至少一檔股票" in analysis_presenter_source
-    assert "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source
-    assert 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
-    assert "我了解這會送出分析背景任務並消耗 AI/API 額度" in analysis_workspace_source
-    assert "避免誤觸與免費額度消耗" in analysis_workspace_source
-    assert "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_workspace_source
-    assert "manual_tickers=tickers" in analysis_workspace_source
-    assert "disabled=not analysis_submission_ready(" in analysis_workspace_source
+    assert "analysis_quota_confirmed = st.checkbox(" in analysis_form_panel_source
+    assert 'key="confirm_analysis_submission_quota_usage"' in analysis_form_panel_source
+    assert "我了解這會送出分析背景任務並消耗 AI/API 額度" in analysis_form_panel_source
+    assert "避免誤觸與免費額度消耗" in analysis_form_panel_source
+    assert "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_form_panel_source
+    assert "manual_tickers=tickers" in analysis_form_panel_source
+    assert "disabled=not analysis_submission_ready(" in analysis_form_panel_source
+    assert "analysis_quota_confirmed = st.checkbox(" not in analysis_workspace_source
     assert "def render_report_center() -> None:" in source
     assert "def render_data_enrichment() -> None:" in source
     assert "def render_system_settings() -> None:" in source
@@ -1279,8 +1288,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source
-    assert 'submit_api_task(\n                    "/pipeline/run_discovered_async"' in source
-    assert 'submit_api_task(\n                    "/reports/generate_async"' in source
+    assert 'submit_api_task(\n                "/pipeline/run_discovered_async"' in source
+    assert 'submit_api_task(\n                "/reports/generate_async"' in source
     assert 'api_post("/pipeline/run_discovered_async"' not in source
     assert 'api_post("/reports/generate_async"' not in source
     assert "def request_error_message(" in source

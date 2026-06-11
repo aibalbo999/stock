@@ -385,6 +385,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_api_loaders_path"] == "app/ui/api_loaders.py"
     assert status["frontend"]["ui_background_task_client_extracted"] is True
     assert status["frontend"]["ui_background_task_client_path"] == "app/ui/background_tasks.py"
+    assert status["frontend"]["ui_api_error_operator_guidance_enabled"] is True
     assert status["frontend"]["ui_task_queue_preflight_enabled"] is True
     assert status["frontend"]["ui_task_queue_preflight_cache_enabled"] is True
     assert status["frontend"]["ui_task_queue_preflight_degrades_open"] is True
@@ -704,6 +705,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     )
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_queue_status_extracted"] is True
+    assert frontend_arch["evidence"]["ui_api_error_operator_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_operator_hint_enabled"] is True
     assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_external_deployment_status_extracted"] is True

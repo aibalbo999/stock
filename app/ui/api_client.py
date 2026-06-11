@@ -13,6 +13,18 @@ API_WRITE_TIMEOUT_SECONDS = 60
 API_TASK_QUEUE_TIMEOUT_SECONDS = 20
 API_TASK_PREFLIGHT_TIMEOUT_SECONDS = 3
 
+OPERATION_LABELS = {
+    "market_refresh": "市場資料刷新",
+    "manual_ingest": "手動資料匯入",
+    "company_filings_fetch": "公司文件抓取",
+    "rss_fetch": "RSS 抓取",
+}
+FAILURE_STAGE_LABELS = {
+    "task_submission": "任務送出",
+    "payload_validation": "輸入檢查",
+    "queue_preflight": "佇列預檢",
+}
+
 
 def api_post(path: str, payload: dict, *, timeout: float = API_WRITE_TIMEOUT_SECONDS) -> dict:
     response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=timeout)
@@ -55,7 +67,7 @@ def request_error_message(exc: requests.RequestException) -> str:
         message = str(detail.get("message") or detail.get("code") or exc)
         diagnostic_message = _request_diagnostic_message(detail)
         context_message = _request_context_message(detail.get("context"))
-        next_steps = [str(step) for step in detail.get("next_steps") or [] if str(step).strip()]
+        next_steps = _request_next_steps(detail)
         if diagnostic_message:
             message = f"{message} {diagnostic_message}"
         if context_message:
@@ -72,6 +84,8 @@ def _request_diagnostic_message(detail: dict) -> str:
     summary = str(detail.get("error_summary") or "").strip()
     category = str(detail.get("error_category") or "").strip()
     severity = str(detail.get("error_severity") or "").strip()
+    if category == "task_queue":
+        return f"狀況：{summary or '背景任務服務異常'}"
     if not (summary or category or severity):
         return ""
     if category or severity:
@@ -88,7 +102,7 @@ def _request_context_message(context: object) -> str:
     parts = []
     operation = str(context.get("operation") or "").strip()
     if operation:
-        parts.append(f"操作：{operation}")
+        parts.append(f"操作：{_operation_label(operation)}")
     tickers = [str(ticker).strip() for ticker in context.get("tickers") or [] if str(ticker).strip()]
     ticker_count = _safe_int(context.get("ticker_count"), default=len(tickers))
     if tickers:
@@ -105,8 +119,26 @@ def _request_context_message(context: object) -> str:
         parts.append(f"資料源：{provider_hint}")
     failure_stage = str(context.get("failure_stage") or "").strip()
     if failure_stage:
-        parts.append(f"階段：{failure_stage}")
+        parts.append(f"階段：{_failure_stage_label(failure_stage)}")
     return "；".join(parts)
+
+
+def _request_next_steps(detail: dict) -> list[str]:
+    category = str(detail.get("error_category") or "").strip()
+    if category == "task_queue":
+        return [
+            "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。",
+            "修復後重新送出任務。",
+        ]
+    return [str(step) for step in detail.get("next_steps") or [] if str(step).strip()]
+
+
+def _operation_label(operation: str) -> str:
+    return OPERATION_LABELS.get(operation, operation)
+
+
+def _failure_stage_label(stage: str) -> str:
+    return FAILURE_STAGE_LABELS.get(stage, stage)
 
 
 def _safe_int(value: object, *, default: int = 0) -> int:

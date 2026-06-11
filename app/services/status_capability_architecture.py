@@ -293,6 +293,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_api_client_extracted")
             and frontend_status.get("ui_api_loaders_extracted")
             and frontend_status.get("ui_background_task_client_extracted")
+            and frontend_status.get("ui_api_error_operator_guidance_enabled")
             and frontend_status.get("ui_task_queue_preflight_enabled")
             and frontend_status.get("ui_task_queue_preflight_cache_enabled")
             and frontend_status.get("ui_task_queue_worker_warning_enabled")

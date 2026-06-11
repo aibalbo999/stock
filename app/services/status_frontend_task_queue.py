@@ -24,6 +24,15 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
         and "def submit_background_task(" not in dashboard_core_source
         and "from app.ui.background_tasks import" in ui_source,
         "ui_background_task_client_path": "app/ui/background_tasks.py",
+        "ui_api_error_operator_guidance_enabled": (
+            "OPERATION_LABELS = {" in api_client_source
+            and "FAILURE_STAGE_LABELS = {" in api_client_source
+            and "def _request_next_steps(" in api_client_source
+            and "def _operation_label(" in api_client_source
+            and "def _failure_stage_label(" in api_client_source
+            and "系統設定 > 維護 > 背景任務觀測" in api_client_source
+            and "task_queue/error" not in api_client_source
+        ),
         "ui_task_queue_preflight_enabled": "def task_queue_preflight_ready("
         in background_tasks_source
         and "api_task_queue_status" in background_tasks_source

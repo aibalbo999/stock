@@ -107,9 +107,9 @@ def test_request_error_message_includes_data_operation_context() -> None:
 
     assert api_client.request_error_message(exc) == (
         "背景任務送出時發生未預期錯誤。 "
-        "診斷：操作：market_refresh；股票：2330, 2382（2 檔）；"
+        "診斷：操作：市場資料刷新；股票：2330, 2382（2 檔）；"
         "期間：2026-05-01 至 2026-06-08；"
-        "資料源：FinMind / Fugle / TWSE fallback；階段：task_submission "
+        "資料源：FinMind / Fugle / TWSE fallback；階段：任務送出 "
         "建議：查看 API log。"
     )
 
@@ -137,9 +137,16 @@ def test_request_error_message_includes_submission_failure_category() -> None:
     exc = requests.HTTPError("500 Server Error")
     exc.response = response
 
-    assert api_client.request_error_message(exc) == (
+    message = api_client.request_error_message(exc)
+
+    assert message == (
         "背景任務送出時發生未預期錯誤。 "
-        "分類：Redis/Celery queue 或 worker 異常（task_queue/error） "
-        "診斷：操作：market_refresh；股票：2330（1 檔）；階段：task_submission "
-        "建議：確認 /services/status 的 task_queue.ready。"
+        "狀況：Redis/Celery queue 或 worker 異常 "
+        "診斷：操作：市場資料刷新；股票：2330（1 檔）；階段：任務送出 "
+        "建議：到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+        "修復後重新送出任務。"
     )
+    assert "task_queue/error" not in message
+    assert "market_refresh" not in message
+    assert "task_submission" not in message
+    assert "/services/status" not in message

@@ -70,6 +70,16 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             in report_observability_panel_source
             and "return _operator_action_text(ALERT_NEXT_STEPS[code])"
             in report_observability_panel_source
+            and '"下一步": _operator_action_text(row.get("next_action"))'
+            in report_observability_panel_source
+            and '"trace_missing": "缺追蹤資料"' in report_observability_panel_source
+            and '"run payload": "報告產生紀錄的輸入內容"'
+            in report_observability_panel_source
+            and "報告產生紀錄的輸入內容" in report_observability_panel_source
+            and "報告追蹤資料" in report_observability_panel_source
+            and "run payload 有寫入" not in report_observability_panel_source
+            and "run payload 寫入" not in report_observability_panel_source
+            and "run payload 是否" not in report_observability_panel_source
             and '"fallback": "後援"' in report_observability_panel_source
             and '"quota_skips": "額度略過"' in report_observability_panel_source
             and '"degraded": "模型降級"' in report_observability_panel_source

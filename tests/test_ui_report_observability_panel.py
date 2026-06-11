@@ -162,6 +162,49 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
     assert "cooldown" not in rendered_rows
 
 
+def test_report_observability_rows_localize_trace_payload_terms() -> None:
+    summary = {
+        "alerts": [
+            {
+                "severity": "warning",
+                "code": "report_trace_missing",
+            }
+        ],
+        "bottlenecks": [
+            {
+                "id": 8,
+                "topic": "散熱",
+                "severity": "warning",
+                "score": 10,
+                "dominant_factor": "trace_missing",
+                "next_action": "重新產生或檢查 run payload 是否寫入 report_execution trace。",
+            }
+        ],
+        "recommendations": [
+            {
+                "code": "trace_missing",
+                "priority": 10,
+                "severity": "warning",
+                "affected_reports": 1,
+                "evidence": "trace_missing=1",
+                "next_action": "重新產生缺 trace 的報告，並確認 run payload 寫入 report_execution。",
+            }
+        ],
+    }
+
+    rendered = str(
+        report_observability_alert_rows(summary)
+        + report_observability_bottleneck_rows(summary)
+        + report_observability_recommendation_rows(summary)
+    )
+
+    assert "報告產生紀錄的輸入內容" in rendered
+    assert "報告追蹤資料" in rendered
+    assert "run payload" not in rendered
+    assert "report_execution" not in rendered
+    assert "trace" not in rendered
+
+
 def test_report_observability_metric_values_handle_missing_summary() -> None:
     assert report_observability_metric_values({}) == {
         "狀態": "-",

@@ -46,7 +46,9 @@ ALERT_MESSAGES = {
 }
 
 ALERT_NEXT_STEPS = {
-    "report_trace_missing": "重新產生缺追蹤的報告，並確認 run payload 有寫入 report_execution。",
+    "report_trace_missing": (
+        "重新產生缺追蹤資料的報告，並確認報告產生紀錄的輸入內容有寫入報告追蹤資料。"
+    ),
     "report_llm_fallback_used": (
         "檢查今日模型額度、冷卻與模型順序；確認聰明模型額度用完後才降級。"
     ),
@@ -57,6 +59,8 @@ ALERT_NEXT_STEPS = {
 }
 
 EVIDENCE_LABELS = {
+    "trace_missing": "缺追蹤資料",
+    "missing_trace": "缺追蹤資料",
     "fallback": "後援",
     "fallbacks": "後援",
     "quota_skip": "額度略過",
@@ -70,6 +74,10 @@ EVIDENCE_LABELS = {
 }
 
 ACTION_TEXT_REPLACEMENTS = {
+    "run payload": "報告產生紀錄的輸入內容",
+    "report_execution trace": "報告追蹤資料",
+    "report_execution": "報告追蹤資料",
+    "缺 trace": "缺追蹤資料",
     "smart model": "聰明模型",
     "fallback": "後援",
     "cooldown": "冷卻",
@@ -123,7 +131,7 @@ def report_observability_bottleneck_rows(summary: dict[str, Any]) -> list[dict]:
             "主要瓶頸": _observability_bottleneck_label(row.get("dominant_factor")),
             "分數": row.get("score") or "-",
             "原因": _observability_reason_text(row.get("reasons")),
-            "下一步": row.get("next_action") or "-",
+            "下一步": _operator_action_text(row.get("next_action")),
         }
         for row in summary.get("bottlenecks") or []
         if isinstance(row, dict)

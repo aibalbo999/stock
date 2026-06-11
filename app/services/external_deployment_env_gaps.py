@@ -117,68 +117,68 @@ def format_external_deployment_env_check_status_report(report: dict[str, Any]) -
     targets = report.get("targets") or sorted(str(target) for target in checks)
     lines = [
         (
-            f"External deployment env check: {report['status']} "
-            f"(target={report.get('target', 'all')}; gaps={report.get('gap_count', 0)})"
+            f"外部部署環境檢查: {report['status']} "
+            f"(目標={report.get('target', 'all')}；缺口={report.get('gap_count', 0)})"
         )
     ]
     if report.get("env_file"):
-        lines.append(f"Env file: {report['env_file']}")
+        lines.append(f"環境檔: {report['env_file']}")
     if not checks:
-        lines.append("No external deployment env check details available.")
+        lines.append("沒有外部部署環境檢查明細。")
         return "\n".join(lines)
     for target in targets:
         check = checks.get(str(target)) or {}
         lines.append(
             (
                 f"[{target}] {check.get('status', 'unknown')} "
-                f"(checked={check.get('checked_count', 0)}; "
-                f"missing={check.get('missing_count', 0)}; "
-                f"different={check.get('different_count', 0)})"
+                f"(已檢查={check.get('checked_count', 0)}；"
+                f"缺少={check.get('missing_count', 0)}；"
+                f"不同={check.get('different_count', 0)})"
             )
         )
         if check.get("env_file"):
-            exists = "exists" if check.get("env_file_exists") else "missing"
-            lines.append(f"  env file: {check['env_file']} ({exists})")
+            exists = "存在" if check.get("env_file_exists") else "缺少"
+            lines.append(f"  環境檔: {check['env_file']} ({exists})")
         for row in check.get("rows") or []:
             lines.append(
                 f"  - [{row['status']}] {row['env_key']} :: "
-                f"expected={row['expected_value']} current={row['current_value']}"
+                f"建議={row['expected_value']} 目前={row['current_value']}"
             )
             if row["action"] != "-":
-                lines.append(f"    action: {row['action']}")
+                lines.append(f"    動作: {row['action']}")
     return "\n".join(lines)
 
 
 def format_external_deployment_env_gap_report(report: dict[str, Any]) -> str:
     lines = [
         (
-            f"External deployment env gaps: {report['status']} "
-            f"({report['gap_count']} gaps; missing={report['missing_count']}; "
-            f"recommended={report['recommended_count']})"
+            f"外部部署環境缺口: {report['status']} "
+            f"({report['gap_count']} 缺口；缺少={report['missing_count']}；"
+            f"建議值={report['recommended_count']})"
         )
     ]
     if not report.get("rows"):
-        lines.append("No external deployment env gaps detected.")
+        lines.append("未偵測到外部部署環境缺口。")
         return "\n".join(lines)
     if report.get("resolution_rows"):
-        lines.append("Resolution plan:")
+        lines.append("處理計畫:")
         for row in report["resolution_rows"]:
             lines.append(
                 f"- {row['優先級']} {row['能力']} :: {row['處理策略']} "
-                f"(gaps={row['缺口數']}; local={row['本機可套用']}; "
-                f"manual={row['需人工處理']})"
+                f"(缺口={row['缺口數']}；本機={row['本機可套用']}；"
+                f"人工={row['需人工處理']})"
             )
-            lines.append(f"  action: {row['建議動作']}")
-            lines.append(f"  keys: {row['設定鍵']}")
-            lines.append(f"  verify: {row['驗證指令']}")
+            lines.append(f"  動作: {row['建議動作']}")
+            lines.append(f"  設定鍵: {row['設定鍵']}")
+            lines.append(f"  驗證: {row['驗證指令']}")
     for row in report["rows"]:
         lines.append(
             f"- [{row['狀態']}] {row['優先級']} {row['能力']} :: "
             f"{row['設定鍵']} ({row['處理類型']})"
         )
-        lines.append(f"  value: {row['建議值']}")
-        lines.append(f"  action: {row['維護動作']}")
-        lines.append(f"  verify: {row['驗證指令']}")
+        lines.append(f"  建議值: {row['建議值']}")
+        lines.append(f"  動作: {row['維護動作']}")
+        lines.append(f"  驗證: {row['驗證指令']}")
     return "\n".join(lines)
 
 

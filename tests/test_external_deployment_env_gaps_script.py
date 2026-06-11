@@ -122,11 +122,13 @@ def test_external_deployment_env_gap_report_formats_text() -> None:
 
     output = external_deployment_env_gaps.format_external_deployment_env_gap_report(report)
 
-    assert "External deployment env gaps: action_required" in output
-    assert "Resolution plan:" in output
+    assert "外部部署環境缺口: action_required" in output
+    assert "處理計畫:" in output
     assert "NEO4J_URI" in output
     assert "需人工密鑰" in output
     assert "structured_company_filing_smoke.py" in output
+    assert "External deployment env gaps:" not in output
+    assert "Resolution plan:" not in output
 
 
 def test_external_deployment_env_gap_report_formats_safe_env_template() -> None:
@@ -137,14 +139,16 @@ def test_external_deployment_env_gap_report_formats_safe_env_template() -> None:
 
     output = external_deployment_env_gaps.format_external_deployment_env_template(report)
 
-    assert "External deployment env template" in output
+    assert "外部部署環境範本" in output
     assert output.count("NEO4J_URI=") == 1
     assert "NEO4J_URI=neo4j://localhost:7687" in output
     assert f"# {NEO4J_PW_ENV}=<set-manually>" in output
     assert "# COMPANY_FILING_STRUCTURED_API_TOKEN=<set-manually>" in output
     assert "# COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in output
     assert "# COMPANY_FILING_STRUCTURED_API_URL=<provider-json-endpoint>" in output
-    assert "Do not commit real secrets" in output
+    assert "不要提交真實密鑰" in output
+    assert "External deployment env template" not in output
+    assert "Do not commit real secrets" not in output
 
 
 def test_external_deployment_env_gap_report_formats_compose_env_template() -> None:
@@ -158,7 +162,7 @@ def test_external_deployment_env_gap_report_formats_compose_env_template() -> No
         target="compose",
     )
 
-    assert "target=compose" in output
+    assert "目標=compose" in output
     assert "COMPOSE_NEO4J_URI=neo4j://neo4j:7687" in output
     assert "COMPOSE_NEO4J_USER=neo4j" in output
     assert f"# {COMPOSE_NEO4J_PW_ENV}=<set-manually>" in output
@@ -295,7 +299,7 @@ def test_external_deployment_env_gap_script_prints_env_template(monkeypatch, cap
 
     assert external_deployment_env_gaps.main(["--env-template"]) == 0
     output = capsys.readouterr().out
-    assert "External deployment env template" in output
+    assert "外部部署環境範本" in output
     assert "# COMPANY_FILING_STRUCTURED_API_TOKEN=<set-manually>" in output
 
 
@@ -332,7 +336,7 @@ def test_external_deployment_env_gap_script_prints_compose_env_template(
         == 0
     )
     output = capsys.readouterr().out
-    assert "target=compose" in output
+    assert "目標=compose" in output
     assert "COMPANY_FILING_BROWSER_RENDER_URL=http://flaresolverr:8191/v1" in output
     assert "http://127.0.0.1:8191/v1" not in output
 
@@ -387,10 +391,11 @@ def test_external_deployment_env_gap_script_prints_env_check(
 
     assert external_deployment_env_gaps.main(["--env-check", "--env-file", str(env_file)]) == 0
     output = capsys.readouterr().out
-    assert "External deployment env check: ready" in output
-    assert "NEO4J_URI :: expected=neo4j://localhost:7687 current=neo4j://localhost:7687" in output
-    assert f"{NEO4J_PW_ENV} :: expected=<set-manually> current=<set>" in output
+    assert "外部部署環境檢查: ready" in output
+    assert "NEO4J_URI :: 建議=neo4j://localhost:7687 目前=neo4j://localhost:7687" in output
+    assert f"{NEO4J_PW_ENV} :: 建議=<set-manually> 目前=<set>" in output
     assert "real-secret" not in output
+    assert "External deployment env check:" not in output
 
     assert (
         external_deployment_env_gaps.main(
@@ -399,7 +404,7 @@ def test_external_deployment_env_gap_script_prints_env_check(
         == 1
     )
     strict_output = capsys.readouterr().out
-    assert "External deployment env check: action_required" in strict_output
+    assert "外部部署環境檢查: action_required" in strict_output
 
 
 def test_external_deployment_env_gap_script_prints_env_check_json(
@@ -535,7 +540,7 @@ def test_external_deployment_env_gap_script_prints_all_target_env_check(
         == 0
     )
     output = capsys.readouterr().out
-    assert "External deployment env check: action_required (target=all; gaps=1)" in output
+    assert "外部部署環境檢查: action_required (目標=all；缺口=1)" in output
     assert "[host] ready" in output
     assert "[compose] action_required" in output
     assert "COMPOSE_NEO4J_URI" in output

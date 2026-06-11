@@ -48,12 +48,31 @@ ALERT_MESSAGES = {
 ALERT_NEXT_STEPS = {
     "report_trace_missing": "重新產生缺追蹤的報告，並確認 run payload 有寫入 report_execution。",
     "report_llm_fallback_used": (
-        "檢查今日模型額度、cooldown 與模型順序；確認聰明模型額度用完後才降級。"
+        "檢查今日模型額度、冷卻與模型順序；確認聰明模型額度用完後才降級。"
     ),
     "report_llm_retryable_failures": "檢查 provider timeout、429 或 5xx 分布，必要時拉長 cooldown。",
     "report_reranker_keyword_fallback": "啟用本機 cross-encoder、Cohere 或 LLM reranker，降低排序風險。",
     "report_graphrag_reasoning_missing": "檢查 GraphRAG trace 是否寫入，並重產需要上下游推理的報告。",
     "report_graphrag_reasoning_partial": "補齊缺路徑股票的同業/上下游 edge，再重產報告。",
+}
+
+EVIDENCE_LABELS = {
+    "fallback": "後援",
+    "fallbacks": "後援",
+    "quota_skip": "額度略過",
+    "quota_skips": "額度略過",
+    "degraded": "模型降級",
+    "degraded_from_primary": "模型降級",
+    "keyword_fallback": "關鍵字後援",
+    "keyword_fallbacks": "關鍵字後援",
+    "retryable_failure": "可重試失敗",
+    "retryable_failures": "可重試失敗",
+}
+
+ACTION_TEXT_REPLACEMENTS = {
+    "smart model": "聰明模型",
+    "fallback": "後援",
+    "cooldown": "冷卻",
 }
 
 
@@ -120,8 +139,8 @@ def report_observability_recommendation_rows(summary: dict[str, Any]) -> list[di
             "影響": _affected_reports_text(row.get("affected_reports")),
             "關聯報告": _report_ref(row, key="top_report_id"),
             "主要瓶頸": _observability_bottleneck_label(row.get("top_dominant_factor")),
-            "證據": row.get("evidence") or "-",
-            "下一步": row.get("next_action") or "-",
+            "證據": _observability_evidence_text(row.get("evidence")),
+            "下一步": _operator_action_text(row.get("next_action")),
         }
         for row in summary.get("recommendations") or []
         if isinstance(row, dict)
@@ -179,7 +198,7 @@ def _observability_alert_message(alert: dict[str, Any]) -> str:
 def _observability_alert_next_step(alert: dict[str, Any]) -> str:
     code = str(alert.get("code") or "").strip()
     if code in ALERT_NEXT_STEPS:
-        return ALERT_NEXT_STEPS[code]
+        return _operator_action_text(ALERT_NEXT_STEPS[code])
     return "查看建議處理順序與優先優化清單。"
 
 
@@ -196,7 +215,7 @@ def _yes_no(value: Any) -> str:
 
 
 def _observability_reason_text(value: Any) -> str:
-    reasons = [part.strip() for part in str(value or "").split("；") if part.strip()]
+    reasons = _split_observability_parts(value)
     labels = [_observability_reason_label(reason) for reason in reasons]
     return "；".join(label for label in labels if label) or "-"
 
@@ -218,6 +237,52 @@ def _observability_reason_label(reason: str) -> str:
         routing_reason = reason.split("=", 1)[1]
         return f"路由原因 {routing_reason}"
     return BOTTLENECK_LABELS.get(reason, reason)
+
+
+def _observability_evidence_text(value: Any) -> str:
+    evidence_parts = _split_observability_parts(value)
+    labels = [_observability_evidence_label(part) for part in evidence_parts]
+    return "；".join(label for label in labels if label) or "-"
+
+
+def _observability_evidence_label(evidence: str) -> str:
+    if "=" not in evidence:
+        return EVIDENCE_LABELS.get(evidence, BOTTLENECK_LABELS.get(evidence, evidence))
+    key, value = [part.strip() for part in evidence.split("=", 1)]
+    label = EVIDENCE_LABELS.get(key)
+    if label:
+        return f"{label} {_format_count(value)}"
+    if key in {"llm_latency_ms", "retrieval_latency_ms"}:
+        return _observability_reason_label(evidence)
+    if key in {"tokens", "total_token_estimate"}:
+        return f"Token 估算 {value}"
+    if key in {"cost_usd", "estimated_cost_usd"}:
+        return f"估算成本 USD {value}"
+    if key == "routing_reason":
+        return f"路由原因 {_operator_action_text(value)}"
+    return f"{key} {value}"
+
+
+def _format_count(value: str) -> str:
+    return f"{value} 次"
+
+
+def _operator_action_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "-"
+    for raw, label in ACTION_TEXT_REPLACEMENTS.items():
+        text = text.replace(raw, label)
+    for label in ACTION_TEXT_REPLACEMENTS.values():
+        text = text.replace(f" {label} ", label)
+        text = text.replace(f" {label}", label)
+        text = text.replace(f"{label} ", label)
+    return text
+
+
+def _split_observability_parts(value: Any) -> list[str]:
+    text = str(value or "").replace("；", ";")
+    return [part.strip() for part in text.split(";") if part.strip()]
 
 
 def render_report_observability_panel(report_observability_summary: dict[str, Any]) -> None:

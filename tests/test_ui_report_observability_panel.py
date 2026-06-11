@@ -50,8 +50,8 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
                 "priority": 20,
                 "severity": "warning",
                 "affected_reports": 2,
-                "evidence": "fallback=1; quota_skips=1; degraded=1",
-                "next_action": "確認聰明模型仍在前。",
+                "evidence": "fallback=1; quota_skips=1; degraded=1; keyword_fallback=1",
+                "next_action": "確認 smart model 在 fallback 前，且 cooldown 結束後再重試。",
                 "top_report_id": 7,
                 "top_topic": "AI 伺服器",
                 "top_dominant_factor": "llm_latency",
@@ -100,12 +100,13 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
         {
             "嚴重度": "警告",
             "提醒": "部分最新版報告使用模型降級路由。",
-            "下一步": "檢查今日模型額度、cooldown 與模型順序；確認聰明模型額度用完後才降級。",
+            "下一步": "檢查今日模型額度、冷卻與模型順序；確認聰明模型額度用完後才降級。",
         }
     ]
     rendered_alerts = str(report_observability_alert_rows(summary))
     assert "report_llm_fallback_used" not in rendered_alerts
     assert "Some latest reports" not in rendered_alerts
+    assert "cooldown" not in rendered_alerts
     assert report_observability_bottleneck_rows(summary) == [
         {
             "報告": "#7",
@@ -125,8 +126,8 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
             "影響": "2 份報告",
             "關聯報告": "#7",
             "主要瓶頸": "LLM 延遲",
-            "證據": "fallback=1; quota_skips=1; degraded=1",
-            "下一步": "確認聰明模型仍在前。",
+            "證據": "後援 1 次；額度略過 1 次；模型降級 1 次；關鍵字後援 1 次",
+            "下一步": "確認聰明模型在後援前，且冷卻結束後再重試。",
         }
     ]
     assert report_observability_report_rows(summary) == [
@@ -153,6 +154,12 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
     assert "llm_latency_ms" not in rendered_rows
     assert "top_report_id" not in rendered_rows
     assert "graph_reasoning_coverage_ratio" not in rendered_rows
+    assert "fallback=1" not in rendered_rows
+    assert "quota_skips=1" not in rendered_rows
+    assert "degraded=1" not in rendered_rows
+    assert "keyword_fallback=1" not in rendered_rows
+    assert "smart model" not in rendered_rows
+    assert "cooldown" not in rendered_rows
 
 
 def test_report_observability_metric_values_handle_missing_summary() -> None:

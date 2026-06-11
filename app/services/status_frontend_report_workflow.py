@@ -60,6 +60,23 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             not in report_observability_panel_source
             and 'alert.get("message") or alert.get("code")' not in report_observability_panel_source
         ),
+        "ui_report_observability_recommendation_operator_text_enabled": (
+            "def _observability_evidence_text(" in report_observability_panel_source
+            and "def _observability_evidence_label(" in report_observability_panel_source
+            and "def _operator_action_text(" in report_observability_panel_source
+            and '"證據": _observability_evidence_text(row.get("evidence"))'
+            in report_observability_panel_source
+            and '"下一步": _operator_action_text(row.get("next_action"))'
+            in report_observability_panel_source
+            and "return _operator_action_text(ALERT_NEXT_STEPS[code])"
+            in report_observability_panel_source
+            and '"fallback": "後援"' in report_observability_panel_source
+            and '"quota_skips": "額度略過"' in report_observability_panel_source
+            and '"degraded": "模型降級"' in report_observability_panel_source
+            and '"keyword_fallback": "關鍵字後援"' in report_observability_panel_source
+            and '"cooldown": "冷卻"' in report_observability_panel_source
+            and '"證據": row.get("evidence") or "-"' not in report_observability_panel_source
+        ),
         "ui_report_observability_row_operator_labels_enabled": (
             "def _observability_bottleneck_label(" in report_observability_panel_source
             and "def _observability_recommendation_label(" in report_observability_panel_source

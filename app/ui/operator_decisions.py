@@ -569,10 +569,10 @@ def _optimization_free_validation_action(service_snapshot: dict | None) -> dict[
         if capability == "company_filing_structured_api_fallback":
             detail = (
                 f"{validation_label}；正式串 TEJ 或付費資料商前，"
-                f"先用 {command_count or 1} 組免費 smoke 驗證 JSON/HTTP contract。"
+                f"先用 {command_count or 1} 組免費檢查驗證 JSON/HTTP 格式。"
             )
             return {
-                "title": "驗證公司文件 API contract",
+                "title": "驗證公司文件 API 格式",
                 "detail": detail,
                 "state": "attention",
                 "route_hint": "settings:maintenance:structured_api",

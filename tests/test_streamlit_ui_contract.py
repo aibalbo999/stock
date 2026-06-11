@@ -803,7 +803,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "/reports/quality/summary?limit=20" in source
     assert "報告品質 Gate 總覽" in source
     assert "外部部署選配狀態" in source
-    assert "外部部署 readiness checklist" in source
+    assert "外部部署啟用檢查清單" in source
     assert "外部部署啟用摘要" in source
     assert "有效外部缺口" in source
     assert "本機免費可補" in source

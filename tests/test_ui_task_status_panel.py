@@ -639,7 +639,7 @@ def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
             "retry_kind": "data_operation",
             "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-structured-api/retry",
             "next_steps": [
-                "查看 /services/status 與外部部署 readiness checklist，確認缺少的 env key。",
+                "查看系統設定 > 維護 > 外部部署啟用檢查清單，確認缺少的 env key。",
                 "補齊結構化文件 API、Browser render/unlocker、Visual RAG gateway 或 Neo4j 設定後再重送任務。",
             ],
         }
@@ -649,7 +649,7 @@ def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
     assert "Structured API" in rows[0]["action_route_detail"]
     assert rows[0]["next_action"] == rows[0]["action_route_detail"]
     assert "POST /tasks" not in rows[0]["next_action"]
-    assert "外部部署 readiness" in rows[0]["next_steps"]
+    assert "外部部署啟用檢查清單" in rows[0]["next_steps"]
 
 
 def test_task_status_diagnostic_rows_hide_when_no_failure_category() -> None:

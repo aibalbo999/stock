@@ -121,7 +121,7 @@ TASK_FAILURE_CATEGORIES = {
             "missing_settings:neo4j_uri",
         ),
         "next_steps": [
-            "查看 /services/status 與外部部署 readiness checklist，確認缺少的 env key。",
+            "查看系統設定 > 維護 > 外部部署啟用檢查清單，確認缺少的 env key。",
             "補齊結構化文件 API、Browser render/unlocker、Visual RAG gateway 或 Neo4j 設定後再重送任務。",
         ],
     },

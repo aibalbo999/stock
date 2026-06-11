@@ -72,7 +72,7 @@ def frontend_external_deployment_readiness_status(
             and "local_dependency_status_rows(service_snapshot)" in ui_source
             and "local_dependency_last_start_rows(service_snapshot)" in ui_source
             and "local_dependency_repair_rows(service_snapshot)" in ui_source
-            and "外部部署 readiness checklist" in ui_source
+            and "外部部署啟用檢查清單" in ui_source
             and "最近本機依賴啟動" in ui_source
             and "本機依賴修復指引" in ui_source
             and "本機依賴狀態" in ui_source

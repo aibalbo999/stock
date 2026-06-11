@@ -68,7 +68,7 @@ def external_deployment_operator_summary(
         "title": "外部選配不是系統故障",
         "detail": (
             f"目前沒有 blocking deployment 缺口；{current_pending} 項外部選配中，"
-            f"{local_available} 項可先用本機 defaults 或免費 smoke 驗證。"
+            f"{local_available} 項可先用本機 defaults 或免費檢查驗證。"
         ),
         "local_action": f"{local_available} 項可先用本機 defaults 驗證",
         "effective_remaining": f"有效剩餘 {remaining_pending} 項",
@@ -85,9 +85,9 @@ def external_deployment_focus_banner(focus_context: str | None) -> dict:
             "title": "公司文件結構化 API 免費驗證",
             "detail": (
                 "正式串 TEJ 或付費資料商前，先看「結構化文件 API 操作提示」，"
-                "用 sample、fixture 與 provider profile 免費驗證 JSON/HTTP contract。"
+                "用範例資料、本機測試服務與提供者設定免費驗證 JSON/HTTP 格式。"
             ),
-            "target_caption": "免費 smoke 驗證 JSON/HTTP contract",
+            "target_caption": "免費檢查 JSON/HTTP 格式",
         }
     if focus == "local_defaults":
         return {

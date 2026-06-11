@@ -581,7 +581,7 @@ def test_operator_secondary_actions_surface_free_validation_for_paid_external_ga
         {"summary": {"required_count": 0}},
     )
 
-    assert actions[0]["title"] == "驗證公司文件 API contract"
+    assert actions[0]["title"] == "驗證公司文件 API 格式"
     assert "sample + fixture + provider profile 可驗證" in actions[0]["detail"]
     assert "正式串 TEJ 或付費資料商前" in actions[0]["detail"]
     assert actions[0]["state"] == "attention"
@@ -649,7 +649,7 @@ def test_operator_secondary_actions_keep_free_validation_visible_with_history_in
 
     assert any(action["title"] == "白名單或輸入擋下任務" for action in actions)
     assert any(action["title"] == "驗證本機 defaults" for action in actions)
-    assert any(action["title"] == "驗證公司文件 API contract" for action in actions)
+    assert any(action["title"] == "驗證公司文件 API 格式" for action in actions)
     assert any(action["action_label"] == "查看免費驗證" for action in actions)
 
 

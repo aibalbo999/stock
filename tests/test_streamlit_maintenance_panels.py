@@ -510,14 +510,14 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
         {
             "post_run_checks": [
                 {
-                    "item": "GraphRAG live Neo4j smoke",
-                    "purpose": "驗證 live query",
+                    "item": "GraphRAG Neo4j 查詢檢查",
+                    "purpose": "驗證即時查詢",
                     "diagnostic_action_id": "graphrag_live_query_smoke",
                     "command": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
                 },
                 {
-                    "item": "高風險 MOPS unlocker smoke",
-                    "purpose": "驗證 MOPS unlocker",
+                    "item": "高風險 MOPS 解鎖檢查",
+                    "purpose": "驗證 MOPS 解鎖服務",
                     "diagnostic_action_id": "high_risk_unlocker_smoke",
                     "command": (
                         ".venv/bin/python scripts/company_filing_render_smoke.py "
@@ -531,14 +531,14 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
 
     assert rows == [
         {
-            "項目": "GraphRAG live Neo4j smoke",
-            "用途": "驗證 live query",
+            "項目": "GraphRAG Neo4j 查詢檢查",
+            "用途": "驗證即時查詢",
             "可執行診斷": "graphrag_live_query_smoke",
             "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --json",
         },
         {
-            "項目": "高風險 MOPS unlocker smoke",
-            "用途": "驗證 MOPS unlocker",
+            "項目": "高風險 MOPS 解鎖檢查",
+            "用途": "驗證 MOPS 解鎖服務",
             "可執行診斷": "high_risk_unlocker_smoke",
             "指令": (
                 ".venv/bin/python scripts/company_filing_render_smoke.py "
@@ -1318,7 +1318,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error_severity": "warning",
                 "error_summary": "外部資料源或文件後援配置缺失",
                 "next_steps": [
-                    "查看 /services/status 與外部部署 readiness checklist，確認缺少的 env key。",
+                    "查看系統設定 > 維護 > 外部部署啟用檢查清單，確認缺少的 env key。",
                     "補齊結構化文件 API、Browser render/unlocker、Visual RAG gateway 或 Neo4j 設定後再重送任務。",
                 ],
                 "retry_endpoint": "POST /tasks/task-structured-api/retry",
@@ -1413,7 +1413,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[4]["category"] == "外部設定"
     assert rows[4]["action_route"] == "外部配置缺失"
     assert rows[4]["next_action"] == rows[4]["action_route_detail"]
-    assert "外部部署 readiness" in rows[4]["next_steps"]
+    assert "外部部署啟用檢查清單" in rows[4]["next_steps"]
     assert rows[5]["category"] == "向量資料庫"
     assert rows[5]["action_route"] == "需人工處理"
     assert "Chroma client/server" in rows[5]["action_route_detail"]
@@ -2632,7 +2632,7 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
         "高風險防護",
         "高風險網域",
         "建議 env",
-        "MOPS smoke 驗證",
+        "MOPS 解鎖檢查",
     ]
     assert rows[0]["狀態"] == "待配置"
     assert rows[0]["目前"] == "browserless"
@@ -2757,7 +2757,7 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
         "本機稽核",
         "備援判斷",
         "容器診斷",
-        "MOPS smoke 驗證",
+        "MOPS 解鎖檢查",
     ]
     assert rows[0]["狀態"] == "建議升級"
     assert "scripts/start_system.py --start-dependencies --prefer-unlocker" in rows[0]["指令"]
@@ -3049,7 +3049,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
         "資料商設定預覽",
         "範例 JSON 合約",
         "本機 fixture HTTP",
-        "正式 API smoke",
+        "正式 API 檢查",
         "請求格式",
         "必備欄位",
         "備援判斷",
@@ -3083,7 +3083,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "local_structured_company_filing_api.py" in rows[5]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in rows[5]["指令"]
     assert "http://127.0.0.1:8794/filings" in rows[5]["說明"]
-    assert "provider_profile=tej local smoke" in rows[5]["說明"]
+    assert "提供者設定=tej；本機檢查" in rows[5]["說明"]
     assert "不需要付費資料商 token" in rows[5]["說明"]
     assert rows[6]["狀態"] == "待設定"
     assert "structured_company_filing_smoke.py" in rows[6]["指令"]

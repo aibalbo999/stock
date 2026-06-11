@@ -85,10 +85,10 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": _structured_filing_local_fixture_detail(runtime),
         },
         {
-            "項目": "正式 API smoke",
+            "項目": "正式 API 檢查",
             "狀態": "可執行" if runtime.get("configured") else "待設定",
             "指令": structured_filing_live_smoke_command(runtime),
-            "說明": "設定 provider URL/token 後，驗證 live API、欄位轉換與公司/文件類型命中。",
+            "說明": "設定 provider URL/token 後，驗證正式 API、欄位轉換與公司/文件類型命中。",
         },
         {
             "項目": "請求格式",
@@ -339,12 +339,12 @@ def _structured_filing_local_fixture_detail(runtime: dict) -> str:
     purpose = (
         free_validation.get("purpose")
         or fixture.get("purpose")
-        or "用本機 fixture 驗證 live HTTP fetch path，不需要付費資料商 token。"
+        or "用本機測試服務驗證 HTTP 取件流程，不需要付費資料商 token。"
     )
     provider_profile = str(
         free_validation.get("provider_profile") or fixture.get("provider_profile") or ""
     ).strip()
-    profile_text = f"；provider_profile={provider_profile} local smoke" if provider_profile else ""
+    profile_text = f"；提供者設定={provider_profile}；本機檢查" if provider_profile else ""
     return f"url={url}{profile_text}；{purpose}"
 
 

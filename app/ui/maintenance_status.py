@@ -351,7 +351,7 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
             "detail": "核心能力與外部部署檢查都沒有待處理項目。",
             "local_action": "不需本機 defaults",
             "paid_external": "付費/API 選配 0 項",
-            "next_step": "維持例行 smoke、audit 與報告品質觀測。",
+            "next_step": "維持例行檢查、稽核與報告品質觀測。",
             "command": "-",
         }
 
@@ -391,7 +391,7 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
         "title": "核心優化已可用，先驗證本機選配",
         "detail": (
             f"目前沒有 blocking 缺口；{optional_count} 項外部選配中 "
-            f"{local_count} 項可用本機 defaults 或免費 smoke 驗證。"
+            f"{local_count} 項可用本機 defaults 或免費檢查驗證。"
         ),
         "local_action": local_detail,
         "paid_external": f"付費/API 選配 {max(paid_count, effective_optional, 0)} 項可暫緩",
@@ -506,7 +506,7 @@ def _action_free_validation_command_summary(
     if not commands:
         return "-"
     if compact:
-        return f"{len(commands)} 組免費 smoke"
+        return f"{len(commands)} 組免費檢查"
     return "\n".join(commands)
 
 

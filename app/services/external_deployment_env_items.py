@@ -51,7 +51,7 @@ def _company_filing_env_items(filings: dict[str, Any]) -> list[dict[str, Any]]:
                 "company_filing_browser_or_proxy_fallback",
                 "公司文件 Browser render 後援",
                 browser_runtime,
-                "補齊 Browser render provider / URL 後重跑文件 render smoke。",
+                "補齊 Browser render provider / URL 後重跑文件解析檢查。",
             )
         )
     high_risk_policy = (

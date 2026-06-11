@@ -128,11 +128,11 @@ def _local_neo4j_fallback_detail(import_evidence: dict, cypher_evidence: dict) -
         or cypher_evidence.get("neo4j_ready")
     ):
         database = import_evidence.get("database") or "neo4j"
-        return f"Neo4j live query/import 已就緒；database={database}。"
+        return f"Neo4j 即時查詢與匯入已就緒；database={database}。"
     reason = (
         import_evidence.get("fallback_reason")
         or import_evidence.get("connection_error")
         or cypher_evidence.get("fallback_reason")
         or "missing_settings:neo4j_uri"
     )
-    return f"目前只使用本機 GraphRAG plan/payload；live Neo4j 尚未就緒：{reason}。"
+    return f"目前只使用本機 GraphRAG 規劃與匯入資料預檢；Neo4j 即時查詢尚未就緒：{reason}。"

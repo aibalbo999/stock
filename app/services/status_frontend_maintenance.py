@@ -227,7 +227,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in maintenance_status_source
             and "optimization_progress_next_action_rows(progress, compact=True)"
             in maintenance_panels_source
-            and "return f\"{len(commands)} 組免費 smoke\"" in maintenance_status_source
+            and "return f\"{len(commands)} 組免費檢查\"" in maintenance_status_source
         ),
         "ui_optimization_progress_paid_external_only_summary_enabled": (
             "本機優化已完成，剩下外部資料 API 決策" in maintenance_status_source

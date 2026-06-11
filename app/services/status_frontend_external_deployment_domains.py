@@ -34,7 +34,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         in external_deployment_source
         and "def external_deployment_readiness_rows(" in external_deployment_source
         and "external_deployment_readiness_rows(\n        upgrade_audit," in ui_source
-        and "外部部署 readiness checklist" in ui_source
+        and "外部部署啟用檢查清單" in ui_source
         and "最近本機依賴啟動" in ui_source
         and "本機依賴修復指引" in ui_source
         and "本機依賴狀態" in ui_source
@@ -142,7 +142,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and '"資料商選擇矩陣"' in external_deployment_structured_api_source
             and '"資料商設定預覽"' in external_deployment_structured_api_source
             and '"範例 JSON 合約"' in external_deployment_structured_api_source
-            and '"正式 API smoke"' in external_deployment_structured_api_source
+            and '"正式 API 檢查"' in external_deployment_structured_api_source
             and '"請求格式"' in external_deployment_structured_api_source
             and '"必備欄位"' in external_deployment_structured_api_source
             and '"備援判斷"' in external_deployment_structured_api_source
@@ -163,7 +163,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and '"解鎖服務"' in external_deployment_unlocker_source
             and '"設定檢查"' in external_deployment_unlocker_source
             and '"備援判斷"' in external_deployment_unlocker_source
-            and '"MOPS smoke 驗證"' in external_deployment_unlocker_source
+            and '"MOPS 解鎖檢查"' in external_deployment_unlocker_source
             and '"missing_required_env": "缺少必要設定"'
             in external_deployment_unlocker_source
             and "Browser render 後援" in external_deployment_unlocker_source

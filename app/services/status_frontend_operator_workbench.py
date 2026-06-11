@@ -188,7 +188,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def _optimization_actions(" in operator_decisions_source
             and "free_validation_action = _optimization_free_validation_action(service_snapshot)"
             in operator_decisions_source
-            and '"驗證公司文件 API contract"' in operator_decisions_source
+            and '"驗證公司文件 API 格式"' in operator_decisions_source
             and '"settings:maintenance:structured_api"' in operator_decisions_source
             and '"optimization:company_filing_structured_api_fallback"'
             in operator_decisions_source

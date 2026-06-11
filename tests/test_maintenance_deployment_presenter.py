@@ -72,7 +72,7 @@ def test_maintenance_deployment_presenter_builds_structured_api_focus_banner() -
     assert "正式串 TEJ 或付費資料商前" in banner["detail"]
     assert "結構化文件 API 操作提示" in banner["detail"]
     assert banner["state"] == "attention"
-    assert banner["target_caption"] == "免費 smoke 驗證 JSON/HTTP contract"
+    assert banner["target_caption"] == "免費檢查 JSON/HTTP 格式"
     assert external_deployment_focus_banner("unknown") == {}
     assert external_deployment_focus_banner(None) == {}
 
@@ -174,14 +174,14 @@ def test_maintenance_deployment_presenter_builds_operation_and_post_run_rows() -
         {
             "post_run_checks": [
                 {
-                    "item": "GraphRAG live Neo4j smoke",
-                    "purpose": "驗證 live query",
+                    "item": "GraphRAG Neo4j 查詢檢查",
+                    "purpose": "驗證即時查詢",
                     "diagnostic_action_id": "graphrag_live_query_smoke",
                     "command": "neo4j-smoke --json",
                 },
                 {
-                    "item": "GraphRAG live Neo4j smoke duplicate",
-                    "purpose": "驗證 live query",
+                    "item": "GraphRAG Neo4j 查詢檢查 duplicate",
+                    "purpose": "驗證即時查詢",
                     "diagnostic_action_id": "graphrag_live_query_smoke",
                     "command": "neo4j-smoke --json",
                 },

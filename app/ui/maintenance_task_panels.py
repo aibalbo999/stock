@@ -137,7 +137,7 @@ def _render_task_failure_drilldown(task_summary: dict) -> None:
             st.caption("目前近期失敗沒有可自動重試的任務輸入。")
     inspect_task_id = st.session_state.get("maintenance_inspect_task_id")
     if inspect_task_id:
-        st.caption("任務狀態 drilldown")
+        st.caption("任務狀態詳情")
         render_task_status_panel(
             task_id=str(inspect_task_id),
             refresh_key="maintenance_retry_task_status",

@@ -56,10 +56,10 @@ def external_env_key_actions(item: dict, env_summary: dict) -> list[tuple[str, s
 def external_env_key_next_step(item: dict, env_key: str, status: str) -> str:
     remediation = str(item.get("remediation") or "").strip()
     if status == "缺少":
-        return f"補齊 {env_key} 後重跑對應 smoke。"
+        return f"補齊 {env_key} 後重跑對應檢查。"
     if remediation:
         return remediation
-    return f"需要該能力時設定 {env_key}，再重跑 readiness checklist。"
+    return f"需要該能力時設定 {env_key}，再重跑啟用檢查清單。"
 
 
 def external_env_resolution_type(item: dict, env_key: str, recommended_value: str) -> str:

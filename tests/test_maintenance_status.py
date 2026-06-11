@@ -48,7 +48,7 @@ def test_optimization_progress_operator_summary_promotes_local_defaults() -> Non
     assert summary == {
         "state": "ready",
         "title": "核心優化已可用，先驗證本機選配",
-        "detail": "目前沒有 blocking 缺口；4 項外部選配中 3 項可用本機 defaults 或免費 smoke 驗證。",
+        "detail": "目前沒有 blocking 缺口；4 項外部選配中 3 項可用本機 defaults 或免費檢查驗證。",
         "local_action": "先驗證 MOPS/TWSE/TPEx 高風險文件 unlocker",
         "paid_external": "付費/API 選配 1 項可暫緩",
         "next_step": "套用已偵測本機 defaults 可先消除 3 項缺口；有效剩餘 1 項付費外部資料 API 選配。",
@@ -132,7 +132,7 @@ def test_optimization_progress_next_action_rows_compact_free_validation_commands
     compact_rows = optimization_progress_next_action_rows(progress, compact=True)
 
     assert "structured_company_filing_fixture_smoke.py" in full_rows[0]["免費驗證指令"]
-    assert compact_rows[0]["免費驗證指令"] == "4 組免費 smoke"
+    assert compact_rows[0]["免費驗證指令"] == "4 組免費檢查"
     assert "structured_company_filing_fixture_smoke.py" not in str(compact_rows[0])
 
 
@@ -211,7 +211,7 @@ def test_optimization_progress_operator_summary_ready_when_no_actions() -> None:
         "detail": "核心能力與外部部署檢查都沒有待處理項目。",
         "local_action": "不需本機 defaults",
         "paid_external": "付費/API 選配 0 項",
-        "next_step": "維持例行 smoke、audit 與報告品質觀測。",
+        "next_step": "維持例行檢查、稽核與報告品質觀測。",
         "command": "-",
     }
 

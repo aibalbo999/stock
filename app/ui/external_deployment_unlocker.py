@@ -79,13 +79,13 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
             else "參考",
             "目前": "\n".join(env_lines) if env_lines else "-",
             "細節": "不改寫 .env；host-only 用 127.0.0.1，compose 服務內用 service DNS。",
-            "下一步": "設定後重跑 high-risk filing unlocker smoke。",
+            "下一步": "設定後重跑高風險文件解鎖檢查。",
         },
         {
-            "項目": "MOPS smoke 驗證",
+            "項目": "MOPS 解鎖檢查",
             "狀態": "可執行" if smoke_cli else "未提供",
             "目前": smoke_cli or "-",
-            "細節": "驗證高風險公開文件入口的 render/unlocker contract。",
+            "細節": "驗證高風險公開文件入口的網頁解析與解鎖流程。",
             "下一步": smoke_cli or "-",
         },
     ]
@@ -129,10 +129,10 @@ def local_unlocker_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": "檢查 FlareSolverr container 是否啟動、port 是否綁定、image 是否拉取成功。",
         },
         {
-            "項目": "MOPS smoke 驗證",
+            "項目": "MOPS 解鎖檢查",
             "狀態": "可執行",
             "指令": high_risk_mops_smoke_command(evidence),
-            "說明": "驗證高風險公開資訊入口能走目前 render/unlocker contract 取得可解析 HTML。",
+            "說明": "驗證高風險公開資訊入口能走目前網頁解析與解鎖流程取得可解析 HTML。",
         },
     ]
 
@@ -213,28 +213,28 @@ def _high_risk_unlocker_configuration_next_action(configuration_check: dict) -> 
     if not configuration_check:
         return "重跑系統狀態檢查或 upgrade audit，確認 unlocker 配置檢查結果。"
     if configuration_check.get("ready"):
-        return "配置完整；重跑 high-risk filing unlocker smoke 驗證入口頁。"
+        return "配置完整；重跑高風險文件解鎖檢查驗證入口頁。"
     missing = string_list(configuration_check.get("missing_env_keys"))
     fallback_reason = str(configuration_check.get("fallback_reason") or "")
     if "COMPANY_FILING_BROWSER_RENDER_TOKEN" in missing:
-        return "設定 COMPANY_FILING_BROWSER_RENDER_TOKEN 後重跑 MOPS smoke。"
+        return "設定 COMPANY_FILING_BROWSER_RENDER_TOKEN 後重跑 MOPS 解鎖檢查。"
     if "COMPANY_FILING_BROWSER_RENDER_ENABLED" in missing:
         return "設定 COMPANY_FILING_BROWSER_RENDER_ENABLED=true 並補齊 render URL。"
     if (
         "COMPANY_FILING_BROWSER_RENDER_URL" in missing
         or fallback_reason == "missing_browser_render_url"
     ):
-        return "設定 COMPANY_FILING_BROWSER_RENDER_URL 後重跑 high-risk filing unlocker smoke。"
+        return "設定 COMPANY_FILING_BROWSER_RENDER_URL 後重跑高風險文件解鎖檢查。"
     if fallback_reason == "invalid_browser_render_url":
         return "修正 COMPANY_FILING_BROWSER_RENDER_URL，需為 http/https 且包含 host。"
     if fallback_reason == "unsupported_browser_render_provider":
         return "改用 FlareSolverr、ScrapingBee 或 BrightData 等支援的 render/unlocker provider。"
-    return "補齊缺少的 unlocker env 後重跑 high-risk filing unlocker smoke。"
+    return "補齊缺少的 unlocker env 後重跑高風險文件解鎖檢查。"
 
 
 def _high_risk_unlocker_next_action(evidence: dict) -> str:
     if evidence.get("unlocker_provider_ready"):
-        return "維持 unlocker provider，定期重跑 MOPS smoke。"
+        return "維持 unlocker provider，定期重跑 MOPS 解鎖檢查。"
     if evidence.get("ip_rotation_ready"):
         return "已具備 IP rotation；仍建議補 FlareSolverr、ScrapingBee 或 BrightData。"
     if evidence.get("browser_only_render_ready"):

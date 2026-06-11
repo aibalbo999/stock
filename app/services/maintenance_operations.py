@@ -82,14 +82,14 @@ POST_RUN_CHECKS = {
             ),
         },
         {
-            "item": "Neo4j payload dry-run",
-            "purpose": "確認 Neo4j 匯入 payload contract 仍可生成。",
+            "item": "Neo4j 匯入資料預檢",
+            "purpose": "確認 Neo4j 匯入資料仍可生成。",
             "diagnostic_action_id": "neo4j_payload_dry_run",
             "command": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
         },
         {
-            "item": "GraphRAG local Cypher contract",
-            "purpose": "確認 guarded Cypher planner 與本機 dry-run 邏輯。",
+            "item": "GraphRAG 本機查詢規則檢查",
+            "purpose": "確認受控 Cypher 規劃與本機預檢邏輯。",
             "diagnostic_action_id": "graphrag_local_contract_smoke",
             "command": (
                 ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
@@ -98,8 +98,8 @@ POST_RUN_CHECKS = {
             ),
         },
         {
-            "item": "GraphRAG live Neo4j smoke",
-            "purpose": "Neo4j env 套用後，驗證 live query / import-first 路徑。",
+            "item": "GraphRAG Neo4j 查詢檢查",
+            "purpose": "Neo4j env 套用後，驗證即時查詢與先匯入再查詢路徑。",
             "diagnostic_action_id": "graphrag_import_first_smoke",
             "command": (
                 ".venv/bin/python scripts/neo4j_graphrag_smoke.py "

@@ -196,7 +196,7 @@ def render_external_deployment_panel(
             st.caption("待處理缺口分類")
             st.dataframe(external_pending_gap_rows, width="stretch", hide_index=True)
         if external_readiness_rows:
-            st.caption("外部部署 readiness checklist")
+            st.caption("外部部署啟用檢查清單")
             st.dataframe(external_readiness_rows, width="stretch", hide_index=True)
         if external_env_resolution_rows:
             st.caption("外部設定處理計畫")
@@ -256,7 +256,7 @@ def render_external_deployment_panel(
             if external_smoke_commands:
                 st.caption("單項診斷指令")
                 st.code("\n".join(external_smoke_commands), language="bash")
-            st.caption("正式部署整合 smoke")
+            st.caption("正式部署整合檢查")
             st.code(
                 ".venv/bin/python scripts/external_integrations_smoke.py --strict --json",
                 language="bash",

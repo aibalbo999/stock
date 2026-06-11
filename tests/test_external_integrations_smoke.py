@@ -349,7 +349,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "Neo4j payload local contract: ready" in output
     assert "GraphRAG local guarded Cypher dry-run: ready" in output
     assert "--local-contract" in output
-    assert "Company filing render provider contract: ready" in output
+    assert "公司文件渲染提供者格式檢查: ready" in output
+    assert "Company filing render provider contract" not in output
     assert "--provider-contract" in output
     assert "scripts.import_supply_chain_graph_neo4j --dry-run" in output
     assert "High-risk filing unlocker smoke" in output

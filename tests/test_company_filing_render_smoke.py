@@ -33,6 +33,23 @@ def _browser_runtime(**overrides) -> dict:
     return payload
 
 
+def test_company_filing_render_provider_contract_format_uses_operator_language() -> None:
+    rendered = smoke.format_company_filing_render_provider_contract(
+        {
+            "status": "ready",
+            "ready": True,
+            "provider_count": 1,
+            "providers": [{"provider": "browserless", "ready": True, "method": "POST"}],
+        }
+    )
+
+    assert "公司文件渲染提供者格式檢查: ready" in rendered
+    assert "- 就緒: true" in rendered
+    assert "- 提供者數: 1" in rendered
+    assert "Company filing render provider contract" not in rendered
+    assert "provider count" not in rendered
+
+
 def _playwright_runtime(**overrides) -> dict:
     payload = {
         "browser": "chromium",
@@ -59,6 +76,7 @@ def _document(text: str = "Example Domain rendered text") -> NewsDocument:
 
 
 def test_company_filing_render_smoke_reports_not_configured(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "false")
     monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
     monkeypatch.setattr(smoke, "company_filing_browser_render_status", lambda: _browser_runtime())
     monkeypatch.setattr(smoke, "company_filing_playwright_browser_status", lambda _browser: _playwright_runtime())
@@ -74,6 +92,7 @@ def test_company_filing_render_smoke_reports_not_configured(monkeypatch) -> None
 
 
 def test_company_filing_render_smoke_collects_runtime_outside_event_loop(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "false")
     monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "false")
 
     def fake_playwright_status(_browser):

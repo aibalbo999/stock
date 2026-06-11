@@ -347,9 +347,9 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
 
 def format_company_filing_render_provider_contract(report: dict[str, Any]) -> str:
     lines = [
-        f"Company filing render provider contract: {report['status']}",
-        f"- ready: {str(bool(report.get('ready'))).lower()}",
-        f"- provider count: {report.get('provider_count', 0)}",
+        f"公司文件渲染提供者格式檢查: {report['status']}",
+        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
+        f"- 提供者數: {report.get('provider_count', 0)}",
     ]
     for row in report.get("providers") or []:
         marker = "OK" if row.get("ready") else "WARN"
@@ -357,9 +357,9 @@ def format_company_filing_render_provider_contract(report: dict[str, Any]) -> st
         if row.get("error"):
             lines.append(f"  error: {row['error']}")
     if report.get("remediation"):
-        lines.append(f"- remediation: {report['remediation']}")
+        lines.append(f"- 修復建議: {report['remediation']}")
     if report.get("smoke_command"):
-        lines.append(f"- command: {report['smoke_command']}")
+        lines.append(f"- 指令: {report['smoke_command']}")
     return "\n".join(lines)
 
 

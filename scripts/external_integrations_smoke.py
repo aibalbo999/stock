@@ -349,13 +349,13 @@ def company_filing_render_provider_contract_check() -> dict[str, Any]:
     return {
         "area": "data_business_logic",
         "capability": "company_filing_render_provider_contract",
-        "label": "Company filing render provider contract",
+        "label": "公司文件渲染提供者格式檢查",
         "status": report.get("status") or "unknown",
         "ready": bool(report.get("ready")),
         "evidence": report,
         "smoke_commands": [COMPANY_FILING_RENDER_PROVIDER_CONTRACT_COMMAND],
         "remediation": report.get("remediation")
-        or "Keep Browserless/FlareSolverr/ScrapingBee/BrightData request and response mappings healthy.",
+        or "維持 Browserless、FlareSolverr、ScrapingBee、BrightData 的請求與回應格式檢查正常。",
     }
 
 
@@ -706,7 +706,7 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     lines.append(f"Neo4j local contract: {report['neo4j_local_contract_smoke_command']}")
     lines.append(f"Filing render smoke: {report['company_filing_render_smoke_command']}")
     lines.append(
-        "Filing render provider contract: "
+        "公司文件渲染提供者格式檢查: "
         f"{report['company_filing_render_provider_contract_command']}"
     )
     lines.append(

@@ -159,10 +159,11 @@ def test_data_task_followup_summary_explains_running_and_failed_tasks() -> None:
         "state": "blocked",
         "title": "資料補強未完成",
         "detail": "公司文件補抓失敗",
-        "next_step": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
+        "next_step": "到任務狀態面板查看診斷，確認後可重試此資料任務。",
         "action_label": "查看任務診斷",
         "route_hint": "task:task-failed",
     }
+    assert "POST /tasks" not in str(failed)
 
 
 def test_render_last_data_task_status_shows_followup_summary(monkeypatch) -> None:

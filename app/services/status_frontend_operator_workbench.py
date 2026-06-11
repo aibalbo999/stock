@@ -63,6 +63,18 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "回報告中心確認最新版生命週期" in data_enrichment_common_source
             and "render_operator_route_button(" in data_enrichment_common_source
         ),
+        "ui_data_task_followup_failure_operator_guidance_enabled": (
+            "def _data_task_failure_next_step(" in data_enrichment_common_source
+            and '"next_step": _data_task_failure_next_step(task_status)'
+            in data_enrichment_common_source
+            and '"POST " not in next_action' in data_enrichment_common_source
+            and '"/tasks/" not in next_action' in data_enrichment_common_source
+            and "到任務狀態面板查看診斷，確認後可重試此資料任務。"
+            in data_enrichment_common_source
+            and "到維護頁查看診斷並視情況重試資料任務。"
+            in data_enrichment_common_source
+            and "呼叫 POST /tasks/" not in data_enrichment_common_source
+        ),
         "ui_operator_quota_summary_enabled": (
             "def quota_operator_summary(" in operator_status_source
             and "model_order_label" in operator_status_source

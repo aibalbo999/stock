@@ -102,10 +102,7 @@ def data_task_followup_summary(task_status: dict | None) -> dict[str, str]:
             "state": "blocked",
             "title": "資料補強未完成",
             "detail": _data_task_failure_detail(task_status),
-            "next_step": _text(
-                task_status.get("next_action"),
-                default="到維護頁查看診斷並視情況重試資料任務。",
-            ),
+            "next_step": _data_task_failure_next_step(task_status),
             "action_label": "查看任務診斷",
             "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
         }
@@ -175,6 +172,15 @@ def _data_task_failure_detail(task_status: dict) -> str:
         task_status.get("error_summary") or task_status.get("error"),
         default="資料任務已結束但未成功。",
     )
+
+
+def _data_task_failure_next_step(task_status: dict) -> str:
+    next_action = _text(task_status.get("next_action"))
+    if next_action and "POST " not in next_action and "/tasks/" not in next_action:
+        return next_action
+    if _text(task_status.get("task_id")):
+        return "到任務狀態面板查看診斷，確認後可重試此資料任務。"
+    return "到維護頁查看診斷並視情況重試資料任務。"
 
 
 def _data_task_report_route_hint(task_status: dict) -> str:

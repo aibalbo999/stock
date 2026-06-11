@@ -54,6 +54,22 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and 'return "重試任務"' in ui_source
             and 'return "檢查任務"' in ui_source
         ),
+        "ui_incident_report_lifecycle_enabled": (
+            "from app.ui.report_lifecycle import latest_report_lifecycle"
+            in system_settings_maintenance_source
+            and "def _latest_report_lifecycle_for_maintenance("
+            in system_settings_maintenance_source
+            and '"/reports?limit=1"' in system_settings_maintenance_source
+            and 'f"/reports/{normalized_report_id}"' in system_settings_maintenance_source
+            and 'f"/reports/{normalized_report_id}/follow-up/plan"'
+            in system_settings_maintenance_source
+            and "latest_report_lifecycle(report_context, follow_up_plan)"
+            in system_settings_maintenance_source
+            and "latest_report_lifecycle_snapshot = _latest_report_lifecycle_for_maintenance()"
+            in system_settings_maintenance_source
+            and "latest_report_lifecycle_snapshot,\n        )"
+            in system_settings_maintenance_source
+        ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
         and (ui_dir / "maintenance_ai_panels.py").exists()

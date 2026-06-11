@@ -25,6 +25,7 @@ from app.ui.maintenance_panels import (
     render_upgrade_audit_panel,
 )
 from app.ui.operator_route_controls import render_operator_route_button
+from app.ui.report_lifecycle import latest_report_lifecycle
 
 
 def render_maintenance_tab() -> None:
@@ -93,7 +94,15 @@ def render_maintenance_tab() -> None:
         error_message="讀取升級稽核失敗",
     )
 
-    _render_incident_inbox(incident_inbox_items(service_snapshot, task_summary, llm_quota))
+    latest_report_lifecycle_snapshot = _latest_report_lifecycle_for_maintenance()
+    _render_incident_inbox(
+        incident_inbox_items(
+            service_snapshot,
+            task_summary,
+            llm_quota,
+            latest_report_lifecycle_snapshot,
+        )
+    )
     if maintenance_focus == "ai_quota":
         render_ai_quota_panel(llm_quota, service_snapshot)
     if maintenance_focus == "task_observability":
@@ -132,6 +141,55 @@ def _consume_pending_maintenance_focus() -> str | None:
     if focus in {"ai_quota", "task_observability"}:
         return focus
     return None
+
+
+def _latest_report_lifecycle_for_maintenance() -> dict:
+    reports = load_api_json_or_default(
+        "/reports?limit=1",
+        [],
+        error_message="讀取維護頁最新版報告失敗",
+        notify="warning",
+    )
+    if not isinstance(reports, list) or not reports or not isinstance(reports[0], dict):
+        return {}
+    report_id = reports[0].get("id")
+    if report_id is None:
+        return {}
+    try:
+        normalized_report_id = int(report_id)
+    except (TypeError, ValueError):
+        return {}
+
+    report_payload = load_api_json_or_default(
+        f"/reports/{normalized_report_id}",
+        {},
+        error_message="讀取維護頁報告生命週期失敗",
+        notify="warning",
+    )
+    if not isinstance(report_payload, dict) or not report_payload:
+        return {}
+    follow_up_plan = load_api_json_or_default(
+        f"/reports/{normalized_report_id}/follow-up/plan",
+        {},
+        error_message="讀取維護頁報告補強計畫失敗",
+        notify="warning",
+    )
+    if not isinstance(follow_up_plan, dict):
+        follow_up_plan = {}
+    report_context = {
+        "report_id": normalized_report_id,
+        "id": report_payload.get("id", normalized_report_id),
+        "title": report_payload.get("title") or reports[0].get("title"),
+        "topic": report_payload.get("topic") or reports[0].get("topic"),
+        "generated_at": report_payload.get("generated_at") or reports[0].get("generated_at"),
+        "tickers": report_payload.get("tickers") or [],
+        "request": report_payload.get("request") or {},
+        "quality_gate": report_payload.get("quality_gate") or {},
+        "auto_follow_up": report_payload.get("auto_follow_up") or {},
+        "candidate_whitelist": report_payload.get("candidate_whitelist") or [],
+        "candidate_audit": report_payload.get("candidate_audit") or {},
+    }
+    return latest_report_lifecycle(report_context, follow_up_plan)
 
 
 def _render_incident_inbox(incidents: list[dict]) -> None:

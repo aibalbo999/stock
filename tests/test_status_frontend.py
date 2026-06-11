@@ -297,6 +297,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_maintenance.py"
     )
     assert status["frontend"]["ui_incident_action_labels_enabled"] is True
+    assert status["frontend"]["ui_incident_report_lifecycle_enabled"] is True
     assert status["frontend"]["ui_settings_ai_quota_route_focus_enabled"] is True
     assert status["frontend"]["ui_settings_task_route_focus_enabled"] is True
     assert status["frontend"]["frontend_task_ui_status_extracted"] is True

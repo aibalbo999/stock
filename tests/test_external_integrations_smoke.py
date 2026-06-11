@@ -324,28 +324,29 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
 
     output = format_external_integration_report(report)
 
-    assert "smoke:" in output
-    assert "External integrations: caution (5/9 ready)" in output
+    assert "驗證指令:" in output
+    assert "外部整合檢查: caution (5/9 就緒)" in output
+    assert "External integrations" not in output
     assert (
-        "Enablement summary: pending=4; free_local=3; local_action=3; "
-        "quota_or_external=0; paid_external=1"
+        "啟用摘要: 待處理=4；本機免費=3；可本機處理=3；"
+        "需額度/外部=0；付費外部=1"
     ) in output
-    assert "Next action: 先處理本機免費可補強項目" in output
+    assert "建議下一步: 先處理本機免費可補強項目" in output
     assert (
-        "Pending gap actions: local_action=3; quota_or_external=0; "
-        "paid_external=1; manual_configuration=0"
+        "待處理缺口分類: 本機動作=3；額度/外部=0；"
+        "付費外部=1；手動設定=0"
     ) in output
     assert (
-        "Effective gaps: pending=4 -> 1 after available local defaults; "
-        "blocking=0; optional=1; paid_external=1; local_defaults=3"
+        "套用本機預設後: 待處理=4 -> 1；阻塞=0；"
+        "選配=1；付費外部=1；本機預設=3"
     ) in output
-    assert "Effective next action: 套用已偵測本機 defaults 可先消除 3 項缺口" in output
-    assert "action: local_action" in output
-    assert "action: paid_external" in output
-    assert "command: .venv/bin/python scripts/upgrade_audit.py --prefer-unlocker" in output
+    assert "有效建議: 套用已偵測本機 defaults 可先消除 3 項缺口" in output
+    assert "缺口處理: local_action" in output
+    assert "缺口處理: paid_external" in output
+    assert "指令: .venv/bin/python scripts/upgrade_audit.py --prefer-unlocker" in output
     assert "端口已啟動，需驗證" in output
-    assert "enablement: 可本機免費啟用" in output
-    assert "enablement: 需外部資料 API" in output
+    assert "啟用分類: 可本機免費啟用" in output
+    assert "啟用分類: 需外部資料 API" in output
     assert "Neo4j 圖譜輸出格式檢查: ready" in output
     assert "GraphRAG 本機只讀查詢模擬: ready" in output
     assert "Neo4j payload local contract" not in output
@@ -446,7 +447,7 @@ def test_external_integration_report_can_use_local_neo4j_smoke_commands() -> Non
 
     output = format_external_integration_report(report)
 
-    assert "Local Neo4j defaults: applied NEO4J_URI" in output
+    assert "本機 Neo4j 預設: 已套用 NEO4J_URI" in output
     assert "Neo4j GraphRAG 連線查詢檢查: .venv/bin/python scripts/neo4j_graphrag_smoke.py --local-neo4j-defaults" in output
 
 
@@ -526,8 +527,8 @@ def test_external_integration_report_surfaces_local_browser_render_defaults() ->
 
     output = format_external_integration_report(report)
 
-    assert "Local browser render defaults: applied COMPANY_FILING_BROWSER_RENDER_ENABLED" in output
-    assert "Local FlareSolverr wait: ready within 20s" in output
+    assert "本機瀏覽器渲染預設: 已套用 COMPANY_FILING_BROWSER_RENDER_ENABLED" in output
+    assert "本機 FlareSolverr 等待: 就緒，20 秒內" in output
     assert "公開資訊高風險來源解鎖: ready" in output
 
 

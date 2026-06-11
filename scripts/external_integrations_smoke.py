@@ -566,8 +566,8 @@ def _append_command(value: Any, commands: list[str]) -> None:
 
 def format_external_integration_report(report: dict[str, Any]) -> str:
     lines = [
-        f"External integrations: {report['status']} "
-        f"({report['ready_count']}/{report['check_count']} ready)"
+        f"外部整合檢查: {report['status']} "
+        f"({report['ready_count']}/{report['check_count']} 就緒)"
     ]
     enablement_summary = (
         report.get("enablement_summary")
@@ -576,17 +576,15 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     )
     if enablement_summary.get("total"):
         lines.append(
-            "Enablement summary: "
-            f"pending={int(enablement_summary.get('pending') or 0)}; "
-            f"free_local={int(enablement_summary.get('free_local_pending') or 0)}; "
-            f"local_action={int(enablement_summary.get('local_action_available') or 0)}; "
-            f"quota_or_external={int(enablement_summary.get('quota_or_external_pending') or 0)}; "
-            f"paid_external={int(enablement_summary.get('paid_external_pending') or 0)}"
+            "啟用摘要: "
+            f"待處理={int(enablement_summary.get('pending') or 0)}；"
+            f"本機免費={int(enablement_summary.get('free_local_pending') or 0)}；"
+            f"可本機處理={int(enablement_summary.get('local_action_available') or 0)}；"
+            f"需額度/外部={int(enablement_summary.get('quota_or_external_pending') or 0)}；"
+            f"付費外部={int(enablement_summary.get('paid_external_pending') or 0)}"
         )
         if enablement_summary.get("primary_next_action"):
-            lines.append(
-                "Next action: " + str(enablement_summary["primary_next_action"])
-            )
+            lines.append("建議下一步: " + str(enablement_summary["primary_next_action"]))
     pending_gap_counts = (
         report.get("pending_gap_action_counts")
         if isinstance(report.get("pending_gap_action_counts"), dict)
@@ -594,11 +592,11 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     )
     if pending_gap_counts:
         lines.append(
-            "Pending gap actions: "
-            f"local_action={int(pending_gap_counts.get('local_action') or 0)}; "
-            f"quota_or_external={int(pending_gap_counts.get('quota_or_external') or 0)}; "
-            f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
-            f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
+            "待處理缺口分類: "
+            f"本機動作={int(pending_gap_counts.get('local_action') or 0)}；"
+            f"額度/外部={int(pending_gap_counts.get('quota_or_external') or 0)}；"
+            f"付費外部={int(pending_gap_counts.get('paid_external') or 0)}；"
+            f"手動設定={int(pending_gap_counts.get('manual_configuration') or 0)}"
         )
     local_projection = (
         report.get("local_projection")
@@ -607,17 +605,16 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     )
     if local_projection:
         lines.append(
-            "Effective gaps: "
-            f"pending={int(local_projection.get('current_pending') or 0)} -> "
-            f"{int(local_projection.get('remaining_pending') or 0)} "
-            "after available local defaults; "
-            f"blocking={int(local_projection.get('remaining_blocking_pending') or 0)}; "
-            f"optional={int(local_projection.get('remaining_optional_pending') or 0)}; "
-            f"paid_external={int(local_projection.get('remaining_paid_external_pending') or 0)}; "
-            f"local_defaults={int(local_projection.get('available_local_default_gap_count') or 0)}"
+            "套用本機預設後: "
+            f"待處理={int(local_projection.get('current_pending') or 0)} -> "
+            f"{int(local_projection.get('remaining_pending') or 0)}"
+            f"；阻塞={int(local_projection.get('remaining_blocking_pending') or 0)}；"
+            f"選配={int(local_projection.get('remaining_optional_pending') or 0)}；"
+            f"付費外部={int(local_projection.get('remaining_paid_external_pending') or 0)}；"
+            f"本機預設={int(local_projection.get('available_local_default_gap_count') or 0)}"
         )
         if local_projection.get("next_action"):
-            lines.append("Effective next action: " + str(local_projection["next_action"]))
+            lines.append("有效建議: " + str(local_projection["next_action"]))
     local_neo4j_defaults = (
         report.get("local_neo4j_defaults")
         if isinstance(report.get("local_neo4j_defaults"), dict)
@@ -627,11 +624,12 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         applied_keys = [
             str(key) for key in local_neo4j_defaults.get("applied_env_keys") or []
         ]
-        applied_text = ", ".join(applied_keys) if applied_keys else "none; existing env used"
+        applied_text = ", ".join(applied_keys) if applied_keys else "未套用；使用既有環境"
         lines.append(
-            "Local Neo4j defaults: applied "
+            "本機 Neo4j 預設: "
+            + ("已套用 " if applied_keys else "")
             + applied_text
-            + " (current process only)"
+            + "（僅本次檢查）"
         )
     browser_defaults = (
         report.get("local_browser_render_defaults")
@@ -640,12 +638,14 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
     )
     if browser_defaults:
         applied_keys = [str(key) for key in browser_defaults.get("applied_env_keys") or []]
-        applied_text = ", ".join(applied_keys) if applied_keys else str(
-            browser_defaults.get("reason") or "none; existing env used"
+        applied_text = (
+            ", ".join(applied_keys)
+            if applied_keys
+            else str(browser_defaults.get("reason") or "未套用；使用既有環境")
         )
         lines.append(
-            "Local browser render defaults: "
-            + ("applied " if applied_keys else "")
+            "本機瀏覽器渲染預設: "
+            + ("已套用 " if applied_keys else "")
             + applied_text
         )
     local_wait = (
@@ -654,19 +654,19 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         else {}
     )
     if "neo4j" in local_wait:
+        state = "就緒" if local_wait.get("neo4j") else "未就緒"
         lines.append(
-            f"Local Neo4j wait: {'ready' if local_wait.get('neo4j') else 'not ready'} "
-            f"within {local_wait.get('neo4j_timeout_seconds')}s"
+            f"本機 Neo4j 等待: {state}，{local_wait.get('neo4j_timeout_seconds')} 秒內"
         )
     if "browserless" in local_wait:
+        state = "就緒" if local_wait.get("browserless") else "未就緒"
         lines.append(
-            f"Local Browserless wait: {'ready' if local_wait.get('browserless') else 'not ready'} "
-            f"within {local_wait.get('browserless_timeout_seconds')}s"
+            f"本機 Browserless 等待: {state}，{local_wait.get('browserless_timeout_seconds')} 秒內"
         )
     if "flaresolverr" in local_wait:
+        state = "就緒" if local_wait.get("flaresolverr") else "未就緒"
         lines.append(
-            f"Local FlareSolverr wait: {'ready' if local_wait.get('flaresolverr') else 'not ready'} "
-            f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
+            f"本機 FlareSolverr 等待: {state}，{local_wait.get('flaresolverr_timeout_seconds')} 秒內"
         )
     for check in report.get("checks") or []:
         marker = "OK" if check.get("ready") else "WARN"
@@ -678,28 +678,28 @@ def format_external_integration_report(report: dict[str, Any]) -> str:
         )
         if enablement:
             lines.append(
-                "  enablement: "
+                "  啟用分類: "
                 f"{enablement.get('group_label')}; cost: {enablement.get('cost_label')}"
             )
         if not check.get("ready"):
-            lines.append(f"  fix: {check['remediation']}")
+            lines.append(f"  修復建議: {check['remediation']}")
             gap_row = _pending_gap_row_for_check(report, check)
             if gap_row:
                 lines.append(
-                    "  action: "
+                    "  缺口處理: "
                     f"{gap_row.get('action_type')} "
                     f"({gap_row.get('decision')}; {gap_row.get('local_action_state')})"
                 )
                 local_command = str(gap_row.get("local_action_command") or "-")
                 if local_command != "-":
-                    lines.append(f"  command: {local_command}")
+                    lines.append(f"  指令: {local_command}")
         smoke_commands = [
             str(command)
             for command in check.get("smoke_commands") or []
             if str(command).strip()
         ]
         if smoke_commands:
-            lines.append("  smoke:")
+            lines.append("  驗證指令:")
             lines.extend(f"    - {command}" for command in smoke_commands)
     lines.append(f"本機依賴啟動: {report['local_start_command']}")
     lines.append(f"Neo4j GraphRAG 連線查詢檢查: {report['neo4j_graphrag_smoke_command']}")

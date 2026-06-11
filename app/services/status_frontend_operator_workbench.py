@@ -38,7 +38,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and (
                 "quota_summary[\"caption\"]" in operator_status_source
                 or "quota_summary['caption']" in operator_status_source
+                or 'quota_summary["operator_caption"]' in operator_status_source
+                or "quota_summary['operator_caption']" in operator_status_source
             )
+        ),
+        "ui_operator_quota_step_caption_enabled": (
+            "operator_caption" in operator_status_source
+            and "next_model_label" in operator_status_source
+            and "def _next_quota_model_label(" in operator_status_source
+            and "def _quota_operator_card_caption(" in operator_status_source
+            and "聰明優先" in operator_status_source
+            and "免費額度" in operator_status_source
+            and "下一順位" in operator_status_source
+            and "保底 " in operator_status_source
+            and 'quota_summary["operator_caption"]' in operator_status_source
         ),
         "ui_operator_retryable_failure_primary_action_enabled": (
             "def _retryable_failure_affecting_report(" in operator_decisions_source

@@ -130,7 +130,7 @@ def operator_status_cards(
         {
             "title": "AI 額度",
             "value": quota_summary["recommended_model"],
-            "caption": f"{quota_summary['remaining']}｜{quota_summary['caption']}",
+            "caption": quota_summary["operator_caption"],
             "state": quota_summary["state"],
             "action_label": "查看額度",
             "route_hint": "settings:ai_quota",
@@ -172,6 +172,13 @@ def quota_operator_summary(quota: dict) -> dict[str, str]:
     high_quota_fallback_label = (
         "高額度保底：" + "、".join(fallback_models) if fallback_models else "無高額度保底模型"
     )
+    next_model_label = _next_quota_model_label(quota, recommended_model)
+    operator_caption = _quota_operator_card_caption(
+        remaining=remaining,
+        next_model_label=next_model_label,
+        limited_model_label=limited_model_label,
+        high_quota_fallback_models=fallback_models,
+    )
     caption = "｜".join(
         label for label in [model_order_label, limited_model_label, high_quota_fallback_label] if label
     )
@@ -182,6 +189,8 @@ def quota_operator_summary(quota: dict) -> dict[str, str]:
         "model_order_label": model_order_label,
         "limited_model_label": limited_model_label,
         "high_quota_fallback_label": high_quota_fallback_label,
+        "next_model_label": next_model_label,
+        "operator_caption": operator_caption,
         "caption": caption,
     }
 
@@ -533,6 +542,36 @@ def _high_quota_fallback_models(quota: dict) -> list[str]:
         for model in (_text(item) for item in routing_policy.get("high_quota_fallback_models") or [])
         if model
     ]
+
+
+def _next_quota_model_label(quota: dict, recommended_model: str) -> str:
+    models = _model_order(quota)
+    if not recommended_model or recommended_model not in models:
+        return ""
+    next_index = models.index(recommended_model) + 1
+    if next_index >= len(models):
+        return ""
+    return f"下一順位 {models[next_index]}"
+
+
+def _quota_operator_card_caption(
+    *,
+    remaining: str,
+    next_model_label: str,
+    limited_model_label: str,
+    high_quota_fallback_models: list[str],
+) -> str:
+    remaining_label = (
+        f"免費額度 {remaining}" if remaining and remaining != "額度未追蹤" else "額度未追蹤"
+    )
+    labels = ["聰明優先", remaining_label]
+    if next_model_label:
+        labels.append(next_model_label)
+    if limited_model_label and limited_model_label != "受限：無":
+        labels.append(limited_model_label)
+    if high_quota_fallback_models:
+        labels.append("保底 " + "、".join(high_quota_fallback_models))
+    return "｜".join(labels)
 
 
 def _model_order_label(quota: dict) -> str:

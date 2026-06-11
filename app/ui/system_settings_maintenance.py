@@ -215,7 +215,9 @@ def _latest_report_lifecycle_for_maintenance() -> dict:
 
 
 def _render_incident_inbox(incidents: list[dict]) -> None:
-    counts = incident_counts(incidents)
+    count_badges = "\n".join(
+        f"<span>{escape(label)}</span>" for label in incident_inbox_header_badges(incidents)
+    )
     incident_html = "\n".join(
         _incident_card_html(incident) for incident in incident_summary_cards(incidents)
     )
@@ -232,9 +234,7 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
 <h3>事件收件匣</h3>
 </div>
 <div class="incident-counts">
-<span>Critical {counts["critical"]}</span>
-<span>Warning {counts["warning"]}</span>
-<span>Info {counts["info"]}</span>
+{count_badges}
 </div>
 </div>
 </section>""",
@@ -250,6 +250,32 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
 </section>""",
         unsafe_allow_html=True,
     )
+
+
+def incident_inbox_header_badges(incidents: list[dict]) -> list[str]:
+    counts = incident_counts(incidents)
+    historical_count = sum(1 for incident in incidents if _historical_incident(incident))
+    if not historical_count:
+        return [
+            f'Critical {counts["critical"]}',
+            f'Warning {counts["warning"]}',
+            f'Info {counts["info"]}',
+        ]
+    current_critical = sum(
+        1
+        for incident in incidents
+        if incident.get("severity") == "critical" and not _historical_incident(incident)
+    )
+    current_warning = sum(
+        1
+        for incident in incidents
+        if incident.get("severity") == "warning" and not _historical_incident(incident)
+    )
+    return [
+        f"當前 Critical {current_critical}",
+        f"當前 Warning {current_warning}",
+        f"歷史/趨勢 {historical_count}",
+    ]
 
 
 def _render_incident_priority_summary(incidents: list[dict]) -> None:

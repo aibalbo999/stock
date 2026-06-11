@@ -86,6 +86,55 @@ def test_render_incident_inbox_uses_grouped_cards_without_losing_counts(monkeypa
     assert captured_action_incidents == incidents
 
 
+def test_render_incident_inbox_header_separates_current_and_historical_counts(
+    monkeypatch,
+) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.markdown_calls: list[str] = []
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdown_calls.append(body)
+
+    incidents = [
+        {
+            "severity": "critical",
+            "category": "runtime_storage",
+            "title": "本機儲存失敗",
+            "route_hint": "task:storage-1",
+            "retryable": False,
+            "historical_after_latest_success": True,
+        },
+        {
+            "severity": "critical",
+            "category": "report_quality",
+            "title": "不可直接採信",
+            "route_hint": "data_enrichment",
+            "retryable": False,
+        },
+        {
+            "severity": "warning",
+            "category": "vector_store",
+            "title": "RAG 降級",
+            "route_hint": "task:rag-1",
+            "retryable": True,
+            "historical_after_latest_success": True,
+        },
+    ]
+    fake_st = FakeStreamlit()
+
+    monkeypatch.setattr(maintenance, "st", fake_st)
+    monkeypatch.setattr(maintenance, "_render_incident_action_controls", lambda _incidents: None)
+
+    maintenance._render_incident_inbox(incidents)
+
+    header_html = fake_st.markdown_calls[0]
+    assert "當前 Critical 1" in header_html
+    assert "當前 Warning 0" in header_html
+    assert "歷史/趨勢 2" in header_html
+    assert ">Critical 3<" not in header_html
+
+
 def test_incident_action_priority_summary_prioritizes_retryable_critical_tasks() -> None:
     incidents = [
         {

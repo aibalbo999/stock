@@ -151,6 +151,14 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "最新任務已成功；先確認是否影響最新版報告"
             in system_settings_maintenance_source
         ),
+        "ui_incident_header_current_context_enabled": (
+            "def incident_inbox_header_badges(" in system_settings_maintenance_source
+            and "incident_inbox_header_badges(incidents)" in system_settings_maintenance_source
+            and "當前 Critical" in system_settings_maintenance_source
+            and "當前 Warning" in system_settings_maintenance_source
+            and "歷史/趨勢" in system_settings_maintenance_source
+            and "historical_count" in system_settings_maintenance_source
+        ),
         "ui_incident_grouped_summary_enabled": (
             "def incident_summary_cards(" in system_settings_maintenance_source
             and "incident_summary_cards(incidents)" in system_settings_maintenance_source

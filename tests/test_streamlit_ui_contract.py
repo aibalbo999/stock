@@ -874,6 +874,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'error_message="自動補強任務送出失敗"' in source
     assert 'st.session_state["last_data_task_id"]' not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert 'task_state_key="last_data_task_id"' in source
+    assert "def data_task_followup_summary(" in source
+    assert "def _render_data_task_followup_summary(" in source
+    assert "data_task_followup_summary(task_status)" in source
+    assert "data-task-followup-summary" in combined
+    assert "資料任務後續處理" in source
+    assert "資料補強完成" in source
+    assert "等待資料補強完成" in source
+    assert "資料補強未完成" in source
+    assert "回報告中心確認最新版生命週期" in source
+    assert 'key=f"{label}_followup_action"' in source
     assert 'task_state_key="last_async_task_id"' in source
     assert 'task_state_key="last_follow_up_task_id"' in source
 

@@ -10,8 +10,138 @@ from app.ui.data_enrichment import (
 from app.ui import data_enrichment_manual
 from app.ui import data_enrichment_market
 from app.ui import data_enrichment_rss
+from app.ui import data_enrichment_common
 from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
+
+
+def test_data_task_followup_summary_routes_success_to_latest_report() -> None:
+    assert hasattr(data_enrichment_common, "data_task_followup_summary")
+
+    summary = data_enrichment_common.data_task_followup_summary(
+        {
+            "task_id": "task-data",
+            "status": "SUCCESS",
+            "ready": True,
+            "successful": True,
+            "result": {"report_id": 15},
+        }
+    )
+
+    assert summary == {
+        "state": "ready",
+        "title": "資料補強完成",
+        "detail": "資料任務已完成；回報告中心確認最新版生命週期是否仍需重跑。",
+        "next_step": "開啟報告中心確認資料、品質、補強、重跑與可讀狀態。",
+        "action_label": "查看報告中心",
+        "route_hint": "report:15",
+    }
+
+
+def test_data_task_followup_summary_explains_running_and_failed_tasks() -> None:
+    running = data_enrichment_common.data_task_followup_summary(
+        {
+            "task_id": "task-running",
+            "status": "STARTED",
+            "ready": False,
+            "successful": False,
+        }
+    )
+    failed = data_enrichment_common.data_task_followup_summary(
+        {
+            "task_id": "task-failed",
+            "status": "FAILURE",
+            "ready": True,
+            "successful": False,
+            "error_summary": "公司文件補抓失敗",
+            "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
+        }
+    )
+
+    assert running == {
+        "state": "attention",
+        "title": "等待資料補強完成",
+        "detail": "資料任務仍在處理中；完成前不要重複送出同類補強。",
+        "next_step": "保持本頁狀態輪詢，完成後回報告中心確認是否需要重跑。",
+        "action_label": "查看任務進度",
+        "route_hint": "task:task-running",
+    }
+    assert failed == {
+        "state": "blocked",
+        "title": "資料補強未完成",
+        "detail": "公司文件補抓失敗",
+        "next_step": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
+        "action_label": "查看任務診斷",
+        "route_hint": "task:task-failed",
+    }
+
+
+def test_render_last_data_task_status_shows_followup_summary(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {"last_data_task_id": "task-data"}
+            self.expanders: list[dict[str, Any]] = []
+            self.markdowns: list[str] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def expander(self, label: str, *, expanded: bool = False):
+            self.expanders.append({"label": label, "expanded": expanded})
+            return self
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
+
+        def text_input(self, _label: str, *, value: str, key: str) -> str:
+            return value
+
+    fake_st = FakeStreamlit()
+    routed: list[tuple[dict, dict]] = []
+
+    monkeypatch.setattr(data_enrichment_common, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_common,
+        "render_task_status_panel",
+        lambda **_kwargs: {
+            "task_id": "task-data",
+            "status": "SUCCESS",
+            "successful": True,
+            "result": {"report_id": 15},
+        },
+    )
+    monkeypatch.setattr(
+        data_enrichment_common,
+        "render_operator_route_button",
+        lambda action, **kwargs: routed.append((action, kwargs)),
+    )
+
+    data_enrichment_common.render_last_data_task_status(
+        label="refresh_data_task_status",
+        key="data_task_id_lookup",
+        expanded=True,
+    )
+
+    assert fake_st.expanders == [{"label": "背景資料任務狀態", "expanded": True}]
+    assert any(
+        'class="data-task-followup-summary is-ready"' in markdown
+        and "資料補強完成" in markdown
+        and "回報告中心確認最新版生命週期" in markdown
+        for markdown in fake_st.markdowns
+    )
+    assert routed == [
+        (
+            {"action_label": "查看報告中心", "route_hint": "report:15"},
+            {
+                "key": "refresh_data_task_status_followup_action",
+                "primary": True,
+                "show_caption": True,
+            },
+        )
+    ]
 
 
 def test_pending_market_handoff_summary_surfaces_selected_operation_and_next_step() -> None:

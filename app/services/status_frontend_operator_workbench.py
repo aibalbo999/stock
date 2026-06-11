@@ -5,6 +5,9 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
     analysis_workspace_source = source_context.ui_sources.get("analysis_workspace.py", "")
+    data_enrichment_common_source = source_context.ui_sources.get(
+        "data_enrichment_common.py", ""
+    )
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
 
@@ -38,6 +41,18 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "送出前確認" in analysis_workspace_source
             and "可送出分析背景任務" in analysis_workspace_source
             and "手動模式請先選擇至少一檔股票" in analysis_workspace_source
+        ),
+        "ui_data_task_followup_summary_enabled": (
+            "def data_task_followup_summary(" in data_enrichment_common_source
+            and "def _render_data_task_followup_summary(" in data_enrichment_common_source
+            and "data_task_followup_summary(task_status)" in data_enrichment_common_source
+            and "_render_data_task_followup_summary(" in data_enrichment_common_source
+            and 'class="data-task-followup-summary' in data_enrichment_common_source
+            and "資料補強完成" in data_enrichment_common_source
+            and "等待資料補強完成" in data_enrichment_common_source
+            and "資料補強未完成" in data_enrichment_common_source
+            and "回報告中心確認最新版生命週期" in data_enrichment_common_source
+            and "render_operator_route_button(" in data_enrichment_common_source
         ),
         "ui_operator_quota_summary_enabled": (
             "def quota_operator_summary(" in operator_status_source

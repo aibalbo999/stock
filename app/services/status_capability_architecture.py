@@ -182,6 +182,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_operator_workbench_status_extracted")
             and frontend_status.get("ui_analysis_submission_quota_confirmation_enabled")
             and frontend_status.get("ui_analysis_submission_preflight_summary_enabled")
+            and frontend_status.get("ui_data_task_followup_summary_enabled")
             and frontend_status.get("ui_operator_quota_summary_enabled")
             and frontend_status.get("ui_operator_quota_step_caption_enabled")
             and frontend_status.get("ui_operator_retryable_failure_primary_action_enabled")

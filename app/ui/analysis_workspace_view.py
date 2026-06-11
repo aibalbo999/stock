@@ -49,6 +49,12 @@ def empty_analysis_result_html() -> str:
                 """
 
 
+def analysis_form_intro_html(
+    note: str = "輸入主題，系統會自行拆解子題並建立候選股票。",
+) -> str:
+    return f'<div class="compact-note">{escape(note)}</div>'
+
+
 def analysis_submission_summary_html(summary: dict[str, str]) -> str:
     return f"""<section class="analysis-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="分析送出前確認">
 <span>送出前確認</span>

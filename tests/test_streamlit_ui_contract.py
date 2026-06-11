@@ -321,12 +321,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def analysis_submission_ready(" in analysis_presenter_source
     assert "def analysis_submission_summary(" in analysis_presenter_source
     assert "def analysis_submission_quota_pressure(" in analysis_presenter_source
+    assert "def analysis_form_intro_html(" in analysis_view_source
     assert "def analysis_submission_summary_html(" in analysis_view_source
     assert "def operator_workbench_header_html(" in analysis_view_source
     assert "def operator_status_grid_html(" in analysis_view_source
     assert "def analysis_submission_ready(" not in analysis_workspace_source
     assert "def analysis_submission_summary(" not in analysis_workspace_source
     assert "def analysis_submission_quota_pressure(" not in analysis_workspace_source
+    assert "analysis_form_intro_html()" in analysis_workspace_source
+    assert 'class="compact-note"' in analysis_view_source
+    assert "compact-note" not in analysis_workspace_source
     assert "def _render_analysis_submission_summary(" in analysis_workspace_source
     assert "analysis-submission-summary" in combined
     assert "quota-pressure" in combined

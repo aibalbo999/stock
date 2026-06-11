@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ui.analysis_workspace_view import (
+    analysis_form_intro_html,
     analysis_submission_summary_html,
     empty_analysis_result_html,
     operator_action_controls_html,
@@ -25,6 +26,13 @@ def test_analysis_workspace_view_renders_operator_shell_sections() -> None:
     assert "等待分析結果" in empty_html
     assert "operator-action-controls" in controls_html
     assert "次要操作" in controls_html
+
+
+def test_analysis_workspace_view_renders_form_intro_note() -> None:
+    html = analysis_form_intro_html("輸入 <主題> & 建立候選股票。")
+
+    assert 'class="compact-note"' in html
+    assert "輸入 &lt;主題&gt; &amp; 建立候選股票。" in html
 
 
 def test_analysis_workspace_view_escapes_submission_and_status_values() -> None:

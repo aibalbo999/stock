@@ -22,6 +22,7 @@ from app.ui.analysis_workspace_presenter import (
     analysis_submission_summary,
 )
 from app.ui.analysis_workspace_view import (
+    analysis_form_intro_html,
     analysis_submission_summary_html,
     empty_analysis_result_html,
     operator_action_controls_html,
@@ -85,10 +86,7 @@ def render_analysis_workspace() -> None:
     with analysis_config_col:
         with st.form("analysis_form"):
             st.markdown("#### 分析設定")
-            st.markdown(
-                '<div class="compact-note">輸入主題，系統會自行拆解子題並建立候選股票。</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(analysis_form_intro_html(), unsafe_allow_html=True)
             topic = st.text_input("分析主題", value="AI 產業鏈")
             lookback_days = st.slider("新聞與市場資料回看天數", min_value=7, max_value=60, value=14)
             investor_capital = st.number_input(

@@ -181,6 +181,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_analysis_workspace_presenter_extracted"] is True
     assert status["frontend"]["ui_analysis_workspace_view_extracted"] is True
+    assert status["frontend"]["ui_analysis_form_intro_view_extracted"] is True
     assert status["frontend"]["ui_analysis_operator_presenter_extracted"] is True
     assert status["frontend"]["ui_analysis_submission_quota_confirmation_enabled"] is True
     assert status["frontend"]["ui_analysis_submission_preflight_summary_enabled"] is True
@@ -647,6 +648,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_operator_workbench_status_extracted"] is True
     assert frontend_arch["evidence"]["ui_analysis_workspace_presenter_extracted"] is True
     assert frontend_arch["evidence"]["ui_analysis_workspace_view_extracted"] is True
+    assert frontend_arch["evidence"]["ui_analysis_form_intro_view_extracted"] is True
     assert frontend_arch["evidence"]["ui_analysis_operator_presenter_extracted"] is True
     assert frontend_arch["evidence"]["ui_analysis_submission_quota_confirmation_enabled"] is True
     assert frontend_arch["evidence"]["ui_analysis_submission_preflight_summary_enabled"] is True

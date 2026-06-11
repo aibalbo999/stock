@@ -51,13 +51,22 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "import streamlit" not in analysis_workspace_view_source
             and "def workspace_topbar_html(" in analysis_workspace_view_source
             and "def workspace_flow_html(" in analysis_workspace_view_source
+            and "def analysis_form_intro_html(" in analysis_workspace_view_source
             and "def analysis_submission_summary_html(" in analysis_workspace_view_source
             and "def operator_workbench_header_html(" in analysis_workspace_view_source
             and "workspace_topbar_html(today_taipei().isoformat())"
             in analysis_workspace_source
+            and "analysis_form_intro_html()" in analysis_workspace_source
             and "workspace-topbar is-compact" not in analysis_workspace_source
+            and "compact-note" not in analysis_workspace_source
             and 'class="analysis-submission-summary'
             not in analysis_workspace_source
+        ),
+        "ui_analysis_form_intro_view_extracted": (
+            "def analysis_form_intro_html(" in analysis_workspace_view_source
+            and 'class="compact-note"' in analysis_workspace_view_source
+            and "analysis_form_intro_html()" in analysis_workspace_source
+            and "compact-note" not in analysis_workspace_source
         ),
         "ui_analysis_operator_presenter_extracted": (
             "from app.ui.analysis_operator_presenter import ("

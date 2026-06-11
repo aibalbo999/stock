@@ -181,6 +181,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def task_status_metric_values(" in task_status_view_source
             and "def task_run_summary_rows(" in task_status_view_source
             and "def task_status_progress_caption(" in task_status_view_source
+            and "def task_action_preflight_summary_html(" in task_status_view_source
             and "def task_status_diagnostic_rows(" in task_status_view_source
             and "def task_execution_context_rows(" in task_status_view_source
             and "def company_filing_gap_rows(" in task_status_view_source
@@ -276,7 +277,8 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def render_task_action_preflight_summary(" in task_status_panel_source
             and "render_task_action_preflight_summary(" in task_status_panel_source
             and "task_action_preflight_summary(" in task_status_panel_source
-            and 'class="task-action-preflight-summary' in task_status_panel_source
+            and 'class="task-action-preflight-summary' in task_status_view_source
+            and 'class="task-action-preflight-summary' not in task_status_panel_source
             and 'f"任務編號 {task_id}"' in task_status_presenter_source
             and 'f"Task {task_id}"' not in task_status_presenter_source
             and "task_failure_next_action_text(task_status)" in task_status_presenter_source

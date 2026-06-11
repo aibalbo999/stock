@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ui.task_status_view import (
+    task_action_preflight_summary_html,
     task_execution_context_rows,
     task_run_summary_rows,
     task_status_metric_values,
@@ -24,6 +25,24 @@ def test_task_status_metric_values_use_operator_labels_from_view_helper() -> Non
         {"label": "是否成功", "value": "成功"},
         {"label": "執行紀錄", "value": "#42"},
     ]
+
+
+def test_task_action_preflight_summary_html_escapes_operator_text() -> None:
+    html = task_action_preflight_summary_html(
+        {
+            "state": "attention",
+            "label": "任務操作<摘要>",
+            "title": "準備重試 & 消耗額度",
+            "detail": "確認 <task> 後再送出。",
+            "next_step": "勾選確認。",
+            "impact": "可能消耗模型或資料源額度。",
+        }
+    )
+
+    assert 'class="task-action-preflight-summary is-attention"' in html
+    assert "任務操作&lt;摘要&gt;" in html
+    assert "準備重試 &amp; 消耗額度" in html
+    assert "確認 &lt;task&gt; 後再送出。" in html
 
 
 def test_task_status_progress_caption_uses_operator_step_labels() -> None:

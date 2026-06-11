@@ -804,10 +804,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def task_status_diagnostic_rows(" in task_status_view_source
     assert "def task_execution_context_rows(" in task_status_view_source
     assert "def task_status_metric_values(" in task_status_view_source
+    assert "def task_action_preflight_summary_html(" in task_status_view_source
     assert "def task_run_summary_rows(" in task_status_view_source
     assert "def task_status_progress_caption(" in task_status_view_source
     assert "def task_status_diagnostic_rows(" not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def task_execution_context_rows(" not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert 'class="task-action-preflight-summary' in task_status_view_source
+    assert 'class="task-action-preflight-summary' not in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "執行上下文" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def task_status_state_label(" in task_status_presenter_source
     assert "def task_run_source_label(" in task_status_presenter_source

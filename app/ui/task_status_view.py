@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from app.ui.follow_up_status import company_filing_action_label
 from app.ui.task_failure_diagnostics import (
     task_failure_action_route,
@@ -18,6 +20,16 @@ from app.ui.task_status_presenter import (
     task_status_progress_step_label,
     task_status_state_label,
 )
+
+
+def task_action_preflight_summary_html(summary: dict[str, str]) -> str:
+    return f"""<section class="task-action-preflight-summary is-{escape(summary.get("state", "attention"))}" aria-label="任務操作送出前摘要">
+<span>{escape(summary.get("label", "任務操作摘要"))}</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+<small>{escape(summary.get("impact", ""))}</small>
+</section>"""
 
 
 def task_status_metric_values(task_status: dict) -> list[dict[str, str]]:

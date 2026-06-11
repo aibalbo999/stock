@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 import streamlit as st
 
 from app.ui.api_actions import run_api_action_or_none
@@ -14,6 +12,7 @@ from app.ui.task_status_presenter import (
 )
 from app.ui.task_status_view import (
     company_filing_gap_rows,
+    task_action_preflight_summary_html,
     task_execution_context_rows,
     task_run_summary_rows,
     task_status_diagnostic_rows,
@@ -26,13 +25,7 @@ def render_task_action_preflight_summary(summary: dict[str, str]) -> None:
     if not summary:
         return
     st.markdown(
-        f"""<section class="task-action-preflight-summary is-{escape(summary.get("state", "attention"))}" aria-label="任務操作送出前摘要">
-<span>{escape(summary.get("label", "任務操作摘要"))}</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-<small>{escape(summary.get("impact", ""))}</small>
-</section>""",
+        task_action_preflight_summary_html(summary),
         unsafe_allow_html=True,
     )
 

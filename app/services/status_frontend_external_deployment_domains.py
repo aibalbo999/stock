@@ -62,7 +62,7 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
         and "結構化文件 API 操作提示" in ui_source
         and "設定檢查" in external_deployment_structured_api_source
         and "configuration_check" in external_deployment_structured_api_source
-        and "Configuration check" in external_deployment_unlocker_source
+        and "設定檢查" in external_deployment_unlocker_source
         and "configuration_check" in external_deployment_unlocker_source
         and "單項診斷指令" in ui_source
         and "external_integrations_smoke.py --strict --json" in ui_source,
@@ -153,6 +153,20 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and "Live smoke" not in external_deployment_structured_api_source
             and "Request contract" not in external_deployment_structured_api_source
             and "Required fields" not in external_deployment_structured_api_source
+        ),
+        "ui_unlocker_operation_operator_labels_enabled": (
+            "def _high_risk_unlocker_status_label(" in external_deployment_unlocker_source
+            and '"解鎖服務"' in external_deployment_unlocker_source
+            and '"設定檢查"' in external_deployment_unlocker_source
+            and '"備援判斷"' in external_deployment_unlocker_source
+            and '"MOPS smoke 驗證"' in external_deployment_unlocker_source
+            and '"missing_required_env": "缺少必要設定"'
+            in external_deployment_unlocker_source
+            and "Browser render 後援" in external_deployment_unlocker_source
+            and "Configuration check" not in external_deployment_unlocker_source
+            and "Fallback 判斷" not in external_deployment_unlocker_source
+            and '"項目": "Provider"' not in external_deployment_unlocker_source
+            and "browser render fallback" not in external_deployment_unlocker_source
         ),
         "ui_external_deployment_domain_helper_paths": [
             "app/ui/external_deployment_common.py",

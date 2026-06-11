@@ -458,6 +458,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_external_deployment_domain_helpers_extracted"] is True
     assert status["frontend"]["ui_structured_filing_api_operation_operator_labels_enabled"] is True
+    assert status["frontend"]["ui_unlocker_operation_operator_labels_enabled"] is True
     assert status["frontend"]["ui_external_deployment_domain_helper_paths"] == [
         "app/ui/external_deployment_common.py",
         "app/services/external_deployment_readiness.py",
@@ -834,6 +835,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         ]
         is True
     )
+    assert frontend_arch["evidence"]["ui_unlocker_operation_operator_labels_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_drilldown_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_failure_recommended_retry_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_observability_auto_expand_enabled"] is True

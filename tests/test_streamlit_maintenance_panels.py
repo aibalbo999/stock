@@ -2513,20 +2513,20 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     rows = helpers["high_risk_filing_unlocker_rows"](audit)
 
     assert [row["項目"] for row in rows] == [
-        "Provider",
-        "Configuration check",
+        "解鎖服務",
+        "設定檢查",
         "高風險防護",
         "高風險網域",
         "建議 env",
-        "MOPS smoke",
+        "MOPS smoke 驗證",
     ]
     assert rows[0]["狀態"] == "待配置"
     assert rows[0]["目前"] == "browserless"
     assert "captcha_unlocker=否" in rows[0]["細節"]
-    assert rows[1]["狀態"] == "ready"
+    assert rows[1]["狀態"] == "可用"
     assert "provider=browserless" in rows[1]["目前"]
     assert "token=optional" in rows[1]["細節"]
-    assert "browser render fallback" in rows[2]["目前"]
+    assert "Browser render 後援" in rows[2]["目前"]
     assert rows[2]["細節"] == "browser_or_playwright_render_lacks_captcha_unlocker"
     assert "mops.twse.com.tw" in rows[3]["目前"]
     assert provider_env in rows[4]["目前"]
@@ -2534,6 +2534,9 @@ def test_high_risk_filing_unlocker_rows_surface_policy_details() -> None:
     assert compose_render_url_env in rows[4]["目前"]
     assert "service DNS" in rows[4]["細節"]
     assert "https://mops.twse.com.tw/" in rows[5]["目前"]
+    rendered = str(rows)
+    assert "Configuration check" not in rendered
+    assert "browser render fallback" not in rendered
 
 
 def test_high_risk_filing_unlocker_rows_surface_missing_managed_token() -> None:
@@ -2594,8 +2597,8 @@ def test_high_risk_filing_unlocker_rows_surface_missing_managed_token() -> None:
 
     rows = helpers["high_risk_filing_unlocker_rows"](audit)
 
-    assert rows[1]["項目"] == "Configuration check"
-    assert rows[1]["狀態"] == "missing_required_env"
+    assert rows[1]["項目"] == "設定檢查"
+    assert rows[1]["狀態"] == "缺少必要設定"
     assert "missing=COMPANY_FILING_BROWSER_RENDER_TOKEN" in rows[1]["目前"]
     assert "token=required" in rows[1]["細節"]
     assert "token_configured=否" in rows[1]["細節"]
@@ -2638,9 +2641,9 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
     assert [row["項目"] for row in rows] == [
         "一鍵啟動",
         "本機稽核",
-        "Fallback 判斷",
+        "備援判斷",
         "容器診斷",
-        "MOPS smoke",
+        "MOPS smoke 驗證",
     ]
     assert rows[0]["狀態"] == "建議升級"
     assert "scripts/start_system.py --start-dependencies --prefer-unlocker" in rows[0]["指令"]

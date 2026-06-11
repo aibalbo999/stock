@@ -40,7 +40,7 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
     next_action = item.get("remediation") or _high_risk_unlocker_next_action(evidence)
     return [
         {
-            "項目": "Provider",
+            "項目": "解鎖服務",
             "狀態": ready_label(evidence.get("unlocker_provider_ready")),
             "目前": provider,
             "細節": (
@@ -50,8 +50,10 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
             "下一步": next_action,
         },
         {
-            "項目": "Configuration check",
-            "狀態": _high_risk_unlocker_configuration_status(configuration_check),
+            "項目": "設定檢查",
+            "狀態": _high_risk_unlocker_status_label(
+                _high_risk_unlocker_configuration_status(configuration_check)
+            ),
             "目前": _high_risk_unlocker_configuration_current(configuration_check),
             "細節": _high_risk_unlocker_configuration_detail(configuration_check),
             "下一步": _high_risk_unlocker_configuration_next_action(configuration_check),
@@ -80,7 +82,7 @@ def high_risk_filing_unlocker_rows(upgrade_audit: dict) -> list[dict]:
             "下一步": "設定後重跑 high-risk filing unlocker smoke。",
         },
         {
-            "項目": "MOPS smoke",
+            "項目": "MOPS smoke 驗證",
             "狀態": "可執行" if smoke_cli else "未提供",
             "目前": smoke_cli or "-",
             "細節": "驗證高風險公開文件入口的 render/unlocker contract。",
@@ -115,7 +117,7 @@ def local_unlocker_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": "等待 FlareSolverr 8191 後套用本機 defaults；不改寫 .env。",
         },
         {
-            "項目": "Fallback 判斷",
+            "項目": "備援判斷",
             "狀態": "目前路徑",
             "指令": "-",
             "說明": _local_unlocker_fallback_detail(evidence),
@@ -127,7 +129,7 @@ def local_unlocker_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": "檢查 FlareSolverr container 是否啟動、port 是否綁定、image 是否拉取成功。",
         },
         {
-            "項目": "MOPS smoke",
+            "項目": "MOPS smoke 驗證",
             "狀態": "可執行",
             "指令": high_risk_mops_smoke_command(evidence),
             "說明": "驗證高風險公開資訊入口能走目前 render/unlocker contract 取得可解析 HTML。",
@@ -149,11 +151,11 @@ def high_risk_mops_smoke_command(evidence: dict) -> str:
 def _high_risk_unlocker_strategy(evidence: dict) -> str:
     parts = []
     if evidence.get("unlocker_provider_ready"):
-        parts.append("unlocker provider ready")
+        parts.append("Unlocker provider 可用")
     if evidence.get("ip_rotation_ready"):
-        parts.append("proxy/IP rotation ready")
+        parts.append("Proxy/IP rotation 可用")
     if evidence.get("browser_only_render_ready"):
-        parts.append("browser render fallback")
+        parts.append("Browser render 後援")
     return "；".join(parts) if parts else "尚未配置"
 
 
@@ -163,6 +165,19 @@ def _high_risk_unlocker_configuration_status(configuration_check: dict) -> str:
     if configuration_check.get("ready"):
         return "ready"
     return str(configuration_check.get("status") or "missing_required_env")
+
+
+def _high_risk_unlocker_status_label(value: object) -> str:
+    status_labels = {
+        "ready": "可用",
+        "missing_required_env": "缺少必要設定",
+        "not_configured": "未設定",
+        "degraded": "需處理",
+        "failed": "需處理",
+        "unknown": "未評估",
+    }
+    text = str(value or "unknown")
+    return status_labels.get(text, text)
 
 
 def _high_risk_unlocker_configuration_current(configuration_check: dict) -> str:

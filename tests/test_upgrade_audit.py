@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.upgrade_audit import audit_upgrade_capabilities
+from scripts import upgrade_audit as upgrade_audit_cli
 
 
 def _fake_status(overrides: dict | None = None) -> dict:
@@ -85,6 +86,75 @@ def _fake_status(overrides: dict | None = None) -> dict:
             "capability_matches": [],
         },
     }
+
+
+def test_upgrade_audit_text_summary_uses_operator_language() -> None:
+    rendered = upgrade_audit_cli._format_text(
+        {
+            "overall_status": "ready",
+            "implementation": {"status": "ready", "ready": 31, "total_checks": 31},
+            "deployment": {
+                "status": "caution",
+                "ready": 6,
+                "total_checks": 7,
+                "blocking_status": "ready",
+            },
+            "summary": {
+                "ready": 31,
+                "warnings": 0,
+                "optional_warnings": 1,
+                "failures": 0,
+                "deployment_optional_only": True,
+            },
+            "external_deployment_enablement": {
+                "total": 7,
+                "pending": 1,
+                "blocking_pending": 0,
+                "nonblocking_optional_pending": 1,
+                "free_local_pending": 1,
+                "local_action_available": 1,
+                "quota_or_external_pending": 0,
+                "paid_external_pending": 0,
+                "primary_next_action": "先處理本機免費可補強項目。",
+            },
+            "external_deployment_pending_gap_action_counts": {
+                "local_action": 1,
+                "quota_or_external": 0,
+                "paid_external": 0,
+                "manual_configuration": 0,
+            },
+            "external_deployment_local_projection": {
+                "current_pending": 1,
+                "remaining_pending": 0,
+                "remaining_blocking_pending": 0,
+                "remaining_optional_pending": 0,
+                "remaining_paid_external_pending": 0,
+                "available_local_default_gap_count": 1,
+                "next_action": "套用本機預設後再重跑檢查。",
+            },
+            "local_dependency_defaults": {"applied_env_keys": ["NEO4J_URI"]},
+            "local_browser_render_defaults": {
+                "applied_env_keys": ["COMPANY_FILING_BROWSER_RENDER_ENABLED"]
+            },
+            "local_dependency_wait": {
+                "flaresolverr": True,
+                "flaresolverr_timeout_seconds": 20,
+            },
+            "checks": [],
+        }
+    )
+
+    assert "升級檢查: ready" in rendered
+    assert "外部部署選配: caution (6/7 就緒；阻塞=ready)" in rendered
+    assert "部署提醒: 沒有阻塞型部署缺口" in rendered
+    assert "外部選配啟用摘要: 待處理=1；阻塞=0；選配=1" in rendered
+    assert "有效建議: 套用本機預設後再重跑檢查。" in rendered
+    assert "本機 FlareSolverr 等待: 就緒，20 秒內" in rendered
+    assert "Upgrade audit" not in rendered
+    assert "optional deployment warnings" not in rendered
+    assert "External enablement" not in rendered
+    assert "Effective external gaps" not in rendered
+    assert "Local browser render defaults" not in rendered
 
 
 def test_upgrade_audit_includes_local_dependency_runtime_status() -> None:

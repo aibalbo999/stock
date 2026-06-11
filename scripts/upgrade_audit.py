@@ -317,30 +317,30 @@ def _format_text(audit: dict) -> str:
     implementation = audit.get("implementation") or {}
     deployment = audit.get("deployment") or {}
     summary = audit.get("summary") or {}
-    warning_text = f"{summary.get('warnings', 0)} warnings"
+    warning_text = f"{summary.get('warnings', 0)} 警示"
     optional_warnings = int(summary.get("optional_warnings") or 0)
     if optional_warnings:
-        warning_text += f", {optional_warnings} optional deployment warnings"
+        warning_text += f"，{optional_warnings} 個外部部署選配提醒"
     lines = [
-        f"Upgrade audit: {audit['overall_status']}",
+        f"升級檢查: {audit['overall_status']}",
         (
-            f"Core implementation: {implementation.get('status', 'unknown')} "
-            f"({implementation.get('ready', 0)}/{implementation.get('total_checks', 0)} ready)"
+            f"核心實作: {implementation.get('status', 'unknown')} "
+            f"({implementation.get('ready', 0)}/{implementation.get('total_checks', 0)} 就緒)"
         ),
         (
-            f"External integrations: {deployment.get('status', 'unknown')} "
-            f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} ready; "
-            f"blocking={deployment.get('blocking_status') or summary.get('deployment_blocking_status') or deployment.get('status', 'unknown')})"
+            f"外部部署選配: {deployment.get('status', 'unknown')} "
+            f"({deployment.get('ready', 0)}/{deployment.get('total_checks', 0)} 就緒；"
+            f"阻塞={deployment.get('blocking_status') or summary.get('deployment_blocking_status') or deployment.get('status', 'unknown')})"
         ),
         (
-            f"Checks: {summary.get('ready', 0)} ready, "
+            f"檢查結果: {summary.get('ready', 0)} 就緒，"
             f"{warning_text}, "
-            f"{summary.get('failures', 0)} failures"
+            f"{summary.get('failures', 0)} 失敗"
         ),
     ]
     if summary.get("deployment_optional_only"):
         lines.append(
-            "Deployment note: no blocking deployment gaps; remaining warnings are optional external integrations."
+            "部署提醒: 沒有阻塞型部署缺口；剩餘提醒都是外部整合選配。"
         )
     enablement_summary = (
         audit.get("external_deployment_enablement")
@@ -349,19 +349,17 @@ def _format_text(audit: dict) -> str:
     )
     if enablement_summary.get("total"):
         lines.append(
-            "External enablement: "
-            f"pending={int(enablement_summary.get('pending') or 0)}; "
-            f"blocking_pending={int(enablement_summary.get('blocking_pending') or 0)}; "
-            f"optional_pending={int(enablement_summary.get('nonblocking_optional_pending') or 0)}; "
-            f"free_local={int(enablement_summary.get('free_local_pending') or 0)}; "
-            f"local_action={int(enablement_summary.get('local_action_available') or 0)}; "
-            f"quota_or_external={int(enablement_summary.get('quota_or_external_pending') or 0)}; "
-            f"paid_external={int(enablement_summary.get('paid_external_pending') or 0)}"
+            "外部選配啟用摘要: "
+            f"待處理={int(enablement_summary.get('pending') or 0)}；"
+            f"阻塞={int(enablement_summary.get('blocking_pending') or 0)}；"
+            f"選配={int(enablement_summary.get('nonblocking_optional_pending') or 0)}；"
+            f"本機免費={int(enablement_summary.get('free_local_pending') or 0)}；"
+            f"可本機處理={int(enablement_summary.get('local_action_available') or 0)}；"
+            f"需額度/外部={int(enablement_summary.get('quota_or_external_pending') or 0)}；"
+            f"付費外部={int(enablement_summary.get('paid_external_pending') or 0)}"
         )
         if enablement_summary.get("primary_next_action"):
-            lines.append(
-                "External next action: " + str(enablement_summary["primary_next_action"])
-            )
+            lines.append("外部選配建議: " + str(enablement_summary["primary_next_action"]))
     pending_gap_counts = (
         audit.get("external_deployment_pending_gap_action_counts")
         if isinstance(audit.get("external_deployment_pending_gap_action_counts"), dict)
@@ -369,11 +367,11 @@ def _format_text(audit: dict) -> str:
     )
     if pending_gap_counts:
         lines.append(
-            "External gap actions: "
-            f"local_action={int(pending_gap_counts.get('local_action') or 0)}; "
-            f"quota_or_external={int(pending_gap_counts.get('quota_or_external') or 0)}; "
-            f"paid_external={int(pending_gap_counts.get('paid_external') or 0)}; "
-            f"manual_configuration={int(pending_gap_counts.get('manual_configuration') or 0)}"
+            "外部缺口分類: "
+            f"本機動作={int(pending_gap_counts.get('local_action') or 0)}；"
+            f"額度/外部={int(pending_gap_counts.get('quota_or_external') or 0)}；"
+            f"付費外部={int(pending_gap_counts.get('paid_external') or 0)}；"
+            f"手動設定={int(pending_gap_counts.get('manual_configuration') or 0)}"
         )
     local_projection = (
         audit.get("external_deployment_local_projection")
@@ -382,16 +380,16 @@ def _format_text(audit: dict) -> str:
     )
     if local_projection:
         lines.append(
-            "Effective external gaps: "
-            f"pending={int(local_projection.get('current_pending') or 0)} -> "
-            f"{int(local_projection.get('remaining_pending') or 0)} after available local defaults; "
-            f"blocking={int(local_projection.get('remaining_blocking_pending') or 0)}; "
-            f"optional={int(local_projection.get('remaining_optional_pending') or 0)}; "
-            f"paid_external={int(local_projection.get('remaining_paid_external_pending') or 0)}; "
-            f"local_defaults={int(local_projection.get('available_local_default_gap_count') or 0)}"
+            "套用本機預設後的外部缺口: "
+            f"待處理={int(local_projection.get('current_pending') or 0)} -> "
+            f"{int(local_projection.get('remaining_pending') or 0)}；"
+            f"阻塞={int(local_projection.get('remaining_blocking_pending') or 0)}；"
+            f"選配={int(local_projection.get('remaining_optional_pending') or 0)}；"
+            f"付費外部={int(local_projection.get('remaining_paid_external_pending') or 0)}；"
+            f"本機預設={int(local_projection.get('available_local_default_gap_count') or 0)}"
         )
         if local_projection.get("next_action"):
-            lines.append("Effective next action: " + str(local_projection["next_action"]))
+            lines.append("有效建議: " + str(local_projection["next_action"]))
     lines.extend(_format_optimization_progress_lines(audit))
     auto_defaults = audit.get("local_dependency_auto_defaults")
     if auto_defaults:
@@ -401,60 +399,61 @@ def _format_text(audit: dict) -> str:
         ) or "-"
         applied_groups = ", ".join(auto_defaults.get("applied_groups") or []) or "-"
         lines.append(
-            "Auto local defaults: "
-            f"detected={detected_ready}; applied={applied_groups}"
+            "自動本機預設: "
+            f"已偵測={detected_ready}；已套用={applied_groups}"
         )
     local_defaults = audit.get("local_dependency_defaults")
     if local_defaults:
         lines.append(
-            "Local defaults: applied "
+            "本機預設: 已套用 "
             + ", ".join(local_defaults.get("applied_env_keys") or [])
-            + " (current process only)"
+            + "（僅本次檢查）"
         )
     browser_defaults = audit.get("local_browser_render_defaults")
     if browser_defaults:
         applied = browser_defaults.get("applied_env_keys") or []
         lines.append(
-            "Local browser render defaults: "
+            "本機瀏覽器渲染預設: "
             + (
-                "applied " + ", ".join(applied)
+                "已套用 " + ", ".join(applied)
                 if applied
-                else str(browser_defaults.get("reason") or "not applied")
+                else str(browser_defaults.get("reason") or "未套用")
             )
         )
     chroma_defaults = audit.get("local_chroma_defaults")
     if chroma_defaults:
         applied = chroma_defaults.get("applied_env_keys") or []
         lines.append(
-            "Local Chroma defaults: "
+            "本機 Chroma 預設: "
             + (
-                "applied " + ", ".join(applied)
+                "已套用 " + ", ".join(applied)
                 if applied
-                else str(chroma_defaults.get("reason") or "not applied")
+                else str(chroma_defaults.get("reason") or "未套用")
             )
         )
     local_wait = audit.get("local_dependency_wait")
     if local_wait:
         wait_lines = []
         if "neo4j" in local_wait:
+            state = "就緒" if local_wait.get("neo4j") else "未就緒"
             wait_lines.append(
-                f"Local Neo4j wait: {'ready' if local_wait.get('neo4j') else 'not ready'} "
-                f"within {local_wait.get('neo4j_timeout_seconds', local_wait.get('timeout_seconds'))}s"
+                "本機 Neo4j 等待: "
+                f"{state}，{local_wait.get('neo4j_timeout_seconds', local_wait.get('timeout_seconds'))} 秒內"
             )
         if "browserless" in local_wait:
+            state = "就緒" if local_wait.get("browserless") else "未就緒"
             wait_lines.append(
-                f"Local Browserless wait: {'ready' if local_wait.get('browserless') else 'not ready'} "
-                f"within {local_wait.get('browserless_timeout_seconds')}s"
+                f"本機 Browserless 等待: {state}，{local_wait.get('browserless_timeout_seconds')} 秒內"
             )
         if "flaresolverr" in local_wait:
+            state = "就緒" if local_wait.get("flaresolverr") else "未就緒"
             wait_lines.append(
-                f"Local FlareSolverr wait: {'ready' if local_wait.get('flaresolverr') else 'not ready'} "
-                f"within {local_wait.get('flaresolverr_timeout_seconds')}s"
+                f"本機 FlareSolverr 等待: {state}，{local_wait.get('flaresolverr_timeout_seconds')} 秒內"
             )
         if "chroma" in local_wait:
+            state = "就緒" if local_wait.get("chroma") else "未就緒"
             wait_lines.append(
-                f"Local Chroma wait: {'ready' if local_wait.get('chroma') else 'not ready'} "
-                f"within {local_wait.get('chroma_timeout_seconds')}s"
+                f"本機 Chroma 等待: {state}，{local_wait.get('chroma_timeout_seconds')} 秒內"
             )
         lines.extend(wait_lines)
     local_runtime = audit.get("local_dependencies")

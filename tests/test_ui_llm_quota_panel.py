@@ -259,47 +259,49 @@ def test_llm_usage_routing_helpers_show_recommendation_and_model_order() -> None
         "7 日請求": 7,
         "7 日 Token": 1234,
         "估算成本 USD": "0.0123",
-        "P95 LLM ms": 456.78,
-        "Fallback 次數": 2,
+        "P95 LLM 延遲 ms": 456.78,
+        "後援次數": 2,
         "可重試失敗": 4,
-        "Quota skip": 3,
+        "額度略過": 3,
         "模型降級": 1,
     }
     assert llm_usage_routing_captions(summary) == [
-        "目前推薦：gemini-2.5-flash｜順位 2｜tier=fallback",
-        "Earlier model(s) exhausted.",
+        "目前推薦：gemini-2.5-flash｜順位 2｜路由層級 後援模型",
+        "前序模型額度已用完，已自動改用下一順位。",
         "高額度保底模型：gemma-4-31b-it",
     ]
     assert llm_usage_routing_rows(summary) == [
         {
-            "rank": 1,
-            "model": "gemini-3.5-flash",
-            "status": "exhausted",
-            "tier": "primary",
-            "reason": "request_budget_exhausted",
-            "requests_used": 250,
-            "request_budget": 250,
-            "requests_remaining": 0,
-            "completion_count": 249,
-            "tokens_used": 1000,
-            "token_budget": None,
-            "tokens_remaining": None,
+            "順位": 1,
+            "模型": "gemini-3.5-flash",
+            "狀態": "額度用完",
+            "路由層級": "主力模型",
+            "狀態原因": "請求額度已用完",
+            "今日請求": "250 / 250",
+            "剩餘請求": 0,
+            "完成次數": 249,
+            "今日 Token": "1000 / -",
+            "剩餘 Token": "-",
         },
         {
-            "rank": 2,
-            "model": "gemini-2.5-flash",
-            "status": "available",
-            "tier": "fallback",
-            "reason": "within_configured_budget",
-            "requests_used": 3,
-            "request_budget": 250,
-            "requests_remaining": 247,
-            "completion_count": 3,
-            "tokens_used": 120,
-            "token_budget": None,
-            "tokens_remaining": None,
+            "順位": 2,
+            "模型": "gemini-2.5-flash",
+            "狀態": "可用",
+            "路由層級": "後援模型",
+            "狀態原因": "仍在設定額度內",
+            "今日請求": "3 / 250",
+            "剩餘請求": 247,
+            "完成次數": 3,
+            "今日 Token": "120 / -",
+            "剩餘 Token": "-",
         },
     ]
+    rendered = str(llm_usage_routing_rows(summary))
+    assert "status" not in rendered
+    assert "routing_tier" not in rendered
+    assert "request_budget_exhausted" not in rendered
+    assert "tier=fallback" not in str(llm_usage_routing_captions(summary))
+    assert "Earlier model(s) exhausted." not in str(llm_usage_routing_captions(summary))
 
 
 def test_llm_usage_recent_routing_rows_surface_quota_degrade_events() -> None:
@@ -330,16 +332,16 @@ def test_llm_usage_recent_routing_rows_surface_quota_degrade_events() -> None:
         }
     ) == [
         {
-            "created_at": "2026-06-09T08:00:00",
-            "operation": "report_generation",
-            "model": "gemma-4-31b-it",
-            "selected_rank": 4,
-            "tier": "high_quota_fallback",
-            "routing_reason": "quota_or_cooldown_skip",
-            "quota_skip_count": 2,
-            "daily_quota_skip_count": 1,
-            "cooldown_skip_count": 1,
-            "degraded_from_primary": True,
+            "時間": "2026-06-09T08:00:00",
+            "任務": "報告生成",
+            "模型": "gemma-4-31b-it",
+            "選中順位": 4,
+            "路由層級": "高額度保底",
+            "路由原因": "額度或冷卻略過",
+            "額度略過": 2,
+            "日額度略過": 1,
+            "冷卻略過": 1,
+            "已降級": "是",
         }
     ]
 
@@ -347,16 +349,16 @@ def test_llm_usage_recent_routing_rows_surface_quota_degrade_events() -> None:
 def test_llm_usage_routing_captions_show_unavailable_reason() -> None:
     assert llm_usage_routing_captions(
         {"routing_snapshot": {"available": False, "reason": "usage_store_unavailable"}}
-    ) == ["模型路由實況尚不可用：usage_store_unavailable"]
+    ) == ["模型路由實況尚不可用：用量資料庫暫時不可用"]
     assert llm_usage_routing_rows({}) == []
     assert llm_usage_metric_values({}) == {
         "7 日請求": 0,
         "7 日 Token": 0,
         "估算成本 USD": "0.0000",
-        "P95 LLM ms": "-",
-        "Fallback 次數": 0,
+        "P95 LLM 延遲 ms": "-",
+        "後援次數": 0,
         "可重試失敗": 0,
-        "Quota skip": 0,
+        "額度略過": 0,
         "模型降級": 0,
     }
     assert llm_usage_recent_routing_rows({}) == []

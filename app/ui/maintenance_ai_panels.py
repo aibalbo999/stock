@@ -6,10 +6,31 @@ import streamlit as st
 
 from app.ui.data_enrichment_runtime import company_filing_visual_rag_model_chain_rows
 from app.ui.llm_quota_panel import (
+    MODEL_STATUS_LABELS,
+    ROUTING_TIER_LABELS,
+    STATUS_REASON_LABELS,
     llm_quota_captions,
     llm_quota_metric_values,
     llm_quota_model_rows,
 )
+
+USAGE_ROUTING_REASON_LABELS = {
+    "Earlier model(s) exhausted.": "前序模型額度已用完，已自動改用下一順位。",
+    "quota_or_cooldown_skip": "額度或冷卻略過",
+    "request_budget_exhausted": "請求額度已用完",
+    "within_configured_budget": "仍在設定額度內",
+}
+
+USAGE_UNAVAILABLE_REASON_LABELS = {
+    "usage_store_unavailable": "用量資料庫暫時不可用",
+}
+
+USAGE_OPERATION_LABELS = {
+    "report_generation": "報告生成",
+    "health_check": "健康檢查",
+    "analysis": "分析",
+    "data_enrichment": "資料補強",
+}
 
 
 def render_ai_quota_panel(llm_quota: dict, service_snapshot: dict) -> None:
@@ -89,10 +110,10 @@ def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
         "7 日請求": int(totals.get("request_count") or 0),
         "7 日 Token": int(totals.get("total_token_estimate") or 0),
         "估算成本 USD": f"{float(totals.get('estimated_cost_usd') or 0.0):.4f}",
-        "P95 LLM ms": totals.get("p95_latency_ms") or "-",
-        "Fallback 次數": int(totals.get("fallback_path_count") or 0),
+        "P95 LLM 延遲 ms": totals.get("p95_latency_ms") or "-",
+        "後援次數": int(totals.get("fallback_path_count") or 0),
         "可重試失敗": int(totals.get("retryable_failure_count") or 0),
-        "Quota skip": int(totals.get("quota_skip_count") or 0),
+        "額度略過": int(totals.get("quota_skip_count") or 0),
         "模型降級": int(totals.get("degraded_from_primary_count") or 0),
     }
 
@@ -100,7 +121,7 @@ def llm_usage_metric_values(llm_usage_summary: dict) -> dict[str, str | int]:
 def llm_usage_routing_captions(llm_usage_summary: dict) -> list[str]:
     routing = _dict_value(llm_usage_summary.get("routing_snapshot"))
     if not routing or routing.get("available") is False:
-        reason = str(routing.get("reason") or "").strip()
+        reason = _label(USAGE_UNAVAILABLE_REASON_LABELS, routing.get("reason"))
         return [f"模型路由實況尚不可用：{reason}"] if reason else []
     captions = []
     recommended = str(routing.get("recommended_model") or "").strip()
@@ -111,11 +132,11 @@ def llm_usage_routing_captions(llm_usage_summary: dict) -> list[str]:
             parts.append(f"順位 {rank}")
         tier = str(routing.get("recommended_routing_tier") or "").strip()
         if tier:
-            parts.append(f"tier={tier}")
+            parts.append(f"路由層級 {_label(ROUTING_TIER_LABELS, tier)}")
         captions.append("｜".join(parts))
     recommended_reason = str(routing.get("recommended_reason") or "").strip()
     if recommended_reason:
-        captions.append(recommended_reason)
+        captions.append(_label(USAGE_ROUTING_REASON_LABELS, recommended_reason))
     high_quota_models = [
         str(model).strip()
         for model in routing.get("high_quota_fallback_models") or []
@@ -134,18 +155,22 @@ def llm_usage_routing_rows(llm_usage_summary: dict) -> list[dict]:
             continue
         rows.append(
             {
-                "rank": model.get("rank"),
-                "model": model.get("model"),
-                "status": model.get("status"),
-                "tier": model.get("routing_tier"),
-                "reason": model.get("status_reason"),
-                "requests_used": model.get("requests_used"),
-                "request_budget": model.get("request_budget"),
-                "requests_remaining": model.get("requests_remaining"),
-                "completion_count": model.get("completion_count"),
-                "tokens_used": model.get("tokens_used"),
-                "token_budget": model.get("token_budget"),
-                "tokens_remaining": model.get("tokens_remaining"),
+                "順位": model.get("rank"),
+                "模型": model.get("model"),
+                "狀態": _label(MODEL_STATUS_LABELS, model.get("status")),
+                "路由層級": _label(ROUTING_TIER_LABELS, model.get("routing_tier")),
+                "狀態原因": _label(STATUS_REASON_LABELS, model.get("status_reason")),
+                "今日請求": _format_budget(
+                    model.get("requests_used"),
+                    model.get("request_budget"),
+                ),
+                "剩餘請求": _display_value(model.get("requests_remaining")),
+                "完成次數": _display_value(model.get("completion_count")),
+                "今日 Token": _format_budget(
+                    model.get("tokens_used"),
+                    model.get("token_budget"),
+                ),
+                "剩餘 Token": _display_value(model.get("tokens_remaining")),
             }
         )
     return rows
@@ -163,16 +188,19 @@ def llm_usage_recent_routing_rows(llm_usage_summary: dict) -> list[dict]:
             continue
         rows.append(
             {
-                "created_at": item.get("created_at"),
-                "operation": item.get("operation"),
-                "model": item.get("model"),
-                "selected_rank": item.get("selected_model_rank"),
-                "tier": item.get("selected_routing_tier"),
-                "routing_reason": routing_reason or None,
-                "quota_skip_count": quota_skips,
-                "daily_quota_skip_count": int(item.get("daily_quota_skip_count") or 0),
-                "cooldown_skip_count": int(item.get("cooldown_skip_count") or 0),
-                "degraded_from_primary": degraded,
+                "時間": item.get("created_at"),
+                "任務": _label(USAGE_OPERATION_LABELS, item.get("operation")),
+                "模型": item.get("model"),
+                "選中順位": item.get("selected_model_rank"),
+                "路由層級": _label(
+                    ROUTING_TIER_LABELS,
+                    item.get("selected_routing_tier"),
+                ),
+                "路由原因": _label(USAGE_ROUTING_REASON_LABELS, routing_reason),
+                "額度略過": quota_skips,
+                "日額度略過": int(item.get("daily_quota_skip_count") or 0),
+                "冷卻略過": int(item.get("cooldown_skip_count") or 0),
+                "已降級": "是" if degraded else "否",
             }
         )
     return rows[-20:]
@@ -180,3 +208,32 @@ def llm_usage_recent_routing_rows(llm_usage_summary: dict) -> list[dict]:
 
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _label(labels: dict[str, str], value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return labels.get(text, text)
+
+
+def _display_value(value: Any) -> Any:
+    if value is None:
+        return "-"
+    if isinstance(value, str) and not value.strip():
+        return "-"
+    return value
+
+
+def _format_budget(used: Any, budget: Any) -> str:
+    used_display = _display_budget_value(used, zero_when_missing=True)
+    budget_display = _display_budget_value(budget)
+    return f"{used_display} / {budget_display}"
+
+
+def _display_budget_value(value: Any, *, zero_when_missing: bool = False) -> Any:
+    if value is None:
+        return 0 if zero_when_missing else "-"
+    if isinstance(value, str) and not value.strip():
+        return 0 if zero_when_missing else "-"
+    return value

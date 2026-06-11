@@ -365,5 +365,22 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
                 not in llm_quota_panel_source
             )
         ),
+        "ui_llm_usage_routing_operator_labels_enabled": (
+            "USAGE_ROUTING_REASON_LABELS = {" in maintenance_ai_panels_source
+            and "USAGE_OPERATION_LABELS = {" in maintenance_ai_panels_source
+            and '"P95 LLM 延遲 ms"' in maintenance_ai_panels_source
+            and '"後援次數"' in maintenance_ai_panels_source
+            and '"額度略過"' in maintenance_ai_panels_source
+            and '"路由層級"' in maintenance_ai_panels_source
+            and '"前序模型額度已用完，已自動改用下一順位。"'
+            in maintenance_ai_panels_source
+            and '"用量資料庫暫時不可用"' in maintenance_ai_panels_source
+            and '"rank": model.get("rank")' not in maintenance_ai_panels_source
+            and '"tier": model.get("routing_tier")' not in maintenance_ai_panels_source
+            and '"routing_reason": routing_reason or None'
+            not in maintenance_ai_panels_source
+            and '"Quota skip"' not in maintenance_ai_panels_source
+            and '"Fallback 次數"' not in maintenance_ai_panels_source
+        ),
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
     }

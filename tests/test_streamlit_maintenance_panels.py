@@ -210,15 +210,16 @@ def test_submission_guard_summary_rows_show_operator_ready_and_missing() -> None
             "操作": "送出分析任務",
             "區域": "分析工作區",
             "狀態": "已保護",
-            "Evidence": "ui_analysis_submission_quota_confirmation_enabled",
+            "檢查依據": "ui_analysis_submission_quota_confirmation_enabled",
         },
         {
             "操作": "刪除分析紀錄",
             "區域": "報告中心",
             "狀態": "缺保護",
-            "Evidence": "ui_run_delete_confirmation_gate_enabled",
+            "檢查依據": "ui_run_delete_confirmation_gate_enabled",
         },
     ]
+    assert "Evidence" not in maintenance_panels.submission_guard_rows(service_snapshot)[0]
 
 
 def test_submission_guard_summary_uses_operator_ready_label() -> None:

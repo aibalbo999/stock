@@ -302,6 +302,9 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "ui_risky_submission_guard_rows" in maintenance_panels_source
             and "確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門"
             in maintenance_panels_source
+            and '"檢查依據": str(row.get("guard_key") or "-")' in maintenance_panels_source
+            and '"Evidence": str(row.get("guard_key") or "-")'
+            not in maintenance_panels_source
             and "尚未取得高風險操作保護狀態；請先確認系統狀態。"
             in maintenance_panels_source
             and "尚未取得高風險操作保護狀態；請先確認 /services/status。"

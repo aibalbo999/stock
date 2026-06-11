@@ -242,7 +242,7 @@ def submission_guard_rows(service_snapshot: dict) -> list[dict[str, object]]:
                 "操作": SUBMISSION_GUARD_LABELS.get(guard_id, guard_id or "-"),
                 "區域": SUBMISSION_GUARD_SURFACES.get(surface, surface or "-"),
                 "狀態": SUBMISSION_GUARD_ROW_STATUS_LABELS[bool(row.get("ready"))],
-                "Evidence": str(row.get("guard_key") or "-"),
+                "檢查依據": str(row.get("guard_key") or "-"),
             }
         )
     return rows

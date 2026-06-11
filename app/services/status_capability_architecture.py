@@ -331,6 +331,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_external_deployment_diagnostics_enabled")
             and frontend_status.get("ui_external_deployment_readiness_checklist_enabled")
             and frontend_status.get("ui_external_deployment_operator_summary_enabled")
+            and frontend_status.get("ui_maintenance_deployment_view_extracted")
             and frontend_status.get("ui_external_deployment_diagnostics_extracted")
             and frontend_status.get("ui_local_dependency_repair_guidance_enabled")
             and frontend_status.get("ui_maintenance_operations_enabled")

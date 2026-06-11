@@ -16,6 +16,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
+    maintenance_deployment_view_source = ui_sources["maintenance_deployment_view.py"]
     maintenance_ai_panels_source = ui_sources["maintenance_ai_panels.py"]
     maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     maintenance_cleanup_panel_source = ui_sources["maintenance_cleanup_panel.py"]
@@ -103,7 +104,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "正式串 TEJ 或付費資料商前" in maintenance_deployment_presenter_source
             and "external_deployment_focus_banner(focus_context)"
             in maintenance_deployment_panel_source
-            and "maintenance-focus-banner" in maintenance_deployment_panel_source
+            and "maintenance-focus-banner" in maintenance_deployment_view_source
             and "expanded=bool(external_warning_rows) or bool(focus_banner)"
             in maintenance_deployment_panel_source
         ),

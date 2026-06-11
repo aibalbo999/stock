@@ -437,6 +437,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_external_deployment_diagnostics_enabled"] is True
     assert status["frontend"]["ui_external_deployment_readiness_checklist_enabled"] is True
     assert status["frontend"]["ui_external_deployment_operator_summary_enabled"] is True
+    assert status["frontend"]["ui_maintenance_deployment_view_extracted"] is True
     assert status["frontend"]["ui_external_deployment_profile_catalog_extracted"] is True
     assert status["frontend"]["ui_external_deployment_profile_catalog_path"] == (
         "app/services/external_deployment_profiles.py"
@@ -915,6 +916,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_readiness_checklist_enabled"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_operator_summary_enabled"] is True
+    assert frontend_arch["evidence"]["ui_maintenance_deployment_view_extracted"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_profile_catalog_extracted"] is True
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_local_dependency_repair_guidance_enabled"] is True

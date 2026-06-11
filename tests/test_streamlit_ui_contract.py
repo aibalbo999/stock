@@ -905,7 +905,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue_smoke_command(service_snapshot)" in source
     assert "external_deployment_warning_rows(upgrade_audit)" in source
     assert "external_deployment_operator_summary(" in source
-    assert "def _external_deployment_operator_summary_html(" in source
+    assert "def external_deployment_operator_summary_html(" in (
+        ui.MAINTENANCE_DEPLOYMENT_VIEW_SOURCE.read_text()
+    )
+    assert "def _external_deployment_operator_summary_html(" not in (
+        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    )
     assert "external-deployment-operator-summary" in combined
     assert "外部選配不是系統故障" in ui.MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE.read_text()
     assert "external_deployment_env_check_summary_rows(" in source

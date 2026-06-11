@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 import streamlit as st
 
 from app.ui import maintenance_operation_controls
@@ -42,6 +40,10 @@ from app.ui.maintenance_operation_controls import (
     LAST_POST_RUN_DIAGNOSTIC_TASK_KEY,
     task_result_payload as _task_result_payload,
 )
+from app.ui.maintenance_deployment_view import (
+    external_deployment_focus_banner_html,
+    external_deployment_operator_summary_html,
+)
 from app.ui.maintenance_status import maintenance_overview_status_label
 
 __all__ = [
@@ -52,6 +54,8 @@ __all__ = [
     "_task_result_payload",
     "external_deployment_metric_values",
     "external_deployment_effective_gap_rows",
+    "external_deployment_focus_banner_html",
+    "external_deployment_operator_summary_html",
     "maintenance_operation_post_run_check_rows",
     "maintenance_operation_post_run_diagnostic_action_rows",
     "maintenance_operation_recommendation_caption",
@@ -152,13 +156,13 @@ def render_external_deployment_panel(
     )
     focus_banner = external_deployment_focus_banner(focus_context)
     if focus_banner:
-        st.markdown(_external_deployment_focus_banner_html(focus_banner), unsafe_allow_html=True)
+        st.markdown(external_deployment_focus_banner_html(focus_banner), unsafe_allow_html=True)
     with st.expander(
         "外部部署選配狀態",
         expanded=bool(external_warning_rows) or bool(focus_banner),
     ):
         st.markdown(
-            _external_deployment_operator_summary_html(operator_summary),
+            external_deployment_operator_summary_html(operator_summary),
             unsafe_allow_html=True,
         )
         deploy_cols = st.columns(4)
@@ -288,32 +292,6 @@ def render_external_deployment_panel(
             )
         else:
             st.success("外部部署選配目前沒有警示。")
-
-
-def _external_deployment_focus_banner_html(banner: dict) -> str:
-    return f"""<section class="maintenance-focus-banner is-{escape(str(banner.get("state", "attention")))}" aria-label="目前維護焦點">
-<div>
-<span>目前焦點</span>
-<strong>{escape(str(banner.get("title") or "-"))}</strong>
-<p>{escape(str(banner.get("detail") or ""))}</p>
-</div>
-<em>{escape(str(banner.get("target_caption") or ""))}</em>
-</section>"""
-
-
-def _external_deployment_operator_summary_html(summary: dict) -> str:
-    return f"""<section class="external-deployment-operator-summary is-{escape(str(summary.get("state", "ready")))}" aria-label="外部部署選配決策摘要">
-<span>外部部署選配決策摘要</span>
-<strong>{escape(str(summary.get("title") or "-"))}</strong>
-<p>{escape(str(summary.get("detail") or ""))}</p>
-<div class="external-deployment-operator-summary-grid">
-  <em>{escape(str(summary.get("local_action") or "-"))}</em>
-  <em>{escape(str(summary.get("effective_remaining") or "-"))}</em>
-  <em>{escape(str(summary.get("paid_external") or "-"))}</em>
-</div>
-<small>{escape(str(summary.get("next_step") or ""))}</small>
-</section>"""
-
 
 def _render_maintenance_operations(
     maintenance_operations: dict,

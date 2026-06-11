@@ -16,6 +16,7 @@ def frontend_external_deployment_readiness_status(
     external_deployment_common_source = ui_sources["external_deployment_common.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
+    maintenance_deployment_view_source = ui_sources["maintenance_deployment_view.py"]
     maintenance_operation_controls_source = ui_sources["maintenance_operation_controls.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
@@ -91,13 +92,27 @@ def frontend_external_deployment_readiness_status(
         "ui_external_deployment_operator_summary_enabled": (
             "def external_deployment_operator_summary(" in maintenance_deployment_presenter_source
             and "external_deployment_operator_summary(" in maintenance_deployment_panel_source
-            and "def _external_deployment_operator_summary_html("
-            in maintenance_deployment_panel_source
-            and "external-deployment-operator-summary" in maintenance_deployment_panel_source
-            and "外部部署選配決策摘要" in maintenance_deployment_panel_source
+            and "def external_deployment_operator_summary_html("
+            in maintenance_deployment_view_source
+            and "external-deployment-operator-summary" in maintenance_deployment_view_source
+            and "外部部署選配決策摘要" in maintenance_deployment_view_source
             and "外部選配不是系統故障" in maintenance_deployment_presenter_source
             and "沒有 blocking deployment 缺口" in maintenance_deployment_presenter_source
             and "付費/API 選配" in maintenance_deployment_presenter_source
+        ),
+        "ui_maintenance_deployment_view_extracted": (
+            (ui_dir / "maintenance_deployment_view.py").exists()
+            and "from app.ui.maintenance_deployment_view import ("
+            in maintenance_deployment_panel_source
+            and "import streamlit" not in maintenance_deployment_view_source
+            and "def external_deployment_focus_banner_html("
+            in maintenance_deployment_view_source
+            and "def external_deployment_operator_summary_html("
+            in maintenance_deployment_view_source
+            and "def _external_deployment_focus_banner_html("
+            not in maintenance_deployment_panel_source
+            and "def _external_deployment_operator_summary_html("
+            not in maintenance_deployment_panel_source
         ),
         "ui_local_dependency_start_history_enabled": (
             "def local_dependency_last_start_rows(" in external_deployment_common_source

@@ -36,11 +36,11 @@ def render_background_task_observability_panel(
         "背景任務觀測",
         expanded=task_observability_expander_expanded(task_summary),
     ):
-        st.caption("Queue / Worker readiness")
+        st.caption("背景任務送出與執行狀態")
         st.dataframe(task_queue_health_rows(service_snapshot), width="stretch", hide_index=True)
         repair_rows = task_queue_repair_rows(service_snapshot)
         if repair_rows:
-            st.caption("Queue 修復指引")
+            st.caption("背景任務修復指引")
             st.dataframe(repair_rows, width="stretch", hide_index=True)
         queue_alert = task_queue_health_alert(service_snapshot)
         if queue_alert:

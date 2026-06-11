@@ -23,32 +23,32 @@ def task_queue_health_rows(service_snapshot: dict) -> list[dict]:
     task_queue = _task_queue_from_snapshot(service_snapshot)
     return [
         {
-            "項目": "Queue 提交",
+            "項目": "背景任務提交",
             "狀態": task_queue_label(task_queue),
             "說明": _task_queue_submission_detail(task_queue),
         },
         {
-            "項目": "Queue 執行",
+            "項目": "背景任務執行",
             "狀態": task_queue_processing_label(task_queue),
             "說明": _task_queue_processing_detail(task_queue),
         },
         {
-            "項目": "Redis Broker",
+            "項目": "Redis 佇列服務",
             "狀態": _ok_label(task_queue.get("broker_ok")),
             "說明": _connection_detail(task_queue, "broker_url"),
         },
         {
-            "項目": "Redis Backend",
+            "項目": "Redis 結果儲存",
             "狀態": _ok_label(task_queue.get("backend_ok")),
             "說明": _connection_detail(task_queue, "backend_url"),
         },
         {
-            "項目": "Task wiring",
+            "項目": "任務註冊",
             "狀態": "正常" if task_queue.get("submission_contract_ready") else "檢查",
             "說明": _task_wiring_detail(task_queue),
         },
         {
-            "項目": "Celery Worker",
+            "項目": "背景執行 worker",
             "狀態": _worker_label(task_queue),
             "說明": _worker_detail(task_queue),
         },
@@ -60,27 +60,27 @@ def task_queue_health_alert(service_snapshot: dict) -> dict | None:
     if not task_queue:
         return {
             "severity": "warning",
-            "message": "尚未取得 task_queue 狀態；請確認 /services/status 是否可讀取。",
+            "message": "尚未取得背景任務狀態；請確認系統設定 > 維護頁是否能讀取服務狀態。",
         }
     if not task_queue.get("ready"):
         return {
             "severity": "error",
-            "message": f"背景任務 queue 尚不可送出：{_task_queue_submission_detail(task_queue)}",
+            "message": f"背景任務尚不可送出：{_task_queue_submission_detail(task_queue)}",
         }
     if _task_queue_processing_ready(task_queue):
         worker_count = int(task_queue.get("worker_count") or 0)
         return {
             "severity": "success",
-            "message": f"Queue 與 Celery worker 可用；目前 {worker_count} 個 worker 節點回應。",
+            "message": f"背景任務可送出且 worker 可執行；目前 {worker_count} 個 worker 節點回應。",
         }
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
         return {
             "severity": "warning",
-            "message": "Queue 可收任務，但 Celery worker 未回應；任務可能停在佇列。",
+            "message": "背景任務可排隊，但背景執行 worker 未回應；任務可能停在佇列。",
         }
     return {
         "severity": "info",
-        "message": "Queue 可送出；worker ping 尚未執行或被跳過。",
+        "message": "背景任務可送出；worker 健康檢查尚未執行或被跳過。",
     }
 
 
@@ -102,9 +102,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
     if not task_queue:
         return [
             {
-                "項目": "Task queue 狀態",
+                "項目": "背景任務狀態",
                 "狀態": "未取得",
-                "下一步": "確認 API /services/status 可讀取，再重新整理維護頁。",
+                "下一步": "確認系統設定 > 維護頁可讀取服務狀態，再重新整理維護頁。",
                 "修復指令": "-",
                 "驗證指令": "curl -s http://127.0.0.1:8000/services/status",
             }
@@ -123,9 +123,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
     if not task_queue.get("broker_ok") or not task_queue.get("backend_ok"):
         rows.append(
             {
-                "項目": "Redis Broker/Backend",
+                "項目": "Redis 佇列/結果服務",
                 "狀態": "未連線",
-                "下一步": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+                "下一步": "啟動本機依賴後，重新檢查 Redis 佇列與結果儲存連線。",
                 "修復指令": commands["start_dependencies"],
                 "驗證指令": commands["upgrade_audit"],
             }
@@ -133,7 +133,7 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
     if not task_queue.get("submission_contract_ready"):
         rows.append(
             {
-                "項目": "Celery task wiring",
+                "項目": "Celery 任務註冊",
                 "狀態": "未對齊",
                 "下一步": _task_wiring_detail(task_queue),
                 "修復指令": commands["upgrade_audit"],
@@ -144,9 +144,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
         if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
             rows.append(
                 {
-                    "項目": "Celery Worker",
+                    "項目": "背景執行 worker",
                     "狀態": "未回應",
-                    "下一步": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+                    "下一步": "啟動背景執行 worker，或確認既有 worker 能連到同一個 Redis broker。",
                     "修復指令": commands["start_worker"],
                     "驗證指令": verify_command,
                 }
@@ -154,9 +154,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
         elif not task_queue.get("worker_ping_checked"):
             rows.append(
                 {
-                    "項目": "Celery Worker ping",
+                    "項目": "背景執行 worker 健康檢查",
                     "狀態": "未檢查",
-                    "下一步": "執行 inspect ping 確認是否有 worker 回應。",
+                    "下一步": "執行健康檢查，確認是否有 worker 回應。",
                     "修復指令": verify_command,
                     "驗證指令": verify_command,
                 }
@@ -204,30 +204,30 @@ def _ok_label(value: object) -> str:
 def _task_queue_submission_detail(task_queue: dict) -> str:
     if task_queue.get("ready"):
         if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-            return "Redis 與 task wiring 可送出；worker 未回應時任務會先留在 queue。"
-        return "Redis broker/backend 與 Celery task wiring 已可提交。"
+            return "Redis 與任務註冊可送出；worker 未回應時任務會先留在佇列。"
+        return "Redis 佇列與結果儲存、Celery 任務註冊已可提交。"
     issues = []
     if not task_queue:
-        issues.append("尚未取得 task_queue 診斷")
+        issues.append("尚未取得背景任務診斷")
     if not task_queue.get("broker_configured"):
-        issues.append("Redis broker URL 未設定")
+        issues.append("Redis 佇列 URL 未設定")
     if not task_queue.get("broker_ok"):
-        issues.append("Redis broker 未連線")
+        issues.append("Redis 佇列服務未連線")
     if not task_queue.get("backend_ok"):
-        issues.append("Redis backend 未連線")
+        issues.append("Redis 結果儲存未連線")
     if not task_queue.get("submission_contract_ready"):
-        issues.append("Celery task exports 或 task name 尚未對齊")
+        issues.append("Celery 任務匯出或名稱尚未對齊")
     return "；".join(issues) or "狀態未知"
 
 
 def _task_queue_processing_detail(task_queue: dict) -> str:
     if _task_queue_processing_ready(task_queue):
-        return "Queue 已可提交，且 Celery worker 可接手執行。"
+        return "背景任務已可提交，且 Celery worker 可接手執行。"
     if not task_queue.get("ready"):
-        return "Queue 尚不可提交，需先修復提交狀態。"
+        return "背景任務尚不可提交，需先修復提交狀態。"
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-        return "Queue 可收任務，但 worker 未回應；任務會停在佇列直到 worker 上線。"
-    return "Queue 可提交，但 worker ping 尚未執行；執行 readiness 未確認。"
+        return "背景任務可收件，但 worker 未回應；任務會停在佇列直到 worker 上線。"
+    return "背景任務可提交，但 worker 健康檢查尚未執行；執行狀態未確認。"
 
 
 def _task_queue_processing_ready(task_queue: dict) -> bool:
@@ -240,21 +240,21 @@ def _connection_detail(task_queue: dict, url_key: str) -> str:
     url = task_queue.get(url_key) or "-"
     redis_error = task_queue.get("redis_error")
     if redis_error:
-        return f"{url}；Redis error: {redis_error}"
+        return f"{url}；Redis 錯誤：{redis_error}"
     return str(url)
 
 
 def _task_wiring_detail(task_queue: dict) -> str:
     if task_queue.get("submission_contract_ready"):
-        return "必要 Celery task exports 與 task name 已對齊。"
+        return "必要 Celery 任務匯出與名稱已對齊。"
     missing = task_queue.get("missing_task_exports")
     if isinstance(missing, list) and missing:
-        return "缺少 exports：" + "、".join(str(item) for item in missing)
+        return "缺少任務匯出：" + "、".join(str(item) for item in missing)
     if task_queue.get("task_export_error"):
-        return f"task export error: {task_queue['task_export_error']}"
+        return f"任務匯出錯誤：{task_queue['task_export_error']}"
     if task_queue.get("task_names_match_expected") is False:
-        return "task name 與預期不一致。"
-    return "尚未取得 task wiring 診斷。"
+        return "任務名稱與預期不一致。"
+    return "尚未取得任務註冊診斷。"
 
 
 def _worker_label(task_queue: dict) -> str:
@@ -270,11 +270,11 @@ def _worker_detail(task_queue: dict) -> str:
         nodes = task_queue.get("worker_nodes") or []
         if nodes:
             return "回應節點：" + "、".join(str(node) for node in nodes)
-        return f"worker_count={int(task_queue.get('worker_count') or 0)}"
+        return f"回應數量：{int(task_queue.get('worker_count') or 0)}"
     if not task_queue.get("worker_ping_checked"):
-        reason = task_queue.get("worker_ping_skipped_reason") or "worker ping 未執行"
-        return f"未執行 ping：{reason}"
-    details = ["worker ping 無回應"]
+        reason = task_queue.get("worker_ping_skipped_reason") or "worker 健康檢查未執行"
+        return f"未執行健康檢查：{reason}"
+    details = ["worker 健康檢查無回應"]
     if task_queue.get("worker_ping_error"):
         details.append(f"錯誤：{task_queue['worker_ping_error']}")
     timeout = task_queue.get("worker_ping_timeout_seconds")

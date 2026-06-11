@@ -724,8 +724,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "render_report_observability_panel(report_observability_summary)" in source
     assert "優先優化清單" in source
     assert "建議處理順序" in source
-    assert "Queue / Worker readiness" in source
-    assert "Queue 修復指引" in source
+    assert "背景任務送出與執行狀態" in source
+    assert "背景任務修復指引" in source
     assert "task_queue_health_rows(service_snapshot)" in source
     assert "task_queue_health_alert(service_snapshot)" in source
     assert "task_queue_repair_rows(service_snapshot)" in source
@@ -911,7 +911,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'task_queue.get("repair_plan")' in source
     assert "def _task_queue_repair_plan_row(" in source
     assert "def task_queue_processing_label(" in source
-    assert "Queue 執行" in source
+    assert "背景任務執行" in source
     assert '"修復指令"' in source
     assert '"驗證指令"' in source
     assert "processing_ready" in source
@@ -938,7 +938,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"next_steps": task_failure_next_steps_text(task_status)' in source
     assert "失敗診斷" in source
     assert "仍會嘗試送出" in source
-    assert "Celery worker 未回應" in source
+    assert "背景執行 worker 未回應" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source

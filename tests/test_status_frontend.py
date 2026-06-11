@@ -393,6 +393,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_task_queue_submission_smoke_hint_enabled"] is True
     assert status["frontend"]["ui_task_queue_operator_hint_enabled"] is True
     assert status["frontend"]["ui_task_queue_health_panel_extracted"] is True
+    assert status["frontend"]["ui_task_queue_health_operator_labels_enabled"] is True
     assert status["frontend"]["ui_task_queue_repair_guidance_enabled"] is True
     assert status["frontend"]["ui_task_queue_processing_readiness_displayed"] is True
     assert status["frontend"]["ui_maintenance_diagnostic_actions_enabled"] is True
@@ -793,6 +794,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_task_queue_worker_warning_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_submission_smoke_hint_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_health_panel_extracted"] is True
+    assert frontend_arch["evidence"]["ui_task_queue_health_operator_labels_enabled"] is True
     assert frontend_arch["evidence"]["ui_task_queue_repair_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_diagnostic_actions_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_diagnostic_confirmation_gate_enabled"] is True

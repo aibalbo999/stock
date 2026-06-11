@@ -68,9 +68,22 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
         and "task_queue_health_alert(service_snapshot)" in ui_source
         and "task_queue_repair_rows(service_snapshot)" in ui_source
         and "task_queue_smoke_command(service_snapshot)" in ui_source
-        and "Queue 修復指引" in ui_source
+        and "背景任務修復指引" in ui_source
         and "from app.ui.task_queue_diagnostics import (" in ui_source
         and "def task_queue_health_rows(" not in maintenance_status_source,
+        "ui_task_queue_health_operator_labels_enabled": (
+            "背景任務提交" in task_queue_diagnostics_source
+            and "背景任務執行" in task_queue_diagnostics_source
+            and "Redis 佇列服務" in task_queue_diagnostics_source
+            and "Redis 結果儲存" in task_queue_diagnostics_source
+            and "任務註冊" in task_queue_diagnostics_source
+            and "背景執行 worker" in task_queue_diagnostics_source
+            and "背景任務可送出且 worker 可執行" in task_queue_diagnostics_source
+            and "背景任務送出與執行狀態" in maintenance_task_panels_source
+            and "背景任務修復指引" in maintenance_task_panels_source
+            and "Queue / Worker readiness" not in maintenance_task_panels_source
+            and "Queue 修復指引" not in maintenance_task_panels_source
+        ),
         "ui_task_queue_repair_guidance_enabled": "def task_queue_repair_rows("
         in task_queue_diagnostics_source
         and 'task_queue.get("repair_plan")' in task_queue_diagnostics_source
@@ -78,10 +91,10 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
         and '"修復指令"' in task_queue_diagnostics_source
         and '"驗證指令"' in task_queue_diagnostics_source
         and "task_queue_repair_rows(service_snapshot)" in ui_source
-        and "Queue 修復指引" in ui_source,
+        and "背景任務修復指引" in ui_source,
         "ui_task_queue_processing_readiness_displayed": "processing_ready"
         in task_queue_diagnostics_source
-        and "Queue 執行" in task_queue_diagnostics_source
+        and "背景任務執行" in task_queue_diagnostics_source
         and "def task_queue_processing_label(" in task_queue_diagnostics_source,
         "ui_task_queue_diagnostics_path": "app/ui/task_queue_diagnostics.py",
         "ui_maintenance_diagnostic_actions_enabled": (

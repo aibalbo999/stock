@@ -300,6 +300,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_queue_submission_smoke_hint_enabled")
             and frontend_status.get("ui_task_queue_operator_hint_enabled")
             and frontend_status.get("ui_task_queue_health_panel_extracted")
+            and frontend_status.get("ui_task_queue_health_operator_labels_enabled")
             and frontend_status.get("ui_task_queue_repair_guidance_enabled")
             and frontend_status.get("ui_maintenance_diagnostic_actions_enabled")
             and frontend_status.get("ui_maintenance_diagnostic_confirmation_gate_enabled")

@@ -554,17 +554,17 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
     alert = helpers["task_queue_health_alert"](snapshot)
     repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
-    assert rows[0]["項目"] == "Queue 提交"
+    assert rows[0]["項目"] == "背景任務提交"
     assert rows[0]["狀態"] == "可送出"
-    assert rows[1]["項目"] == "Queue 執行"
+    assert rows[1]["項目"] == "背景任務執行"
     assert rows[1]["狀態"] == "可執行"
     assert "worker 可接手執行" in rows[1]["說明"]
-    assert rows[5]["項目"] == "Celery Worker"
+    assert rows[5]["項目"] == "背景執行 worker"
     assert rows[5]["狀態"] == "在線"
     assert "celery@test.local" in rows[5]["說明"]
     assert alert == {
         "severity": "success",
-        "message": "Queue 與 Celery worker 可用；目前 1 個 worker 節點回應。",
+        "message": "背景任務可送出且 worker 可執行；目前 1 個 worker 節點回應。",
     }
     assert (
         helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
@@ -596,18 +596,18 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
 
     assert rows[0]["狀態"] == "可排隊"
     assert "worker 未回應" in rows[0]["說明"]
-    assert rows[1]["項目"] == "Queue 執行"
+    assert rows[1]["項目"] == "背景任務執行"
     assert rows[1]["狀態"] == "等待 worker"
     assert "停在佇列直到 worker 上線" in rows[1]["說明"]
     assert rows[5]["狀態"] == "未回應"
     assert "timeout 1.0s" in rows[5]["說明"]
     assert alert["severity"] == "warning"
-    assert "Celery worker 未回應" in alert["message"]
+    assert "背景執行 worker 未回應" in alert["message"]
     assert repair_rows == [
         {
-            "項目": "Celery Worker",
+            "項目": "背景執行 worker",
             "狀態": "未回應",
-            "下一步": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+            "下一步": "啟動背景執行 worker，或確認既有 worker 能連到同一個 Redis broker。",
             "修復指令": (
                 ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker "
                 "-B --loglevel=INFO --pool=solo"
@@ -638,18 +638,18 @@ def test_task_queue_health_alert_blocks_unready_queue() -> None:
     repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
     assert rows[0]["狀態"] == "檢查"
-    assert "Redis broker 未連線" in rows[0]["說明"]
-    assert rows[1]["項目"] == "Queue 執行"
+    assert "Redis 佇列服務未連線" in rows[0]["說明"]
+    assert rows[1]["項目"] == "背景任務執行"
     assert rows[1]["狀態"] == "檢查"
-    assert "Queue 尚不可提交" in rows[1]["說明"]
+    assert "背景任務尚不可提交" in rows[1]["說明"]
     assert "connection refused" in rows[2]["說明"]
     assert alert["severity"] == "error"
-    assert "背景任務 queue 尚不可送出" in alert["message"]
+    assert "背景任務尚不可送出" in alert["message"]
     assert repair_rows == [
         {
-            "項目": "Redis Broker/Backend",
+            "項目": "Redis 佇列/結果服務",
             "狀態": "未連線",
-            "下一步": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+            "下一步": "啟動本機依賴後，重新檢查 Redis 佇列與結果儲存連線。",
             "修復指令": ".venv/bin/python scripts/start_system.py --start-dependencies",
             "驗證指令": ".venv/bin/python scripts/upgrade_audit.py",
         }
@@ -680,6 +680,20 @@ def test_task_queue_repair_rows_prefer_status_payload() -> None:
             "下一步": "Run the allowlisted diagnostic.",
             "修復指令": ".venv/bin/python scripts/upgrade_audit.py",
             "驗證指令": ".venv/bin/python scripts/upgrade_audit.py --json",
+        }
+    ]
+
+
+def test_task_queue_repair_rows_show_operator_label_when_status_is_missing() -> None:
+    helpers = load_report_helpers()
+
+    assert helpers["task_queue_repair_rows"]({}) == [
+        {
+            "項目": "背景任務狀態",
+            "狀態": "未取得",
+            "下一步": "確認系統設定 > 維護頁可讀取服務狀態，再重新整理維護頁。",
+            "修復指令": "-",
+            "驗證指令": "curl -s http://127.0.0.1:8000/services/status",
         }
     ]
 

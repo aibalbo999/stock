@@ -49,6 +49,14 @@ def test_llm_quota_env_audit_reports_ready_without_exposing_secrets(tmp_path) ->
     )
     assert "plain" not in json.dumps(report, ensure_ascii=False)
     assert "plain" not in formatted
+    assert "LLM 額度環境檢查: ready" in formatted
+    assert "模型數=4；漂移=0；無效=0" in formatted
+    assert "環境檔:" in formatted
+    assert "建議下一步:" in formatted
+    assert "已設定=250" in formatted
+    assert "參考額度=250" in formatted
+    assert "LLM quota env audit" not in formatted
+    assert "Next action" not in formatted
     assert "def _quota_reference_source(" not in audit_source
     assert "def quota_reference_source(" in reference_source
 
@@ -116,6 +124,7 @@ def test_llm_quota_env_audit_apply_updates_only_reference_budget_line(tmp_path) 
     assert "gemma-4-31b-it=14400" in contents
     assert "UNRELATED_ENV=plain" in contents
     assert "OTHER_VALUE=kept" in contents
+    assert "已套用: gemini-2.5-flash-lite" in format_llm_quota_env_audit(report)
 
 
 def test_llm_quota_env_audit_missing_env_key_is_action_required(tmp_path) -> None:

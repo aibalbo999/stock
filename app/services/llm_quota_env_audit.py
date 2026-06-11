@@ -286,28 +286,28 @@ def _next_action_for_rows(drift_rows: list[dict[str, Any]], invalid_rows: list[d
 def format_llm_quota_env_audit(report: dict[str, Any]) -> str:
     lines = [
         (
-            f"LLM quota env audit: {report.get('status', 'unknown')} "
-            f"(models={report.get('model_count', 0)}; "
-            f"drift={report.get('drift_count', 0)}; "
-            f"invalid={report.get('invalid_count', 0)})"
+            f"LLM 額度環境檢查: {report.get('status', 'unknown')} "
+            f"(模型數={report.get('model_count', 0)}；"
+            f"漂移={report.get('drift_count', 0)}；"
+            f"無效={report.get('invalid_count', 0)})"
         )
     ]
-    lines.append(f"Env file: {report.get('env_file', '-')}")
-    lines.append(f"Next action: {report.get('next_action', '-')}")
+    lines.append(f"環境檔: {report.get('env_file', '-')}")
+    lines.append(f"建議下一步: {report.get('next_action', '-')}")
     for row in report.get("rows") or []:
         if not isinstance(row, dict):
             continue
         lines.append(
             (
                 f"- [{row.get('status', '-')}] {row.get('model_key', '-')} "
-                f"configured={row.get('configured_request_budget', '-')} "
-                f"official={row.get('official_free_tier_request_budget_reference', '-')}"
+                f"已設定={row.get('configured_request_budget', '-')} "
+                f"參考額度={row.get('official_free_tier_request_budget_reference', '-')}"
             )
         )
     apply_result = report.get("apply") or {}
     if apply_result.get("applied"):
         lines.append(
-            "Applied: "
+            "已套用: "
             + ", ".join(str(model) for model in apply_result.get("updated_models") or [])
         )
     return "\n".join(lines)

@@ -20,6 +20,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         "data_enrichment_market_presenter.py"
     ]
     data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
+    data_enrichment_manual_presenter_source = source_context.ui_sources[
+        "data_enrichment_manual_presenter.py"
+    ]
     data_enrichment_rss_source = source_context.ui_sources["data_enrichment_rss.py"]
     return {
         "frontend_data_enrichment_status_extracted": True,
@@ -45,6 +48,21 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "def market_submission_preflight_summary("
             in data_enrichment_market_presenter_source
             and "def market_cache_operator_summary(" in data_enrichment_market_presenter_source
+        ),
+        "ui_data_enrichment_manual_presenter_extracted": (
+            "from app.ui.data_enrichment_manual_presenter import ("
+            in data_enrichment_manual_source
+            and "import streamlit" not in data_enrichment_manual_presenter_source
+            and "def manual_news_preflight_summary("
+            in data_enrichment_manual_presenter_source
+            and "def company_filing_text_preflight_summary("
+            in data_enrichment_manual_presenter_source
+            and "def company_filing_url_preflight_summary("
+            in data_enrichment_manual_presenter_source
+            and "def company_filing_type_label(" in data_enrichment_manual_presenter_source
+            and "def manual_news_preflight_summary(" not in data_enrichment_manual_source
+            and "def company_filing_text_preflight_summary(" not in data_enrichment_manual_source
+            and "def company_filing_url_preflight_summary(" not in data_enrichment_manual_source
         ),
         "ui_data_enrichment_pending_operation_button_priority_enabled": (
             "def market_data_operation_button_type(" in data_enrichment_market_presenter_source
@@ -148,12 +166,15 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             "def render_data_ingest_submission_summary(" in data_enrichment_common_source
             and 'class="data-ingest-submission-summary' in data_enrichment_common_source
             and "資料送出前摘要" in data_enrichment_common_source
-            and "def manual_news_preflight_summary(" in data_enrichment_manual_source
-            and "def company_filing_text_preflight_summary(" in data_enrichment_manual_source
-            and "def company_filing_url_preflight_summary(" in data_enrichment_manual_source
+            and "def manual_news_preflight_summary("
+            in data_enrichment_manual_presenter_source
+            and "def company_filing_text_preflight_summary("
+            in data_enrichment_manual_presenter_source
+            and "def company_filing_url_preflight_summary("
+            in data_enrichment_manual_presenter_source
             and "render_data_ingest_submission_summary(" in data_enrichment_manual_source
-            and "不會消耗 AI 額度" in data_enrichment_manual_source
-            and "背景任務會排隊執行" in data_enrichment_manual_source
+            and "不會消耗 AI 額度" in data_enrichment_manual_presenter_source
+            and "背景任務會排隊執行" in data_enrichment_manual_presenter_source
         ),
         "ui_rss_fetch_confirmation_enabled": (
             "rss_fetch_confirmed = st.checkbox(" in data_enrichment_rss_source

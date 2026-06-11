@@ -28,6 +28,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
+    data_enrichment_manual_presenter_source = (
+        ui.DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE.read_text()
+    )
     external_readiness_service_source = Path(
         "app/services/external_deployment_readiness.py"
     ).read_text()
@@ -365,6 +369,26 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "我了解這會送出資料補強背景任務" in source
     assert "避免誤觸刷新" in source
     assert "or not market_operation_confirmed" in source
+    assert "from app.ui.data_enrichment_manual_presenter import (" in source
+    assert "import streamlit" not in data_enrichment_manual_presenter_source
+    assert "def manual_news_preflight_summary(" in data_enrichment_manual_presenter_source
+    assert (
+        "def company_filing_text_preflight_summary("
+        in data_enrichment_manual_presenter_source
+    )
+    assert (
+        "def company_filing_url_preflight_summary("
+        in data_enrichment_manual_presenter_source
+    )
+    assert "def company_filing_type_label(" in data_enrichment_manual_presenter_source
+    assert "def manual_news_preflight_summary(" not in data_enrichment_manual_source
+    assert (
+        "def company_filing_text_preflight_summary("
+        not in data_enrichment_manual_source
+    )
+    assert (
+        "def company_filing_url_preflight_summary(" not in data_enrichment_manual_source
+    )
     assert "filing_url_confirmed = st.checkbox(" in source
     assert 'key="confirm_company_filing_url_import"' in source
     assert "我了解這會送出 URL 公司文件匯入背景任務" in source

@@ -15,6 +15,7 @@ REPORT_DETAIL_KEYS = {
     "auto_follow_up",
     "promoted_tickers",
 }
+MAX_SECONDARY_ACTIONS = 4
 
 
 def operator_next_best_action(
@@ -336,6 +337,9 @@ def operator_secondary_actions(
     local_defaults_action = _optimization_local_defaults_action(service_snapshot)
     if local_defaults_action:
         _append_secondary_action(secondary, primary, local_defaults_action)
+    free_validation_action = _optimization_free_validation_action(service_snapshot)
+    if free_validation_action:
+        _append_secondary_action(secondary, primary, free_validation_action)
     report_id = _report_id(report_payload, latest_report)
     if report_id is not None:
         _append_secondary_action(
@@ -360,7 +364,7 @@ def operator_secondary_actions(
             "source_ids": [],
         },
     )
-    return _dedupe_secondary_actions(secondary)[:3]
+    return _dedupe_secondary_actions(secondary)[:MAX_SECONDARY_ACTIONS]
 
 
 def _action(
@@ -546,6 +550,64 @@ def _optimization_local_defaults_action(service_snapshot: dict | None) -> dict[s
         "action_label": "查看本機操作",
         "source_ids": ["optimization:auto_local_defaults"],
     }
+
+
+def _optimization_free_validation_action(service_snapshot: dict | None) -> dict[str, Any]:
+    snapshot = _dict_value(service_snapshot)
+    progress = _dict_value(snapshot.get("optimization_progress"))
+    for action in _optimization_actions(progress):
+        if not action.get("free_validation_available"):
+            continue
+        commands = action.get("free_validation_commands")
+        command_count = len(commands) if isinstance(commands, list) else 0
+        validation_label = _text(
+            action.get("free_validation_label"),
+            default="可用本機樣本驗證",
+        )
+        capability = _text(action.get("capability"))
+        label = _text(action.get("label") or capability, default="外部 API")
+        if capability == "company_filing_structured_api_fallback":
+            detail = (
+                f"{validation_label}；正式串 TEJ 或付費資料商前，"
+                f"先用 {command_count or 1} 組免費 smoke 驗證 JSON/HTTP contract。"
+            )
+            return {
+                "title": "驗證公司文件 API contract",
+                "detail": detail,
+                "state": "attention",
+                "route_hint": "settings:maintenance:structured_api",
+                "action_label": "查看免費驗證",
+                "source_ids": ["optimization:company_filing_structured_api_fallback"],
+            }
+        return {
+            "title": f"驗證{label}",
+            "detail": f"{validation_label}；正式啟用外部服務前先跑免費驗證。",
+            "state": "attention",
+            "route_hint": "settings:maintenance",
+            "action_label": "查看免費驗證",
+            "source_ids": [f"optimization:{capability}" if capability else "optimization"],
+        }
+    return {}
+
+
+def _optimization_actions(progress: dict) -> list[dict]:
+    actions: list[dict] = []
+    primary_action = _dict_value(progress.get("primary_next_action"))
+    if primary_action:
+        actions.append(primary_action)
+    for action in progress.get("prioritized_next_actions") or progress.get("next_actions") or []:
+        if isinstance(action, dict):
+            actions.append(action)
+    deduped: list[dict] = []
+    seen: set[str] = set()
+    for action in actions:
+        capability = _text(action.get("capability"))
+        key = capability or _text(action.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(action)
+    return deduped
 
 
 def _healthy_read_reason(*, quota_missing: bool) -> str:

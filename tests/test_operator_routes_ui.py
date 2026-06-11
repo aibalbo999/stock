@@ -85,3 +85,8 @@ def test_operator_route_target_maps_settings_sections() -> None:
         "session_updates": {"pending_settings_section": "maintenance_local_defaults"},
         "caption": "開啟維護頁的本機 defaults 操作區",
     }
+    assert operator_route_target("settings:maintenance:structured_api") == {
+        "page": "pages/04_系統設定.py",
+        "session_updates": {"pending_settings_section": "maintenance_structured_api"},
+        "caption": "開啟維護頁的公司文件結構化 API 區",
+    }

@@ -10,6 +10,7 @@ from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.operator_decisions import (
+    MAX_SECONDARY_ACTIONS,
     operator_next_best_action,
     operator_secondary_actions,
 )
@@ -481,7 +482,7 @@ def _render_operator_action_controls(secondary_actions: list[dict]) -> None:
 </section>""",
         unsafe_allow_html=True,
     )
-    actions = secondary_actions[:3]
+    actions = secondary_actions[:MAX_SECONDARY_ACTIONS]
     columns = st.columns(len(actions), gap="small")
     for index, action in enumerate(actions):
         with columns[index]:

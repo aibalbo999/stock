@@ -186,6 +186,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_operator_market_freshness_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_secondary_action_labels_enabled"] is True
     assert status["frontend"]["ui_operator_local_defaults_secondary_action_enabled"] is True
+    assert status["frontend"]["ui_operator_free_validation_secondary_action_enabled"] is True
     assert status["frontend"]["ui_operator_service_status_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_operator_task_summary_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_operator_running_task_overall_message_enabled"] is True
@@ -302,6 +303,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_settings_ai_quota_route_focus_enabled"] is True
     assert status["frontend"]["ui_settings_task_route_focus_enabled"] is True
     assert status["frontend"]["ui_settings_local_defaults_route_focus_enabled"] is True
+    assert status["frontend"]["ui_settings_structured_api_route_focus_enabled"] is True
     assert status["frontend"]["frontend_task_ui_status_extracted"] is True
     assert status["frontend"]["frontend_task_ui_status_path"] == (
         "app/services/status_frontend_tasks.py"
@@ -553,6 +555,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         frontend_arch["evidence"]["ui_operator_local_defaults_secondary_action_enabled"]
         is True
     )
+    assert (
+        frontend_arch["evidence"]["ui_operator_free_validation_secondary_action_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_operator_service_status_unknown_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_operator_task_summary_unknown_guard_enabled"] is True
     assert (
@@ -615,6 +621,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_settings_ai_quota_route_focus_enabled"] is True
     assert frontend_arch["evidence"]["ui_settings_task_route_focus_enabled"] is True
     assert frontend_arch["evidence"]["ui_settings_local_defaults_route_focus_enabled"] is True
+    assert frontend_arch["evidence"]["ui_settings_structured_api_route_focus_enabled"] is True
     assert frontend_arch["evidence"]["frontend_task_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_queue_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_task_failure_status_extracted"] is True

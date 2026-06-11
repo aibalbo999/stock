@@ -542,6 +542,115 @@ def test_operator_secondary_actions_surface_local_defaults_when_report_healthy()
     assert actions[0]["route_hint"] == "settings:maintenance:local_defaults"
 
 
+def test_operator_secondary_actions_surface_free_validation_for_paid_external_gap() -> None:
+    actions = operator_secondary_actions(
+        {
+            **READY_QUEUE,
+            "optimization_progress": {
+                "primary_next_action": {
+                    "capability": "company_filing_structured_api_fallback",
+                    "label": "公司文件結構化 API 備援",
+                    "action_type": "paid_external",
+                    "free_validation_available": True,
+                    "free_validation_label": "sample + fixture + provider profile 可驗證",
+                    "free_validation_commands": [
+                        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                    ],
+                },
+                "prioritized_next_actions": [
+                    {
+                        "capability": "company_filing_structured_api_fallback",
+                        "label": "公司文件結構化 API 備援",
+                        "action_type": "paid_external",
+                        "free_validation_available": True,
+                        "free_validation_label": "sample + fixture + provider profile 可驗證",
+                        "free_validation_commands": [
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
+                        ],
+                    }
+                ],
+            },
+        },
+        {},
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert actions[0]["title"] == "驗證公司文件 API contract"
+    assert "sample + fixture + provider profile 可驗證" in actions[0]["detail"]
+    assert "正式串 TEJ 或付費資料商前" in actions[0]["detail"]
+    assert actions[0]["state"] == "attention"
+    assert actions[0]["action_label"] == "查看免費驗證"
+    assert actions[0]["route_hint"] == "settings:maintenance:structured_api"
+
+
+def test_operator_secondary_actions_keep_free_validation_visible_with_history_incidents() -> None:
+    actions = operator_secondary_actions(
+        {
+            **READY_QUEUE,
+            "optimization_progress": {
+                "primary_next_action": {
+                    "capability": "auto_local_defaults",
+                    "label": "本機 defaults 可驗證",
+                },
+                "local_resolvable_gap_count": 3,
+                "effective_optional_gap_count_after_available_local_defaults": 1,
+                "prioritized_next_actions": [
+                    {
+                        "capability": "company_filing_structured_api_fallback",
+                        "label": "公司文件結構化 API 備援",
+                        "action_type": "paid_external",
+                        "free_validation_available": True,
+                        "free_validation_label": "sample + fixture + provider profile 可驗證",
+                        "free_validation_commands": [
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                            ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
+                        ],
+                    }
+                ],
+            },
+        },
+        {
+            "latest": {
+                "task_id": "smoke-ok",
+                "operation": "submission_smoke",
+                "celery_status": "SUCCESS",
+            },
+            "recent_failures": [
+                {
+                    "task_id": "payload-1",
+                    "operation": "market_refresh",
+                    "status": "failed",
+                    "error_category": "payload_validation",
+                    "retryable": True,
+                    "finished_at": "2026-06-09T09:00:00",
+                },
+                {
+                    "task_id": "storage-1",
+                    "operation": "report_write",
+                    "status": "failed",
+                    "error_category": "runtime_storage",
+                    "error_severity": "error",
+                    "retryable": False,
+                    "finished_at": "2026-06-09T08:00:00",
+                },
+            ],
+        },
+        READY_QUOTA,
+        [{"id": 15, "title": "AI 產業鏈"}],
+        HEALTHY_REPORT,
+        {"summary": {"required_count": 0}},
+    )
+
+    assert any(action["title"] == "白名單或輸入擋下任務" for action in actions)
+    assert any(action["title"] == "驗證本機 defaults" for action in actions)
+    assert any(action["title"] == "驗證公司文件 API contract" for action in actions)
+    assert any(action["action_label"] == "查看免費驗證" for action in actions)
+
+
 def test_operator_next_action_reads_latest_when_healthy() -> None:
     action = operator_next_best_action(
         READY_QUEUE,

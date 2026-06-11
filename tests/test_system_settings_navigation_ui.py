@@ -12,11 +12,15 @@ def test_settings_section_label_routes_maintenance_and_ai_quota_to_maintenance_v
     assert settings_section_label("maintenance") == "維護"
     assert settings_section_label("ai_quota") == "維護"
     assert settings_section_label("maintenance_local_defaults") == "維護"
+    assert settings_section_label("maintenance_structured_api") == "維護"
 
 
 def test_maintenance_focus_from_pending_section_preserves_ai_quota_route() -> None:
     assert maintenance_focus_from_pending_section("ai_quota") == "ai_quota"
     assert maintenance_focus_from_pending_section("maintenance_local_defaults") == (
+        "external_deployment"
+    )
+    assert maintenance_focus_from_pending_section("maintenance_structured_api") == (
         "external_deployment"
     )
     assert maintenance_focus_from_pending_section("maintenance") is None

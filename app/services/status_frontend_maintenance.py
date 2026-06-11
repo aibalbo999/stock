@@ -60,6 +60,23 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and system_settings_maintenance_source.count("render_external_deployment_panel(")
             >= 2
         ),
+        "ui_settings_structured_api_route_focus_enabled": (
+            '"settings:maintenance:structured_api"' in operator_routes_source
+            and '"pending_settings_section": "maintenance_structured_api"'
+            in operator_routes_source
+            and '"maintenance_structured_api"' in system_settings_source
+            and 'return "external_deployment"' in system_settings_source
+            and 'if maintenance_focus == "external_deployment":'
+            in system_settings_maintenance_source
+            and 'if maintenance_focus != "external_deployment":'
+            in system_settings_maintenance_source
+            and 'focus in {"ai_quota", "task_observability", "external_deployment"}'
+            in system_settings_maintenance_source
+            and "structured_filing_api_operation_rows(upgrade_audit)"
+            in maintenance_deployment_panel_source
+            and system_settings_maintenance_source.count("render_external_deployment_panel(")
+            >= 2
+        ),
         "ui_incident_action_labels_enabled": (
             '"action_label": incident_action_label(incident, index)'
             in system_settings_maintenance_source

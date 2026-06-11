@@ -39,7 +39,12 @@ def render_system_settings() -> None:
 
 def settings_section_label(pending_section: str | None) -> str:
     section = str(pending_section or "").strip()
-    if section in {"maintenance", "ai_quota", "maintenance_local_defaults"}:
+    if section in {
+        "maintenance",
+        "ai_quota",
+        "maintenance_local_defaults",
+        "maintenance_structured_api",
+    }:
         return "維護"
     if section == "schedule":
         return "自動排程"
@@ -51,5 +56,7 @@ def maintenance_focus_from_pending_section(pending_section: str | None) -> str |
     if section == "ai_quota":
         return "ai_quota"
     if section == "maintenance_local_defaults":
+        return "external_deployment"
+    if section == "maintenance_structured_api":
         return "external_deployment"
     return None

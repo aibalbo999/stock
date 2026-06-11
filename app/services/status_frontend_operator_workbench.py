@@ -105,6 +105,18 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and '"optimization:auto_local_defaults"' in operator_decisions_source
             and '"查看本機操作"' in operator_decisions_source
         ),
+        "ui_operator_free_validation_secondary_action_enabled": (
+            "def _optimization_free_validation_action(" in operator_decisions_source
+            and "def _optimization_actions(" in operator_decisions_source
+            and "free_validation_action = _optimization_free_validation_action(service_snapshot)"
+            in operator_decisions_source
+            and '"驗證公司文件 API contract"' in operator_decisions_source
+            and '"settings:maintenance:structured_api"' in operator_decisions_source
+            and '"optimization:company_filing_structured_api_fallback"'
+            in operator_decisions_source
+            and '"查看免費驗證"' in operator_decisions_source
+            and "正式串 TEJ 或付費資料商前" in operator_decisions_source
+        ),
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source
             and "系統狀態暫不可讀" in operator_status_source

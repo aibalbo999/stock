@@ -159,6 +159,16 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and "Request contract" not in external_deployment_structured_api_source
             and "Required fields" not in external_deployment_structured_api_source
         ),
+        "ui_structured_filing_api_free_validation_steps_enabled": (
+            '"免費驗證手順"' in external_deployment_structured_api_source
+            and '"先免費驗證"' in external_deployment_structured_api_source
+            and "def structured_filing_free_validation_command("
+            in external_deployment_structured_api_source
+            and "def _structured_filing_free_validation_detail("
+            in external_deployment_structured_api_source
+            and "正式串 TEJ 前" in external_deployment_structured_api_source
+            and "不需要付費資料商 token" in external_deployment_structured_api_source
+        ),
         "ui_unlocker_operation_operator_labels_enabled": (
             "def _high_risk_unlocker_status_label(" in external_deployment_unlocker_source
             and '"解鎖服務"' in external_deployment_unlocker_source

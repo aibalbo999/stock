@@ -3051,6 +3051,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
         "資料商設定預覽",
         "樣本 JSON 格式檢查",
         "本機測試 API",
+        "免費驗證手順",
         "正式 API 檢查",
         "請求格式",
         "必備欄位",
@@ -3087,14 +3088,19 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "http://127.0.0.1:8794/filings" in rows[5]["說明"]
     assert "提供者設定=tej；本機檢查" in rows[5]["說明"]
     assert "不需要付費資料商 token" in rows[5]["說明"]
-    assert rows[6]["狀態"] == "待設定"
-    assert "structured_company_filing_smoke.py" in rows[6]["指令"]
-    assert rows[7]["狀態"] == "GET"
-    assert "auth=bearer_optional" in rows[7]["說明"]
-    assert "ticker,company_name,limit,document_types" in rows[7]["說明"]
-    assert "title/name/headline/doc_title" in rows[8]["說明"]
-    assert rows[9]["狀態"] == "未設定"
-    assert "missing_structured_api_provider_or_url" in rows[9]["說明"]
+    assert rows[6]["狀態"] == "先免費驗證"
+    assert "structured_company_filing_smoke.py --sample-json" in rows[6]["指令"]
+    assert "structured_company_filing_fixture_smoke.py --json --strict" in rows[6]["指令"]
+    assert "正式串 TEJ 前" in rows[6]["說明"]
+    assert "不需要付費資料商 token" in rows[6]["說明"]
+    assert rows[7]["狀態"] == "待設定"
+    assert "structured_company_filing_smoke.py" in rows[7]["指令"]
+    assert rows[8]["狀態"] == "GET"
+    assert "auth=bearer_optional" in rows[8]["說明"]
+    assert "ticker,company_name,limit,document_types" in rows[8]["說明"]
+    assert "title/name/headline/doc_title" in rows[9]["說明"]
+    assert rows[10]["狀態"] == "未設定"
+    assert "missing_structured_api_provider_or_url" in rows[10]["說明"]
     rendered = str(rows)
     for raw_label in (
         "Configuration check",

@@ -85,6 +85,12 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": _structured_filing_local_fixture_detail(runtime),
         },
         {
+            "項目": "免費驗證手順",
+            "狀態": "先免費驗證",
+            "指令": structured_filing_free_validation_command(runtime),
+            "說明": _structured_filing_free_validation_detail(runtime),
+        },
+        {
             "項目": "正式 API 檢查",
             "狀態": "可執行" if runtime.get("configured") else "待設定",
             "指令": structured_filing_live_smoke_command(runtime),
@@ -228,6 +234,14 @@ def structured_filing_local_fixture_command(runtime: dict) -> str:
     return "\n".join(commands) if commands else "-"
 
 
+def structured_filing_free_validation_command(runtime: dict) -> str:
+    commands = [
+        structured_filing_sample_command(runtime),
+        structured_filing_local_fixture_command(runtime),
+    ]
+    return "\n".join(command for command in commands if command and command != "-") or "-"
+
+
 def _structured_filing_provider_detail(
     evidence: dict,
     runtime: dict,
@@ -346,6 +360,27 @@ def _structured_filing_local_fixture_detail(runtime: dict) -> str:
     ).strip()
     profile_text = f"；提供者設定={provider_profile}；本機檢查" if provider_profile else ""
     return f"url={url}{profile_text}；{purpose}"
+
+
+def _structured_filing_free_validation_detail(runtime: dict) -> str:
+    free_validation = (
+        runtime.get("free_validation")
+        if isinstance(runtime.get("free_validation"), dict)
+        else {}
+    )
+    purpose = str(free_validation.get("purpose") or "").strip()
+    provider_profile = str(free_validation.get("provider_profile") or "tej").strip()
+    detail = (
+        "正式串 TEJ 前，先依序跑樣本 JSON、fixture HTTP、"
+        f"{provider_profile} provider profile 與本機 custom URL 檢查。"
+    )
+    if purpose:
+        detail += purpose
+    else:
+        detail += "這些檢查不需要付費資料商 token。"
+    if "不需要付費資料商 token" not in detail:
+        detail += "不需要付費資料商 token。"
+    return detail
 
 
 def _structured_filing_configuration_status(configuration_check: dict) -> str:

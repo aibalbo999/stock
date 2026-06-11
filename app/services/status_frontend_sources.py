@@ -42,6 +42,7 @@ UI_MODULE_NAMES = (
     "external_deployment_structured_api.py",
     "task_queue_diagnostics.py",
     "task_failure_diagnostics.py",
+    "analysis_operator_presenter.py",
     "maintenance_status.py",
     "maintenance_progress_presenter.py",
     "analysis_workspace_presenter.py",

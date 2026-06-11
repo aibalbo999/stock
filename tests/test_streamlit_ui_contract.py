@@ -30,6 +30,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     operator_decision_support_source = ui.OPERATOR_DECISION_SUPPORT_SOURCE.read_text()
     operator_optimization_actions_source = ui.OPERATOR_OPTIMIZATION_ACTIONS_SOURCE.read_text()
     operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
+    analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
     data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
@@ -156,11 +157,19 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "按下後會帶你到對應頁面" not in source
     assert "_render_operator_primary_action_control(" in source
     assert "_render_operator_action_controls(" in source
-    assert "def _operator_source_label(" in source
-    assert '"optimization:auto_local_defaults"' in source
-    assert "本機 defaults 優化缺口" in source
-    assert '"optimization:company_filing_structured_api_fallback"' in source
-    assert "公司文件結構化 API 選配" in source
+    assert "from app.ui.analysis_operator_presenter import (" in analysis_workspace_source
+    assert "def operator_decision_html(" in analysis_operator_presenter_source
+    assert "def operator_secondary_actions_html(" in analysis_operator_presenter_source
+    assert "def operator_card_html(" in analysis_operator_presenter_source
+    assert "def operator_source_label(" in analysis_operator_presenter_source
+    assert "def _operator_decision_html(" not in analysis_workspace_source
+    assert "def _operator_source_label(" not in analysis_workspace_source
+    assert '"optimization:auto_local_defaults"' in analysis_operator_presenter_source
+    assert "本機 defaults 優化缺口" in analysis_operator_presenter_source
+    assert '"optimization:company_filing_structured_api_fallback"' in (
+        analysis_operator_presenter_source
+    )
+    assert "公司文件結構化 API 選配" in analysis_operator_presenter_source
     assert source.index("_render_operator_workbench()") < source.index("workflow-strip")
     assert "operator_route_target(" in source
     assert "st.switch_page(" in source

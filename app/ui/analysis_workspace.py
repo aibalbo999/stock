@@ -8,6 +8,16 @@ from app.core.time import today_taipei
 from app.services.whitelist import SupplyChainWhitelist
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
+from app.ui.analysis_operator_presenter import (
+    latest_report_id as _latest_report_id,
+    looks_like_operator_route as _looks_like_operator_route,
+    operator_card_html as _operator_card_html,
+    operator_decision_html as _operator_decision_html,
+    operator_secondary_actions_html as _operator_secondary_actions_html,
+    operator_source_label as _operator_source_label,
+    operator_source_text as _operator_source_text,
+    secondary_action_html as _secondary_action_html,
+)
 from app.ui.analysis_workspace_presenter import (
     analysis_submission_quota_pressure,
     analysis_submission_ready,
@@ -20,7 +30,6 @@ from app.ui.operator_decisions import (
     operator_secondary_actions,
 )
 from app.ui.operator_route_controls import render_operator_route_button
-from app.ui.operator_routes import operator_route_target
 from app.ui.operator_status import (
     operator_status_cards,
     operator_status_overall,
@@ -44,6 +53,13 @@ __all__ = [
     "analysis_submission_quota_pressure",
     "analysis_submission_ready",
     "analysis_submission_summary",
+    "_looks_like_operator_route",
+    "_operator_card_html",
+    "_operator_decision_html",
+    "_operator_secondary_actions_html",
+    "_operator_source_label",
+    "_operator_source_text",
+    "_secondary_action_html",
     "render_analysis_workspace",
 ]
 
@@ -421,95 +437,6 @@ def _render_operator_workbench() -> None:
     )
 
 
-def _latest_report_id(reports: list[dict]) -> int | None:
-    for report in reports:
-        if not isinstance(report, dict) or report.get("id") is None:
-            continue
-        try:
-            return int(report["id"])
-        except (TypeError, ValueError):
-            return None
-    return None
-
-
-def _operator_decision_html(
-    primary_action: dict,
-    secondary_actions: list[dict],
-    *,
-    include_secondary: bool = True,
-) -> str:
-    secondary_block = (
-        _operator_secondary_actions_html(secondary_actions)
-        if include_secondary and secondary_actions
-        else ""
-    )
-    source_ids = primary_action.get("source_ids") or []
-    source_text = _operator_source_text(source_ids)
-    target = operator_route_target(primary_action.get("route_hint"))
-    target_caption = str(target.get("caption") or "")
-    return f"""<section class="operator-decision-card is-{escape(primary_action.get("state", "attention"))}">
-<div class="operator-decision-copy">
-<div class="workspace-kicker">下一步建議</div>
-<h3>{escape(primary_action.get("title", "-"))}</h3>
-<p>{escape(primary_action.get("reason", ""))}</p>
-<div class="operator-decision-meta">
-<span>風險：{escape(primary_action.get("risk", ""))}</span>
-<span>影響：{escape(primary_action.get("impact", ""))}</span>
-<span>來源：{escape(source_text)}</span>
-</div>
-</div>
-<div class="operator-decision-action">
-<strong>{escape(primary_action.get("action_label", "-"))}</strong>
-<span>{escape(target_caption)}</span>
-</div>
-{secondary_block}
-</section>"""
-
-
-def _operator_secondary_actions_html(secondary_actions: list[dict]) -> str:
-    secondary_html = "\n".join(_secondary_action_html(action) for action in secondary_actions)
-    return f"""<div class="operator-secondary-actions" aria-label="次要建議">
-{secondary_html}
-</div>"""
-
-
-def _operator_source_text(source_ids: object) -> str:
-    if not isinstance(source_ids, list) or not source_ids:
-        return "系統狀態"
-    labels = []
-    for source_id in source_ids:
-        source_text = str(source_id).strip()
-        if not source_text:
-            continue
-        source_label = _operator_source_label(source_text)
-        if source_label:
-            labels.append(source_label)
-        elif _looks_like_operator_route(source_text):
-            labels.append(str(operator_route_target(source_text).get("caption") or source_text))
-        else:
-            labels.append(source_text)
-    return "、".join(labels) if labels else "系統狀態"
-
-
-def _operator_source_label(value: str) -> str:
-    if value == "services_status":
-        return "系統狀態"
-    if value == "optimization:auto_local_defaults":
-        return "本機 defaults 優化缺口"
-    if value == "optimization:company_filing_structured_api_fallback":
-        return "公司文件結構化 API 選配"
-    if value.startswith("optimization:"):
-        return "優化目標缺口"
-    return ""
-
-
-def _looks_like_operator_route(value: str) -> bool:
-    return bool(
-        value in {"analysis", "data_enrichment", "report_center"}
-        or value.startswith(("report:", "task:", "settings:", "data_enrichment:"))
-    )
-
-
 def _render_operator_primary_action_control(primary_action: dict) -> None:
     st.markdown(
         """<section class="operator-action-controls is-primary" aria-label="主要建議操作"></section>""",
@@ -556,22 +483,3 @@ def _render_operator_route_button(
         primary=primary,
         show_caption=show_caption,
     )
-
-
-def _secondary_action_html(action: dict) -> str:
-    target = operator_route_target(action.get("route_hint"))
-    target_caption = str(target.get("caption") or "")
-    return f"""<article class="operator-secondary-action is-{escape(action.get("state", "attention"))}">
-<strong>{escape(action.get("title", "-"))}</strong>
-<span>{escape(action.get("detail", ""))}</span>
-<em>{escape(target_caption)}</em>
-</article>"""
-
-
-def _operator_card_html(card: dict[str, str]) -> str:
-    return f"""<article class="operator-status-card is-{escape(card.get("state", "attention"))}">
-<div class="operator-card-title">{escape(card.get("title", "-"))}</div>
-<div class="operator-card-value">{escape(card.get("value", "-"))}</div>
-<div class="operator-card-caption">{escape(card.get("caption", ""))}</div>
-<div class="operator-card-action">{escape(card.get("action_label", ""))}</div>
-</article>"""

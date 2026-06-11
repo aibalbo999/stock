@@ -5,6 +5,9 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
     analysis_workspace_source = source_context.ui_sources.get("analysis_workspace.py", "")
+    analysis_operator_presenter_source = source_context.ui_sources.get(
+        "analysis_operator_presenter.py", ""
+    )
     analysis_workspace_presenter_source = source_context.ui_sources.get(
         "analysis_workspace_presenter.py", ""
     )
@@ -33,6 +36,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def analysis_submission_summary(" in analysis_workspace_presenter_source
             and "def analysis_submission_quota_pressure("
             in analysis_workspace_presenter_source
+        ),
+        "ui_analysis_operator_presenter_extracted": (
+            "from app.ui.analysis_operator_presenter import ("
+            in analysis_workspace_source
+            and "import streamlit" not in analysis_operator_presenter_source
+            and "def operator_decision_html(" in analysis_operator_presenter_source
+            and "def operator_secondary_actions_html("
+            in analysis_operator_presenter_source
+            and "def operator_card_html(" in analysis_operator_presenter_source
+            and "def operator_source_text(" in analysis_operator_presenter_source
+            and "def _operator_decision_html(" not in analysis_workspace_source
+            and "def _operator_secondary_actions_html(" not in analysis_workspace_source
+            and "def _operator_card_html(" not in analysis_workspace_source
+            and "def _operator_source_text(" not in analysis_workspace_source
         ),
         "ui_analysis_submission_quota_confirmation_enabled": (
             "def analysis_submission_ready(" in analysis_workspace_presenter_source
@@ -213,16 +230,16 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             )
         ),
         "ui_operator_source_labels_enabled": (
-            "def _operator_source_label(" in analysis_workspace_source
-            and "source_label = _operator_source_label(source_text)"
-            in analysis_workspace_source
-            and '"optimization:auto_local_defaults"' in analysis_workspace_source
-            and '"本機 defaults 優化缺口"' in analysis_workspace_source
+            "def operator_source_label(" in analysis_operator_presenter_source
+            and "source_label = operator_source_label(source_text)"
+            in analysis_operator_presenter_source
+            and '"optimization:auto_local_defaults"' in analysis_operator_presenter_source
+            and '"本機 defaults 優化缺口"' in analysis_operator_presenter_source
             and '"optimization:company_filing_structured_api_fallback"'
-            in analysis_workspace_source
-            and '"公司文件結構化 API 選配"' in analysis_workspace_source
-            and 'if value == "services_status":' in analysis_workspace_source
-            and "優化目標缺口" in analysis_workspace_source
+            in analysis_operator_presenter_source
+            and '"公司文件結構化 API 選配"' in analysis_operator_presenter_source
+            and 'if value == "services_status":' in analysis_operator_presenter_source
+            and "優化目標缺口" in analysis_operator_presenter_source
         ),
         "ui_operator_optimization_actions_extracted": (
             "from app.ui.operator_optimization_actions import ("

@@ -20,6 +20,8 @@ def test_incident_inbox_reports_queue_unavailable() -> None:
     assert incidents[0]["severity"] == "critical"
     assert incidents[0]["category"] == "task_queue"
     assert incidents[0]["title"] == "背景任務未就緒"
+    assert incidents[0]["next_action"] == "到維護頁檢查背景任務佇列與背景執行器。"
+    assert "Redis/Celery worker" not in incidents[0]["next_action"]
     assert incidents[0]["route_hint"] == "settings:maintenance"
 
 

@@ -58,7 +58,7 @@ def incident_inbox_items(
                 "category": "task_queue",
                 "title": "背景任務未就緒",
                 "impact": "分析、補強與資料刷新可能無法完成。",
-                "next_action": "到維護頁檢查 Redis/Celery worker。",
+                "next_action": "到維護頁檢查背景任務佇列與背景執行器。",
                 "action_label": "查看維護",
                 "route_hint": "settings:maintenance",
                 "retryable": False,

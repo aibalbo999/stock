@@ -1253,7 +1253,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
                 "error_summary": "模型/API 額度或速率限制",
                 "next_steps": [
                     "查看 AI 額度與模型路由或資料源額度。",
-                    "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+                    "等待額度重置，或改用已設定的後援模型/資料源後再重試。",
                 ],
                 "retry_endpoint": "POST /tasks/task-failed/retry",
                 "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry",
@@ -1386,7 +1386,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[0]["summary"] == "模型/API 額度或速率限制"
     assert (
         rows[0]["next_steps"]
-        == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。"
+        == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的後援模型/資料源後再重試。"
     )
     assert rows[0]["retry"] == "可重試"
     assert rows[0]["retry_kind"] == "報告生成"
@@ -1427,7 +1427,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         {
             "處理路徑": "一鍵重試",
             "數量": 1,
-            "說明": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
+            "說明": "可由維護頁直接重試；若為額度限制，等額度恢復或切換後援模型或資料源後再重試。",
             "代表任務": "報告生成｜task-failed",
         },
         {
@@ -1451,7 +1451,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "run_id": 22,
             "retry_endpoint": "POST /tasks/task-failed/retry",
             "action_route": "一鍵重試",
-            "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
+            "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換後援模型或資料源後再重試。",
             "retry_guarded": False,
             "retry_guard_message": "",
         },
@@ -2765,6 +2765,8 @@ def test_local_unlocker_operation_rows_include_actionable_commands() -> None:
     assert "scripts/start_system.py --start-dependencies --prefer-unlocker" in rows[0]["指令"]
     assert "--wait-local-flaresolverr 20" in rows[1]["指令"]
     assert "Browserless/Playwright" in rows[2]["說明"]
+    assert "改用 Browserless/Playwright 後援" in rows[2]["說明"]
+    assert "fallback 到" not in rows[2]["說明"]
     assert rows[2]["指令"] == "-"
     assert "docker compose logs flaresolverr" in rows[3]["指令"]
     assert "--local-browser-render-defaults --prefer-unlocker" in rows[4]["指令"]

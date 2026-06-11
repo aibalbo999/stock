@@ -172,7 +172,7 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
     assert summary["recent_failures"][0]["error_summary"] == "模型/API 額度或速率限制"
     assert summary["recent_failures"][0]["next_steps"] == [
         "查看 AI 額度與模型路由或資料源額度。",
-        "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+        "等待額度重置，或改用已設定的後援模型/資料源後再重試。",
     ]
     assert summary["recent_failures"][0]["retryable"] is True
     assert summary["recent_failures"][0]["retry_kind"] == "report_generation"

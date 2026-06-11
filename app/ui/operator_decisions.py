@@ -258,10 +258,10 @@ def operator_next_best_action(
             return _action(
                 state="attention",
                 priority=8,
-                title="等待額度或查看 fallback",
+                title="等待額度或查看後援模型",
                 reason=f"目前建議模型 {quota_summary.get('recommended_model') or '-'} 額度不足或不可用。",
                 risk="立即送出深度分析可能降級、排隊或失敗。",
-                impact="確認模型 fallback 後再送出高成本任務。",
+                impact="確認模型後援路由後再送出高成本任務。",
                 action_label="查看額度",
                 route_hint="settings:ai_quota",
                 source_ids=[quota_summary.get("recommended_model") or "-"],

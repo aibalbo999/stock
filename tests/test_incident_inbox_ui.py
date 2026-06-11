@@ -231,6 +231,8 @@ def test_incident_inbox_reports_quota_pressure() -> None:
     assert incidents[0]["category"] == "quota"
     assert incidents[0]["severity"] == "warning"
     assert incidents[0]["title"] == "AI 額度需注意"
+    assert incidents[0]["next_action"] == "查看額度頁，等待重置或確認後援模型。"
+    assert "fallback" not in incidents[0]["next_action"]
     assert incidents[0]["source"] == "gemini-3.5-flash"
 
 

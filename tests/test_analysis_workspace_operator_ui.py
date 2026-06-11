@@ -159,10 +159,10 @@ def test_analysis_submission_summary_explains_quota_confirmation() -> None:
 def test_operator_decision_card_uses_readable_target_caption() -> None:
     html = analysis_workspace._operator_decision_html(
         {
-            "title": "等待額度或查看 fallback",
+            "title": "等待額度或查看後援模型",
             "reason": "目前建議模型額度不足或不可用。",
             "risk": "新報告可能排隊等待。",
-            "impact": "查看可用 fallback 模型。",
+            "impact": "查看可用後援模型。",
             "action_label": "查看 AI 額度",
             "route_hint": "settings:ai_quota",
             "source_ids": ["gemini-3.5-flash"],
@@ -172,6 +172,9 @@ def test_operator_decision_card_uses_readable_target_caption() -> None:
     )
 
     assert "開啟系統設定的 AI 額度區" in html
+    assert "等待額度或查看後援模型" in html
+    assert "查看可用後援模型" in html
+    assert "fallback" not in html
     assert "settings:ai_quota" not in html
 
 

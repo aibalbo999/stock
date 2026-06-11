@@ -561,7 +561,7 @@ def test_run_task_service_adds_failure_diagnostics_to_linked_task_status() -> No
     assert "查看 AI 額度" in status["next_action"]
     assert status["next_steps"] == [
         "查看 AI 額度與模型路由或資料源額度。",
-        "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+        "等待額度重置，或改用已設定的後援模型/資料源後再重試。",
     ]
     assert status["execution_context"]["payload_shape"]["ticker_count"] == 1
     assert status["execution_context"]["payload_shape"]["request_keys"] == ["tickers", "topic"]

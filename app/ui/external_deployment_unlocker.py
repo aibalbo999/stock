@@ -256,5 +256,5 @@ def _local_unlocker_fallback_detail(evidence: dict) -> str:
     if evidence.get("ip_rotation_ready"):
         return "目前具備 proxy/IP rotation，但高風險 CAPTCHA 入口仍缺 unlocker provider。"
     if evidence.get("browser_only_render_ready"):
-        return "目前會 fallback 到 Browserless/Playwright；高風險 CAPTCHA 入口仍需 unlocker。"
+        return "目前會改用 Browserless/Playwright 後援；高風險 CAPTCHA 入口仍需 unlocker。"
     return "尚未配置 browser render、proxy 或 unlocker；高風險公開文件容易只取到阻擋頁。"

@@ -30,7 +30,7 @@ TASK_FAILURE_CATEGORIES = {
         ),
         "next_steps": [
             "查看 /services/status 的 company_filings.visual_rag_runtime 與 fallback_reason。",
-            "確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL、vision LLM key/gateway 與免費額度；額度用完時等待重置或切換已配置 fallback 模型。",
+            "確認 PyMuPDF、COMPANY_FILING_VISUAL_RAG_MODEL、vision LLM key/gateway 與免費額度；額度用完時等待重置或切換已配置後援模型。",
         ],
     },
     "vector_store": {
@@ -64,7 +64,7 @@ TASK_FAILURE_CATEGORIES = {
         ),
         "next_steps": [
             "查看 AI 額度與模型路由或資料源額度。",
-            "等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。",
+            "等待額度重置，或改用已設定的後援模型/資料源後再重試。",
         ],
     },
     "task_queue": {

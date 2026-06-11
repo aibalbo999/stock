@@ -326,7 +326,7 @@ def test_operator_next_action_surfaces_quota_pressure_after_report_gates() -> No
 
     assert action["state"] == "attention"
     assert action["priority"] == 8
-    assert action["title"] == "等待額度或查看 fallback"
+    assert action["title"] == "等待額度或查看後援模型"
     assert action["action_label"] == "查看額度"
     assert action["route_hint"] == "settings:ai_quota"
 

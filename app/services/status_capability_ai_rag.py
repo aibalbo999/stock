@@ -64,7 +64,7 @@ def ai_rag_capabilities(
                 "provider_keys_configured": llm_keys,
             },
             detail=(
-                "已選擇 LiteLLM 或 Google GenAI SDK 路徑；至少一個已設定的 fallback 模型"
+                "已選擇 LiteLLM 或 Google GenAI SDK 路徑；至少一個已設定的後援模型"
                 "必須有對應 provider key 才算就緒。只有明確標記為 local、ollama 或 lm_studio "
                 "的模型會被視為不需 API key 的本機 gateway。"
             ),
@@ -75,7 +75,7 @@ def ai_rag_capabilities(
             detail=(
                 "額度治理會把已設定且最聰明的報告模型排在最前面，追蹤官方或專案設定的"
                 "請求額度；額度用完的模型會透過硬路由或冷卻略過，並把高額度 Gemma "
-                "保留為最後文字 fallback。"
+                "保留為最後文字後援。"
             ),
         ),
         "hybrid_search": _capability(

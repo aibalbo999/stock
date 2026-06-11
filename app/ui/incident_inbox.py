@@ -225,7 +225,7 @@ def _quota_incident(quota: dict) -> dict[str, Any] | None:
         "category": "quota",
         "title": "AI 額度需注意",
         "impact": f"目前建議模型 {model} 額度狀態為 {summary.get('remaining') or '-'}。",
-        "next_action": "查看額度頁，等待重置或確認 fallback 模型。",
+        "next_action": "查看額度頁，等待重置或確認後援模型。",
         "action_label": "查看額度",
         "route_hint": "settings:ai_quota",
         "retryable": False,

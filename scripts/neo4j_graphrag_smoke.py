@@ -190,7 +190,7 @@ def neo4j_graphrag_local_contract_report(
         remediation = "Guarded Cypher plan is missing or failed read-only validation."
     else:
         status = "local_dry_run_degraded"
-        remediation = "Local in-memory Cypher dry-run failed; inspect the plan and graph whitelist data."
+        remediation = "本機模擬 Cypher 查詢失敗；請檢查查詢計畫與圖譜白名單資料。"
 
     return build_smoke_report(
         status=status,
@@ -325,40 +325,40 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     execution = query.get("execution") if isinstance(query.get("execution"), dict) else {}
     local_dry_run = query.get("local_dry_run") if isinstance(query.get("local_dry_run"), dict) else {}
     title = (
-        "Neo4j GraphRAG local contract"
+        "Neo4j GraphRAG 本機格式檢查"
         if report.get("local_contract")
-        else "Neo4j GraphRAG smoke"
+        else "Neo4j GraphRAG 連線查詢檢查"
     )
     lines = [
         f"{title}: {report['status']}",
-        f"- ready: {str(bool(report.get('ready'))).lower()}",
+        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
         (
-            "- payload: "
-            f"{payload.get('node_count', 0)} nodes, "
-            f"{payload.get('structural_edge_count', 0)} structural edges, "
-            f"{payload.get('peer_edge_count', 0)} peer edges"
+            "- 圖譜輸出: "
+            f"{payload.get('node_count', 0)} 節點, "
+            f"{payload.get('structural_edge_count', 0)} 結構邊, "
+            f"{payload.get('peer_edge_count', 0)} 同業邊"
         ),
     ]
     if execution:
         lines.append(
-            "- Neo4j query: "
+            "- Neo4j 查詢: "
             f"{execution.get('status')} "
-            f"({execution.get('row_count', 0) or 0} rows)"
+            f"({execution.get('row_count', 0) or 0} 筆)"
         )
     if local_dry_run:
         lines.append(
-            "- local dry-run: "
+            "- 本機模擬查詢: "
             f"{local_dry_run.get('status')} "
-            f"({local_dry_run.get('row_count', 0) or 0} rows)"
+            f"({local_dry_run.get('row_count', 0) or 0} 筆)"
         )
     if report.get("import_result"):
-        lines.append(f"- import: {report['import_result'].get('status')}")
+        lines.append(f"- 匯入: {report['import_result'].get('status')}")
     if report.get("remediation"):
-        lines.append(f"- remediation: {report['remediation']}")
-    lines.append(f"- command: {report['smoke_command']}")
-    lines.append(f"- local defaults command: {report['local_defaults_smoke_command']}")
-    lines.append(f"- local contract command: {report['local_contract_command']}")
-    lines.append(f"- import command: {report['import_smoke_command']}")
+        lines.append(f"- 修復建議: {report['remediation']}")
+    lines.append(f"- 指令: {report['smoke_command']}")
+    lines.append(f"- 套用本機預設指令: {report['local_defaults_smoke_command']}")
+    lines.append(f"- 本機格式檢查指令: {report['local_contract_command']}")
+    lines.append(f"- 匯入後檢查指令: {report['import_smoke_command']}")
     return "\n".join(lines)
 
 
@@ -372,31 +372,31 @@ def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Smoke-test Neo4j GraphRAG payload export and guarded read-only Cypher execution."
+        description="檢查 Neo4j GraphRAG 圖譜輸出與只讀 Cypher 查詢是否可用。"
     )
-    parser.add_argument("--tickers", default=DEFAULT_TICKERS, help="Comma-separated source tickers.")
-    parser.add_argument("--target-ticker", default=DEFAULT_TARGET_TICKER, help="Optional target ticker.")
-    parser.add_argument("--topic", default=DEFAULT_TOPIC, help="Topic context for the guarded Cypher plan.")
-    parser.add_argument("--question", default=DEFAULT_QUESTION, help="Question context for the guarded Cypher plan.")
-    parser.add_argument("--max-depth", type=int, default=3, help="Maximum graph traversal depth.")
-    parser.add_argument("--max-records", type=int, default=8, help="Maximum Neo4j query records to return.")
-    parser.add_argument("--use-llm", action="store_true", help="Allow LLM-generated Cypher plan before validation.")
-    parser.add_argument("--import-first", action="store_true", help="Import the current graph into Neo4j before querying.")
+    parser.add_argument("--tickers", default=DEFAULT_TICKERS, help="來源股票代號，多個代號用逗號分隔。")
+    parser.add_argument("--target-ticker", default=DEFAULT_TARGET_TICKER, help="要分析的目標股票代號。")
+    parser.add_argument("--topic", default=DEFAULT_TOPIC, help="圖譜查詢的主題脈絡。")
+    parser.add_argument("--question", default=DEFAULT_QUESTION, help="要分析的問題。")
+    parser.add_argument("--max-depth", type=int, default=3, help="圖譜關係最多往外查幾層。")
+    parser.add_argument("--max-records", type=int, default=8, help="Neo4j 查詢最多回傳幾筆資料。")
+    parser.add_argument("--use-llm", action="store_true", help="允許 LLM 先產生 Cypher，再做只讀安全檢查。")
+    parser.add_argument("--import-first", action="store_true", help="查詢前先把目前圖譜匯入 Neo4j。")
     parser.add_argument(
         "--local-neo4j-defaults",
         action="store_true",
         help=(
-            "Apply docker-compose local Neo4j defaults for this smoke process "
-            "without writing .env."
+            "只在這次檢查套用 docker-compose 的本機 Neo4j 預設值，"
+            "不寫入 .env。"
         ),
     )
     parser.add_argument(
         "--local-contract",
         action="store_true",
-        help="Validate payload export, guarded Cypher plan, and local dry-run without live Neo4j.",
+        help="不連線 Neo4j，驗證圖譜輸出、只讀查詢計畫與本機模擬查詢。",
     )
-    parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="未就緒時回傳非 0 結束碼。")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     return parser
 
 

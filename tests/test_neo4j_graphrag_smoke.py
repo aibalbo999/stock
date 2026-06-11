@@ -165,6 +165,34 @@ def test_neo4j_graphrag_local_contract_does_not_require_live_neo4j() -> None:
     assert smoke.smoke_exit_code(report, strict=True) == 0
 
 
+def test_neo4j_graphrag_format_uses_operator_language_for_local_contract() -> None:
+    report = smoke.neo4j_graphrag_local_contract_report(
+        service=FakeGraphService(query_status="not_configured")
+    )
+
+    rendered = smoke.format_neo4j_graphrag_smoke(report)
+
+    assert "Neo4j GraphRAG 本機格式檢查: ready" in rendered
+    assert "- 就緒: true" in rendered
+    assert "- 圖譜輸出: 1 節點" in rendered
+    assert "- 本機模擬查詢: executed_dry_run (1 筆)" in rendered
+    assert "- 本機格式檢查指令:" in rendered
+    assert "Neo4j GraphRAG local contract" not in rendered
+    assert "local dry-run" not in rendered
+    assert "local contract command" not in rendered
+
+
+def test_neo4j_graphrag_help_uses_operator_language() -> None:
+    help_text = smoke.build_parser().format_help()
+
+    assert "檢查 Neo4j GraphRAG 圖譜輸出與只讀 Cypher 查詢是否可用" in help_text
+    assert "圖譜查詢的主題脈絡" in help_text
+    assert "不連線 Neo4j，驗證圖譜輸出、只讀查詢計畫與本機模擬查詢" in help_text
+    assert "Smoke-test" not in help_text
+    assert "guarded Cypher plan" not in help_text
+    assert "local dry-run" not in help_text
+
+
 def test_neo4j_graphrag_smoke_stops_when_import_first_fails() -> None:
     class ImportFailingService(FakeGraphService):
         def import_graph_to_neo4j(self, tickers: str) -> dict:
@@ -194,10 +222,17 @@ def test_neo4j_graphrag_smoke_main_prints_json(monkeypatch, capsys) -> None:
 
 def test_neo4j_graphrag_smoke_main_can_apply_local_defaults(monkeypatch, capsys) -> None:
     neo4j_env_keys = ("NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "NEO4J_DATABASE")
+    local_defaults = {
+        "NEO4J_URI": "neo4j://localhost:17687",
+        "NEO4J_USER": "neo4j_local_test",
+        "NEO4J_PASSWORD": "local_test_password",
+        "NEO4J_DATABASE": "neo4j",
+    }
+    monkeypatch.setattr(smoke, "LOCAL_NEO4J_ENV_DEFAULTS", local_defaults)
     for key in neo4j_env_keys:
         monkeypatch.delenv(key, raising=False)
     get_settings.cache_clear()
-    assert get_settings().neo4j_uri == ""
+    assert os.environ.get("NEO4J_URI") is None
     captured = {}
 
     def fake_report(**_kwargs) -> dict:
@@ -212,9 +247,9 @@ def test_neo4j_graphrag_smoke_main_can_apply_local_defaults(monkeypatch, capsys)
         assert smoke.main(["--local-neo4j-defaults", "--json"]) == 0
 
         output = capsys.readouterr().out
-        assert captured["neo4j_uri"] == "neo4j://localhost:7687"
-        assert captured["neo4j_user"] == "neo4j"
-        assert captured["settings_neo4j_uri"] == "neo4j://localhost:7687"
+        assert captured["neo4j_uri"] == "neo4j://localhost:17687"
+        assert captured["neo4j_user"] == "neo4j_local_test"
+        assert captured["settings_neo4j_uri"] == "neo4j://localhost:17687"
         assert '"local_neo4j_defaults"' in output
         assert "NEO4J_PASSWORD" in output
     finally:

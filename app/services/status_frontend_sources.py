@@ -10,6 +10,7 @@ UI_MODULE_NAMES = (
     "background_tasks.py",
     "task_status_panel.py",
     "task_status_presenter.py",
+    "task_status_view.py",
     "report_state.py",
     "report_panels.py",
     "report_follow_up_controls.py",

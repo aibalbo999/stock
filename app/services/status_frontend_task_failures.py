@@ -11,6 +11,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
     maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     task_status_panel_source = ui_sources["task_status_panel.py"]
     task_status_presenter_source = ui_sources["task_status_presenter.py"]
+    task_status_view_source = ui_sources["task_status_view.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     retry_submission_enabled = 'f"/tasks/{task_id}/retry"' in ui_source and (
@@ -78,16 +79,16 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and '"next_action": task_failure_next_action_text(row)'
             in task_failure_diagnostics_source
             and "task_failure_operation_label(task_status.get(\"operation\"))"
-            in task_status_panel_source
+            in task_status_view_source
             and "task_failure_category_label(task_status.get(\"error_category\"))"
-            in task_status_panel_source
-            and "task_failure_summary_text(task_status)" in task_status_panel_source
-            and "task_failure_next_action_text(task_status)" in task_status_panel_source
-            and "task_failure_next_steps_text(task_status)" in task_status_panel_source
+            in task_status_view_source
+            and "task_failure_summary_text(task_status)" in task_status_view_source
+            and "task_failure_next_action_text(task_status)" in task_status_view_source
+            and "task_failure_next_steps_text(task_status)" in task_status_view_source
             and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
             and "背景任務佇列/執行器" in task_failure_diagnostics_source
             and "先修復 Redis/Celery" not in task_failure_diagnostics_source
-            and '"next_action": task_status.get("next_action")' not in task_status_panel_source
+            and '"next_action": task_status.get("next_action")' not in task_status_view_source
         ),
         "ui_task_observability_summary_operator_labels_enabled": (
             "def task_operation_summary_rows(" in task_failure_diagnostics_source
@@ -174,6 +175,18 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def task_status_state_label(" in task_status_presenter_source
             and "def task_status_poll_caption(" in task_status_presenter_source
         ),
+        "ui_task_status_view_extracted": (
+            "from app.ui.task_status_view import (" in task_status_panel_source
+            and "import streamlit" not in task_status_view_source
+            and "def task_status_metric_values(" in task_status_view_source
+            and "def task_run_summary_rows(" in task_status_view_source
+            and "def task_status_progress_caption(" in task_status_view_source
+            and "def task_status_diagnostic_rows(" in task_status_view_source
+            and "def task_execution_context_rows(" in task_status_view_source
+            and "def company_filing_gap_rows(" in task_status_view_source
+            and "def task_status_metric_values(" not in task_status_panel_source
+            and "def task_execution_context_rows(" not in task_status_panel_source
+        ),
         "ui_task_status_poll_backoff_enabled": "def task_status_poll_interval_seconds("
         in task_status_presenter_source
         and "TASK_STATUS_QUEUED_POLL_SECONDS" in task_status_presenter_source
@@ -184,28 +197,29 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "狀態輪詢：" in task_status_presenter_source
         and "TASK_PROGRESS_STEP_LABELS = {" in task_status_presenter_source
         and "def task_status_progress_step_label(" in task_status_presenter_source
-        and "task_status_progress_step_label(" in task_status_panel_source
+        and "task_status_progress_step_label(" in task_status_view_source
+        and "task_status_progress_caption(task_status)" in task_status_panel_source
         and "等待背景執行器" in task_status_presenter_source
         and "背景執行器已接手" in task_status_presenter_source
         and "fragment_supported" in task_status_presenter_source
         and "st.caption(\n        task_status_poll_caption(" in task_status_panel_source,
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows("
-        in task_status_panel_source
+        in task_status_view_source
         and "失敗診斷" in task_status_panel_source
         and "task_failure_category_label(task_status.get(\"error_category\"))"
-        in task_status_panel_source
-        and '"action_route": task_failure_action_route(task_status)' in task_status_panel_source
-        and "task_failure_action_route_detail(task_status)" in task_status_panel_source
+        in task_status_view_source
+        and '"action_route": task_failure_action_route(task_status)' in task_status_view_source
+        and "task_failure_action_route_detail(task_status)" in task_status_view_source
         and '"next_steps": task_failure_next_steps_text(task_status)'
-        in task_status_panel_source,
+        in task_status_view_source,
         "ui_task_execution_context_enabled": "def task_execution_context_rows("
-        in task_status_panel_source
+        in task_status_view_source
         and "執行上下文" in task_status_panel_source
-        and "execution_context" in task_status_panel_source
-        and "payload_shape" in task_status_panel_source
-        and "celery_info_shape" in task_status_panel_source
-        and "已遮蔽敏感欄位" in task_status_panel_source
-        and "exception_message_preview" in task_status_panel_source,
+        and "execution_context" in task_status_view_source
+        and "payload_shape" in task_status_view_source
+        and "celery_info_shape" in task_status_view_source
+        and "已遮蔽敏感欄位" in task_status_view_source
+        and "exception_message_preview" in task_status_view_source,
         "ui_task_status_operator_context_labels_enabled": (
             "TASK_STATUS_LABELS = {" in task_status_presenter_source
             and "RUN_STATUS_LABELS = {" in task_status_presenter_source
@@ -215,32 +229,32 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def task_run_source_label(" in task_status_presenter_source
             and "task_failure_operation_label(_operator_operation_from_source(raw_source))"
             in task_status_presenter_source
-            and '"celery_status": task_status_state_label(' in task_status_panel_source
-            and '"ready": _task_context_ready_label(' in task_status_panel_source
-            and '"successful": _task_context_success_label(' in task_status_panel_source
-            and '"run_status": task_run_status_label(' in task_status_panel_source
-            and '"source": task_run_source_label(' in task_status_panel_source
-            and '"operation": task_failure_operation_label(' in task_status_panel_source
-            and "資料欄位：" in task_status_panel_source
-            and "沒有任務輸入紀錄" in task_status_panel_source
-            and "沒有 run payload" not in task_status_panel_source
-            and "回報型態：" in task_status_panel_source
-            and "已遮蔽敏感欄位" in task_status_panel_source
-            and "執行錯誤：" in task_status_panel_source
-            and 'return f"{exception_type}: {preview}"' not in task_status_panel_source
+            and '"celery_status": task_status_state_label(' in task_status_view_source
+            and '"ready": _task_context_ready_label(' in task_status_view_source
+            and '"successful": _task_context_success_label(' in task_status_view_source
+            and '"run_status": task_run_status_label(' in task_status_view_source
+            and '"source": task_run_source_label(' in task_status_view_source
+            and '"operation": task_failure_operation_label(' in task_status_view_source
+            and "資料欄位：" in task_status_view_source
+            and "沒有任務輸入紀錄" in task_status_view_source
+            and "沒有 run payload" not in task_status_view_source
+            and "回報型態：" in task_status_view_source
+            and "已遮蔽敏感欄位" in task_status_view_source
+            and "執行錯誤：" in task_status_view_source
+            and 'return f"{exception_type}: {preview}"' not in task_status_view_source
         ),
         "ui_task_status_metric_operator_labels_enabled": (
-            "def task_status_metric_values(" in task_status_panel_source
-            and "def task_run_summary_rows(" in task_status_panel_source
-            and "def task_status_progress_caption(" in task_status_panel_source
-            and '"label": "任務狀態"' in task_status_panel_source
-            and '"label": "是否結束"' in task_status_panel_source
-            and '"label": "是否成功"' in task_status_panel_source
-            and '"label": "執行紀錄"' in task_status_panel_source
-            and '"報告": _number_ref(run.get("report_id"))' in task_status_panel_source
-            and '"輸出檔": run.get("output_path") or "-"' in task_status_panel_source
-            and "task_run_status_label(run.get(\"status\"))" in task_status_panel_source
-            and "task_status_state_label(progress.get(\"status\")" in task_status_panel_source
+            "def task_status_metric_values(" in task_status_view_source
+            and "def task_run_summary_rows(" in task_status_view_source
+            and "def task_status_progress_caption(" in task_status_view_source
+            and '"label": "任務狀態"' in task_status_view_source
+            and '"label": "是否結束"' in task_status_view_source
+            and '"label": "是否成功"' in task_status_view_source
+            and '"label": "執行紀錄"' in task_status_view_source
+            and '"報告": _number_ref(run.get("report_id"))' in task_status_view_source
+            and '"輸出檔": run.get("output_path") or "-"' in task_status_view_source
+            and "task_run_status_label(run.get(\"status\"))" in task_status_view_source
+            and "task_status_state_label(progress.get(\"status\")" in task_status_view_source
             and "task_status_metric_values(task_status)" in task_status_panel_source
             and "task_run_summary_rows(task_status)" in task_status_panel_source
             and 'metric("Task"' not in task_status_panel_source

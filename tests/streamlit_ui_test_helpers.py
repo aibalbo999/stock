@@ -10,6 +10,7 @@ API_LOADERS_SOURCE = Path("app/ui/api_loaders.py")
 BACKGROUND_TASKS_SOURCE = Path("app/ui/background_tasks.py")
 TASK_STATUS_PANEL_SOURCE = Path("app/ui/task_status_panel.py")
 TASK_STATUS_PRESENTER_SOURCE = Path("app/ui/task_status_presenter.py")
+TASK_STATUS_VIEW_SOURCE = Path("app/ui/task_status_view.py")
 REPORT_STATE_SOURCE = Path("app/ui/report_state.py")
 REPORT_PANELS_SOURCE = Path("app/ui/report_panels.py")
 REPORT_FOLLOW_UP_CONTROLS_SOURCE = Path("app/ui/report_follow_up_controls.py")
@@ -60,6 +61,7 @@ UI_SOURCE_FILES = [
     BACKGROUND_TASKS_SOURCE,
     TASK_STATUS_PANEL_SOURCE,
     TASK_STATUS_PRESENTER_SOURCE,
+    TASK_STATUS_VIEW_SOURCE,
     REPORT_STATE_SOURCE,
     REPORT_PANELS_SOURCE,
     REPORT_FOLLOW_UP_CONTROLS_SOURCE,

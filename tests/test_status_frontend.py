@@ -495,6 +495,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_empty_running_task_state_enabled"] is True
     assert status["frontend"]["ui_report_advanced_controls_progressive_disclosure_enabled"] is True
     assert status["frontend"]["ui_report_follow_up_submission_confirmation_enabled"] is True
+    assert status["frontend"]["ui_report_follow_up_submission_preflight_summary_enabled"] is True
     assert status["frontend"]["task_retry_uses_scoped_state_key"] is True
     assert status["frontend"]["ui_report_state_extracted"] is True
     assert status["frontend"]["ui_report_state_path"] == "app/ui/report_state.py"
@@ -798,6 +799,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_follow_up_controls_extracted"] is True
     assert (
         frontend_arch["evidence"]["ui_report_follow_up_submission_confirmation_enabled"]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"]["ui_report_follow_up_submission_preflight_summary_enabled"]
         is True
     )
     assert frontend_arch["evidence"]["ui_report_markdown_helpers_extracted"] is True

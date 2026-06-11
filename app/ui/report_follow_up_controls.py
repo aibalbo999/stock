@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from html import escape
+from typing import Any
+
 import streamlit as st
 
 from app.ui.api_loaders import load_api_json_or_default
@@ -11,6 +14,79 @@ from app.ui.follow_up_status import (
 )
 from app.ui.report_markdown import markdown_table_rows
 from app.ui.task_status_panel import render_task_status_panel
+
+
+PURPOSE_LABELS = {
+    "all": "全部任務",
+    "required": "只補資料缺口",
+    "tracking": "只做追蹤更新",
+}
+
+
+def follow_up_submission_preflight_summary(
+    *,
+    executable_actions: list[dict],
+    markdown_rows: list,
+    manual_tracking_selected: bool,
+    selected_purpose: str,
+    rerun_report: bool,
+    news_limit: int,
+    button_label: str,
+    confirmed: bool,
+) -> dict[str, str]:
+    required_count = _required_action_count(executable_actions, markdown_rows)
+    tracking_count = _tracking_action_count(
+        executable_actions,
+        markdown_rows,
+        manual_tracking_selected=manual_tracking_selected,
+    )
+    has_executable_actions = bool(executable_actions or markdown_rows or manual_tracking_selected)
+    detail = (
+        f"範圍：{PURPOSE_LABELS.get(selected_purpose, selected_purpose or '-')}｜"
+        f"資料缺口 {required_count} 項｜追蹤更新 {tracking_count} 項｜"
+        f"補抓資料量 {int(news_limit)}｜完成後{'重跑' if rerun_report else '不重跑'}"
+    )
+
+    if not has_executable_actions:
+        return {
+            "state": "attention",
+            "title": "目前沒有可送出的補強任務",
+            "detail": detail,
+            "next_step": "切換執行範圍，或回資料補強頁手動刷新資料。",
+            "quota_hint": "尚未送出背景任務；先確認範圍可避免空任務與額度浪費。",
+        }
+
+    if not confirmed:
+        return {
+            "state": "attention",
+            "title": "準備送出自動補強",
+            "detail": detail,
+            "next_step": f"勾選確認後，再按「{button_label}」送出背景任務。",
+            "quota_hint": "會使用背景任務、外部資料來源與可能的 AI 額度；送出後請等待狀態輪詢，避免重複送出。",
+        }
+
+    return {
+        "state": "ready",
+        "title": "可以送出自動補強",
+        "detail": detail,
+        "next_step": f"按「{button_label}」送出背景任務；完成後套用補強結果並查看最新版生命週期。",
+        "quota_hint": "送出後會排隊執行；完成前不要重複送出同一份報告的補強。",
+    }
+
+
+def render_follow_up_submission_summary(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    st.markdown(
+        f"""<section class="follow-up-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="自動補強送出前摘要">
+<span>送出前摘要</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+<small>{escape(summary.get("quota_hint", ""))}</small>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report") -> None:
@@ -157,7 +233,10 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         ]
     manual_tracking_available = not planned_actions and not rows and plan_error is None
     manual_tracking_selected = manual_tracking_available and selected_purpose in {"all", "tracking"}
-    has_executable_actions = bool(executable_actions or rows or manual_tracking_selected)
+    markdown_action_rows = rows if not planned_actions else []
+    has_executable_actions = bool(
+        executable_actions or markdown_action_rows or manual_tracking_selected
+    )
     if planned_actions and not executable_actions:
         st.caption("目前選擇的範圍沒有可執行任務。")
     elif manual_tracking_selected:
@@ -199,6 +278,18 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         else "執行追蹤更新並重跑"
         if selected_purpose == "tracking"
         else "執行全部補強並重跑"
+    )
+    render_follow_up_submission_summary(
+        follow_up_submission_preflight_summary(
+            executable_actions=executable_actions,
+            markdown_rows=markdown_action_rows,
+            manual_tracking_selected=manual_tracking_selected,
+            selected_purpose=selected_purpose,
+            rerun_report=bool(rerun_report),
+            news_limit=int(news_limit),
+            button_label=button_label,
+            confirmed=followup_run_confirmed,
+        )
     )
     if st.button(
         button_label,
@@ -316,3 +407,28 @@ def render_follow_up_flash() -> None:
     if st.button("關閉補強結果", key="dismiss_follow_up_flash"):
         st.session_state.pop("follow_up_flash", None)
         st.rerun()
+
+
+def _required_action_count(executable_actions: list[dict], markdown_rows: list) -> int:
+    action_count = sum(1 for action in executable_actions if action.get("purpose") == "required")
+    row_count = sum(1 for row in markdown_rows if _markdown_row_purpose(row) == "required")
+    return action_count + row_count
+
+
+def _tracking_action_count(
+    executable_actions: list[dict],
+    markdown_rows: list,
+    *,
+    manual_tracking_selected: bool,
+) -> int:
+    action_count = sum(1 for action in executable_actions if action.get("purpose") != "required")
+    row_count = sum(1 for row in markdown_rows if _markdown_row_purpose(row) != "required")
+    return action_count + row_count + (1 if manual_tracking_selected else 0)
+
+
+def _markdown_row_purpose(row: Any) -> str:
+    if isinstance(row, (list, tuple)) and len(row) > 2:
+        purpose = str(row[2]).strip()
+        if purpose == "required" or "資料缺口" in purpose:
+            return "required"
+    return "tracking"

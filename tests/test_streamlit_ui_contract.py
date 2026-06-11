@@ -942,6 +942,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:
     source = ui.read_ui_source()
+    combined = source + "\n" + ui.STYLE_SOURCE.read_text()
 
     assert (
         'def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report")'
@@ -957,5 +958,12 @@ def test_follow_up_controls_use_scoped_widget_keys() -> None:
     assert 'key=f"followup_run_confirm_{key_suffix}"' in source
     assert "我了解這會送出自動補強背景任務" in source
     assert "避免誤觸補強" in source
+    assert "def follow_up_submission_preflight_summary(" in source
+    assert "def render_follow_up_submission_summary(" in source
+    assert "follow_up_submission_preflight_summary(" in source
+    assert "render_follow_up_submission_summary(" in source
+    assert "follow-up-submission-summary" in combined
+    assert "會使用背景任務、外部資料來源與可能的 AI 額度" in source
+    assert "完成後套用補強結果並查看最新版生命週期" in source
     assert "disabled=not has_executable_actions or not followup_run_confirmed" in source
     assert 'key=f"followup_purpose_{report_id}"' not in source

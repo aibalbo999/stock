@@ -209,6 +209,21 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'submit_api_task(\n            f"/reports/{report_id}/follow-up/run_async"'
             in report_follow_up_controls_source
         ),
+        "ui_report_follow_up_submission_preflight_summary_enabled": (
+            "def follow_up_submission_preflight_summary("
+            in report_follow_up_controls_source
+            and "def render_follow_up_submission_summary("
+            in report_follow_up_controls_source
+            and "render_follow_up_submission_summary(" in report_follow_up_controls_source
+            and "follow_up_submission_preflight_summary(" in report_follow_up_controls_source
+            and 'class="follow-up-submission-summary' in report_follow_up_controls_source
+            and "會使用背景任務、外部資料來源與可能的 AI 額度"
+            in report_follow_up_controls_source
+            and "完成後套用補強結果並查看最新版生命週期"
+            in report_follow_up_controls_source
+            and "尚未送出背景任務；先確認範圍可避免空任務與額度浪費"
+            in report_follow_up_controls_source
+        ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"
         ).exists()

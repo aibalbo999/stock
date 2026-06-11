@@ -16,6 +16,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_center_source = ui_sources["report_center.py"]
     report_center_presenter_source = ui_sources["report_center_presenter.py"]
     report_center_view_source = ui_sources["report_center_view.py"]
+    report_center_history_source = ui_sources["report_center_history.py"]
     report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
     operator_decisions_source = ui_sources["operator_decisions.py"]
@@ -24,10 +25,10 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         if source_context.style_path.exists()
         else ""
     )
-    report_debug_expander_index = report_center_source.find(
+    report_debug_expander_index = report_center_history_source.find(
         'with st.expander("疑難排解：執行紀錄")'
     )
-    report_delete_button_index = report_center_source.find('"刪除此報告",')
+    report_delete_button_index = report_center_history_source.find('"刪除此報告",')
     return {
         "frontend_report_workflow_status_extracted": True,
         "frontend_report_workflow_status_path": (
@@ -55,6 +56,19 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'class="report-health-strip' in report_center_view_source
             and 'class="report-reader-decision' not in report_center_source
             and "def _report_lifecycle_stage_html(" not in report_center_source
+        ),
+        "ui_report_center_history_panel_extracted": (
+            (ui_dir / "report_center_history.py").exists()
+            and "from app.ui.report_center_history import render_report_history_debug_panel"
+            in report_center_source
+            and "render_report_history_debug_panel(" in report_center_source
+            and "def render_report_history_debug_panel(" in report_center_history_source
+            and 'with st.expander("疑難排解：執行紀錄")'
+            in report_center_history_source
+            and 'with st.expander("疑難排解：執行紀錄")'
+            not in report_center_source
+            and "render_task_status_panel(" in report_center_history_source
+            and "report_run_history_rows(runs)" in report_center_history_source
         ),
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"
         in ui_source
@@ -262,15 +276,18 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             )
         ),
         "ui_report_advanced_controls_progressive_disclosure_enabled": (
-            'with st.expander("疑難排解：執行紀錄")' in report_center_source
-            and 'with st.expander("報告管理")' not in report_center_source
-            and "進階操作，只在需要移除最新版報告時使用。" in report_center_source
-            and '"刪除此報告",' in report_center_source
+            'with st.expander("疑難排解：執行紀錄")' in report_center_history_source
+            and 'with st.expander("疑難排解：執行紀錄")' not in report_center_source
+            and 'with st.expander("報告管理")' not in report_center_history_source
+            and "進階操作，只在需要移除最新版報告時使用。"
+            in report_center_history_source
+            and '"刪除此報告",' in report_center_history_source
             and report_debug_expander_index >= 0
             and report_delete_button_index >= 0
             and report_debug_expander_index < report_delete_button_index
-            and 'with st.expander("原始紀錄內容"):' in report_center_source
-            and 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
+            and 'with st.expander("原始紀錄內容"):' in report_center_history_source
+            and 'with st.expander("背景任務狀態", expanded=False):'
+            in report_center_history_source
         ),
         "ui_report_run_history_operator_labels_enabled": (
             "def report_run_history_rows(" in report_center_presenter_source
@@ -284,43 +301,45 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             in report_center_presenter_source
             and '"錯誤": _run_error_label(run.get("error"))'
             in report_center_presenter_source
-            and "run_rows = report_run_history_rows(runs)" in report_center_source
-            and "run_ids = report_run_history_ids(runs)" in report_center_source
-            and "options=run_ids" in report_center_source
-            and '"source": run.get("source")' not in report_center_source
-            and '"status": run.get("status")' not in report_center_source
-            and '"error": run.get("error")' not in report_center_source
+            and "run_rows = report_run_history_rows(runs)" in report_center_history_source
+            and "run_ids = report_run_history_ids(runs)" in report_center_history_source
+            and "options=run_ids" in report_center_history_source
+            and '"source": run.get("source")' not in report_center_history_source
+            and '"status": run.get("status")' not in report_center_history_source
+            and '"error": run.get("error")' not in report_center_history_source
         ),
         "ui_report_run_detail_error_operator_label_enabled": (
             "def report_run_detail_error_message(" in report_center_presenter_source
             and "執行紀錄錯誤：" in report_center_presenter_source
             and "st.error(report_run_detail_error_message(selected_run_error))"
-            in report_center_source
-            and '"查看執行紀錄"' in report_center_source
-            and '"查看 run"' not in report_center_source
-            and "st.error(selected_run_error)" not in report_center_source
+            in report_center_history_source
+            and '"查看執行紀錄"' in report_center_history_source
+            and '"查看 run"' not in report_center_history_source
+            and "st.error(selected_run_error)" not in report_center_history_source
         ),
         "ui_report_delete_confirmation_gate_enabled": (
-            "report_delete_confirmed = st.checkbox(" in report_center_source
-            and 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
-            and "disabled=not report_delete_confirmed" in report_center_source
+            "report_delete_confirmed = st.checkbox(" in report_center_history_source
+            and 'key=f"confirm_delete_report_{selected_id}"'
+            in report_center_history_source
+            and "disabled=not report_delete_confirmed" in report_center_history_source
             and "刪除報告會移除目前最新版報告與安全範圍內的報告檔"
-            in report_center_source
-            and "避免誤觸" in report_center_source
+            in report_center_history_source
+            and "避免誤觸" in report_center_history_source
         ),
         "ui_run_delete_confirmation_gate_enabled": (
-            "run_delete_confirmed = st.checkbox(" in report_center_source
-            and 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
-            and 'key=f"delete_run_{selected_run_id}"' in report_center_source
-            and "disabled=not run_delete_confirmed" in report_center_source
-            and "避免誤觸" in report_center_source
+            "run_delete_confirmed = st.checkbox(" in report_center_history_source
+            and 'key=f"confirm_delete_run_{selected_run_id}"'
+            in report_center_history_source
+            and 'key=f"delete_run_{selected_run_id}"' in report_center_history_source
+            and "disabled=not run_delete_confirmed" in report_center_history_source
+            and "避免誤觸" in report_center_history_source
         ),
         "ui_report_delete_scope_caption_enabled": (
             "刪除報告會移除目前最新版報告與安全範圍內的報告檔"
-            in report_center_source
-            and "分析紀錄會保留" in report_center_source
+            in report_center_history_source
+            and "分析紀錄會保留" in report_center_history_source
             and "刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告"
-            in report_center_source
+            in report_center_history_source
         ),
         "ui_report_follow_up_submission_confirmation_enabled": (
             "followup_run_confirmed = st.checkbox(" in report_follow_up_controls_source

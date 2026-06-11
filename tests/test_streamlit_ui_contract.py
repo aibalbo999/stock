@@ -765,35 +765,51 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_task_status_panel(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     report_center_source = Path("app/ui/report_center.py").read_text()
-    assert "from app.ui.task_status_panel import render_task_status_panel" in report_center_source
-    assert 'with st.expander("報告管理")' not in report_center_source
-    assert 'with st.expander("疑難排解：執行紀錄")' in report_center_source
-    assert report_center_source.index('with st.expander("疑難排解：執行紀錄")') < (
-        report_center_source.index('"刪除此報告",')
+    report_center_history_source = ui.REPORT_CENTER_HISTORY_SOURCE.read_text()
+    assert (
+        "from app.ui.task_status_panel import render_task_status_panel"
+        in report_center_history_source
     )
-    assert "進階操作，只在需要移除最新版報告時使用。" in report_center_source
-    assert "report_delete_confirmed = st.checkbox(" in report_center_source
-    assert 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
-    assert 'disabled=not report_delete_confirmed' in report_center_source
-    assert "刪除報告會移除目前最新版報告與安全範圍內的報告檔" in report_center_source
-    assert "run_delete_confirmed = st.checkbox(" in report_center_source
-    assert 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
-    assert 'key=f"delete_run_{selected_run_id}"' in report_center_source
-    assert 'disabled=not run_delete_confirmed' in report_center_source
-    assert "刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告" in (
+    assert "from app.ui.report_center_history import render_report_history_debug_panel" in (
         report_center_source
     )
-    assert "避免誤觸" in report_center_source
-    assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
-    assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
-    assert 'st.button("查詢背景任務狀態")' not in report_center_source
-    assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
+    assert "render_report_history_debug_panel(" in report_center_source
+    assert 'with st.expander("報告管理")' not in report_center_history_source
+    assert 'with st.expander("疑難排解：執行紀錄")' not in report_center_source
+    assert 'with st.expander("疑難排解：執行紀錄")' in report_center_history_source
+    assert report_center_history_source.index('with st.expander("疑難排解：執行紀錄")') < (
+        report_center_history_source.index('"刪除此報告",')
+    )
+    assert "進階操作，只在需要移除最新版報告時使用。" in report_center_history_source
+    assert "report_delete_confirmed = st.checkbox(" in report_center_history_source
+    assert 'key=f"confirm_delete_report_{selected_id}"' in report_center_history_source
+    assert 'disabled=not report_delete_confirmed' in report_center_history_source
+    assert "刪除報告會移除目前最新版報告與安全範圍內的報告檔" in (
+        report_center_history_source
+    )
+    assert "run_delete_confirmed = st.checkbox(" in report_center_history_source
+    assert 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_history_source
+    assert 'key=f"delete_run_{selected_run_id}"' in report_center_history_source
+    assert 'disabled=not run_delete_confirmed' in report_center_history_source
+    assert "刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告" in (
+        report_center_history_source
+    )
+    assert "避免誤觸" in report_center_history_source
+    assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_history_source
+    assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in (
+        report_center_history_source
+    )
+    assert 'st.button("查詢背景任務狀態")' not in report_center_history_source
+    assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in (
+        report_center_history_source
+    )
     report_center_presenter_source = ui.REPORT_CENTER_PRESENTER_SOURCE.read_text()
     report_center_view_source = ui.REPORT_CENTER_VIEW_SOURCE.read_text()
     assert "from app.ui.report_center_presenter import (" in report_center_source
     assert "from app.ui.report_center_view import (" in report_center_source
     assert "import streamlit" not in report_center_presenter_source
     assert "import streamlit" not in report_center_view_source
+    assert "def render_report_history_debug_panel(" in report_center_history_source
     assert "def latest_report_picker_state(" in report_center_presenter_source
     assert "def report_run_history_rows(" in report_center_presenter_source
     assert "def empty_report_action_summary(" in report_center_presenter_source

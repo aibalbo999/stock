@@ -225,7 +225,7 @@ def test_task_submission_smoke_reports_api_submission_failure() -> None:
     assert report["submission"]["status_code"] == 500
     assert "background_task_submission_failed" in report["submission"]["error"]
     assert any(
-        "檢查 /tasks/data-operation structured error detail" in action
+        "檢查 /tasks/data-operation 的結構化錯誤內容與 API 日誌" in action
         for action in report["next_actions"]
     )
 
@@ -384,6 +384,55 @@ def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -
         check["name"]: check["status"]
         for check in report["checks"]
     }["task_queue_status_shape"] == "warning"
+    assert "legacy celery summary" not in str(report["checks"])
+    assert "restart the API process" not in str(report["checks"])
+
+
+def test_task_submission_smoke_check_messages_use_operator_language() -> None:
+    report = smoke.run_task_submission_smoke(
+        check_runtime_identity=False,
+        opener=lambda request, timeout: FakeResponse({}, status=503),
+    )
+
+    check_messages_text = str([check["message"] for check in report["checks"]])
+    assert "未執行" in check_messages_text or "HTTP 503" in check_messages_text
+    assert "not executed" not in check_messages_text
+    assert "request failed" not in check_messages_text
+    assert "ready" not in check_messages_text
+    assert "not ready" not in check_messages_text
+
+    responses = [
+        FakeResponse(
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "submission_contract_ready": True,
+                    "worker_online": True,
+                }
+            }
+        ),
+        FakeResponse({"task_id": "task-1", "status": "queued", "operation": "market_refresh"}),
+        FakeResponse({"task_id": "task-1", "status": "PENDING", "ready": False}),
+    ]
+
+    def fake_timeout_opener(_request, timeout):
+        return responses.pop(0)
+
+    ticks = iter([0.0, 1.0])
+    timeout_report = smoke.run_task_submission_smoke(
+        submit=True,
+        wait=True,
+        check_runtime_identity=False,
+        opener=fake_timeout_opener,
+        clock=lambda: next(ticks),
+        sleeper=lambda seconds: None,
+        timeout_seconds=0.0,
+    )
+
+    timeout_checks_text = str([check["message"] for check in timeout_report["checks"]])
+    assert "任務逾時前尚未完成" in timeout_checks_text
+    assert "task did not finish before timeout" not in timeout_checks_text
 
 
 def test_task_submission_smoke_reports_api_runtime_commit_mismatch() -> None:

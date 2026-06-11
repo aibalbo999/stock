@@ -305,8 +305,8 @@ def _task_queue_payload(payload: object) -> dict:
             "worker_online": False,
             "legacy_status_shape": True,
             "status_shape_warning": (
-                "GET /services/status returned legacy celery summary without task_queue; "
-                "restart the API process to load the current runtime."
+                "GET /services/status 回傳舊版 celery 摘要，缺少 task_queue；"
+                "請重啟 API 服務載入目前版本。"
             ),
         }
     return {}
@@ -318,7 +318,7 @@ def _task_queue_checks(task_queue: dict, *, check_processing_ready: bool = True)
             {
                 "name": "task_queue_status",
                 "status": "failed",
-                "message": "GET /services/status did not include task_queue.",
+                "message": "GET /services/status 未包含 task_queue。",
             }
         ]
     checks = [
@@ -331,7 +331,7 @@ def _task_queue_checks(task_queue: dict, *, check_processing_ready: bool = True)
         {
             "name": name,
             "status": "passed" if ok else "warning",
-            "message": "ready" if ok else "not ready",
+            "message": "就緒" if ok else "尚未就緒",
         }
         for name, ok in checks
     ]
@@ -340,7 +340,7 @@ def _task_queue_checks(task_queue: dict, *, check_processing_ready: bool = True)
             {
                 "name": "task_queue_status_shape",
                 "status": "warning",
-                "message": str(task_queue.get("status_shape_warning") or "legacy status shape"),
+                "message": str(task_queue.get("status_shape_warning") or "舊版狀態格式"),
             }
         )
     return rows
@@ -350,11 +350,11 @@ def _runtime_identity_check(runtime_identity: dict) -> dict:
     status = str(runtime_identity.get("status") or "failed")
     reason = runtime_identity.get("reason") or runtime_identity.get("error")
     if status == "passed":
-        message = "API runtime commit matches current checkout."
+        message = "API 執行版本與目前工作樹一致。"
     elif status == "skipped":
-        message = str(reason or "runtime identity check skipped")
+        message = _runtime_identity_reason_message(reason) or "已略過 API 執行版本比對。"
     else:
-        message = str(reason or "API runtime identity check failed")
+        message = _runtime_identity_reason_message(reason) or "API 執行版本比對失敗。"
     return {
         "name": "api_runtime_identity",
         "status": status,
@@ -366,31 +366,31 @@ def _runtime_identity_check(runtime_identity: dict) -> dict:
 
 def _check_from_http(name: str, result: dict | None) -> dict:
     if not result:
-        return {"name": name, "status": "failed", "message": "not executed"}
+        return {"name": name, "status": "failed", "message": "未執行"}
     return {
         "name": name,
         "status": "passed" if result.get("ok") else "failed",
         "message": (
             f"HTTP {result.get('status_code')}"
             if result.get("status_code") is not None
-            else str(result.get("error") or "request failed")
+            else str(result.get("error") or "請求失敗")
         ),
     }
 
 
 def _task_poll_check(poll_result: dict) -> dict:
     if poll_result.get("status") == "completed" and poll_result.get("successful"):
-        return {"name": "task_poll", "status": "passed", "message": "task completed"}
+        return {"name": "task_poll", "status": "passed", "message": "任務已完成"}
     if poll_result.get("status") == "timeout":
         return {
             "name": "task_poll",
             "status": "warning",
-            "message": "task did not finish before timeout",
+            "message": "任務逾時前尚未完成",
         }
     return {
         "name": "task_poll",
         "status": "failed",
-        "message": str(poll_result.get("task_status") or "failed"),
+        "message": str(poll_result.get("task_status") or "任務失敗"),
     }
 
 
@@ -453,7 +453,7 @@ def _next_actions(
     ):
         actions.append("啟動背景執行器後重跑 --submit --wait 背景任務送出檢查。")
     if submission and not submission.get("ok"):
-        actions.append("檢查 /tasks/data-operation structured error detail 與 API logs。")
+        actions.append("檢查 /tasks/data-operation 的結構化錯誤內容與 API 日誌。")
     if poll_result and poll_result.get("status") == "timeout":
         actions.append("任務已送出但未完成；檢查背景執行器是否在線或是否卡在執行中。")
     if not actions and status == "passed":
@@ -472,6 +472,17 @@ def _public_http_result(result: dict | None) -> dict | None:
         "json": result.get("json"),
         "error": result.get("error"),
     }
+
+
+def _runtime_identity_reason_message(reason: object) -> str:
+    reason_text = str(reason or "")
+    labels = {
+        "local_git_commit_unavailable": "本機 git commit 不可用，已略過 API 執行版本比對。",
+        "api_runtime_commit_unavailable": "API 未回傳 git_commit，無法確認執行版本。",
+        "api_runtime_dirty_mismatch": "API 執行版本的 dirty 狀態與目前工作樹不同。",
+        "api_runtime_commit_mismatch": "API 執行版本不是目前工作樹 commit。",
+    }
+    return labels.get(reason_text, "")
 
 
 def _parse_json(body: bytes) -> object:

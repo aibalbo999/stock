@@ -68,34 +68,37 @@ def test_llm_quota_model_rows_include_routing_and_failure_context() -> None:
 
     assert rows == [
         {
-            "rank": 1,
-            "model": "gemini-3.5-flash",
-            "status": "exhausted",
-            "risk": "exhausted",
-            "tier": "primary",
-            "reason": "request_budget_exhausted",
-            "routing_reason": "Skipped until the next quota window.",
-            "requests_used": 250,
-            "request_budget": 250,
-            "free_tier_request_budget": None,
-            "quota_reference": "project_configured_ai_studio_limit",
-            "requests_remaining": 0,
-            "request_used_pct": "100.0%",
-            "tokens_used": 1000,
-            "token_budget": None,
-            "tokens_remaining": None,
-            "token_used_pct": "-",
-            "fallback_count": 0,
-            "retryable_failure_count": 3,
-            "quota_hit_count": 2,
-            "quota_skip_count": 1,
-            "daily_quota_skip_count": 0,
-            "cooldown_skip_count": 1,
-            "active_cooldown": "30 分鐘",
-            "last_quota_hit_at": "2026-06-07T11:40:00",
-            "next_action": "No action needed for routing.",
+            "順位": 1,
+            "模型": "gemini-3.5-flash",
+            "狀態": "額度用完",
+            "風險": "額度用完",
+            "路由層級": "主力模型",
+            "狀態原因": "請求額度已用完",
+            "路由原因": "跳過到下一個額度週期。",
+            "今日請求": "250 / 250",
+            "Free Tier 參考": "-",
+            "額度來源": "專案設定的 AI Studio 限制",
+            "剩餘請求": 0,
+            "請求用量": "100.0%",
+            "今日 Token": "1000 / -",
+            "剩餘 Token": "-",
+            "Token 用量": "-",
+            "後援次數": 0,
+            "可重試失敗": 3,
+            "額度命中": 2,
+            "額度略過": 1,
+            "日額度略過": 0,
+            "冷卻略過": 1,
+            "冷卻剩餘": "30 分鐘",
+            "最近額度命中": "2026-06-07T11:40:00",
+            "下一步": "路由會自動降級，不需手動操作。",
         }
     ]
+    rendered = str(rows)
+    assert "status" not in rendered
+    assert "routing_tier" not in rendered
+    assert "request_budget_exhausted" not in rendered
+    assert "Skipped until the next quota window." not in rendered
 
 
 def test_llm_quota_captions_summarize_recommendation_budget_note_and_gemma_fallback() -> None:

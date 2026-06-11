@@ -351,5 +351,19 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
         and "from app.ui.llm_quota_panel import (" in ui_source
         and "llm_quota_metric_values(llm_quota)" in ui_source
         and "llm_quota_model_rows(llm_quota)" in ui_source,
+        "ui_llm_quota_model_row_operator_labels_enabled": (
+            "MODEL_STATUS_LABELS = {" in llm_quota_panel_source
+            and "ROUTING_TIER_LABELS = {" in llm_quota_panel_source
+            and '"順位"' in llm_quota_panel_source
+            and '"路由層級"' in llm_quota_panel_source
+            and '"請求額度已用完"' in llm_quota_panel_source
+            and '"跳過到下一個額度週期。"' in llm_quota_panel_source
+            and '"rank": model.get("rank")' not in llm_quota_panel_source
+            and '"status": model.get("status")' not in llm_quota_panel_source
+            and (
+                '"routing_reason": model.get("routing_reason")'
+                not in llm_quota_panel_source
+            )
+        ),
         "ui_llm_quota_panel_path": "app/ui/llm_quota_panel.py",
     }

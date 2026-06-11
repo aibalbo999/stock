@@ -4,6 +4,55 @@ from datetime import datetime
 from typing import Any
 
 
+MODEL_STATUS_LABELS = {
+    "available": "可用",
+    "ready": "可用",
+    "ok": "可用",
+    "near_limit": "接近額度上限",
+    "warning": "需注意",
+    "exhausted": "額度用完",
+    "cooldown": "冷卻中",
+    "unavailable": "不可用",
+    "unknown": "未知",
+}
+
+RISK_LABELS = {
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "exhausted": "額度用完",
+    "cooldown": "冷卻中",
+    "unknown": "未知",
+}
+
+ROUTING_TIER_LABELS = {
+    "primary": "主力模型",
+    "fallback": "後援模型",
+    "high_quota_fallback": "高額度保底",
+    "disabled": "停用",
+}
+
+STATUS_REASON_LABELS = {
+    "request_budget_exhausted": "請求額度已用完",
+    "within_configured_budget": "仍在設定額度內",
+    "active_cooldown": "冷卻中",
+    "quota_or_cooldown_skip": "額度或冷卻略過",
+    "no_usage_record": "尚無用量紀錄",
+    "token_budget_exhausted": "Token 額度已用完",
+}
+
+QUOTA_REFERENCE_LABELS = {
+    "project_configured_ai_studio_limit": "專案設定的 AI Studio 限制",
+    "official_free_tier_reference": "官方 Free Tier 參考",
+    "manual_override": "手動覆寫",
+}
+
+ROUTING_REASON_LABELS = {
+    "Skipped until the next quota window.": "跳過到下一個額度週期。",
+    "No action needed for routing.": "路由會自動降級，不需手動操作。",
+}
+
+
 def llm_quota_metric_values(llm_quota: dict) -> dict[str, str | int]:
     window = _dict_value(llm_quota.get("window"))
     totals = _dict_value(llm_quota.get("totals"))
@@ -22,32 +71,43 @@ def llm_quota_model_rows(llm_quota: dict) -> list[dict]:
             continue
         rows.append(
             {
-                "rank": model.get("rank"),
-                "model": model.get("model"),
-                "status": model.get("status"),
-                "risk": model.get("risk_level"),
-                "tier": model.get("routing_tier"),
-                "reason": model.get("status_reason"),
-                "routing_reason": model.get("routing_reason"),
-                "requests_used": model.get("requests_used"),
-                "request_budget": model.get("request_budget"),
-                "free_tier_request_budget": model.get("free_tier_request_budget_reference"),
-                "quota_reference": model.get("quota_reference_source"),
-                "requests_remaining": model.get("requests_remaining"),
-                "request_used_pct": _format_ratio(model.get("request_used_ratio")),
-                "tokens_used": model.get("tokens_used"),
-                "token_budget": model.get("token_budget"),
-                "tokens_remaining": model.get("tokens_remaining"),
-                "token_used_pct": _format_ratio(model.get("token_used_ratio")),
-                "fallback_count": model.get("fallback_count"),
-                "retryable_failure_count": model.get("retryable_failure_count"),
-                "quota_hit_count": model.get("quota_hit_count"),
-                "quota_skip_count": model.get("quota_skip_count"),
-                "daily_quota_skip_count": model.get("daily_quota_skip_count"),
-                "cooldown_skip_count": model.get("cooldown_skip_count"),
-                "active_cooldown": _format_duration(model.get("active_cooldown_seconds")),
-                "last_quota_hit_at": model.get("last_quota_hit_at"),
-                "next_action": model.get("next_action"),
+                "順位": model.get("rank"),
+                "模型": model.get("model"),
+                "狀態": _label(MODEL_STATUS_LABELS, model.get("status")),
+                "風險": _label(RISK_LABELS, model.get("risk_level")),
+                "路由層級": _label(ROUTING_TIER_LABELS, model.get("routing_tier")),
+                "狀態原因": _label(STATUS_REASON_LABELS, model.get("status_reason")),
+                "路由原因": _label(ROUTING_REASON_LABELS, model.get("routing_reason")),
+                "今日請求": _format_budget(
+                    model.get("requests_used"),
+                    model.get("request_budget"),
+                ),
+                "Free Tier 參考": _display_value(
+                    model.get("free_tier_request_budget_reference")
+                ),
+                "額度來源": _label(
+                    QUOTA_REFERENCE_LABELS,
+                    model.get("quota_reference_source"),
+                ),
+                "剩餘請求": _display_value(model.get("requests_remaining")),
+                "請求用量": _format_ratio(model.get("request_used_ratio")),
+                "今日 Token": _format_budget(
+                    model.get("tokens_used"),
+                    model.get("token_budget"),
+                ),
+                "剩餘 Token": _display_value(model.get("tokens_remaining")),
+                "Token 用量": _format_ratio(model.get("token_used_ratio")),
+                "後援次數": _display_value(model.get("fallback_count")),
+                "可重試失敗": _display_value(model.get("retryable_failure_count")),
+                "額度命中": _display_value(model.get("quota_hit_count")),
+                "額度略過": _display_value(model.get("quota_skip_count")),
+                "日額度略過": _display_value(model.get("daily_quota_skip_count")),
+                "冷卻略過": _display_value(model.get("cooldown_skip_count")),
+                "冷卻剩餘": _display_value(
+                    _format_duration(model.get("active_cooldown_seconds"))
+                ),
+                "最近額度命中": _display_value(model.get("last_quota_hit_at")),
+                "下一步": _label(ROUTING_REASON_LABELS, model.get("next_action")),
             }
         )
     return rows
@@ -146,6 +206,35 @@ def _recommendation_caption(llm_quota: dict) -> str:
 
 def _dict_value(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _label(labels: dict[str, str], value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "-"
+    return labels.get(text, text)
+
+
+def _display_value(value: Any) -> Any:
+    if value is None:
+        return "-"
+    if isinstance(value, str) and not value.strip():
+        return "-"
+    return value
+
+
+def _format_budget(used: Any, budget: Any) -> str:
+    used_display = _display_budget_value(used, zero_when_missing=True)
+    budget_display = _display_budget_value(budget)
+    return f"{used_display} / {budget_display}"
+
+
+def _display_budget_value(value: Any, *, zero_when_missing: bool = False) -> Any:
+    if value is None:
+        return 0 if zero_when_missing else "-"
+    if isinstance(value, str) and not value.strip():
+        return 0 if zero_when_missing else "-"
+    return value
 
 
 def _format_duration(value: Any) -> str:

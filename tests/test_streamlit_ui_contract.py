@@ -275,6 +275,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "market-operation-readiness" in combined
     assert "執行前檢查" in source
     assert "可送出背景任務" in source
+    assert "def market_submission_preflight_summary(" in source
+    assert "_render_market_submission_summary(" in source
+    assert "market-submission-summary" in combined
+    assert "送出前摘要" in source
+    assert "避免重複送出" in source
     assert "def pending_market_handoff_summary(" in source
     assert "_render_pending_market_handoff(" in source
     assert "market-handoff-banner" in combined

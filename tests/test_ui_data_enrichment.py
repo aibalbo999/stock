@@ -400,6 +400,61 @@ def test_market_operation_readiness_rows_show_queue_status_when_unavailable() ->
     }
 
 
+def test_market_submission_preflight_summary_explains_selected_operation_and_quota_guard() -> None:
+    assert hasattr(data_enrichment_market, "market_submission_preflight_summary")
+
+    summary = data_enrichment_market.market_submission_preflight_summary(
+        selected_market_tickers=["2330", "2382"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation="valuation_refresh",
+        task_queue={"ready": True, "processing_ready": True, "worker_online": True},
+        confirmed=False,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "準備送出刷新估值",
+        "detail": "股票：2330、2382｜期間：2026-06-01 → 2026-06-10",
+        "next_step": "勾選確認後，再按「刷新估值」送出背景任務。",
+        "quota_hint": "會使用背景任務與外部資料額度；送出後請等待狀態輪詢，避免重複送出。",
+    }
+
+
+def test_market_submission_preflight_summary_guides_default_operation_choice() -> None:
+    summary = data_enrichment_market.market_submission_preflight_summary(
+        selected_market_tickers=["2330"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation=None,
+        task_queue={"ready": True, "processing_ready": True, "worker_online": True},
+        confirmed=False,
+    )
+
+    assert summary["title"] == "準備送出資料補強"
+    assert summary["next_step"] == "勾選確認後，選擇下方一個刷新操作送出背景任務。"
+    assert "下方操作" not in summary["next_step"]
+
+
+def test_market_submission_preflight_summary_blocks_when_task_queue_unavailable() -> None:
+    summary = data_enrichment_market.market_submission_preflight_summary(
+        selected_market_tickers=["2330"],
+        market_start=date(2026, 6, 1),
+        market_end=date(2026, 6, 10),
+        pending_operation="market_refresh",
+        task_queue={"ready": False, "worker_online": True},
+        confirmed=True,
+    )
+
+    assert summary == {
+        "state": "blocked",
+        "title": "背景任務暫時不可送出",
+        "detail": "股票：2330｜期間：2026-06-01 → 2026-06-10",
+        "next_step": "背景任務未就緒，請先到維護頁檢查 Redis/Celery。",
+        "quota_hint": "尚未送出任何資料補強；先修復背景任務可避免失敗重試浪費額度。",
+    }
+
+
 def test_render_market_data_tab_requires_confirmation_before_submit(monkeypatch) -> None:
     class FakeStreamlit:
         def __init__(self) -> None:
@@ -490,6 +545,12 @@ def test_render_market_data_tab_requires_confirmation_before_submit(monkeypatch)
         'class="market-handoff-banner is-ready"' in markdown
         and "已帶入刷新股價" in markdown
         and "確認背景任務後按「刷新股價」" in markdown
+        for markdown in fake_st.markdowns
+    )
+    assert any(
+        'class="market-submission-summary is-attention"' in markdown
+        and "準備送出刷新股價" in markdown
+        and "避免重複送出" in markdown
         for markdown in fake_st.markdowns
     )
     assert fake_st.checkboxes == [

@@ -237,6 +237,9 @@ def architecture_capabilities(
             and frontend_status.get("ui_data_enrichment_pending_operation_button_priority_enabled")
             and frontend_status.get("ui_data_enrichment_pending_handoff_banner_enabled")
             and frontend_status.get("ui_data_enrichment_operation_readiness_enabled")
+            and frontend_status.get(
+                "ui_data_enrichment_submission_preflight_summary_enabled"
+            )
             and frontend_status.get("ui_data_enrichment_task_queue_guard_enabled")
             and frontend_status.get("ui_data_enrichment_market_submission_confirmation_enabled")
             and frontend_status.get("ui_manual_news_import_confirmation_enabled")

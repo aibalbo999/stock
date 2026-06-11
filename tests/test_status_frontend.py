@@ -254,6 +254,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_data_enrichment_pending_handoff_banner_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_operation_readiness_enabled"] is True
+    assert status["frontend"]["ui_data_enrichment_submission_preflight_summary_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_task_queue_guard_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_market_submission_confirmation_enabled"] is True
     assert status["frontend"]["ui_manual_news_import_confirmation_enabled"] is True
@@ -663,6 +664,12 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_data_enrichment_operation_readiness_enabled"] is True
+    assert (
+        frontend_arch["evidence"][
+            "ui_data_enrichment_submission_preflight_summary_enabled"
+        ]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_data_enrichment_task_queue_guard_enabled"] is True
     assert (
         frontend_arch["evidence"][

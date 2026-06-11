@@ -527,6 +527,7 @@ textarea:focus,
 .data-gap-action-map,
 .market-allowlist-warning,
 .market-handoff-banner,
+.market-submission-summary,
 .market-cache-readiness,
 .market-operation-readiness,
 .action-impact-grid {
@@ -1051,6 +1052,7 @@ textarea:focus,
 .data-task-followup-summary,
 .market-allowlist-warning,
 .market-handoff-banner,
+.market-submission-summary,
 .market-cache-readiness,
 .market-operation-readiness {
     background: var(--stock-surface);
@@ -1176,6 +1178,58 @@ textarea:focus,
 .market-handoff-banner.is-attention em {
     background: #fff7ed;
     border-color: rgba(146, 64, 14, 0.2);
+}
+.market-submission-summary {
+    display: grid;
+    gap: 6px;
+    border-left: 4px solid var(--stock-accent);
+}
+.market-submission-summary.is-attention {
+    border-left-color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+}
+.market-submission-summary.is-blocked {
+    border-left-color: var(--stock-danger);
+    background: var(--stock-danger-soft);
+}
+.market-submission-summary span,
+.market-submission-summary strong,
+.market-submission-summary p,
+.market-submission-summary em,
+.market-submission-summary small {
+    display: block;
+}
+.market-submission-summary span {
+    color: var(--stock-accent);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.market-submission-summary.is-attention span {
+    color: var(--stock-warning);
+}
+.market-submission-summary.is-blocked span {
+    color: var(--stock-danger);
+}
+.market-submission-summary strong {
+    color: var(--stock-text);
+    font-size: 1rem;
+    line-height: 1.35;
+}
+.market-submission-summary p {
+    color: var(--stock-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+.market-submission-summary em {
+    color: var(--stock-text);
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.45;
+}
+.market-submission-summary small {
+    color: var(--stock-muted);
+    font-size: 0.84rem;
+    line-height: 1.45;
 }
 .incident-inbox-head,
 .data-gap-action-head,

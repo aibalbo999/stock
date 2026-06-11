@@ -146,6 +146,16 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
         value=False,
         key="confirm_market_data_operation_submission",
     )
+    _render_market_submission_summary(
+        market_submission_preflight_summary(
+            selected_market_tickers=selected_market_tickers,
+            market_start=market_start,
+            market_end=market_end,
+            pending_operation=pending_operation,
+            task_queue=task_queue_status,
+            confirmed=market_operation_confirmed,
+        )
+    )
     if not market_operation_confirmed:
         st.caption("避免誤觸刷新；確認股票、日期與操作後才會送出背景任務。")
 
@@ -495,6 +505,74 @@ def market_operation_readiness_rows(
     return rows
 
 
+def market_submission_preflight_summary(
+    *,
+    selected_market_tickers: list[str],
+    market_start: Any,
+    market_end: Any,
+    pending_operation: str | None,
+    task_queue: dict | None,
+    confirmed: bool,
+) -> dict[str, str]:
+    selected = _normalized_pending_tickers(selected_market_tickers)
+    operation = str(pending_operation or "").strip()
+    metadata = MARKET_OPERATION_METADATA.get(operation)
+    operation_label = metadata["label"] if metadata else "資料補強"
+    action_step = (
+        f"按「{operation_label}」送出背景任務"
+        if metadata
+        else "選擇下方一個刷新操作送出背景任務"
+    )
+    confirmation_step = (
+        f"再按「{operation_label}」送出背景任務"
+        if metadata
+        else "選擇下方一個刷新操作送出背景任務"
+    )
+    date_label = f"{_date_text(market_start)} → {_date_text(market_end)}"
+    detail = f"股票：{_ticker_label(selected)}｜期間：{date_label}"
+
+    task_queue_block_reason = _task_queue_block_reason(task_queue)
+    if task_queue_block_reason:
+        return {
+            "state": "blocked",
+            "title": "背景任務暫時不可送出",
+            "detail": detail,
+            "next_step": f"{task_queue_block_reason}。",
+            "quota_hint": "尚未送出任何資料補強；先修復背景任務可避免失敗重試浪費額度。",
+        }
+    if not selected:
+        return {
+            "state": "attention",
+            "title": "資料補強尚未完整",
+            "detail": detail,
+            "next_step": "請先選擇至少一檔股票，再送出資料補強背景任務。",
+            "quota_hint": "尚未送出任何資料補強；確認股票可避免空任務浪費排隊資源。",
+        }
+    if operation in {"market_refresh", "valuation_refresh"} and market_start > market_end:
+        return {
+            "state": "attention",
+            "title": f"準備送出{operation_label}",
+            "detail": detail,
+            "next_step": "起始日期不可晚於結束日期；修正後再送出背景任務。",
+            "quota_hint": "尚未送出任何資料補強；先修正日期可避免失敗重試浪費額度。",
+        }
+    if not confirmed:
+        return {
+            "state": "attention",
+            "title": f"準備送出{operation_label}",
+            "detail": detail,
+            "next_step": f"勾選確認後，{confirmation_step}。",
+            "quota_hint": "會使用背景任務與外部資料額度；送出後請等待狀態輪詢，避免重複送出。",
+        }
+    return {
+        "state": "ready",
+        "title": f"可以送出{operation_label}",
+        "detail": detail,
+        "next_step": f"{action_step}；完成後回報告中心確認最新版。",
+        "quota_hint": "送出後本頁會輪詢任務狀態；完成前不要重複送出同類補強。",
+    }
+
+
 def market_cache_operator_summary(cache_summary: dict) -> list[dict[str, str]]:
     ticker_count = _ticker_count(cache_summary)
     snapshots = _dict_rows(cache_summary.get("market_snapshots"))
@@ -608,6 +686,10 @@ def _date_text(value: Any) -> str:
     return str(value)
 
 
+def _ticker_label(tickers: list[str]) -> str:
+    return "、".join(tickers) if tickers else "尚未選擇股票"
+
+
 def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str | None:
     pending_operation = st.session_state.pop("pending_data_enrichment_operation", None)
     if not pending_operation:
@@ -667,6 +749,19 @@ def _market_operation_readiness_card_html(row: dict[str, str]) -> str:
 <em>{escape(row.get("caption", ""))}</em>
 <small>{escape(row.get("impact", ""))} {escape(row.get("post_action_hint", ""))}</small>
 </article>"""
+
+
+def _render_market_submission_summary(summary: dict[str, str]) -> None:
+    st.markdown(
+        f"""<section class="market-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料補強送出前摘要">
+<span>送出前摘要</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+<small>{escape(summary.get("quota_hint", ""))}</small>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _allowed_pending_tickers(value: object, allowed_tickers: list[str]) -> list[str]:

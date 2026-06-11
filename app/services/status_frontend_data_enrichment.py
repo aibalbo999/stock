@@ -64,6 +64,16 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "可送出背景任務" in data_enrichment_market_source
             and "disabled_reason" in data_enrichment_market_source
         ),
+        "ui_data_enrichment_submission_preflight_summary_enabled": (
+            "def market_submission_preflight_summary(" in data_enrichment_market_source
+            and "def _render_market_submission_summary(" in data_enrichment_market_source
+            and "market_submission_preflight_summary(" in data_enrichment_market_source
+            and 'class="market-submission-summary' in data_enrichment_market_source
+            and "送出前摘要" in data_enrichment_market_source
+            and "避免重複送出" in data_enrichment_market_source
+            and "外部資料額度" in data_enrichment_market_source
+            and "market_operation_confirmed" in data_enrichment_market_source
+        ),
         "ui_data_enrichment_task_queue_guard_enabled": (
             "task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)"
             in data_enrichment_market_source

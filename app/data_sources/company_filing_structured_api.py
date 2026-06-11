@@ -103,7 +103,7 @@ def company_filing_structured_api_status_payload(
         },
         "provider_decision_matrix": structured_api_provider_decision_matrix(),
         "provider_selection_hint": (
-            "免費版先用 custom local fixture 驗證 HTTP/JSON contract；"
+            "免費版先用本機測試 API 驗證 HTTP/JSON 格式；"
             "若需要穩定法說會/重大訊息資料，再優先評估 TEJ；"
             "若需求是反爬資料集或 managed scraping，再評估 ScrapingBee/BrightData。"
         ),
@@ -157,9 +157,9 @@ def company_filing_structured_api_status_payload(
             "provider_profile_smoke_cli": STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI,
             "provider_profile": STRUCTURED_API_RECOMMENDED_PAID_PROVIDER,
             "purpose": (
-                "Run the existing live HTTP fetch path against the bundled sample contract "
-                "before a paid TEJ/professional API is configured; the provider-profile smoke "
-                "also validates TEJ auth and document_type request mapping with a local dummy token."
+                "在串接 TEJ 或專業資料 API 前，先用內建樣本資料與本機測試 API "
+                "驗證 HTTP 取件流程；提供者設定檢查會用本機假 token 驗證 TEJ "
+                "auth 與 document_type 參數對應。"
             ),
         },
         "local_fixture_start_cli": STRUCTURED_API_LOCAL_FIXTURE_SERVE_CLI,
@@ -186,10 +186,9 @@ def company_filing_structured_api_status_payload(
                 STRUCTURED_API_LOCAL_PROVIDER_PROFILE_SMOKE_CLI
             ),
             "purpose": (
-                "Free-tier validation covers JSON mapping plus the live HTTP fetch path "
-                "against a local fixture, including a TEJ profile auth/parameter smoke with "
-                "a local dummy token; paid/provider credentials are required only for production "
-                "TEJ or professional data feeds."
+                "免費驗證涵蓋 JSON 對應與本機測試 API 的 HTTP 取件流程，"
+                "並用本機假 token 檢查 TEJ 設定、授權與參數；只有正式串接 TEJ "
+                "或專業資料源才需要付費資料商憑證。"
             ),
         },
         "sample_contract": sample_contract,

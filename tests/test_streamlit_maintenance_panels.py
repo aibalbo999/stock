@@ -2930,9 +2930,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                                 "document_type_param": "document_types",
                             },
                         ],
-                        "provider_selection_hint": (
-                            "免費版先用 custom local fixture 驗證 HTTP/JSON contract。"
-                        ),
+                        "provider_selection_hint": "免費版先用本機測試 API 驗證 HTTP/JSON 格式。",
                         "provider_setup_preview": {
                             "profile_key": "tej",
                             "provider": "tej",
@@ -3027,8 +3025,8 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
                                 "--provider-profile tej --json --strict"
                             ),
                             "purpose": (
-                                "用本機 fixture 驗證 live HTTP fetch path，含 TEJ profile "
-                                "auth/parameter smoke，不需要付費資料商 token。"
+                                "用本機測試 API 驗證 HTTP 取件流程，含 TEJ 設定與參數，"
+                                "不需要付費資料商 token。"
                             ),
                         },
                         "smoke_cli": (
@@ -3049,8 +3047,8 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
         "資料商設定檔",
         "資料商選擇矩陣",
         "資料商設定預覽",
-        "範例 JSON 合約",
-        "本機 fixture HTTP",
+        "樣本 JSON 格式檢查",
+        "本機測試 API",
         "正式 API 檢查",
         "請求格式",
         "必備欄位",
@@ -3066,7 +3064,7 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert rows[2]["狀態"] == "4 組 profile / 3 組需 token"
     assert "tej:token/document_type" in rows[2]["說明"]
     assert "custom:no-token/document_types" in rows[2]["說明"]
-    assert "custom local fixture" in rows[2]["說明"]
+    assert "本機測試 API" in rows[2]["說明"]
     assert rows[3]["狀態"] == "tej / token 已遮蔽"
     assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=tej" in rows[3]["指令"]
     assert "COMPANY_FILING_STRUCTURED_API_TOKEN=<token>" in rows[3]["指令"]

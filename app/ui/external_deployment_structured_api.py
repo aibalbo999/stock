@@ -73,13 +73,13 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
             "說明": _structured_filing_provider_setup_detail(provider_setup_preview),
         },
         {
-            "項目": "範例 JSON 合約",
+            "項目": "樣本 JSON 格式檢查",
             "狀態": _structured_filing_status_label(sample_contract.get("status") or "可執行"),
             "指令": structured_filing_sample_command(runtime),
             "說明": _structured_filing_sample_contract_detail(sample_contract),
         },
         {
-            "項目": "本機 fixture HTTP",
+            "項目": "本機測試 API",
             "狀態": _structured_filing_local_fixture_status(runtime),
             "指令": structured_filing_local_fixture_command(runtime),
             "說明": _structured_filing_local_fixture_detail(runtime),
@@ -317,7 +317,7 @@ def _structured_filing_local_fixture_status(runtime: dict) -> str:
     )
     if free_validation.get("sample_contract_ready") or runtime.get("sample_contract_ready"):
         return "可執行"
-    return "需先修 sample"
+    return "需先修樣本資料"
 
 
 def _structured_filing_local_fixture_detail(runtime: dict) -> str:

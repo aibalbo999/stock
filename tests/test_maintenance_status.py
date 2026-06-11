@@ -117,7 +117,7 @@ def test_optimization_progress_next_action_rows_compact_free_validation_commands
                 "external": True,
                 "action_type": "paid_external",
                 "cost_profile": "paid_external",
-                "free_validation_label": "sample + fixture + provider profile 可驗證",
+                "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
                 "free_validation_commands": [
                     ".venv/bin/python scripts/structured_company_filing_smoke.py --sample-json examples/structured_company_filing_sample.json --json",
                     ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",

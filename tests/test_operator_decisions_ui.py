@@ -554,7 +554,7 @@ def test_operator_secondary_actions_surface_free_validation_for_paid_external_ga
                     "label": "公司文件結構化 API 備援",
                     "action_type": "paid_external",
                     "free_validation_available": True,
-                    "free_validation_label": "sample + fixture + provider profile 可驗證",
+                    "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
                     "free_validation_commands": [
                         ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
                     ],
@@ -565,7 +565,7 @@ def test_operator_secondary_actions_surface_free_validation_for_paid_external_ga
                         "label": "公司文件結構化 API 備援",
                         "action_type": "paid_external",
                         "free_validation_available": True,
-                        "free_validation_label": "sample + fixture + provider profile 可驗證",
+                        "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
                         "free_validation_commands": [
                             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
                             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
@@ -582,7 +582,7 @@ def test_operator_secondary_actions_surface_free_validation_for_paid_external_ga
     )
 
     assert actions[0]["title"] == "驗證公司文件 API 格式"
-    assert "sample + fixture + provider profile 可驗證" in actions[0]["detail"]
+    assert "樣本資料 + 本機測試 API + 提供者設定可驗證" in actions[0]["detail"]
     assert "正式串 TEJ 或付費資料商前" in actions[0]["detail"]
     assert actions[0]["state"] == "attention"
     assert actions[0]["action_label"] == "查看免費驗證"
@@ -606,7 +606,7 @@ def test_operator_secondary_actions_keep_free_validation_visible_with_history_in
                         "label": "公司文件結構化 API 備援",
                         "action_type": "paid_external",
                         "free_validation_available": True,
-                        "free_validation_label": "sample + fixture + provider profile 可驗證",
+                        "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
                         "free_validation_commands": [
                             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
                             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",

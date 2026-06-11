@@ -20,6 +20,7 @@ from app.data_sources.company_filings import (
     structured_api_provider_setup_preview,
     structured_api_request_contract,
 )
+from scripts import structured_company_filing_smoke as structured_smoke
 
 
 def test_company_filing_structured_api_status_requires_provider_and_url(monkeypatch) -> None:
@@ -38,6 +39,7 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert status["configuration_ready"] is True
     assert status["provider"] == "tej"
     assert status["url_configured"] is True
+
     assert status["token_configured"] is True
     assert status["token_required"] is True
     assert status["configuration_check"] == {
@@ -163,6 +165,19 @@ def test_company_filing_structured_api_status_requires_provider_and_url(monkeypa
     assert sample_diagnostics["field_coverage"]["title"] >= 1
     assert sample_diagnostics["field_coverage"]["ticker_or_company_mention"] >= 1
     assert status["fallback_reason"] is None
+
+
+def test_structured_company_filing_smoke_format_uses_operator_language() -> None:
+    rendered = structured_smoke.format_structured_company_filing_smoke(
+        {
+            "status": "ready",
+            "ready": True,
+            "runtime": {"provider": "custom", "url_configured": True},
+        }
+    )
+
+    assert "公司文件結構化 API 檢查: ready" in rendered
+    assert "Structured company filing API smoke" not in rendered
 
 
 def test_company_filing_structured_api_status_flags_missing_required_token(

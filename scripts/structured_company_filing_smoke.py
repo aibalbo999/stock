@@ -55,7 +55,7 @@ async def structured_company_filing_smoke_report(
             "smoke_command": SMOKE_COMMAND,
             "remediation": (
                 "Configure COMPANY_FILING_STRUCTURED_API_PROVIDER and "
-                "COMPANY_FILING_STRUCTURED_API_URL before running the live contract smoke."
+                "COMPANY_FILING_STRUCTURED_API_URL before running the formal API check."
             ),
         }
     if fallback_reason:
@@ -283,7 +283,7 @@ def document_sample(document: Any) -> dict[str, Any]:
 
 def format_structured_company_filing_smoke(report: dict[str, Any]) -> str:
     lines = [
-        f"Structured company filing API smoke: {report['status']}",
+        f"公司文件結構化 API 檢查: {report['status']}",
         f"- ready: {str(bool(report.get('ready'))).lower()}",
     ]
     runtime = report.get("runtime") or {}
@@ -325,7 +325,7 @@ def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Smoke-test the configured structured company filing API contract."
+        description="Check the configured structured company filing API response format."
     )
     parser.add_argument("--ticker", default=DEFAULT_TICKER, help="Ticker to query.")
     parser.add_argument("--company-name", default=DEFAULT_COMPANY_NAME, help="Company name to query.")
@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=3, help="Maximum documents to request.")
     parser.add_argument(
         "--sample-json",
-        help="Validate a local sample JSON response contract without requiring a live external API.",
+        help="Validate a local sample JSON response format without requiring a formal external API.",
     )
     parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")

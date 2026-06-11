@@ -141,7 +141,8 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and '"資料商設定檔"' in external_deployment_structured_api_source
             and '"資料商選擇矩陣"' in external_deployment_structured_api_source
             and '"資料商設定預覽"' in external_deployment_structured_api_source
-            and '"範例 JSON 合約"' in external_deployment_structured_api_source
+            and '"樣本 JSON 格式檢查"' in external_deployment_structured_api_source
+            and '"本機測試 API"' in external_deployment_structured_api_source
             and '"正式 API 檢查"' in external_deployment_structured_api_source
             and '"請求格式"' in external_deployment_structured_api_source
             and '"必備欄位"' in external_deployment_structured_api_source

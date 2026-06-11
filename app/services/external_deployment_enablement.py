@@ -239,7 +239,7 @@ def _external_free_validation_profile(
     available = bool(sample_ready and local_fixture_available)
     return {
         "available": available,
-        "label": "sample + fixture + provider profile 可驗證" if available else "-",
+        "label": "樣本資料 + 本機測試 API + 提供者設定可驗證" if available else "-",
         "commands": command_texts,
     }
 

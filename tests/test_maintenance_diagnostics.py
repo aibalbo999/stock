@@ -992,15 +992,15 @@ def test_run_maintenance_diagnostic_action_summarizes_structured_sample_smoke_js
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "結構化文件 contract"
+    assert rows[0]["項目"] == "結構化文件格式檢查"
     assert rows[0]["狀態"] == "ready"
     assert rows[0]["Ready"] == "是"
     assert "documents=1" in rows[0]["數量"]
     assert "structured_company_filing_sample.json" in rows[0]["下一步"]
-    assert rows[1]["項目"] == "Structured API runtime"
+    assert rows[1]["項目"] == "結構化 API 設定"
     assert rows[1]["狀態"] == "not_configured"
     assert "url=False" in rows[1]["數量"]
-    assert rows[2]["項目"] == "Structured API request"
+    assert rows[2]["項目"] == "結構化 API 查詢"
     assert rows[2]["狀態"] == "2330"
     assert rows[2]["Ready"] == "台積電"
     assert rows[3]["項目"] == "2026 Q2 earnings materials"
@@ -1038,7 +1038,7 @@ def test_run_maintenance_diagnostic_action_summarizes_structured_fixture_smoke_j
             {
                 "ticker": "2330",
                 "document_type": "investor_presentation",
-                "title": "Local fixture HTTP document",
+                "title": "本機測試 API 文件",
                 "url": "https://example.com/fixture.pdf",
                 "text_length": 96,
             }
@@ -1062,16 +1062,16 @@ def test_run_maintenance_diagnostic_action_summarizes_structured_fixture_smoke_j
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "結構化文件 contract"
+    assert rows[0]["項目"] == "結構化文件格式檢查"
     assert rows[0]["狀態"] == "ready"
     assert rows[0]["Ready"] == "是"
     assert "documents=1" in rows[0]["數量"]
     assert "127.0.0.1:8794/filings" in rows[0]["下一步"]
-    assert rows[1]["項目"] == "Structured API runtime"
+    assert rows[1]["項目"] == "結構化 API 設定"
     assert rows[1]["狀態"] == "configured"
     assert rows[1]["Ready"] == "custom"
-    assert rows[2]["項目"] == "Structured API request"
-    assert rows[3]["項目"] == "Local fixture HTTP document"
+    assert rows[2]["項目"] == "結構化 API 查詢"
+    assert rows[3]["項目"] == "本機測試 API 文件"
 
 
 def test_run_maintenance_diagnostic_action_rejects_unknown_action() -> None:

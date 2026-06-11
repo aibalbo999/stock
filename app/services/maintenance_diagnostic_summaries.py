@@ -336,7 +336,7 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
     if runtime and not runtime.get("configuration_ready"):
         rows.append(
             _summary_row(
-                "Browser render config",
+                "瀏覽器渲染設定",
                 _dict_value(runtime, "configuration_check").get("status") or "disabled",
                 _yes_no(runtime.get("configuration_ready")),
                 str(runtime.get("provider") or "-"),
@@ -349,7 +349,7 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
 def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "結構化文件 contract",
+            "結構化文件格式檢查",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
             _counts(
@@ -367,7 +367,7 @@ def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
     if runtime:
         rows.append(
             _summary_row(
-                "Structured API runtime",
+                "結構化 API 設定",
                 "configured" if runtime.get("configured") else "not_configured",
                 str(runtime.get("provider") or "-"),
                 _counts(
@@ -381,7 +381,7 @@ def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
     if request:
         rows.append(
             _summary_row(
-                "Structured API request",
+                "結構化 API 查詢",
                 str(request.get("ticker") or "-"),
                 str(request.get("company_name") or "-"),
                 ",".join(str(item) for item in request.get("document_types") or []) or "-",
@@ -393,7 +393,7 @@ def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
             continue
         rows.append(
             _summary_row(
-                document.get("title") or "Document sample",
+                document.get("title") or "文件樣本",
                 document.get("document_type") or "-",
                 document.get("ticker") or "-",
                 _counts(text=document.get("text_length")),
@@ -405,7 +405,7 @@ def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
             continue
         rows.append(
             _summary_row(
-                "Structured API row error",
+                "結構化 API 資料列錯誤",
                 error.get("category") or "-",
                 error.get("row_index") if "row_index" in error else "-",
                 ",".join(str(item) for item in error.get("required_fields") or []) or "-",

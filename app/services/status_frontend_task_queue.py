@@ -43,6 +43,13 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and "task_submission_smoke.py" in background_tasks_source
             and "task_queue_smoke_hint(task_queue)" in background_tasks_source
         ),
+        "ui_task_queue_operator_hint_enabled": (
+            "def task_queue_operator_hint(" in background_tasks_source
+            and "def task_queue_smoke_label(" in background_tasks_source
+            and "task_queue_operator_hint(task_queue)" in background_tasks_source
+            and "系統設定 > 維護 > 背景任務觀測" in background_tasks_source
+            and "任務送出 smoke" in background_tasks_source
+        ),
         "ui_task_queue_health_panel_extracted": "def task_queue_health_rows("
         in task_queue_diagnostics_source
         and "def task_queue_health_alert(" in task_queue_diagnostics_source

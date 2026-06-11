@@ -191,9 +191,40 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
     assert "last_data_task_id" not in fake_st.session_state
     assert fake_st.errors == [
         "股價刷新任務送出失敗：Redis broker/backend 未連線。 "
-        "可用指令：.venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
+        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
     ]
     assert fake_st.successes == []
+
+
+def test_task_queue_preflight_operator_hint_hides_raw_cli(monkeypatch) -> None:
+    fake_st = FakeStreamlit()
+    monkeypatch.setattr(background_tasks, "st", fake_st)
+    monkeypatch.setattr(
+        background_tasks,
+        "api_task_queue_status",
+        lambda: {
+            "ready": False,
+            "broker_configured": True,
+            "broker_ok": False,
+            "backend_ok": False,
+            "submission_contract_ready": True,
+            "celery_app_available": True,
+            "missing_task_exports": [],
+            "task_names_match_expected": True,
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+                ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
+            ],
+        },
+    )
+
+    assert background_tasks.task_queue_preflight_ready(error_message="任務送出失敗") is False
+
+    assert fake_st.errors
+    error = fake_st.errors[0]
+    assert ".venv/bin/python" not in error
+    assert "系統設定 > 維護 > 背景任務觀測" in error
+    assert "任務送出 smoke" in error
 
 
 def test_submit_background_task_warns_and_continues_when_preflight_status_unavailable(
@@ -251,12 +282,31 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
     assert fake_st.session_state["last_data_task_id"] == "task-queued-without-worker"
     assert fake_st.warnings == [
         "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待。 "
-        "可用指令：.venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
+        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
     ]
     assert fake_st.successes == [
         "已送出股價刷新背景任務：task-queued-without-worker"
         "（已排隊；Celery worker 未回應，可能尚未開始執行。）"
     ]
+
+
+def test_task_queue_worker_warning_operator_hint_hides_raw_cli() -> None:
+    warning = background_tasks.task_queue_worker_warning(
+        {
+            "ready": True,
+            "worker_ping_checked": True,
+            "worker_online": False,
+            "worker_ping_error": None,
+            "smoke_commands": [
+                ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping",
+                ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
+            ],
+        }
+    )
+
+    assert ".venv/bin/python" not in warning
+    assert "系統設定 > 維護 > 背景任務觀測" in warning
+    assert "任務送出 smoke" in warning
 
 
 def test_task_queue_submission_success_note_explains_worker_offline_queue_state() -> None:

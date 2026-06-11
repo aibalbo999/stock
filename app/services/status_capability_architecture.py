@@ -297,6 +297,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_task_queue_preflight_cache_enabled")
             and frontend_status.get("ui_task_queue_worker_warning_enabled")
             and frontend_status.get("ui_task_queue_submission_smoke_hint_enabled")
+            and frontend_status.get("ui_task_queue_operator_hint_enabled")
             and frontend_status.get("ui_task_queue_health_panel_extracted")
             and frontend_status.get("ui_task_queue_repair_guidance_enabled")
             and frontend_status.get("ui_maintenance_diagnostic_actions_enabled")

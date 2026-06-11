@@ -172,9 +172,7 @@ def task_queue_unready_message(task_queue: dict) -> str:
         reasons.append("背景任務提交契約尚未就緒")
     if not reasons:
         reasons.append("背景任務 queue 尚未就緒")
-    hint_command = task_queue_smoke_hint(task_queue)
-    hint = f" 可用指令：{hint_command}" if hint_command else ""
-    return "；".join(reasons) + "。" + hint
+    return "；".join(reasons) + "。" + task_queue_operator_hint(task_queue)
 
 
 def task_queue_worker_warning(task_queue: dict) -> str:
@@ -184,9 +182,10 @@ def task_queue_worker_warning(task_queue: dict) -> str:
         detail = f"；錯誤：{task_queue['worker_ping_error']}"
     else:
         detail = ""
-    hint_command = task_queue_smoke_hint(task_queue)
-    hint = f" 可用指令：{hint_command}" if hint_command else ""
-    return f"背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待{detail}。{hint}"
+    return (
+        "背景任務 queue 可送出，但 Celery worker 未回應，任務可能會排隊等待"
+        f"{detail}。{task_queue_operator_hint(task_queue)}"
+    )
 
 
 def task_queue_submission_success_note(task_queue: dict | None) -> str:
@@ -212,6 +211,29 @@ def task_queue_smoke_hint(task_queue: dict | None) -> str:
         if "task_submission_smoke.py" in command:
             return command
     return smoke_commands[0] if smoke_commands else ""
+
+
+def task_queue_operator_hint(task_queue: dict | None) -> str:
+    smoke_label = task_queue_smoke_label(task_queue)
+    if smoke_label:
+        return (
+            " 請到系統設定 > 維護 > 背景任務觀測查看修復指令，"
+            f"或執行「{smoke_label}」。"
+        )
+    return " 請到系統設定 > 維護 > 背景任務觀測查看修復指令。"
+
+
+def task_queue_smoke_label(task_queue: dict | None) -> str:
+    command = task_queue_smoke_hint(task_queue).lower()
+    if not command:
+        return ""
+    if "task_submission_smoke.py" in command:
+        return "任務送出 smoke"
+    if "inspect ping" in command or "celery" in command:
+        return "Celery worker ping"
+    if "upgrade_audit.py" in command:
+        return "升級稽核"
+    return "背景任務 smoke"
 
 
 def _task_id(task_response: Any) -> str:

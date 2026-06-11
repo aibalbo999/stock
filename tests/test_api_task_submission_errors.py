@@ -23,7 +23,13 @@ def test_raise_task_queue_unavailable_preserves_structured_detail() -> None:
     assert raised.value.detail["retryable"] is True
     assert raised.value.detail["error_type"] == "RuntimeError"
     assert raised.value.detail["error_category"] == "task_queue"
-    assert raised.value.detail["error_summary"] == "Redis/Celery queue 或 worker 異常"
+    assert raised.value.detail["error_summary"] == "背景任務佇列或背景執行器異常"
+    assert raised.value.detail["next_steps"] == [
+        "到系統設定 > 維護 > 背景任務觀測確認提交、佇列與背景執行器狀態。",
+        "執行「背景執行器連線檢查」診斷；必要時重新啟動背景任務服務。",
+    ]
+    assert "Redis/Celery" not in str(raised.value.detail)
+    assert "worker" not in str(raised.value.detail)
     assert raised.value.detail["context"] == {"task": "data_operation"}
 
 

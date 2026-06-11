@@ -276,6 +276,40 @@ def test_run_task_api_visual_rag_diagnostic_points_to_runtime_status() -> None:
     assert any("免費額度" in step for step in diagnostic["next_steps"])
 
 
+def test_run_task_api_task_failure_diagnostic_uses_operator_queue_guidance() -> None:
+    diagnostic = RunTaskApiService._task_failure_diagnostic(
+        status="failed",
+        error="Redis broker connection refused; worker offline",
+        operation="market_refresh",
+        retryable=True,
+    )
+
+    assert diagnostic["category"] == "task_queue"
+    assert diagnostic["summary"] == "背景任務佇列或背景執行器異常"
+    assert diagnostic["next_steps"] == [
+        "到系統設定 > 維護 > 背景任務觀測確認提交、佇列與背景執行器狀態。",
+        "執行「背景執行器連線檢查」診斷；必要時重新啟動背景任務服務。",
+    ]
+    rendered = str(diagnostic)
+    assert "Redis/Celery" not in rendered
+    assert "worker" not in rendered
+    assert "task_queue.ready" not in rendered
+
+
+def test_run_task_api_unknown_failure_guidance_hides_run_payload_jargon() -> None:
+    diagnostic = RunTaskApiService._task_failure_diagnostic(
+        status="failed",
+        error="boom",
+        operation="task_status",
+        retryable=False,
+    )
+
+    assert diagnostic["category"] == "unknown"
+    assert diagnostic["next_steps"][0] == "查看任務狀態詳情與任務輸入摘要。"
+    assert "run payload" not in str(diagnostic)
+    assert "drilldown" not in str(diagnostic)
+
+
 def test_run_task_api_alerts_on_queue_errors_and_repeated_failure_categories() -> None:
     rows = [
         {

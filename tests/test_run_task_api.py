@@ -497,7 +497,9 @@ def test_run_task_service_reports_failure_progress_before_run_exists() -> None:
     assert status["retry_kind"] is None
     assert status["status_endpoint"] == "GET /tasks/task-failed"
     assert status["retry_endpoint"] is None
-    assert "查看任務狀態 drilldown" in status["next_steps"][0]
+    assert status["next_steps"][0] == "查看任務狀態詳情與任務輸入摘要。"
+    assert "drilldown" not in str(status["next_steps"])
+    assert "run payload" not in str(status["next_steps"])
     assert status["progress"]["status"] == "failed"
     assert status["progress"]["current_step"] == "task_failed"
     assert status["execution_context"]["exception_type"] == "RuntimeError"

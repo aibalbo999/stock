@@ -23,11 +23,11 @@ def task_queue_unavailable_detail(
         "error_type": type(exc).__name__,
         "error_category": diagnostic.get("category") or "task_queue",
         "error_severity": diagnostic.get("severity") or "error",
-        "error_summary": diagnostic.get("summary") or "Redis/Celery queue 或 worker 異常",
-        "next_steps": [
-            "確認 Redis broker 是否啟動且 API 可連線。",
-            "確認 Celery worker/beat 是否正在執行。",
-            "服務恢復後重新送出背景任務，或改用同步刷新流程。",
+        "error_summary": diagnostic.get("summary") or "背景任務佇列或背景執行器異常",
+        "next_steps": diagnostic.get("next_steps")
+        or [
+            "到系統設定 > 維護 > 背景任務觀測確認提交、佇列與背景執行器狀態。",
+            "服務恢復後重新送出背景任務。",
         ],
     }
     if context:
@@ -57,9 +57,9 @@ def task_submission_failed_detail(
         "error_severity": diagnostic.get("severity") or "error",
         "error_summary": diagnostic.get("summary") or "未分類任務失敗",
         "next_steps": [
-            "查看 API log 中同一時間的 exception traceback。",
-            "確認背景任務 payload、Celery task 匯出與 service wiring 是否一致。",
-            "若 Redis/Celery 無法連線，應改回 task_queue_unavailable 並依 503 指引修復。",
+            "查看系統日誌中同一時間的錯誤明細。",
+            "確認背景任務輸入內容、任務註冊與後端服務設定是否一致。",
+            "若背景任務服務無法連線，請依 503 佇列未就緒指引修復。",
         ],
     }
     if context:

@@ -368,8 +368,10 @@ def test_operations_router_maps_task_queue_errors_to_503() -> None:
     assert queue_detail["operation"] == "market_refresh"
     assert queue_detail["retryable"] is True
     assert queue_detail["error_category"] == "task_queue"
-    assert queue_detail["error_summary"] == "Redis/Celery queue 或 worker 異常"
+    assert queue_detail["error_summary"] == "背景任務佇列或背景執行器異常"
     assert queue_detail["next_steps"]
+    assert "Redis/Celery" not in str(queue_detail)
+    assert "worker" not in str(queue_detail)
     assert queue_detail["context"] == {
         "task": "data_operation",
         "failure_stage": "task_submission",

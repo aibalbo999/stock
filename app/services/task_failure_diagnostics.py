@@ -69,7 +69,7 @@ TASK_FAILURE_CATEGORIES = {
     },
     "task_queue": {
         "severity": "error",
-        "summary": "Redis/Celery queue 或 worker 異常",
+        "summary": "背景任務佇列或背景執行器異常",
         "keywords": (
             "redis",
             "celery",
@@ -81,8 +81,8 @@ TASK_FAILURE_CATEGORIES = {
             "connection refused",
         ),
         "next_steps": [
-            "確認 /services/status 的 task_queue.ready 與 worker_online。",
-            "執行 Celery inspect ping 或重新啟動 Redis/Celery worker。",
+            "到系統設定 > 維護 > 背景任務觀測確認提交、佇列與背景執行器狀態。",
+            "執行「背景執行器連線檢查」診斷；必要時重新啟動背景任務服務。",
         ],
     },
     "runtime_storage": {
@@ -98,7 +98,7 @@ TASK_FAILURE_CATEGORIES = {
         ),
         "next_steps": [
             "確認 report_dir、SQLite/資料庫檔案與備份目錄存在且目前程序有讀寫權限。",
-            "若剛重啟過 Redis/Celery/API，重新啟動服務並重送任務以取得新的完整 traceback。",
+            "若剛重啟過背景任務服務或 API，重新啟動服務並重送任務以取得完整錯誤明細。",
         ],
     },
     "external_config": {
@@ -300,7 +300,7 @@ def task_failure_diagnostic(
         "severity": "warning" if retryable else "error",
         "summary": "未分類任務失敗",
         "next_steps": [
-            "查看任務狀態 drilldown 與 run payload。",
+            "查看任務狀態詳情與任務輸入摘要。",
             "若錯誤可重現，補上錯誤分類規則或手動重新送出。",
         ],
     }

@@ -24,6 +24,16 @@ FAILURE_STAGE_LABELS = {
     "payload_validation": "輸入檢查",
     "queue_preflight": "佇列預檢",
 }
+ERROR_TEXT_REPLACEMENTS = {
+    "Redis/Celery queue 或 worker": "背景任務佇列或背景執行器",
+    "Redis/Celery 與 worker": "背景任務佇列與背景執行器",
+    "Redis/Celery queue": "背景任務佇列",
+    "Redis/Celery": "背景任務服務",
+    "/services/status": "系統設定 > 維護 > 背景任務觀測",
+    "task_queue.ready": "背景任務提交狀態",
+    "worker_online": "背景執行器是否在線",
+    "worker": "背景執行器",
+}
 
 
 def api_post(path: str, payload: dict, *, timeout: float = API_WRITE_TIMEOUT_SECONDS) -> dict:
@@ -81,7 +91,7 @@ def request_error_message(exc: requests.RequestException) -> str:
 
 
 def _request_diagnostic_message(detail: dict) -> str:
-    summary = str(detail.get("error_summary") or "").strip()
+    summary = _operator_error_text(detail.get("error_summary"))
     category = str(detail.get("error_category") or "").strip()
     severity = str(detail.get("error_severity") or "").strip()
     if category == "task_queue":
@@ -127,10 +137,14 @@ def _request_next_steps(detail: dict) -> list[str]:
     category = str(detail.get("error_category") or "").strip()
     if category == "task_queue":
         return [
-            "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。",
+            "到系統設定 > 維護 > 背景任務觀測確認背景任務佇列與背景執行器。",
             "修復後重新送出任務。",
         ]
-    return [str(step) for step in detail.get("next_steps") or [] if str(step).strip()]
+    return [
+        _operator_error_text(step)
+        for step in detail.get("next_steps") or []
+        if str(step).strip()
+    ]
 
 
 def _operation_label(operation: str) -> str:
@@ -146,6 +160,17 @@ def _safe_int(value: object, *, default: int = 0) -> int:
         return int(value or default)
     except (TypeError, ValueError):
         return default
+
+
+def _operator_error_text(value: object) -> str:
+    text = str(value or "").strip()
+    for raw, label in ERROR_TEXT_REPLACEMENTS.items():
+        text = text.replace(raw, label)
+    for label in sorted(set(ERROR_TEXT_REPLACEMENTS.values()), key=len, reverse=True):
+        text = text.replace(f" {label} ", label)
+        text = text.replace(f" {label}", label)
+        text = text.replace(f"{label} ", label)
+    return text
 
 
 def queue_data_operation(operation: str, payload: dict) -> dict:

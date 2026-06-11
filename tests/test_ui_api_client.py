@@ -141,12 +141,14 @@ def test_request_error_message_includes_submission_failure_category() -> None:
 
     assert message == (
         "背景任務送出時發生未預期錯誤。 "
-        "狀況：Redis/Celery queue 或 worker 異常 "
+        "狀況：背景任務佇列或背景執行器異常 "
         "診斷：操作：市場資料刷新；股票：2330（1 檔）；階段：任務送出 "
-        "建議：到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+        "建議：到系統設定 > 維護 > 背景任務觀測確認背景任務佇列與背景執行器。；"
         "修復後重新送出任務。"
     )
     assert "task_queue/error" not in message
     assert "market_refresh" not in message
     assert "task_submission" not in message
     assert "/services/status" not in message
+    assert "Redis/Celery" not in message
+    assert "worker" not in message

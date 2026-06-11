@@ -31,6 +31,10 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and "def _operation_label(" in api_client_source
             and "def _failure_stage_label(" in api_client_source
             and "系統設定 > 維護 > 背景任務觀測" in api_client_source
+            and '"Redis/Celery 與 worker": "背景任務佇列與背景執行器"'
+            in api_client_source
+            and "背景任務佇列與背景執行器" in api_client_source
+            and "確認 Redis/Celery 與 worker" not in api_client_source
             and "task_queue/error" not in api_client_source
         ),
         "ui_task_queue_preflight_enabled": "def task_queue_preflight_ready("

@@ -364,6 +364,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def scope_source_summary(" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "def _render_scope_source_summary(" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "scope-source-summary" in combined
+    assert (
+        "from app.ui.system_settings_scope_view import scope_source_summary_html"
+        in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
+    )
+    assert "import streamlit" not in ui.SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE.read_text()
+    assert "def scope_source_summary_html(" in ui.SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE.read_text()
+    assert 'class="scope-source-summary' in ui.SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE.read_text()
+    assert 'class="scope-source-summary' not in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "系統靜態股票範圍" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "不是本次報告的動態候選名單" in ui.SYSTEM_SETTINGS_SCOPE_SOURCE.read_text()
     assert "def company_filing_visual_rag_model_chain_rows(" in source

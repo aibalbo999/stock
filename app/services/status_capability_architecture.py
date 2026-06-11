@@ -311,6 +311,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_maintenance_overview_metric_operator_labels_enabled")
             and frontend_status.get("ui_maintenance_cleanup_confirmation_gate_enabled")
             and frontend_status.get("ui_system_settings_tabs_extracted")
+            and frontend_status.get("ui_system_settings_scope_view_extracted")
             and frontend_status.get("ui_scope_static_whitelist_source_summary_enabled")
             and frontend_status.get("ui_schedule_settings_save_confirmation_enabled")
             and frontend_status.get("ui_api_client_extracted")

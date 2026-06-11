@@ -64,6 +64,7 @@ ANALYSIS_WORKSPACE_VIEW_SOURCE = Path("app/ui/analysis_workspace_view.py")
 MAINTENANCE_INCIDENT_PRESENTER_SOURCE = Path("app/ui/maintenance_incident_presenter.py")
 SYSTEM_SETTINGS_SOURCE = Path("app/ui/system_settings.py")
 SYSTEM_SETTINGS_SCOPE_SOURCE = Path("app/ui/system_settings_scope.py")
+SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE = Path("app/ui/system_settings_scope_view.py")
 SYSTEM_SETTINGS_SCHEDULE_SOURCE = Path("app/ui/system_settings_schedule.py")
 UI_SOURCE_FILES = [
     DASHBOARD_SOURCE,
@@ -135,6 +136,7 @@ UI_SOURCE_FILES = [
     Path("app/ui/data_enrichment_runtime.py"),
     SYSTEM_SETTINGS_SOURCE,
     SYSTEM_SETTINGS_SCOPE_SOURCE,
+    SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE,
     SYSTEM_SETTINGS_SCHEDULE_SOURCE,
     Path("app/ui/system_settings_maintenance.py"),
 ]

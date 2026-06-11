@@ -14,6 +14,7 @@ def frontend_settings_core_status(source_context: FrontendSourceContext) -> dict
     maintenance_status_source = ui_sources["maintenance_status.py"]
     system_settings_source = ui_sources["system_settings.py"]
     system_settings_scope_source = ui_sources["system_settings_scope.py"]
+    system_settings_scope_view_source = ui_sources["system_settings_scope_view.py"]
     system_settings_schedule_source = ui_sources["system_settings_schedule.py"]
     return {
         "frontend_settings_core_status_extracted": True,
@@ -45,10 +46,18 @@ def frontend_settings_core_status(source_context: FrontendSourceContext) -> dict
             "app/ui/system_settings_scope.py",
             "app/ui/system_settings_schedule.py",
         ],
+        "ui_system_settings_scope_view_extracted": (
+            "from app.ui.system_settings_scope_view import scope_source_summary_html"
+            in system_settings_scope_source
+            and "import streamlit" not in system_settings_scope_view_source
+            and "def scope_source_summary_html(" in system_settings_scope_view_source
+            and 'class="scope-source-summary' in system_settings_scope_view_source
+            and 'class="scope-source-summary' not in system_settings_scope_source
+        ),
         "ui_scope_static_whitelist_source_summary_enabled": (
             "def scope_source_summary(" in system_settings_scope_source
             and "def _render_scope_source_summary(" in system_settings_scope_source
-            and 'class="scope-source-summary' in system_settings_scope_source
+            and 'class="scope-source-summary' in system_settings_scope_view_source
             and "系統靜態股票範圍" in system_settings_scope_source
             and "不是本次報告的動態候選名單" in system_settings_scope_source
             and "若任務被白名單或輸入擋下" in system_settings_scope_source

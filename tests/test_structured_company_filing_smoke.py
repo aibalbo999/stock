@@ -4,6 +4,8 @@ import asyncio
 from datetime import date
 import json
 
+import pytest
+
 from app.models.schemas import CompanyFilingDocument, Source
 from scripts import structured_company_filing_smoke as smoke
 
@@ -144,7 +146,7 @@ def test_structured_company_filing_smoke_reports_degraded_for_bad_sample_json(
     assert report["contract_diagnostics"]["row_container"] == "documents"
     assert report["contract_diagnostics"]["conversion_ratio"] == 0.0
     assert report["errors"][0]["category"] == "row_not_convertible"
-    assert "none converted" in report["remediation"]
+    assert "無法轉成公司文件" in report["remediation"]
     assert f"--sample-json {sample_path}" in report["smoke_command"]
     assert smoke.smoke_exit_code(report, strict=False) == 1
 
@@ -203,8 +205,23 @@ def test_structured_company_filing_smoke_reports_degraded_when_no_documents(monk
 
     assert report["status"] == "degraded"
     assert report["ready"] is False
-    assert "produced no convertible" in report["remediation"]
+    assert "沒有可轉成公司文件的資料" in report["remediation"]
     assert smoke.smoke_exit_code(report, strict=False) == 1
+
+
+def test_structured_company_filing_smoke_help_uses_operator_language(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        smoke.main(["--help"])
+
+    output = capsys.readouterr().out
+    assert exc_info.value.code == 0
+    assert "檢查已設定的公司文件結構化 API 回應格式" in output
+    assert "要查詢的股票代號" in output
+    assert "可重複指定" in output
+    assert "未就緒時回傳非 0 結束碼" in output
+    assert "輸出 JSON，方便工具讀取" in output
+    assert "Print machine-readable JSON" not in output
+    assert "Return non-zero when not ready" not in output
 
 
 def test_structured_company_filing_smoke_reports_errors(monkeypatch) -> None:

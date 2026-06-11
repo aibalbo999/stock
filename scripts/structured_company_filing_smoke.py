@@ -54,8 +54,8 @@ async def structured_company_filing_smoke_report(
             "runtime": runtime,
             "smoke_command": SMOKE_COMMAND,
             "remediation": (
-                "Configure COMPANY_FILING_STRUCTURED_API_PROVIDER and "
-                "COMPANY_FILING_STRUCTURED_API_URL before running the formal API check."
+                "執行正式 API 檢查前，請先設定 COMPANY_FILING_STRUCTURED_API_PROVIDER "
+                "與 COMPANY_FILING_STRUCTURED_API_URL。"
             ),
         }
     if fallback_reason:
@@ -85,11 +85,11 @@ async def structured_company_filing_smoke_report(
     remediation = None
     if status == "degraded":
         remediation = (
-            "The API responded but produced no convertible company filing documents. "
-            "Check that rows include title plus text/content/summary and match the requested ticker/company."
+            "API 有回應，但沒有可轉成公司文件的資料。請確認資料列包含 title "
+            "以及 text/content/summary，且符合查詢的股票或公司。"
         )
     elif status == "failed":
-        remediation = "The configured structured API could not be fetched or parsed; inspect errors."
+        remediation = "已設定的結構化 API 無法抓取或解析；請檢查錯誤明細。"
     return {
         "status": status,
         "ready": status == "ready",
@@ -183,12 +183,12 @@ def structured_company_filing_sample_report(
     elif rows:
         status = "degraded"
         remediation = (
-            "Sample JSON rows were readable but none converted to company filing documents. "
-            "Check title/text fields, ticker/company mention, and document_type filtering."
+            "Sample JSON 資料列可讀，但無法轉成公司文件。請檢查 title/text 欄位、"
+            "股票或公司名稱是否出現，以及 document_type 篩選是否正確。"
         )
     else:
         status = "failed"
-        remediation = "Sample JSON did not contain documents/data/results rows."
+        remediation = "Sample JSON 未包含 documents/data/results 資料列。"
     contract_diagnostics = structured_api_payload_contract_diagnostics(
         payload,
         ticker=ticker,
@@ -239,7 +239,7 @@ def structured_company_filing_sample_error_report(
         "documents": [],
         "errors": [{"category": category, "message": message}],
         "smoke_command": smoke_command,
-        "remediation": "Provide a readable JSON file shaped as documents/data/results rows.",
+        "remediation": "請提供可讀取、且格式為 documents/data/results 資料列的 JSON 檔案。",
     }
 
 
@@ -333,23 +333,23 @@ def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check the configured structured company filing API response format."
+        description="檢查已設定的公司文件結構化 API 回應格式。"
     )
-    parser.add_argument("--ticker", default=DEFAULT_TICKER, help="Ticker to query.")
-    parser.add_argument("--company-name", default=DEFAULT_COMPANY_NAME, help="Company name to query.")
+    parser.add_argument("--ticker", default=DEFAULT_TICKER, help="要查詢的股票代號。")
+    parser.add_argument("--company-name", default=DEFAULT_COMPANY_NAME, help="要查詢的公司名稱。")
     parser.add_argument(
         "--document-type",
         dest="document_types",
         action="append",
-        help="Requested document type. Can be repeated.",
+        help="要查詢的文件類型，可重複指定。",
     )
-    parser.add_argument("--limit", type=int, default=3, help="Maximum documents to request.")
+    parser.add_argument("--limit", type=int, default=3, help="最多查詢的文件數。")
     parser.add_argument(
         "--sample-json",
-        help="Validate a local sample JSON response format without requiring a formal external API.",
+        help="驗證本機 sample JSON 回應格式，不需要正式外部 API。",
     )
-    parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="未就緒時回傳非 0 結束碼。")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     report = asyncio.run(

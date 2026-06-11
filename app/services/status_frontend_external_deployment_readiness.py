@@ -147,6 +147,16 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source
         ),
+        "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled": (
+            "action_confirmed = st.checkbox(" in maintenance_deployment_panel_source
+            and 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"'
+            in maintenance_deployment_panel_source
+            and "我了解這會送出後續診斷背景任務" in maintenance_deployment_panel_source
+            and "避免誤觸後續診斷" in maintenance_deployment_panel_source
+            and "disabled=not action_confirmed" in maintenance_deployment_panel_source
+            and 'f"/tasks/maintenance-diagnostic/{action_id}"'
+            in maintenance_deployment_panel_source
+        ),
         "ui_maintenance_operations_path": "app/ui/maintenance_deployment_presenter.py",
     }
 

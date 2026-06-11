@@ -340,9 +340,17 @@ def _render_post_run_diagnostic_actions(post_run_rows: list[dict]) -> None:
         return
     st.caption("可直接執行的後續診斷")
     for action_id in action_ids:
+        action_confirmed = st.checkbox(
+            "我了解這會送出後續診斷背景任務",
+            value=False,
+            key=f"maintenance_post_run_diagnostic_confirm_{action_id}",
+        )
+        if not action_confirmed:
+            st.caption("勾選確認後才會啟用後續診斷，避免誤觸後續診斷。")
         if st.button(
             f"執行 {action_id}",
             key=f"maintenance_post_run_diagnostic_{action_id}",
+            disabled=not action_confirmed,
         ):
             submit_api_task(
                 f"/tasks/maintenance-diagnostic/{action_id}",

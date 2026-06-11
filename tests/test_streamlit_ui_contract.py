@@ -680,6 +680,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"可執行診斷"' in source
     assert "可直接執行的後續診斷" in source
     assert "maintenance_post_run_diagnostic_" in source
+    assert 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"' in source
+    assert "disabled=not action_confirmed" in source
     assert "confirm_maintenance_operation" in source
     assert "maintenance_run_operation" in source
     assert "st.session_state.get(LAST_MAINTENANCE_OPERATION_TASK_KEY)" in source

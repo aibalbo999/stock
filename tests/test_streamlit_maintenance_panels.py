@@ -841,6 +841,124 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
     ]
 
 
+def test_post_run_diagnostic_actions_require_confirmation_before_submit(monkeypatch) -> None:
+    from app.ui import maintenance_deployment_panel
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {}
+            self.buttons: list[dict] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict] = []
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") == "maintenance_post_run_diagnostic_upgrade_audit" and not (
+                kwargs.get("disabled")
+            )
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+    monkeypatch.setattr(maintenance_deployment_panel, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_deployment_panel,
+        "submit_api_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    maintenance_deployment_panel._render_post_run_diagnostic_actions(
+        [{"可執行診斷": "upgrade_audit"}]
+    )
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出後續診斷背景任務",
+            "value": False,
+            "key": "maintenance_post_run_diagnostic_confirm_upgrade_audit",
+        }
+    ]
+    assert fake_st.buttons == [
+        {
+            "label": "執行 upgrade_audit",
+            "key": "maintenance_post_run_diagnostic_upgrade_audit",
+            "disabled": True,
+        }
+    ]
+    assert any("避免誤觸後續診斷" in caption for caption in fake_st.captions)
+    assert submitted == []
+
+
+def test_post_run_diagnostic_actions_submit_after_confirmation(monkeypatch) -> None:
+    from app.ui import maintenance_deployment_panel
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {}
+            self.buttons: list[dict] = []
+            self.checkboxes: list[dict] = []
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return key == "maintenance_post_run_diagnostic_confirm_upgrade_audit"
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") == "maintenance_post_run_diagnostic_upgrade_audit" and not (
+                kwargs.get("disabled")
+            )
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+    monkeypatch.setattr(maintenance_deployment_panel, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_deployment_panel,
+        "submit_api_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    maintenance_deployment_panel._render_post_run_diagnostic_actions(
+        [{"可執行診斷": "upgrade_audit"}]
+    )
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出後續診斷背景任務",
+            "value": False,
+            "key": "maintenance_post_run_diagnostic_confirm_upgrade_audit",
+        }
+    ]
+    assert fake_st.buttons == [
+        {
+            "label": "執行 upgrade_audit",
+            "key": "maintenance_post_run_diagnostic_upgrade_audit",
+            "disabled": False,
+        }
+    ]
+    assert submitted == [
+        (
+            ("/tasks/maintenance-diagnostic/upgrade_audit", {}),
+            {
+                "task_state_key": "last_post_run_diagnostic_task_id",
+                "status_state_keys": ("refresh_maintenance_diagnostic_task_status_status",),
+                "success_message": "已送出後續診斷背景任務",
+                "error_message": "後續診斷執行失敗",
+                "task_type_state_key": "last_post_run_diagnostic_type",
+                "task_type": "upgrade_audit",
+            },
+        )
+    ]
+
+
 def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     helpers = load_report_helpers()
     task_summary = {

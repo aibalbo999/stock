@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from app.ui.api_actions import run_api_action_or_none
@@ -14,6 +16,90 @@ from app.ui.task_failure_diagnostics import (
 
 TASK_STATUS_QUEUED_POLL_SECONDS = 8
 TASK_STATUS_RETRY_POLL_SECONDS = 15
+
+
+def task_action_preflight_summary(
+    task_status: dict,
+    *,
+    action: str,
+    confirmed: bool,
+) -> dict[str, str]:
+    action_key = str(action or "").strip().casefold()
+    task_id = str(task_status.get("task_id") or "-")
+    status = str(task_status.get("status") or "UNKNOWN").upper()
+    operation = str(task_status.get("operation") or "-")
+    detail_parts = [
+        f"Task {task_id}",
+        f"狀態 {status}",
+        f"操作 {operation}",
+    ]
+
+    if action_key == "retry":
+        retry_kind = str(task_status.get("retry_kind") or "-")
+        detail = "｜".join([*detail_parts, f"重試類型 {retry_kind}"])
+        if task_status.get("retryable") is False:
+            return {
+                "state": "blocked",
+                "label": "任務操作摘要",
+                "title": "此任務不支援一鍵重試",
+                "detail": detail,
+                "next_step": str(
+                    task_status.get("next_action")
+                    or "請依失敗診斷修正輸入或外部設定後，從原本入口重新送出。"
+                ),
+                "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
+            }
+        if not confirmed:
+            return {
+                "state": "attention",
+                "label": "任務操作摘要",
+                "title": "準備重試背景任務",
+                "detail": detail,
+                "next_step": "勾選確認後，再按「重試任務」重新送出背景任務。",
+                "impact": "會重新排隊並可能再次消耗模型、外部資料源或 API 額度；若錯誤類型是 quota，建議先確認額度是否恢復。",
+            }
+        return {
+            "state": "ready",
+            "label": "任務操作摘要",
+            "title": "可以重試背景任務",
+            "detail": detail,
+            "next_step": "按「重試任務」重新送出；送出後請查看新的 task id 與輪詢狀態。",
+            "impact": "會重新排隊並可能再次消耗模型、外部資料源或 API 額度；完成前避免重複按重試。",
+        }
+
+    detail = "｜".join(detail_parts)
+    if not confirmed:
+        return {
+            "state": "attention",
+            "label": "任務操作摘要",
+            "title": "準備取消背景任務",
+            "detail": detail,
+            "next_step": "勾選確認後，再按「取消任務」送出取消要求。",
+            "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+        }
+    return {
+        "state": "ready",
+        "label": "任務操作摘要",
+        "title": "可以送出取消要求",
+        "detail": detail,
+        "next_step": "按「取消任務」通知背景任務停止；取消後請刷新狀態確認是否已停止。",
+        "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+    }
+
+
+def render_task_action_preflight_summary(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    st.markdown(
+        f"""<section class="task-action-preflight-summary is-{escape(summary.get("state", "attention"))}" aria-label="任務操作送出前摘要">
+<span>{escape(summary.get("label", "任務操作摘要"))}</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+<small>{escape(summary.get("impact", ""))}</small>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def render_task_status(task_status: dict) -> None:
@@ -370,6 +456,13 @@ def _render_task_status_panel_controls(
         )
         if not cancel_confirmed:
             st.caption("避免誤觸取消；確認後才可送出取消要求。")
+        render_task_action_preflight_summary(
+            task_action_preflight_summary(
+                task_status,
+                action="cancel",
+                confirmed=cancel_confirmed,
+            )
+        )
         if st.button(
             "取消任務",
             key=f"{refresh_key}_cancel",
@@ -390,10 +483,17 @@ def _render_task_status_panel_controls(
         )
         if not retry_confirmed:
             st.caption("避免誤觸重試；確認後才可重新送出並消耗額度。")
+        retry_summary = task_action_preflight_summary(
+            task_status,
+            action="retry",
+            confirmed=retry_confirmed,
+        )
+        render_task_action_preflight_summary(retry_summary)
+        retry_blocked = retry_summary.get("state") == "blocked"
         if st.button(
             "重試任務",
             key=f"{refresh_key}_retry",
-            disabled=not retry_confirmed,
+            disabled=retry_blocked or not retry_confirmed,
         ):
             retry_response = run_api_action_or_none(
                 lambda: api_task_post(f"/tasks/{task_id}/retry", {}),

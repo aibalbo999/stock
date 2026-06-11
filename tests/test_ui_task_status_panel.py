@@ -4,6 +4,8 @@ from app.ui.task_status_panel import (
     _fetch_task_status,
     _render_task_status_panel_controls,
     company_filing_gap_rows,
+    render_task_action_preflight_summary,
+    task_action_preflight_summary,
     task_execution_context_rows,
     task_status_diagnostic_rows,
     task_status_poll_caption,
@@ -29,6 +31,7 @@ class FakeTaskStatusStreamlit:
         self.buttons: list[dict] = []
         self.checkboxes: list[dict] = []
         self.captions: list[str] = []
+        self.markdowns: list[str] = []
         self.successes: list[str] = []
 
     def columns(self, spec):
@@ -52,8 +55,105 @@ class FakeTaskStatusStreamlit:
     def caption(self, text: str) -> None:
         self.captions.append(text)
 
+    def markdown(self, body: str, **_kwargs) -> None:
+        self.markdowns.append(str(body))
+
     def success(self, text: str) -> None:
         self.successes.append(text)
+
+
+def test_task_action_preflight_summary_warns_before_retry_confirmation() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-quota",
+            "status": "FAILURE",
+            "operation": "report_generation",
+            "retryable": True,
+            "retry_kind": "report_generation",
+            "error_category": "quota",
+        },
+        action="retry",
+        confirmed=False,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "label": "任務操作摘要",
+        "title": "準備重試背景任務",
+        "detail": "Task task-quota｜狀態 FAILURE｜操作 report_generation｜重試類型 report_generation",
+        "next_step": "勾選確認後，再按「重試任務」重新送出背景任務。",
+        "impact": "會重新排隊並可能再次消耗模型、外部資料源或 API 額度；若錯誤類型是 quota，建議先確認額度是否恢復。",
+    }
+
+
+def test_task_action_preflight_summary_blocks_explicitly_non_retryable_task() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-bad-payload",
+            "status": "FAILURE",
+            "operation": "data_operation",
+            "retryable": False,
+            "retry_kind": None,
+            "next_action": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+        },
+        action="retry",
+        confirmed=True,
+    )
+
+    assert summary == {
+        "state": "blocked",
+        "label": "任務操作摘要",
+        "title": "此任務不支援一鍵重試",
+        "detail": "Task task-bad-payload｜狀態 FAILURE｜操作 data_operation｜重試類型 -",
+        "next_step": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+        "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
+    }
+
+
+def test_task_action_preflight_summary_allows_confirmed_cancel() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-running",
+            "status": "STARTED",
+            "operation": "market_refresh",
+        },
+        action="cancel",
+        confirmed=True,
+    )
+
+    assert summary == {
+        "state": "ready",
+        "label": "任務操作摘要",
+        "title": "可以送出取消要求",
+        "detail": "Task task-running｜狀態 STARTED｜操作 market_refresh",
+        "next_step": "按「取消任務」通知背景任務停止；取消後請刷新狀態確認是否已停止。",
+        "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+    }
+
+
+def test_render_task_action_preflight_summary_outputs_operator_card(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit()
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+
+    render_task_action_preflight_summary(
+        {
+            "state": "attention",
+            "label": "任務操作摘要",
+            "title": "準備重試背景任務",
+            "detail": "Task task-1｜狀態 FAILURE",
+            "next_step": "勾選確認後再重試。",
+            "impact": "可能再次消耗模型或資料源額度。",
+        }
+    )
+
+    assert any(
+        'class="task-action-preflight-summary is-attention"' in markdown
+        and "準備重試背景任務" in markdown
+        and "可能再次消耗模型或資料源額度" in markdown
+        for markdown in fake_st.markdowns
+    )
 
 
 def test_fetch_task_status_uses_api_loader_and_stores_dict(monkeypatch) -> None:
@@ -186,6 +286,52 @@ def test_task_status_controls_submit_only_after_confirmation(monkeypatch) -> Non
     assert fake_st.session_state["task_status"] == {"task_id": "task-retry"}
     assert "已送出取消要求。" in fake_st.successes
     assert "已送出重試任務：task-retry" in fake_st.successes
+
+
+def test_task_status_controls_block_retry_when_task_is_explicitly_non_retryable(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit(
+        checked={
+            "task_panel_confirm_cancel": True,
+            "task_panel_confirm_retry": True,
+        },
+        pressed={"task_panel_retry"},
+    )
+    fake_st.session_state["task_status"] = {
+        "task_id": "task-1",
+        "status": "FAILURE",
+        "operation": "data_operation",
+        "retryable": False,
+        "next_action": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+    }
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
+
+    posted_paths = []
+    monkeypatch.setattr(
+        task_status_panel,
+        "run_api_action_or_none",
+        lambda action, *, error_message: posted_paths.append(error_message),
+    )
+
+    _render_task_status_panel_controls(
+        task_id="task-1",
+        refresh_key="task_panel",
+        status_state_key="task_status",
+        apply_result_key=None,
+        task_state_key="last_task_id",
+    )
+
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["重試任務"]["disabled"] is True
+    assert any(
+        'class="task-action-preflight-summary is-blocked"' in markdown
+        and "此任務不支援一鍵重試" in markdown
+        and "payload 不支援自動重試" in markdown
+        for markdown in fake_st.markdowns
+    )
+    assert posted_paths == []
 
 
 def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> None:

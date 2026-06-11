@@ -1196,6 +1196,7 @@ textarea:focus,
 .data-gap-action-map,
 .allowlist-scope-summary,
 .follow-up-submission-summary,
+.task-action-preflight-summary,
 .data-task-followup-summary,
 .data-ingest-submission-summary,
 .scope-source-summary,
@@ -1232,6 +1233,7 @@ textarea:focus,
 .data-ingest-submission-summary,
 .allowlist-scope-summary,
 .follow-up-submission-summary,
+.task-action-preflight-summary,
 .scope-source-summary {
     display: grid;
     gap: 6px;
@@ -1240,14 +1242,16 @@ textarea:focus,
 .data-task-followup-summary.is-attention,
 .data-ingest-submission-summary.is-attention,
 .allowlist-scope-summary.is-attention,
-.follow-up-submission-summary.is-attention {
+.follow-up-submission-summary.is-attention,
+.task-action-preflight-summary.is-attention {
     border-left-color: var(--stock-warning);
     background: var(--stock-warning-soft);
 }
 .data-task-followup-summary.is-blocked,
 .data-ingest-submission-summary.is-blocked,
 .allowlist-scope-summary.is-blocked,
-.follow-up-submission-summary.is-blocked {
+.follow-up-submission-summary.is-blocked,
+.task-action-preflight-summary.is-blocked {
     border-left-color: var(--stock-danger);
     background: var(--stock-danger-soft);
 }
@@ -1255,6 +1259,7 @@ textarea:focus,
 .data-ingest-submission-summary span,
 .allowlist-scope-summary span,
 .follow-up-submission-summary span,
+.task-action-preflight-summary span,
 .scope-source-summary span {
     color: var(--stock-accent);
     font-size: 0.82rem;
@@ -1263,19 +1268,22 @@ textarea:focus,
 .data-task-followup-summary.is-attention span,
 .data-ingest-submission-summary.is-attention span,
 .allowlist-scope-summary.is-attention span,
-.follow-up-submission-summary.is-attention span {
+.follow-up-submission-summary.is-attention span,
+.task-action-preflight-summary.is-attention span {
     color: var(--stock-warning);
 }
 .data-task-followup-summary.is-blocked span,
 .data-ingest-submission-summary.is-blocked span,
 .allowlist-scope-summary.is-blocked span,
-.follow-up-submission-summary.is-blocked span {
+.follow-up-submission-summary.is-blocked span,
+.task-action-preflight-summary.is-blocked span {
     color: var(--stock-danger);
 }
 .data-task-followup-summary strong,
 .data-ingest-submission-summary strong,
 .allowlist-scope-summary strong,
 .follow-up-submission-summary strong,
+.task-action-preflight-summary strong,
 .scope-source-summary strong {
     color: var(--stock-text);
     font-size: 1rem;
@@ -1285,6 +1293,7 @@ textarea:focus,
 .data-ingest-submission-summary p,
 .allowlist-scope-summary p,
 .follow-up-submission-summary p,
+.task-action-preflight-summary p,
 .scope-source-summary p {
     color: var(--stock-muted);
     line-height: 1.5;
@@ -1294,6 +1303,7 @@ textarea:focus,
 .data-ingest-submission-summary em,
 .allowlist-scope-summary em,
 .follow-up-submission-summary em,
+.task-action-preflight-summary em,
 .scope-source-summary em {
     color: var(--stock-text);
     font-size: 0.86rem;
@@ -1314,6 +1324,12 @@ textarea:focus,
     line-height: 1.45;
 }
 .follow-up-submission-summary small {
+    color: var(--stock-muted);
+    display: block;
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+.task-action-preflight-summary small {
     color: var(--stock-muted);
     display: block;
     font-size: 0.84rem;

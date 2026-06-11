@@ -125,8 +125,19 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "retry_confirmed = st.checkbox(" in task_status_panel_source
             and 'key=f"{refresh_key}_confirm_retry"' in task_status_panel_source
             and "disabled=not cancel_confirmed" in task_status_panel_source
-            and "disabled=not retry_confirmed" in task_status_panel_source
+            and "disabled=retry_blocked or not retry_confirmed" in task_status_panel_source
             and "可能消耗模型或資料源額度" in task_status_panel_source
+        ),
+        "ui_task_status_operation_preflight_summary_enabled": (
+            "def task_action_preflight_summary(" in task_status_panel_source
+            and "def render_task_action_preflight_summary(" in task_status_panel_source
+            and "render_task_action_preflight_summary(" in task_status_panel_source
+            and "task_action_preflight_summary(" in task_status_panel_source
+            and 'class="task-action-preflight-summary' in task_status_panel_source
+            and "會重新排隊並可能再次消耗模型、外部資料源或 API 額度"
+            in task_status_panel_source
+            and "此任務不支援一鍵重試" in task_status_panel_source
+            and "避免重複失敗與額度浪費" in task_status_panel_source
         ),
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source

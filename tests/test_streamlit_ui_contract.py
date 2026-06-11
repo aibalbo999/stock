@@ -26,6 +26,8 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
 
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
+    operator_decisions_source = ui.OPERATOR_DECISIONS_SOURCE.read_text()
+    operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
     data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
@@ -116,6 +118,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_decisions import (" in source
     assert "operator_next_best_action(" in source
     assert "operator_secondary_actions(" in source
+    assert "from app.ui.operator_task_state import (" in source
+    assert "import streamlit" not in operator_task_state_source
+    assert "def task_summary_failures(" in operator_task_state_source
+    assert "def latest_task_running(" in operator_task_state_source
+    assert "def latest_task_successful(" in operator_task_state_source
+    assert "def task_row_running(" in operator_task_state_source
+    assert "def task_row_failed(" in operator_task_state_source
+    assert "def _task_summary_failures(" not in operator_decisions_source
+    assert "def _latest_task_running(" not in operator_decisions_source
+    assert "def _task_row_running(" not in operator_decisions_source
     assert "from app.ui.data_gap_actions import data_gap_action_items" in source
     assert "def _primary_data_gap_action(" in source
     assert 'data_gap_action.get("route_hint")' in source

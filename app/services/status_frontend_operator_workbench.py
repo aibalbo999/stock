@@ -12,6 +12,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "data_enrichment_common.py", ""
     )
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
+    operator_task_state_source = source_context.ui_sources.get("operator_task_state.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
 
     return {
@@ -121,9 +122,21 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "保底 " in operator_status_source
             and 'quota_summary["operator_caption"]' in operator_status_source
         ),
+        "ui_operator_task_state_helpers_extracted": (
+            "from app.ui.operator_task_state import (" in operator_decisions_source
+            and "import streamlit" not in operator_task_state_source
+            and "def task_summary_failures(" in operator_task_state_source
+            and "def latest_task_running(" in operator_task_state_source
+            and "def latest_task_successful(" in operator_task_state_source
+            and "def task_row_running(" in operator_task_state_source
+            and "def task_row_failed(" in operator_task_state_source
+            and "def _task_summary_failures(" not in operator_decisions_source
+            and "def _latest_task_running(" not in operator_decisions_source
+            and "def _task_row_running(" not in operator_decisions_source
+        ),
         "ui_operator_retryable_failure_primary_action_enabled": (
             "def _retryable_failure_affecting_report(" in operator_decisions_source
-            and "def _task_summary_failures(" in operator_decisions_source
+            and "def task_summary_failures(" in operator_task_state_source
             and "重試影響最新版報告的任務" in operator_decisions_source
             and "priority=7" in operator_decisions_source
             and 'action_label="重試任務"' in operator_decisions_source
@@ -252,8 +265,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             )
         ),
         "ui_operator_running_task_primary_action_enabled": (
-            "def _latest_task_running(" in operator_decisions_source
-            and "def _task_row_running(" in operator_decisions_source
+            "def latest_task_running(" in operator_task_state_source
+            and "def task_row_running(" in operator_task_state_source
             and "latest_running_task = _latest_task_running(task_summary)"
             in operator_decisions_source
             and "等待最新任務完成" in operator_decisions_source
@@ -321,8 +334,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             )
         ),
         "ui_operator_historical_failure_secondary_when_latest_task_healthy_enabled": (
-            "def _latest_task_successful(" in operator_decisions_source
-            and "def _task_row_successful(" in operator_decisions_source
+            "def latest_task_successful(" in operator_task_state_source
+            and "def task_row_successful(" in operator_task_state_source
             and "def _critical_incident_should_block(" in operator_decisions_source
             and "def _is_task_failure_incident(" in operator_decisions_source
             and "critical_incident and _critical_incident_should_block("
@@ -330,8 +343,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "not _latest_task_successful(task_summary)" in operator_decisions_source
             and 'dedupe_key.startswith("failure:")' in operator_decisions_source
             and 'incident_id.startswith("failure_")' in operator_decisions_source
-            and "successful" in operator_decisions_source
-            and "celery_status" in operator_decisions_source
+            and "successful" in operator_task_state_source
+            and "celery_status" in operator_task_state_source
         ),
         "ui_operator_overall_historical_failure_ready_when_latest_task_healthy_enabled": (
             "def operator_status_overall(" in operator_status_source

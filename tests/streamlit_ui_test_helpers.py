@@ -19,6 +19,7 @@ REPORT_FORMATTERS_SOURCE = Path("app/ui/report_formatters.py")
 REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 OPERATOR_STATUS_SOURCE = Path("app/ui/operator_status.py")
+OPERATOR_TASK_STATE_SOURCE = Path("app/ui/operator_task_state.py")
 OPERATOR_ROUTES_SOURCE = Path("app/ui/operator_routes.py")
 OPERATOR_ROUTE_CONTROLS_SOURCE = Path("app/ui/operator_route_controls.py")
 REPORT_HEALTH_SOURCE = Path("app/ui/report_health.py")
@@ -67,6 +68,7 @@ UI_SOURCE_FILES = [
     REPORT_SECTIONS_SOURCE,
     REPORT_HTML_SOURCE,
     OPERATOR_STATUS_SOURCE,
+    OPERATOR_TASK_STATE_SOURCE,
     OPERATOR_ROUTES_SOURCE,
     OPERATOR_ROUTE_CONTROLS_SOURCE,
     REPORT_HEALTH_SOURCE,

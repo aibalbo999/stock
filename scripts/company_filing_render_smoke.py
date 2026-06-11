@@ -321,16 +321,19 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
     if report.get("providers"):
         return format_company_filing_render_provider_contract(report)
     lines = [
-        f"Company filing render smoke: {report['status']}",
-        f"- ready: {str(bool(report.get('ready'))).lower()}",
-        f"- url: {report.get('url')}",
-        f"- proxy count: {report.get('proxy_count', 0)}",
+        f"公司文件渲染後援檢查: {report['status']}",
+        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
+        f"- URL: {report.get('url')}",
+        f"- 代理數: {report.get('proxy_count', 0)}",
     ]
     browser_runtime = report.get("browser_render_runtime") or {}
     playwright_runtime = report.get("playwright_render_runtime") or {}
-    lines.append(f"- browser render: {browser_runtime.get('provider')} / {browser_runtime.get('fallback_reason') or 'ready'}")
     lines.append(
-        f"- playwright: {playwright_runtime.get('browser')} / "
+        f"- 瀏覽器渲染: {browser_runtime.get('provider')} / "
+        f"{browser_runtime.get('fallback_reason') or 'ready'}"
+    )
+    lines.append(
+        f"- Playwright: {playwright_runtime.get('browser')} / "
         f"{playwright_runtime.get('fallback_reason') or 'ready'}"
     )
     for attempt in report.get("attempts") or []:
@@ -339,9 +342,9 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
         if attempt.get("error"):
             lines.append(f"  error: {attempt['error'].get('category')} - {attempt['error'].get('error')}")
     if report.get("remediation"):
-        lines.append(f"- remediation: {report['remediation']}")
+        lines.append(f"- 修復建議: {report['remediation']}")
     if report.get("smoke_command"):
-        lines.append(f"- command: {report['smoke_command']}")
+        lines.append(f"- 指令: {report['smoke_command']}")
     return "\n".join(lines)
 
 
@@ -373,35 +376,35 @@ def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Smoke-test the configured company filing browser/proxy render fallback."
+        description="檢查公司文件瀏覽器/代理渲染後援是否可用。"
     )
-    parser.add_argument("--url", default=DEFAULT_SMOKE_URL, help="Public URL to render or fetch.")
+    parser.add_argument("--url", default=DEFAULT_SMOKE_URL, help="要渲染或抓取的公開 URL。")
     parser.add_argument(
         "--min-text-chars",
         type=int,
         default=20,
-        help="Minimum parsed text length required for a ready smoke.",
+        help="判定就緒所需的最少可解析文字長度。",
     )
     parser.add_argument(
         "--provider-contract",
         action="store_true",
-        help="Validate render/unlocker provider request and response contracts without network access.",
+        help="不連網檢查渲染/解鎖提供者的請求與回應格式。",
     )
     parser.add_argument(
         "--local-browser-render-defaults",
         action="store_true",
         help=(
-            "Apply local Browserless/FlareSolverr render defaults for this smoke process "
-            "without writing .env."
+            "只在這次檢查套用本機 Browserless/FlareSolverr 渲染預設值，"
+            "不寫入 .env。"
         ),
     )
     parser.add_argument(
         "--prefer-unlocker",
         action="store_true",
-        help="Prefer local FlareSolverr defaults when --local-browser-render-defaults is used.",
+        help="搭配 --local-browser-render-defaults 時優先使用本機 FlareSolverr。",
     )
-    parser.add_argument("--strict", action="store_true", help="Return non-zero when not ready.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="未就緒時回傳非 0 結束碼。")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     local_defaults = (

@@ -50,6 +50,49 @@ def test_company_filing_render_provider_contract_format_uses_operator_language()
     assert "provider count" not in rendered
 
 
+def test_company_filing_render_smoke_format_uses_operator_language() -> None:
+    rendered = smoke.format_company_filing_render_smoke(
+        {
+            "status": "not_configured",
+            "ready": False,
+            "url": "https://example.com/",
+            "proxy_count": 0,
+            "browser_render_runtime": {
+                "provider": "flaresolverr",
+                "fallback_reason": "browser_render_disabled",
+            },
+            "playwright_render_runtime": {
+                "browser": "chromium",
+                "fallback_reason": "missing_browser_binary:chromium",
+            },
+            "smoke_command": ".venv/bin/python scripts/company_filing_render_smoke.py --json",
+        }
+    )
+
+    assert "公司文件渲染後援檢查: not_configured" in rendered
+    assert "- 就緒: false" in rendered
+    assert "- 代理數: 0" in rendered
+    assert "- 瀏覽器渲染: flaresolverr / browser_render_disabled" in rendered
+    assert "- 指令: .venv/bin/python scripts/company_filing_render_smoke.py --json" in rendered
+    assert "Company filing render smoke" not in rendered
+    assert "proxy count" not in rendered
+    assert "browser render:" not in rendered
+
+
+def test_company_filing_render_smoke_help_uses_operator_language(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        smoke.main(["--help"])
+
+    output = capsys.readouterr().out
+    assert exc_info.value.code == 0
+    assert "檢查公司文件瀏覽器/代理渲染後援是否可用" in output
+    assert "要渲染或抓取的公開 URL" in output
+    assert "不連網檢查渲染/解鎖提供者的請求與回應格式" in output
+    assert "Smoke-test" not in output
+    assert "Minimum parsed text length" not in output
+    assert "request and response contracts" not in output
+
+
 def _playwright_runtime(**overrides) -> dict:
     payload = {
         "browser": "chromium",

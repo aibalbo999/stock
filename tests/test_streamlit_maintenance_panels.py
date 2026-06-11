@@ -1402,7 +1402,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[2]["operation"] == "資料補強"
     assert rows[2]["category"] == "背景任務服務"
     assert rows[2]["severity"] == "錯誤"
-    assert "Redis/Celery" in rows[2]["action_route_detail"]
+    assert rows[2]["summary"] == "背景任務佇列或背景執行器異常"
+    assert "背景任務佇列/執行器" in rows[2]["action_route_detail"]
+    assert "Redis/Celery" not in str(rows[2])
     assert "/services/status" not in rows[2]["next_steps"]
     assert rows[3]["retry"] == "可重試"
     assert rows[3]["action_route"] == "外部配置缺失"
@@ -1429,7 +1431,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         {
             "處理路徑": "外部配置缺失",
             "數量": 3,
-            "說明": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "說明": "先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
             "代表任務": "資料補強｜task-queue；公司文件抓取｜task-filing；公司文件抓取｜task-structured-api",
         },
         {
@@ -1458,9 +1460,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "run_id": 25,
             "retry_endpoint": "POST /tasks/task-filing/retry",
             "action_route": "外部配置缺失",
-            "action_route_detail": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "action_route_detail": "先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
             "retry_guarded": True,
-            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "retry_guard_message": "先修配置再重試：先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
         },
         {
             "task_id": "task-structured-api",
@@ -1469,9 +1471,9 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "run_id": 26,
             "retry_endpoint": "POST /tasks/task-structured-api/retry",
             "action_route": "外部配置缺失",
-            "action_route_detail": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "action_route_detail": "先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
             "retry_guarded": True,
-            "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+            "retry_guard_message": "先修配置再重試：先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
         },
     ]
 

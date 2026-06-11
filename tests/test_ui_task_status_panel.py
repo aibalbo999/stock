@@ -620,7 +620,9 @@ def test_task_status_diagnostic_rows_show_external_config_action_route() -> None
     assert rows[0]["operation"] == "資料補強"
     assert rows[0]["category"] == "背景任務服務"
     assert rows[0]["severity"] == "錯誤"
-    assert "Redis/Celery" in rows[0]["action_route_detail"]
+    assert rows[0]["summary"] == "背景任務佇列或背景執行器異常"
+    assert "背景任務佇列/執行器" in rows[0]["action_route_detail"]
+    assert "Redis/Celery" not in str(rows[0])
     assert "/services/status" not in rows[0]["next_steps"]
     assert "task_queue.ready" not in rows[0]["next_steps"]
     assert "系統設定 > 維護 > 背景任務觀測" in rows[0]["next_steps"]

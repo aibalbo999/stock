@@ -23,7 +23,7 @@ TASK_FAILURE_ACTION_ROUTE_ORDER = (
 
 TASK_FAILURE_ACTION_ROUTE_DETAILS = {
     "一鍵重試": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
-    "外部配置缺失": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
+    "外部配置缺失": "先修復背景任務佇列/執行器、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
     "需人工處理": "任務輸入、範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
 }
 
@@ -79,7 +79,7 @@ def task_failure_drilldown_rows(task_summary: dict) -> list[dict]:
             "task_id": row.get("task_id") or "-",
             "category": task_failure_category_label(row.get("error_category")),
             "severity": task_failure_severity_label(row.get("error_severity")),
-            "summary": row.get("error_summary") or "-",
+            "summary": task_failure_summary_text(row),
             "retry": "可重試" if row.get("retryable") else "需人工",
             "retry_kind": task_failure_retry_kind_label(row.get("retry_kind")),
             "action_route": task_failure_action_route(row),
@@ -269,6 +269,10 @@ def task_failure_retry_kind_label(value: object) -> str:
     return task_failure_operation_label(value)
 
 
+def task_failure_summary_text(row: dict) -> str:
+    return _operator_alert_text(row.get("error_summary") or "-")
+
+
 def task_failure_next_steps_text(row: dict) -> str:
     category = str(row.get("error_category") or "").strip()
     if category == "task_queue":
@@ -418,6 +422,9 @@ def _has_raw_operator_diagnostics(text: str) -> bool:
 
 def _operator_alert_text(text: str) -> str:
     replacements = {
+        "Redis/Celery queue 或 worker": "背景任務佇列或背景執行器",
+        "Redis/Celery worker": "背景執行器",
+        "Redis/Celery": "背景任務服務",
         "/services/status": "系統設定 > 維護 > 背景任務觀測",
         "task_queue.ready": "背景任務提交狀態",
         "payload_validation": "輸入驗證",
@@ -425,6 +432,7 @@ def _operator_alert_text(text: str) -> str:
         "payload": "任務輸入",
         "processing_ready": "背景任務執行狀態",
         "worker_online": "背景執行器是否在線",
+        "worker": "背景執行器",
         "broker_ok": "Redis 訊息佇列連線",
         "backend_ok": "Redis 結果儲存連線",
         "submission_contract_ready": "背景任務送出契約",
@@ -432,4 +440,5 @@ def _operator_alert_text(text: str) -> str:
     result = str(text or "").strip()
     for raw, label in replacements.items():
         result = result.replace(raw, label)
+    result = result.replace("背景任務佇列或背景執行器 異常", "背景任務佇列或背景執行器異常")
     return result

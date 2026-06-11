@@ -58,7 +58,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         in task_failure_diagnostics_source
         and '"severity": task_failure_severity_label(row.get("error_severity"))'
         in task_failure_diagnostics_source
-        and '"summary": row.get("error_summary")' in task_failure_diagnostics_source
+        and '"summary": task_failure_summary_text(row)' in task_failure_diagnostics_source
         and '"next_steps": task_failure_next_steps_text(row)' in task_failure_diagnostics_source
         and 'task_summary.get("by_error_category")' in ui_source
         and "失敗原因分類" in ui_source,
@@ -69,17 +69,23 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "def task_failure_operation_label(" in task_failure_diagnostics_source
             and "def task_failure_category_label(" in task_failure_diagnostics_source
             and "def task_failure_severity_label(" in task_failure_diagnostics_source
+            and "def task_failure_summary_text(" in task_failure_diagnostics_source
             and "def task_failure_next_action_text(" in task_failure_diagnostics_source
             and "def task_failure_next_steps_text(" in task_failure_diagnostics_source
+            and '"summary": task_failure_summary_text(row)'
+            in task_failure_diagnostics_source
             and '"next_action": task_failure_next_action_text(row)'
             in task_failure_diagnostics_source
             and "task_failure_operation_label(task_status.get(\"operation\"))"
             in task_status_panel_source
             and "task_failure_category_label(task_status.get(\"error_category\"))"
             in task_status_panel_source
+            and "task_failure_summary_text(task_status)" in task_status_panel_source
             and "task_failure_next_action_text(task_status)" in task_status_panel_source
             and "task_failure_next_steps_text(task_status)" in task_status_panel_source
             and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
+            and "背景任務佇列/執行器" in task_failure_diagnostics_source
+            and "先修復 Redis/Celery" not in task_failure_diagnostics_source
             and '"next_action": task_status.get("next_action")' not in task_status_panel_source
         ),
         "ui_task_observability_summary_operator_labels_enabled": (

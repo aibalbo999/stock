@@ -18,6 +18,7 @@ from app.ui.task_failure_diagnostics import (
     task_failure_operation_label,
     task_failure_retry_kind_label,
     task_failure_severity_label,
+    task_failure_summary_text,
 )
 
 
@@ -315,7 +316,7 @@ def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
             "operation": task_failure_operation_label(task_status.get("operation")),
             "category": task_failure_category_label(task_status.get("error_category")),
             "severity": task_failure_severity_label(task_status.get("error_severity")),
-            "summary": task_status.get("error_summary") or "-",
+            "summary": task_failure_summary_text(task_status),
             "retry": "可重試" if task_status.get("retryable") else "需人工",
             "retry_kind": task_failure_retry_kind_label(task_status.get("retry_kind")),
             "action_route": task_failure_action_route(task_status),

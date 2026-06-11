@@ -99,6 +99,18 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             "app/ui/maintenance_task_panels.py",
             "app/ui/maintenance_cleanup_panel.py",
         ],
+        "ui_submission_guard_panel_enabled": (
+            "def render_submission_guard_panel(service_snapshot: dict) -> None:"
+            in maintenance_panels_source
+            and "def submission_guard_metric_values(" in maintenance_panels_source
+            and "def submission_guard_rows(" in maintenance_panels_source
+            and "高風險操作保護" in maintenance_panels_source
+            and "ui_risky_submission_guard_rows" in maintenance_panels_source
+            and "確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門"
+            in maintenance_panels_source
+            and "render_submission_guard_panel(service_snapshot)"
+            in system_settings_maintenance_source
+        ),
         "ui_maintenance_cleanup_confirmation_gate_enabled": (
             "cleanup_confirmed = st.checkbox(" in maintenance_cleanup_panel_source
             and 'key="confirm_maintenance_cleanup"' in maintenance_cleanup_panel_source

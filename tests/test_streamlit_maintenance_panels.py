@@ -138,6 +138,63 @@ def test_maintenance_service_metrics_show_promotion_threshold() -> None:
     assert metrics["升格門檻"] == "高 75"
 
 
+def test_submission_guard_summary_rows_show_operator_ready_and_missing() -> None:
+    from app.ui import maintenance_panels
+
+    service_snapshot = {
+        "frontend": {
+            "ui_risky_submission_guard_ready_count": 1,
+            "ui_risky_submission_guard_total_count": 2,
+            "ui_risky_submission_guard_missing": ["run_delete"],
+            "ui_risky_submission_guard_rows": [
+                {
+                    "id": "analysis_submission",
+                    "surface": "analysis_workspace",
+                    "guard_key": "ui_analysis_submission_quota_confirmation_enabled",
+                    "ready": True,
+                },
+                {
+                    "id": "run_delete",
+                    "surface": "report_center",
+                    "guard_key": "ui_run_delete_confirmation_gate_enabled",
+                    "ready": False,
+                },
+            ],
+        }
+    }
+
+    assert maintenance_panels.submission_guard_metric_values(service_snapshot) == {
+        "狀態": "missing",
+        "完成": "1/2",
+        "缺口": 1,
+    }
+    assert maintenance_panels.submission_guard_rows(service_snapshot) == [
+        {
+            "操作": "送出分析任務",
+            "區域": "分析工作區",
+            "狀態": "protected",
+            "Evidence": "ui_analysis_submission_quota_confirmation_enabled",
+        },
+        {
+            "操作": "刪除分析紀錄",
+            "區域": "報告中心",
+            "狀態": "missing",
+            "Evidence": "ui_run_delete_confirmation_gate_enabled",
+        },
+    ]
+
+
+def test_submission_guard_summary_handles_missing_frontend_snapshot() -> None:
+    from app.ui import maintenance_panels
+
+    assert maintenance_panels.submission_guard_metric_values({}) == {
+        "狀態": "unknown",
+        "完成": "0/0",
+        "缺口": 0,
+    }
+    assert maintenance_panels.submission_guard_rows({}) == []
+
+
 def test_maintenance_operation_recommendation_prefers_unlocker_when_plan_needs_it() -> None:
     catalog = {
         "operations": [

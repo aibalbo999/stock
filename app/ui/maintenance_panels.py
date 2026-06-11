@@ -29,8 +29,45 @@ __all__ = [
     "render_report_quality_panel",
     "render_service_details_panel",
     "render_service_metrics_panel",
+    "render_submission_guard_panel",
     "render_upgrade_audit_panel",
+    "submission_guard_metric_values",
+    "submission_guard_rows",
 ]
+
+
+SUBMISSION_GUARD_LABELS = {
+    "analysis_submission": "送出分析任務",
+    "market_data_operation": "市場資料補強",
+    "manual_news_import": "手動匯入新聞",
+    "manual_company_filing_import": "手動匯入公司文件",
+    "company_filing_url_import": "URL 匯入公司文件",
+    "rss_fetch": "RSS 抓取",
+    "report_follow_up_run": "報告補強重跑",
+    "report_delete": "刪除報告",
+    "run_delete": "刪除分析紀錄",
+    "maintenance_cleanup": "維護清理",
+    "maintenance_operation": "維護操作",
+    "maintenance_diagnostic": "維護診斷",
+    "maintenance_post_run_diagnostic": "後續診斷",
+    "maintenance_task_retry": "維護任務重試",
+    "task_status_operation": "任務取消/重試",
+    "schedule_settings_save": "儲存排程設定",
+}
+
+SUBMISSION_GUARD_SURFACES = {
+    "analysis_workspace": "分析工作區",
+    "data_enrichment_market": "資料補強：市場",
+    "data_enrichment_manual": "資料補強：手動",
+    "data_enrichment_rss": "資料補強：RSS",
+    "report_follow_up_controls": "報告補強",
+    "report_center": "報告中心",
+    "maintenance_cleanup_panel": "維護清理",
+    "maintenance_deployment_panel": "維護部署",
+    "maintenance_task_panels": "任務觀測",
+    "task_status_panel": "任務狀態",
+    "system_settings_schedule": "系統設定：排程",
+}
 
 
 def render_upgrade_audit_panel(upgrade_audit: dict) -> None:
@@ -114,6 +151,68 @@ def render_service_metrics_panel(status: dict, service_snapshot: dict) -> None:
         column.metric(label, value)
 
 
+def submission_guard_metric_values(service_snapshot: dict) -> dict[str, object]:
+    frontend = _frontend_status(service_snapshot)
+    rows = _submission_guard_raw_rows(frontend)
+    total = int(frontend.get("ui_risky_submission_guard_total_count") or len(rows))
+    ready = int(
+        frontend.get("ui_risky_submission_guard_ready_count")
+        if frontend.get("ui_risky_submission_guard_ready_count") is not None
+        else sum(1 for row in rows if row.get("ready"))
+    )
+    missing = frontend.get("ui_risky_submission_guard_missing")
+    missing_count = len(missing) if isinstance(missing, list) else max(total - ready, 0)
+    if total <= 0:
+        status = "unknown"
+    elif missing_count:
+        status = "missing"
+    else:
+        status = "ready"
+    return {
+        "狀態": status,
+        "完成": f"{ready}/{total}",
+        "缺口": missing_count,
+    }
+
+
+def submission_guard_rows(service_snapshot: dict) -> list[dict[str, object]]:
+    frontend = _frontend_status(service_snapshot)
+    rows = []
+    for row in _submission_guard_raw_rows(frontend):
+        if not isinstance(row, dict):
+            continue
+        guard_id = str(row.get("id") or "").strip()
+        surface = str(row.get("surface") or "").strip()
+        rows.append(
+            {
+                "操作": SUBMISSION_GUARD_LABELS.get(guard_id, guard_id or "-"),
+                "區域": SUBMISSION_GUARD_SURFACES.get(surface, surface or "-"),
+                "狀態": "protected" if row.get("ready") else "missing",
+                "Evidence": str(row.get("guard_key") or "-"),
+            }
+        )
+    return rows
+
+
+def render_submission_guard_panel(service_snapshot: dict) -> None:
+    metrics = submission_guard_metric_values(service_snapshot)
+    rows = submission_guard_rows(service_snapshot)
+    expanded = metrics["狀態"] != "ready"
+    with st.expander("高風險操作保護", expanded=expanded):
+        cols = st.columns(3)
+        for column, (label, value) in zip(cols, metrics.items()):
+            column.metric(label, value)
+        st.caption("確認所有會寫入、刪除、消耗額度或重試任務的入口都有確認閘門。")
+        if metrics["狀態"] == "ready":
+            st.caption("目前所有高風險操作都已配置確認保護。")
+        elif metrics["狀態"] == "unknown":
+            st.warning("尚未取得高風險操作保護狀態；請先確認 /services/status。")
+        else:
+            st.warning("仍有高風險操作缺少確認保護，請先修復缺口再交給一般操作者使用。")
+        if rows:
+            st.dataframe(rows, width="stretch", hide_index=True)
+
+
 def render_report_generation_observability_panel(report_observability_summary: dict) -> None:
     with st.expander("報告生成觀測", expanded=False):
         render_report_observability_panel(report_observability_summary)
@@ -148,3 +247,13 @@ def render_service_details_panel(status: dict, service_snapshot: dict) -> None:
             width="stretch",
             hide_index=True,
         )
+
+
+def _frontend_status(service_snapshot: dict) -> dict:
+    frontend = service_snapshot.get("frontend") if isinstance(service_snapshot, dict) else {}
+    return frontend if isinstance(frontend, dict) else {}
+
+
+def _submission_guard_raw_rows(frontend: dict) -> list[dict]:
+    rows = frontend.get("ui_risky_submission_guard_rows")
+    return rows if isinstance(rows, list) else []

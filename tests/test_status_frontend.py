@@ -322,6 +322,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/maintenance_status.py",
     ]
     assert status["frontend"]["ui_maintenance_panels_extracted"] is True
+    assert status["frontend"]["ui_submission_guard_panel_enabled"] is True
     assert status["frontend"]["ui_maintenance_panels_path"] == "app/ui/maintenance_panels.py"
     assert status["frontend"]["ui_maintenance_panel_module_paths"] == [
         "app/ui/maintenance_deployment_panel.py",
@@ -643,6 +644,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True
+    assert frontend_arch["evidence"]["ui_submission_guard_panel_enabled"] is True
     assert (
         frontend_arch["evidence"]["ui_maintenance_cleanup_confirmation_gate_enabled"]
         is True

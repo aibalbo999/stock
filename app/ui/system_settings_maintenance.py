@@ -21,6 +21,7 @@ from app.ui.maintenance_panels import (
     render_report_quality_panel,
     render_service_details_panel,
     render_service_metrics_panel,
+    render_submission_guard_panel,
     render_upgrade_audit_panel,
 )
 from app.ui.operator_route_controls import render_operator_route_button
@@ -104,6 +105,7 @@ def render_maintenance_tab() -> None:
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
     render_service_metrics_panel(status, service_snapshot)
+    render_submission_guard_panel(service_snapshot)
     render_external_deployment_panel(
         upgrade_audit,
         service_snapshot,

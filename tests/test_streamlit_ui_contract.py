@@ -179,6 +179,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "service_snapshot: dict | None = None" in source
     assert "def render_background_task_observability_panel(" in source
     assert "def render_report_quality_panel(report_quality_summary: dict) -> None:" in source
+    assert "def render_submission_guard_panel(service_snapshot: dict) -> None:" in source
+    assert "高風險操作保護" in source
+    assert "submission_guard_metric_values(service_snapshot)" in source
+    assert "submission_guard_rows(service_snapshot)" in source
     assert "def render_maintenance_cleanup_panel() -> None:" in source
     assert "def render_external_deployment_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
     assert "def render_ai_usage_panel(" not in ui.MAINTENANCE_PANELS_SOURCE.read_text()
@@ -746,6 +750,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "local_dependency_wait" in external_readiness_service_source
     assert '"驗證指令"' in external_readiness_service_source
     assert "render_external_deployment_panel(\n        upgrade_audit," in source
+    assert "render_submission_guard_panel(service_snapshot)" in source
     assert 'load_api_json_or_default(\n        "/services/external-deployment/env-check"' in source
     assert "maintenance_operations,\n        external_env_check,\n    )" in source
     assert 'load_api_json_or_default(\n        "/maintenance/diagnostics"' in source

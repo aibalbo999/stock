@@ -252,6 +252,7 @@ def architecture_capabilities(
             and frontend_status.get("report_html_renderer_extracted")
             and frontend_status.get("ui_status_helpers_extracted")
             and frontend_status.get("ui_maintenance_panels_extracted")
+            and frontend_status.get("ui_submission_guard_panel_enabled")
             and frontend_status.get("ui_maintenance_cleanup_confirmation_gate_enabled")
             and frontend_status.get("ui_system_settings_tabs_extracted")
             and frontend_status.get("ui_schedule_settings_save_confirmation_enabled")

@@ -139,8 +139,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "optimization_progress_scope_summary(" in source
     assert "def _render_optimization_progress_operator_summary(" in source
     assert "def _render_optimization_progress_scope_summary(" in source
-    assert "def optimization_progress_operator_summary(" in ui.MAINTENANCE_STATUS_SOURCE.read_text()
+    maintenance_status_source = ui.MAINTENANCE_STATUS_SOURCE.read_text()
+    assert "def optimization_progress_operator_summary(" in maintenance_status_source
     assert "def optimization_progress_scope_summary(" in ui.MAINTENANCE_STATUS_SOURCE.read_text()
+    assert 'summary["free_validation"] = free_validation' in maintenance_status_source
+    assert 'summary.get("free_validation")' in source
     assert "_render_incident_priority_summary(incidents)" in source
     assert "def incident_action_priority_summary(" in source
     assert "先處理 {critical} 個 Critical 事件" in source

@@ -235,6 +235,12 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "需外部資料商或正式 API" in maintenance_status_source
             and "def _first_paid_external_progress_action(" in maintenance_status_source
         ),
+        "ui_optimization_progress_paid_external_free_validation_summary_enabled": (
+            "def _action_free_validation_summary(" in maintenance_status_source
+            and 'summary["free_validation"] = free_validation'
+            in maintenance_status_source
+            and 'summary.get("free_validation")' in maintenance_panels_source
+        ),
         "ui_optimization_progress_scope_summary_enabled": (
             "def optimization_progress_scope_summary(" in maintenance_status_source
             and "optimization_progress_scope_summary(service_snapshot)"

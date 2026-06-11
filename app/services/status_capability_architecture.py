@@ -273,6 +273,9 @@ def architecture_capabilities(
             and frontend_status.get(
                 "ui_optimization_progress_paid_external_only_summary_enabled"
             )
+            and frontend_status.get(
+                "ui_optimization_progress_paid_external_free_validation_summary_enabled"
+            )
             and frontend_status.get("ui_optimization_progress_scope_summary_enabled")
             and frontend_status.get("ui_settings_ai_quota_route_focus_enabled")
             and frontend_status.get("ui_settings_task_route_focus_enabled")

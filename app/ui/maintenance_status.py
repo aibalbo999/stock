@@ -357,7 +357,7 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
 
     if optional_count and local_count <= 0 and paid_external_action:
         paid_label = _action_label(paid_external_action)
-        return {
+        summary = {
             "state": "ready",
             "title": "本機優化已完成，剩下外部資料 API 決策",
             "detail": (
@@ -372,6 +372,11 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
             ),
             "command": "-",
         }
+        free_validation = _action_free_validation_summary(paid_external_action)
+        if free_validation:
+            summary["free_validation"] = free_validation
+            summary["command"] = _action_verify_command(paid_external_action)
+        return summary
 
     local_label = _action_label(local_action)
     local_detail = (
@@ -508,6 +513,18 @@ def _action_free_validation_command_summary(
     if compact:
         return f"{len(commands)} 組免費檢查"
     return "\n".join(commands)
+
+
+def _action_free_validation_summary(action: dict) -> str:
+    label = str(action.get("free_validation_label") or "").strip()
+    commands = _action_free_validation_commands(action)
+    if label and commands:
+        return f"免費驗證：{label}；{len(commands)} 組檢查可先跑"
+    if label:
+        return f"免費驗證：{label}"
+    if commands:
+        return f"免費驗證：{len(commands)} 組檢查可先跑"
+    return ""
 
 
 def _action_free_validation_commands(action: dict) -> list[str]:

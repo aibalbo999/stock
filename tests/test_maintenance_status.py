@@ -170,6 +170,47 @@ def test_optimization_progress_operator_summary_surfaces_paid_external_only_gap(
     }
 
 
+def test_optimization_progress_operator_summary_surfaces_free_validation_for_paid_gap() -> None:
+    summary = optimization_progress_operator_summary(
+        {
+            "status": "ready_with_optional_gaps",
+            "effective_status_after_available_local_defaults": "ready_with_optional_gaps",
+            "blocking_gap_count": 0,
+            "optional_gap_count": 1,
+            "local_resolvable_gap_count": 0,
+            "effective_optional_gap_count_after_available_local_defaults": 1,
+            "prioritized_next_actions": [
+                {
+                    "label": "公司文件結構化 API 備援",
+                    "status": "not_configured",
+                    "optional": True,
+                    "external": True,
+                    "cost_profile": "paid_external",
+                    "decision": "付費資料源/外部 API；只有正式穩定性需求明確時再採購。",
+                    "next_action": "正式串 TEJ 前，先用免費 fixture 檢查 JSON/HTTP 格式。",
+                    "free_validation_label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
+                    "free_validation_commands": [
+                        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
+                    ],
+                },
+            ],
+        }
+    )
+
+    assert summary["state"] == "ready"
+    assert summary["title"] == "本機優化已完成，剩下外部資料 API 決策"
+    assert summary["local_action"] == "本機 defaults 已無待處理項目"
+    assert summary["paid_external"] == "公司文件結構化 API 備援：需外部資料商或正式 API"
+    assert summary["free_validation"] == (
+        "免費驗證：樣本資料 + 本機測試 API + 提供者設定可驗證；2 組檢查可先跑"
+    )
+    assert summary["next_step"] == "正式串 TEJ 前，先用免費 fixture 檢查 JSON/HTTP 格式。"
+    assert summary["command"] == (
+        ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"
+    )
+
+
 def test_optimization_progress_operator_summary_blocks_on_required_gaps() -> None:
     summary = optimization_progress_operator_summary(
         {

@@ -180,6 +180,15 @@ def _render_optimization_progress_operator_summary(summary: dict[str, str]) -> N
     command_html = ""
     if command and command != "-":
         command_html = f"<code>{escape(command)}</code>"
+    action_items = [
+        str(summary.get("local_action") or "").strip(),
+        str(summary.get("paid_external") or "").strip(),
+        str(summary.get("free_validation") or "").strip(),
+        str(summary.get("next_step") or "").strip(),
+    ]
+    action_items_html = "".join(
+        f"<li>{escape(item)}</li>" for item in action_items if item
+    )
     st.markdown(
         f"""<section class="optimization-progress-operator-summary is-{escape(summary.get("state", "ready"))}" aria-label="優化進度操作者摘要">
 <div>
@@ -188,9 +197,7 @@ def _render_optimization_progress_operator_summary(summary: dict[str, str]) -> N
 <p>{escape(summary.get("detail", ""))}</p>
 </div>
 <ul>
-<li>{escape(summary.get("local_action", ""))}</li>
-<li>{escape(summary.get("paid_external", ""))}</li>
-<li>{escape(summary.get("next_step", ""))}</li>
+{action_items_html}
 </ul>
 {command_html}
 </section>""",

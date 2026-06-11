@@ -49,6 +49,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         and 'summary.get("recommendations")' in report_observability_panel_source
         and "建議處理順序" in report_observability_panel_source
         and "render_report_observability_panel(report_observability_summary)" in ui_source,
+        "ui_report_observability_alert_operator_messages_enabled": (
+            "def _observability_alert_message(" in report_observability_panel_source
+            and "def _observability_alert_next_step(" in report_observability_panel_source
+            and '"提醒"' in report_observability_panel_source
+            and '"下一步"' in report_observability_panel_source
+            and "部分最新版報告使用模型降級路由" in report_observability_panel_source
+            and "確認聰明模型額度用完後才降級" in report_observability_panel_source
+            and "Some latest reports used LLM fallback routing."
+            not in report_observability_panel_source
+            and 'alert.get("message") or alert.get("code")' not in report_observability_panel_source
+        ),
         "ui_report_observability_row_operator_labels_enabled": (
             "def _observability_bottleneck_label(" in report_observability_panel_source
             and "def _observability_recommendation_label(" in report_observability_panel_source

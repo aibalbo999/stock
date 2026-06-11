@@ -36,6 +36,26 @@ RECOMMENDATION_LABELS = {
     "estimated_cost": "成本偏高",
 }
 
+ALERT_MESSAGES = {
+    "report_trace_missing": "部分最新版報告缺少 LLM/RAG 追蹤資料。",
+    "report_llm_fallback_used": "部分最新版報告使用模型降級路由。",
+    "report_llm_retryable_failures": "最新版報告生成時出現可重試的 LLM 失敗。",
+    "report_reranker_keyword_fallback": "部分最新版報告改用關鍵字排序後援。",
+    "report_graphrag_reasoning_missing": "部分最新版報告缺少 GraphRAG 推理追蹤。",
+    "report_graphrag_reasoning_partial": "部分最新版報告的圖譜推理路徑覆蓋不完整。",
+}
+
+ALERT_NEXT_STEPS = {
+    "report_trace_missing": "重新產生缺追蹤的報告，並確認 run payload 有寫入 report_execution。",
+    "report_llm_fallback_used": (
+        "檢查今日模型額度、cooldown 與模型順序；確認聰明模型額度用完後才降級。"
+    ),
+    "report_llm_retryable_failures": "檢查 provider timeout、429 或 5xx 分布，必要時拉長 cooldown。",
+    "report_reranker_keyword_fallback": "啟用本機 cross-encoder、Cohere 或 LLM reranker，降低排序風險。",
+    "report_graphrag_reasoning_missing": "檢查 GraphRAG trace 是否寫入，並重產需要上下游推理的報告。",
+    "report_graphrag_reasoning_partial": "補齊缺路徑股票的同業/上下游 edge，再重產報告。",
+}
+
 
 def report_observability_metric_values(summary: dict[str, Any]) -> dict[str, object]:
     totals = summary.get("totals") if isinstance(summary.get("totals"), dict) else {}
@@ -64,7 +84,15 @@ def _ratio_percent(value: Any) -> str:
 
 
 def report_observability_alert_rows(summary: dict[str, Any]) -> list[dict]:
-    return [alert for alert in summary.get("alerts") or [] if isinstance(alert, dict)]
+    return [
+        {
+            "嚴重度": _severity_label(alert.get("severity")),
+            "提醒": _observability_alert_message(alert),
+            "下一步": _observability_alert_next_step(alert),
+        }
+        for alert in summary.get("alerts") or []
+        if isinstance(alert, dict)
+    ]
 
 
 def report_observability_bottleneck_rows(summary: dict[str, Any]) -> list[dict]:
@@ -140,6 +168,21 @@ def _observability_recommendation_label(value: Any) -> str:
     return RECOMMENDATION_LABELS.get(text, text or "-")
 
 
+def _observability_alert_message(alert: dict[str, Any]) -> str:
+    code = str(alert.get("code") or "").strip()
+    if code in ALERT_MESSAGES:
+        return ALERT_MESSAGES[code]
+    message = str(alert.get("message") or "").strip()
+    return message or "報告觀測需要檢查。"
+
+
+def _observability_alert_next_step(alert: dict[str, Any]) -> str:
+    code = str(alert.get("code") or "").strip()
+    if code in ALERT_NEXT_STEPS:
+        return ALERT_NEXT_STEPS[code]
+    return "查看建議處理順序與優先優化清單。"
+
+
 def _affected_reports_text(value: Any) -> str:
     try:
         count = int(value or 0)
@@ -184,10 +227,10 @@ def render_report_observability_panel(report_observability_summary: dict[str, An
         column.metric(label, value)
 
     for alert in report_observability_alert_rows(report_observability_summary):
-        message = str(alert.get("message") or alert.get("code") or "")
-        if alert.get("severity") == "warning":
+        message = f"{alert.get('提醒', '')} 下一步：{alert.get('下一步', '')}"
+        if alert.get("嚴重度") == "警告":
             st.warning(message)
-        elif alert.get("severity") == "error":
+        elif alert.get("嚴重度") == "錯誤":
             st.error(message)
         else:
             st.info(message)

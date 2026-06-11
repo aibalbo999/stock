@@ -23,7 +23,11 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
             "degraded_from_primary_count": 1,
         },
         "alerts": [
-            {"severity": "warning", "message": "Trace coverage is incomplete."},
+            {
+                "severity": "warning",
+                "code": "report_llm_fallback_used",
+                "message": "Some latest reports used LLM fallback routing.",
+            },
             "ignored",
         ],
         "bottlenecks": [
@@ -93,8 +97,15 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
     assert "Keyword fallback" not in rendered_metrics
     assert "Quota skip" not in rendered_metrics
     assert report_observability_alert_rows(summary) == [
-        {"severity": "warning", "message": "Trace coverage is incomplete."}
+        {
+            "嚴重度": "警告",
+            "提醒": "部分最新版報告使用模型降級路由。",
+            "下一步": "檢查今日模型額度、cooldown 與模型順序；確認聰明模型額度用完後才降級。",
+        }
     ]
+    rendered_alerts = str(report_observability_alert_rows(summary))
+    assert "report_llm_fallback_used" not in rendered_alerts
+    assert "Some latest reports" not in rendered_alerts
     assert report_observability_bottleneck_rows(summary) == [
         {
             "報告": "#7",

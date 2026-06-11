@@ -549,6 +549,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         "def report_observability_recommendation_rows("
         in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     )
+    assert "def _observability_alert_message(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert '"提醒"' in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "Some latest reports used LLM fallback routing." not in (
+        ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
     assert "def _observability_bottleneck_label(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     assert "def _observability_recommendation_label(" in (
         ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()

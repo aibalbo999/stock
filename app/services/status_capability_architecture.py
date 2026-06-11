@@ -351,6 +351,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_observability_panel_extracted")
             and frontend_status.get("ui_report_observability_metric_operator_labels_enabled")
             and frontend_status.get("ui_report_observability_row_operator_labels_enabled")
+            and frontend_status.get("ui_report_observability_alert_operator_messages_enabled")
             and frontend_status.get("ui_company_filing_runtime_panel_enabled")
             and frontend_status.get("ui_visual_rag_model_chain_panel_enabled")
             and frontend_status.get("ui_data_enrichment_tabs_extracted")

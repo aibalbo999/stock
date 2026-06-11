@@ -359,6 +359,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     ]
     assert status["frontend"]["ui_maintenance_panels_extracted"] is True
     assert status["frontend"]["ui_submission_guard_panel_enabled"] is True
+    assert status["frontend"]["ui_maintenance_overview_metric_operator_labels_enabled"] is True
     assert '"完整"' in status_frontend_maintenance_source
     assert '"需處理"' in status_frontend_maintenance_source
     assert '"已保護"' in status_frontend_maintenance_source
@@ -774,6 +775,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True
     assert frontend_arch["evidence"]["ui_submission_guard_panel_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_maintenance_overview_metric_operator_labels_enabled"]
+        is True
+    )
     assert (
         frontend_arch["evidence"]["ui_maintenance_cleanup_confirmation_gate_enabled"]
         is True

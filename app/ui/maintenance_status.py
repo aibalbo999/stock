@@ -235,6 +235,22 @@ def optimization_progress_status_label(status: object) -> str:
     return status_labels.get(text, text)
 
 
+def maintenance_overview_status_label(status: object) -> str:
+    status_labels = {
+        "ready": "可用",
+        "ready_with_optional_gaps": "核心可用/外部選配",
+        "caution": "需注意",
+        "failed": "需處理",
+        "blocked": "需處理",
+        "degraded": "需處理",
+        "not_configured": "未設定",
+        "insufficient": "資料不足",
+        "unknown": "未評估",
+    }
+    text = str(status or "unknown")
+    return status_labels.get(text, text)
+
+
 def optimization_progress_next_action_rows(
     progress: dict, *, compact: bool = False
 ) -> list[dict]:

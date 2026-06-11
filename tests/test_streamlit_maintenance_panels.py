@@ -21,6 +21,7 @@ from app.services.external_deployment_readiness import (
     local_dependency_status_rows,
 )
 from app.ui.maintenance_deployment_panel import (
+    external_deployment_metric_values,
     external_deployment_effective_gap_rows,
     maintenance_operation_recommendation_caption,
     maintenance_operation_post_run_diagnostic_action_rows,
@@ -232,6 +233,60 @@ def test_submission_guard_summary_handles_missing_frontend_snapshot() -> None:
         "缺口": 0,
     }
     assert maintenance_panels.submission_guard_rows({}) == []
+
+
+def test_report_quality_metric_values_use_operator_labels() -> None:
+    from app.ui import maintenance_panels
+
+    metrics = maintenance_panels.report_quality_metric_values(
+        {
+            "status": "caution",
+            "totals": {
+                "report_count": 3,
+                "ready_count": 2,
+                "blocker_count": 1,
+                "warning_count": 4,
+            },
+        }
+    )
+
+    assert metrics == [
+        {"label": "品質狀態", "value": "需注意"},
+        {"label": "最新版報告", "value": 3},
+        {"label": "可直接使用", "value": 2},
+        {"label": "需先處理", "value": 1},
+        {"label": "提醒", "value": 4},
+    ]
+    rendered = str(metrics)
+    assert "Ready" not in rendered
+    assert "Blockers" not in rendered
+    assert "Warnings" not in rendered
+    assert "caution" not in rendered
+
+
+def test_external_deployment_metric_values_use_operator_labels() -> None:
+    metrics = external_deployment_metric_values(
+        {
+            "deployment": {
+                "status": "failed",
+                "ready": 2,
+                "warnings": 3,
+                "failures": 1,
+            }
+        }
+    )
+
+    assert metrics == [
+        {"label": "部署狀態", "value": "需處理"},
+        {"label": "已通過", "value": 2},
+        {"label": "提醒", "value": 3},
+        {"label": "需處理", "value": 1},
+    ]
+    rendered = str(metrics)
+    assert "Ready" not in rendered
+    assert "Warnings" not in rendered
+    assert "Failures" not in rendered
+    assert "failed" not in rendered
 
 
 def test_maintenance_operation_recommendation_prefers_unlocker_when_plan_needs_it() -> None:

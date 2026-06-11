@@ -308,6 +308,30 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "render_submission_guard_panel(service_snapshot)"
             in system_settings_maintenance_source
         ),
+        "ui_maintenance_overview_metric_operator_labels_enabled": (
+            "def maintenance_overview_status_label(" in maintenance_status_source
+            and '"caution": "需注意"' in maintenance_status_source
+            and '"failed": "需處理"' in maintenance_status_source
+            and "def report_quality_metric_values(" in maintenance_panels_source
+            and "report_quality_metric_values(report_quality_summary)"
+            in maintenance_panels_source
+            and '"label": "品質狀態"' in maintenance_panels_source
+            and '"label": "可直接使用"' in maintenance_panels_source
+            and '"label": "提醒"' in maintenance_panels_source
+            and "def external_deployment_metric_values("
+            in maintenance_deployment_panel_source
+            and "external_deployment_metric_values(upgrade_audit)"
+            in maintenance_deployment_panel_source
+            and '"label": "部署狀態"' in maintenance_deployment_panel_source
+            and '"label": "已通過"' in maintenance_deployment_panel_source
+            and '"label": "需處理"' in maintenance_deployment_panel_source
+            and 'metric("Ready"' not in maintenance_panels_source
+            and 'metric("Blockers"' not in maintenance_panels_source
+            and 'metric("Warnings"' not in maintenance_panels_source
+            and 'metric("Ready"' not in maintenance_deployment_panel_source
+            and 'metric("Warnings"' not in maintenance_deployment_panel_source
+            and 'metric("Failures"' not in maintenance_deployment_panel_source
+        ),
         "ui_maintenance_cleanup_confirmation_gate_enabled": (
             "cleanup_confirmed = st.checkbox(" in maintenance_cleanup_panel_source
             and 'key="confirm_maintenance_cleanup"' in maintenance_cleanup_panel_source

@@ -35,10 +35,30 @@ from app.ui.maintenance_deployment_presenter import (
     merge_local_action_projections,
     recommended_maintenance_operation_id,
 )
+from app.ui.maintenance_status import maintenance_overview_status_label
 from app.ui.task_status_panel import render_task_status_panel
 
 LAST_MAINTENANCE_OPERATION_TASK_KEY = "last_maintenance_operation_task_id"
 LAST_POST_RUN_DIAGNOSTIC_TASK_KEY = "last_post_run_diagnostic_task_id"
+
+
+def external_deployment_metric_values(upgrade_audit: dict) -> list[dict[str, object]]:
+    deploy = (
+        upgrade_audit.get("deployment")
+        if isinstance(upgrade_audit.get("deployment"), dict)
+        else {}
+    )
+    return [
+        {
+            "label": "部署狀態",
+            "value": maintenance_overview_status_label(
+                deploy.get("status") or upgrade_audit.get("deployment_status")
+            ),
+        },
+        {"label": "已通過", "value": int(deploy.get("ready") or 0)},
+        {"label": "提醒", "value": int(deploy.get("warnings") or 0)},
+        {"label": "需處理", "value": int(deploy.get("failures") or 0)},
+    ]
 
 
 def render_external_deployment_panel(
@@ -115,22 +135,17 @@ def render_external_deployment_panel(
         "外部部署選配狀態",
         expanded=bool(external_warning_rows) or bool(focus_banner),
     ):
-        deploy = (
-            upgrade_audit.get("deployment")
-            if isinstance(upgrade_audit.get("deployment"), dict)
-            else {}
-        )
         st.markdown(
             _external_deployment_operator_summary_html(operator_summary),
             unsafe_allow_html=True,
         )
         deploy_cols = st.columns(4)
-        deploy_cols[0].metric(
-            "部署狀態", deploy.get("status") or upgrade_audit.get("deployment_status") or "-"
-        )
-        deploy_cols[1].metric("Ready", int(deploy.get("ready") or 0))
-        deploy_cols[2].metric("Warnings", int(deploy.get("warnings") or 0))
-        deploy_cols[3].metric("Failures", int(deploy.get("failures") or 0))
+        for column, metric in zip(
+            deploy_cols,
+            external_deployment_metric_values(upgrade_audit),
+            strict=False,
+        ):
+            column.metric(metric["label"], metric["value"])
         if external_enablement_summary.get("total"):
             enablement_cols = st.columns(4)
             enablement_cols[0].metric(

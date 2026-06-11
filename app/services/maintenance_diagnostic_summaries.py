@@ -103,11 +103,11 @@ def _upgrade_audit_summary_rows(payload: dict) -> list[dict]:
 def _external_integrations_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "外部整合 smoke",
+            "外部整合檢查",
             payload.get("status") or "-",
             _ready_count(payload.get("ready_count"), payload.get("check_count")),
-            _counts(actionable=payload.get("actionable_check_count")),
-            _shorten(payload.get("strict_command") or "-"),
+            _labeled_counts(("需確認", payload.get("actionable_check_count"))),
+            "可從維護診斷動作重跑外部整合檢查。",
         )
     ]
     enablement = _dict_value(payload, "enablement_summary")
@@ -273,17 +273,17 @@ def _graphrag_smoke_summary_rows(payload: dict) -> list[dict]:
     plan = _dict_value(query_result, "plan")
     rows = [
         _summary_row(
-            "GraphRAG smoke",
+            "GraphRAG 查詢檢查",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
-            _counts(
-                import_first=payload.get("import_first"),
-                local_contract=payload.get("local_contract"),
+            _labeled_counts(
+                ("先匯入", payload.get("import_first")),
+                ("本機規則", payload.get("local_contract")),
             ),
             plan.get("intent") or payload.get("smoke_command") or "-",
         ),
         _summary_row(
-            "Neo4j payload",
+            "Neo4j 匯入資料",
             graph_payload.get("format") or "-",
             _yes_no(graph_payload.get("ready")),
             _counts(
@@ -298,7 +298,7 @@ def _graphrag_smoke_summary_rows(payload: dict) -> list[dict]:
     if local_dry_run:
         rows.append(
             _summary_row(
-                "Cypher query",
+                "Cypher 查詢",
                 local_dry_run.get("status") or "-",
                 _yes_no(local_dry_run.get("ready")),
                 _counts(rows=local_dry_run.get("row_count")),

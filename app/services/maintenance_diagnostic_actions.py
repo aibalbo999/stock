@@ -22,8 +22,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "external_integrations_smoke": {
         "id": "external_integrations_smoke",
-        "label": "外部整合 smoke",
-        "description": "執行外部整合 smoke contract，不會啟動選配服務。",
+        "label": "外部整合連線檢查",
+        "description": "檢查外部整合設定與基本回應，不會啟動選配服務。",
         "display_command": ".venv/bin/python scripts/external_integrations_smoke.py --json",
         "argv": [sys.executable, "scripts/external_integrations_smoke.py", "--json"],
         "timeout_seconds": 90,
@@ -115,7 +115,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "label": "背景任務空跑送出測試",
         "description": (
             "送出空跑的股價刷新任務，驗證背景任務送出、排隊與任務註冊；"
-            "不呼叫外部市場資料 API。完整送出後等待檢查請從 CLI 執行，"
+            "不呼叫外部市場資料 API。完整送出後等待檢查請從指令列執行，"
             "避免診斷任務等待自身執行。"
         ),
         "display_command": (
@@ -139,7 +139,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     "local_neo4j_upgrade_audit": {
         "id": "local_neo4j_upgrade_audit",
         "label": "本機 Neo4j 升級稽核",
-        "description": "套用本機 Neo4j 預設值後檢查 GraphRAG live integration 狀態。",
+        "description": "套用本機 Neo4j 預設值後檢查 GraphRAG 即時整合狀態。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py "
             "--local-neo4j-defaults --wait-local-neo4j 20 --json"
@@ -158,7 +158,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     "local_chroma_upgrade_audit": {
         "id": "local_chroma_upgrade_audit",
         "label": "本機 Chroma 升級稽核",
-        "description": "套用本機 Chroma 預設值後檢查 RAG / vector store integration 狀態。",
+        "description": "套用本機 Chroma 預設值後檢查 RAG / 向量庫整合狀態。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py "
             "--local-chroma-defaults --wait-local-chroma 20 --json"
@@ -201,8 +201,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "neo4j_payload_dry_run": {
         "id": "neo4j_payload_dry_run",
-        "label": "Neo4j payload dry-run",
-        "description": "確認 Neo4j 匯入 payload contract 可生成，不連線寫入 Neo4j。",
+        "label": "Neo4j 匯入資料預檢",
+        "description": "確認 Neo4j 匯入資料可生成，不連線寫入 Neo4j。",
         "display_command": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run",
         "argv": [
             sys.executable,
@@ -215,8 +215,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "graphrag_local_contract_smoke": {
         "id": "graphrag_local_contract_smoke",
-        "label": "GraphRAG 本機 contract smoke",
-        "description": "確認 guarded Cypher planner 與本機 dry-run contract。",
+        "label": "GraphRAG 本機查詢規則檢查",
+        "description": "確認受控 Cypher 規劃與本機預檢流程。",
         "display_command": (
             ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
             "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 "
@@ -239,8 +239,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "graphrag_live_query_smoke": {
         "id": "graphrag_live_query_smoke",
-        "label": "GraphRAG live query smoke",
-        "description": "以目前 Neo4j 設定驗證 guarded live Cypher query，不執行 import-first 寫入。",
+        "label": "GraphRAG Neo4j 查詢檢查",
+        "description": "以目前 Neo4j 設定驗證受控 Cypher 查詢，不先匯入資料。",
         "display_command": (
             ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
             "--tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json"
@@ -263,8 +263,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
         "id": "graphrag_import_first_smoke",
         "label": "GraphRAG 匯入後查詢測試",
         "description": (
-            "先將 bundled supply-chain graph payload 匯入目前設定的本機 Neo4j，"
-            "再驗證 guarded live Cypher query。"
+            "先將內建產業鏈圖譜匯入目前設定的本機 Neo4j，"
+            "再驗證受控 Cypher 查詢。"
         ),
         "display_command": (
             ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
@@ -292,8 +292,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "company_filing_render_smoke": {
         "id": "company_filing_render_smoke",
-        "label": "公司文件 render smoke",
-        "description": "驗證 Browserless / Playwright / proxy fallback 可解析一般 HTML。",
+        "label": "公司文件網頁解析檢查",
+        "description": "驗證 Browserless / Playwright / proxy 後援可解析一般 HTML。",
         "display_command": (
             ".venv/bin/python scripts/company_filing_render_smoke.py "
             "--url https://example.com/ --json"
@@ -310,8 +310,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_sample_contract_smoke": {
         "id": "structured_company_filing_sample_contract_smoke",
-        "label": "結構化文件 sample contract smoke",
-        "description": "用 bundled sample JSON 驗證 TEJ/資料商結構化公司文件 API contract，不連外。",
+        "label": "結構化文件範例資料檢查",
+        "description": "用內建範例 JSON 驗證 TEJ/資料商結構化公司文件 API 格式，不連外。",
         "display_command": (
             ".venv/bin/python scripts/structured_company_filing_smoke.py "
             "--sample-json examples/structured_company_filing_sample.json "
@@ -337,8 +337,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_fixture_http_smoke": {
         "id": "structured_company_filing_fixture_http_smoke",
-        "label": "結構化文件 fixture HTTP smoke",
-        "description": "臨時啟動本機 fixture 並跑 live HTTP fetch path，不連外且不需要 token。",
+        "label": "結構化文件本機 HTTP 檢查",
+        "description": "臨時啟動本機測試服務並跑 HTTP 取件流程，不連外且不需要 token。",
         "display_command": (
             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
             "--json --strict"
@@ -354,9 +354,9 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_provider_profile_fixture_smoke": {
         "id": "structured_company_filing_provider_profile_fixture_smoke",
-        "label": "結構化文件 TEJ profile fixture smoke",
+        "label": "結構化文件 TEJ 設定檢查",
         "description": (
-            "用本機 fixture 驗證 TEJ provider profile 的 Bearer auth、"
+            "用本機測試服務驗證 TEJ 提供者設定、授權格式、"
             "document_type 參數與 JSON 轉換，不連外且不需要真實 token。"
         ),
         "display_command": (
@@ -376,8 +376,8 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "high_risk_unlocker_smoke": {
         "id": "high_risk_unlocker_smoke",
-        "label": "高風險 MOPS unlocker smoke",
-        "description": "驗證 FlareSolverr / unlocker provider 是否可處理 MOPS 高風險入口。",
+        "label": "高風險 MOPS 解鎖檢查",
+        "description": "驗證 FlareSolverr 或瀏覽器解鎖服務是否可處理 MOPS 高風險入口。",
         "display_command": (
             ".venv/bin/python scripts/company_filing_render_smoke.py "
             "--local-browser-render-defaults --prefer-unlocker "

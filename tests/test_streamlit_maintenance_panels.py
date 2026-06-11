@@ -855,8 +855,8 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
         },
         {
             "動作": "GraphRAG 匯入後查詢測試",
-            "狀態": "本機 Neo4j smoke",
-            "效果": "本機 Neo4j smoke",
+            "狀態": "本機 Neo4j 匯入檢查",
+            "效果": "本機 Neo4j 匯入檢查",
             "說明": "匯入 bundled graph payload 後驗證 live Cypher。",
             "指令": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
             "逾時秒數": 120,
@@ -876,6 +876,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
     assert "safe_noop_task_submission" not in rendered
     assert "no-op" not in rendered
     assert "safe_local_neo4j_import_smoke" not in rendered
+    assert "本機 Neo4j smoke" not in rendered
 
 
 def test_maintenance_diagnostic_actions_require_confirmation_before_submit(monkeypatch) -> None:

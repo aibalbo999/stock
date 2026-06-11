@@ -342,7 +342,7 @@ def _maintenance_diagnostic_action_status(action: dict) -> str:
     if action.get("safe_to_run") and action.get("effect") == "safe_noop_task_submission":
         return "安全空跑"
     if action.get("safe_to_run") and action.get("effect") == "safe_local_neo4j_import_smoke":
-        return "本機 Neo4j smoke"
+        return "本機 Neo4j 匯入檢查"
     return "停用"
 
 
@@ -350,7 +350,7 @@ def maintenance_diagnostic_effect_label(value: object) -> str:
     labels = {
         "read_only": "只讀檢查",
         "safe_noop_task_submission": "安全空跑送出",
-        "safe_local_neo4j_import_smoke": "本機 Neo4j smoke",
+        "safe_local_neo4j_import_smoke": "本機 Neo4j 匯入檢查",
     }
     text = str(value or "").strip()
     if not text:

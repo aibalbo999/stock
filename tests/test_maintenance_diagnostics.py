@@ -78,6 +78,11 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         env_check_action["display_command"]
     )
     assert "遮蔽密鑰" in env_check_action["description"]
+    external_smoke_action = {
+        action["id"]: action for action in catalog["actions"]
+    }["external_integrations_smoke"]
+    assert external_smoke_action["label"] == "外部整合連線檢查"
+    assert "基本回應" in external_smoke_action["description"]
     llm_quota_action = {
         action["id"]: action for action in catalog["actions"]
     }["llm_quota_env_audit"]
@@ -119,6 +124,8 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     live_query_action = {
         action["id"]: action for action in catalog["actions"]
     }["graphrag_live_query_smoke"]
+    assert live_query_action["label"] == "GraphRAG Neo4j 查詢檢查"
+    assert "受控 Cypher 查詢" in live_query_action["description"]
     assert "--import-first" not in live_query_action["display_command"]
     import_first_action = {
         action["id"]: action for action in catalog["actions"]
@@ -132,6 +139,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     mops_action = {
         action["id"]: action for action in catalog["actions"]
     }["high_risk_unlocker_smoke"]
+    assert mops_action["label"] == "高風險 MOPS 解鎖檢查"
     assert "--local-browser-render-defaults --prefer-unlocker" in (
         mops_action["display_command"]
     )
@@ -183,6 +191,7 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
         structured_sample_action["display_command"]
     )
     assert "--strict" in structured_sample_action["display_command"]
+    assert structured_sample_action["label"] == "結構化文件範例資料檢查"
     assert "不連外" in structured_sample_action["description"]
     structured_fixture_action = {
         action["id"]: action for action in catalog["actions"]
@@ -190,7 +199,8 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert "structured_company_filing_fixture_smoke.py --json --strict" in (
         structured_fixture_action["display_command"]
     )
-    assert "live HTTP fetch path" in structured_fixture_action["description"]
+    assert structured_fixture_action["label"] == "結構化文件本機 HTTP 檢查"
+    assert "HTTP 取件流程" in structured_fixture_action["description"]
     assert "不需要 token" in structured_fixture_action["description"]
     structured_provider_profile_action = {
         action["id"]: action for action in catalog["actions"]
@@ -198,8 +208,15 @@ def test_maintenance_diagnostic_action_catalog_exposes_allowlisted_read_only_act
     assert "--provider-profile tej --json --strict" in (
         structured_provider_profile_action["display_command"]
     )
-    assert "Bearer auth" in structured_provider_profile_action["description"]
+    assert structured_provider_profile_action["label"] == "結構化文件 TEJ 設定檢查"
+    assert "TEJ 提供者設定" in structured_provider_profile_action["description"]
     assert "不需要真實 token" in structured_provider_profile_action["description"]
+    visible_action_copy = " ".join(
+        f"{action['label']} {action['description']}" for action in catalog["actions"]
+    )
+    assert "smoke" not in visible_action_copy.casefold()
+    assert "contract" not in visible_action_copy.casefold()
+    assert "live query" not in visible_action_copy.casefold()
 
 
 def test_run_maintenance_diagnostic_action_executes_only_allowlisted_action(
@@ -636,8 +653,10 @@ def test_run_maintenance_diagnostic_action_summarizes_external_smoke_gap_actions
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "外部整合 smoke"
+    assert rows[0]["項目"] == "外部整合檢查"
     assert rows[0]["Ready"] == "5/9"
+    assert rows[0]["數量"] == "需確認=9"
+    assert rows[0]["下一步"] == "可從維護診斷動作重跑外部整合檢查。"
     assert rows[1]["項目"] == "外部部署啟用"
     assert rows[2]["項目"] == "外部缺口處理類型"
     assert "local_action=3" in rows[2]["狀態"]
@@ -686,13 +705,16 @@ def test_run_maintenance_diagnostic_action_summarizes_graphrag_json(
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "GraphRAG smoke"
+    assert rows[0]["項目"] == "GraphRAG 查詢檢查"
     assert rows[0]["Ready"] == "是"
-    assert "local_contract=True" in rows[0]["數量"]
-    assert rows[1]["項目"] == "Neo4j payload"
+    assert "本機規則=是" in rows[0]["數量"]
+    assert rows[1]["項目"] == "Neo4j 匯入資料"
     assert "nodes=4" in rows[1]["數量"]
-    assert rows[2]["項目"] == "Cypher query"
+    assert rows[2]["項目"] == "Cypher 查詢"
     assert "rows=2" in rows[2]["數量"]
+    rendered = str(rows)
+    assert "smoke" not in rendered
+    assert "payload" not in rendered.casefold()
 
 
 def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(

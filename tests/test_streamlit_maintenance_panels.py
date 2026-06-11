@@ -650,13 +650,13 @@ def test_task_queue_health_rows_show_worker_nodes_and_smoke_command() -> None:
     assert rows[0]["狀態"] == "可送出"
     assert rows[1]["項目"] == "背景任務執行"
     assert rows[1]["狀態"] == "可執行"
-    assert "worker 可接手執行" in rows[1]["說明"]
-    assert rows[5]["項目"] == "背景執行 worker"
+    assert "背景執行器可接手執行" in rows[1]["說明"]
+    assert rows[5]["項目"] == "背景執行器"
     assert rows[5]["狀態"] == "在線"
     assert "celery@test.local" in rows[5]["說明"]
     assert alert == {
         "severity": "success",
-        "message": "背景任務可送出且 worker 可執行；目前 1 個 worker 節點回應。",
+        "message": "背景任務可送出且背景執行器可執行；目前 1 個背景執行器節點回應。",
     }
     assert (
         helpers["task_queue_smoke_command"](snapshot) == ".venv/bin/python -m celery inspect ping"
@@ -687,19 +687,19 @@ def test_task_queue_health_alert_warns_when_worker_is_offline_but_queue_can_subm
     repair_rows = helpers["task_queue_repair_rows"](snapshot)
 
     assert rows[0]["狀態"] == "可排隊"
-    assert "worker 未回應" in rows[0]["說明"]
+    assert "背景執行器未回應" in rows[0]["說明"]
     assert rows[1]["項目"] == "背景任務執行"
-    assert rows[1]["狀態"] == "等待 worker"
-    assert "停在佇列直到 worker 上線" in rows[1]["說明"]
+    assert rows[1]["狀態"] == "等待背景執行器"
+    assert "停在佇列直到背景執行器上線" in rows[1]["說明"]
     assert rows[5]["狀態"] == "未回應"
     assert "timeout 1.0s" in rows[5]["說明"]
     assert alert["severity"] == "warning"
-    assert "背景執行 worker 未回應" in alert["message"]
+    assert "背景執行器未回應" in alert["message"]
     assert repair_rows == [
         {
-            "項目": "背景執行 worker",
+            "項目": "背景執行器",
             "狀態": "未回應",
-            "下一步": "啟動背景執行 worker，或確認既有 worker 能連到同一個 Redis broker。",
+            "下一步": "啟動背景執行器，或確認既有背景執行器能連到同一個 Redis 訊息佇列。",
             "修復指令": (
                 ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app worker "
                 "-B --loglevel=INFO --pool=solo"

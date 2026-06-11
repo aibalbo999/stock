@@ -958,7 +958,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"next_steps": task_failure_next_steps_text(task_status)' in source
     assert "失敗診斷" in source
     assert "仍會嘗試送出" in source
-    assert "背景執行 worker 未回應" in source
+    assert "背景執行器未回應" in source
     assert "/pipeline/run_discovered_async" in source
     assert "/tasks/data-operation" in source
     assert "/follow-up/run_async" in source

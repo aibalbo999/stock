@@ -78,8 +78,11 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and "Redis 佇列服務" in task_queue_diagnostics_source
             and "Redis 結果儲存" in task_queue_diagnostics_source
             and "任務註冊" in task_queue_diagnostics_source
-            and "背景執行 worker" in task_queue_diagnostics_source
-            and "背景任務可送出且 worker 可執行" in task_queue_diagnostics_source
+            and "背景執行器" in task_queue_diagnostics_source
+            and "背景任務可送出且背景執行器可執行" in task_queue_diagnostics_source
+            and "背景執行 worker" not in task_queue_diagnostics_source
+            and "worker 可執行" not in task_queue_diagnostics_source
+            and "Redis broker" not in task_queue_diagnostics_source
             and "背景任務送出與執行狀態" in maintenance_task_panels_source
             and "背景任務修復指引" in maintenance_task_panels_source
             and "Queue / Worker readiness" not in maintenance_task_panels_source

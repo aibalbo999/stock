@@ -15,7 +15,7 @@ def task_queue_processing_label(task_queue: dict) -> str:
     if not task_queue.get("ready"):
         return "檢查"
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-        return "等待 worker"
+        return "等待背景執行器"
     return "未確認"
 
 
@@ -48,7 +48,7 @@ def task_queue_health_rows(service_snapshot: dict) -> list[dict]:
             "說明": _task_wiring_detail(task_queue),
         },
         {
-            "項目": "背景執行 worker",
+            "項目": "背景執行器",
             "狀態": _worker_label(task_queue),
             "說明": _worker_detail(task_queue),
         },
@@ -71,16 +71,16 @@ def task_queue_health_alert(service_snapshot: dict) -> dict | None:
         worker_count = int(task_queue.get("worker_count") or 0)
         return {
             "severity": "success",
-            "message": f"背景任務可送出且 worker 可執行；目前 {worker_count} 個 worker 節點回應。",
+            "message": f"背景任務可送出且背景執行器可執行；目前 {worker_count} 個背景執行器節點回應。",
         }
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
         return {
             "severity": "warning",
-            "message": "背景任務可排隊，但背景執行 worker 未回應；任務可能停在佇列。",
+            "message": "背景任務可排隊，但背景執行器未回應；任務可能停在佇列。",
         }
     return {
         "severity": "info",
-        "message": "背景任務可送出；worker 健康檢查尚未執行或被跳過。",
+        "message": "背景任務可送出；背景執行器健康檢查尚未執行或被跳過。",
     }
 
 
@@ -144,9 +144,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
         if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
             rows.append(
                 {
-                    "項目": "背景執行 worker",
+                    "項目": "背景執行器",
                     "狀態": "未回應",
-                    "下一步": "啟動背景執行 worker，或確認既有 worker 能連到同一個 Redis broker。",
+                    "下一步": "啟動背景執行器，或確認既有背景執行器能連到同一個 Redis 訊息佇列。",
                     "修復指令": commands["start_worker"],
                     "驗證指令": verify_command,
                 }
@@ -154,9 +154,9 @@ def task_queue_repair_rows(service_snapshot: dict) -> list[dict]:
         elif not task_queue.get("worker_ping_checked"):
             rows.append(
                 {
-                    "項目": "背景執行 worker 健康檢查",
+                    "項目": "背景執行器健康檢查",
                     "狀態": "未檢查",
-                    "下一步": "執行健康檢查，確認是否有 worker 回應。",
+                    "下一步": "執行健康檢查，確認是否有背景執行器回應。",
                     "修復指令": verify_command,
                     "驗證指令": verify_command,
                 }
@@ -204,7 +204,7 @@ def _ok_label(value: object) -> str:
 def _task_queue_submission_detail(task_queue: dict) -> str:
     if task_queue.get("ready"):
         if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-            return "Redis 與任務註冊可送出；worker 未回應時任務會先留在佇列。"
+            return "Redis 與任務註冊可送出；背景執行器未回應時任務會先留在佇列。"
         return "Redis 佇列與結果儲存、Celery 任務註冊已可提交。"
     issues = []
     if not task_queue:
@@ -222,12 +222,12 @@ def _task_queue_submission_detail(task_queue: dict) -> str:
 
 def _task_queue_processing_detail(task_queue: dict) -> str:
     if _task_queue_processing_ready(task_queue):
-        return "背景任務已可提交，且 Celery worker 可接手執行。"
+        return "背景任務已可提交，且背景執行器可接手執行。"
     if not task_queue.get("ready"):
         return "背景任務尚不可提交，需先修復提交狀態。"
     if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
-        return "背景任務可收件，但 worker 未回應；任務會停在佇列直到 worker 上線。"
-    return "背景任務可提交，但 worker 健康檢查尚未執行；執行狀態未確認。"
+        return "背景任務可收件，但背景執行器未回應；任務會停在佇列直到背景執行器上線。"
+    return "背景任務可提交，但背景執行器健康檢查尚未執行；執行狀態未確認。"
 
 
 def _task_queue_processing_ready(task_queue: dict) -> bool:
@@ -272,9 +272,9 @@ def _worker_detail(task_queue: dict) -> str:
             return "回應節點：" + "、".join(str(node) for node in nodes)
         return f"回應數量：{int(task_queue.get('worker_count') or 0)}"
     if not task_queue.get("worker_ping_checked"):
-        reason = task_queue.get("worker_ping_skipped_reason") or "worker 健康檢查未執行"
+        reason = task_queue.get("worker_ping_skipped_reason") or "背景執行器健康檢查未執行"
         return f"未執行健康檢查：{reason}"
-    details = ["worker 健康檢查無回應"]
+    details = ["背景執行器健康檢查無回應"]
     if task_queue.get("worker_ping_error"):
         details.append(f"錯誤：{task_queue['worker_ping_error']}")
     timeout = task_queue.get("worker_ping_timeout_seconds")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.ui.maintenance_status import (
     optimization_progress_metric_values,
+    optimization_progress_next_action_rows,
     optimization_progress_operator_summary,
     optimization_progress_scope_summary,
 )
@@ -78,6 +79,30 @@ def test_optimization_progress_metric_values_localize_raw_statuses() -> None:
     assert metrics["外部/選配_delta"] == "原始 4"
     assert metrics["本機可補"] == 0
     assert "ready_with_optional_gaps" not in str(metrics)
+
+
+def test_optimization_progress_next_action_rows_localize_status_values() -> None:
+    rows = optimization_progress_next_action_rows(
+        {
+            "prioritized_next_actions": [
+                {
+                    "domain_label": "資料管線與爬蟲穩定度",
+                    "label": "公司文件結構化 API 備援",
+                    "priority_score": 30,
+                    "status": "not_configured",
+                    "capability_status": "not_configured",
+                    "optional": True,
+                    "external": True,
+                    "action_type": "paid_external",
+                    "cost_profile": "paid_external",
+                }
+            ]
+        }
+    )
+
+    assert rows[0]["狀態"] == "未設定"
+    assert rows[0]["能力狀態"] == "未設定"
+    assert "not_configured" not in str(rows[0])
 
 
 def test_optimization_progress_operator_summary_surfaces_paid_external_only_gap() -> None:

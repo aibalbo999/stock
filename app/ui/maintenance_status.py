@@ -228,6 +228,7 @@ def optimization_progress_status_label(status: object) -> str:
         "ready_with_optional_gaps": "核心完成/外部選配",
         "degraded": "需處理",
         "local_ready": "本機可驗證",
+        "not_configured": "未設定",
         "unknown": "未評估",
     }
     text = str(status or "unknown")
@@ -267,8 +268,10 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
             "主題": action.get("domain_label") or "-",
             "能力": action.get("label") or action.get("capability") or "-",
             "優先分數": action.get("priority_score") or "-",
-            "狀態": action.get("status") or "-",
-            "能力狀態": action.get("capability_status") or action.get("status") or "-",
+            "狀態": optimization_progress_status_label(action.get("status")),
+            "能力狀態": optimization_progress_status_label(
+                action.get("capability_status") or action.get("status")
+            ),
             "本機": "可用" if action.get("locally_available") else "-",
             "類型": action_type_labels.get(
                 str(action.get("action_type")),

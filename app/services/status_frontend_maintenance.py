@@ -216,6 +216,12 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "核心完成/外部選配" in maintenance_status_source
             and "未評估" in maintenance_status_source
         ),
+        "ui_optimization_progress_next_action_labels_enabled": (
+            '"狀態": optimization_progress_status_label(action.get("status"))'
+            in maintenance_status_source
+            and '"能力狀態": optimization_progress_status_label(' in maintenance_status_source
+            and '"not_configured": "未設定"' in maintenance_status_source
+        ),
         "ui_optimization_progress_paid_external_only_summary_enabled": (
             "本機優化已完成，剩下外部資料 API 決策" in maintenance_status_source
             and "本機 defaults 已無待處理項目" in maintenance_status_source

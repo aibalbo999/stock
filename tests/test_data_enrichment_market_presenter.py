@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import importlib
 from pathlib import Path
 
 from app.ui.data_enrichment_market_presenter import (
@@ -18,6 +19,36 @@ def test_market_presenter_is_streamlit_free() -> None:
 
     assert "import streamlit" not in source
     assert "st." not in source
+
+
+def test_market_operation_rules_live_in_streamlit_free_operations_module() -> None:
+    operations_path = Path("app/ui/data_enrichment_market_operations.py")
+
+    assert operations_path.exists()
+
+    operations_source = operations_path.read_text()
+    presenter_source = Path("app/ui/data_enrichment_market_presenter.py").read_text()
+    market_source = Path("app/ui/data_enrichment_market.py").read_text()
+    module = importlib.import_module("app.ui.data_enrichment_market_operations")
+
+    assert "import streamlit" not in operations_source
+    assert module.MARKET_OPERATION_ORDER == [
+        "market_refresh",
+        "fundamentals_refresh",
+        "valuation_refresh",
+        "company_filings_fetch",
+    ]
+    assert module.default_market_tickers(["2382", "2330"]) == ["2330"]
+    assert module.allowed_market_tickers(["2330", "9999"], ["2330"]) == ["2330"]
+    assert (
+        module.task_queue_block_reason({"ready": False, "worker_online": True})
+        == "背景任務未就緒，請先到維護頁檢查背景任務佇列"
+    )
+    assert "from app.ui.data_enrichment_market_operations import (" in presenter_source
+    assert "MARKET_DATA_OPERATIONS = {" not in presenter_source
+    assert "_task_queue_block_reason" not in market_source
+    assert "_default_market_tickers" not in market_source
+    assert "_allowed_pending_tickers" not in market_source
 
 
 def test_market_presenter_keeps_pending_selection_and_handoff_logic() -> None:

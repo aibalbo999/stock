@@ -45,6 +45,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     data_enrichment_market_cache_source = (
         ui.DATA_ENRICHMENT_MARKET_CACHE_SOURCE.read_text()
     )
+    data_enrichment_market_operations_source = (
+        ui.DATA_ENRICHMENT_MARKET_OPERATIONS_SOURCE.read_text()
+    )
     data_enrichment_market_view_source = ui.DATA_ENRICHMENT_MARKET_VIEW_SOURCE.read_text()
     data_enrichment_common_source = Path("app/ui/data_enrichment_common.py").read_text()
     data_enrichment_common_view_source = ui.DATA_ENRICHMENT_COMMON_VIEW_SOURCE.read_text()
@@ -517,6 +520,20 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "action-impact-grid" in combined
     assert "from app.ui.data_enrichment_market_presenter import (" in source
     assert "import streamlit" not in ui.DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE.read_text()
+    assert "from app.ui.data_enrichment_market_operations import (" in (
+        data_enrichment_market_source
+    )
+    assert "from app.ui.data_enrichment_market_operations import (" in (
+        ui.DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE.read_text()
+    )
+    assert "import streamlit" not in data_enrichment_market_operations_source
+    assert "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_operations_source
+    assert "MARKET_DATA_OPERATIONS = {" not in (
+        ui.DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE.read_text()
+    )
+    assert "_task_queue_block_reason" not in data_enrichment_market_source
+    assert "_default_market_tickers" not in data_enrichment_market_source
+    assert "_allowed_pending_tickers" not in data_enrichment_market_source
     assert "from app.ui.data_enrichment_market_view import (" in data_enrichment_market_source
     assert "import streamlit" not in data_enrichment_market_view_source
     assert "def data_gap_action_map_html(" in data_enrichment_market_view_source
@@ -564,10 +581,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "market-handoff-banner" in combined
     assert "補強導引" in source
     assert "先處理白名單提醒，再" in source
-    assert "task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)" in source
+    assert "task_queue_status = task_queue_status_from_service_snapshot(service_snapshot)" in source
     assert "task_queue=task_queue_status" in source
-    assert "task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))" in source
-    assert "def _task_queue_block_reason(" in source
+    assert "task_queue_blocks_submission = bool(task_queue_block_reason(task_queue_status))" in source
+    assert "def task_queue_block_reason(" in data_enrichment_market_operations_source
     assert "背景任務未就緒，請先到維護頁檢查背景執行器" in source
     assert "背景任務未就緒，請先到維護頁檢查背景任務佇列" in source
     assert "背景任務未就緒，請先到維護頁檢查 Worker" not in source
@@ -590,8 +607,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "cached-stale" in source
     assert "market-cache-readiness" in combined
     assert "market-cache-card" in combined
-    assert "def market_data_operation_button_type(" in source
-    assert "MARKET_DATA_OPERATIONS = {" in source
+    assert "def market_data_operation_button_type(" in data_enrichment_market_operations_source
+    assert "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_operations_source
     assert 'type=market_data_operation_button_type(pending_operation, "market_refresh")' in source
     assert (
         'type=market_data_operation_button_type(pending_operation, "company_filings_fetch")'

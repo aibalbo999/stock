@@ -2,50 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
-
-MARKET_DATA_OPERATIONS = {
-    "market_refresh",
-    "fundamentals_refresh",
-    "valuation_refresh",
-    "company_filings_fetch",
-}
-
-MARKET_OPERATION_METADATA = {
-    "market_refresh": {
-        "label": "刷新股價",
-        "impact": "更新最新版報告的股價與成交量判讀。",
-        "date_mode": "range",
-    },
-    "fundamentals_refresh": {
-        "label": "刷新 5 年財報",
-        "impact": "補齊五年財務與品質門檻需要的財報資料。",
-        "date_mode": "six_years",
-    },
-    "valuation_refresh": {
-        "label": "刷新估值",
-        "impact": "更新本益比、股價淨值比與殖利率判讀。",
-        "date_mode": "range",
-    },
-    "company_filings_fetch": {
-        "label": "補抓公司文件",
-        "impact": "補齊公司文件、法說會或公開資訊缺口。",
-        "date_mode": "none",
-    },
-}
-
-MARKET_OPERATION_ORDER = [
-    "market_refresh",
-    "fundamentals_refresh",
-    "valuation_refresh",
-    "company_filings_fetch",
-]
+from app.ui.data_enrichment_market_operations import (
+    MARKET_OPERATION_METADATA,
+    MARKET_OPERATION_ORDER,
+    market_data_operation_button_type,
+    market_operation_disabled_reason,
+    normalized_market_tickers,
+    task_queue_block_reason,
+)
 
 
 def pending_market_selection_state(
     pending_tickers: object,
     allowed_tickers: list[str],
 ) -> dict[str, Any]:
-    requested = _normalized_pending_tickers(pending_tickers)
+    requested = normalized_market_tickers(pending_tickers)
     allowed = {str(ticker).strip() for ticker in allowed_tickers if str(ticker).strip()}
     selected = [ticker for ticker in requested if ticker in allowed]
     rejected = [ticker for ticker in requested if ticker not in allowed]
@@ -85,7 +56,7 @@ def pending_market_handoff_summary(
 
     metadata = MARKET_OPERATION_METADATA[operation]
     action_label = metadata["label"]
-    selected = _normalized_pending_tickers(selected_market_tickers)
+    selected = normalized_market_tickers(selected_market_tickers)
     ticker_label = "、".join(selected) if selected else "尚未選擇股票"
     rejected_detail = ""
     if isinstance(selection_state, dict) and selection_state.get("rejected"):
@@ -101,16 +72,6 @@ def pending_market_handoff_summary(
     }
 
 
-def market_data_operation_button_type(
-    pending_operation: str | None,
-    operation: str,
-) -> str:
-    pending = str(pending_operation or "").strip()
-    if pending in MARKET_DATA_OPERATIONS:
-        return "primary" if pending == operation else "secondary"
-    return "primary" if operation == "market_refresh" else "secondary"
-
-
 def market_operation_readiness_rows(
     *,
     selected_market_tickers: list[str],
@@ -122,18 +83,18 @@ def market_operation_readiness_rows(
     selected_count = len([ticker for ticker in selected_market_tickers if str(ticker).strip()])
     has_market_selection = selected_count > 0
     has_valid_market_range = market_start <= market_end
-    task_queue_block_reason = _task_queue_block_reason(task_queue)
+    queue_block_reason = task_queue_block_reason(task_queue)
 
     rows = []
     for operation in MARKET_OPERATION_ORDER:
         metadata = MARKET_OPERATION_METADATA[operation]
-        disabled_reason = _market_operation_disabled_reason(
+        disabled_reason = market_operation_disabled_reason(
             operation,
             has_market_selection=has_market_selection,
             has_valid_market_range=has_valid_market_range,
-            task_queue_block_reason=task_queue_block_reason,
+            task_queue_block_reason=queue_block_reason,
         )
-        state = "blocked" if task_queue_block_reason else "ready" if not disabled_reason else "attention"
+        state = "blocked" if queue_block_reason else "ready" if not disabled_reason else "attention"
         rows.append(
             {
                 "operation": operation,
@@ -164,7 +125,7 @@ def market_submission_preflight_summary(
     task_queue: dict | None,
     confirmed: bool,
 ) -> dict[str, str]:
-    selected = _normalized_pending_tickers(selected_market_tickers)
+    selected = normalized_market_tickers(selected_market_tickers)
     operation = str(pending_operation or "").strip()
     metadata = MARKET_OPERATION_METADATA.get(operation)
     operation_label = metadata["label"] if metadata else "資料補強"
@@ -181,13 +142,13 @@ def market_submission_preflight_summary(
     date_label = f"{_date_text(market_start)} → {_date_text(market_end)}"
     detail = f"股票：{_ticker_label(selected)}｜期間：{date_label}"
 
-    task_queue_block_reason = _task_queue_block_reason(task_queue)
-    if task_queue_block_reason:
+    queue_block_reason = task_queue_block_reason(task_queue)
+    if queue_block_reason:
         return {
             "state": "blocked",
             "title": "背景任務暫時不可送出",
             "detail": detail,
-            "next_step": f"{task_queue_block_reason}。",
+            "next_step": f"{queue_block_reason}。",
             "quota_hint": "尚未送出任何資料補強；先修復背景任務可避免失敗重試浪費額度。",
         }
     if not selected:
@@ -276,68 +237,6 @@ def market_cache_operator_summary(cache_summary: dict) -> list[dict[str, str]]:
             "action_label": "可沿用" if filings else "補抓公司文件",
         },
     ]
-
-
-def _normalized_pending_tickers(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    tickers = []
-    seen = set()
-    for ticker in value:
-        text = str(ticker).strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        tickers.append(text)
-    return tickers
-
-
-def _allowed_pending_tickers(value: object, allowed_tickers: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    allowed = set(allowed_tickers)
-    return [str(ticker).strip() for ticker in value if str(ticker).strip() in allowed]
-
-
-def _default_market_tickers(allowed_tickers: list[str]) -> list[str]:
-    return ["2330"] if "2330" in allowed_tickers else allowed_tickers[:1]
-
-
-def _task_queue_status_from_service_snapshot(service_snapshot: dict) -> dict:
-    if not isinstance(service_snapshot, dict):
-        return {}
-    task_queue = service_snapshot.get("task_queue")
-    return task_queue if isinstance(task_queue, dict) else {}
-
-
-def _task_queue_block_reason(task_queue: dict | None) -> str:
-    if task_queue is None:
-        return ""
-    if not isinstance(task_queue, dict) or not task_queue:
-        return "尚未取得背景任務狀態"
-    if not task_queue.get("ready"):
-        return "背景任務未就緒，請先到維護頁檢查背景任務佇列"
-    if task_queue.get("worker_online") is False:
-        return "背景任務未就緒，請先到維護頁檢查背景執行器"
-    if "processing_ready" in task_queue and not task_queue.get("processing_ready"):
-        return "背景任務未就緒，請先到維護頁檢查背景執行器"
-    return ""
-
-
-def _market_operation_disabled_reason(
-    operation: str,
-    *,
-    has_market_selection: bool,
-    has_valid_market_range: bool,
-    task_queue_block_reason: str = "",
-) -> str:
-    if task_queue_block_reason:
-        return task_queue_block_reason
-    if not has_market_selection:
-        return "請先選擇至少一檔股票"
-    if operation in {"market_refresh", "valuation_refresh"} and not has_valid_market_range:
-        return "起始日期不可晚於結束日期"
-    return ""
 
 
 def _market_operation_caption(

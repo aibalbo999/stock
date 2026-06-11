@@ -42,6 +42,7 @@ DATA_GAP_ACTIONS_SOURCE = Path("app/ui/data_gap_actions.py")
 DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE = Path("app/ui/data_enrichment_manual_presenter.py")
 DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE = Path("app/ui/data_enrichment_market_presenter.py")
 DATA_ENRICHMENT_MARKET_CACHE_SOURCE = Path("app/ui/data_enrichment_market_cache.py")
+DATA_ENRICHMENT_MARKET_OPERATIONS_SOURCE = Path("app/ui/data_enrichment_market_operations.py")
 DATA_ENRICHMENT_MARKET_VIEW_SOURCE = Path("app/ui/data_enrichment_market_view.py")
 DATA_ENRICHMENT_COMMON_VIEW_SOURCE = Path("app/ui/data_enrichment_common_view.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
@@ -157,6 +158,7 @@ UI_SOURCE_FILES = [
     DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE,
     Path("app/ui/data_enrichment_market.py"),
     DATA_ENRICHMENT_MARKET_CACHE_SOURCE,
+    DATA_ENRICHMENT_MARKET_OPERATIONS_SOURCE,
     DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE,
     DATA_ENRICHMENT_MARKET_VIEW_SOURCE,
     Path("app/ui/data_enrichment_rss.py"),

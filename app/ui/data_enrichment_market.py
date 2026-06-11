@@ -23,13 +23,15 @@ from app.ui.data_enrichment_runtime import (
     company_filing_runtime_rows,
     company_filing_visual_rag_model_chain_rows,
 )
-from app.ui.data_enrichment_market_presenter import (
-    _allowed_pending_tickers,
-    _default_market_tickers,
-    _task_queue_block_reason,
-    _task_queue_status_from_service_snapshot,
-    market_cache_operator_summary,
+from app.ui.data_enrichment_market_operations import (
+    allowed_market_tickers,
+    default_market_tickers,
     market_data_operation_button_type,
+    task_queue_block_reason,
+    task_queue_status_from_service_snapshot,
+)
+from app.ui.data_enrichment_market_presenter import (
+    market_cache_operator_summary,
     market_operation_readiness_rows,
     market_submission_preflight_summary,
     pending_market_handoff_summary,
@@ -114,8 +116,8 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
 
     has_market_selection = bool(selected_market_tickers)
     has_valid_market_range = market_start <= market_end
-    task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)
-    task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))
+    task_queue_status = task_queue_status_from_service_snapshot(service_snapshot)
+    task_queue_blocks_submission = bool(task_queue_block_reason(task_queue_status))
     operation_readiness = market_operation_readiness_rows(
         selected_market_tickers=selected_market_tickers,
         market_start=market_start,
@@ -293,9 +295,9 @@ def _apply_pending_market_data_selection(allowed_tickers: list[str]) -> None:
             st.session_state.pop("pending_market_selection_state", None)
         return
     if "market_data_tickers" not in st.session_state:
-        st.session_state["market_data_tickers"] = _default_market_tickers(allowed_tickers)
+        st.session_state["market_data_tickers"] = default_market_tickers(allowed_tickers)
         return
-    st.session_state["market_data_tickers"] = _allowed_pending_tickers(
+    st.session_state["market_data_tickers"] = allowed_market_tickers(
         st.session_state.get("market_data_tickers"),
         allowed_tickers,
     )

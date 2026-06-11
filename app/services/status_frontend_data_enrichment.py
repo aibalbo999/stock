@@ -25,6 +25,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     data_enrichment_market_cache_source = source_context.ui_sources[
         "data_enrichment_market_cache.py"
     ]
+    data_enrichment_market_operations_source = source_context.ui_sources[
+        "data_enrichment_market_operations.py"
+    ]
     data_enrichment_market_presenter_source = source_context.ui_sources[
         "data_enrichment_market_presenter.py"
     ]
@@ -71,11 +74,33 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_data_enrichment_market_presenter_extracted": (
             "from app.ui.data_enrichment_market_presenter import (" in data_enrichment_market_source
+            and "from app.ui.data_enrichment_market_operations import ("
+            in data_enrichment_market_presenter_source
             and "import streamlit" not in data_enrichment_market_presenter_source
             and "def market_operation_readiness_rows(" in data_enrichment_market_presenter_source
             and "def market_submission_preflight_summary("
             in data_enrichment_market_presenter_source
             and "def market_cache_operator_summary(" in data_enrichment_market_presenter_source
+            and "MARKET_DATA_OPERATIONS = {" not in data_enrichment_market_presenter_source
+        ),
+        "ui_data_enrichment_market_operations_extracted": (
+            "from app.ui.data_enrichment_market_operations import ("
+            in data_enrichment_market_source
+            and "from app.ui.data_enrichment_market_operations import ("
+            in data_enrichment_market_presenter_source
+            and "import streamlit" not in data_enrichment_market_operations_source
+            and "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_operations_source
+            and "MARKET_OPERATION_METADATA = {" in data_enrichment_market_operations_source
+            and "def market_data_operation_button_type("
+            in data_enrichment_market_operations_source
+            and "def default_market_tickers(" in data_enrichment_market_operations_source
+            and "def allowed_market_tickers(" in data_enrichment_market_operations_source
+            and "def task_queue_status_from_service_snapshot("
+            in data_enrichment_market_operations_source
+            and "def task_queue_block_reason(" in data_enrichment_market_operations_source
+            and "_task_queue_block_reason" not in data_enrichment_market_source
+            and "_default_market_tickers" not in data_enrichment_market_source
+            and "_allowed_pending_tickers" not in data_enrichment_market_source
         ),
         "ui_data_enrichment_market_view_extracted": (
             "from app.ui.data_enrichment_market_view import ("
@@ -127,8 +152,8 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "def company_filing_url_preflight_summary(" not in data_enrichment_manual_source
         ),
         "ui_data_enrichment_pending_operation_button_priority_enabled": (
-            "def market_data_operation_button_type(" in data_enrichment_market_presenter_source
-            and "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_presenter_source
+            "def market_data_operation_button_type(" in data_enrichment_market_operations_source
+            and "MARKET_DATA_OPERATIONS = {" in data_enrichment_market_operations_source
             and "type=market_data_operation_button_type(pending_operation, \"market_refresh\")"
             in data_enrichment_market_source
             and (
@@ -137,7 +162,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             )
             in data_enrichment_market_source
             and "return \"primary\" if pending == operation else \"secondary\""
-            in data_enrichment_market_presenter_source
+            in data_enrichment_market_operations_source
         ),
         "ui_data_enrichment_pending_handoff_banner_enabled": (
             "def pending_market_handoff_summary(" in data_enrichment_market_presenter_source
@@ -172,22 +197,22 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "market_operation_confirmed" in data_enrichment_market_source
         ),
         "ui_data_enrichment_task_queue_guard_enabled": (
-            "task_queue_status = _task_queue_status_from_service_snapshot(service_snapshot)"
+            "task_queue_status = task_queue_status_from_service_snapshot(service_snapshot)"
             in data_enrichment_market_source
             and "task_queue=task_queue_status" in data_enrichment_market_source
-            and "task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))"
+            and "task_queue_blocks_submission = bool(task_queue_block_reason(task_queue_status))"
             in data_enrichment_market_source
-            and "def _task_queue_status_from_service_snapshot("
-            in data_enrichment_market_presenter_source
-            and "def _task_queue_block_reason(" in data_enrichment_market_presenter_source
+            and "def task_queue_status_from_service_snapshot("
+            in data_enrichment_market_operations_source
+            and "def task_queue_block_reason(" in data_enrichment_market_operations_source
             and "背景任務未就緒，請先到維護頁檢查背景執行器"
-            in data_enrichment_market_presenter_source
+            in data_enrichment_market_operations_source
             and "背景任務未就緒，請先到維護頁檢查背景任務佇列"
-            in data_enrichment_market_presenter_source
+            in data_enrichment_market_operations_source
             and "背景任務未就緒，請先到維護頁檢查 Worker"
-            not in data_enrichment_market_presenter_source
+            not in data_enrichment_market_operations_source
             and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
-            not in data_enrichment_market_presenter_source
+            not in data_enrichment_market_operations_source
         ),
         "ui_data_enrichment_market_submission_confirmation_enabled": (
             "market_operation_confirmed = st.checkbox(" in data_enrichment_market_source
@@ -274,7 +299,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_presenter_source
-            and "def _normalized_pending_tickers(" in data_enrichment_market_presenter_source
+            and "def normalized_market_tickers(" in data_enrichment_market_operations_source
             and "pending_market_selection_state(pending_tickers, allowed_tickers)"
             in data_enrichment_market_source
             and '"pending_market_selection_state"' in data_enrichment_market_source

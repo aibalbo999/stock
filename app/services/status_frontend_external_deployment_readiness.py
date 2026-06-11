@@ -126,6 +126,8 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_presenter_source
             and "def maintenance_operation_post_run_diagnostic_action_ids("
             in maintenance_deployment_presenter_source
+            and "def maintenance_operation_post_run_diagnostic_action_rows("
+            in maintenance_deployment_presenter_source
             and "local_resolution_projection" in maintenance_deployment_presenter_source
             and "resolves_capabilities" in maintenance_deployment_presenter_source
             and '"可處理能力"' in maintenance_deployment_presenter_source
@@ -134,6 +136,8 @@ def frontend_external_deployment_readiness_status(
             and "後續驗證" in maintenance_deployment_panel_source
             and '"可執行診斷"' in maintenance_deployment_presenter_source
             and "可直接執行的後續診斷" in maintenance_deployment_panel_source
+            and "maintenance_operation_post_run_diagnostic_action_rows(post_run_rows)"
+            in maintenance_deployment_panel_source
             and "maintenance_post_run_diagnostic_" in maintenance_deployment_panel_source
             and 'f"/tasks/maintenance-diagnostic/{action_id}"'
             in maintenance_deployment_panel_source
@@ -171,7 +175,9 @@ def frontend_external_deployment_readiness_status(
             "action_confirmed = st.checkbox(" in maintenance_deployment_panel_source
             and 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"'
             in maintenance_deployment_panel_source
-            and "我了解這會送出後續診斷背景任務" in maintenance_deployment_panel_source
+            and 'f"我了解這會送出「{label}」後續診斷背景任務"'
+            in maintenance_deployment_panel_source
+            and 'f"執行 {label}"' in maintenance_deployment_panel_source
             and "避免誤觸後續診斷" in maintenance_deployment_panel_source
             and "disabled=not action_confirmed" in maintenance_deployment_panel_source
             and 'f"/tasks/maintenance-diagnostic/{action_id}"'

@@ -29,7 +29,7 @@ from app.ui.maintenance_deployment_presenter import (
     external_deployment_focus_banner,
     external_deployment_operator_summary,
     maintenance_operation_post_run_check_rows,
-    maintenance_operation_post_run_diagnostic_action_ids,
+    maintenance_operation_post_run_diagnostic_action_rows,
     maintenance_operation_recommendation_caption,
     maintenance_operation_rows,
     merge_local_action_projections,
@@ -380,22 +380,30 @@ def _render_maintenance_operation_result(result: dict) -> None:
 
 
 def _render_post_run_diagnostic_actions(post_run_rows: list[dict]) -> None:
-    action_ids = maintenance_operation_post_run_diagnostic_action_ids(post_run_rows)
-    if not action_ids:
+    action_rows = maintenance_operation_post_run_diagnostic_action_rows(post_run_rows)
+    if not action_rows:
         return
     st.caption("可直接執行的後續診斷")
-    for action_id in action_ids:
+    for action in action_rows:
+        action_id = str(action.get("id") or "").strip()
+        label = str(action.get("label") or action_id or "後續診斷")
+        purpose = str(action.get("purpose") or "").strip()
+        command = str(action.get("command") or "").strip()
         action_confirmed = st.checkbox(
-            "我了解這會送出後續診斷背景任務",
+            f"我了解這會送出「{label}」後續診斷背景任務",
             value=False,
             key=f"maintenance_post_run_diagnostic_confirm_{action_id}",
         )
         if not action_confirmed:
-            st.caption("勾選確認後才會啟用後續診斷，避免誤觸後續診斷。")
+            hint = "勾選確認後才會啟用後續診斷，避免誤觸後續診斷。"
+            if purpose:
+                hint += f" 用途：{purpose}"
+            st.caption(hint)
         if st.button(
-            f"執行 {action_id}",
+            f"執行 {label}",
             key=f"maintenance_post_run_diagnostic_{action_id}",
             disabled=not action_confirmed,
+            help=command or purpose or None,
         ):
             submit_api_task(
                 f"/tasks/maintenance-diagnostic/{action_id}",

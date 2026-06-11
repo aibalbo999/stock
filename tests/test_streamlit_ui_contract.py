@@ -788,6 +788,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def maintenance_operation_rows(" in source
     assert "def maintenance_operation_post_run_check_rows(" in source
     assert "def maintenance_operation_post_run_diagnostic_action_ids(" in source
+    assert "def maintenance_operation_post_run_diagnostic_action_rows(" in source
     assert 'LAST_MAINTENANCE_OPERATION_TASK_KEY = "last_maintenance_operation_task_id"' in source
     assert 'LAST_POST_RUN_DIAGNOSTIC_TASK_KEY = "last_post_run_diagnostic_task_id"' in source
     assert "本機依賴操作" in source
@@ -795,8 +796,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "後續驗證" in source
     assert '"可執行診斷"' in source
     assert "可直接執行的後續診斷" in source
+    assert "maintenance_operation_post_run_diagnostic_action_rows(post_run_rows)" in source
     assert "maintenance_post_run_diagnostic_" in source
     assert 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"' in source
+    assert 'f"我了解這會送出「{label}」後續診斷背景任務"' in source
+    assert 'f"執行 {label}"' in source
+    assert 'f"執行 {action_id}"' not in source
     assert "disabled=not action_confirmed" in source
     assert "confirm_maintenance_operation" in source
     assert "maintenance_run_operation" in source

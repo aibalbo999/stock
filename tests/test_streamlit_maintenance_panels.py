@@ -23,10 +23,13 @@ from app.services.external_deployment_readiness import (
 from app.ui.maintenance_deployment_panel import (
     external_deployment_effective_gap_rows,
     maintenance_operation_recommendation_caption,
-    maintenance_operation_post_run_diagnostic_action_ids,
+    maintenance_operation_post_run_diagnostic_action_rows,
     maintenance_operation_post_run_check_rows,
     maintenance_operation_rows,
     recommended_maintenance_operation_id,
+)
+from app.ui.maintenance_deployment_presenter import (
+    maintenance_operation_post_run_diagnostic_action_ids,
 )
 from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from app.ui.maintenance_task_panels import task_observability_expander_expanded
@@ -457,6 +460,53 @@ def test_maintenance_operation_post_run_check_rows_surface_verify_commands() -> 
             {"可執行診斷": ""},
         ]
     ) == ["graphrag_live_query_smoke", "high_risk_unlocker_smoke"]
+
+
+def test_maintenance_operation_post_run_diagnostic_action_rows_use_operator_labels() -> None:
+    post_run_rows = [
+        {
+            "項目": "Neo4j / GraphRAG 本機設定稽核",
+            "用途": "確認目前程序套用本機 Neo4j env 後的 live import 狀態。",
+            "可執行診斷": "local_neo4j_upgrade_audit",
+            "指令": ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --json",
+        },
+        {
+            "項目": "Neo4j / GraphRAG 本機設定稽核 duplicate",
+            "用途": "重複列不應讓操作者看到兩個相同診斷。",
+            "可執行診斷": "local_neo4j_upgrade_audit",
+            "指令": ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --json",
+        },
+        {
+            "項目": "高風險 MOPS unlocker smoke",
+            "用途": "確認 FlareSolverr / unlocker provider 可處理 MOPS 高風險入口。",
+            "可執行診斷": "high_risk_unlocker_smoke",
+            "指令": (
+                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--local-browser-render-defaults --prefer-unlocker "
+                "--url https://mops.twse.com.tw/ --json"
+            ),
+        },
+        {"項目": "不可執行項目", "用途": "-", "可執行診斷": "-", "指令": "-"},
+    ]
+
+    assert maintenance_operation_post_run_diagnostic_action_rows(post_run_rows) == [
+        {
+            "id": "local_neo4j_upgrade_audit",
+            "label": "Neo4j / GraphRAG 本機設定稽核",
+            "purpose": "確認目前程序套用本機 Neo4j env 後的 live import 狀態。",
+            "command": ".venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --json",
+        },
+        {
+            "id": "high_risk_unlocker_smoke",
+            "label": "高風險 MOPS unlocker smoke",
+            "purpose": "確認 FlareSolverr / unlocker provider 可處理 MOPS 高風險入口。",
+            "command": (
+                ".venv/bin/python scripts/company_filing_render_smoke.py "
+                "--local-browser-render-defaults --prefer-unlocker "
+                "--url https://mops.twse.com.tw/ --json"
+            ),
+        },
+    ]
 
 
 def test_maintenance_service_metrics_show_worker_queue_warning_label() -> None:
@@ -963,24 +1013,33 @@ def test_post_run_diagnostic_actions_require_confirmation_before_submit(monkeypa
     )
 
     maintenance_deployment_panel._render_post_run_diagnostic_actions(
-        [{"可執行診斷": "upgrade_audit"}]
+        [
+            {
+                "項目": "升級稽核",
+                "用途": "確認升級狀態",
+                "可執行診斷": "upgrade_audit",
+                "指令": "upgrade-audit --json",
+            }
+        ]
     )
 
     assert fake_st.checkboxes == [
         {
-            "label": "我了解這會送出後續診斷背景任務",
+            "label": "我了解這會送出「升級稽核」後續診斷背景任務",
             "value": False,
             "key": "maintenance_post_run_diagnostic_confirm_upgrade_audit",
         }
     ]
     assert fake_st.buttons == [
         {
-            "label": "執行 upgrade_audit",
+            "label": "執行 升級稽核",
             "key": "maintenance_post_run_diagnostic_upgrade_audit",
             "disabled": True,
+            "help": "upgrade-audit --json",
         }
     ]
     assert any("避免誤觸後續診斷" in caption for caption in fake_st.captions)
+    assert any("用途：確認升級狀態" in caption for caption in fake_st.captions)
     assert submitted == []
 
 
@@ -1016,21 +1075,29 @@ def test_post_run_diagnostic_actions_submit_after_confirmation(monkeypatch) -> N
     )
 
     maintenance_deployment_panel._render_post_run_diagnostic_actions(
-        [{"可執行診斷": "upgrade_audit"}]
+        [
+            {
+                "項目": "升級稽核",
+                "用途": "確認升級狀態",
+                "可執行診斷": "upgrade_audit",
+                "指令": "upgrade-audit --json",
+            }
+        ]
     )
 
     assert fake_st.checkboxes == [
         {
-            "label": "我了解這會送出後續診斷背景任務",
+            "label": "我了解這會送出「升級稽核」後續診斷背景任務",
             "value": False,
             "key": "maintenance_post_run_diagnostic_confirm_upgrade_audit",
         }
     ]
     assert fake_st.buttons == [
         {
-            "label": "執行 upgrade_audit",
+            "label": "執行 升級稽核",
             "key": "maintenance_post_run_diagnostic_upgrade_audit",
             "disabled": False,
+            "help": "upgrade-audit --json",
         }
     ]
     assert submitted == [

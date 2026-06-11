@@ -208,15 +208,33 @@ def maintenance_operation_post_run_check_rows(result: dict) -> list[dict]:
 
 
 def maintenance_operation_post_run_diagnostic_action_ids(rows: list[dict]) -> list[str]:
-    action_ids: list[str] = []
+    return [
+        str(action["id"])
+        for action in maintenance_operation_post_run_diagnostic_action_rows(rows)
+        if str(action.get("id") or "").strip()
+    ]
+
+
+def maintenance_operation_post_run_diagnostic_action_rows(rows: list[dict]) -> list[dict]:
+    actions: list[dict] = []
     seen: set[str] = set()
     for row in rows:
         action_id = str(row.get("可執行診斷") or "").strip()
         if not action_id or action_id == "-" or action_id in seen:
             continue
         seen.add(action_id)
-        action_ids.append(action_id)
-    return action_ids
+        label = str(row.get("項目") or action_id).strip() or action_id
+        purpose = str(row.get("用途") or "").strip()
+        command = str(row.get("指令") or "").strip()
+        actions.append(
+            {
+                "id": action_id,
+                "label": label,
+                "purpose": "" if purpose == "-" else purpose,
+                "command": "" if command == "-" else command,
+            }
+        )
+    return actions
 
 
 def recommended_maintenance_operation_id(

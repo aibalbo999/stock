@@ -197,6 +197,17 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "核心優化已可用，先驗證本機選配" in maintenance_status_source
             and "付費/API 選配" in maintenance_status_source
         ),
+        "ui_optimization_progress_scope_summary_enabled": (
+            "def optimization_progress_scope_summary(" in maintenance_status_source
+            and "optimization_progress_scope_summary(service_snapshot)"
+            in maintenance_panels_source
+            and "def _render_optimization_progress_scope_summary("
+            in maintenance_panels_source
+            and "optimization-progress-scope-summary" in maintenance_panels_source
+            and ".optimization-progress-scope-summary" in style_source
+            and "優化進度與升級稽核分母不同" in maintenance_status_source
+            and "python_runtime 屬部署前檢查" in maintenance_status_source
+        ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()
         and (ui_dir / "maintenance_ai_panels.py").exists()

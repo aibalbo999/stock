@@ -15,6 +15,7 @@ from app.ui.maintenance_status import (
     optimization_progress_operator_summary,
     optimization_progress_next_action_rows,
     optimization_progress_rows,
+    optimization_progress_scope_summary,
     upgrade_audit_html,
     upgrade_audit_rows,
 )
@@ -151,6 +152,9 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
         )
         if local_projection.get("next_action"):
             st.caption(str(local_projection["next_action"]))
+        _render_optimization_progress_scope_summary(
+            optimization_progress_scope_summary(service_snapshot)
+        )
         _render_optimization_progress_operator_summary(
             optimization_progress_operator_summary(progress)
         )
@@ -159,6 +163,27 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
         if action_rows:
             st.caption("下一步")
             st.dataframe(action_rows, width="stretch", hide_index=True)
+
+
+def _render_optimization_progress_scope_summary(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    st.markdown(
+        f"""<section class="optimization-progress-scope-summary is-{escape(summary.get("state", "info"))}" aria-label="優化進度範圍說明">
+<div>
+<span>範圍說明</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+</div>
+<ul>
+<li>{escape(summary.get("objective", ""))}</li>
+<li>{escape(summary.get("audit", ""))}</li>
+<li>{escape(summary.get("excluded", ""))}</li>
+</ul>
+<p>{escape(summary.get("note", ""))}</p>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_optimization_progress_operator_summary(summary: dict[str, str]) -> None:

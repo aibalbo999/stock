@@ -1194,6 +1194,7 @@ textarea:focus,
 }
 .incident-inbox,
 .data-gap-action-map,
+.optimization-progress-scope-summary,
 .optimization-progress-operator-summary,
 .allowlist-scope-summary,
 .follow-up-submission-summary,
@@ -1213,6 +1214,40 @@ textarea:focus,
 }
 .incident-inbox.is-list {
     margin-top: 8px;
+}
+.optimization-progress-scope-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.85fr);
+    gap: 12px;
+    align-items: start;
+    margin: 10px 0 10px;
+    border-left: 4px solid var(--stock-info);
+    background: var(--stock-info-soft);
+}
+.optimization-progress-scope-summary span {
+    color: var(--stock-info);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.optimization-progress-scope-summary strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--stock-text);
+    font-size: 1rem;
+}
+.optimization-progress-scope-summary p,
+.optimization-progress-scope-summary li {
+    color: var(--stock-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+.optimization-progress-scope-summary p:last-child {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+.optimization-progress-scope-summary ul {
+    margin: 0;
+    padding-left: 18px;
 }
 .optimization-progress-operator-summary {
     display: grid;
@@ -1721,6 +1756,7 @@ textarea:focus,
     .incident-list,
     .incident-priority-summary,
     .data-gap-action-list,
+    .optimization-progress-scope-summary,
     .optimization-progress-operator-summary,
     .market-cache-readiness-list,
     .market-operation-readiness-list,

@@ -305,6 +305,90 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
     }
 
 
+def optimization_progress_scope_summary(service_snapshot: dict) -> dict[str, str]:
+    if not isinstance(service_snapshot, dict):
+        return {}
+    progress = (
+        service_snapshot.get("optimization_progress")
+        if isinstance(service_snapshot.get("optimization_progress"), dict)
+        else {}
+    )
+    matrix = (
+        service_snapshot.get("upgrade_capability_matrix")
+        if isinstance(service_snapshot.get("upgrade_capability_matrix"), dict)
+        else {}
+    )
+    if not progress or not matrix:
+        return {}
+    objective_refs = _optimization_objective_refs(progress)
+    audit_checks = _upgrade_capability_checks(matrix)
+    excluded = [
+        check
+        for check in audit_checks
+        if (check["area"], check["capability"]) not in objective_refs
+    ]
+    objective_total = int(progress.get("total_checks") or len(objective_refs))
+    objective_ready = int(progress.get("ready_checks") or 0)
+    audit_total = len(audit_checks)
+    audit_ready = sum(1 for check in audit_checks if check["status"] == "ready")
+    if not excluded and audit_total == objective_total:
+        return {}
+    excluded_label = "、".join(_scope_check_label(check) for check in excluded) or "-"
+    return {
+        "state": "info",
+        "title": "優化進度與升級稽核分母不同",
+        "detail": (
+            f"優化目標追蹤 {objective_total} 項；完整升級稽核追蹤 {audit_total} 項，"
+            f"另含 {len(excluded)} 項部署 preflight。"
+        ),
+        "objective": f"優化目標 {objective_ready}/{objective_total}",
+        "audit": f"升級稽核 {audit_ready}/{audit_total}",
+        "excluded": f"部署 preflight：{excluded_label}",
+        "note": "這不是缺口漏算；python_runtime 屬部署前檢查，不計入已核准的四大優化目標分母。",
+    }
+
+
+def _optimization_objective_refs(progress: dict) -> set[tuple[str, str]]:
+    refs: set[tuple[str, str]] = set()
+    for domain in progress.get("domains") or []:
+        if not isinstance(domain, dict):
+            continue
+        for check in domain.get("checks") or []:
+            if not isinstance(check, dict):
+                continue
+            area = str(check.get("area") or "").strip()
+            capability = str(check.get("capability") or "").strip()
+            if area and capability:
+                refs.add((area, capability))
+    return refs
+
+
+def _upgrade_capability_checks(matrix: dict) -> list[dict[str, str]]:
+    checks: list[dict[str, str]] = []
+    for area, capabilities in sorted(matrix.items()):
+        if not isinstance(capabilities, dict):
+            continue
+        for capability, payload in sorted(capabilities.items()):
+            if not isinstance(payload, dict):
+                continue
+            checks.append(
+                {
+                    "area": str(area),
+                    "capability": str(capability),
+                    "status": str(payload.get("status") or "unknown"),
+                }
+            )
+    return checks
+
+
+def _scope_check_label(check: dict[str, str]) -> str:
+    labels = {
+        ("architecture", "python_runtime"): "Python 3.11+ runtime",
+    }
+    key = (check.get("area") or "", check.get("capability") or "")
+    return labels.get(key, check.get("capability") or "-")
+
+
 def _action_verify_command(action: dict) -> str:
     verify_command = str(action.get("verify_command") or "").strip()
     if verify_command:

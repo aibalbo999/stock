@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.ui.maintenance_status import optimization_progress_operator_summary
+from app.ui.maintenance_status import (
+    optimization_progress_operator_summary,
+    optimization_progress_scope_summary,
+)
 
 
 def test_optimization_progress_operator_summary_promotes_local_defaults() -> None:
@@ -94,4 +97,40 @@ def test_optimization_progress_operator_summary_ready_when_no_actions() -> None:
         "paid_external": "付費/API 選配 0 項",
         "next_step": "維持例行 smoke、audit 與報告品質觀測。",
         "command": "-",
+    }
+
+
+def test_optimization_progress_scope_summary_explains_audit_preflight_delta() -> None:
+    summary = optimization_progress_scope_summary(
+        {
+            "optimization_progress": {
+                "ready_checks": 28,
+                "total_checks": 32,
+                "domains": [
+                    {
+                        "checks": [
+                            {"area": "architecture", "capability": "background_task_queue"},
+                            {"area": "ai_rag", "capability": "llm_quota_routing"},
+                        ]
+                    }
+                ],
+            },
+            "upgrade_capability_matrix": {
+                "architecture": {
+                    "background_task_queue": {"status": "ready"},
+                    "python_runtime": {"status": "ready"},
+                },
+                "ai_rag": {"llm_quota_routing": {"status": "ready"}},
+            },
+        }
+    )
+
+    assert summary == {
+        "state": "info",
+        "title": "優化進度與升級稽核分母不同",
+        "detail": "優化目標追蹤 32 項；完整升級稽核追蹤 3 項，另含 1 項部署 preflight。",
+        "objective": "優化目標 28/32",
+        "audit": "升級稽核 3/3",
+        "excluded": "部署 preflight：Python 3.11+ runtime",
+        "note": "這不是缺口漏算；python_runtime 屬部署前檢查，不計入已核准的四大優化目標分母。",
     }

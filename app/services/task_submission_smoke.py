@@ -431,7 +431,7 @@ def _next_actions(
     if task_queue.get("legacy_status_shape"):
         actions.append("重啟 FastAPI，使 /services/status 載入新版 task_queue 診斷欄位。")
     if not task_queue.get("ready"):
-        actions.append("確認 Redis broker/backend 與 Celery task exports，重跑 /services/status。")
+        actions.append("確認 Redis 佇列/結果儲存與任務註冊，再重跑系統狀態檢查。")
     poll_succeeded = bool(
         poll_result
         and poll_result.get("status") == "completed"
@@ -443,11 +443,11 @@ def _next_actions(
         and not task_queue.get("processing_ready")
         and not poll_succeeded
     ):
-        actions.append("啟動 Celery worker 後重跑 --submit --wait smoke。")
+        actions.append("啟動背景執行器後重跑 --submit --wait smoke。")
     if submission and not submission.get("ok"):
         actions.append("檢查 /tasks/data-operation structured error detail 與 API logs。")
     if poll_result and poll_result.get("status") == "timeout":
-        actions.append("任務已送出但未完成；檢查 worker 是否在線或是否卡在執行中。")
+        actions.append("任務已送出但未完成；檢查背景執行器是否在線或是否卡在執行中。")
     if not actions and status == "passed":
         actions.append("背景任務提交路徑正常。")
     return actions

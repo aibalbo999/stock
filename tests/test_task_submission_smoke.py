@@ -151,6 +151,65 @@ def test_task_submission_smoke_reports_api_submission_failure() -> None:
     )
 
 
+def test_task_submission_smoke_uses_operator_queue_repair_guidance() -> None:
+    def fake_opener(request, timeout):
+        return FakeResponse(
+            {
+                "task_queue": {
+                    "ready": False,
+                    "processing_ready": False,
+                    "submission_contract_ready": False,
+                    "worker_online": False,
+                }
+            }
+        )
+
+    report = smoke.run_task_submission_smoke(
+        check_runtime_identity=False,
+        opener=fake_opener,
+    )
+
+    rendered = " ".join(report["next_actions"])
+    assert "確認 Redis 佇列/結果儲存與任務註冊，再重跑系統狀態檢查。" in rendered
+    assert "Redis broker/backend" not in rendered
+    assert "Celery task exports" not in rendered
+
+
+def test_task_submission_smoke_uses_operator_worker_timeout_guidance() -> None:
+    responses = [
+        FakeResponse(
+            {
+                "task_queue": {
+                    "ready": True,
+                    "processing_ready": True,
+                    "submission_contract_ready": True,
+                    "worker_online": True,
+                }
+            }
+        ),
+        FakeResponse({"task_id": "task-1", "status": "queued", "operation": "market_refresh"}),
+        FakeResponse({"task_id": "task-1", "status": "PENDING", "ready": False}),
+    ]
+
+    def fake_opener(_request, timeout):
+        return responses.pop(0)
+
+    ticks = iter([0.0, 1.0])
+    report = smoke.run_task_submission_smoke(
+        submit=True,
+        wait=True,
+        check_runtime_identity=False,
+        opener=fake_opener,
+        clock=lambda: next(ticks),
+        sleeper=lambda seconds: None,
+        timeout_seconds=0.0,
+    )
+
+    rendered = " ".join(report["next_actions"])
+    assert "任務已送出但未完成；檢查背景執行器是否在線或是否卡在執行中。" in rendered
+    assert "worker" not in rendered
+
+
 def test_task_submission_smoke_can_skip_processing_readiness_for_enqueue_only() -> None:
     def fake_opener(request, timeout):
         if request.full_url.endswith("/services/status"):

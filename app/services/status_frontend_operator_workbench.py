@@ -17,6 +17,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     )
     operator_task_state_source = source_context.ui_sources.get("operator_task_state.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
+    operator_decision_support_source = source_context.ui_sources.get(
+        "operator_decision_support.py", ""
+    )
 
     return {
         "frontend_operator_workbench_status_extracted": True,
@@ -137,8 +140,24 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def _latest_task_running(" not in operator_decisions_source
             and "def _task_row_running(" not in operator_decisions_source
         ),
+        "ui_operator_decision_support_helpers_extracted": (
+            "from app.ui.operator_decision_support import ("
+            in operator_decisions_source
+            and "import streamlit" not in operator_decision_support_source
+            and "def primary_data_gap_action(" in operator_decision_support_source
+            and "def healthy_read_reason(" in operator_decision_support_source
+            and "def retryable_failure_affecting_report("
+            in operator_decision_support_source
+            and "def latest_report(" in operator_decision_support_source
+            and "def _primary_data_gap_action(" not in operator_decisions_source
+            and "def _healthy_read_reason(" not in operator_decisions_source
+            and "def _retryable_failure_affecting_report("
+            not in operator_decisions_source
+            and "def _latest_report(" not in operator_decisions_source
+        ),
         "ui_operator_retryable_failure_primary_action_enabled": (
-            "def _retryable_failure_affecting_report(" in operator_decisions_source
+            "def retryable_failure_affecting_report("
+            in operator_decision_support_source
             and "def task_summary_failures(" in operator_task_state_source
             and "重試影響最新版報告的任務" in operator_decisions_source
             and "priority=7" in operator_decisions_source
@@ -156,11 +175,11 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'route_hint=stale_running_incident["route_hint"]' in operator_decisions_source
         ),
         "ui_operator_quota_missing_read_guard_enabled": (
-            "def _healthy_read_reason(" in operator_decisions_source
-            and "def _healthy_read_risk(" in operator_decisions_source
+            "def healthy_read_reason(" in operator_decision_support_source
+            and "def healthy_read_risk(" in operator_decision_support_source
             and "quota_missing = not quota_payload" in operator_decisions_source
-            and "模型額度狀態暫不可讀" in operator_decisions_source
-            and "閱讀現有報告不消耗額度" in operator_decisions_source
+            and "模型額度狀態暫不可讀" in operator_decision_support_source
+            and "閱讀現有報告不消耗額度" in operator_decision_support_source
             and "reason=_healthy_read_reason(quota_missing=quota_missing)"
             in operator_decisions_source
             and "risk=_healthy_read_risk(quota_missing=quota_missing)"

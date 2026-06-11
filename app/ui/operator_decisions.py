@@ -2,8 +2,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ui.data_gap_actions import data_gap_action_items, market_freshness_action_item
+from app.ui.data_gap_actions import market_freshness_action_item
 from app.ui.incident_inbox import incident_inbox_items, top_incidents
+from app.ui.operator_decision_support import (
+    data_gap_action_impact as _data_gap_action_impact,
+    data_gap_action_source_ids as _data_gap_action_source_ids,
+    dict_value as _dict_value,
+    has_report_detail_payload as _has_report_detail_payload,
+    healthy_read_reason as _healthy_read_reason,
+    healthy_read_risk as _healthy_read_risk,
+    latest_report as _latest_report,
+    operator_action as _action,
+    primary_data_gap_action as _primary_data_gap_action,
+    report_id as _report_id,
+    required_follow_up_count as _required_follow_up_count,
+    retryable_failure_affecting_report as _retryable_failure_affecting_report,
+    text_value as _text,
+)
 from app.ui.operator_optimization_actions import (
     optimization_free_validation_action as _optimization_free_validation_action,
     optimization_local_defaults_action as _optimization_local_defaults_action,
@@ -12,18 +27,10 @@ from app.ui.operator_status import quota_operator_summary, service_status_unavai
 from app.ui.operator_task_state import (
     latest_task_running as _latest_task_running,
     latest_task_successful as _latest_task_successful,
-    task_summary_failures as _task_summary_failures,
 )
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
-REPORT_DETAIL_KEYS = {
-    "quality_gate",
-    "tickers",
-    "candidate_whitelist",
-    "auto_follow_up",
-    "promoted_tickers",
-}
 MAX_SECONDARY_ACTIONS = 4
 
 
@@ -376,31 +383,6 @@ def operator_secondary_actions(
     return _dedupe_secondary_actions(secondary)[:MAX_SECONDARY_ACTIONS]
 
 
-def _action(
-    *,
-    state: str,
-    priority: int,
-    title: str,
-    reason: str,
-    risk: str,
-    impact: str,
-    action_label: str,
-    route_hint: str,
-    source_ids: list[Any],
-) -> dict[str, Any]:
-    return {
-        "state": state,
-        "priority": priority,
-        "title": title,
-        "reason": reason,
-        "risk": risk,
-        "impact": impact,
-        "action_label": action_label,
-        "route_hint": route_hint,
-        "source_ids": [str(source_id) for source_id in source_ids if str(source_id).strip()],
-    }
-
-
 def _first_incident(
     incidents: list[dict],
     category: str,
@@ -482,70 +464,6 @@ def _append_secondary_action(
     secondary.append({key: value for key, value in action.items() if key != "source_ids"})
 
 
-def _primary_data_gap_action(report_payload: dict, follow_up_plan: dict | None) -> dict:
-    items = data_gap_action_items(report_payload, follow_up_plan)
-    for item in items:
-        if item.get("purpose") == "required" and item.get("operation") != "report_follow_up":
-            return item
-    for item in items:
-        if item.get("purpose") == "required":
-            return item
-    for item in items:
-        if item.get("operation") != "report_follow_up":
-            return item
-    return {}
-
-
-def _required_follow_up_count(follow_up_plan: dict | None) -> int:
-    plan = _dict_value(follow_up_plan)
-    summary = _dict_value(plan.get("summary"))
-    selected = _dict_value(summary.get("selected"))
-    if "required_count" in selected:
-        return _int_value(selected.get("required_count"))
-    return _int_value(summary.get("required_count"))
-
-
-def _data_gap_action_impact(action: dict) -> str:
-    impact = _text(action.get("impact"), default="補強最新版報告資料缺口。")
-    post_action_hint = _text(action.get("post_action_hint"))
-    if post_action_hint and post_action_hint not in impact:
-        return f"{impact}；{post_action_hint}"
-    return impact
-
-
-def _data_gap_action_source_ids(action: dict, report_id: Any) -> list[Any]:
-    source_ids: list[Any] = []
-    if report_id is not None:
-        source_ids.append(f"report:{report_id}")
-    source_ids.extend(action.get("tickers") or [])
-    return source_ids
-
-
-def _healthy_read_reason(*, quota_missing: bool) -> str:
-    reason = "背景任務、品質門檻與必補資料缺口都沒有阻塞。"
-    if quota_missing:
-        return f"{reason}模型額度狀態暫不可讀，但不影響閱讀既有報告。"
-    return reason
-
-
-def _healthy_read_risk(*, quota_missing: bool) -> str:
-    if quota_missing:
-        return "閱讀現有報告不消耗額度；送出新分析或重跑前再確認 AI 額度。"
-    return "仍需把報告視為研究輔助，不是買賣指令。"
-
-
-def _retryable_failure_affecting_report(task_summary: dict | None, report_id: Any) -> dict:
-    if report_id is None:
-        return {}
-    report_id_text = str(report_id).strip()
-    for failure in _task_summary_failures(task_summary):
-        if not failure.get("retryable"):
-            continue
-        if str(failure.get("report_id") or "").strip() == report_id_text:
-            return failure
-    return {}
-
-
 def _incident_matches_primary(incident: dict, primary_action: dict) -> bool:
     source = str(incident.get("source") or "").strip()
     return (
@@ -568,42 +486,3 @@ def _secondary_action_matches_primary(action: dict, primary_action: dict) -> boo
             or bool(action_sources & primary_sources)
         )
     )
-
-
-def _latest_report(reports: list[dict] | None) -> dict:
-    if not isinstance(reports, list):
-        return {}
-    for report in reports:
-        if isinstance(report, dict):
-            return report
-    return {}
-
-
-def _has_report_detail_payload(report: dict) -> bool:
-    return bool(report) and any(key in report for key in REPORT_DETAIL_KEYS)
-
-
-def _report_id(report_payload: dict, latest_report: dict) -> Any:
-    for report in (report_payload, latest_report):
-        if not isinstance(report, dict):
-            continue
-        for key in ("report_id", "id"):
-            if report.get(key) is not None:
-                return report[key]
-    return None
-
-
-def _dict_value(value: Any) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
-def _int_value(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _text(value: Any, *, default: str = "") -> str:
-    text = str(value).strip() if value is not None else ""
-    return text or default

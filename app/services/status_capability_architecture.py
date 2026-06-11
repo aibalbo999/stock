@@ -188,6 +188,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_operator_quota_summary_enabled")
             and frontend_status.get("ui_operator_quota_step_caption_enabled")
             and frontend_status.get("ui_operator_task_state_helpers_extracted")
+            and frontend_status.get("ui_operator_decision_support_helpers_extracted")
             and frontend_status.get("ui_operator_retryable_failure_primary_action_enabled")
             and frontend_status.get("ui_operator_stale_running_primary_action_enabled")
             and frontend_status.get("ui_operator_quota_missing_read_guard_enabled")

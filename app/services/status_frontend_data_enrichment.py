@@ -11,6 +11,9 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> dict:
     operator_decisions_source = source_context.ui_sources["operator_decisions.py"]
+    operator_decision_support_source = source_context.ui_sources[
+        "operator_decision_support.py"
+    ]
     data_gap_actions_source = source_context.ui_sources["data_gap_actions.py"]
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
     data_enrichment_source = source_context.ui_sources["data_enrichment.py"]
@@ -31,8 +34,10 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_operator_data_gap_prefill_enabled": (
             "from app.ui.data_gap_actions import data_gap_action_items"
+            in operator_decision_support_source
+            and "def primary_data_gap_action(" in operator_decision_support_source
+            and "from app.ui.operator_decision_support import ("
             in operator_decisions_source
-            and "def _primary_data_gap_action(" in operator_decisions_source
             and 'data_gap_action.get("route_hint")' in operator_decisions_source
             and 'f"data_enrichment:{operation}:{ticker_suffix}"' in data_gap_actions_source
             and "def _data_enrichment_route_hint(" in data_gap_actions_source

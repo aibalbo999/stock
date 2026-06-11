@@ -27,6 +27,7 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
     operator_decisions_source = ui.OPERATOR_DECISIONS_SOURCE.read_text()
+    operator_decision_support_source = ui.OPERATOR_DECISION_SUPPORT_SOURCE.read_text()
     operator_optimization_actions_source = ui.OPERATOR_OPTIMIZATION_ACTIONS_SOURCE.read_text()
     operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
@@ -137,8 +138,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def _task_summary_failures(" not in operator_decisions_source
     assert "def _latest_task_running(" not in operator_decisions_source
     assert "def _task_row_running(" not in operator_decisions_source
-    assert "from app.ui.data_gap_actions import data_gap_action_items" in source
-    assert "def _primary_data_gap_action(" in source
+    assert "from app.ui.operator_decision_support import (" in operator_decisions_source
+    assert "from app.ui.data_gap_actions import data_gap_action_items" in (
+        operator_decision_support_source
+    )
+    assert "def primary_data_gap_action(" in operator_decision_support_source
+    assert "def healthy_read_reason(" in operator_decision_support_source
+    assert "def retryable_failure_affecting_report(" in operator_decision_support_source
+    assert "def _primary_data_gap_action(" not in operator_decisions_source
+    assert "def _healthy_read_reason(" not in operator_decisions_source
+    assert "def _retryable_failure_affecting_report(" not in operator_decisions_source
     assert 'data_gap_action.get("route_hint")' in source
     assert "operator-decision-card" in combined
     assert "operator-secondary-actions" in combined
@@ -203,8 +212,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "report-health-action" in combined
     assert "from app.ui.report_lifecycle import latest_report_lifecycle" in source
     assert "latest_report_lifecycle(" in source
-    assert "from app.ui.data_gap_actions import data_gap_action_items" in source
-    assert "def _primary_data_gap_action(" in source
+    assert "from app.ui.data_gap_actions import data_gap_action_items" in (
+        operator_decision_support_source
+    )
+    assert "def primary_data_gap_action(" in operator_decision_support_source
     assert "primary_action_detail" in source
     assert "_render_report_lifecycle_action(" in source
     assert 'key="report_lifecycle_primary_action"' in source

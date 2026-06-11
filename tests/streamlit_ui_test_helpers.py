@@ -29,6 +29,7 @@ REPORT_LIFECYCLE_SOURCE = Path("app/ui/report_lifecycle.py")
 REPORT_CENTER_PRESENTER_SOURCE = Path("app/ui/report_center_presenter.py")
 INCIDENT_INBOX_SOURCE = Path("app/ui/incident_inbox.py")
 OPERATOR_DECISIONS_SOURCE = Path("app/ui/operator_decisions.py")
+OPERATOR_DECISION_SUPPORT_SOURCE = Path("app/ui/operator_decision_support.py")
 DATA_GAP_ACTIONS_SOURCE = Path("app/ui/data_gap_actions.py")
 DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE = Path("app/ui/data_enrichment_manual_presenter.py")
 DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE = Path("app/ui/data_enrichment_market_presenter.py")
@@ -81,6 +82,7 @@ UI_SOURCE_FILES = [
     REPORT_CENTER_PRESENTER_SOURCE,
     INCIDENT_INBOX_SOURCE,
     OPERATOR_DECISIONS_SOURCE,
+    OPERATOR_DECISION_SUPPORT_SOURCE,
     DATA_GAP_ACTIONS_SOURCE,
     FOLLOW_UP_STATUS_SOURCE,
     MAINTENANCE_STATUS_SOURCE,

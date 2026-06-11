@@ -9,12 +9,14 @@ def frontend_external_deployment_readiness_status(
     source_context: FrontendSourceContext,
 ) -> dict:
     root = source_context.root
+    ui_dir = source_context.ui_dir
     ui_source = source_context.ui_source
     ui_sources = source_context.ui_sources
     external_deployment_source = ui_sources["external_deployment_diagnostics.py"]
     external_deployment_common_source = ui_sources["external_deployment_common.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
+    maintenance_operation_controls_source = ui_sources["maintenance_operation_controls.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     readiness_service_path = root / "app" / "services" / "external_deployment_readiness.py"
     readiness_service_source = _read_text(readiness_service_path)
@@ -131,36 +133,37 @@ def frontend_external_deployment_readiness_status(
             and "local_resolution_projection" in maintenance_deployment_presenter_source
             and "resolves_capabilities" in maintenance_deployment_presenter_source
             and '"可處理能力"' in maintenance_deployment_presenter_source
-            and "本機依賴操作" in maintenance_deployment_panel_source
-            and "選擇維護操作" in maintenance_deployment_panel_source
-            and "後續驗證" in maintenance_deployment_panel_source
+            and "本機依賴操作" in maintenance_operation_controls_source
+            and "選擇維護操作" in maintenance_operation_controls_source
+            and "後續驗證" in maintenance_operation_controls_source
             and '"可執行診斷"' in maintenance_deployment_presenter_source
-            and "可直接執行的後續診斷" in maintenance_deployment_panel_source
+            and "可直接執行的後續診斷" in maintenance_operation_controls_source
             and "maintenance_operation_post_run_diagnostic_action_rows(post_run_rows)"
-            in maintenance_deployment_panel_source
-            and "maintenance_post_run_diagnostic_" in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and "maintenance_post_run_diagnostic_" in maintenance_operation_controls_source
             and 'f"/tasks/maintenance-diagnostic/{action_id}"'
-            in maintenance_deployment_panel_source
-            and "confirm_maintenance_operation" in maintenance_deployment_panel_source
-            and "maintenance_run_operation" in maintenance_deployment_panel_source
-            and "runtime_settings_cache_cleared" in maintenance_deployment_panel_source
-            and "Runtime settings cache" in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and "confirm_maintenance_operation" in maintenance_operation_controls_source
+            and "maintenance_run_operation" in maintenance_operation_controls_source
+            and "runtime_settings_cache_cleared" in maintenance_operation_controls_source
+            and "Runtime settings cache" in maintenance_operation_controls_source
             and 'LAST_MAINTENANCE_OPERATION_TASK_KEY = "last_maintenance_operation_task_id"'
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and 'LAST_POST_RUN_DIAGNOSTIC_TASK_KEY = "last_post_run_diagnostic_task_id"'
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and "task_state_key=LAST_MAINTENANCE_OPERATION_TASK_KEY"
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and 'refresh_key="refresh_maintenance_operation_task_status"'
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and "task_state_key=LAST_POST_RUN_DIAGNOSTIC_TASK_KEY"
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and 'refresh_key="refresh_maintenance_diagnostic_task_status"'
-            in maintenance_deployment_panel_source
-            and "後續診斷結果" in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and "後續診斷結果" in maintenance_operation_controls_source
             and 'f"/tasks/maintenance-operation/{selected_operation_id}"'
-            in maintenance_deployment_panel_source
-            and '"confirmed": True' in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and '"confirmed": True' in maintenance_operation_controls_source
+            and "_render_maintenance_operations(" in maintenance_deployment_panel_source
         ),
         "ui_maintenance_operation_rows_operator_labels_enabled": (
             "def _maintenance_operation_scope_label(" in maintenance_deployment_presenter_source
@@ -174,25 +177,38 @@ def frontend_external_deployment_readiness_status(
             and '"Docker services"' not in maintenance_deployment_presenter_source
         ),
         "ui_maintenance_operation_confirmation_gate_enabled": (
-            "operation_confirmed = st.checkbox(" in maintenance_deployment_panel_source
-            and 'key="confirm_maintenance_operation"' in maintenance_deployment_panel_source
-            and "我了解此操作會啟動本機 Docker 依賴" in maintenance_deployment_panel_source
-            and "disabled=not operation_confirmed" in maintenance_deployment_panel_source
+            "operation_confirmed = st.checkbox(" in maintenance_operation_controls_source
+            and 'key="confirm_maintenance_operation"' in maintenance_operation_controls_source
+            and "我了解此操作會啟動本機 Docker 依賴" in maintenance_operation_controls_source
+            and "disabled=not operation_confirmed" in maintenance_operation_controls_source
             and 'f"/tasks/maintenance-operation/{selected_operation_id}"'
-            in maintenance_deployment_panel_source
-            and '"confirmed": True' in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and '"confirmed": True' in maintenance_operation_controls_source
         ),
         "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled": (
-            "action_confirmed = st.checkbox(" in maintenance_deployment_panel_source
+            "action_confirmed = st.checkbox(" in maintenance_operation_controls_source
             and 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"'
-            in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
             and 'f"我了解這會送出「{label}」後續診斷背景任務"'
-            in maintenance_deployment_panel_source
-            and 'f"執行 {label}"' in maintenance_deployment_panel_source
-            and "避免誤觸後續診斷" in maintenance_deployment_panel_source
-            and "disabled=not action_confirmed" in maintenance_deployment_panel_source
+            in maintenance_operation_controls_source
+            and 'f"執行 {label}"' in maintenance_operation_controls_source
+            and "避免誤觸後續診斷" in maintenance_operation_controls_source
+            and "disabled=not action_confirmed" in maintenance_operation_controls_source
             and 'f"/tasks/maintenance-diagnostic/{action_id}"'
+            in maintenance_operation_controls_source
+        ),
+        "ui_maintenance_operation_controls_extracted": (
+            (ui_dir / "maintenance_operation_controls.py").exists()
+            and "from app.ui.maintenance_operation_controls import ("
             in maintenance_deployment_panel_source
+            and "def render_maintenance_operations(" in maintenance_operation_controls_source
+            and "def render_post_run_diagnostic_actions("
+            in maintenance_operation_controls_source
+            and "def task_result_payload(" in maintenance_operation_controls_source
+            and "def _render_maintenance_operation_result("
+            not in maintenance_deployment_panel_source
+            and "def _render_post_run_diagnostic_result("
+            not in maintenance_deployment_panel_source
         ),
         "ui_maintenance_operations_path": "app/ui/maintenance_deployment_presenter.py",
     }

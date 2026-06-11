@@ -336,6 +336,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_maintenance_operations_enabled")
             and frontend_status.get("ui_maintenance_operation_rows_operator_labels_enabled")
             and frontend_status.get("ui_maintenance_operation_confirmation_gate_enabled")
+            and frontend_status.get("ui_maintenance_operation_controls_extracted")
             and frontend_status.get(
                 "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"
             )

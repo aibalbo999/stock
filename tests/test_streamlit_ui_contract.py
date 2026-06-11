@@ -633,6 +633,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.maintenance_deployment_presenter import (" in (
         ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     )
+    assert "from app.ui.maintenance_operation_controls import (" in (
+        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+    )
+    assert "def render_maintenance_operations(" in (
+        ui.MAINTENANCE_OPERATION_CONTROLS_SOURCE.read_text()
+    )
     assert "def recommended_maintenance_operation_id(" in (
         ui.MAINTENANCE_DEPLOYMENT_PRESENTER_SOURCE.read_text()
     )
@@ -640,7 +646,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
     )
     assert "index=recommended_operation_index" in (
-        ui.MAINTENANCE_DEPLOYMENT_PANEL_SOURCE.read_text()
+        ui.MAINTENANCE_OPERATION_CONTROLS_SOURCE.read_text()
     )
     assert (
         "def high_risk_filing_unlocker_rows(" in ui.EXTERNAL_DEPLOYMENT_UNLOCKER_SOURCE.read_text()

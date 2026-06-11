@@ -72,6 +72,16 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and "touch-action: manipulation" in style_source
             and "min-height: 40px !important" not in style_source
         ),
+        "ui_form_input_touch_targets_min_size_enabled": (
+            '[data-baseweb="input"] {\n    min-height: 44px !important;' in style_source
+            and '[data-baseweb="base-input"],' in style_source
+            and '[data-testid="stTextInputRootElement"],' in style_source
+            and '[data-testid="stDateInput"] [data-baseweb="input"],' in style_source
+            and '[data-testid="stNumberInput"] [data-baseweb="input"] {' in style_source
+            and '[data-testid="stDateInputField"],' in style_source
+            and '[data-testid="stNumberInputField"],' in style_source
+            and "min-height: 40px !important" not in style_source
+        ),
         "ui_streamlit_heading_anchor_noise_hidden": (
             'a[aria-label="Link to heading"]' in style_source
             and "display: none !important" in style_source

@@ -241,6 +241,18 @@ textarea,
     align-items: center !important;
     touch-action: manipulation;
 }
+[data-baseweb="input"] {
+    min-height: 44px !important;
+    align-items: center !important;
+    touch-action: manipulation;
+}
+[data-baseweb="base-input"],
+[data-testid="stTextInputRootElement"],
+[data-testid="stDateInput"] [data-baseweb="input"],
+[data-testid="stNumberInput"] [data-baseweb="input"] {
+    min-height: 44px !important;
+    align-items: center !important;
+}
 [data-testid="stWidgetLabel"],
 [data-testid="stWidgetLabel"] p,
 [data-testid="stWidgetLabel"] span {
@@ -251,6 +263,7 @@ textarea,
 [data-testid="stNumberInputField"],
 [data-testid="stTextInputRootElement"] input,
 [data-baseweb="input"] input {
+    min-height: 44px !important;
     background: #ffffff !important;
     color: var(--stock-text) !important;
     -webkit-text-fill-color: var(--stock-text) !important;

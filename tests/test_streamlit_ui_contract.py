@@ -508,6 +508,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '[data-testid="stDateInputField"]' in styles
     assert '[data-testid="stNumberInputField"]' in styles
     assert '[data-baseweb="input"]' in styles
+    assert '[data-baseweb="input"] {\n    min-height: 44px !important;' in styles
+    assert (
+        '[data-testid="stDateInputField"],\n'
+        '[data-testid="stNumberInputField"],\n'
+        '[data-testid="stTextInputRootElement"] input,\n'
+        '[data-baseweb="input"] input {\n'
+        "    min-height: 44px !important;"
+        in styles
+    )
     assert "border-color: #64748b" in styles
     assert '[data-testid="stJson"] *' in styles
     assert '[data-testid="stCode"] pre' in styles

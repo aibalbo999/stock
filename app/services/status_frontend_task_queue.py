@@ -85,6 +85,14 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and 'refresh_key="refresh_maintenance_diagnostic_action_status"'
             in maintenance_task_panels_source
         ),
+        "ui_maintenance_diagnostic_confirmation_gate_enabled": (
+            "diagnostic_confirmed = st.checkbox(" in maintenance_task_panels_source
+            and 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"'
+            in maintenance_task_panels_source
+            and "disabled=not diagnostic_confirmed" in maintenance_task_panels_source
+            and "我了解這會送出維護診斷背景任務" in maintenance_task_panels_source
+            and "避免誤觸診斷" in maintenance_task_panels_source
+        ),
         "ui_maintenance_safe_noop_diagnostics_enabled": (
             "safe_to_run" in maintenance_task_panels_source
             and "safe_noop_task_submission" in maintenance_task_panels_source

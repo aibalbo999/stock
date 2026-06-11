@@ -623,6 +623,168 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
     ]
 
 
+def test_maintenance_diagnostic_actions_require_confirmation_before_submit(monkeypatch) -> None:
+    from app.ui import maintenance_task_panels
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {}
+            self.buttons: list[dict] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict] = []
+            self.dataframes: list[list[dict]] = []
+            self.selectboxes: list[dict] = []
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def dataframe(self, rows, **_kwargs) -> None:
+            self.dataframes.append(list(rows))
+
+        def selectbox(self, label, options, *, format_func, key):
+            selected = options[0]
+            self.selectboxes.append(
+                {
+                    "label": label,
+                    "options": list(options),
+                    "key": key,
+                    "selected_label": format_func(selected),
+                }
+            )
+            return selected
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") == "maintenance_run_diagnostic_action" and not kwargs.get(
+                "disabled"
+            )
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+    monkeypatch.setattr(maintenance_task_panels, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "submit_api_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    maintenance_task_panels._render_maintenance_diagnostic_actions(
+        {
+            "actions": [
+                {
+                    "id": "upgrade_audit",
+                    "label": "Upgrade audit",
+                    "description": "檢查核心升級能力與外部部署選配狀態。",
+                    "display_command": ".venv/bin/python scripts/upgrade_audit.py",
+                    "timeout_seconds": 90,
+                    "read_only": True,
+                    "effect": "read_only",
+                    "safe_to_run": True,
+                }
+            ]
+        }
+    )
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出維護診斷背景任務",
+            "value": False,
+            "key": "maintenance_diagnostic_confirm_upgrade_audit",
+        }
+    ]
+    assert fake_st.buttons == [
+        {
+            "label": "執行診斷",
+            "key": "maintenance_run_diagnostic_action",
+            "disabled": True,
+        }
+    ]
+    assert any("避免誤觸診斷" in caption for caption in fake_st.captions)
+    assert submitted == []
+
+
+def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -> None:
+    from app.ui import maintenance_task_panels
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {}
+            self.buttons: list[dict] = []
+            self.checkboxes: list[dict] = []
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def dataframe(self, _rows, **_kwargs) -> None:
+            return None
+
+        def selectbox(self, _label, options, *, format_func, key):
+            assert key == "maintenance_diagnostic_action_select"
+            assert format_func(options[0]) == "Task submission no-op"
+            return options[0]
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return key == "maintenance_diagnostic_confirm_task_submission_noop_smoke"
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") == "maintenance_run_diagnostic_action" and not kwargs.get(
+                "disabled"
+            )
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+    monkeypatch.setattr(maintenance_task_panels, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "submit_api_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    maintenance_task_panels._render_maintenance_diagnostic_actions(
+        {
+            "actions": [
+                {
+                    "id": "task_submission_noop_smoke",
+                    "label": "Task submission no-op",
+                    "description": "送出 smoke=true 的 no-op market_refresh。",
+                    "display_command": ".venv/bin/python scripts/task_submission_smoke.py",
+                    "timeout_seconds": 45,
+                    "read_only": False,
+                    "effect": "safe_noop_task_submission",
+                    "safe_to_run": True,
+                }
+            ]
+        }
+    )
+
+    assert fake_st.buttons == [
+        {
+            "label": "執行診斷",
+            "key": "maintenance_run_diagnostic_action",
+            "disabled": False,
+        }
+    ]
+    assert submitted == [
+        (
+            ("/tasks/maintenance-diagnostic/task_submission_noop_smoke", {}),
+            {
+                "task_state_key": "last_maintenance_diagnostic_task_id",
+                "status_state_keys": ("refresh_maintenance_diagnostic_action_status_status",),
+                "success_message": "已送出維護診斷背景任務",
+                "error_message": "診斷執行失敗",
+                "task_type_state_key": "last_maintenance_diagnostic_action_type",
+                "task_type": "task_submission_noop_smoke",
+            },
+        )
+    ]
+
+
 def test_maintenance_operation_rows_surface_confirmed_local_dependency_operations() -> None:
     rows = maintenance_operation_rows(
         {

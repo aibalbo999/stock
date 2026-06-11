@@ -715,6 +715,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "safe_to_run" in source
     assert "安全 no-op" in source
     assert "maintenance_run_diagnostic_action" in source
+    assert "diagnostic_confirmed = st.checkbox(" in source
+    assert 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"' in source
+    assert "disabled=not diagnostic_confirmed" in source
+    assert "我了解這會送出維護診斷背景任務" in source
     assert 'f"/tasks/maintenance-diagnostic/{selected_action_id}"' in source
     assert "task_state_key=MAINTENANCE_DIAGNOSTIC_TASK_KEY" in source
     assert 'refresh_key="refresh_maintenance_diagnostic_action_status"' in source

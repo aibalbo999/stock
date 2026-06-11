@@ -251,7 +251,18 @@ def _render_maintenance_diagnostic_actions(maintenance_diagnostics: dict) -> Non
         format_func=lambda action_id: str(action_by_id[action_id].get("label") or action_id),
         key="maintenance_diagnostic_action_select",
     )
-    if st.button("執行診斷", key="maintenance_run_diagnostic_action"):
+    diagnostic_confirmed = st.checkbox(
+        "我了解這會送出維護診斷背景任務",
+        value=False,
+        key=f"maintenance_diagnostic_confirm_{selected_action_id}",
+    )
+    if not diagnostic_confirmed:
+        st.caption("避免誤觸診斷；確認後才會送出背景任務。")
+    if st.button(
+        "執行診斷",
+        key="maintenance_run_diagnostic_action",
+        disabled=not diagnostic_confirmed,
+    ):
         submit_api_task(
             f"/tasks/maintenance-diagnostic/{selected_action_id}",
             {},

@@ -84,7 +84,7 @@ def task_failure_drilldown_rows(task_summary: dict) -> list[dict]:
             "retry_kind": task_failure_retry_kind_label(row.get("retry_kind")),
             "action_route": task_failure_action_route(row),
             "action_route_detail": task_failure_action_route_detail(row),
-            "next_action": row.get("next_action") or _fallback_failure_next_action(row),
+            "next_action": task_failure_next_action_text(row),
             "next_steps": task_failure_next_steps_text(row),
             "error": row.get("error") or "-",
             "started_at": row.get("started_at") or "-",
@@ -279,6 +279,15 @@ def task_failure_next_steps_text(row: dict) -> str:
     return _task_next_steps_text(row)
 
 
+def task_failure_next_action_text(row: dict) -> str:
+    next_action = str(row.get("next_action") or "").strip()
+    if next_action and not _has_raw_task_action_endpoint(next_action):
+        return _operator_alert_text(next_action)
+    if next_action:
+        return task_failure_action_route_detail(row)
+    return _fallback_failure_next_action(row)
+
+
 def task_summary_alert_message(alert: dict) -> str:
     category = str(alert.get("error_category") or "").strip()
     message = str(alert.get("message") or "").strip()
@@ -369,6 +378,10 @@ def _fallback_failure_next_action(row: dict) -> str:
     if row.get("task_id"):
         return "查看任務狀態，確認 payload 是否支援自動重試。"
     return "缺少 task id；請從 run 明細檢查。"
+
+
+def _has_raw_task_action_endpoint(text: str) -> bool:
+    return "POST " in text or "/tasks/" in text
 
 
 def _task_next_steps_text(row: dict) -> str:

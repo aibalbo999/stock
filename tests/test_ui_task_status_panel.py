@@ -550,10 +550,11 @@ def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> N
             "retry_kind": "報告生成",
             "action_route": "一鍵重試",
             "action_route_detail": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
-            "next_action": "可從維護頁重試，或呼叫 POST /tasks/task-quota/retry",
+            "next_action": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
             "next_steps": "查看 AI 額度與模型路由或資料源額度。；等待額度重置後再重試。",
         }
     ]
+    assert "POST /tasks" not in rows[0]["next_action"]
 
 
 def test_task_status_diagnostic_rows_show_external_config_action_route() -> None:
@@ -602,6 +603,8 @@ def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
 
     assert rows[0]["action_route"] == "外部配置缺失"
     assert "Structured API" in rows[0]["action_route_detail"]
+    assert rows[0]["next_action"] == rows[0]["action_route_detail"]
+    assert "POST /tasks" not in rows[0]["next_action"]
     assert "外部部署 readiness" in rows[0]["next_steps"]
 
 

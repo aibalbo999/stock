@@ -1341,7 +1341,8 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[0]["retry_kind"] == "報告生成"
     assert rows[0]["action_route"] == "一鍵重試"
     assert "維護頁直接重試" in rows[0]["action_route_detail"]
-    assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
+    assert rows[0]["next_action"] == rows[0]["action_route_detail"]
+    assert "POST /tasks" not in rows[0]["next_action"]
     assert rows[1]["retry"] == "需人工"
     assert rows[1]["retry_kind"] == "-"
     assert rows[1]["action_route"] == "需人工處理"
@@ -1356,6 +1357,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[3]["action_route"] == "外部配置缺失"
     assert rows[4]["category"] == "外部設定"
     assert rows[4]["action_route"] == "外部配置缺失"
+    assert rows[4]["next_action"] == rows[4]["action_route_detail"]
     assert "外部部署 readiness" in rows[4]["next_steps"]
     assert rows[5]["category"] == "向量資料庫"
     assert rows[5]["action_route"] == "需人工處理"
@@ -1363,6 +1365,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[6]["category"] == "儲存/資料庫"
     assert rows[6]["action_route"] == "需人工處理"
     assert "SQLite" in rows[6]["action_route_detail"]
+    assert "POST /tasks" not in str([row["next_action"] for row in rows])
     assert action_rows == [
         {
             "處理路徑": "一鍵重試",

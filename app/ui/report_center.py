@@ -171,6 +171,7 @@ def render_report_center() -> None:
         if selected_id is not None:
             st.markdown("#### 報告管理")
             st.caption("進階操作，只在需要移除最新版報告時使用。")
+            st.caption("刪除報告會移除目前最新版報告與安全範圍內的報告檔；分析紀錄會保留。")
             report_delete_confirmed = st.checkbox(
                 f"我了解會刪除目前選取的報告 #{selected_id}",
                 value=False,
@@ -255,6 +256,7 @@ def render_report_center() -> None:
                 value=False,
                 key=f"confirm_delete_run_{selected_run_id}",
             )
+            st.caption("刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告。")
             if not run_delete_confirmed:
                 st.caption("勾選確認後才會啟用刪除此分析紀錄，避免誤觸。")
             if st.button(

@@ -282,6 +282,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     )
     assert status["frontend"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert status["frontend"]["ui_report_delete_confirmation_gate_enabled"] is True
+    assert status["frontend"]["ui_run_delete_confirmation_gate_enabled"] is True
+    assert status["frontend"]["ui_report_delete_scope_caption_enabled"] is True
     assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
     assert status["frontend"]["frontend_settings_ui_status_path"] == (
         "app/services/status_frontend_settings.py"
@@ -380,8 +382,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_submission_guards.py"
     )
     assert status["frontend"]["ui_risky_submission_guard_coverage_enabled"] is True
-    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 15
-    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 15
+    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 16
+    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 16
     assert status["frontend"]["ui_risky_submission_guard_missing"] == []
     guard_rows = status["frontend"]["ui_risky_submission_guard_rows"]
     assert {
@@ -393,6 +395,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "rss_fetch",
         "report_follow_up_run",
         "report_delete",
+        "run_delete",
         "maintenance_cleanup",
         "maintenance_operation",
         "maintenance_diagnostic",
@@ -585,6 +588,8 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_market_freshness_action_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_latest_only_picker_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_empty_running_task_state_enabled"] is True
+    assert frontend_arch["evidence"]["ui_run_delete_confirmation_gate_enabled"] is True
+    assert frontend_arch["evidence"]["ui_report_delete_scope_caption_enabled"] is True
     assert (
         frontend_arch["evidence"]["ui_report_advanced_controls_progressive_disclosure_enabled"]
         is True

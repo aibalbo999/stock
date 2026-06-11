@@ -217,6 +217,8 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_market_freshness_action_enabled")
             and frontend_status.get("ui_report_latest_only_picker_enabled")
             and frontend_status.get("ui_report_empty_running_task_state_enabled")
+            and frontend_status.get("ui_run_delete_confirmation_gate_enabled")
+            and frontend_status.get("ui_report_delete_scope_caption_enabled")
             and frontend_status.get("ui_report_advanced_controls_progressive_disclosure_enabled")
             and frontend_status.get("frontend_task_ui_status_extracted")
             and frontend_status.get("frontend_task_queue_status_extracted")

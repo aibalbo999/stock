@@ -148,11 +148,23 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             "report_delete_confirmed = st.checkbox(" in report_center_source
             and 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
             and "disabled=not report_delete_confirmed" in report_center_source
-            and "run_delete_confirmed = st.checkbox(" in report_center_source
+            and "刪除報告會移除目前最新版報告與安全範圍內的報告檔"
+            in report_center_source
+            and "避免誤觸" in report_center_source
+        ),
+        "ui_run_delete_confirmation_gate_enabled": (
+            "run_delete_confirmed = st.checkbox(" in report_center_source
             and 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
             and 'key=f"delete_run_{selected_run_id}"' in report_center_source
             and "disabled=not run_delete_confirmed" in report_center_source
             and "避免誤觸" in report_center_source
+        ),
+        "ui_report_delete_scope_caption_enabled": (
+            "刪除報告會移除目前最新版報告與安全範圍內的報告檔"
+            in report_center_source
+            and "分析紀錄會保留" in report_center_source
+            and "刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告"
+            in report_center_source
         ),
         "ui_report_follow_up_submission_confirmation_enabled": (
             "followup_run_confirmed = st.checkbox(" in report_follow_up_controls_source

@@ -46,6 +46,11 @@ RISKY_SUBMISSION_GUARDS: tuple[dict[str, str], ...] = (
         "surface": "report_center",
     },
     {
+        "id": "run_delete",
+        "guard_key": "ui_run_delete_confirmation_gate_enabled",
+        "surface": "report_center",
+    },
+    {
         "id": "maintenance_cleanup",
         "guard_key": "ui_maintenance_cleanup_confirmation_gate_enabled",
         "surface": "maintenance_cleanup_panel",

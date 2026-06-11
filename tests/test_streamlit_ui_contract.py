@@ -484,10 +484,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "report_delete_confirmed = st.checkbox(" in report_center_source
     assert 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
     assert 'disabled=not report_delete_confirmed' in report_center_source
+    assert "刪除報告會移除目前最新版報告與安全範圍內的報告檔" in report_center_source
     assert "run_delete_confirmed = st.checkbox(" in report_center_source
     assert 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
     assert 'key=f"delete_run_{selected_run_id}"' in report_center_source
     assert 'disabled=not run_delete_confirmed' in report_center_source
+    assert "刪除分析紀錄只會移除此筆執行歷史，不會刪除目前最新版報告" in (
+        report_center_source
+    )
     assert "避免誤觸" in report_center_source
     assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
     assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source

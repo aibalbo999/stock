@@ -7,9 +7,12 @@ from app.ui.task_status_panel import (
     render_task_action_preflight_summary,
     task_action_preflight_summary,
     task_execution_context_rows,
+    task_run_summary_rows,
     task_status_diagnostic_rows,
+    task_status_metric_values,
     task_status_poll_caption,
     task_status_poll_interval_seconds,
+    task_status_progress_caption,
 )
 
 
@@ -604,6 +607,73 @@ def test_task_status_diagnostic_rows_show_structured_api_config_guard() -> None:
 
 def test_task_status_diagnostic_rows_hide_when_no_failure_category() -> None:
     assert task_status_diagnostic_rows({"status": "SUCCESS"}) == []
+
+
+def test_task_status_metric_values_use_operator_labels() -> None:
+    rows = task_status_metric_values(
+        {
+            "status": "FAILURE",
+            "ready": True,
+            "successful": False,
+            "run": {"id": 42},
+        }
+    )
+
+    assert rows == [
+        {"label": "任務狀態", "value": "失敗"},
+        {"label": "是否結束", "value": "已結束"},
+        {"label": "是否成功", "value": "未成功"},
+        {"label": "執行紀錄", "value": "#42"},
+    ]
+    rendered = str(rows)
+    assert "Task" not in rendered
+    assert "Ready" not in rendered
+    assert "Success" not in rendered
+    assert "Run" not in rendered
+    assert "FAILURE" not in rendered
+
+
+def test_task_run_summary_rows_use_operator_columns_and_status() -> None:
+    rows = task_run_summary_rows(
+        {
+            "run": {
+                "id": 42,
+                "status": "failed",
+                "report_id": 7,
+                "output_path": "reports/latest.html",
+                "started_at": "2026-06-11T09:00:00+08:00",
+                "finished_at": "2026-06-11T09:03:00+08:00",
+            }
+        }
+    )
+
+    assert rows == [
+        {
+            "執行紀錄": "#42",
+            "狀態": "失敗",
+            "報告": "#7",
+            "輸出檔": "reports/latest.html",
+            "開始": "2026-06-11T09:00:00+08:00",
+            "結束": "2026-06-11T09:03:00+08:00",
+        }
+    ]
+    rendered = str(rows)
+    assert "run_id" not in rendered
+    assert "report_id" not in rendered
+    assert "output_path" not in rendered
+    assert "started_at" not in rendered
+    assert "finished_at" not in rendered
+    assert "failed" not in rendered
+
+
+def test_task_status_progress_caption_labels_status_for_operator() -> None:
+    assert task_status_progress_caption(
+        {
+            "status": "STARTED",
+            "progress": {"status": "STARTED", "current_step": "fetch_market_data"},
+        }
+    ) == "進度：執行中｜fetch_market_data"
+    assert task_status_progress_caption({"status": "SUCCESS"}) == ""
 
 
 def test_task_execution_context_rows_summarize_payload_and_exception() -> None:

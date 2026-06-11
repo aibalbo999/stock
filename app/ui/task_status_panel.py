@@ -206,23 +206,64 @@ def render_task_action_preflight_summary(summary: dict[str, str]) -> None:
     )
 
 
+def task_status_metric_values(task_status: dict) -> list[dict[str, str]]:
+    run = task_status.get("run") if isinstance(task_status.get("run"), dict) else {}
+    return [
+        {
+            "label": "任務狀態",
+            "value": task_status_state_label(task_status.get("status") or "UNKNOWN"),
+        },
+        {
+            "label": "是否結束",
+            "value": _task_context_ready_label(task_status.get("ready", False)),
+        },
+        {
+            "label": "是否成功",
+            "value": _task_context_success_label(task_status.get("successful", False)),
+        },
+        {
+            "label": "執行紀錄",
+            "value": _number_ref(run.get("id")),
+        },
+    ]
+
+
+def task_run_summary_rows(task_status: dict) -> list[dict[str, object]]:
+    run = task_status.get("run") if isinstance(task_status, dict) else None
+    if not isinstance(run, dict):
+        return []
+    return [
+        {
+            "執行紀錄": _number_ref(run.get("id")),
+            "狀態": task_run_status_label(run.get("status")),
+            "報告": _number_ref(run.get("report_id")),
+            "輸出檔": run.get("output_path") or "-",
+            "開始": run.get("started_at") or "-",
+            "結束": run.get("finished_at") or "-",
+        }
+    ]
+
+
+def task_status_progress_caption(task_status: dict) -> str:
+    progress = task_status.get("progress") if isinstance(task_status.get("progress"), dict) else {}
+    if not progress:
+        return ""
+    status = task_status_state_label(progress.get("status") or task_status.get("status") or "UNKNOWN")
+    step = progress.get("current_step") or progress.get("next_incomplete_step") or "等待中"
+    return f"進度：{status}｜{step}"
+
+
 def render_task_status(task_status: dict) -> None:
     cols = st.columns(4)
-    cols[0].metric("Task", task_status.get("status", "UNKNOWN"))
-    cols[1].metric("Ready", str(task_status.get("ready", False)))
-    cols[2].metric("Success", str(task_status.get("successful", False)))
-    run = task_status.get("run")
-    cols[3].metric("Run", f"#{run['id']}" if isinstance(run, dict) and run.get("id") else "-")
+    for column, metric in zip(cols, task_status_metric_values(task_status), strict=False):
+        column.metric(metric["label"], metric["value"])
     progress = task_status.get("progress") if isinstance(task_status.get("progress"), dict) else {}
     progress_pct = progress.get("progress_pct")
     if isinstance(progress_pct, (int, float)):
         st.progress(max(0.0, min(float(progress_pct), 1.0)))
-    if progress:
-        st.caption(
-            "進度："
-            f"{progress.get('status') or task_status.get('status', 'UNKNOWN')}｜"
-            f"{progress.get('current_step') or progress.get('next_incomplete_step') or '等待中'}"
-        )
+    progress_caption = task_status_progress_caption(task_status)
+    if progress_caption:
+        st.caption(progress_caption)
         if progress.get("resume_hint"):
             st.caption(str(progress["resume_hint"]))
     company_filing_rows = company_filing_gap_rows(task_status)
@@ -241,21 +282,9 @@ def render_task_status(task_status: dict) -> None:
     if diagnostic_rows:
         st.caption("失敗診斷")
         st.dataframe(diagnostic_rows, width="stretch", hide_index=True)
-    if isinstance(run, dict):
-        st.dataframe(
-            [
-                {
-                    "run_id": run.get("id"),
-                    "status": run.get("status"),
-                    "report_id": run.get("report_id"),
-                    "output_path": run.get("output_path"),
-                    "started_at": run.get("started_at"),
-                    "finished_at": run.get("finished_at"),
-                }
-            ],
-            width="stretch",
-            hide_index=True,
-        )
+    run_summary_rows = task_run_summary_rows(task_status)
+    if run_summary_rows:
+        st.dataframe(run_summary_rows, width="stretch", hide_index=True)
 
 
 def task_status_diagnostic_rows(task_status: dict) -> list[dict]:
@@ -460,6 +489,13 @@ def task_run_source_label(value: object) -> str:
     if text.startswith("celery_"):
         return f"{task_failure_operation_label(text.removeprefix('celery_'))}背景任務"
     return text
+
+
+def _number_ref(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    return f"#{text}"
 
 
 def _task_run_payload(run: dict) -> dict:

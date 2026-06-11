@@ -182,6 +182,25 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "回報型態：" in task_status_panel_source
             and "已遮蔽敏感欄位" in task_status_panel_source
         ),
+        "ui_task_status_metric_operator_labels_enabled": (
+            "def task_status_metric_values(" in task_status_panel_source
+            and "def task_run_summary_rows(" in task_status_panel_source
+            and "def task_status_progress_caption(" in task_status_panel_source
+            and '"label": "任務狀態"' in task_status_panel_source
+            and '"label": "是否結束"' in task_status_panel_source
+            and '"label": "是否成功"' in task_status_panel_source
+            and '"label": "執行紀錄"' in task_status_panel_source
+            and '"報告": _number_ref(run.get("report_id"))' in task_status_panel_source
+            and '"輸出檔": run.get("output_path") or "-"' in task_status_panel_source
+            and "task_run_status_label(run.get(\"status\"))" in task_status_panel_source
+            and "task_status_state_label(progress.get(\"status\")" in task_status_panel_source
+            and "task_status_metric_values(task_status)" in task_status_panel_source
+            and "task_run_summary_rows(task_status)" in task_status_panel_source
+            and 'metric("Task"' not in task_status_panel_source
+            and 'metric("Ready"' not in task_status_panel_source
+            and 'metric("Success"' not in task_status_panel_source
+            and 'metric("Run"' not in task_status_panel_source
+        ),
         "ui_task_status_operation_confirmation_gate_enabled": (
             "cancel_confirmed = st.checkbox(" in task_status_panel_source
             and 'key=f"{refresh_key}_confirm_cancel"' in task_status_panel_source

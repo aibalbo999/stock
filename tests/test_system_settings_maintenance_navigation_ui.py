@@ -130,6 +130,65 @@ def test_incident_action_priority_summary_prioritizes_retryable_critical_tasks()
     assert "1 個為歷史趨勢/觀測" in summary["secondary_action"]
 
 
+def test_incident_action_priority_summary_tracks_historical_critical_when_latest_task_healthy() -> None:
+    incidents = [
+        {
+            "severity": "critical",
+            "category": "runtime_storage",
+            "title": "本機儲存失敗",
+            "route_hint": "task:storage-1",
+            "retryable": True,
+            "historical_after_latest_success": True,
+        },
+        {
+            "severity": "critical",
+            "category": "whitelist",
+            "title": "payload validation repeated",
+            "route_hint": "settings:maintenance",
+            "retryable": False,
+            "trend_only": True,
+        },
+    ]
+
+    summary = maintenance.incident_action_priority_summary(incidents)
+
+    assert summary["state"] == "attention"
+    assert summary["title"] == "目前任務健康，追蹤 2 個歷史 Critical 紀錄"
+    assert summary["counts_label"] == "Critical 2 / Warning 0 / Info 0（其中 2 個為歷史/趨勢）"
+    assert summary["historical_count"] == 2
+    assert "最新任務已成功" in summary["primary_action"]
+    assert "2 個為歷史趨勢/觀測" in summary["secondary_action"]
+
+
+def test_incident_action_priority_summary_keeps_current_report_blocker_urgent() -> None:
+    incidents = [
+        {
+            "severity": "critical",
+            "category": "runtime_storage",
+            "title": "本機儲存失敗",
+            "route_hint": "task:storage-1",
+            "retryable": False,
+            "historical_after_latest_success": True,
+        },
+        {
+            "severity": "critical",
+            "category": "report_quality",
+            "title": "不可直接採信",
+            "route_hint": "data_enrichment",
+            "retryable": False,
+        },
+    ]
+
+    summary = maintenance.incident_action_priority_summary(incidents)
+
+    assert summary["state"] == "blocked"
+    assert summary["title"] == "先處理 1 個當前 Critical 事件"
+    assert summary["historical_count"] == 1
+    assert "Critical 2 / Warning 0 / Info 0" in summary["counts_label"]
+    assert "當前 Critical" in summary["primary_action"]
+    assert "事件已連到任務檢視" not in summary["primary_action"]
+
+
 def test_incident_action_priority_summary_ready_state_for_empty_inbox() -> None:
     summary = maintenance.incident_action_priority_summary([])
 

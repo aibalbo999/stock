@@ -48,6 +48,7 @@ def incident_inbox_items(
     summary = _dict_value(task_summary)
     task_queue = _dict_value(service.get("task_queue"))
     totals = _dict_value(summary.get("totals"))
+    latest_success_timestamp = _latest_success_timestamp(summary)
 
     if not _queue_ready(task_queue):
         incidents.append(
@@ -86,8 +87,18 @@ def incident_inbox_items(
             }
         )
 
-    incidents.extend(_task_alert_incidents(summary))
-    incidents.extend(_failure_incidents(summary))
+    incidents.extend(
+        _task_alert_incidents(
+            summary,
+            latest_success_timestamp=latest_success_timestamp,
+        )
+    )
+    incidents.extend(
+        _failure_incidents(
+            summary,
+            latest_success_timestamp=latest_success_timestamp,
+        )
+    )
     quota_incident = _quota_incident(_dict_value(quota))
     if quota_incident:
         incidents.append(quota_incident)
@@ -110,7 +121,11 @@ def incident_counts(incidents: list[dict]) -> dict[str, int]:
     }
 
 
-def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
+def _task_alert_incidents(
+    task_summary: dict,
+    *,
+    latest_success_timestamp: float = 0.0,
+) -> list[dict[str, Any]]:
     incidents: list[dict[str, Any]] = []
     for index, alert in enumerate(_list_value(task_summary.get("alerts"))):
         severity = "critical" if alert.get("severity") == "error" else "warning"
@@ -128,22 +143,23 @@ def _task_alert_incidents(task_summary: dict) -> list[dict[str, Any]]:
             if isinstance(next_steps_value, list)
             else []
         )
-        incidents.append(
-            {
-                "id": f"task_alert_{code}",
-                "severity": severity,
-                "category": category,
-                "title": message,
-                "impact": "背景任務觀測已回報異常。",
-                "next_action": "；".join(next_steps) if next_steps else "到維護頁查看背景任務觀測。",
-                "action_label": "查看維護",
-                "route_hint": "settings:maintenance",
-                "retryable": False,
-                "source": code,
-                "created_at": "",
-                "dedupe_key": dedupe_key,
-            }
-        )
+        incident = {
+            "id": f"task_alert_{code}",
+            "severity": severity,
+            "category": category,
+            "title": message,
+            "impact": "背景任務觀測已回報異常。",
+            "next_action": "；".join(next_steps) if next_steps else "到維護頁查看背景任務觀測。",
+            "action_label": "查看維護",
+            "route_hint": "settings:maintenance",
+            "retryable": False,
+            "source": code,
+            "created_at": "",
+            "dedupe_key": dedupe_key,
+        }
+        if latest_success_timestamp > 0 and not _is_stale_running_alert(alert):
+            incident["trend_only"] = True
+        incidents.append(incident)
     return incidents
 
 
@@ -161,7 +177,11 @@ def _is_stale_running_alert(alert: dict) -> bool:
     return "stale_running" in code or "stale running" in message or "疑似卡住" in message
 
 
-def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:
+def _failure_incidents(
+    task_summary: dict,
+    *,
+    latest_success_timestamp: float = 0.0,
+) -> list[dict[str, Any]]:
     incidents = []
     for failure in _recent_failures(task_summary):
         category = _failure_category(failure)
@@ -169,25 +189,26 @@ def _failure_incidents(task_summary: dict) -> list[dict[str, Any]]:
         task_id = _text(failure.get("task_id"))
         operation = _text(failure.get("operation"), default="task")
         retryable = bool(failure.get("retryable"))
-        incidents.append(
-            {
-                "id": f"failure_{identity.replace(':', '_')}_{category}",
-                "severity": _failure_severity(failure, category),
-                "category": category,
-                "title": _text(failure.get("error_summary"), default=_failure_title(category)),
-                "impact": _failure_impact(category),
-                "next_action": _text(
-                    failure.get("next_action"),
-                    default=_failure_next_action(category, retryable),
-                ),
-                "action_label": _failure_action_label(category, retryable),
-                "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
-                "retryable": retryable,
-                "source": _failure_source(failure, operation),
-                "created_at": _text(failure.get("finished_at") or failure.get("created_at")),
-                "dedupe_key": f"failure:{category}:{identity}",
-            }
-        )
+        incident = {
+            "id": f"failure_{identity.replace(':', '_')}_{category}",
+            "severity": _failure_severity(failure, category),
+            "category": category,
+            "title": _text(failure.get("error_summary"), default=_failure_title(category)),
+            "impact": _failure_impact(category),
+            "next_action": _text(
+                failure.get("next_action"),
+                default=_failure_next_action(category, retryable),
+            ),
+            "action_label": _failure_action_label(category, retryable),
+            "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
+            "retryable": retryable,
+            "source": _failure_source(failure, operation),
+            "created_at": _text(failure.get("finished_at") or failure.get("created_at")),
+            "dedupe_key": f"failure:{category}:{identity}",
+        }
+        if _is_failure_before_latest_success(failure, latest_success_timestamp):
+            incident["historical_after_latest_success"] = True
+        incidents.append(incident)
     return incidents
 
 
@@ -353,6 +374,51 @@ def _failure_action_label(category: str, retryable: bool) -> str:
     if category in {"external_config", "task_queue", "visual_rag", "data_source"}:
         return "修復配置"
     return "檢查任務"
+
+
+def _latest_success_timestamp(task_summary: dict) -> float:
+    candidates: list[float] = []
+    for row in _candidate_task_rows(task_summary):
+        if not _task_successful(row):
+            continue
+        timestamp = _task_event_timestamp(row)
+        if timestamp > 0:
+            candidates.append(timestamp)
+    return max(candidates, default=0.0)
+
+
+def _candidate_task_rows(task_summary: dict) -> list[dict]:
+    rows: list[dict] = []
+    for key in ("latest", "latest_task"):
+        value = task_summary.get(key)
+        if isinstance(value, dict):
+            rows.append(value)
+    for key in ("recent", "recent_successes"):
+        rows.extend(_list_value(task_summary.get(key)))
+    return rows
+
+
+def _task_successful(row: dict) -> bool:
+    if row.get("successful") is True:
+        return True
+    status = _text(row.get("status")).casefold()
+    celery_status = _text(row.get("celery_status")).casefold()
+    return status in {"success", "successful", "succeeded", "completed", "done"} or (
+        celery_status in {"success", "successful", "succeeded"}
+    )
+
+
+def _is_failure_before_latest_success(failure: dict, latest_success_timestamp: float) -> bool:
+    if latest_success_timestamp <= 0:
+        return False
+    failure_timestamp = _task_event_timestamp(failure)
+    return 0 < failure_timestamp < latest_success_timestamp
+
+
+def _task_event_timestamp(row: dict) -> float:
+    return _created_at_timestamp(
+        row.get("finished_at") or row.get("updated_at") or row.get("created_at")
+    )
 
 
 def _dedupe_incidents(incidents: list[dict[str, Any]]) -> list[dict[str, Any]]:

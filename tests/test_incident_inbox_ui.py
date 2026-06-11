@@ -99,6 +99,83 @@ def test_incident_inbox_deduplicates_recent_failures() -> None:
     assert whitelist_incidents[0]["action_label"] == "重試任務"
 
 
+def test_incident_inbox_marks_failures_before_latest_success_as_historical_context() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "latest": {
+                "task_id": "latest-ok",
+                "status": "success",
+                "finished_at": "2026-06-10T10:00:00",
+            },
+            "recent_failures": [
+                {
+                    "task_id": "old-failure",
+                    "operation": "market_refresh",
+                    "status": "failed",
+                    "error_category": "payload_validation",
+                    "finished_at": "2026-06-10T09:30:00",
+                },
+                {
+                    "task_id": "new-failure",
+                    "operation": "market_refresh",
+                    "status": "failed",
+                    "error_category": "payload_validation",
+                    "finished_at": "2026-06-10T10:05:00",
+                },
+            ],
+        },
+        {},
+    )
+
+    by_source = {item["source"]: item for item in incidents}
+    assert by_source["old-failure"]["historical_after_latest_success"] is True
+    assert by_source["new-failure"].get("historical_after_latest_success") is not True
+
+
+def test_incident_inbox_marks_non_stale_alerts_as_trend_only_when_latest_task_healthy() -> None:
+    incidents = incident_inbox_items(
+        {
+            "task_queue": {
+                "ready": True,
+                "processing_ready": True,
+                "worker_online": True,
+            }
+        },
+        {
+            "latest": {
+                "task_id": "latest-ok",
+                "status": "success",
+                "finished_at": "2026-06-10T10:00:00",
+            },
+            "alerts": [
+                {
+                    "severity": "error",
+                    "error_category": "runtime_storage",
+                    "code": "runtime_storage_repeated",
+                    "message": "runtime storage repeated 2 times",
+                },
+                {
+                    "severity": "error",
+                    "code": "task_stale_running",
+                    "message": "stale running task detected",
+                },
+            ],
+        },
+        {},
+    )
+
+    by_id = {item["id"]: item for item in incidents}
+    assert by_id["task_alert_runtime_storage_repeated"]["trend_only"] is True
+    assert by_id["task_alert_task_stale_running"].get("trend_only") is not True
+
+
 def test_incident_inbox_labels_manual_failures_for_operator_review() -> None:
     incidents = incident_inbox_items(
         {

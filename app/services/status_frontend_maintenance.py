@@ -140,6 +140,17 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "歷史趨勢/觀測" in system_settings_maintenance_source
             and ".incident-priority-summary" in style_source
         ),
+        "ui_incident_historical_context_enabled": (
+            "def _latest_success_timestamp(" in ui_source
+            and "historical_after_latest_success" in ui_source
+            and "trend_only" in ui_source
+            and "def _historical_incident(" in system_settings_maintenance_source
+            and "historical_count" in system_settings_maintenance_source
+            and "目前任務健康，追蹤" in system_settings_maintenance_source
+            and "當前 Critical 事件" in system_settings_maintenance_source
+            and "最新任務已成功；先確認是否影響最新版報告"
+            in system_settings_maintenance_source
+        ),
         "ui_incident_grouped_summary_enabled": (
             "def incident_summary_cards(" in system_settings_maintenance_source
             and "incident_summary_cards(incidents)" in system_settings_maintenance_source

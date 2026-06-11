@@ -276,15 +276,36 @@ def incident_action_priority_summary(incidents: list[dict]) -> dict[str, object]
     critical = counts["critical"]
     warning = counts["warning"]
     info = counts["info"]
+    historical_count = sum(1 for incident in incidents if _historical_incident(incident))
+    historical_critical = sum(
+        1
+        for incident in incidents
+        if incident.get("severity") == "critical" and _historical_incident(incident)
+    )
+    current_critical = max(0, critical - historical_critical)
     retryable_count = sum(1 for incident in incidents if incident.get("retryable"))
+    current_retryable_count = sum(
+        1
+        for incident in incidents
+        if incident.get("retryable") and not _historical_incident(incident)
+    )
     task_linked_count = sum(
         1
         for incident in incidents
         if str(incident.get("route_hint") or "").strip().startswith("task:")
     )
+    current_task_linked_count = sum(
+        1
+        for incident in incidents
+        if str(incident.get("route_hint") or "").strip().startswith("task:")
+        and not _historical_incident(incident)
+    )
     routed_count = sum(1 for incident in incidents if str(incident.get("route_hint") or "").strip())
     passive_count = max(0, len(incidents) - routed_count)
+    observation_count = max(passive_count, historical_count)
     counts_label = f"Critical {critical} / Warning {warning} / Info {info}"
+    if historical_count:
+        counts_label = f"{counts_label}（其中 {historical_count} 個為歷史/趨勢）"
 
     if not incidents:
         return {
@@ -295,12 +316,22 @@ def incident_action_priority_summary(incidents: list[dict]) -> dict[str, object]
             "secondary_action": "維護頁仍保留服務狀態與升級稽核供備查。",
             "retryable_count": 0,
             "task_linked_count": 0,
+            "current_task_linked_count": 0,
             "passive_count": 0,
+            "historical_count": 0,
+            "observation_count": 0,
         }
 
-    if critical:
+    if critical and current_critical == 0 and historical_critical == critical:
+        state = "attention"
+        title = f"目前任務健康，追蹤 {critical} 個歷史 Critical 紀錄"
+    elif critical:
         state = "blocked"
-        title = f"先處理 {critical} 個 Critical 事件"
+        title = (
+            f"先處理 {current_critical} 個當前 Critical 事件"
+            if historical_critical
+            else f"先處理 {critical} 個 Critical 事件"
+        )
     elif warning:
         state = "attention"
         title = f"先確認 {warning} 個 Warning 事件"
@@ -308,18 +339,20 @@ def incident_action_priority_summary(incidents: list[dict]) -> dict[str, object]
         state = "watch"
         title = f"追蹤 {info} 個 Info 事件"
 
-    if retryable_count:
-        primary_action = f"{retryable_count} 個可重試任務可直接在下方操作；先處理最高嚴重度項目。"
-    elif task_linked_count:
-        primary_action = f"{task_linked_count} 個事件已連到任務檢視；先打開任務診斷確認原因。"
+    if critical and current_critical == 0 and historical_critical == critical:
+        primary_action = "最新任務已成功；先確認是否影響最新版報告，再重試必要項目。"
+    elif current_retryable_count:
+        primary_action = f"{current_retryable_count} 個可重試任務可直接在下方操作；先處理最高嚴重度項目。"
+    elif current_task_linked_count:
+        primary_action = f"{current_task_linked_count} 個當前事件已連到任務檢視；先打開任務診斷確認原因。"
     elif critical:
-        primary_action = "先依下方 Critical 事件修復服務、資料來源或本機儲存。"
+        primary_action = "先依下方當前 Critical 事件處理報告品質、服務或本機儲存阻塞。"
     else:
         primary_action = "先確認下方事件是否影響最新版報告，再決定是否需要補強。"
 
     secondary_action = (
         f"{task_linked_count} 個任務檢視、{routed_count} 個跳轉入口，"
-        f"{passive_count} 個為歷史趨勢/觀測。"
+        f"{observation_count} 個為歷史趨勢/觀測。"
     )
     return {
         "state": state,
@@ -329,8 +362,15 @@ def incident_action_priority_summary(incidents: list[dict]) -> dict[str, object]
         "secondary_action": secondary_action,
         "retryable_count": retryable_count,
         "task_linked_count": task_linked_count,
+        "current_task_linked_count": current_task_linked_count,
         "passive_count": passive_count,
+        "historical_count": historical_count,
+        "observation_count": observation_count,
     }
+
+
+def _historical_incident(incident: dict) -> bool:
+    return bool(incident.get("historical_after_latest_success") or incident.get("trend_only"))
 
 
 def incident_summary_cards(incidents: list[dict], limit: int = 8) -> list[dict]:

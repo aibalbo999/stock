@@ -82,6 +82,15 @@ def frontend_runtime_status(source_context: FrontendSourceContext) -> dict:
             and '[data-testid="stNumberInputField"],' in style_source
             and "min-height: 40px !important" not in style_source
         ),
+        "ui_choice_control_touch_targets_min_size_enabled": (
+            '[data-baseweb="checkbox"],' in style_source
+            and '[data-baseweb="radio"],' in style_source
+            and '[data-testid="stCheckbox"] label,' in style_source
+            and '[data-testid="stRadio"] label {\n    min-height: 44px !important;'
+            in style_source
+            and "touch-action: manipulation" in style_source
+            and "min-height: 40px !important" not in style_source
+        ),
         "ui_streamlit_heading_anchor_noise_hidden": (
             'a[aria-label="Link to heading"]' in style_source
             and "display: none !important" in style_source

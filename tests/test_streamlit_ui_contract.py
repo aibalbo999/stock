@@ -510,6 +510,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '[data-baseweb="input"]' in styles
     assert '[data-baseweb="input"] {\n    min-height: 44px !important;' in styles
     assert (
+        '[data-baseweb="checkbox"],\n'
+        '[data-baseweb="radio"],\n'
+        '[data-testid="stCheckbox"] label,\n'
+        '[data-testid="stRadio"] label {\n'
+        "    min-height: 44px !important;"
+        in styles
+    )
+    assert (
         '[data-testid="stDateInputField"],\n'
         '[data-testid="stNumberInputField"],\n'
         '[data-testid="stTextInputRootElement"] input,\n'

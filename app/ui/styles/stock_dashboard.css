@@ -253,6 +253,14 @@ textarea,
     min-height: 44px !important;
     align-items: center !important;
 }
+[data-baseweb="checkbox"],
+[data-baseweb="radio"],
+[data-testid="stCheckbox"] label,
+[data-testid="stRadio"] label {
+    min-height: 44px !important;
+    align-items: center !important;
+    touch-action: manipulation;
+}
 [data-testid="stWidgetLabel"],
 [data-testid="stWidgetLabel"] p,
 [data-testid="stWidgetLabel"] span {

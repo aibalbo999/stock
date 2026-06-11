@@ -41,7 +41,7 @@ def test_diagnostic_summary_rows_extracts_json_from_noisy_stdout() -> None:
     )
 
     assert rows[0] == {
-        "項目": "External env check",
+        "項目": "外部 env 檢查",
         "狀態": "action_required",
         "Ready": "target=all；gaps=1",
         "數量": "targets=1；env_file=.env",
@@ -82,12 +82,31 @@ def test_diagnostic_summary_rows_summarizes_task_submission_smoke() -> None:
         },
     )
 
-    assert rows[0]["項目"] == "Task submission smoke"
-    assert rows[0]["Ready"] == "submit=True；wait=True"
-    assert "failed=1" in rows[0]["數量"]
-    assert "warnings=1" in rows[0]["數量"]
-    assert rows[1]["項目"] == "API runtime identity"
+    assert rows[0]["項目"] == "背景任務送出檢查"
+    assert rows[0]["狀態"] == "需注意"
+    assert rows[0]["Ready"] == "送出=是；等待=是"
+    assert "失敗=1" in rows[0]["數量"]
+    assert "警告=1" in rows[0]["數量"]
+    assert rows[0]["下一步"] == (
+        "重新啟動 API 與背景執行器後，再重跑背景任務送出檢查。"
+    )
+    assert rows[1]["項目"] == "API 執行版本"
+    assert rows[1]["狀態"] == "需處理"
     assert rows[1]["Ready"] == "new"
     assert rows[1]["數量"] == "old"
-    assert rows[2]["項目"] == "Task queue"
-    assert rows[2]["狀態"] == "not_ready"
+    assert rows[1]["下一步"] == (
+        "API 執行版本與目前程式不同，重新啟動 API 後再重跑檢查。"
+    )
+    assert rows[2]["項目"] == "背景任務佇列"
+    assert rows[2]["狀態"] == "未就緒"
+    assert rows[2]["Ready"] == "可執行=是；背景執行器=否"
+    assert rows[2]["數量"] == "舊版狀態格式=是"
+    assert rows[2]["下一步"] == "舊版背景任務狀態格式"
+    rendered = str(rows)
+    assert "FastAPI" not in rendered
+    assert "Celery worker" not in rendered
+    assert "smoke" not in rendered
+    assert "submit=True" not in rendered
+    assert "worker=False" not in rendered
+    assert "legacy celery status" not in rendered
+    assert "api_runtime_commit_mismatch" not in rendered

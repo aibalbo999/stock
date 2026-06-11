@@ -881,28 +881,39 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "背景任務送出 smoke"
-    assert rows[0]["狀態"] == "caution"
-    assert "submit=True" in rows[0]["Ready"]
-    assert "warnings=1" in rows[0]["數量"]
-    assert "重啟 FastAPI" in rows[0]["下一步"]
-    assert rows[1]["項目"] == "API runtime identity"
-    assert rows[1]["狀態"] == "failed"
+    assert rows[0]["項目"] == "背景任務送出檢查"
+    assert rows[0]["狀態"] == "需注意"
+    assert "送出=是" in rows[0]["Ready"]
+    assert "警告=1" in rows[0]["數量"]
+    assert "背景執行器" in rows[0]["下一步"]
+    assert rows[1]["項目"] == "API 執行版本"
+    assert rows[1]["狀態"] == "需處理"
     assert rows[1]["Ready"] == "new-commit"
     assert rows[1]["數量"] == "old-commit"
-    assert rows[1]["下一步"] == "api_runtime_commit_mismatch"
+    assert rows[1]["下一步"] == (
+        "API 執行版本與目前程式不同，重新啟動 API 後再重跑檢查。"
+    )
     assert rows[2]["項目"] == "背景任務佇列"
-    assert rows[2]["狀態"] == "not_ready"
-    assert "worker=False" in rows[2]["Ready"]
-    assert "legacy_status_shape=True" in rows[2]["數量"]
-    assert rows[3]["項目"] == "資料操作送出"
-    assert rows[3]["狀態"] == "ok"
-    assert rows[3]["Ready"] == "202"
+    assert rows[2]["狀態"] == "未就緒"
+    assert "背景執行器=否" in rows[2]["Ready"]
+    assert "舊版狀態格式=是" in rows[2]["數量"]
+    assert "舊版背景任務狀態格式" in rows[2]["下一步"]
+    assert rows[3]["項目"] == "背景任務送出"
+    assert rows[3]["狀態"] == "成功"
+    assert rows[3]["Ready"] == "HTTP 202"
     assert rows[3]["數量"] == "abc-123"
     assert rows[4]["項目"] == "任務狀態輪詢"
-    assert rows[4]["狀態"] == "finished"
-    assert "successful=True" in rows[4]["Ready"]
+    assert rows[4]["狀態"] == "已完成"
+    assert "成功=是" in rows[4]["Ready"]
     assert rows[4]["數量"] == "SUCCESS"
+    rendered = str(rows)
+    assert "/tasks/data-operation" not in rendered
+    assert "FastAPI" not in rendered
+    assert "Celery worker" not in rendered
+    assert "smoke" not in rendered
+    assert "worker=False" not in rendered
+    assert "legacy_status_shape=True" not in rendered
+    assert "api_runtime_commit_mismatch" not in rendered
 
 
 def test_run_maintenance_diagnostic_action_summarizes_structured_sample_smoke_json(

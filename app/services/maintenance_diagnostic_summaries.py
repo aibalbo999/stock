@@ -427,22 +427,27 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
     )
     rows = [
         _summary_row(
-            "背景任務送出 smoke",
-            payload.get("status") or "-",
-            _counts(submit=payload.get("submit"), wait=payload.get("wait")),
-            _counts(failed=failed_checks, warnings=warning_checks),
-            _first_text(payload, "next_actions") or "背景任務提交 readiness 正常。",
+            "背景任務送出檢查",
+            _task_submission_status_label(payload.get("status")),
+            _labeled_counts(
+                ("送出", _yes_no(payload.get("submit"))),
+                ("等待", _yes_no(payload.get("wait"))),
+            ),
+            _labeled_counts(("失敗", failed_checks), ("警告", warning_checks)),
+            _task_submission_next_step(payload),
         )
     ]
     runtime_identity = _dict_value(payload, "runtime_identity")
     if runtime_identity:
         rows.append(
             _summary_row(
-                "API runtime identity",
-                runtime_identity.get("status") or "-",
+                "API 執行版本",
+                _task_submission_status_label(runtime_identity.get("status")),
                 runtime_identity.get("expected_commit_short") or "-",
                 runtime_identity.get("actual_commit_short") or "-",
-                runtime_identity.get("reason") or runtime_identity.get("error") or "-",
+                _task_submission_operator_text(
+                    runtime_identity.get("reason") or runtime_identity.get("error") or "-"
+                ),
             )
         )
     task_queue = _dict_value(payload, "task_queue")
@@ -451,17 +456,23 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         rows.append(
             _summary_row(
                 "背景任務佇列",
-                "ready" if task_queue.get("ready") else "not_ready",
-                _counts(
-                    processing=(
+                "就緒" if task_queue.get("ready") else "未就緒",
+                _labeled_counts(
+                    (
+                        "可執行",
                         task_queue.get("processing_ready")
                         if check_processing_ready
-                        else "skipped"
+                        else "略過",
                     ),
-                    worker=task_queue.get("worker_online") if check_processing_ready else "skipped",
+                    (
+                        "背景執行器",
+                        task_queue.get("worker_online") if check_processing_ready else "略過",
+                    ),
                 ),
-                _counts(legacy_status_shape=task_queue.get("legacy_status_shape")),
-                task_queue.get("status_shape_warning") or "-",
+                _labeled_counts(
+                    ("舊版狀態格式", _yes_no(task_queue.get("legacy_status_shape")))
+                ),
+                _task_submission_operator_text(task_queue.get("status_shape_warning") or "-"),
             )
         )
     submission = _dict_value(payload, "submission")
@@ -469,11 +480,13 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         body = _dict_value(submission, "json")
         rows.append(
             _summary_row(
-                "資料操作送出",
-                "ok" if submission.get("ok") else "failed",
-                submission.get("status_code") or "-",
+                "背景任務送出",
+                "成功" if submission.get("ok") else "失敗",
+                f"HTTP {submission.get('status_code')}" if submission.get("status_code") else "-",
                 body.get("task_id") or submission.get("error") or "-",
-                submission.get("url") or "-",
+                "已送出背景任務。"
+                if submission.get("ok")
+                else _task_submission_operator_text(submission.get("error") or "-"),
             )
         )
     task_poll = _dict_value(payload, "task_poll")
@@ -481,16 +494,63 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         rows.append(
             _summary_row(
                 "任務狀態輪詢",
-                task_poll.get("status") or "-",
-                _counts(
-                    ready=task_poll.get("ready"),
-                    successful=task_poll.get("successful"),
+                _task_submission_status_label(task_poll.get("status")),
+                _labeled_counts(
+                    ("完成", _yes_no(task_poll.get("ready"))),
+                    ("成功", _yes_no(task_poll.get("successful"))),
                 ),
                 task_poll.get("task_status") or "-",
-                _first_text(task_poll, "poll_errors") or "-",
+                _task_submission_operator_text(_first_text(task_poll, "poll_errors") or "-"),
             )
         )
     return rows[:MAX_SUMMARY_ROWS]
+
+
+def _task_submission_next_step(payload: dict) -> str:
+    return _task_submission_operator_text(
+        _first_text(payload, "next_actions") or "背景任務送出檢查正常。"
+    )
+
+
+def _task_submission_operator_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return "-"
+    replacements = {
+        "重啟 FastAPI 與 Celery worker 後重跑 smoke。": (
+            "重新啟動 API 與背景執行器後，再重跑背景任務送出檢查。"
+        ),
+        "api_runtime_commit_mismatch": (
+            "API 執行版本與目前程式不同，重新啟動 API 後再重跑檢查。"
+        ),
+        "目前 API runtime 回傳 legacy celery status。": (
+            "目前 API 回傳舊版背景任務狀態格式。"
+        ),
+        "legacy celery status": "舊版背景任務狀態格式",
+        "FastAPI": "API",
+        "Celery worker": "背景執行器",
+        "smoke": "檢查",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
+def _task_submission_status_label(value: object) -> str:
+    labels = {
+        "caution": "需注意",
+        "failed": "需處理",
+        "finished": "已完成",
+        "passed": "通過",
+        "ready": "就緒",
+        "not_ready": "未就緒",
+        "ok": "成功",
+        "SUCCESS": "成功",
+    }
+    text = str(value or "").strip()
+    if not text:
+        return "-"
+    return labels.get(text, text)
 
 
 def _generic_json_summary_rows(payload: dict) -> list[dict]:
@@ -624,6 +684,16 @@ def _ready_count(ready: object, total: object) -> str:
 def _counts(**values: object) -> str:
     parts = [f"{key}={value}" for key, value in values.items() if value is not None and value != ""]
     return "；".join(parts) if parts else "-"
+
+
+def _labeled_counts(*pairs: tuple[str, object]) -> str:
+    normalized: list[str] = []
+    for label, value in pairs:
+        if value is None or value == "":
+            continue
+        normalized_value = _yes_no(value) if isinstance(value, bool) else value
+        normalized.append(f"{label}={normalized_value}")
+    return "；".join(normalized) if normalized else "-"
 
 
 def _yes_no(value: object) -> str:

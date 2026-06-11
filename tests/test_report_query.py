@@ -785,6 +785,17 @@ def test_report_query_service_summarizes_latest_report_observability() -> None:
         "report_llm_retryable_failures",
         "report_reranker_keyword_fallback",
     }
+    alert_messages = {alert["code"]: alert["message"] for alert in summary["alerts"]}
+    assert alert_messages["report_llm_fallback_used"] == "部分最新版報告使用模型降級路由。"
+    assert (
+        alert_messages["report_llm_retryable_failures"]
+        == "最新版報告生成時出現可重試的 LLM 失敗。"
+    )
+    assert (
+        alert_messages["report_reranker_keyword_fallback"]
+        == "部分最新版報告改用關鍵字排序後援。"
+    )
+    assert "Some latest reports" not in str(summary["alerts"])
 
 
 def test_report_observability_summary_reads_after_close_rerun_payload() -> None:

@@ -210,7 +210,7 @@ def _usage_alerts(
             {
                 "severity": "error",
                 "code": "llm_cost_budget_exceeded",
-                "message": "LLM estimated cost is above the configured window budget.",
+                "message": "LLM 估算成本已超過設定期間預算。",
             }
         )
     elif budget_status == "warning":
@@ -218,7 +218,7 @@ def _usage_alerts(
             {
                 "severity": "warning",
                 "code": "llm_cost_budget_warning",
-                "message": "LLM estimated cost is near the configured window budget.",
+                "message": "LLM 估算成本接近設定期間預算。",
             }
         )
     if totals.get("request_count") and not observability.get("cost_rate_card_configured"):
@@ -226,7 +226,7 @@ def _usage_alerts(
             {
                 "severity": "info",
                 "code": "llm_cost_rate_card_missing",
-                "message": "LLM usage is tracked by token estimate only until cost rates are configured.",
+                "message": "尚未設定成本費率前，LLM 用量只會以 Token 估算追蹤。",
             }
         )
     if int(totals.get("fallback_path_count") or 0):
@@ -234,7 +234,7 @@ def _usage_alerts(
             {
                 "severity": "warning",
                 "code": "llm_fallback_used",
-                "message": "Some LLM calls required fallback routing.",
+                "message": "部分 LLM 呼叫使用後援路由。",
             }
         )
     if int(totals.get("retryable_failure_count") or 0):
@@ -242,7 +242,7 @@ def _usage_alerts(
             {
                 "severity": "warning",
                 "code": "llm_retryable_failures",
-                "message": "Retryable LLM failures were observed in the selected window.",
+                "message": "選定期間內觀察到可重試的 LLM 失敗。",
             }
         )
     if int(totals.get("quota_skip_count") or 0):
@@ -250,7 +250,7 @@ def _usage_alerts(
             {
                 "severity": "info",
                 "code": "llm_quota_routing_skips",
-                "message": "Some calls skipped exhausted or cooling-down models before selecting a fallback.",
+                "message": "部分呼叫在選擇後援前略過額度用完或冷卻中的模型。",
             }
         )
     return alerts

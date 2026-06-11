@@ -671,3 +671,9 @@ def test_llm_api_usage_summary_flags_cost_budget_and_fallback_alerts() -> None:
         "llm_fallback_used",
         "llm_retryable_failures",
     }
+    alert_messages = {alert["code"]: alert["message"] for alert in summary["alerts"]}
+    assert alert_messages["llm_cost_budget_exceeded"] == "LLM 估算成本已超過設定期間預算。"
+    assert alert_messages["llm_fallback_used"] == "部分 LLM 呼叫使用後援路由。"
+    assert alert_messages["llm_retryable_failures"] == "選定期間內觀察到可重試的 LLM 失敗。"
+    assert "LLM estimated cost" not in str(summary["alerts"])
+    assert "fallback routing" not in str(summary["alerts"])

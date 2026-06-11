@@ -239,7 +239,7 @@ def report_observability_alerts(
             {
                 "severity": "warning",
                 "code": "report_trace_missing",
-                "message": "Some latest reports do not have stored LLM/RAG trace payloads.",
+                "message": "部分最新版報告缺少已儲存的 LLM/RAG 追蹤資料。",
             }
         )
     if int(totals.get("fallback_path_count") or 0):
@@ -247,7 +247,7 @@ def report_observability_alerts(
             {
                 "severity": "warning",
                 "code": "report_llm_fallback_used",
-                "message": "Some latest reports used LLM fallback routing.",
+                "message": "部分最新版報告使用模型降級路由。",
             }
         )
     if int(totals.get("retryable_failure_count") or 0):
@@ -255,7 +255,7 @@ def report_observability_alerts(
             {
                 "severity": "warning",
                 "code": "report_llm_retryable_failures",
-                "message": "Retryable LLM failures were observed during latest report generation.",
+                "message": "最新版報告生成時出現可重試的 LLM 失敗。",
             }
         )
     if int(totals.get("keyword_fallback_count") or 0):
@@ -263,7 +263,7 @@ def report_observability_alerts(
             {
                 "severity": "info",
                 "code": "report_reranker_keyword_fallback",
-                "message": "Some latest reports used keyword reranking instead of a model/API reranker.",
+                "message": "部分最新版報告改用關鍵字排序後援。",
             }
         )
     if int(totals.get("graph_reasoning_missing_count") or 0):
@@ -271,7 +271,7 @@ def report_observability_alerts(
             {
                 "severity": "info",
                 "code": "report_graphrag_reasoning_missing",
-                "message": "Some latest reports do not have GraphRAG reasoning trace.",
+                "message": "部分最新版報告缺少 GraphRAG 推理追蹤。",
             }
         )
     if int(totals.get("graph_reasoning_partial_count") or 0):
@@ -279,10 +279,7 @@ def report_observability_alerts(
             {
                 "severity": "info",
                 "code": "report_graphrag_reasoning_partial",
-                "message": (
-                    "Some latest reports have GraphRAG reasoning but incomplete graph "
-                    "path coverage."
-                ),
+                "message": "部分最新版報告已有 GraphRAG 推理，但圖譜路徑覆蓋不完整。",
             }
         )
     return alerts[:10]

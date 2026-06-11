@@ -30,7 +30,18 @@ def render_rss_ingest_tab() -> None:
     feed_ready = bool(feed_url.strip())
     if not feed_ready:
         st.caption("請先輸入 RSS URL。")
-    if st.button("抓取 RSS", type="primary", disabled=not feed_ready):
+    rss_fetch_confirmed = st.checkbox(
+        "我了解這會送出 RSS 抓取背景任務",
+        value=False,
+        key="confirm_rss_fetch_submission",
+    )
+    if feed_ready and not rss_fetch_confirmed:
+        st.caption("避免誤觸 RSS 抓取；確認 URL、來源與筆數後才會送出背景任務。")
+    if st.button(
+        "抓取 RSS",
+        type="primary",
+        disabled=not feed_ready or not rss_fetch_confirmed,
+    ):
         submit_data_operation_task(
             "feed_fetch",
             {

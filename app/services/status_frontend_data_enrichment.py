@@ -15,6 +15,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
     data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
+    data_enrichment_rss_source = source_context.ui_sources["data_enrichment_rss.py"]
     return {
         "frontend_data_enrichment_status_extracted": True,
         "frontend_data_enrichment_status_path": (
@@ -83,6 +84,16 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_manual_source
             and 'submit_data_operation_task(\n            "company_filing_from_url"'
             in data_enrichment_manual_source
+        ),
+        "ui_rss_fetch_confirmation_enabled": (
+            "rss_fetch_confirmed = st.checkbox(" in data_enrichment_rss_source
+            and 'key="confirm_rss_fetch_submission"' in data_enrichment_rss_source
+            and "我了解這會送出 RSS 抓取背景任務" in data_enrichment_rss_source
+            and "避免誤觸 RSS 抓取" in data_enrichment_rss_source
+            and "disabled=not feed_ready or not rss_fetch_confirmed"
+            in data_enrichment_rss_source
+            and 'submit_data_operation_task(\n            "feed_fetch"'
+            in data_enrichment_rss_source
         ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_source

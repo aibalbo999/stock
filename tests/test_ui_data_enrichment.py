@@ -9,6 +9,7 @@ from app.ui.data_enrichment import (
 )
 from app.ui import data_enrichment_manual
 from app.ui import data_enrichment_market
+from app.ui import data_enrichment_rss
 from app.ui.data_enrichment_market import market_data_operation_button_type
 from app.ui.data_enrichment_market import market_cache_operator_summary
 
@@ -594,6 +595,127 @@ def test_company_filing_url_import_submits_after_confirmation(monkeypatch) -> No
                 "status_state_keys": data_enrichment_manual.DATA_TASK_STATUS_STATE_KEYS,
                 "success_message": "已送出 URL 公司文件匯入背景任務",
                 "error_message": "URL 公司文件匯入任務送出失敗",
+            },
+        )
+    ]
+
+
+def test_rss_fetch_requires_confirmation_before_submit(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict[str, Any]] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "抓取 RSS" and not kwargs.get("disabled")
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def dataframe(self, *_args, **_kwargs) -> None:
+            return None
+
+        def number_input(self, *_args, **_kwargs):
+            return 10
+
+        def text_input(self, label: str, *, value: str = ""):
+            if label == "RSS URL":
+                return "https://example.com/rss.xml"
+            return value
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_rss, "st", fake_st)
+    monkeypatch.setattr(data_enrichment_rss, "render_section_header", lambda *_args: None)
+    monkeypatch.setattr(data_enrichment_rss, "load_api_json_or_default", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(data_enrichment_rss, "render_last_data_task_status", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        data_enrichment_rss,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_rss.render_rss_ingest_tab()
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會送出 RSS 抓取背景任務",
+            "value": False,
+            "key": "confirm_rss_fetch_submission",
+        }
+    ]
+    assert any("避免誤觸 RSS 抓取" in caption for caption in fake_st.captions)
+    assert fake_st.buttons == [
+        {"label": "抓取 RSS", "type": "primary", "disabled": True}
+    ]
+    assert submitted == []
+
+
+def test_rss_fetch_submits_after_confirmation(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "抓取 RSS" and not kwargs.get("disabled")
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def checkbox(self, _label: str, *, value: bool = False, key: str):
+            return key == "confirm_rss_fetch_submission"
+
+        def dataframe(self, *_args, **_kwargs) -> None:
+            return None
+
+        def number_input(self, *_args, **_kwargs):
+            return 10
+
+        def text_input(self, label: str, *, value: str = ""):
+            if label == "RSS URL":
+                return "https://example.com/rss.xml"
+            return value
+
+    fake_st = FakeStreamlit()
+    submitted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_rss, "st", fake_st)
+    monkeypatch.setattr(data_enrichment_rss, "render_section_header", lambda *_args: None)
+    monkeypatch.setattr(data_enrichment_rss, "load_api_json_or_default", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(data_enrichment_rss, "render_last_data_task_status", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        data_enrichment_rss,
+        "submit_data_operation_task",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+
+    data_enrichment_rss.render_rss_ingest_tab()
+
+    assert fake_st.buttons == [
+        {"label": "抓取 RSS", "type": "primary", "disabled": False}
+    ]
+    assert submitted == [
+        (
+            (
+                "feed_fetch",
+                {
+                    "url": "https://example.com/rss.xml",
+                    "publisher": "rss",
+                    "limit": 10,
+                },
+            ),
+            {
+                "status_state_keys": data_enrichment_rss.DATA_TASK_STATUS_STATE_KEYS,
+                "success_message": "已送出 RSS 抓取背景任務",
+                "error_message": "RSS 抓取任務送出失敗",
             },
         )
     ]

@@ -162,6 +162,17 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source
         ),
+        "ui_maintenance_operation_rows_operator_labels_enabled": (
+            "def _maintenance_operation_scope_label(" in maintenance_deployment_presenter_source
+            and '"docker services": "Docker 服務"' in maintenance_deployment_presenter_source
+            and '"local files": "本機檔案"' in maintenance_deployment_presenter_source
+            and '"作用範圍": _maintenance_operation_scope_label('
+            in maintenance_deployment_presenter_source
+            and '"逾時秒數": int(operation.get("timeout_seconds") or 0)'
+            in maintenance_deployment_presenter_source
+            and '"Timeout"' not in maintenance_deployment_presenter_source
+            and '"Docker services"' not in maintenance_deployment_presenter_source
+        ),
         "ui_maintenance_operation_confirmation_gate_enabled": (
             "operation_confirmed = st.checkbox(" in maintenance_deployment_panel_source
             and 'key="confirm_maintenance_operation"' in maintenance_deployment_panel_source

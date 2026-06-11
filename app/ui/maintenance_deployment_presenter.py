@@ -180,11 +180,11 @@ def maintenance_operation_rows(maintenance_operations: dict) -> list[dict]:
         {
             "操作": operation.get("label") or operation.get("id") or "-",
             "狀態": "需確認" if operation.get("requires_confirmation") else "可執行",
-            "作用範圍": operation.get("scope") or "-",
+            "作用範圍": _maintenance_operation_scope_label(operation.get("scope")),
             "可處理能力": _maintenance_operation_capability_summary(operation),
             "說明": operation.get("description") or "-",
             "指令": operation.get("display_command") or "-",
-            "Timeout": int(operation.get("timeout_seconds") or 0),
+            "逾時秒數": int(operation.get("timeout_seconds") or 0),
         }
         for operation in operations
         if isinstance(operation, dict)
@@ -346,6 +346,26 @@ def _projection_capability_summary(value: object) -> str:
         seen.add(label)
         labels.append(label)
     return "、".join(labels) if labels else "-"
+
+
+def _maintenance_operation_scope_label(value: object) -> str:
+    scope_labels = {
+        "docker services": "Docker 服務",
+        "docker services and current api process env defaults": (
+            "Docker 服務與目前 API 環境預設值"
+        ),
+        "docker_service": "Docker 服務",
+        "docker_services": "Docker 服務",
+        "local files": "本機檔案",
+        "local_file": "本機檔案",
+        "local_files": "本機檔案",
+        "database": "資料庫",
+        "system": "系統",
+    }
+    text = str(value or "").strip()
+    if not text:
+        return "-"
+    return scope_labels.get(text.casefold(), text)
 
 
 def _maintenance_operation_capability_summary(operation: dict) -> str:

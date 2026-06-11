@@ -1037,11 +1037,11 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
         {
             "操作": "啟動本機核心依賴",
             "狀態": "需確認",
-            "作用範圍": "Docker services and current API process env defaults",
+            "作用範圍": "Docker 服務與目前 API 環境預設值",
             "可處理能力": "外部 Neo4j 匯入連線",
             "說明": "啟動 Redis、Postgres、Neo4j、Browserless 與 Chroma。",
             "指令": "docker compose up -d redis postgres neo4j browserless chroma",
-            "Timeout": 240,
+            "逾時秒數": 240,
         },
         {
             "操作": "Inspect only",
@@ -1050,9 +1050,12 @@ def test_maintenance_operation_rows_surface_confirmed_local_dependency_operation
             "可處理能力": "-",
             "說明": "-",
             "指令": "-",
-            "Timeout": 0,
+            "逾時秒數": 0,
         },
     ]
+    rendered = str(rows)
+    assert "Docker services and current API process env defaults" not in rendered
+    assert "Timeout" not in rendered
 
 
 def test_post_run_diagnostic_actions_require_confirmation_before_submit(monkeypatch) -> None:

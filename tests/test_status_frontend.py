@@ -417,6 +417,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_local_dependency_start_history_enabled"] is True
     assert status["frontend"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert status["frontend"]["ui_maintenance_operations_enabled"] is True
+    assert status["frontend"]["ui_maintenance_operation_rows_operator_labels_enabled"] is True
     assert status["frontend"]["ui_maintenance_operation_confirmation_gate_enabled"] is True
     assert (
         status["frontend"]["ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"]
@@ -812,6 +813,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_operations_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_maintenance_operation_rows_operator_labels_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_maintenance_operation_confirmation_gate_enabled"] is True
     assert (
         frontend_arch["evidence"][

@@ -193,13 +193,16 @@ def test_maintenance_deployment_presenter_builds_operation_and_post_run_rows() -
         {
             "操作": "啟動本機核心依賴",
             "狀態": "需確認",
-            "作用範圍": "Docker services",
+            "作用範圍": "Docker 服務",
             "可處理能力": "外部 Neo4j 匯入連線",
             "說明": "啟動 Neo4j。",
             "指令": "docker compose up -d neo4j",
-            "Timeout": 240,
+            "逾時秒數": 240,
         }
     ]
+    rendered = str(rows)
+    assert "Docker services" not in rendered
+    assert "Timeout" not in rendered
     assert post_run_rows[0]["可執行診斷"] == "graphrag_live_query_smoke"
     assert maintenance_operation_post_run_diagnostic_action_ids(
         [post_run_rows[0], post_run_rows[1], {"可執行診斷": "-"}]

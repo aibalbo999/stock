@@ -290,6 +290,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_delete_confirmation_gate_enabled"] is True
     assert status["frontend"]["ui_run_delete_confirmation_gate_enabled"] is True
     assert status["frontend"]["ui_report_delete_scope_caption_enabled"] is True
+    assert status["frontend"]["ui_report_reader_decision_summary_enabled"] is True
     assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
     assert status["frontend"]["frontend_settings_ui_status_path"] == (
         "app/services/status_frontend_settings.py"
@@ -614,6 +615,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_identity_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_health_action_enabled"] is True
+    assert frontend_arch["evidence"]["ui_report_reader_decision_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_quality_unknown_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_market_freshness_action_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_latest_only_picker_enabled"] is True

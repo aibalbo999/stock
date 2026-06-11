@@ -6,6 +6,7 @@ from app.ui.data_gap_actions import data_gap_action_items, market_freshness_acti
 
 
 RUNNING_STATUSES = {"queued", "started", "running", "pending", "processing"}
+BLOCKED_FOLLOW_UP_STATUSES = {"blocked", "failed", "error"}
 BLOCKED_QUALITY_STATUSES = {"failed", "blocked", "error", "insufficient"}
 ATTENTION_QUALITY_STATUSES = {"caution", "warning", "attention", "needs_follow_up"}
 
@@ -45,6 +46,7 @@ def latest_report_lifecycle(
     required_count = _required_count(plan)
     follow_up_status = _follow_up_status(report, plan)
     running = follow_up_status in RUNNING_STATUSES
+    follow_up_blocked = _follow_up_blocked(report, plan, follow_up_status)
     has_rerun_report = _has_rerun_report(report)
     has_incomplete_rerun_report = _has_incomplete_rerun_report(report)
 
@@ -85,7 +87,11 @@ def latest_report_lifecycle(
         quality_label = "品質可讀"
         quality_detail = "品質門檻可支援閱讀最新版報告。"
 
-    if running:
+    if follow_up_blocked:
+        follow_up_state = "blocked"
+        follow_up_label = "補強受阻"
+        follow_up_detail = "補強或重跑流程遇到阻塞，先查看失敗原因再採信最新版。"
+    elif running:
         follow_up_state = "running"
         follow_up_label = "補強執行中"
         follow_up_detail = "補強任務已送出或正在執行，先到維護頁追蹤任務。"
@@ -98,7 +104,11 @@ def latest_report_lifecycle(
         follow_up_label = "無必補缺口"
         follow_up_detail = "目前沒有必要補強項目。"
 
-    if running:
+    if follow_up_blocked:
+        rerun_state = "blocked"
+        rerun_label = "重跑受阻"
+        rerun_detail = "補強流程未能完成重跑，先查看阻塞原因。"
+    elif running:
         rerun_state = "running"
         rerun_label = "等待補強完成"
         rerun_detail = "補強完成後再確認是否已有重跑報告。"
@@ -119,7 +129,7 @@ def latest_report_lifecycle(
         rerun_label = "不需重跑"
         rerun_detail = "目前沒有因必補缺口而需要重跑。"
 
-    if quality_state == "blocked":
+    if quality_state == "blocked" or follow_up_blocked:
         readable_state = "blocked"
         readable_label = "不可採信"
         readable_detail = "先處理品質或資料問題，再閱讀投資結論。"
@@ -152,6 +162,7 @@ def latest_report_lifecycle(
         plan=plan,
         required_count=required_count,
         running=running,
+        follow_up_blocked=follow_up_blocked,
         quality_state=quality_state,
         market_freshness_action=market_freshness_action,
     )
@@ -221,6 +232,11 @@ def _trust_explanation(
     stage_cards: list[dict[str, str]],
 ) -> str:
     if overall_state == "blocked":
+        if any(
+            stage.get("key") in {"follow_up", "rerun"} and stage.get("state") == "blocked"
+            for stage in stage_cards
+        ):
+            return f"{topic} 報告補強或重跑流程受阻，先查看失敗原因再採信最新版。"
         return f"{topic} 報告目前正式分析 {promoted_count} 檔，需先補強資料或品質門檻。"
     if overall_state == "running":
         return f"{topic} 報告正在補強，等待背景任務完成後再閱讀最新版。"
@@ -256,11 +272,14 @@ def _primary_action(
     plan: dict,
     required_count: int,
     running: bool,
+    follow_up_blocked: bool,
     quality_state: str,
     market_freshness_action: dict,
 ) -> tuple[str, str, str]:
     if running or overall_state == "running":
         return "查看補強任務", "settings:maintenance", "補強任務正在背景執行。"
+    if follow_up_blocked:
+        return "查看阻塞", "settings:maintenance", "補強或重跑流程遇到阻塞。"
     if quality_state == "unknown":
         if report_id is not None:
             return (
@@ -359,6 +378,48 @@ def _follow_up_status(report: dict, plan: dict) -> str:
         return plan_status
     auto_follow_up = _dict_value(report.get("auto_follow_up"))
     return _text(auto_follow_up.get("status")).casefold()
+
+
+def _follow_up_blocked(report: dict, plan: dict, status: str) -> bool:
+    if status in BLOCKED_FOLLOW_UP_STATUSES:
+        return True
+    summary = _dict_value(plan.get("summary"))
+    execution_summary = _dict_value(plan.get("execution_summary"))
+    if any(
+        _boolish(value)
+        for value in (
+            plan.get("rerun_blocked"),
+            summary.get("rerun_blocked"),
+            execution_summary.get("rerun_blocked"),
+        )
+    ):
+        return True
+    if any(
+        _has_items(value)
+        for value in (
+            plan.get("blockers"),
+            plan.get("rerun_blockers"),
+            summary.get("rerun_blockers"),
+            execution_summary.get("rerun_blockers"),
+        )
+    ):
+        return True
+    auto_follow_up = _dict_value(report.get("auto_follow_up"))
+    rerun_report = _dict_value(auto_follow_up.get("rerun_report"))
+    rerun_status = _text(rerun_report.get("status")).casefold()
+    return rerun_status in {"blocked", "failed", "error", "skipped"} and _has_items(
+        rerun_report.get("blockers")
+    )
+
+
+def _has_items(value: Any) -> bool:
+    return isinstance(value, list | tuple | set) and bool(value)
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "y"}
+    return bool(value)
 
 
 def _has_rerun_report(report: dict) -> bool:

@@ -154,6 +154,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "report-lifecycle-strip" in combined
     assert "report-lifecycle-step" in combined
     assert "報告生命週期" in source
+    assert "def report_reader_decision_summary(" in source
+    assert "def _render_report_reader_decision_summary(" in source
+    assert "report_reader_decision_summary(lifecycle, health_summary)" in source
+    assert "report-reader-decision" in combined
+    assert "閱讀決策" in source
+    assert "可先閱讀，但投資判斷需標示限制" in source
     assert "from app.ui.data_enrichment_market import render_market_data_tab" in source
     assert "from app.ui.data_enrichment_manual import render_manual_ingest_tab" in source
     assert "from app.ui.data_enrichment_rss import render_rss_ingest_tab" in source

@@ -114,11 +114,13 @@ def render_report_center() -> None:
             notify="warning",
         )
         lifecycle = latest_report_lifecycle(history_result or {}, follow_up_plan)
+        health_summary = latest_report_health_summary(history_result or {}, follow_up_plan)
         _render_report_lifecycle_strip(lifecycle)
-        _render_report_lifecycle_action(lifecycle)
-        _render_report_health_strip(
-            latest_report_health_summary(history_result or {}, follow_up_plan)
+        _render_report_reader_decision_summary(
+            report_reader_decision_summary(lifecycle, health_summary)
         )
+        _render_report_lifecycle_action(lifecycle)
+        _render_report_health_strip(health_summary)
         history_html = report_html(report_markdown, history_result)
         report_download_cols = st.columns(2, gap="small")
         with report_download_cols[0]:
@@ -548,6 +550,113 @@ def empty_report_action_summary(picker: dict[str, Any]) -> dict[str, str]:
         "action_label": action_label,
         "route_hint": route_hint,
     }
+
+
+def report_reader_decision_summary(
+    lifecycle: dict[str, Any],
+    health_summary: dict[str, str],
+) -> dict[str, str]:
+    lifecycle_state = _text(lifecycle.get("overall_state"), default="attention")
+    health_state = _text(health_summary.get("state"))
+    state = _reader_decision_state(lifecycle_state, health_state)
+    title = {
+        "ready": "可以閱讀最新版",
+        "running": "等待補強完成再閱讀",
+        "attention": "可先閱讀，但投資判斷需標示限制",
+        "blocked": "暫停採信，先處理阻塞",
+    }.get(state, "需要人工確認後再閱讀")
+    action_label = _reader_decision_action_label(lifecycle, health_summary, state)
+    action_detail = _reader_decision_action_detail(lifecycle, state)
+    return {
+        "state": state,
+        "eyebrow": "閱讀決策",
+        "title": title,
+        "caption": _text(
+            lifecycle.get("trust_explanation"),
+            default="請先確認報告生命週期與品質狀態。",
+        ),
+        "evidence": _text(
+            health_summary.get("report_meta_label"),
+            default="尚無報告時間",
+        ),
+        "quality": _reader_quality_label(health_summary),
+        "follow_up": f"補強 {_text(health_summary.get('follow_up_label'), default='尚無狀態')}",
+        "action_label": action_label,
+        "action_detail": action_detail,
+    }
+
+
+def _reader_decision_state(lifecycle_state: str, health_state: str) -> str:
+    priority = {"blocked": 4, "running": 3, "attention": 2, "ready": 1}
+    candidates = [state for state in (lifecycle_state, health_state) if state]
+    if not candidates:
+        return "attention"
+    return max(candidates, key=lambda state: priority.get(state, 0))
+
+
+def _reader_decision_action_label(
+    lifecycle: dict[str, Any],
+    health_summary: dict[str, str],
+    state: str,
+) -> str:
+    if state == "blocked":
+        return _text(
+            health_summary.get("action_label"),
+            default=lifecycle.get("primary_action", "確認狀態"),
+        )
+    return _text(
+        lifecycle.get("primary_action"),
+        default=health_summary.get("action_label", "確認狀態"),
+    )
+
+
+def _reader_decision_action_detail(lifecycle: dict[str, Any], state: str) -> str:
+    if state == "blocked":
+        return "完成建議操作後再回來閱讀最新版。"
+    return _text(
+        lifecycle.get("primary_action_detail"),
+        default="完成建議操作後再回來閱讀最新版。",
+    )
+
+
+def _reader_quality_label(health_summary: dict[str, str]) -> str:
+    quality = _text(health_summary.get("quality_label"), default="-")
+    candidates = _text(health_summary.get("candidate_label"), default="候選 0｜正式 0")
+    return f"品質 {quality}｜{candidates}"
+
+
+def _render_report_reader_decision_summary(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    st.markdown(
+        f"""<section class="report-reader-decision is-{escape(summary.get("state", "attention"))}" aria-label="報告閱讀決策摘要">
+<div class="report-reader-decision-main">
+<span>{escape(summary.get("eyebrow", "閱讀決策"))}</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("caption", ""))}</p>
+</div>
+<div class="report-reader-decision-grid">
+<article>
+<span>最新版證據</span>
+<strong>{escape(summary.get("evidence", ""))}</strong>
+</article>
+<article>
+<span>品質與股票</span>
+<strong>{escape(summary.get("quality", ""))}</strong>
+</article>
+<article>
+<span>補強</span>
+<strong>{escape(summary.get("follow_up", ""))}</strong>
+</article>
+<article>
+<span>下一步</span>
+<strong>{escape(summary.get("action_label", ""))}</strong>
+<em>{escape(summary.get("action_detail", ""))}</em>
+</article>
+</div>
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _report_lifecycle_stage_html(stage: dict) -> str:

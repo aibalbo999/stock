@@ -84,6 +84,19 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "report-health-action" in ui_source
             and ".report-health-action" in style_source
         ),
+        "ui_report_reader_decision_summary_enabled": (
+            "def report_reader_decision_summary(" in report_center_source
+            and "def _render_report_reader_decision_summary(" in report_center_source
+            and "health_summary = latest_report_health_summary(" in report_center_source
+            and "report_reader_decision_summary(lifecycle, health_summary)"
+            in report_center_source
+            and 'class="report-reader-decision' in report_center_source
+            and "閱讀決策" in report_center_source
+            and "可先閱讀，但投資判斷需標示限制" in report_center_source
+            and "暫停採信，先處理阻塞" in report_center_source
+            and ".report-reader-decision" in style_source
+            and ".report-reader-decision-grid" in style_source
+        ),
         "ui_report_quality_unknown_guard_enabled": (
             "def _quality_gate_known(" in report_lifecycle_source
             and 'quality_state = "unknown"' in report_lifecycle_source

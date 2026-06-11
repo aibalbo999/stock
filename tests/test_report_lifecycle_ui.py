@@ -290,6 +290,37 @@ def test_latest_report_lifecycle_marks_follow_up_running() -> None:
     assert stage_by_key(lifecycle, "rerun")["state"] == "running"
 
 
+def test_latest_report_lifecycle_marks_blocked_follow_up_as_blocked() -> None:
+    lifecycle = latest_report_lifecycle(
+        {
+            "report_id": 36,
+            "topic": "記憶體產業鏈",
+            "quality_gate": {"status": "ready", "metrics": {"promoted_count": 8}},
+            "candidate_whitelist": [],
+            "auto_follow_up": {
+                "rerun_report": {
+                    "status": "skipped",
+                    "blockers": ["公司公開文件仍不足：2408"],
+                }
+            },
+        },
+        {"summary": {"required_count": 0}, "status": "blocked"},
+    )
+
+    assert lifecycle["overall_state"] == "blocked"
+    assert lifecycle["trust_label"] == "不可直接採信"
+    assert lifecycle["primary_action"] == "查看阻塞"
+    assert lifecycle["route_hint"] == "settings:maintenance"
+    assert stage_by_key(lifecycle, "follow_up") == {
+        "key": "follow_up",
+        "title": "補強",
+        "state": "blocked",
+        "label": "補強受阻",
+        "detail": "補強或重跑流程遇到阻塞，先查看失敗原因再採信最新版。",
+    }
+    assert stage_by_key(lifecycle, "readable")["state"] == "blocked"
+
+
 def test_latest_report_lifecycle_handles_empty_report() -> None:
     lifecycle = latest_report_lifecycle({}, {})
 
@@ -427,3 +458,105 @@ def test_report_lifecycle_strip_renders_primary_action_detail(monkeypatch) -> No
     )
 
     assert "刷新股價可改善「股價與量能」：缺少最新股價" in rendered[0]
+
+
+def test_report_reader_decision_summary_combines_lifecycle_and_health() -> None:
+    summary = report_center.report_reader_decision_summary(
+        {
+            "overall_state": "attention",
+            "trust_label": "可閱讀但需註記",
+            "trust_explanation": "AI 產業鏈報告仍有 2 項必補缺口。",
+            "primary_action": "刷新股價",
+            "primary_action_detail": "刷新股價可改善「股價與量能」：缺少最新股價",
+        },
+        {
+            "quality_label": "caution",
+            "report_meta_label": "#12｜AI 產業鏈｜2026-06-10 15:30",
+            "candidate_label": "候選 2｜正式 1",
+            "follow_up_label": "需補強 2 項",
+        },
+    )
+
+    assert summary == {
+        "state": "attention",
+        "eyebrow": "閱讀決策",
+        "title": "可先閱讀，但投資判斷需標示限制",
+        "caption": "AI 產業鏈報告仍有 2 項必補缺口。",
+        "evidence": "#12｜AI 產業鏈｜2026-06-10 15:30",
+        "quality": "品質 caution｜候選 2｜正式 1",
+        "follow_up": "補強 需補強 2 項",
+        "action_label": "刷新股價",
+        "action_detail": "刷新股價可改善「股價與量能」：缺少最新股價",
+    }
+
+
+def test_report_reader_decision_summary_marks_blocked_reports_as_do_not_trust() -> None:
+    summary = report_center.report_reader_decision_summary(
+        {
+            "overall_state": "blocked",
+            "trust_label": "不可直接採信",
+            "trust_explanation": "散熱產業鏈報告目前正式分析 0 檔。",
+            "primary_action": "補強資料",
+        },
+        {
+            "quality_label": "insufficient",
+            "candidate_label": "候選 2｜正式 0",
+            "follow_up_label": "補強受阻",
+        },
+    )
+
+    assert summary["state"] == "blocked"
+    assert summary["title"] == "暫停採信，先處理阻塞"
+    assert summary["action_detail"] == "完成建議操作後再回來閱讀最新版。"
+
+
+def test_report_reader_decision_summary_uses_blocked_health_as_guardrail() -> None:
+    summary = report_center.report_reader_decision_summary(
+        {
+            "overall_state": "ready",
+            "trust_label": "可閱讀",
+            "trust_explanation": "記憶體產業鏈報告可作為最新版閱讀。",
+            "primary_action": "閱讀最新版",
+            "primary_action_detail": "開啟目前保留的最新版報告。",
+        },
+        {
+            "state": "blocked",
+            "action_label": "查看阻塞",
+            "quality_label": "ready",
+            "candidate_label": "候選 0｜正式 8",
+            "follow_up_label": "補強受阻",
+        },
+    )
+
+    assert summary["state"] == "blocked"
+    assert summary["title"] == "暫停採信，先處理阻塞"
+    assert summary["action_label"] == "查看阻塞"
+    assert summary["action_detail"] == "完成建議操作後再回來閱讀最新版。"
+
+
+def test_report_reader_decision_summary_renders_operator_cards(monkeypatch) -> None:
+    rendered: list[str] = []
+    monkeypatch.setattr(
+        report_center.st,
+        "markdown",
+        lambda body, **_kwargs: rendered.append(str(body)),
+    )
+
+    report_center._render_report_reader_decision_summary(
+        {
+            "state": "ready",
+            "eyebrow": "閱讀決策",
+            "title": "可以閱讀最新版",
+            "caption": "記憶體產業鏈報告可作為最新版閱讀。",
+            "evidence": "#15｜記憶體產業鏈｜2026-06-10 15:30",
+            "quality": "品質 ready｜候選 2｜正式 2",
+            "follow_up": "補強 可閱讀",
+            "action_label": "閱讀最新版",
+            "action_detail": "開啟目前保留的最新版報告。",
+        }
+    )
+
+    assert "report-reader-decision" in rendered[0]
+    assert "閱讀決策" in rendered[0]
+    assert "可以閱讀最新版" in rendered[0]
+    assert "#15｜記憶體產業鏈｜2026-06-10 15:30" in rendered[0]

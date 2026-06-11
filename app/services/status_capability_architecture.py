@@ -218,6 +218,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_lifecycle_data_gap_prefill_enabled")
             and frontend_status.get("ui_report_health_identity_enabled")
             and frontend_status.get("ui_report_health_action_enabled")
+            and frontend_status.get("ui_report_reader_decision_summary_enabled")
             and frontend_status.get("ui_report_quality_unknown_guard_enabled")
             and frontend_status.get("ui_report_market_freshness_action_enabled")
             and frontend_status.get("ui_report_latest_only_picker_enabled")

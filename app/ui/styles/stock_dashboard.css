@@ -519,6 +519,7 @@ textarea:focus,
 .analysis-submission-summary,
 .data-task-followup-summary,
 .latest-report-picker,
+.report-reader-decision,
 .report-health-strip,
 .report-lifecycle-strip,
 .incident-inbox,
@@ -957,6 +958,68 @@ textarea:focus,
     border-color: rgba(146, 64, 14, 0.24);
     background: var(--stock-warning-soft);
 }
+.report-reader-decision {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
+    gap: 14px;
+    background: #ffffff;
+    border: 1px solid var(--stock-border);
+    border-left: 4px solid var(--stock-accent);
+    border-radius: 8px;
+    padding: 16px;
+}
+.report-reader-decision.is-attention,
+.report-reader-decision.is-running {
+    border-left-color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+}
+.report-reader-decision.is-blocked {
+    border-left-color: var(--stock-danger);
+    background: var(--stock-danger-soft);
+}
+.report-reader-decision-main span,
+.report-reader-decision-grid span {
+    color: var(--stock-muted);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+.report-reader-decision-main strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--stock-text);
+    font-size: 1.05rem;
+    line-height: 1.35;
+}
+.report-reader-decision-main p {
+    color: var(--stock-muted);
+    line-height: 1.5;
+    margin: 8px 0 0;
+}
+.report-reader-decision-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+.report-reader-decision-grid article {
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid var(--stock-border-soft);
+    border-radius: 8px;
+    padding: 12px;
+}
+.report-reader-decision-grid strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--stock-text);
+    line-height: 1.4;
+}
+.report-reader-decision-grid em {
+    display: block;
+    margin-top: 6px;
+    color: var(--stock-muted);
+    font-size: 0.84rem;
+    font-style: normal;
+    line-height: 1.45;
+}
 .report-lifecycle-strip {
     display: grid;
     grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
@@ -1325,6 +1388,8 @@ textarea:focus,
     }
     .operator-status-grid,
     .operator-secondary-actions,
+    .report-reader-decision,
+    .report-reader-decision-grid,
     .report-health-strip,
     .report-lifecycle-strip,
     .report-lifecycle-steps,

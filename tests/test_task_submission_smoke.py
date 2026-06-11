@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.services import task_submission_smoke as smoke
+from scripts import task_submission_smoke as smoke_cli
 
 
 class FakeResponse:
@@ -95,6 +98,20 @@ def test_task_submission_smoke_format_uses_operator_language() -> None:
     assert "Task submission smoke" not in rendered
     assert "worker_online" not in rendered
     assert "processing_ready" not in rendered
+
+
+def test_task_submission_smoke_cli_help_uses_operator_language(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        smoke_cli.main(["--help"])
+
+    output = capsys.readouterr().out
+    assert exc_info.value.code == 0
+    assert "檢查背景任務是否能送出到資料操作端點" in output
+    assert "送出安全檢查用的股價刷新任務" in output
+    assert "只檢查送出，不要求背景執行器完成任務" in output
+    assert "safe no-op" not in output
+    assert "POST /tasks/data-operation" not in output
+    assert "Print machine-readable JSON" not in output
 
 
 def test_task_submission_smoke_polls_until_task_success() -> None:

@@ -15,43 +15,43 @@ from app.services.task_submission_smoke import (
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check background task submission with a safe no-op data operation."
+        description="檢查背景任務是否能送出到資料操作端點。"
     )
-    parser.add_argument("--api-url", default=DEFAULT_API_URL)
-    parser.add_argument("--operation", default=DEFAULT_OPERATION)
-    parser.add_argument("--ticker", action="append", default=None)
+    parser.add_argument("--api-url", default=DEFAULT_API_URL, help="要檢查的 API base URL。")
+    parser.add_argument("--operation", default=DEFAULT_OPERATION, help="要送出的資料操作類型。")
+    parser.add_argument("--ticker", action="append", default=None, help="要檢查的股票代號，可重複指定。")
     parser.add_argument(
         "--submit",
         action="store_true",
-        help="Submit a safe no-op check payload to POST /tasks/data-operation.",
+        help="送出安全檢查用的股價刷新任務。",
     )
     parser.add_argument(
         "--wait",
         action="store_true",
-        help="Poll GET /tasks/{task_id} until the check task finishes or times out.",
+        help="輪詢任務狀態，直到檢查任務完成或逾時。",
     )
     parser.add_argument(
         "--skip-processing-ready",
         action="store_true",
         help=(
-            "Only verify enqueue; do not require the background executor to process the task. "
-            "Useful when this check runs inside the executor itself."
+            "只檢查送出，不要求背景執行器完成任務。"
+            "適合在背景執行器內部自我檢查時使用。"
         ),
     )
-    parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--poll-interval", type=float, default=1.0)
+    parser.add_argument("--timeout", type=float, default=30.0, help="等待任務完成的秒數上限。")
+    parser.add_argument("--poll-interval", type=float, default=1.0, help="輪詢任務狀態的間隔秒數。")
     parser.add_argument(
         "--skip-runtime-identity",
         action="store_true",
-        help="Skip API runtime commit comparison.",
+        help="略過 API 版本比對。",
     )
     parser.add_argument(
         "--expected-api-commit",
         default=None,
-        help="Expected API runtime git commit. Defaults to the current working tree commit.",
+        help="預期的 API git commit；預設使用目前工作目錄 commit。",
     )
-    parser.add_argument("--strict", action="store_true", help="Return non-zero on caution.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="警示狀態時回傳非 0 結束碼。")
+    parser.add_argument("--json", action="store_true", help="輸出 JSON，方便工具讀取。")
     args = parser.parse_args(argv)
 
     report = run_task_submission_smoke(

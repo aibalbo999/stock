@@ -1395,6 +1395,8 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[1]["retry"] == "需人工"
     assert rows[1]["retry_kind"] == "-"
     assert rows[1]["action_route"] == "需人工處理"
+    assert rows[1]["next_action"] == "任務輸入不支援自動重試；請依錯誤內容手動重新送出。"
+    assert "payload" not in rows[1]["next_action"]
     assert rows[1]["next_steps"] == "-"
     assert rows[2]["action_route"] == "外部配置缺失"
     assert rows[2]["operation"] == "資料補強"
@@ -1433,7 +1435,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         {
             "處理路徑": "需人工處理",
             "數量": 4,
-            "說明": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
+            "說明": "任務輸入、範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
             "代表任務": "收盤後報告更新｜task-after-close；收盤後報告更新｜task-vector；收盤後報告更新｜task-storage",
         },
     ]
@@ -1538,7 +1540,7 @@ def test_task_observability_alert_rows_hide_raw_diagnostic_keys() -> None:
             "severity_label": "錯誤",
             "message": "背景任務服務近期出現 1 次，請先依下方步驟處理。",
             "next_steps": (
-                "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+                "到系統設定 > 維護 > 背景任務觀測確認背景任務佇列與背景執行器。；"
                 "修復後重新送出任務。"
             ),
         }
@@ -1546,6 +1548,7 @@ def test_task_observability_alert_rows_hide_raw_diagnostic_keys() -> None:
     rendered = str(rows)
     assert "/services/status" not in rendered
     assert "task_queue.ready" not in rendered
+    assert "Redis/Celery 與 worker" not in rendered
     assert "worker_online" not in rendered
 
 

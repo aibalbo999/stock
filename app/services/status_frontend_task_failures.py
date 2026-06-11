@@ -127,6 +127,10 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "一鍵重試" in task_failure_diagnostics_source
         and "外部配置缺失" in task_failure_diagnostics_source
         and "需人工處理" in task_failure_diagnostics_source
+        and "任務輸入、範圍、向量庫/本機儲存或取消狀態需人工檢查"
+        in task_failure_diagnostics_source
+        and "payload、輸入範圍" not in task_failure_diagnostics_source
+        and "payload 是否支援" not in task_failure_diagnostics_source
         and "失敗處理路徑" in ui_source,
         "ui_task_retry_guard_enabled": "retry_guarded" in task_failure_diagnostics_source
         and "retry_guard_message" in task_failure_diagnostics_source

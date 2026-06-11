@@ -24,7 +24,7 @@ TASK_FAILURE_ACTION_ROUTE_ORDER = (
 TASK_FAILURE_ACTION_ROUTE_DETAILS = {
     "一鍵重試": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
     "外部配置缺失": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
-    "需人工處理": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
+    "需人工處理": "任務輸入、範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
 }
 
 CATEGORY_LABELS = {
@@ -273,7 +273,7 @@ def task_failure_next_steps_text(row: dict) -> str:
     category = str(row.get("error_category") or "").strip()
     if category == "task_queue":
         return (
-            "到系統設定 > 維護 > 背景任務觀測確認 Redis/Celery 與 worker。；"
+            "到系統設定 > 維護 > 背景任務觀測確認背景任務佇列與背景執行器。；"
             "修復後重新送出任務。"
         )
     return _task_next_steps_text(row)
@@ -376,7 +376,7 @@ def _task_failure_route_example(row: dict) -> str:
 
 def _fallback_failure_next_action(row: dict) -> str:
     if row.get("task_id"):
-        return "查看任務狀態，確認 payload 是否支援自動重試。"
+        return "查看任務狀態，確認任務輸入是否支援自動重試。"
     return "缺少任務編號；請從 run 明細檢查。"
 
 
@@ -420,6 +420,9 @@ def _operator_alert_text(text: str) -> str:
     replacements = {
         "/services/status": "系統設定 > 維護 > 背景任務觀測",
         "task_queue.ready": "背景任務提交狀態",
+        "payload_validation": "輸入驗證",
+        "payload ": "任務輸入",
+        "payload": "任務輸入",
         "processing_ready": "背景任務執行狀態",
         "worker_online": "背景執行器是否在線",
         "broker_ok": "Redis 訊息佇列連線",

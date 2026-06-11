@@ -227,6 +227,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_external_deployment_panel(" in source
     assert "service_snapshot: dict | None = None" in source
     assert "def render_background_task_observability_panel(" in source
+    assert "目前近期失敗沒有可自動重試的任務輸入。" in source
+    assert "task payload" not in source
     assert "def render_report_quality_panel(report_quality_summary: dict) -> None:" in source
     assert "def render_submission_guard_panel(service_snapshot: dict) -> None:" in source
     assert "高風險操作保護" in source

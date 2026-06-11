@@ -7,6 +7,7 @@ from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_enrichment_common import (
     DATA_TASK_STATUS_STATE_KEYS,
+    render_data_ingest_submission_summary,
     render_last_data_task_status,
 )
 
@@ -37,6 +38,16 @@ def render_rss_ingest_tab() -> None:
     )
     if feed_ready and not rss_fetch_confirmed:
         st.caption("避免誤觸 RSS 抓取；確認 URL、來源與筆數後才會送出背景任務。")
+    render_data_ingest_submission_summary(
+        rss_fetch_preflight_summary(
+            feed_url=feed_url,
+            publisher=feed_publisher,
+            limit=int(feed_limit),
+            ready=feed_ready,
+            confirmed=rss_fetch_confirmed,
+        ),
+        streamlit_module=st,
+    )
     if st.button(
         "抓取 RSS",
         type="primary",
@@ -58,3 +69,45 @@ def render_rss_ingest_tab() -> None:
         label="refresh_rss_data_task_status",
         key="rss_data_task_id_lookup",
     )
+
+
+def rss_fetch_preflight_summary(
+    *,
+    feed_url: str,
+    publisher: str,
+    limit: int,
+    ready: bool,
+    confirmed: bool,
+) -> dict[str, str]:
+    detail = (
+        f"來源：{_text(publisher, default='rss')}｜"
+        f"筆數：{int(limit)}｜URL：{_text(feed_url, default='尚未填寫')}"
+    )
+    if not ready:
+        return {
+            "state": "attention",
+            "title": "RSS 抓取尚未完整",
+            "detail": detail,
+            "next_step": "請先輸入 RSS URL。",
+            "quota_hint": "尚未送出背景任務；確認 URL 可避免失敗重試浪費排隊資源。",
+        }
+    if not confirmed:
+        return {
+            "state": "attention",
+            "title": "準備送出 RSS 抓取",
+            "detail": detail,
+            "next_step": "勾選確認後，再按「抓取 RSS」送出背景任務。",
+            "quota_hint": "背景任務會排隊抓取與匯入文本；完成前不要重複送出同一個 RSS。",
+        }
+    return {
+        "state": "ready",
+        "title": "可以送出 RSS 抓取",
+        "detail": detail,
+        "next_step": "按「抓取 RSS」送出背景任務；完成後回報告中心確認最新版。",
+        "quota_hint": "背景任務會排隊抓取與匯入文本；完成前不要重複送出同一個 RSS。",
+    }
+
+
+def _text(value: object, *, default: str = "") -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or default

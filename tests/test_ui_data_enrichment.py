@@ -680,6 +680,7 @@ def test_manual_news_import_requires_confirmation_before_submit(monkeypatch) -> 
             self.buttons: list[dict[str, Any]] = []
             self.captions: list[str] = []
             self.checkboxes: list[dict[str, Any]] = []
+            self.markdowns: list[str] = []
 
         def button(self, label: str, **kwargs):
             self.buttons.append({"label": label, **kwargs})
@@ -694,6 +695,9 @@ def test_manual_news_import_requires_confirmation_before_submit(monkeypatch) -> 
 
         def date_input(self, _label: str, *, value):
             return value
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
 
         def success(self, body: str) -> None:
             raise AssertionError(f"unexpected success: {body}")
@@ -726,10 +730,36 @@ def test_manual_news_import_requires_confirmation_before_submit(monkeypatch) -> 
         }
     ]
     assert any("避免誤觸手動匯入" in caption for caption in fake_st.captions)
+    assert any(
+        'class="data-ingest-submission-summary is-attention"' in markdown
+        and "準備寫入新聞/研究摘要" in markdown
+        and "不會消耗 AI 額度" in markdown
+        for markdown in fake_st.markdowns
+    )
     assert fake_st.buttons == [
         {"label": "匯入新聞/研究摘要", "type": "primary", "disabled": True}
     ]
     assert posted == []
+
+
+def test_manual_news_preflight_summary_explains_direct_database_write() -> None:
+    assert hasattr(data_enrichment_manual, "manual_news_preflight_summary")
+
+    summary = data_enrichment_manual.manual_news_preflight_summary(
+        title="法說會摘要",
+        publisher="manual",
+        published_at=date(2026, 6, 10),
+        ready=True,
+        confirmed=False,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "準備寫入新聞/研究摘要",
+        "detail": "標題：法說會摘要｜來源：manual｜日期：2026-06-10",
+        "next_step": "勾選確認後，再按「匯入新聞/研究摘要」直接寫入資料庫。",
+        "quota_hint": "這不會消耗 AI 額度，但會影響後續 RAG/報告引用；送出前請確認來源與內文品質。",
+    }
 
 
 def test_manual_news_import_submits_after_confirmation(monkeypatch) -> None:
@@ -750,6 +780,9 @@ def test_manual_news_import_submits_after_confirmation(monkeypatch) -> None:
 
         def date_input(self, _label: str, *, value):
             return value
+
+        def markdown(self, _body: str, **_kwargs) -> None:
+            return None
 
         def error(self, body: str) -> None:
             raise AssertionError(f"unexpected error: {body}")
@@ -814,6 +847,7 @@ def test_manual_company_filing_import_requires_confirmation(monkeypatch) -> None
             self.buttons: list[dict[str, Any]] = []
             self.captions: list[str] = []
             self.checkboxes: list[dict[str, Any]] = []
+            self.markdowns: list[str] = []
 
         def __enter__(self):
             return self
@@ -837,6 +871,9 @@ def test_manual_company_filing_import_requires_confirmation(monkeypatch) -> None
 
         def date_input(self, _label: str, *, value, key: str):
             return value
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
 
         def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
             return list(options)[index]
@@ -873,6 +910,12 @@ def test_manual_company_filing_import_requires_confirmation(monkeypatch) -> None
         "key": "confirm_manual_company_filing_import",
     } in fake_st.checkboxes
     assert any("避免誤觸公司文件匯入" in caption for caption in fake_st.captions)
+    assert any(
+        'class="data-ingest-submission-summary is-attention"' in markdown
+        and "準備寫入公司文件" in markdown
+        and "不會消耗 AI 額度" in markdown
+        for markdown in fake_st.markdowns
+    )
     by_label = {button["label"]: button for button in fake_st.buttons}
     assert by_label["匯入公司文件"]["disabled"] is True
     assert posted == []
@@ -914,6 +957,9 @@ def test_manual_company_filing_import_submits_after_confirmation(monkeypatch) ->
 
         def date_input(self, _label: str, *, value, key: str):
             return value
+
+        def markdown(self, _body: str, **_kwargs) -> None:
+            return None
 
         def error(self, body: str) -> None:
             raise AssertionError(f"unexpected error: {body}")
@@ -986,6 +1032,7 @@ def test_company_filing_url_import_requires_confirmation(monkeypatch) -> None:
             self.buttons: list[dict[str, Any]] = []
             self.captions: list[str] = []
             self.checkboxes: list[dict[str, Any]] = []
+            self.markdowns: list[str] = []
 
         def __enter__(self):
             return self
@@ -1005,6 +1052,9 @@ def test_company_filing_url_import_requires_confirmation(monkeypatch) -> None:
 
         def date_input(self, _label: str, *, value, key: str):
             return value
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
 
         def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
             return list(options)[index]
@@ -1047,9 +1097,35 @@ def test_company_filing_url_import_requires_confirmation(monkeypatch) -> None:
         }
     ]
     assert any("避免誤觸 URL 匯入" in caption for caption in fake_st.captions)
+    assert any(
+        'class="data-ingest-submission-summary is-attention"' in markdown
+        and "準備送出 URL 公司文件匯入" in markdown
+        and "背景任務會排隊執行" in markdown
+        for markdown in fake_st.markdowns
+    )
     by_label = {button["label"]: button for button in fake_st.buttons}
     assert by_label["從 URL 抓取並匯入"]["disabled"] is True
     assert submitted == []
+
+
+def test_company_filing_url_preflight_summary_explains_background_task() -> None:
+    assert hasattr(data_enrichment_manual, "company_filing_url_preflight_summary")
+
+    summary = data_enrichment_manual.company_filing_url_preflight_summary(
+        ticker="2330",
+        document_type="annual_report",
+        url="https://example.com/ir.pdf",
+        ready=True,
+        confirmed=False,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "準備送出 URL 公司文件匯入",
+        "detail": "股票：2330｜類型：年報｜URL：https://example.com/ir.pdf",
+        "next_step": "勾選確認後，再按「從 URL 抓取並匯入」送出背景任務。",
+        "quota_hint": "背景任務會排隊執行；完成前不要重複送出同一份文件。",
+    }
 
 
 def test_company_filing_url_import_submits_after_confirmation(monkeypatch) -> None:
@@ -1082,6 +1158,9 @@ def test_company_filing_url_import_submits_after_confirmation(monkeypatch) -> No
 
         def date_input(self, _label: str, *, value, key: str):
             return value
+
+        def markdown(self, _body: str, **_kwargs) -> None:
+            return None
 
         def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
             return list(options)[index]
@@ -1146,6 +1225,7 @@ def test_rss_fetch_requires_confirmation_before_submit(monkeypatch) -> None:
             self.buttons: list[dict[str, Any]] = []
             self.captions: list[str] = []
             self.checkboxes: list[dict[str, Any]] = []
+            self.markdowns: list[str] = []
 
         def button(self, label: str, **kwargs):
             self.buttons.append({"label": label, **kwargs})
@@ -1160,6 +1240,9 @@ def test_rss_fetch_requires_confirmation_before_submit(monkeypatch) -> None:
 
         def dataframe(self, *_args, **_kwargs) -> None:
             return None
+
+        def markdown(self, body: str, **_kwargs) -> None:
+            self.markdowns.append(str(body))
 
         def number_input(self, *_args, **_kwargs):
             return 10
@@ -1192,10 +1275,36 @@ def test_rss_fetch_requires_confirmation_before_submit(monkeypatch) -> None:
         }
     ]
     assert any("避免誤觸 RSS 抓取" in caption for caption in fake_st.captions)
+    assert any(
+        'class="data-ingest-submission-summary is-attention"' in markdown
+        and "準備送出 RSS 抓取" in markdown
+        and "完成前不要重複送出" in markdown
+        for markdown in fake_st.markdowns
+    )
     assert fake_st.buttons == [
         {"label": "抓取 RSS", "type": "primary", "disabled": True}
     ]
     assert submitted == []
+
+
+def test_rss_fetch_preflight_summary_explains_background_task() -> None:
+    assert hasattr(data_enrichment_rss, "rss_fetch_preflight_summary")
+
+    summary = data_enrichment_rss.rss_fetch_preflight_summary(
+        feed_url="https://example.com/rss.xml",
+        publisher="rss",
+        limit=10,
+        ready=True,
+        confirmed=False,
+    )
+
+    assert summary == {
+        "state": "attention",
+        "title": "準備送出 RSS 抓取",
+        "detail": "來源：rss｜筆數：10｜URL：https://example.com/rss.xml",
+        "next_step": "勾選確認後，再按「抓取 RSS」送出背景任務。",
+        "quota_hint": "背景任務會排隊抓取與匯入文本；完成前不要重複送出同一個 RSS。",
+    }
 
 
 def test_rss_fetch_submits_after_confirmation(monkeypatch) -> None:
@@ -1214,6 +1323,9 @@ def test_rss_fetch_submits_after_confirmation(monkeypatch) -> None:
             return key == "confirm_rss_fetch_submission"
 
         def dataframe(self, *_args, **_kwargs) -> None:
+            return None
+
+        def markdown(self, _body: str, **_kwargs) -> None:
             return None
 
         def number_input(self, *_args, **_kwargs):

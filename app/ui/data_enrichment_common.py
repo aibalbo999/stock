@@ -96,6 +96,26 @@ def _render_data_task_followup_summary(summary: dict[str, str], *, key: str) -> 
         )
 
 
+def render_data_ingest_submission_summary(
+    summary: dict[str, str],
+    *,
+    streamlit_module: Any | None = None,
+) -> None:
+    if not summary:
+        return
+    streamlit_module = streamlit_module or st
+    streamlit_module.markdown(
+        f"""<section class="data-ingest-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料送出前摘要">
+<span>資料送出前摘要</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+<em>{escape(summary.get("next_step", ""))}</em>
+<small>{escape(summary.get("quota_hint", ""))}</small>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
 def _data_task_failed(task_status: dict, status: str) -> bool:
     if status in {"FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "ERROR"}:
         return True

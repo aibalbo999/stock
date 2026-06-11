@@ -13,6 +13,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     operator_decisions_source = source_context.ui_sources["operator_decisions.py"]
     data_gap_actions_source = source_context.ui_sources["data_gap_actions.py"]
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
+    data_enrichment_common_source = source_context.ui_sources["data_enrichment_common.py"]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
     data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
     data_enrichment_rss_source = source_context.ui_sources["data_enrichment_rss.py"]
@@ -124,6 +125,17 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and 'submit_data_operation_task(\n            "company_filing_from_url"'
             in data_enrichment_manual_source
         ),
+        "ui_manual_data_ingest_preflight_summary_enabled": (
+            "def render_data_ingest_submission_summary(" in data_enrichment_common_source
+            and 'class="data-ingest-submission-summary' in data_enrichment_common_source
+            and "資料送出前摘要" in data_enrichment_common_source
+            and "def manual_news_preflight_summary(" in data_enrichment_manual_source
+            and "def company_filing_text_preflight_summary(" in data_enrichment_manual_source
+            and "def company_filing_url_preflight_summary(" in data_enrichment_manual_source
+            and "render_data_ingest_submission_summary(" in data_enrichment_manual_source
+            and "不會消耗 AI 額度" in data_enrichment_manual_source
+            and "背景任務會排隊執行" in data_enrichment_manual_source
+        ),
         "ui_rss_fetch_confirmation_enabled": (
             "rss_fetch_confirmed = st.checkbox(" in data_enrichment_rss_source
             and 'key="confirm_rss_fetch_submission"' in data_enrichment_rss_source
@@ -133,6 +145,13 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_rss_source
             and 'submit_data_operation_task(\n            "feed_fetch"'
             in data_enrichment_rss_source
+        ),
+        "ui_rss_data_ingest_preflight_summary_enabled": (
+            "def render_data_ingest_submission_summary(" in data_enrichment_common_source
+            and "def rss_fetch_preflight_summary(" in data_enrichment_rss_source
+            and "render_data_ingest_submission_summary(" in data_enrichment_rss_source
+            and "背景任務會排隊抓取與匯入文本" in data_enrichment_rss_source
+            and "完成前不要重複送出同一個 RSS" in data_enrichment_rss_source
         ),
         "ui_data_enrichment_pending_ticker_allowlist_guard_enabled": (
             "def pending_market_selection_state(" in data_enrichment_market_source

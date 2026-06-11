@@ -325,11 +325,20 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "我了解這會送出 URL 公司文件匯入背景任務" in source
     assert "避免誤觸 URL 匯入" in source
     assert "disabled=not filing_url_ready or not filing_url_confirmed" in source
+    assert "manual_news_preflight_summary(" in source
+    assert "company_filing_text_preflight_summary(" in source
+    assert "company_filing_url_preflight_summary(" in source
+    assert "render_data_ingest_submission_summary(" in source
+    assert "data-ingest-submission-summary" in combined
+    assert "資料送出前摘要" in source
+    assert "不會消耗 AI 額度" in source
     assert "rss_fetch_confirmed = st.checkbox(" in source
     assert 'key="confirm_rss_fetch_submission"' in source
     assert "我了解這會送出 RSS 抓取背景任務" in source
     assert "避免誤觸 RSS 抓取" in source
     assert "disabled=not feed_ready or not rss_fetch_confirmed" in source
+    assert "rss_fetch_preflight_summary(" in source
+    assert "背景任務會排隊抓取與匯入文本" in source
     assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source

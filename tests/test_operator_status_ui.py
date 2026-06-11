@@ -469,11 +469,12 @@ def test_operator_status_cards_mark_missing_task_summary_as_unknown_not_clear() 
     assert cards[3] == {
         "title": "待處理事項",
         "value": "任務摘要暫不可讀",
-        "caption": "目前無法讀取 /tasks/summary；不代表沒有失敗任務。",
+        "caption": "目前無法讀取任務摘要；不代表沒有失敗任務。",
         "state": "attention",
         "action_label": "查看維護",
         "route_hint": "settings:maintenance",
     }
+    assert "/tasks/summary" not in cards[3]["caption"]
 
 
 def test_quota_operator_summary_returns_recommendation_budget_ready_and_fallback_caption() -> None:

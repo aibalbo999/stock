@@ -454,7 +454,7 @@ def _first_failure_summary(task_summary: dict) -> dict[str, str]:
         return {
             "state": "attention",
             "label": "任務摘要暫不可讀",
-            "detail": "目前無法讀取 /tasks/summary；不代表沒有失敗任務。",
+            "detail": "目前無法讀取任務摘要；不代表沒有失敗任務。",
             "action_label": "查看維護",
             "route_hint": "settings:maintenance",
         }

@@ -11,6 +11,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_state_source = ui_sources["report_state.py"]
     report_panels_source = ui_sources["report_panels.py"]
     report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
+    report_follow_up_presenter_source = ui_sources["report_follow_up_presenter.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     report_center_source = ui_sources["report_center.py"]
     report_center_presenter_source = ui_sources["report_center_presenter.py"]
@@ -323,7 +324,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             in report_follow_up_controls_source
             and "render_follow_up_submission_summary(" in report_follow_up_controls_source
             and "follow_up_submission_preflight_summary(" in report_follow_up_controls_source
-            and 'class="follow-up-submission-summary' in report_follow_up_controls_source
+            and 'class="follow-up-submission-summary' in report_follow_up_presenter_source
             and "會使用背景任務、外部資料來源與可能的 AI 額度"
             in report_follow_up_controls_source
             and "完成後套用補強結果並查看最新版生命週期"
@@ -331,17 +332,31 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "尚未送出背景任務；先確認範圍可避免空任務與額度浪費"
             in report_follow_up_controls_source
         ),
+        "ui_report_follow_up_presenter_extracted": (
+            (ui_dir / "report_follow_up_presenter.py").exists()
+            and "from app.ui.report_follow_up_presenter import ("
+            in report_follow_up_controls_source
+            and "import streamlit" not in report_follow_up_presenter_source
+            and "def follow_up_submission_summary_html("
+            in report_follow_up_presenter_source
+            and "def planned_follow_up_rows(" in report_follow_up_presenter_source
+            and "def plan_next_action_rows(" in report_follow_up_presenter_source
+            and "def markdown_follow_up_rows(" in report_follow_up_presenter_source
+            and "def skipped_follow_up_rows(" in report_follow_up_presenter_source
+            and "def _follow_up_task_label(" not in report_follow_up_controls_source
+            and "def _labeled_value(" not in report_follow_up_controls_source
+        ),
         "ui_report_follow_up_action_operator_labels_enabled": (
             "from app.services.followup_models import FOLLOW_UP_ACTION_LABELS"
-            in report_follow_up_controls_source
-            and "def _follow_up_task_label(" in report_follow_up_controls_source
-            and "def _labeled_value(" in report_follow_up_controls_source
-            and "FOLLOW_UP_ACTION_LABELS.get(action_type" in report_follow_up_controls_source
-            and '"任務": _follow_up_task_label(action)' in report_follow_up_controls_source
-            and '"正式文件"' in report_follow_up_controls_source
-            and '"候選證據缺口"' in report_follow_up_controls_source
-            and '"高"' in report_follow_up_controls_source
-            and '"一次"' in report_follow_up_controls_source
+            in report_follow_up_presenter_source
+            and "def follow_up_task_label(" in report_follow_up_presenter_source
+            and "def labeled_value(" in report_follow_up_presenter_source
+            and "FOLLOW_UP_ACTION_LABELS.get(action_type" in report_follow_up_presenter_source
+            and '"任務": follow_up_task_label(action)' in report_follow_up_presenter_source
+            and '"正式文件"' in report_follow_up_presenter_source
+            and '"候選證據缺口"' in report_follow_up_presenter_source
+            and '"高"' in report_follow_up_presenter_source
+            and '"一次"' in report_follow_up_presenter_source
             and 'action.get("action_type", "-")' not in report_follow_up_controls_source
             and 'action.get("target") or "-"' not in report_follow_up_controls_source
             and 'action.get("reason", "-")' not in report_follow_up_controls_source

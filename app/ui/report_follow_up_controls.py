@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from html import escape
 from typing import Any
 
 import streamlit as st
 
-from app.services.followup_models import FOLLOW_UP_ACTION_LABELS
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.background_tasks import submit_api_task
 from app.ui.follow_up_status import (
@@ -13,45 +11,16 @@ from app.ui.follow_up_status import (
     follow_up_blocker_action_rows,
     follow_up_result_message,
 )
+from app.ui.report_follow_up_presenter import (
+    PURPOSE_LABELS,
+    follow_up_submission_summary_html,
+    markdown_follow_up_rows,
+    plan_next_action_rows,
+    planned_follow_up_rows,
+    skipped_follow_up_rows,
+)
 from app.ui.report_markdown import markdown_table_rows
 from app.ui.task_status_panel import render_task_status_panel
-
-
-PURPOSE_LABELS = {
-    "all": "全部任務",
-    "required": "只補資料缺口",
-    "tracking": "只做追蹤更新",
-}
-
-FOLLOW_UP_PRIORITY_LABELS = {
-    "high": "高",
-    "medium": "中",
-    "low": "低",
-}
-
-FOLLOW_UP_FREQUENCY_LABELS = {
-    "once": "一次",
-    "daily": "每日",
-    "weekly": "每週",
-    "monthly": "每月",
-}
-
-FOLLOW_UP_TARGET_LABELS = {
-    "formal_filings": "正式文件",
-    "market_data": "股價/量能",
-    "monthly_revenue": "月營收",
-    "financial_metrics": "五年財務",
-    "valuation": "估值",
-    "news": "新聞與產業資料",
-    "candidate_evidence": "候選證據",
-}
-
-FOLLOW_UP_REASON_LABELS = {
-    "candidate_evidence_gap": "候選證據缺口",
-    "formal_filing_gap": "正式文件缺口",
-    "market_freshness_gap": "股價/量能過期",
-    "tracking_refresh": "追蹤更新",
-}
 
 
 def follow_up_submission_preflight_summary(
@@ -108,16 +77,7 @@ def follow_up_submission_preflight_summary(
 def render_follow_up_submission_summary(summary: dict[str, str]) -> None:
     if not summary:
         return
-    st.markdown(
-        f"""<section class="follow-up-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="自動補強送出前摘要">
-<span>送出前摘要</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-<small>{escape(summary.get("quota_hint", ""))}</small>
-</section>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(follow_up_submission_summary_html(summary), unsafe_allow_html=True)
 
 
 def render_follow_up_controls(report_id: int, markdown: str, scope: str = "report") -> None:
@@ -148,58 +108,20 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         tracking_count = sum(1 for action in planned_actions if action.get("purpose") == "tracking")
         st.caption(f"資料缺口補強 {required_count} 項，追蹤更新 {tracking_count} 項。")
         st.dataframe(
-            [
-                {
-                    "任務": _follow_up_task_label(action),
-                    "股票": "、".join(action.get("tickers") or []) or "全主題",
-                    "性質": "資料缺口補強" if action.get("purpose") == "required" else "追蹤更新",
-                    "優先級": _labeled_value(
-                        action.get("priority"), FOLLOW_UP_PRIORITY_LABELS
-                    ),
-                    "頻率": _labeled_value(action.get("frequency"), FOLLOW_UP_FREQUENCY_LABELS),
-                    "觸發原因": _labeled_value(
-                        action.get("reason"), FOLLOW_UP_REASON_LABELS
-                    ),
-                }
-                for action in planned_actions
-            ],
+            planned_follow_up_rows(planned_actions),
             width="stretch",
             hide_index=True,
         )
         if plan_next_actions:
             st.caption("預計補強重點")
             st.dataframe(
-                [
-                    {
-                        "股票": "、".join(action.get("tickers") or []) or "全主題",
-                        "下一步": action.get("next_step"),
-                        "補強目標": _labeled_value(
-                            action.get("target"), FOLLOW_UP_TARGET_LABELS
-                        ),
-                        "完成條件": action.get("completion_criteria") or "-",
-                        "優先級": _labeled_value(
-                            action.get("priority"), FOLLOW_UP_PRIORITY_LABELS
-                        ),
-                        "原因": _labeled_value(action.get("reason"), FOLLOW_UP_REASON_LABELS),
-                    }
-                    for action in plan_next_actions
-                ],
+                plan_next_action_rows(plan_next_actions),
                 width="stretch",
                 hide_index=True,
             )
     elif rows:
         st.dataframe(
-            [
-                {
-                    "任務": row[0] if len(row) > 0 else "-",
-                    "股票": row[1] if len(row) > 1 else "-",
-                    "性質": row[2] if len(row) > 5 else "追蹤更新",
-                    "優先級": row[3] if len(row) > 5 else row[2] if len(row) > 2 else "-",
-                    "頻率": row[4] if len(row) > 5 else row[3] if len(row) > 3 else "-",
-                    "觸發原因": row[5] if len(row) > 5 else row[4] if len(row) > 4 else "-",
-                }
-                for row in rows
-            ],
+            markdown_follow_up_rows(rows),
             width="stretch",
             hide_index=True,
         )
@@ -211,24 +133,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
             with st.expander("查看已略過的追蹤更新"):
                 skipped_details = freshness.get("skipped_details") or []
                 st.dataframe(
-                    [
-                        {
-                            "任務": _follow_up_task_label(action),
-                            "股票": "、".join(action.get("tickers") or []) or "全主題",
-                            "最新日期": "、".join(
-                                f"{ticker}:{date_value}"
-                                for ticker, date_value in (
-                                    (action.get("freshness") or {}).get("latest_dates") or {}
-                                ).items()
-                            )
-                            or "-",
-                            "新鮮門檻": f"{(action.get('freshness') or {}).get('max_age_days')} 天"
-                            if (action.get("freshness") or {}).get("max_age_days") is not None
-                            else "-",
-                            "原因": "資料仍在新鮮範圍內",
-                        }
-                        for action in (skipped_details or skipped)
-                    ],
+                    skipped_follow_up_rows(skipped_details or skipped),
                     width="stretch",
                     hide_index=True,
                 )
@@ -471,20 +376,3 @@ def _markdown_row_purpose(row: Any) -> str:
         if purpose == "required" or "資料缺口" in purpose:
             return "required"
     return "tracking"
-
-
-def _follow_up_task_label(action: dict[str, Any]) -> str:
-    action_type = _text(action.get("action_type") or action.get("action"))
-    label = _text(action.get("label"))
-    if label and label != action_type:
-        return label
-    return FOLLOW_UP_ACTION_LABELS.get(action_type, action_type or "-")
-
-
-def _labeled_value(value: Any, labels: dict[str, str]) -> str:
-    text = _text(value)
-    return labels.get(text, text or "-")
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()

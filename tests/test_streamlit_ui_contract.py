@@ -1144,6 +1144,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:
     source = ui.read_ui_source()
+    report_follow_up_presenter_source = ui.REPORT_FOLLOW_UP_PRESENTER_SOURCE.read_text()
     combined = source + "\n" + ui.STYLE_SOURCE.read_text()
 
     assert (
@@ -1162,9 +1163,16 @@ def test_follow_up_controls_use_scoped_widget_keys() -> None:
     assert "避免誤觸補強" in source
     assert "def follow_up_submission_preflight_summary(" in source
     assert "def render_follow_up_submission_summary(" in source
+    assert "from app.ui.report_follow_up_presenter import (" in source
+    assert "import streamlit" not in report_follow_up_presenter_source
+    assert "def follow_up_submission_summary_html(" in report_follow_up_presenter_source
+    assert "def planned_follow_up_rows(" in report_follow_up_presenter_source
+    assert "def plan_next_action_rows(" in report_follow_up_presenter_source
     assert "follow_up_submission_preflight_summary(" in source
     assert "render_follow_up_submission_summary(" in source
     assert "follow-up-submission-summary" in combined
+    assert "def _follow_up_task_label(" not in source
+    assert "def _labeled_value(" not in source
     assert "會使用背景任務、外部資料來源與可能的 AI 額度" in source
     assert "完成後套用補強結果並查看最新版生命週期" in source
     assert "disabled=not has_executable_actions or not followup_run_confirmed" in source

@@ -394,6 +394,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_follow_up_controls_extracted")
             and frontend_status.get("ui_report_follow_up_submission_confirmation_enabled")
             and frontend_status.get("ui_report_follow_up_submission_preflight_summary_enabled")
+            and frontend_status.get("ui_report_follow_up_presenter_extracted")
             and frontend_status.get("ui_report_follow_up_action_operator_labels_enabled")
             and frontend_status.get("ui_report_markdown_helpers_extracted")
             and frontend_status.get("ui_report_candidate_audit_extracted")

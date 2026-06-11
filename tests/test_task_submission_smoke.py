@@ -81,12 +81,20 @@ def test_task_submission_smoke_format_uses_operator_language() -> None:
             "api_url": "http://api.test",
             "operation": "market_refresh",
             "submit": True,
+            "task_queue": {
+                "ready": True,
+                "processing_ready": False,
+                "worker_online": False,
+            },
             "next_actions": ["背景任務提交路徑正常。"],
         }
     )
 
     assert "背景任務送出檢查: passed" in rendered
+    assert "背景任務佇列" in rendered
     assert "Task submission smoke" not in rendered
+    assert "worker_online" not in rendered
+    assert "processing_ready" not in rendered
 
 
 def test_task_submission_smoke_polls_until_task_success() -> None:
@@ -185,7 +193,8 @@ def test_task_submission_smoke_uses_operator_queue_repair_guidance() -> None:
     )
 
     rendered = " ".join(report["next_actions"])
-    assert "確認 Redis 佇列/結果儲存與任務註冊，再重跑系統狀態檢查。" in rendered
+    assert "確認背景任務佇列、結果儲存與任務註冊，再重跑系統狀態檢查。" in rendered
+    assert "Redis" not in rendered
     assert "Redis broker/backend" not in rendered
     assert "Celery task exports" not in rendered
 
@@ -313,7 +322,8 @@ def test_task_submission_smoke_accepts_legacy_celery_status_shape_as_caution() -
 
     assert report["status"] == "caution"
     assert report["task_queue"]["legacy_status_shape"] is True
-    assert "重啟 FastAPI" in report["next_actions"][0]
+    assert "重啟 API 服務" in report["next_actions"][0]
+    assert "FastAPI" not in report["next_actions"][0]
     assert {
         check["name"]: check["status"]
         for check in report["checks"]
@@ -353,4 +363,6 @@ def test_task_submission_smoke_reports_api_runtime_commit_mismatch() -> None:
         check["name"]: check["status"]
         for check in report["checks"]
     }["api_runtime_identity"] == "failed"
-    assert "重啟 FastAPI/Celery" in report["next_actions"][0]
+    assert "重啟 API 服務與背景執行器" in report["next_actions"][0]
+    assert "FastAPI" not in report["next_actions"][0]
+    assert "Celery" not in report["next_actions"][0]

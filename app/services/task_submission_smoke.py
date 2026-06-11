@@ -137,10 +137,10 @@ def format_task_submission_smoke(report: dict) -> str:
         )
     if task_queue:
         lines.append(
-            "- task queue: "
-            f"ready={bool(task_queue.get('ready'))}; "
-            f"processing_ready={bool(task_queue.get('processing_ready'))}; "
-            f"worker_online={bool(task_queue.get('worker_online'))}"
+            "- 背景任務佇列: "
+            f"可送出={bool(task_queue.get('ready'))}; "
+            f"可執行={bool(task_queue.get('processing_ready'))}; "
+            f"背景執行器在線={bool(task_queue.get('worker_online'))}"
         )
     submission = report.get("submission") if isinstance(report.get("submission"), dict) else {}
     if submission:
@@ -423,15 +423,15 @@ def _next_actions(
     if runtime_identity.get("status") == "failed":
         reason = str(runtime_identity.get("reason") or runtime_identity.get("error") or "")
         if reason == "api_runtime_commit_mismatch":
-            actions.append("重啟 FastAPI/Celery，現在 API runtime 不是目前工作樹 commit。")
+            actions.append("重啟 API 服務與背景執行器，目前 API 版本不是目前工作樹 commit。")
         elif reason == "api_runtime_commit_unavailable":
             actions.append("確認 /services/runtime-identity 可回傳 git_commit，或用 --skip-runtime-identity 略過遠端部署比對。")
         else:
             actions.append("確認 API 已啟動並可讀取 /services/runtime-identity，或用 --skip-runtime-identity 略過比對。")
     if task_queue.get("legacy_status_shape"):
-        actions.append("重啟 FastAPI，使 /services/status 載入新版 task_queue 診斷欄位。")
+        actions.append("重啟 API 服務，使 /services/status 載入新版背景任務診斷欄位。")
     if not task_queue.get("ready"):
-        actions.append("確認 Redis 佇列/結果儲存與任務註冊，再重跑系統狀態檢查。")
+        actions.append("確認背景任務佇列、結果儲存與任務註冊，再重跑系統狀態檢查。")
     poll_succeeded = bool(
         poll_result
         and poll_result.get("status") == "completed"

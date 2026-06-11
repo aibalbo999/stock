@@ -34,8 +34,8 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-processing-ready",
         action="store_true",
         help=(
-            "Do not require Celery worker processing readiness. Useful for diagnostics "
-            "running inside a single Celery worker that only need to verify enqueue."
+            "Only verify enqueue; do not require the background executor to process the task. "
+            "Useful when this check runs inside the executor itself."
         ),
     )
     parser.add_argument("--timeout", type=float, default=30.0)

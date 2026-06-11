@@ -35,6 +35,9 @@ from app.ui.maintenance_task_panels import maintenance_diagnostic_action_rows
 from app.ui.maintenance_task_panels import task_observability_expander_expanded
 from app.ui.task_failure_diagnostics import (
     recommended_task_retry_option,
+    task_failure_category_daily_rows,
+    task_failure_category_summary_rows,
+    task_operation_summary_rows,
     task_retry_option_index,
 )
 from streamlit_ui_test_helpers import load_report_helpers
@@ -1248,15 +1251,16 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     options = helpers["task_retry_options"](task_summary)
 
     assert rows[0]["run_id"] == 22
-    assert rows[0]["category"] == "quota"
-    assert rows[0]["severity"] == "warning"
+    assert rows[0]["operation"] == "報告生成"
+    assert rows[0]["category"] == "模型/API 額度"
+    assert rows[0]["severity"] == "警告"
     assert rows[0]["summary"] == "模型/API 額度或速率限制"
     assert (
         rows[0]["next_steps"]
         == "查看 AI 額度與模型路由或資料源額度。；等待額度重置，或改用已設定的 fallback 模型/資料源後再重試。"
     )
     assert rows[0]["retry"] == "可重試"
-    assert rows[0]["retry_kind"] == "report_generation"
+    assert rows[0]["retry_kind"] == "報告生成"
     assert rows[0]["action_route"] == "一鍵重試"
     assert "維護頁直接重試" in rows[0]["action_route_detail"]
     assert rows[0]["next_action"] == "可從維護頁重試，或呼叫 POST /tasks/task-failed/retry"
@@ -1265,16 +1269,20 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
     assert rows[1]["action_route"] == "需人工處理"
     assert rows[1]["next_steps"] == "-"
     assert rows[2]["action_route"] == "外部配置缺失"
+    assert rows[2]["operation"] == "資料補強"
+    assert rows[2]["category"] == "背景任務服務"
+    assert rows[2]["severity"] == "錯誤"
     assert "Redis/Celery" in rows[2]["action_route_detail"]
+    assert "/services/status" not in rows[2]["next_steps"]
     assert rows[3]["retry"] == "可重試"
     assert rows[3]["action_route"] == "外部配置缺失"
-    assert rows[4]["category"] == "external_config"
+    assert rows[4]["category"] == "外部設定"
     assert rows[4]["action_route"] == "外部配置缺失"
     assert "外部部署 readiness" in rows[4]["next_steps"]
-    assert rows[5]["category"] == "vector_store"
+    assert rows[5]["category"] == "向量資料庫"
     assert rows[5]["action_route"] == "需人工處理"
     assert "Chroma client/server" in rows[5]["action_route_detail"]
-    assert rows[6]["category"] == "runtime_storage"
+    assert rows[6]["category"] == "儲存/資料庫"
     assert rows[6]["action_route"] == "需人工處理"
     assert "SQLite" in rows[6]["action_route_detail"]
     assert action_rows == [
@@ -1282,25 +1290,25 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "處理路徑": "一鍵重試",
             "數量": 1,
             "說明": "可由維護頁直接重試；若為額度限制，等額度恢復或切換 fallback 後再重試。",
-            "代表任務": "report_generation｜task-failed",
+            "代表任務": "報告生成｜task-failed",
         },
         {
             "處理路徑": "外部配置缺失",
             "數量": 3,
             "說明": "先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
-            "代表任務": "data_operation｜task-queue；company_filings_fetch｜task-filing；company_filings_fetch｜task-structured-api",
+            "代表任務": "資料補強｜task-queue；公司文件抓取｜task-filing；公司文件抓取｜task-structured-api",
         },
         {
             "處理路徑": "需人工處理",
             "數量": 3,
             "說明": "payload、輸入範圍、向量庫/本機儲存或取消狀態需人工檢查，修正後從原工作流程重送。",
-            "代表任務": "after_close_report_update｜task-after-close；after_close_report_update｜task-vector；after_close_report_update｜task-storage",
+            "代表任務": "收盤後報告更新｜task-after-close；收盤後報告更新｜task-vector；收盤後報告更新｜task-storage",
         },
     ]
     assert options == [
         {
             "task_id": "task-failed",
-            "label": "report_generation｜run #22｜task-failed",
+            "label": "報告生成｜run #22｜task-failed",
             "operation": "report_generation",
             "run_id": 22,
             "retry_endpoint": "POST /tasks/task-failed/retry",
@@ -1311,7 +1319,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "task_id": "task-filing",
-            "label": "company_filings_fetch｜run #25｜task-filing",
+            "label": "公司文件抓取｜run #25｜task-filing",
             "operation": "company_filings_fetch",
             "run_id": 25,
             "retry_endpoint": "POST /tasks/task-filing/retry",
@@ -1322,7 +1330,7 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
         },
         {
             "task_id": "task-structured-api",
-            "label": "company_filings_fetch｜run #26｜task-structured-api",
+            "label": "公司文件抓取｜run #26｜task-structured-api",
             "operation": "company_filings_fetch",
             "run_id": 26,
             "retry_endpoint": "POST /tasks/task-structured-api/retry",
@@ -1332,6 +1340,42 @@ def test_task_failure_drilldown_rows_and_retry_options_are_actionable() -> None:
             "retry_guard_message": "先修配置再重試：先修復 Redis/Celery、資料源 token、Structured API、Visual RAG 或文件後援設定，再重送任務。",
         },
     ]
+
+
+def test_task_observability_summary_rows_use_operator_labels() -> None:
+    task_summary = {
+        "by_operation": [
+            {"operation": "market_refresh", "count": 2},
+            {"operation": "report_generation", "count": 1},
+        ],
+        "by_error_category": [
+            {"error_category": "task_queue", "severity": "error", "count": 3},
+            {"error_category": "quota", "severity": "warning", "count": 1},
+        ],
+        "error_category_daily": [
+            {"date": "2026-06-07", "error_category": "task_queue", "severity": "error", "count": 2},
+            {"date": "2026-06-08", "error_category": "quota", "severity": "warning", "count": 1},
+        ],
+    }
+
+    operation_rows = task_operation_summary_rows(task_summary)
+    category_rows = task_failure_category_summary_rows(task_summary)
+    daily_rows = task_failure_category_daily_rows(task_summary)
+
+    assert operation_rows == [
+        {"任務類型": "市場資料刷新", "數量": 2},
+        {"任務類型": "報告生成", "數量": 1},
+    ]
+    assert category_rows == [
+        {"失敗分類": "背景任務服務", "嚴重度": "錯誤", "數量": 3},
+        {"失敗分類": "模型/API 額度", "嚴重度": "警告", "數量": 1},
+    ]
+    assert daily_rows == [
+        {"日期": "2026-06-07", "失敗分類": "背景任務服務", "嚴重度": "錯誤", "數量": 2},
+        {"日期": "2026-06-08", "失敗分類": "模型/API 額度", "嚴重度": "警告", "數量": 1},
+    ]
+    assert "task_queue" not in str(category_rows)
+    assert "market_refresh" not in str(operation_rows)
 
 
 def test_task_observability_expander_opens_when_operator_action_is_needed() -> None:

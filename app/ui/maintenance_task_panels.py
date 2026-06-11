@@ -8,7 +8,10 @@ from app.ui.background_tasks import submit_api_task
 from app.ui.task_failure_diagnostics import (
     recommended_task_retry_option,
     task_failure_action_route_rows,
+    task_failure_category_daily_rows,
+    task_failure_category_summary_rows,
     task_failure_drilldown_rows,
+    task_operation_summary_rows,
     task_retry_option_index,
     task_retry_options,
 )
@@ -101,15 +104,18 @@ def _render_task_summary_metrics(task_summary: dict) -> None:
     task_cols[2].metric("失敗", int(task_totals.get("failed_count") or 0))
     task_cols[3].metric("執行中", int(task_totals.get("running_count") or 0))
     task_cols[4].metric("疑似卡住", int(task_totals.get("stale_running_count") or 0))
-    if task_summary.get("by_operation"):
+    operation_rows = task_operation_summary_rows(task_summary)
+    if operation_rows:
         st.caption("任務類型")
-        st.dataframe(task_summary["by_operation"], width="stretch", hide_index=True)
-    if task_summary.get("by_error_category"):
+        st.dataframe(operation_rows, width="stretch", hide_index=True)
+    category_rows = task_failure_category_summary_rows(task_summary)
+    if category_rows:
         st.caption("失敗原因分類")
-        st.dataframe(task_summary["by_error_category"], width="stretch", hide_index=True)
-    if task_summary.get("error_category_daily"):
+        st.dataframe(category_rows, width="stretch", hide_index=True)
+    daily_rows = task_failure_category_daily_rows(task_summary)
+    if daily_rows:
         st.caption("失敗原因趨勢")
-        st.dataframe(task_summary["error_category_daily"], width="stretch", hide_index=True)
+        st.dataframe(daily_rows, width="stretch", hide_index=True)
 
 
 def _render_task_failure_drilldown(task_summary: dict) -> None:

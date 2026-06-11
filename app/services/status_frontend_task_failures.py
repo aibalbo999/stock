@@ -77,6 +77,20 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "task_failure_next_steps_text(task_status)" in task_status_panel_source
             and "系統設定 > 維護 > 背景任務觀測" in task_failure_diagnostics_source
         ),
+        "ui_task_observability_summary_operator_labels_enabled": (
+            "def task_operation_summary_rows(" in task_failure_diagnostics_source
+            and "def task_failure_category_summary_rows(" in task_failure_diagnostics_source
+            and "def task_failure_category_daily_rows(" in task_failure_diagnostics_source
+            and "task_operation_summary_rows(task_summary)" in maintenance_task_panels_source
+            and "task_failure_category_summary_rows(task_summary)"
+            in maintenance_task_panels_source
+            and "task_failure_category_daily_rows(task_summary)" in maintenance_task_panels_source
+            and 'st.dataframe(task_summary["by_operation"]' not in maintenance_task_panels_source
+            and 'st.dataframe(task_summary["by_error_category"]'
+            not in maintenance_task_panels_source
+            and 'st.dataframe(task_summary["error_category_daily"]'
+            not in maintenance_task_panels_source
+        ),
         "ui_task_failure_action_routes_enabled": '"action_route": task_failure_action_route(row)'
         in task_failure_diagnostics_source
         and "一鍵重試" in task_failure_diagnostics_source

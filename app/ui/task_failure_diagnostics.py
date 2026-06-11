@@ -57,6 +57,7 @@ OPERATION_LABELS = {
     "manual_ingest": "手動資料匯入",
     "rss_fetch": "RSS 抓取",
     "visual_rag": "Visual RAG",
+    "after_close_report_update": "收盤後報告更新",
 }
 
 CATEGORY_ACTION_ROUTE_DETAILS = {
@@ -160,6 +161,55 @@ def task_failure_action_route_rows(task_summary: dict) -> list[dict]:
     ]
 
 
+def task_operation_summary_rows(task_summary: dict) -> list[dict]:
+    rows = task_summary.get("by_operation") if isinstance(task_summary, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [
+        {
+            "任務類型": task_failure_operation_label(row.get("operation")),
+            "數量": int(row.get("count") or 0),
+        }
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
+def task_failure_category_summary_rows(task_summary: dict) -> list[dict]:
+    rows = task_summary.get("by_error_category") if isinstance(task_summary, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [
+        {
+            "失敗分類": task_failure_category_label(row.get("error_category")),
+            "嚴重度": task_failure_severity_label(
+                row.get("severity") or row.get("error_severity")
+            ),
+            "數量": int(row.get("count") or 0),
+        }
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
+def task_failure_category_daily_rows(task_summary: dict) -> list[dict]:
+    rows = task_summary.get("error_category_daily") if isinstance(task_summary, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [
+        {
+            "日期": row.get("date") or "-",
+            "失敗分類": task_failure_category_label(row.get("error_category")),
+            "嚴重度": task_failure_severity_label(
+                row.get("severity") or row.get("error_severity")
+            ),
+            "數量": int(row.get("count") or 0),
+        }
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
 def task_failure_action_route(row: dict) -> str:
     if _is_external_config_failure(row):
         return "外部配置缺失"
@@ -231,7 +281,7 @@ def _task_summary_failures(task_summary: dict) -> list[dict]:
 
 def _task_retry_option_label(row: dict) -> str:
     task_id = str(row.get("task_id") or "")
-    operation = str(row.get("operation") or "unknown")
+    operation = task_failure_operation_label(row.get("operation") or "unknown")
     run_id = row.get("id") or "-"
     return f"{operation}｜run #{run_id}｜{task_id}"
 
@@ -260,7 +310,7 @@ def _is_external_config_failure(row: dict) -> bool:
 
 
 def _task_failure_route_example(row: dict) -> str:
-    operation = str(row.get("operation") or "unknown")
+    operation = task_failure_operation_label(row.get("operation") or "unknown")
     task_id = str(row.get("task_id") or "").strip()
     run_id = row.get("id")
     if task_id:

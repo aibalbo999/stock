@@ -71,6 +71,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             '"settings:maintenance:structured_api"' in operator_routes_source
             and '"pending_settings_section": "maintenance_structured_api"'
             in operator_routes_source
+            and "公司文件結構化 API 免費驗證指令區" in operator_routes_source
             and '"maintenance_structured_api"' in system_settings_source
             and 'return "external_deployment"' in system_settings_source
             and 'if maintenance_focus == "external_deployment":'

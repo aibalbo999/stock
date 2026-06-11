@@ -88,5 +88,5 @@ def test_operator_route_target_maps_settings_sections() -> None:
     assert operator_route_target("settings:maintenance:structured_api") == {
         "page": "pages/04_系統設定.py",
         "session_updates": {"pending_settings_section": "maintenance_structured_api"},
-        "caption": "開啟維護頁的公司文件結構化 API 區",
+        "caption": "開啟維護頁的公司文件結構化 API 免費驗證指令區",
     }

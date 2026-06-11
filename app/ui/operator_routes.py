@@ -82,7 +82,7 @@ def operator_route_target(route_hint: str | None) -> dict[str, Any]:
         return {
             "page": SYSTEM_SETTINGS_PAGE,
             "session_updates": {"pending_settings_section": "maintenance_structured_api"},
-            "caption": "開啟維護頁的公司文件結構化 API 區",
+            "caption": "開啟維護頁的公司文件結構化 API 免費驗證指令區",
         }
     if route == "settings:scope":
         return {

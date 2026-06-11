@@ -5,7 +5,7 @@ import json
 import zlib
 from pathlib import Path
 from typing import Any, Callable
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
@@ -29,6 +29,7 @@ DEFAULT_REQUIRED_TEXT_SCOPE_SELECTOR = ".operator-decision-card"
 DEFAULT_OPERATOR_PRIMARY_ACTION_MAX_TOP_PX = 900
 DEFAULT_OPERATOR_PRIMARY_ACTION_MOBILE_MAX_TOP_PX = 720
 DEFAULT_MOBILE_OPERATOR_VIEWPORT = {"width": 390, "height": 1000}
+DEFAULT_STREAMLIT_MPA_HEALTH_ROUTE = "/系統設定"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 STREAMLIT_DASHBOARD_REQUIRED_EXPORTS = (
     "configure_page",
@@ -73,6 +74,13 @@ def run_frontend_smoke(
             require_any_fragment=True,
         )
     ]
+    checks.append(
+        check_streamlit_mpa_route_health_fallback(
+            streamlit_url,
+            route_path=DEFAULT_STREAMLIT_MPA_HEALTH_ROUTE,
+            timeout_seconds=timeout_seconds,
+        )
+    )
     for endpoint in api_endpoints:
         checks.append(
             check_http_target(
@@ -164,6 +172,96 @@ def check_http_target(
         "status_code": status_code,
         "matched_fragments": matched_fragments,
         "body_bytes_sampled": len(body.encode("utf-8")),
+    }
+
+
+def check_streamlit_mpa_route_health_fallback(
+    streamlit_url: str,
+    *,
+    route_path: str = DEFAULT_STREAMLIT_MPA_HEALTH_ROUTE,
+    timeout_seconds: float = 10.0,
+    opener: Callable[..., Any] | None = None,
+) -> dict:
+    opener = opener or urlopen
+    normalized_route = "/" + str(route_path or "").strip("/")
+    root_health_url = _iri_to_uri(_join_url(streamlit_url, "/_stcore/health"))
+    route_page_url = _iri_to_uri(_join_url(streamlit_url, normalized_route))
+    route_health_url = route_page_url.rstrip("/") + "/_stcore/health"
+
+    root_health = _http_status_probe(
+        root_health_url,
+        opener=opener,
+        timeout_seconds=timeout_seconds,
+    )
+    route_health = _http_status_probe(
+        route_health_url,
+        opener=opener,
+        timeout_seconds=timeout_seconds,
+    )
+    route_page = _http_status_probe(
+        route_page_url,
+        opener=opener,
+        timeout_seconds=timeout_seconds,
+    )
+    root_status = root_health.get("status_code")
+    route_status = route_health.get("status_code")
+    page_status = route_page.get("status_code")
+    root_ready = root_status == 200
+    route_page_ready = isinstance(page_status, int) and 200 <= page_status < 400
+    if route_status == 200:
+        reason = "streamlit_mpa_route_health_direct"
+    elif route_status == 404 and root_ready and route_page_ready:
+        reason = "streamlit_mpa_route_health_fallback"
+    else:
+        reason = "streamlit_mpa_route_health_unexpected"
+    errors = [
+        probe.get("error")
+        for probe in (root_health, route_health, route_page)
+        if probe.get("error")
+    ]
+    passed = root_ready and route_page_ready and route_status in {200, 404} and not errors
+    return {
+        "label": "streamlit_mpa_route_health_fallback",
+        "status": "passed" if passed else "failed",
+        "url": route_page_url,
+        "route_path": normalized_route,
+        "reason": reason,
+        "root_health_url": root_health_url,
+        "route_health_url": route_health_url,
+        "root_health_status_code": root_status,
+        "route_health_status_code": route_status,
+        "route_page_status_code": page_status,
+        "errors": errors,
+    }
+
+
+def _http_status_probe(
+    url: str,
+    *,
+    opener: Callable[..., Any],
+    timeout_seconds: float,
+) -> dict:
+    request = Request(url, headers={"User-Agent": "stock-ai-frontend-smoke/1.0"})
+    try:
+        with opener(request, timeout=timeout_seconds) as response:
+            status_code = int(getattr(response, "status", getattr(response, "code", 0)) or 0)
+            body = response.read(16_000)
+    except HTTPError as exc:
+        status_code = int(getattr(exc, "code", 0) or 0)
+        try:
+            body = exc.read(16_000)
+        except Exception:
+            body = b""
+    except (OSError, URLError, TimeoutError) as exc:
+        return {
+            "url": url,
+            "status_code": None,
+            "error": str(exc) or exc.__class__.__name__,
+        }
+    return {
+        "url": url,
+        "status_code": status_code,
+        "body_bytes_sampled": len(body or b""),
     }
 
 
@@ -826,6 +924,17 @@ def format_frontend_smoke_report(report: dict) -> str:
             lines.append(f"  forbidden text: {forbidden_text}")
         for layout_failure in check.get("required_text_layout_failures") or []:
             lines.append(f"  layout: {layout_failure}")
+        if {
+            "root_health_status_code",
+            "route_health_status_code",
+            "route_page_status_code",
+        }.issubset(check):
+            lines.append(
+                "  route health: "
+                f"root={check.get('root_health_status_code') or '-'} "
+                f"route={check.get('route_health_status_code') or '-'} "
+                f"page={check.get('route_page_status_code') or '-'}"
+            )
         viewport_failures = check.get("operator_primary_action_viewport_layout_failures")
         if isinstance(viewport_failures, dict):
             for viewport, failures in viewport_failures.items():

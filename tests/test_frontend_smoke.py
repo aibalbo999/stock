@@ -12,6 +12,7 @@ from app.services.frontend_smoke import (
     check_api_runtime_identity,
     frontend_runtime_identity_result,
     check_http_target,
+    check_streamlit_mpa_route_health_fallback,
     check_streamlit_page_import_contract,
     format_frontend_smoke_report,
     missing_required_text_fragments,
@@ -70,6 +71,38 @@ def test_check_http_target_fails_missing_required_fragment() -> None:
     )
 
     assert result["status"] == "failed"
+
+
+def test_check_streamlit_mpa_route_health_fallback_documents_known_route_noise() -> None:
+    captured_urls: list[str] = []
+
+    def opener(request, timeout):
+        assert timeout == 10.0
+        captured_urls.append(request.full_url)
+        if request.full_url.endswith(
+            "/%E7%B3%BB%E7%B5%B1%E8%A8%AD%E5%AE%9A/_stcore/health"
+        ):
+            return FakeResponse(b"Not Found", status=404)
+        if request.full_url.endswith("/_stcore/health"):
+            return FakeResponse(b"ok", status=200)
+        return FakeResponse(b"<!doctype html><html>Streamlit app</html>", status=200)
+
+    result = check_streamlit_mpa_route_health_fallback(
+        "http://localhost:8501",
+        route_path="/系統設定",
+        opener=opener,
+    )
+
+    assert result["status"] == "passed"
+    assert result["reason"] == "streamlit_mpa_route_health_fallback"
+    assert result["root_health_status_code"] == 200
+    assert result["route_health_status_code"] == 404
+    assert result["route_page_status_code"] == 200
+    assert captured_urls == [
+        "http://localhost:8501/_stcore/health",
+        "http://localhost:8501/%E7%B3%BB%E7%B5%B1%E8%A8%AD%E5%AE%9A/_stcore/health",
+        "http://localhost:8501/%E7%B3%BB%E7%B5%B1%E8%A8%AD%E5%AE%9A",
+    ]
 
 
 def test_png_has_nonblank_pixels_detects_blank_and_nonblank_png() -> None:
@@ -229,6 +262,13 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
         "app.services.frontend_smoke.check_streamlit_page_import_contract",
         lambda: {"label": "streamlit_page_import_contract", "status": "passed"},
     )
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.check_streamlit_mpa_route_health_fallback",
+        lambda *_args, **_kwargs: {
+            "label": "streamlit_mpa_route_health_fallback",
+            "status": "passed",
+        },
+    )
 
     report = run_frontend_smoke(
         skip_browser=True,
@@ -240,6 +280,7 @@ def test_run_frontend_smoke_can_skip_browser_with_fake_http(monkeypatch) -> None
     assert report["skipped_count"] == 1
     assert [check["label"] for check in report["checks"]] == [
         "streamlit_http",
+        "streamlit_mpa_route_health_fallback",
         "api_http:/services/status",
         "api_http:/llm/quota",
         "streamlit_page_import_contract",
@@ -265,6 +306,13 @@ def test_run_frontend_smoke_defaults_include_external_env_check(monkeypatch) -> 
         "app.services.frontend_smoke.check_api_runtime_identity",
         lambda *_args, **_kwargs: {"label": "api_runtime_identity", "status": "passed"},
     )
+    monkeypatch.setattr(
+        "app.services.frontend_smoke.check_streamlit_mpa_route_health_fallback",
+        lambda *_args, **_kwargs: {
+            "label": "streamlit_mpa_route_health_fallback",
+            "status": "passed",
+        },
+    )
 
     report = run_frontend_smoke(skip_browser=True)
 
@@ -274,6 +322,7 @@ def test_run_frontend_smoke_defaults_include_external_env_check(monkeypatch) -> 
     )
     assert [check["label"] for check in report["checks"]] == [
         "streamlit_http",
+        "streamlit_mpa_route_health_fallback",
         "api_http:/services/status",
         "api_http:/services/external-deployment/env-check",
         "api_runtime_identity",
@@ -416,6 +465,30 @@ def test_format_frontend_smoke_report_includes_streamlit_runtime_identity() -> N
 
     assert "frontend commit: expected=commit-main- actual=commit-old-t" in output
     assert "frontend reason: streamlit_runtime_commit_mismatch" in output
+
+
+def test_format_frontend_smoke_report_includes_streamlit_route_health_fallback() -> None:
+    output = format_frontend_smoke_report(
+        {
+            "status": "passed",
+            "failed_count": 0,
+            "skipped_count": 0,
+            "checks": [
+                {
+                    "label": "streamlit_mpa_route_health_fallback",
+                    "status": "passed",
+                    "url": "http://127.0.0.1:8501/%E7%B3%BB%E7%B5%B1%E8%A8%AD%E5%AE%9A",
+                    "reason": "streamlit_mpa_route_health_fallback",
+                    "root_health_status_code": 200,
+                    "route_health_status_code": 404,
+                    "route_page_status_code": 200,
+                }
+            ],
+        }
+    )
+
+    assert "route health: root=200 route=404 page=200" in output
+    assert "reason: streamlit_mpa_route_health_fallback" in output
 
 
 def test_format_frontend_smoke_report_includes_mobile_operator_layout_failures() -> None:

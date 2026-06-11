@@ -16,6 +16,16 @@ RISKY_SUBMISSION_GUARDS: tuple[dict[str, str], ...] = (
         "surface": "data_enrichment_market",
     },
     {
+        "id": "manual_news_import",
+        "guard_key": "ui_manual_news_import_confirmation_enabled",
+        "surface": "data_enrichment_manual",
+    },
+    {
+        "id": "manual_company_filing_import",
+        "guard_key": "ui_manual_company_filing_import_confirmation_enabled",
+        "surface": "data_enrichment_manual",
+    },
+    {
         "id": "company_filing_url_import",
         "guard_key": "ui_company_filing_url_import_confirmation_enabled",
         "surface": "data_enrichment_manual",

@@ -289,6 +289,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'key="market_data_tickers"' in source
     assert "operator-workbench" in combined
     assert "manual_news_ready = bool(title.strip() and text.strip())" in source
+    assert "manual_news_confirmed = st.checkbox(" in source
+    assert 'key="confirm_manual_news_import"' in source
+    assert "我了解這會直接寫入新聞/研究摘要資料庫" in source
+    assert "避免誤觸手動匯入" in source
+    assert "disabled=not manual_news_ready or not manual_news_confirmed" in source
+    assert "filing_text_confirmed = st.checkbox(" in source
+    assert 'key="confirm_manual_company_filing_import"' in source
+    assert "我了解這會直接寫入公司文件資料庫" in source
+    assert "避免誤觸公司文件匯入" in source
+    assert "disabled=not filing_text_ready or not filing_text_confirmed" in source
     assert 'or schedule_task == "latest_report_update"' in source
     assert '"產業分類篩選"' in source
     assert 'st.columns([0.20, 0.80], gap="medium")' not in source

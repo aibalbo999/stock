@@ -75,6 +75,26 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "避免誤觸刷新" in data_enrichment_market_source
             and "or not market_operation_confirmed" in data_enrichment_market_source
         ),
+        "ui_manual_news_import_confirmation_enabled": (
+            "manual_news_confirmed = st.checkbox(" in data_enrichment_manual_source
+            and 'key="confirm_manual_news_import"' in data_enrichment_manual_source
+            and "我了解這會直接寫入新聞/研究摘要資料庫" in data_enrichment_manual_source
+            and "避免誤觸手動匯入" in data_enrichment_manual_source
+            and "disabled=not manual_news_ready or not manual_news_confirmed"
+            in data_enrichment_manual_source
+            and 'api_post(\n                "/ingest/manual"' in data_enrichment_manual_source
+        ),
+        "ui_manual_company_filing_import_confirmation_enabled": (
+            "filing_text_confirmed = st.checkbox(" in data_enrichment_manual_source
+            and 'key="confirm_manual_company_filing_import"'
+            in data_enrichment_manual_source
+            and "我了解這會直接寫入公司文件資料庫" in data_enrichment_manual_source
+            and "避免誤觸公司文件匯入" in data_enrichment_manual_source
+            and "disabled=not filing_text_ready or not filing_text_confirmed"
+            in data_enrichment_manual_source
+            and 'api_post(\n            "/company-filings/manual"'
+            in data_enrichment_manual_source
+        ),
         "ui_company_filing_url_import_confirmation_enabled": (
             "filing_url_confirmed = st.checkbox(" in data_enrichment_manual_source
             and 'key="confirm_company_filing_url_import"' in data_enrichment_manual_source

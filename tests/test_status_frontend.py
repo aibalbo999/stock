@@ -250,6 +250,8 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_data_enrichment_operation_readiness_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_task_queue_guard_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_market_submission_confirmation_enabled"] is True
+    assert status["frontend"]["ui_manual_news_import_confirmation_enabled"] is True
+    assert status["frontend"]["ui_manual_company_filing_import_confirmation_enabled"] is True
     assert status["frontend"]["ui_company_filing_url_import_confirmation_enabled"] is True
     assert status["frontend"]["ui_rss_fetch_confirmation_enabled"] is True
     assert status["frontend"]["ui_data_enrichment_pending_ticker_allowlist_guard_enabled"] is True
@@ -377,13 +379,15 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_submission_guards.py"
     )
     assert status["frontend"]["ui_risky_submission_guard_coverage_enabled"] is True
-    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 12
-    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 12
+    assert status["frontend"]["ui_risky_submission_guard_total_count"] == 14
+    assert status["frontend"]["ui_risky_submission_guard_ready_count"] == 14
     assert status["frontend"]["ui_risky_submission_guard_missing"] == []
     guard_rows = status["frontend"]["ui_risky_submission_guard_rows"]
     assert {
         "analysis_submission",
         "market_data_operation",
+        "manual_news_import",
+        "manual_company_filing_import",
         "company_filing_url_import",
         "rss_fetch",
         "report_follow_up_run",
@@ -608,6 +612,11 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         frontend_arch["evidence"][
             "ui_data_enrichment_market_submission_confirmation_enabled"
         ]
+        is True
+    )
+    assert frontend_arch["evidence"]["ui_manual_news_import_confirmation_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_manual_company_filing_import_confirmation_enabled"]
         is True
     )
     assert (

@@ -432,6 +432,304 @@ def test_render_market_data_tab_submits_after_confirmation(monkeypatch) -> None:
     ]
 
 
+def test_manual_news_import_requires_confirmation_before_submit(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict[str, Any]] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "匯入新聞/研究摘要" and not kwargs.get("disabled")
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def date_input(self, _label: str, *, value):
+            return value
+
+        def success(self, body: str) -> None:
+            raise AssertionError(f"unexpected success: {body}")
+
+        def text_area(self, label: str, **_kwargs):
+            return "台積電法說會摘要" if label == "內文" else ""
+
+        def text_input(self, label: str, *, value: str = ""):
+            if label == "標題":
+                return "法說會摘要"
+            return value
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "api_post",
+        lambda *args, **kwargs: posted.append((args, kwargs)) or {"document_id": 99},
+    )
+
+    data_enrichment_manual._render_manual_news_form()
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會直接寫入新聞/研究摘要資料庫",
+            "value": False,
+            "key": "confirm_manual_news_import",
+        }
+    ]
+    assert any("避免誤觸手動匯入" in caption for caption in fake_st.captions)
+    assert fake_st.buttons == [
+        {"label": "匯入新聞/研究摘要", "type": "primary", "disabled": True}
+    ]
+    assert posted == []
+
+
+def test_manual_news_import_submits_after_confirmation(monkeypatch) -> None:
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.successes: list[str] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "匯入新聞/研究摘要" and not kwargs.get("disabled")
+
+        def caption(self, _body: str) -> None:
+            return None
+
+        def checkbox(self, _label: str, *, value: bool = False, key: str):
+            return key == "confirm_manual_news_import"
+
+        def date_input(self, _label: str, *, value):
+            return value
+
+        def error(self, body: str) -> None:
+            raise AssertionError(f"unexpected error: {body}")
+
+        def success(self, body: str) -> None:
+            self.successes.append(str(body))
+
+        def text_area(self, label: str, **_kwargs):
+            return "台積電法說會摘要" if label == "內文" else ""
+
+        def text_input(self, label: str, *, value: str = ""):
+            if label == "標題":
+                return "法說會摘要"
+            if label == "URL":
+                return "https://example.com/news"
+            return value
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "api_post",
+        lambda *args, **kwargs: posted.append((args, kwargs)) or {"document_id": 99},
+    )
+
+    data_enrichment_manual._render_manual_news_form()
+
+    assert fake_st.buttons == [
+        {"label": "匯入新聞/研究摘要", "type": "primary", "disabled": False}
+    ]
+    assert posted == [
+        (
+            (
+                "/ingest/manual",
+                {
+                    "title": "法說會摘要",
+                    "text": "台積電法說會摘要",
+                    "publisher": "manual",
+                    "published_at": data_enrichment_manual.today_taipei().isoformat(),
+                    "url": "https://example.com/news",
+                },
+            ),
+            {},
+        )
+    ]
+    assert fake_st.successes == ["已匯入：99"]
+
+
+def test_manual_company_filing_import_requires_confirmation(monkeypatch) -> None:
+    class Company:
+        ticker = "2330"
+        name = "台積電"
+
+    class Whitelist:
+        def companies(self):
+            return [Company()]
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict[str, Any]] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "匯入公司文件" and not kwargs.get("disabled")
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
+            return list(options)[index]
+
+        def success(self, body: str) -> None:
+            raise AssertionError(f"unexpected success: {body}")
+
+        def text_area(self, label: str, **_kwargs):
+            return "公司文件文字" if label == "文件文字" else ""
+
+        def text_input(self, label: str, *, value: str = "", key: str | None = None):
+            if label == "文件標題":
+                return "法說會簡報"
+            return value
+
+        def warning(self, body: str) -> None:
+            raise AssertionError(f"unexpected warning: {body}")
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "api_post",
+        lambda *args, **kwargs: posted.append((args, kwargs)) or {"document_id": 100},
+    )
+
+    data_enrichment_manual._render_company_filing_form(Whitelist(), ["2330"])
+
+    assert {
+        "label": "我了解這會直接寫入公司文件資料庫",
+        "value": False,
+        "key": "confirm_manual_company_filing_import",
+    } in fake_st.checkboxes
+    assert any("避免誤觸公司文件匯入" in caption for caption in fake_st.captions)
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["匯入公司文件"]["disabled"] is True
+    assert posted == []
+
+
+def test_manual_company_filing_import_submits_after_confirmation(monkeypatch) -> None:
+    class Company:
+        ticker = "2330"
+        name = "台積電"
+
+    class Whitelist:
+        def companies(self):
+            return [Company()]
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.buttons: list[dict[str, Any]] = []
+            self.successes: list[str] = []
+            self.captions: list[str] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return label == "匯入公司文件" and not kwargs.get("disabled")
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def checkbox(self, _label: str, *, value: bool = False, key: str):
+            return key == "confirm_manual_company_filing_import"
+
+        def columns(self, count: int):
+            return [self for _ in range(count)]
+
+        def date_input(self, _label: str, *, value, key: str):
+            return value
+
+        def error(self, body: str) -> None:
+            raise AssertionError(f"unexpected error: {body}")
+
+        def selectbox(self, _label: str, *, options, index: int = 0, **_kwargs):
+            return list(options)[index]
+
+        def success(self, body: str) -> None:
+            self.successes.append(str(body))
+
+        def text_area(self, label: str, **_kwargs):
+            return "公司文件文字" if label == "文件文字" else ""
+
+        def text_input(self, label: str, *, value: str = "", key: str | None = None):
+            if label == "文件標題":
+                return "法說會簡報"
+            return value
+
+        def warning(self, body: str) -> None:
+            raise AssertionError(f"unexpected warning: {body}")
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple] = []
+
+    monkeypatch.setattr(data_enrichment_manual, "st", fake_st)
+    monkeypatch.setattr(
+        data_enrichment_manual,
+        "api_post",
+        lambda *args, **kwargs: posted.append((args, kwargs))
+        or {"document_id": 100, "source_tier": "manual", "quality_score": 80},
+    )
+
+    data_enrichment_manual._render_company_filing_form(Whitelist(), ["2330"])
+
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["匯入公司文件"]["disabled"] is False
+    assert posted == [
+        (
+            (
+                "/company-filings/manual",
+                {
+                    "ticker": "2330",
+                    "company_name": "台積電",
+                    "document_type": "annual_report",
+                    "title": "法說會簡報",
+                    "text": "公司文件文字",
+                    "publisher": "公司 IR / MOPS",
+                    "published_at": data_enrichment_manual.today_taipei().isoformat(),
+                    "url": None,
+                },
+            ),
+            {},
+        )
+    ]
+    assert fake_st.successes == ["已匯入公司文件：100"]
+    assert any("來源分級：manual；品質分數：80" in caption for caption in fake_st.captions)
+
+
 def test_company_filing_url_import_requires_confirmation(monkeypatch) -> None:
     class Company:
         ticker = "2330"

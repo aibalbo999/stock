@@ -63,7 +63,7 @@ def model_routing_decision(
     selected_tier = _selected_routing_tier(settings, selected_model, selected_rank)
     return {
         "strategy": "smartest_first_then_budget_degrade",
-        "selection_rule": "Use the first configured model that is not exhausted or cooling down.",
+        "selection_rule": "使用第一個尚未用完且不在冷卻中的已設定模型。",
         "configured_model_order": model_order,
         "configured_model_order_keys": model_order_keys,
         "primary_model": model_order[0] if model_order else None,

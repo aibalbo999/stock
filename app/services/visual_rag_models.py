@@ -84,8 +84,8 @@ def visual_rag_model_chain(settings: Settings | None = None) -> dict[str, Any]:
     return {
         "strategy": "smartest_first_then_budget_degrade_for_vision_capable_models",
         "selection_rule": (
-            "Use the configured Visual RAG model first, then LLM fallbacks in order, "
-            "excluding text-only/media/embedding/live models before runtime attempts."
+            "先使用已設定的 Visual RAG 模型，再依序嘗試 LLM 後援；"
+            "執行前會排除純文字、媒體、embedding 與 live 模型。"
         ),
         "quota_hard_routing_enabled": bool(
             getattr(settings, "llm_quota_hard_routing_enabled", True)

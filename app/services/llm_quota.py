@@ -245,10 +245,9 @@ class LLMQuotaGovernanceService:
             "totals": totals,
             "routing_policy": {
                 "strategy": "smartest_first_then_budget_degrade",
-                "selection_rule": "Use the first configured model that is not exhausted in the current quota window.",
+                "selection_rule": "使用目前額度週期中第一個尚未用完的已設定模型。",
                 "warning_rule": (
-                    "Warning thresholds only surface risk; routing still uses smarter models "
-                    "until their configured budget is exhausted."
+                    "用量達提醒門檻只提示風險；在設定額度用完前，路由仍優先使用較聰明模型。"
                 ),
                 "exhausted_before_recommendation": exhausted_before_recommendation,
                 "high_quota_fallback_models": [
@@ -427,25 +426,21 @@ def _routing_reason(
 ) -> str:
     tier = _routing_tier(model_order, model, request_budget)
     if status == "exhausted":
-        return (
-            "Skipped until the next quota window because the configured daily budget is exhausted."
-        )
+        return "已跳過此模型，直到下一個額度週期；原因是設定的每日額度已用完。"
     if status == "cooldown":
         return (
-            "Temporarily skipped because a recent quota/rate-limit hit is still cooling down "
-            f"for about {active_cooldown_seconds} seconds."
+            "暫時略過此模型；最近的額度或速率限制命中仍在冷卻中，"
+            f"約 {active_cooldown_seconds} 秒後恢復。"
         )
     if quota_warning:
-        return (
-            "Still eligible until exhausted; watch remaining quota before starting large batches."
-        )
+        return "額度用完前仍可使用；送出大型批次前請先確認剩餘額度。"
     if tier == "primary":
-        return "First choice while quota remains."
+        return "主力模型仍有額度時優先使用。"
     if tier == "high_quota_fallback":
-        return "High-quota fallback for long or lower-priority text tasks after smarter models are exhausted."
+        return "較聰明模型用完後，作為長文或低優先文字任務的高額度保底。"
     if tier == "local_fallback":
-        return "Local gateway fallback when provider-backed models cannot be used."
-    return "Fallback candidate used only after earlier ranked models are exhausted or unavailable."
+        return "雲端 provider 模型不可用時，改用本機 gateway 後援。"
+    return "前序模型用完或不可用後，才使用此後援候選模型。"
 
 
 def _next_action(
@@ -456,19 +451,19 @@ def _next_action(
     active_cooldown_seconds: int,
 ) -> str:
     if status == "exhausted":
-        return "No action needed for routing; this model is skipped until the quota window resets."
+        return "路由會自動降級，不需手動操作；此模型會略過到額度週期重置。"
     if status == "cooldown":
         return (
-            "No manual action needed; this model is skipped until cooldown expires "
-            f"in about {active_cooldown_seconds} seconds."
+            "不需手動操作；此模型會略過到冷卻結束，"
+            f"約 {active_cooldown_seconds} 秒後恢復。"
         )
     if risk_level == "warning":
-        return "Keep using this model until exhausted; defer large batch runs if you need to preserve its remaining quota."
+        return "額度用完前可繼續使用；若需保留剩餘額度，請延後大型批次任務。"
     if routing_tier == "high_quota_fallback":
-        return "Keep as the high-volume fallback after smarter models are exhausted."
+        return "保留為較聰明模型用完後的高用量保底。"
     if risk_level == "tracking_only":
-        return "Configure a daily budget if this model should participate in hard routing."
-    return "No immediate action."
+        return "若此模型要參與硬路由，請設定每日額度。"
+    return "目前不需立即處理。"
 
 
 def _recommended_reason(
@@ -477,17 +472,14 @@ def _recommended_reason(
     warning_ratio: float,
 ) -> str:
     if not recommended:
-        return "No configured model has remaining tracked quota in the current window."
+        return "目前額度週期中，沒有已設定模型還有可追蹤額度。"
     if not exhausted_before_recommendation and recommended.get("quota_warning"):
         percent = int(round(warning_ratio * 100))
-        return (
-            "Top-ranked configured model still has remaining tracked quota; "
-            f"it has reached the {percent}% warning threshold."
-        )
+        return f"最高順位已設定模型仍有可追蹤額度；目前已達 {percent}% 提醒門檻。"
     if not exhausted_before_recommendation:
-        return "Top-ranked configured model still has remaining tracked quota."
+        return "最高順位已設定模型仍有可追蹤額度。"
     skipped = ", ".join(exhausted_before_recommendation)
-    return f"Earlier model(s) exhausted in the current window: {skipped}."
+    return f"目前額度週期中，前序模型已用完：{skipped}。"
 
 
 def _quota_alerts(rows: list[dict]) -> list[dict]:

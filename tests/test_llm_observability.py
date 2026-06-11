@@ -222,7 +222,7 @@ def test_llm_observability_trace_includes_model_routing_decision() -> None:
     assert trace["degraded_from_primary"] is True
     assert trace["routing_decision"] == {
         "strategy": "smartest_first_then_budget_degrade",
-        "selection_rule": "Use the first configured model that is not exhausted or cooling down.",
+        "selection_rule": "使用第一個尚未用完且不在冷卻中的已設定模型。",
         "configured_model_order": [
             "gemini-3.5-flash",
             "gemini-2.5-flash",

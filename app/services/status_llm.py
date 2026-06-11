@@ -111,7 +111,7 @@ def _llm_quota_routing_status(settings) -> dict:
         "collector_path": "app/services/status_llm.py",
         "ready": not failed_checks,
         "strategy": "smartest_first_then_budget_degrade",
-        "selection_rule": "Use the first configured model that is not exhausted in the current quota window.",
+        "selection_rule": "使用目前額度週期中第一個尚未用完的已設定模型。",
         "quota_endpoint": "GET /llm/quota",
         "primary_model": primary_model,
         "fallback_models": fallback_models,

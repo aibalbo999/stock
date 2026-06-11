@@ -163,16 +163,16 @@ def test_llm_quota_service_recommends_next_available_model() -> None:
     assert primary["risk_level"] == "exhausted"
     assert primary["quota_warning"] is False
     assert primary["routing_tier"] == "primary"
-    assert primary["routing_reason"].startswith("Skipped until the next quota window")
-    assert primary["next_action"].startswith("No action needed for routing")
+    assert primary["routing_reason"].startswith("已跳過此模型，直到下一個額度週期")
+    assert primary["next_action"].startswith("路由會自動降級，不需手動操作")
     assert summary["recommended_reason"] == (
-        "Earlier model(s) exhausted in the current window: gemini-3.5-flash."
+        "目前額度週期中，前序模型已用完：gemini-3.5-flash。"
     )
     assert summary["quota_warning_ratio"] == 0.8
     assert summary["alerts"][0]["code"] == "llm_quota_exhausted"
     assert summary["alerts"][0]["model"] == "gemini-3.5-flash"
     assert summary["routing_policy"]["strategy"] == "smartest_first_then_budget_degrade"
-    assert summary["routing_policy"]["warning_rule"].startswith("Warning thresholds")
+    assert summary["routing_policy"]["warning_rule"].startswith("用量達")
     assert summary["routing_policy"]["exhausted_before_recommendation"] == ["gemini-3.5-flash"]
     assert summary["routing_policy"]["high_quota_fallback_models"] == ["gemma-4-31b-it"]
     assert summary["totals"]["request_count"] == 2
@@ -335,7 +335,7 @@ def test_llm_quota_service_surfaces_quota_hits_and_active_cooldown() -> None:
     assert primary["cooldown_skip_count"] == 1
     assert primary["active_cooldown_seconds"] == 2400
     assert primary["last_quota_hit_at"] == "2026-06-07T11:40:00"
-    assert primary["routing_reason"].startswith("Temporarily skipped")
+    assert primary["routing_reason"].startswith("暫時略過此模型")
     assert fallback["status"] == "available"
     assert summary["routing_policy"]["quota_hit_models"] == ["gemini-3.5-flash"]
     assert summary["routing_policy"]["cooldown_models"] == ["gemini-3.5-flash"]
@@ -391,8 +391,7 @@ def test_llm_quota_service_warns_near_limit_without_degrading_model() -> None:
     assert summary["recommended_model"] == "gemini-3.5-flash"
     assert summary["recommended_rank"] == 1
     assert summary["recommended_reason"] == (
-        "Top-ranked configured model still has remaining tracked quota; "
-        "it has reached the 80% warning threshold."
+        "最高順位已設定模型仍有可追蹤額度；目前已達 80% 提醒門檻。"
     )
     assert primary["status"] == "available"
     assert primary["status_reason"] == "request_budget_near_limit"
@@ -401,7 +400,7 @@ def test_llm_quota_service_warns_near_limit_without_degrading_model() -> None:
     assert primary["requests_used"] == 8
     assert primary["requests_remaining"] == 2
     assert primary["request_used_ratio"] == 0.8
-    assert primary["routing_reason"].startswith("Still eligible until exhausted")
+    assert primary["routing_reason"].startswith("額度用完前仍可使用")
     assert summary["routing_policy"]["exhausted_before_recommendation"] == []
     assert summary["alerts"] == [
         {
@@ -423,10 +422,7 @@ def test_llm_quota_service_warns_near_limit_without_degrading_model() -> None:
             "quota_skip_count": 0,
             "active_cooldown_seconds": 0,
             "last_quota_hit_at": None,
-            "next_action": (
-                "Keep using this model until exhausted; defer large batch runs if you need "
-                "to preserve its remaining quota."
-            ),
+            "next_action": "額度用完前可繼續使用；若需保留剩餘額度，請延後大型批次任務。",
             "message": "gemini-3.5-flash is near its configured daily request budget.",
         }
     ]

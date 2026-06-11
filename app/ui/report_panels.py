@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from importlib import import_module
 from typing import Optional
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.ui.api_loaders import load_api_json_or_default
 from app.ui.report_html import (
@@ -16,18 +16,22 @@ def render_reader_report(markdown: str, result: Optional[dict] = None) -> None:
     render_report_document(report_html(markdown, result), height=820)
 
 
+def load_legacy_streamlit_components():
+    return import_module("streamlit.components.v1")
+
+
 def render_report_document(
     document_html: str,
     *,
     height: int = 820,
     streamlit_module=st,
-    components_module=components,
+    components_importer=load_legacy_streamlit_components,
 ) -> None:
     iframe = getattr(streamlit_module, "iframe", None)
     if callable(iframe):
         iframe(document_html, width="stretch", height=height)
         return
-    components_module.html(document_html, height=height, scrolling=True)
+    components_importer().html(document_html, height=height, scrolling=True)
 
 
 def candidate_rows(candidates: list[dict]) -> list[dict]:

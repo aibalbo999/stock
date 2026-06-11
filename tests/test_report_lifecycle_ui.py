@@ -85,6 +85,55 @@ def test_latest_report_picker_state_shows_running_empty_state() -> None:
     }
 
 
+def test_latest_report_picker_state_empty_state_offers_create_analysis_action() -> None:
+    picker = report_center.latest_report_picker_state([], task_summary={})
+
+    assert picker == {
+        "mode": "empty",
+        "options": [],
+        "selected_id": None,
+        "selector_label": "",
+        "summary_title": "尚無最新版報告",
+        "summary_detail": "建立分析後，這裡會顯示目前保留的最新版報告。",
+        "action_label": "建立分析",
+        "route_hint": "analysis",
+    }
+
+
+def test_empty_report_action_summary_distinguishes_empty_and_running_states() -> None:
+    empty_summary = report_center.empty_report_action_summary(
+        {
+            "mode": "empty",
+            "action_label": "建立分析",
+            "route_hint": "analysis",
+        }
+    )
+    running_summary = report_center.empty_report_action_summary(
+        {
+            "mode": "running",
+            "action_label": "查看任務",
+            "route_hint": "task:first-report-task",
+        }
+    )
+
+    assert empty_summary == {
+        "state": "empty",
+        "eyebrow": "建議操作",
+        "title": "建立第一份最新版報告",
+        "caption": "前往分析工作區建立報告；完成後回到這裡閱讀最新版。",
+        "action_label": "建立分析",
+        "route_hint": "analysis",
+    }
+    assert running_summary == {
+        "state": "running",
+        "eyebrow": "建議操作",
+        "title": "先確認背景任務進度",
+        "caption": "最新任務還在背景執行；完成前避免重複送出分析。",
+        "action_label": "查看任務",
+        "route_hint": "task:first-report-task",
+    }
+
+
 def test_latest_report_lifecycle_marks_ready_report_readable() -> None:
     lifecycle = latest_report_lifecycle(
         {

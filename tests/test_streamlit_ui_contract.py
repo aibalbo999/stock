@@ -566,6 +566,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def follow_up_tasks_html(" in ui.REPORT_SECTIONS_SOURCE.read_text()
     assert "grid-template-columns:minmax(240px,0.28fr)" not in source
     assert "建立分析後，這裡會顯示目前保留的最新版報告。" in source
+    assert "def empty_report_action_summary(" in source
+    assert "建立第一份最新版報告" in source
+    assert "前往分析工作區建立報告；完成後回到這裡閱讀最新版。" in source
+    assert '"action_label": "建立分析"' in source
+    assert '"route_hint": "analysis"' in source
     assert 'load_api_json_or_default(\n        "/reports?limit=5"' in source
     assert "latest_by_topic(20)" not in source
     assert "def latest_report_picker_state(" in source

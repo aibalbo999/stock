@@ -476,6 +476,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_quality_unknown_guard_enabled"] is True
     assert status["frontend"]["ui_report_market_freshness_action_enabled"] is True
     assert status["frontend"]["ui_report_latest_only_picker_enabled"] is True
+    assert status["frontend"]["ui_report_empty_create_analysis_action_enabled"] is True
     assert status["frontend"]["ui_report_empty_running_task_state_enabled"] is True
     assert status["frontend"]["ui_report_advanced_controls_progressive_disclosure_enabled"] is True
     assert status["frontend"]["ui_report_follow_up_submission_confirmation_enabled"] is True
@@ -612,6 +613,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_report_quality_unknown_guard_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_market_freshness_action_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_latest_only_picker_enabled"] is True
+    assert (
+        frontend_arch["evidence"]["ui_report_empty_create_analysis_action_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_report_empty_running_task_state_enabled"] is True
     assert frontend_arch["evidence"]["ui_run_delete_confirmation_gate_enabled"] is True
     assert frontend_arch["evidence"]["ui_report_delete_scope_caption_enabled"] is True

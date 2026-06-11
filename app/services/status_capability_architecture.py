@@ -219,6 +219,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_report_quality_unknown_guard_enabled")
             and frontend_status.get("ui_report_market_freshness_action_enabled")
             and frontend_status.get("ui_report_latest_only_picker_enabled")
+            and frontend_status.get("ui_report_empty_create_analysis_action_enabled")
             and frontend_status.get("ui_report_empty_running_task_state_enabled")
             and frontend_status.get("ui_run_delete_confirmation_gate_enabled")
             and frontend_status.get("ui_report_delete_scope_caption_enabled")

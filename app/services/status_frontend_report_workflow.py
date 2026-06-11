@@ -117,6 +117,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "建立分析後，這裡會顯示目前保留的最新版報告。" in report_center_source
             and ".latest-report-picker" in style_source
         ),
+        "ui_report_empty_create_analysis_action_enabled": (
+            "def empty_report_action_summary(" in report_center_source
+            and '"mode": "empty"' in report_center_source
+            and '"action_label": "建立分析"' in report_center_source
+            and '"route_hint": "analysis"' in report_center_source
+            and "建立第一份最新版報告" in report_center_source
+            and "前往分析工作區建立報告；完成後回到這裡閱讀最新版。"
+            in report_center_source
+            and 'key="report_empty_state_primary_action"' in report_center_source
+            and ".report-lifecycle-action em" in style_source
+        ),
         "ui_report_empty_running_task_state_enabled": (
             '"/tasks/summary?days=7&limit=10"' in report_center_source
             and "task_summary=task_summary" in report_center_source

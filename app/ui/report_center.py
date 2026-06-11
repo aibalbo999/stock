@@ -303,6 +303,8 @@ def latest_report_picker_state(
             "selector_label": "",
             "summary_title": "尚無最新版報告",
             "summary_detail": "建立分析後，這裡會顯示目前保留的最新版報告。",
+            "action_label": "建立分析",
+            "route_hint": "analysis",
         }
 
     selected_id = (
@@ -502,26 +504,50 @@ def _render_report_lifecycle_action(lifecycle: dict) -> None:
 
 
 def _render_empty_report_action(picker: dict[str, Any]) -> None:
-    action_label = _text(picker.get("action_label"))
-    route_hint = _text(picker.get("route_hint"))
-    if not action_label or not route_hint:
+    summary = empty_report_action_summary(picker)
+    if not summary:
         return
     st.markdown(
-        """<section class="report-lifecycle-action" aria-label="報告空狀態操作">
-<span>建議操作</span>
-<strong>先確認背景任務進度</strong>
+        f"""<section class="report-lifecycle-action is-{escape(summary.get("state", "empty"))}" aria-label="報告空狀態操作">
+<span>{escape(summary.get("eyebrow", "建議操作"))}</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<em>{escape(summary.get("caption", ""))}</em>
 </section>""",
         unsafe_allow_html=True,
     )
     render_operator_route_button(
         {
-            "action_label": action_label,
-            "route_hint": route_hint,
+            "action_label": summary["action_label"],
+            "route_hint": summary["route_hint"],
         },
         key="report_empty_state_primary_action",
         primary=True,
         show_caption=True,
     )
+
+
+def empty_report_action_summary(picker: dict[str, Any]) -> dict[str, str]:
+    action_label = _text(picker.get("action_label"))
+    route_hint = _text(picker.get("route_hint"))
+    if not action_label or not route_hint:
+        return {}
+    if _text(picker.get("mode")) == "running":
+        return {
+            "state": "running",
+            "eyebrow": "建議操作",
+            "title": "先確認背景任務進度",
+            "caption": "最新任務還在背景執行；完成前避免重複送出分析。",
+            "action_label": action_label,
+            "route_hint": route_hint,
+        }
+    return {
+        "state": "empty",
+        "eyebrow": "建議操作",
+        "title": "建立第一份最新版報告",
+        "caption": "前往分析工作區建立報告；完成後回到這裡閱讀最新版。",
+        "action_label": action_label,
+        "route_hint": route_hint,
+    }
 
 
 def _report_lifecycle_stage_html(stage: dict) -> str:

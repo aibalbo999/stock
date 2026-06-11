@@ -701,6 +701,7 @@ textarea:focus,
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 10px;
     margin: -8px 0 10px;
     color: var(--stock-muted);
@@ -713,6 +714,14 @@ textarea:focus,
 .report-lifecycle-action strong {
     color: var(--stock-text);
     font-size: 0.9rem;
+}
+.report-lifecycle-action em {
+    flex: 1 1 100%;
+    color: var(--stock-muted);
+    font-size: 0.86rem;
+    font-style: normal;
+    line-height: 1.45;
+    margin-top: -4px;
 }
 .incident-action-controls {
     display: flex;

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from html import escape
 
 import streamlit as st
 
@@ -37,7 +36,10 @@ from app.ui.data_enrichment_market_presenter import (
     pending_market_selection_state,
 )
 from app.ui.data_enrichment_market_view import (
+    data_gap_action_controls_html,
     data_gap_action_map_html,
+    market_action_impact_grid_html,
+    market_allowlist_warning_html,
     market_cache_operator_summary_html,
     market_operation_readiness_html,
     market_submission_summary_html,
@@ -168,15 +170,7 @@ def render_market_data_tab(allowed_tickers: list[str]) -> None:
         or not market_operation_confirmed
         or not has_market_selection,
     )
-    st.markdown(
-        """<div class="action-impact-grid" aria-label="資料補強影響">
-<div><strong>刷新股價</strong><span>會更新最新版報告的股價與成交量判讀</span></div>
-<div><strong>刷新 5 年財報</strong><span>會補齊五年財務與品質門檻需要的財報資料</span></div>
-<div><strong>刷新估值</strong><span>會更新本益比、股價淨值比與殖利率判讀</span></div>
-<div><strong>補抓公司文件</strong><span>會補齊公司文件、法說會或公開資訊缺口</span></div>
-</div>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(market_action_impact_grid_html(), unsafe_allow_html=True)
 
     data_task_payload = {
         "tickers": selected_market_tickers,
@@ -268,13 +262,7 @@ def _render_data_gap_action_controls(items: list[dict]) -> None:
     actionable_items = [item for item in items if item.get("route_hint")]
     if not actionable_items:
         return
-    st.markdown(
-        """<div class="data-gap-action-controls" aria-label="資料缺口快捷處理">
-<span>可直接處理</span>
-<strong>選一個缺口開始補強</strong>
-</div>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(data_gap_action_controls_html(), unsafe_allow_html=True)
     columns = st.columns(min(3, len(actionable_items)))
     for index, item in enumerate(actionable_items[:3]):
         with columns[index]:
@@ -312,13 +300,7 @@ def _render_pending_market_selection_notice() -> None:
     selection_state = st.session_state.get("pending_market_selection_state")
     if not isinstance(selection_state, dict) or not selection_state.get("rejected"):
         return
-    st.markdown(
-        f"""<section class="market-allowlist-warning is-{escape(selection_state.get("state", "attention"))}" aria-label="白名單提醒">
-<span>白名單提醒</span>
-<strong>{escape(str(selection_state.get("detail") or ""))}</strong>
-</section>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(market_allowlist_warning_html(selection_state), unsafe_allow_html=True)
     render_operator_route_button(
         {
             "action_label": selection_state.get("action_label"),

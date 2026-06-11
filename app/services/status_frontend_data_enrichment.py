@@ -62,10 +62,18 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_market_source
             and "import streamlit" not in data_enrichment_market_view_source
             and "def data_gap_action_map_html(" in data_enrichment_market_view_source
+            and "def data_gap_action_controls_html(" in data_enrichment_market_view_source
             and "def market_operation_readiness_html(" in data_enrichment_market_view_source
             and "def market_submission_summary_html(" in data_enrichment_market_view_source
+            and "def market_action_impact_grid_html(" in data_enrichment_market_view_source
+            and "def market_allowlist_warning_html(" in data_enrichment_market_view_source
             and "def market_cache_operator_summary_html("
             in data_enrichment_market_view_source
+            and 'class="action-impact-grid' in data_enrichment_market_view_source
+            and 'class="data-gap-action-controls' in data_enrichment_market_view_source
+            and 'class="market-allowlist-warning' in data_enrichment_market_view_source
+            and 'class="action-impact-grid' not in data_enrichment_market_source
+            and 'class="market-allowlist-warning' not in data_enrichment_market_source
             and "def _data_gap_action_card_html(" not in data_enrichment_market_source
             and "def _market_operation_readiness_card_html("
             not in data_enrichment_market_source
@@ -239,7 +247,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and '"pending_market_selection_state"' in data_enrichment_market_source
             and "建議股票未在目前白名單" in data_enrichment_market_presenter_source
             and '"route_hint": "settings:scope"' in data_enrichment_market_presenter_source
-            and 'class="market-allowlist-warning' in data_enrichment_market_source
+            and 'class="market-allowlist-warning' in data_enrichment_market_view_source
             and 'key="market_pending_allowlist_route"' in data_enrichment_market_source
             and 'if route == "settings:scope":' in operator_routes_source
         ),

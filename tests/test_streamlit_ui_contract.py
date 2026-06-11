@@ -402,9 +402,19 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.data_enrichment_market_view import (" in data_enrichment_market_source
     assert "import streamlit" not in data_enrichment_market_view_source
     assert "def data_gap_action_map_html(" in data_enrichment_market_view_source
+    assert "def data_gap_action_controls_html(" in data_enrichment_market_view_source
     assert "def market_operation_readiness_html(" in data_enrichment_market_view_source
     assert "def market_submission_summary_html(" in data_enrichment_market_view_source
+    assert "def market_action_impact_grid_html(" in data_enrichment_market_view_source
+    assert "def market_allowlist_warning_html(" in data_enrichment_market_view_source
     assert "def market_cache_operator_summary_html(" in data_enrichment_market_view_source
+    assert "market_action_impact_grid_html()" in data_enrichment_market_source
+    assert "market_allowlist_warning_html(selection_state)" in data_enrichment_market_source
+    assert 'class="action-impact-grid' in data_enrichment_market_view_source
+    assert 'class="data-gap-action-controls' in data_enrichment_market_view_source
+    assert 'class="market-allowlist-warning' in data_enrichment_market_view_source
+    assert 'class="action-impact-grid' not in data_enrichment_market_source
+    assert 'class="market-allowlist-warning' not in data_enrichment_market_source
     assert "def _data_gap_action_card_html(" not in data_enrichment_market_source
     assert "def _market_operation_readiness_card_html(" not in data_enrichment_market_source
     assert "def _market_cache_card_html(" not in data_enrichment_market_source

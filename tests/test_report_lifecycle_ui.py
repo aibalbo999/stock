@@ -126,6 +126,41 @@ def test_latest_report_picker_summary_renders_latest_only_scope_note(monkeypatch
     assert "latest-report-picker-note" in rendered[0]
 
 
+def test_report_run_history_rows_use_operator_labels() -> None:
+    rows = report_center.report_run_history_rows(
+        [
+            {
+                "id": 42,
+                "source": "follow_up_api",
+                "status": "failed",
+                "report_id": 15,
+                "payload": '{"celery_task_id":"task-42"}',
+                "started_at": "2026-06-11T09:00:00",
+                "finished_at": None,
+                "error": "task_queue_error",
+            },
+            "ignored",
+        ]
+    )
+
+    assert rows == [
+        {
+            "紀錄": "#42",
+            "來源": "自動補強",
+            "狀態": "失敗",
+            "報告": "#15",
+            "背景任務": "task-42",
+            "開始": "2026-06-11 09:00",
+            "完成": "-",
+            "錯誤": "背景任務佇列異常",
+        }
+    ]
+    rendered_rows = str(rows)
+    assert "follow_up_api" not in rendered_rows
+    assert "failed" not in rendered_rows
+    assert "task_queue_error" not in rendered_rows
+
+
 def test_empty_report_action_summary_distinguishes_empty_and_running_states() -> None:
     empty_summary = report_center.empty_report_action_summary(
         {

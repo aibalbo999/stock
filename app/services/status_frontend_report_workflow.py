@@ -234,6 +234,22 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and 'with st.expander("原始紀錄內容"):' in report_center_source
             and 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
         ),
+        "ui_report_run_history_operator_labels_enabled": (
+            "def report_run_history_rows(" in report_center_source
+            and "def report_run_history_ids(" in report_center_source
+            and "RUN_SOURCE_LABELS = {" in report_center_source
+            and "RUN_STATUS_LABELS = {" in report_center_source
+            and "RUN_ERROR_LABELS = {" in report_center_source
+            and '"來源": _run_source_label(run.get("source"))' in report_center_source
+            and '"狀態": _run_status_label(run.get("status"))' in report_center_source
+            and '"錯誤": _run_error_label(run.get("error"))' in report_center_source
+            and "run_rows = report_run_history_rows(runs)" in report_center_source
+            and "run_ids = report_run_history_ids(runs)" in report_center_source
+            and "options=run_ids" in report_center_source
+            and '"source": run.get("source")' not in report_center_source
+            and '"status": run.get("status")' not in report_center_source
+            and '"error": run.get("error")' not in report_center_source
+        ),
         "ui_report_delete_confirmation_gate_enabled": (
             "report_delete_confirmed = st.checkbox(" in report_center_source
             and 'key=f"confirm_delete_report_{selected_id}"' in report_center_source

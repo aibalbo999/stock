@@ -26,6 +26,41 @@ from app.ui.report_state import parse_json_object
 from app.ui.task_status_panel import render_task_status_panel
 
 
+RUN_SOURCE_LABELS = {
+    "follow_up_api": "自動補強",
+    "pipeline_api": "分析流程",
+    "report_api": "報告生成",
+    "topic_discovery": "主題探索",
+    "manual": "手動操作",
+}
+
+RUN_STATUS_LABELS = {
+    "completed": "完成",
+    "success": "完成",
+    "successful": "完成",
+    "succeeded": "完成",
+    "done": "完成",
+    "failed": "失敗",
+    "failure": "失敗",
+    "error": "錯誤",
+    "cancelled": "已取消",
+    "running": "執行中",
+    "started": "執行中",
+    "in_progress": "執行中",
+    "processing": "執行中",
+    "queued": "排隊中",
+    "pending": "排隊中",
+    "submitted": "已送出",
+}
+
+RUN_ERROR_LABELS = {
+    "task_queue_error": "背景任務佇列異常",
+    "payload_validation": "輸入或白名單已擋下任務",
+    "runtime_storage": "執行紀錄儲存異常",
+    "timeout": "逾時",
+}
+
+
 def render_report_center() -> None:
     render_section_header(
         "報告中心", "查看每個主題的最新版 HTML 報告；舊版內容只保留在執行紀錄中追蹤。"
@@ -199,23 +234,8 @@ def render_report_center() -> None:
             [],
             error_message="讀取執行紀錄失敗",
         )
-        run_rows = []
-        for run in runs:
-            if not isinstance(run, dict):
-                continue
-            payload = parse_json_object(run.get("payload") or "{}")
-            run_rows.append(
-                {
-                    "id": run.get("id"),
-                    "source": run.get("source"),
-                    "status": run.get("status"),
-                    "report_id": run.get("report_id"),
-                    "celery_task_id": payload.get("celery_task_id"),
-                    "started_at": run.get("started_at"),
-                    "finished_at": run.get("finished_at"),
-                    "error": run.get("error"),
-                }
-            )
+        run_rows = report_run_history_rows(runs)
+        run_ids = report_run_history_ids(runs)
         if run_rows:
             st.dataframe(
                 run_rows,
@@ -224,7 +244,7 @@ def render_report_center() -> None:
             )
             selected_run_id = st.selectbox(
                 "查看 run",
-                options=[row["id"] for row in run_rows],
+                options=run_ids,
                 format_func=lambda run_id: f"紀錄 #{run_id}",
             )
             selected_run = load_api_json_or_default(
@@ -338,6 +358,35 @@ def latest_report_picker_state(
     }
 
 
+def report_run_history_rows(runs: list[Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(runs, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for run in runs:
+        if not isinstance(run, dict) or run.get("id") is None:
+            continue
+        payload = parse_json_object(run.get("payload") or "{}")
+        rows.append(
+            {
+                "紀錄": f"#{run.get('id')}",
+                "來源": _run_source_label(run.get("source")),
+                "狀態": _run_status_label(run.get("status")),
+                "報告": f"#{run.get('report_id')}" if run.get("report_id") else "-",
+                "背景任務": payload.get("celery_task_id") or "-",
+                "開始": _format_optional_time(run.get("started_at")),
+                "完成": _format_optional_time(run.get("finished_at")),
+                "錯誤": _run_error_label(run.get("error")),
+            }
+        )
+    return rows
+
+
+def report_run_history_ids(runs: list[Any] | None) -> list[Any]:
+    if not isinstance(runs, list):
+        return []
+    return [run["id"] for run in runs if isinstance(run, dict) and run.get("id") is not None]
+
+
 def _latest_report_options(reports: list[dict] | None) -> list[dict[str, Any]]:
     if not isinstance(reports, list):
         return []
@@ -448,6 +497,26 @@ def _format_generated_at(value: Any) -> str:
     if not text:
         return "未標示時間"
     return text[:16].replace("T", " ")
+
+
+def _format_optional_time(value: Any) -> str:
+    text = _text(value)
+    return _format_generated_at(text) if text else "-"
+
+
+def _run_source_label(value: Any) -> str:
+    text = _text(value)
+    return RUN_SOURCE_LABELS.get(text, text or "-")
+
+
+def _run_status_label(value: Any) -> str:
+    text = _text(value).casefold()
+    return RUN_STATUS_LABELS.get(text, text or "-")
+
+
+def _run_error_label(value: Any) -> str:
+    text = _text(value)
+    return RUN_ERROR_LABELS.get(text, text or "-")
 
 
 def _text(value: Any, *, default: str = "") -> str:

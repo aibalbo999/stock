@@ -44,10 +44,11 @@ def test_company_filing_render_provider_contract_format_uses_operator_language()
     )
 
     assert "公司文件渲染提供者格式檢查: ready" in rendered
-    assert "- 就緒: true" in rendered
+    assert "- 就緒: 是" in rendered
     assert "- 提供者數: 1" in rendered
     assert "Company filing render provider contract" not in rendered
     assert "provider count" not in rendered
+    assert "- 就緒: true" not in rendered
 
 
 def test_company_filing_render_smoke_format_uses_operator_language() -> None:
@@ -70,13 +71,14 @@ def test_company_filing_render_smoke_format_uses_operator_language() -> None:
     )
 
     assert "公司文件渲染後援檢查: not_configured" in rendered
-    assert "- 就緒: false" in rendered
+    assert "- 就緒: 否" in rendered
     assert "- 代理數: 0" in rendered
     assert "- 瀏覽器渲染: flaresolverr / browser_render_disabled" in rendered
     assert "- 指令: .venv/bin/python scripts/company_filing_render_smoke.py --json" in rendered
     assert "Company filing render smoke" not in rendered
     assert "proxy count" not in rendered
     assert "browser render:" not in rendered
+    assert "- 就緒: false" not in rendered
 
 
 def test_company_filing_render_smoke_help_uses_operator_language(capsys) -> None:
@@ -210,7 +212,7 @@ def test_company_filing_render_smoke_reports_unavailable_runtime(monkeypatch) ->
     assert report["status"] == "unavailable"
     assert report["ready"] is False
     assert report["attempts"][0]["runnable"] is False
-    assert "not reachable or installed" in report["remediation"]
+    assert "runtime 無法連線或尚未安裝" in report["remediation"]
 
 
 def test_company_filing_render_smoke_uses_playwright_when_enabled(monkeypatch) -> None:

@@ -113,9 +113,8 @@ async def company_filing_render_smoke_report(
             "proxy_count": len(proxy_urls),
             "smoke_command": SMOKE_COMMAND,
             "remediation": (
-                "Enable COMPANY_FILING_BROWSER_RENDER_PROVIDER/URL, "
-                "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true, or COMPANY_FILING_PROXY_URLS "
-                "before running a live render/proxy smoke."
+                "執行 live render/proxy 檢查前，請先設定 COMPANY_FILING_BROWSER_RENDER_PROVIDER/URL、"
+                "COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED=true，或 COMPANY_FILING_PROXY_URLS。"
             ),
         }
     if not runnable_attempts:
@@ -129,7 +128,7 @@ async def company_filing_render_smoke_report(
             "proxy_count": len(proxy_urls),
             "attempts": attempts,
             "smoke_command": SMOKE_COMMAND,
-            "remediation": "A filing fallback is configured but its runtime is not reachable or installed.",
+            "remediation": "已設定文件後援，但 runtime 無法連線或尚未安裝。",
         }
 
     selected_fetcher = fetcher or CompanyFilingFetcher()
@@ -157,9 +156,9 @@ async def company_filing_render_smoke_report(
             )
     status = "failed" if any(result.get("error") for result in results) else "degraded"
     remediation = (
-        "The configured filing fallback ran but did not return enough parseable text."
+        "已設定的文件後援有執行，但沒有回傳足夠可解析文字。"
         if status == "degraded"
-        else "The configured filing fallback failed; inspect attempt errors and provider logs."
+        else "已設定的文件後援執行失敗；請檢查嘗試錯誤與 provider logs。"
     )
     return render_smoke_report(
         status=status,
@@ -322,7 +321,7 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
         return format_company_filing_render_provider_contract(report)
     lines = [
         f"公司文件渲染後援檢查: {report['status']}",
-        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
+        f"- 就緒: {_yes_no(report.get('ready'))}",
         f"- URL: {report.get('url')}",
         f"- 代理數: {report.get('proxy_count', 0)}",
     ]
@@ -340,7 +339,7 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
         marker = "OK" if attempt.get("ready") else "WARN"
         lines.append(f"- [{marker}] {attempt.get('kind')}: {attempt.get('provider')}")
         if attempt.get("error"):
-            lines.append(f"  error: {attempt['error'].get('category')} - {attempt['error'].get('error')}")
+            lines.append(f"  錯誤: {attempt['error'].get('category')} - {attempt['error'].get('error')}")
     if report.get("remediation"):
         lines.append(f"- 修復建議: {report['remediation']}")
     if report.get("smoke_command"):
@@ -351,19 +350,27 @@ def format_company_filing_render_smoke(report: dict[str, Any]) -> str:
 def format_company_filing_render_provider_contract(report: dict[str, Any]) -> str:
     lines = [
         f"公司文件渲染提供者格式檢查: {report['status']}",
-        f"- 就緒: {str(bool(report.get('ready'))).lower()}",
+        f"- 就緒: {_yes_no(report.get('ready'))}",
         f"- 提供者數: {report.get('provider_count', 0)}",
     ]
     for row in report.get("providers") or []:
         marker = "OK" if row.get("ready") else "WARN"
         lines.append(f"- [{marker}] {row.get('provider')}: {row.get('method') or '-'}")
         if row.get("error"):
-            lines.append(f"  error: {row['error']}")
+            lines.append(f"  錯誤: {row['error']}")
     if report.get("remediation"):
         lines.append(f"- 修復建議: {report['remediation']}")
     if report.get("smoke_command"):
         lines.append(f"- 指令: {report['smoke_command']}")
     return "\n".join(lines)
+
+
+def _yes_no(value: object) -> str:
+    if value is True:
+        return "是"
+    if value is False:
+        return "否"
+    return str(value if value is not None else "-")
 
 
 def smoke_exit_code(report: dict[str, Any], *, strict: bool = False) -> int:
@@ -429,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
         report["local_browser_render_defaults"] = {
             "applied_env_keys": sorted(local_defaults),
             "prefer_unlocker": bool(args.prefer_unlocker),
-            "note": "Defaults apply only to this smoke process; .env is unchanged.",
+            "note": "預設值只套用在本次檢查程序；不會修改 .env。",
         }
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

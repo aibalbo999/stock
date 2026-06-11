@@ -35,6 +35,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    analysis_result_panel_source = ui.ANALYSIS_RESULT_PANEL_SOURCE.read_text()
     analysis_task_lookup_panel_source = ui.ANALYSIS_TASK_LOOKUP_PANEL_SOURCE.read_text()
     analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
     data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
@@ -349,6 +350,27 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'refresh_key="refresh_analysis_task_status"' in analysis_task_lookup_panel_source
     assert 'apply_result_key="apply_analysis_task_result"' in analysis_task_lookup_panel_source
     assert 'task_state_key="last_async_task_id"' in analysis_task_lookup_panel_source
+    assert (
+        "from app.ui.analysis_result_panel import render_analysis_result_panel"
+        in analysis_workspace_source
+    )
+    assert "render_analysis_result_panel(investor_capital=investor_capital)" in (
+        analysis_workspace_source
+    )
+    assert "def render_analysis_result_panel(" in analysis_result_panel_source
+    assert "last_analysis_result" in analysis_result_panel_source
+    assert "hydrate_active_report_result(result)" in analysis_result_panel_source
+    assert "render_market_errors(result)" in analysis_result_panel_source
+    assert 'render_section_header("本次分析結果"' in analysis_result_panel_source
+    assert 'st.tabs(["重點報告", "資料查核"])' in analysis_result_panel_source
+    assert "st.download_button(" in analysis_result_panel_source
+    assert "render_reader_report(report_markdown, result)" in analysis_result_panel_source
+    assert "render_quality_gate(result)" in analysis_result_panel_source
+    assert 'scope="analysis_result"' in analysis_result_panel_source
+    assert "empty_analysis_result_html()" in analysis_result_panel_source
+    assert "last_analysis_result" not in analysis_workspace_source
+    assert "render_reader_report(report_markdown, result)" not in analysis_workspace_source
+    assert 'scope="analysis_result"' not in analysis_workspace_source
     assert "def _render_analysis_submission_summary(" in analysis_workspace_source
     assert "analysis-submission-summary" in combined
     assert "quota-pressure" in combined

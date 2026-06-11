@@ -14,6 +14,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     analysis_task_lookup_panel_source = source_context.ui_sources.get(
         "analysis_task_lookup_panel.py", ""
     )
+    analysis_result_panel_source = source_context.ui_sources.get("analysis_result_panel.py", "")
     analysis_workspace_view_source = source_context.ui_sources.get(
         "analysis_workspace_view.py", ""
     )
@@ -89,6 +90,26 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'task_state_key="last_async_task_id"' in analysis_task_lookup_panel_source
             and 'st.warning("請輸入任務編號。")' in analysis_task_lookup_panel_source
             and 'st.warning("請輸入任務編號。")' not in analysis_workspace_source
+        ),
+        "ui_analysis_result_panel_extracted": (
+            "from app.ui.analysis_result_panel import render_analysis_result_panel"
+            in analysis_workspace_source
+            and "render_analysis_result_panel(investor_capital=investor_capital)"
+            in analysis_workspace_source
+            and "def render_analysis_result_panel(" in analysis_result_panel_source
+            and "last_analysis_result" in analysis_result_panel_source
+            and "hydrate_active_report_result(result)" in analysis_result_panel_source
+            and "render_market_errors(result)" in analysis_result_panel_source
+            and 'render_section_header("本次分析結果"' in analysis_result_panel_source
+            and 'st.tabs(["重點報告", "資料查核"])' in analysis_result_panel_source
+            and "st.download_button(" in analysis_result_panel_source
+            and "render_reader_report(report_markdown, result)" in analysis_result_panel_source
+            and "render_quality_gate(result)" in analysis_result_panel_source
+            and 'scope="analysis_result"' in analysis_result_panel_source
+            and "empty_analysis_result_html()" in analysis_result_panel_source
+            and "last_analysis_result" not in analysis_workspace_source
+            and "render_reader_report(report_markdown, result)" not in analysis_workspace_source
+            and 'scope="analysis_result"' not in analysis_workspace_source
         ),
         "ui_analysis_operator_presenter_extracted": (
             "from app.ui.analysis_operator_presenter import ("

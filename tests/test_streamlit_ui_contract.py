@@ -304,6 +304,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "會更新本益比、股價淨值比與殖利率判讀" in source
     assert "會補齊公司文件、法說會或公開資訊缺口" in source
     assert "action-impact-grid" in combined
+    assert "from app.ui.data_enrichment_market_presenter import (" in source
+    assert "import streamlit" not in ui.DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE.read_text()
     assert "market_operation_readiness_rows(" in source
     assert "_render_market_operation_readiness(" in source
     assert "market-operation-readiness" in combined

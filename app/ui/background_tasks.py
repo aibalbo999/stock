@@ -228,12 +228,12 @@ def task_queue_smoke_label(task_queue: dict | None) -> str:
     if not command:
         return ""
     if "task_submission_smoke.py" in command:
-        return "任務送出 smoke"
+        return "背景任務送出檢查"
     if "inspect ping" in command or "celery" in command:
         return "背景執行器連線檢查"
     if "upgrade_audit.py" in command:
         return "升級稽核"
-    return "背景任務 smoke"
+    return "背景任務檢查"
 
 
 def _task_id(task_response: Any) -> str:

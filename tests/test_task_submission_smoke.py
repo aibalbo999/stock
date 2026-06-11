@@ -74,6 +74,21 @@ def test_task_submission_smoke_posts_noop_market_refresh_payload() -> None:
     assert report["next_actions"] == ["背景任務提交路徑正常。"]
 
 
+def test_task_submission_smoke_format_uses_operator_language() -> None:
+    rendered = smoke.format_task_submission_smoke(
+        {
+            "status": "passed",
+            "api_url": "http://api.test",
+            "operation": "market_refresh",
+            "submit": True,
+            "next_actions": ["背景任務提交路徑正常。"],
+        }
+    )
+
+    assert "背景任務送出檢查: passed" in rendered
+    assert "Task submission smoke" not in rendered
+
+
 def test_task_submission_smoke_polls_until_task_success() -> None:
     responses = [
         FakeResponse(

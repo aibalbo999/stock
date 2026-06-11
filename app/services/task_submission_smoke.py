@@ -117,7 +117,7 @@ def run_task_submission_smoke(
 
 def format_task_submission_smoke(report: dict) -> str:
     lines = [
-        f"Task submission smoke: {report.get('status', 'unknown')}",
+        f"背景任務送出檢查: {report.get('status', 'unknown')}",
         f"- api: {report.get('api_url', '-')}",
         f"- operation: {report.get('operation', '-')}",
         f"- submit: {bool(report.get('submit'))}",
@@ -443,7 +443,7 @@ def _next_actions(
         and not task_queue.get("processing_ready")
         and not poll_succeeded
     ):
-        actions.append("啟動背景執行器後重跑 --submit --wait smoke。")
+        actions.append("啟動背景執行器後重跑 --submit --wait 背景任務送出檢查。")
     if submission and not submission.get("ok"):
         actions.append("檢查 /tasks/data-operation structured error detail 與 API logs。")
     if poll_result and poll_result.get("status") == "timeout":

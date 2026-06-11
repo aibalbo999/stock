@@ -15,7 +15,7 @@ from app.services.task_submission_smoke import (
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Smoke test FastAPI/Celery background task submission with a no-op data operation."
+        description="Check background task submission with a safe no-op data operation."
     )
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
     parser.add_argument("--operation", default=DEFAULT_OPERATION)
@@ -23,12 +23,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--submit",
         action="store_true",
-        help="Submit a no-op smoke payload to POST /tasks/data-operation.",
+        help="Submit a safe no-op check payload to POST /tasks/data-operation.",
     )
     parser.add_argument(
         "--wait",
         action="store_true",
-        help="Poll GET /tasks/{task_id} until the smoke task finishes or times out.",
+        help="Poll GET /tasks/{task_id} until the check task finishes or times out.",
     )
     parser.add_argument(
         "--skip-processing-ready",

@@ -191,7 +191,7 @@ def test_submit_background_task_preflight_blocks_unready_queue(monkeypatch) -> N
     assert "last_data_task_id" not in fake_st.session_state
     assert fake_st.errors == [
         "股價刷新任務送出失敗：背景任務佇列或結果儲存未連線。 "
-        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
+        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「背景任務送出檢查」。"
     ]
     assert fake_st.successes == []
 
@@ -224,7 +224,8 @@ def test_task_queue_preflight_operator_hint_hides_raw_cli(monkeypatch) -> None:
     error = fake_st.errors[0]
     assert ".venv/bin/python" not in error
     assert "系統設定 > 維護 > 背景任務觀測" in error
-    assert "任務送出 smoke" in error
+    assert "背景任務送出檢查" in error
+    assert "smoke" not in error
 
 
 def test_submit_background_task_warns_and_continues_when_preflight_status_unavailable(
@@ -282,7 +283,7 @@ def test_submit_background_task_warns_but_submits_when_worker_is_offline(monkeyp
     assert fake_st.session_state["last_data_task_id"] == "task-queued-without-worker"
     assert fake_st.warnings == [
         "背景任務佇列可送出，但背景執行器未回應，任務可能會排隊等待。 "
-        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「任務送出 smoke」。"
+        "請到系統設定 > 維護 > 背景任務觀測查看修復指令，或執行「背景任務送出檢查」。"
     ]
     assert fake_st.successes == [
         "已送出股價刷新背景任務：task-queued-without-worker"
@@ -306,7 +307,8 @@ def test_task_queue_worker_warning_operator_hint_hides_raw_cli() -> None:
 
     assert ".venv/bin/python" not in warning
     assert "系統設定 > 維護 > 背景任務觀測" in warning
-    assert "任務送出 smoke" in warning
+    assert "背景任務送出檢查" in warning
+    assert "smoke" not in warning
 
 
 def test_task_queue_submission_success_note_explains_worker_offline_queue_state() -> None:
@@ -344,6 +346,16 @@ def test_task_queue_smoke_hint_prefers_submission_smoke_and_falls_back_to_first_
 
 
 def test_task_queue_smoke_label_uses_operator_worker_language() -> None:
+    assert (
+        background_tasks.task_queue_smoke_label(
+            {
+                "smoke_commands": [
+                    ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json"
+                ]
+            }
+        )
+        == "背景任務送出檢查"
+    )
     assert (
         background_tasks.task_queue_smoke_label(
             {

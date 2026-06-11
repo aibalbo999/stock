@@ -177,13 +177,21 @@ def test_render_maintenance_tab_promotes_external_deployment_when_requested(
 ) -> None:
     class FakeStreamlit:
         def __init__(self) -> None:
-            self.session_state = {"pending_maintenance_focus": "external_deployment"}
+            self.session_state = {
+                "pending_maintenance_focus": "external_deployment",
+                "pending_external_deployment_focus": "structured_api",
+            }
 
         def toggle(self, *_args, **_kwargs) -> bool:
             return False
 
     fake_st = FakeStreamlit()
     events: list[str] = []
+    external_focus_contexts: list[str | None] = []
+
+    def capture_external_panel(*_args, **kwargs) -> None:
+        events.append("external")
+        external_focus_contexts.append(kwargs.get("focus_context"))
 
     monkeypatch.setattr(maintenance, "st", fake_st)
     monkeypatch.setattr(maintenance, "render_section_header", lambda *_args: events.append("header"))
@@ -211,7 +219,7 @@ def test_render_maintenance_tab_promotes_external_deployment_when_requested(
     monkeypatch.setattr(
         maintenance,
         "render_external_deployment_panel",
-        lambda *_args: events.append("external"),
+        capture_external_panel,
     )
     monkeypatch.setattr(
         maintenance,
@@ -257,5 +265,8 @@ def test_render_maintenance_tab_promotes_external_deployment_when_requested(
     maintenance.render_maintenance_tab()
 
     assert "pending_maintenance_focus" not in fake_st.session_state
+    assert "pending_external_deployment_focus" not in fake_st.session_state
+    assert events.index("external") < events.index("incident")
     assert events.index("external") < events.index("metrics")
     assert events.count("external") == 1
+    assert external_focus_contexts == ["structured_api"]

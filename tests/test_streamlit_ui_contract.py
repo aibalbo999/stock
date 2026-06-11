@@ -764,7 +764,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '"驗證指令"' in external_readiness_service_source
     assert source.count("render_external_deployment_panel(") >= 2
     assert 'if maintenance_focus == "external_deployment":' in source
-    assert 'if maintenance_focus != "external_deployment":' in source
+    assert "external_deployment_rendered = True" in source
+    assert "if not external_deployment_rendered:" in source
     assert '"settings:maintenance:local_defaults"' in source
     assert '"maintenance_local_defaults"' in source
     assert "render_submission_guard_panel(service_snapshot)" in source

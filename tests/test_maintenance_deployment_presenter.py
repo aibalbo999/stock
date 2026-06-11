@@ -2,12 +2,25 @@ from __future__ import annotations
 
 from app.ui.maintenance_deployment_presenter import (
     external_deployment_effective_gap_rows,
+    external_deployment_focus_banner,
     maintenance_operation_post_run_check_rows,
     maintenance_operation_post_run_diagnostic_action_ids,
     maintenance_operation_recommendation_caption,
     maintenance_operation_rows,
     recommended_maintenance_operation_id,
 )
+
+
+def test_maintenance_deployment_presenter_builds_structured_api_focus_banner() -> None:
+    banner = external_deployment_focus_banner("structured_api")
+
+    assert banner["title"] == "公司文件結構化 API 免費驗證"
+    assert "正式串 TEJ 或付費資料商前" in banner["detail"]
+    assert "結構化文件 API 操作提示" in banner["detail"]
+    assert banner["state"] == "attention"
+    assert banner["target_caption"] == "免費 smoke 驗證 JSON/HTTP contract"
+    assert external_deployment_focus_banner("unknown") == {}
+    assert external_deployment_focus_banner(None) == {}
 
 
 def test_maintenance_deployment_presenter_builds_effective_gap_rows() -> None:

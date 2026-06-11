@@ -17,6 +17,9 @@ def render_system_settings() -> None:
     maintenance_focus = maintenance_focus_from_pending_section(pending_section)
     if maintenance_focus:
         st.session_state["pending_maintenance_focus"] = maintenance_focus
+    external_deployment_focus = external_deployment_focus_from_pending_section(pending_section)
+    if external_deployment_focus:
+        st.session_state["pending_external_deployment_focus"] = external_deployment_focus
     if pending_section is not None or st.session_state.get("settings_section") not in (
         SETTINGS_SECTION_LABELS
     ):
@@ -59,4 +62,13 @@ def maintenance_focus_from_pending_section(pending_section: str | None) -> str |
         return "external_deployment"
     if section == "maintenance_structured_api":
         return "external_deployment"
+    return None
+
+
+def external_deployment_focus_from_pending_section(pending_section: str | None) -> str | None:
+    section = str(pending_section or "").strip()
+    if section == "maintenance_local_defaults":
+        return "local_defaults"
+    if section == "maintenance_structured_api":
+        return "structured_api"
     return None

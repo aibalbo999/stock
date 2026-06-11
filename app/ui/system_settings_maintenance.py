@@ -31,6 +31,7 @@ from app.ui.report_lifecycle import latest_report_lifecycle
 def render_maintenance_tab() -> None:
     render_section_header("維護", "一般使用不需要查看；只有資料異常或服務連線問題時使用。")
     maintenance_focus = _consume_pending_maintenance_focus()
+    external_deployment_focus = _consume_pending_external_deployment_focus()
     status = load_api_json_or_default(
         "/db/status",
         {"settings": {}, "integrity": {}, "tables": {}},
@@ -94,6 +95,17 @@ def render_maintenance_tab() -> None:
         error_message="讀取升級稽核失敗",
     )
 
+    external_deployment_rendered = False
+    if maintenance_focus == "external_deployment":
+        render_external_deployment_panel(
+            upgrade_audit,
+            service_snapshot,
+            maintenance_operations,
+            external_env_check,
+            focus_context=external_deployment_focus,
+        )
+        external_deployment_rendered = True
+
     latest_report_lifecycle_snapshot = _latest_report_lifecycle_for_maintenance()
     _render_incident_inbox(
         incident_inbox_items(
@@ -113,16 +125,9 @@ def render_maintenance_tab() -> None:
         )
     render_upgrade_audit_panel(upgrade_audit)
     render_optimization_progress_panel(service_snapshot)
-    if maintenance_focus == "external_deployment":
-        render_external_deployment_panel(
-            upgrade_audit,
-            service_snapshot,
-            maintenance_operations,
-            external_env_check,
-        )
     render_service_metrics_panel(status, service_snapshot)
     render_submission_guard_panel(service_snapshot)
-    if maintenance_focus != "external_deployment":
+    if not external_deployment_rendered:
         render_external_deployment_panel(
             upgrade_audit,
             service_snapshot,
@@ -147,6 +152,13 @@ def render_maintenance_tab() -> None:
 def _consume_pending_maintenance_focus() -> str | None:
     focus = str(st.session_state.pop("pending_maintenance_focus", "") or "").strip()
     if focus in {"ai_quota", "task_observability", "external_deployment"}:
+        return focus
+    return None
+
+
+def _consume_pending_external_deployment_focus() -> str | None:
+    focus = str(st.session_state.pop("pending_external_deployment_focus", "") or "").strip()
+    if focus in {"local_defaults", "structured_api"}:
         return focus
     return None
 

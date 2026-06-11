@@ -248,6 +248,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_settings_task_route_focus_enabled")
             and frontend_status.get("ui_settings_local_defaults_route_focus_enabled")
             and frontend_status.get("ui_settings_structured_api_route_focus_enabled")
+            and frontend_status.get("ui_settings_structured_api_focus_context_enabled")
             and frontend_status.get("frontend_external_deployment_domain_status_extracted")
             and frontend_status.get("frontend_external_deployment_readiness_status_extracted")
             and frontend_status.get("frontend_runtime_identity_marker_enabled")

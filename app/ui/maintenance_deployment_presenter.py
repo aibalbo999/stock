@@ -1,6 +1,28 @@
 from __future__ import annotations
 
 
+def external_deployment_focus_banner(focus_context: str | None) -> dict:
+    focus = str(focus_context or "").strip()
+    if focus == "structured_api":
+        return {
+            "state": "attention",
+            "title": "公司文件結構化 API 免費驗證",
+            "detail": (
+                "正式串 TEJ 或付費資料商前，先看「結構化文件 API 操作提示」，"
+                "用 sample、fixture 與 provider profile 免費驗證 JSON/HTTP contract。"
+            ),
+            "target_caption": "免費 smoke 驗證 JSON/HTTP contract",
+        }
+    if focus == "local_defaults":
+        return {
+            "state": "ready",
+            "title": "本機 defaults 驗證",
+            "detail": "先用本機依賴與 defaults 消除可免費處理的外部選配缺口。",
+            "target_caption": "本機依賴與 audit 指令",
+        }
+    return {}
+
+
 def external_deployment_effective_gap_rows(local_projection: dict) -> list[dict]:
     if not isinstance(local_projection, dict):
         return []

@@ -12,6 +12,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
+    maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
     maintenance_ai_panels_source = ui_sources["maintenance_ai_panels.py"]
     maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     maintenance_cleanup_panel_source = ui_sources["maintenance_cleanup_panel.py"]
@@ -53,8 +54,8 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and 'return "external_deployment"' in system_settings_source
             and 'if maintenance_focus == "external_deployment":'
             in system_settings_maintenance_source
-            and 'if maintenance_focus != "external_deployment":'
-            in system_settings_maintenance_source
+            and "external_deployment_rendered = True" in system_settings_maintenance_source
+            and "if not external_deployment_rendered:" in system_settings_maintenance_source
             and 'focus in {"ai_quota", "task_observability", "external_deployment"}'
             in system_settings_maintenance_source
             and system_settings_maintenance_source.count("render_external_deployment_panel(")
@@ -68,14 +69,34 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and 'return "external_deployment"' in system_settings_source
             and 'if maintenance_focus == "external_deployment":'
             in system_settings_maintenance_source
-            and 'if maintenance_focus != "external_deployment":'
-            in system_settings_maintenance_source
+            and "external_deployment_rendered = True" in system_settings_maintenance_source
+            and "if not external_deployment_rendered:" in system_settings_maintenance_source
             and 'focus in {"ai_quota", "task_observability", "external_deployment"}'
             in system_settings_maintenance_source
             and "structured_filing_api_operation_rows(upgrade_audit)"
             in maintenance_deployment_panel_source
             and system_settings_maintenance_source.count("render_external_deployment_panel(")
             >= 2
+        ),
+        "ui_settings_structured_api_focus_context_enabled": (
+            "def external_deployment_focus_from_pending_section(" in system_settings_source
+            and '"maintenance_structured_api"' in system_settings_source
+            and 'return "structured_api"' in system_settings_source
+            and '"pending_external_deployment_focus"' in system_settings_source
+            and "def _consume_pending_external_deployment_focus("
+            in system_settings_maintenance_source
+            and '"structured_api"' in system_settings_maintenance_source
+            and "focus_context=external_deployment_focus" in system_settings_maintenance_source
+            and "def external_deployment_focus_banner("
+            in maintenance_deployment_presenter_source
+            and '"公司文件結構化 API 免費驗證"'
+            in maintenance_deployment_presenter_source
+            and "正式串 TEJ 或付費資料商前" in maintenance_deployment_presenter_source
+            and "external_deployment_focus_banner(focus_context)"
+            in maintenance_deployment_panel_source
+            and "maintenance-focus-banner" in maintenance_deployment_panel_source
+            and "expanded=bool(external_warning_rows) or bool(focus_banner)"
+            in maintenance_deployment_panel_source
         ),
         "ui_incident_action_labels_enabled": (
             '"action_label": incident_action_label(incident, index)'

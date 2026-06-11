@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from app.ui.background_tasks import submit_api_task
@@ -24,6 +26,7 @@ from app.ui.external_deployment_diagnostics import (
 )
 from app.ui.maintenance_deployment_presenter import (
     external_deployment_effective_gap_rows,
+    external_deployment_focus_banner,
     maintenance_operation_post_run_check_rows,
     maintenance_operation_post_run_diagnostic_action_ids,
     maintenance_operation_recommendation_caption,
@@ -42,6 +45,7 @@ def render_external_deployment_panel(
     service_snapshot: dict | None = None,
     maintenance_operations: dict | None = None,
     external_env_check: dict | None = None,
+    focus_context: str | None = None,
 ) -> None:
     service_snapshot = service_snapshot or {}
     local_dependency_status = (
@@ -98,7 +102,13 @@ def render_external_deployment_panel(
         if isinstance(optimization_progress.get("local_resolution_projection"), dict)
         else {}
     )
-    with st.expander("外部部署選配狀態", expanded=bool(external_warning_rows)):
+    focus_banner = external_deployment_focus_banner(focus_context)
+    if focus_banner:
+        st.markdown(_external_deployment_focus_banner_html(focus_banner), unsafe_allow_html=True)
+    with st.expander(
+        "外部部署選配狀態",
+        expanded=bool(external_warning_rows) or bool(focus_banner),
+    ):
         deploy = (
             upgrade_audit.get("deployment")
             if isinstance(upgrade_audit.get("deployment"), dict)
@@ -228,6 +238,17 @@ def render_external_deployment_panel(
             )
         else:
             st.success("外部部署選配目前沒有警示。")
+
+
+def _external_deployment_focus_banner_html(banner: dict) -> str:
+    return f"""<section class="maintenance-focus-banner is-{escape(str(banner.get("state", "attention")))}" aria-label="目前維護焦點">
+<div>
+<span>目前焦點</span>
+<strong>{escape(str(banner.get("title") or "-"))}</strong>
+<p>{escape(str(banner.get("detail") or ""))}</p>
+</div>
+<em>{escape(str(banner.get("target_caption") or ""))}</em>
+</section>"""
 
 
 def _render_maintenance_operations(

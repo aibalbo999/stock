@@ -463,8 +463,10 @@ def test_format_frontend_smoke_report_includes_streamlit_runtime_identity() -> N
         }
     )
 
-    assert "frontend commit: expected=commit-main- actual=commit-old-t" in output
-    assert "frontend reason: streamlit_runtime_commit_mismatch" in output
+    assert "前端版本: 預期=commit-main-；實際=commit-old-t" in output
+    assert "前端原因: streamlit_runtime_commit_mismatch" in output
+    assert "frontend commit:" not in output
+    assert "expected=commit-main- actual=commit-old-t" not in output
 
 
 def test_format_frontend_smoke_report_includes_streamlit_route_health_fallback() -> None:
@@ -487,8 +489,10 @@ def test_format_frontend_smoke_report_includes_streamlit_route_health_fallback()
         }
     )
 
-    assert "route health: root=200 route=404 page=200" in output
-    assert "reason: streamlit_mpa_route_health_fallback" in output
+    assert "路由健康: 根路徑=200；路由=404；頁面=200" in output
+    assert "原因: streamlit_mpa_route_health_fallback" in output
+    assert "route health:" not in output
+    assert "reason:" not in output
 
 
 def test_format_frontend_smoke_report_includes_mobile_operator_layout_failures() -> None:
@@ -510,7 +514,8 @@ def test_format_frontend_smoke_report_includes_mobile_operator_layout_failures()
         }
     )
 
-    assert "operator action layout (mobile): primary action button below 720px (top=760px)" in output
+    assert "主要操作版面 (mobile): primary action button below 720px (top=760px)" in output
+    assert "operator action layout" not in output
 
 
 def test_format_frontend_smoke_report_includes_forbidden_text_failures() -> None:
@@ -529,7 +534,8 @@ def test_format_frontend_smoke_report_includes_forbidden_text_failures() -> None
         }
     )
 
-    assert "forbidden text: Missing Submit Button" in output
+    assert "不應出現文字: Missing Submit Button" in output
+    assert "forbidden text:" not in output
 
 
 def _png(*, width: int, height: int, pixels: list[tuple[int, int, int]]) -> bytes:

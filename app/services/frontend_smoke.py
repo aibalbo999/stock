@@ -904,11 +904,11 @@ def png_has_nonblank_pixels(data: bytes) -> bool:
 
 def format_frontend_smoke_report(report: dict) -> str:
     lines = [
-        f"Frontend smoke: {report['status']}",
+        f"前端健康檢查: {report['status']}",
         (
-            f"Checks: {len(report.get('checks') or [])}, "
-            f"failed={report.get('failed_count', 0)}, "
-            f"skipped={report.get('skipped_count', 0)}"
+            f"檢查數: {len(report.get('checks') or [])}，"
+            f"失敗={report.get('failed_count', 0)}，"
+            f"略過={report.get('skipped_count', 0)}"
         ),
     ]
     for check in report.get("checks") or []:
@@ -917,41 +917,39 @@ def format_frontend_smoke_report(report: dict) -> str:
             f"{check.get('label')}: {check.get('url') or check.get('reason') or ''}"
         )
         if check.get("error"):
-            lines.append(f"  error: {check['error']}")
+            lines.append(f"  錯誤: {check['error']}")
         for missing_text in check.get("missing_required_text") or []:
-            lines.append(f"  missing text: {missing_text}")
+            lines.append(f"  缺少文字: {missing_text}")
         for forbidden_text in check.get("present_forbidden_text") or []:
-            lines.append(f"  forbidden text: {forbidden_text}")
+            lines.append(f"  不應出現文字: {forbidden_text}")
         for layout_failure in check.get("required_text_layout_failures") or []:
-            lines.append(f"  layout: {layout_failure}")
+            lines.append(f"  版面: {layout_failure}")
         if {
             "root_health_status_code",
             "route_health_status_code",
             "route_page_status_code",
         }.issubset(check):
             lines.append(
-                "  route health: "
-                f"root={check.get('root_health_status_code') or '-'} "
-                f"route={check.get('route_health_status_code') or '-'} "
-                f"page={check.get('route_page_status_code') or '-'}"
+                "  路由健康: "
+                f"根路徑={check.get('root_health_status_code') or '-'}；"
+                f"路由={check.get('route_health_status_code') or '-'}；"
+                f"頁面={check.get('route_page_status_code') or '-'}"
             )
         viewport_failures = check.get("operator_primary_action_viewport_layout_failures")
         if isinstance(viewport_failures, dict):
             for viewport, failures in viewport_failures.items():
                 for layout_failure in failures or []:
-                    lines.append(
-                        f"  operator action layout ({viewport}): {layout_failure}"
-                    )
+                    lines.append(f"  主要操作版面 ({viewport}): {layout_failure}")
         else:
             for layout_failure in check.get("operator_primary_action_layout_failures") or []:
-                lines.append(f"  operator action layout: {layout_failure}")
+                lines.append(f"  主要操作版面: {layout_failure}")
         if check.get("reason"):
-            lines.append(f"  reason: {check['reason']}")
+            lines.append(f"  原因: {check['reason']}")
         if check.get("expected_commit_short") or check.get("actual_commit_short"):
             lines.append(
-                "  commit: "
-                f"expected={check.get('expected_commit_short') or '-'} "
-                f"actual={check.get('actual_commit_short') or '-'}"
+                "  版本: "
+                f"預期={check.get('expected_commit_short') or '-'}；"
+                f"實際={check.get('actual_commit_short') or '-'}"
             )
         frontend_identity = check.get("frontend_runtime_identity")
         if isinstance(frontend_identity, dict):
@@ -959,12 +957,12 @@ def format_frontend_smoke_report(report: dict) -> str:
                 "actual_commit_short"
             ):
                 lines.append(
-                    "  frontend commit: "
-                    f"expected={frontend_identity.get('expected_commit_short') or '-'} "
-                    f"actual={frontend_identity.get('actual_commit_short') or '-'}"
+                    "  前端版本: "
+                    f"預期={frontend_identity.get('expected_commit_short') or '-'}；"
+                    f"實際={frontend_identity.get('actual_commit_short') or '-'}"
                 )
             if frontend_identity.get("reason"):
-                lines.append(f"  frontend reason: {frontend_identity['reason']}")
+                lines.append(f"  前端原因: {frontend_identity['reason']}")
     return "\n".join(lines)
 
 

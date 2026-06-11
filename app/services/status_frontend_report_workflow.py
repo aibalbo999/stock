@@ -52,8 +52,23 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         "ui_report_observability_graphrag_metrics_enabled": (
             "graph_reasoning_path_count" in report_observability_panel_source
             and "graph_reasoning_coverage_ratio" in report_observability_panel_source
-            and "GraphRAG paths" in report_observability_panel_source
-            and "Graph 覆蓋率" in report_observability_panel_source
+            and "圖譜推理路徑" in report_observability_panel_source
+            and "圖譜推理覆蓋率" in report_observability_panel_source
+        ),
+        "ui_report_observability_metric_operator_labels_enabled": (
+            "追蹤覆蓋" in report_observability_panel_source
+            and "圖譜推理路徑" in report_observability_panel_source
+            and "圖譜推理覆蓋率" in report_observability_panel_source
+            and "平均 LLM 延遲 ms" in report_observability_panel_source
+            and "P95 LLM 延遲 ms" in report_observability_panel_source
+            and "P95 檢索延遲 ms" in report_observability_panel_source
+            and "關鍵字後援" in report_observability_panel_source
+            and "額度略過" in report_observability_panel_source
+            and "GraphRAG paths" not in report_observability_panel_source
+            and "Graph 覆蓋率" not in report_observability_panel_source
+            and "P95 Retrieval ms" not in report_observability_panel_source
+            and "Keyword fallback" not in report_observability_panel_source
+            and "Quota skip" not in report_observability_panel_source
         ),
         "ui_report_lifecycle_data_gap_prefill_enabled": (
             "from app.ui.data_gap_actions import data_gap_action_items"

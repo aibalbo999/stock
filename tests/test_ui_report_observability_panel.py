@@ -43,16 +43,22 @@ def test_report_observability_metric_values_and_rows_filter_invalid_payloads() -
     assert report_observability_metric_values(summary) == {
         "狀態": "caution",
         "最新版報告": 3,
-        "Trace 覆蓋": 2,
-        "GraphRAG paths": 5,
-        "Graph 覆蓋率": "75%",
-        "平均 LLM ms": 123.45,
-        "P95 LLM ms": 456.78,
-        "P95 Retrieval ms": 12.34,
-        "Keyword fallback": 1,
-        "Quota skip": 2,
+        "追蹤覆蓋": 2,
+        "圖譜推理路徑": 5,
+        "圖譜推理覆蓋率": "75%",
+        "平均 LLM 延遲 ms": 123.45,
+        "P95 LLM 延遲 ms": 456.78,
+        "P95 檢索延遲 ms": 12.34,
+        "關鍵字後援": 1,
+        "額度略過": 2,
         "模型降級": 1,
     }
+    rendered_metrics = str(report_observability_metric_values(summary))
+    assert "GraphRAG paths" not in rendered_metrics
+    assert "Graph 覆蓋率" not in rendered_metrics
+    assert "P95 Retrieval ms" not in rendered_metrics
+    assert "Keyword fallback" not in rendered_metrics
+    assert "Quota skip" not in rendered_metrics
     assert report_observability_alert_rows(summary) == [
         {"severity": "warning", "message": "Trace coverage is incomplete."}
     ]
@@ -71,14 +77,14 @@ def test_report_observability_metric_values_handle_missing_summary() -> None:
     assert report_observability_metric_values({}) == {
         "狀態": "-",
         "最新版報告": 0,
-        "Trace 覆蓋": 0,
-        "GraphRAG paths": 0,
-        "Graph 覆蓋率": "-",
-        "平均 LLM ms": "-",
-        "P95 LLM ms": "-",
-        "P95 Retrieval ms": "-",
-        "Keyword fallback": 0,
-        "Quota skip": 0,
+        "追蹤覆蓋": 0,
+        "圖譜推理路徑": 0,
+        "圖譜推理覆蓋率": "-",
+        "平均 LLM 延遲 ms": "-",
+        "P95 LLM 延遲 ms": "-",
+        "P95 檢索延遲 ms": "-",
+        "關鍵字後援": 0,
+        "額度略過": 0,
         "模型降級": 0,
     }
     assert report_observability_alert_rows({}) == []

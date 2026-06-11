@@ -550,8 +550,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     )
     assert "graph_reasoning_path_count" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
-    assert "GraphRAG paths" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
-    assert "Graph 覆蓋率" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "圖譜推理路徑" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "圖譜推理覆蓋率" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "GraphRAG paths" not in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "Keyword fallback" not in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "Quota skip" not in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     assert "report_obs_cols" not in source
     assert "def render_task_status_panel(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
@@ -750,8 +753,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
     assert "結構化文件 API 操作提示" in source
-    assert "Configuration check" in source
+    assert "設定檢查" in source
     assert "configuration_check" in source
+    assert "Configuration check" not in source
     assert "Visual RAG 模型鏈" in source
     assert "Visual RAG / PDF 圖片解析模型鏈" in source
     assert "單項診斷指令" in source

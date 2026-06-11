@@ -10,6 +10,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
     dashboard_core_source = ui_sources["dashboard_core.py"]
     maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     task_status_panel_source = ui_sources["task_status_panel.py"]
+    task_status_presenter_source = ui_sources["task_status_presenter.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     retry_submission_enabled = 'f"/tasks/{task_id}/retry"' in ui_source and (
@@ -165,20 +166,28 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "def render_task_status_panel(" not in dashboard_core_source
         and "run_every" in task_status_panel_source
         and "from app.ui.task_status_panel import" in ui_source,
+        "ui_task_status_presenter_extracted": (
+            "from app.ui.task_status_presenter import (" in task_status_panel_source
+            and "import streamlit" not in task_status_presenter_source
+            and "def task_action_preflight_summary(" in task_status_presenter_source
+            and "def task_status_operation_label(" in task_status_presenter_source
+            and "def task_status_state_label(" in task_status_presenter_source
+            and "def task_status_poll_caption(" in task_status_presenter_source
+        ),
         "ui_task_status_poll_backoff_enabled": "def task_status_poll_interval_seconds("
-        in task_status_panel_source
-        and "TASK_STATUS_QUEUED_POLL_SECONDS" in task_status_panel_source
-        and "TASK_STATUS_RETRY_POLL_SECONDS" in task_status_panel_source
+        in task_status_presenter_source
+        and "TASK_STATUS_QUEUED_POLL_SECONDS" in task_status_presenter_source
+        and "TASK_STATUS_RETRY_POLL_SECONDS" in task_status_presenter_source
         and "task_status_poll_interval_seconds(" in task_status_panel_source,
         "ui_task_status_autorefresh_feedback_enabled": "def task_status_poll_caption("
-        in task_status_panel_source
-        and "狀態輪詢：" in task_status_panel_source
-        and "TASK_PROGRESS_STEP_LABELS = {" in task_status_panel_source
-        and "def task_status_progress_step_label(" in task_status_panel_source
+        in task_status_presenter_source
+        and "狀態輪詢：" in task_status_presenter_source
+        and "TASK_PROGRESS_STEP_LABELS = {" in task_status_presenter_source
+        and "def task_status_progress_step_label(" in task_status_presenter_source
         and "task_status_progress_step_label(" in task_status_panel_source
-        and "等待背景執行器" in task_status_panel_source
-        and "背景執行器已接手" in task_status_panel_source
-        and "fragment_supported" in task_status_panel_source
+        and "等待背景執行器" in task_status_presenter_source
+        and "背景執行器已接手" in task_status_presenter_source
+        and "fragment_supported" in task_status_presenter_source
         and "st.caption(\n        task_status_poll_caption(" in task_status_panel_source,
         "ui_task_status_failure_diagnostics_enabled": "def task_status_diagnostic_rows("
         in task_status_panel_source
@@ -198,14 +207,14 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "已遮蔽敏感欄位" in task_status_panel_source
         and "exception_message_preview" in task_status_panel_source,
         "ui_task_status_operator_context_labels_enabled": (
-            "TASK_STATUS_LABELS = {" in task_status_panel_source
-            and "RUN_STATUS_LABELS = {" in task_status_panel_source
-            and "RUN_SOURCE_LABELS = {" in task_status_panel_source
-            and "def task_status_state_label(" in task_status_panel_source
-            and "def task_run_status_label(" in task_status_panel_source
-            and "def task_run_source_label(" in task_status_panel_source
+            "TASK_STATUS_LABELS = {" in task_status_presenter_source
+            and "RUN_STATUS_LABELS = {" in task_status_presenter_source
+            and "RUN_SOURCE_LABELS = {" in task_status_presenter_source
+            and "def task_status_state_label(" in task_status_presenter_source
+            and "def task_run_status_label(" in task_status_presenter_source
+            and "def task_run_source_label(" in task_status_presenter_source
             and "task_failure_operation_label(_operator_operation_from_source(raw_source))"
-            in task_status_panel_source
+            in task_status_presenter_source
             and '"celery_status": task_status_state_label(' in task_status_panel_source
             and '"ready": _task_context_ready_label(' in task_status_panel_source
             and '"successful": _task_context_success_label(' in task_status_panel_source
@@ -249,39 +258,40 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "可能消耗模型或資料源額度" in task_status_panel_source
         ),
         "ui_task_status_operation_preflight_summary_enabled": (
-            "def task_action_preflight_summary(" in task_status_panel_source
+            "def task_action_preflight_summary(" in task_status_presenter_source
             and "def render_task_action_preflight_summary(" in task_status_panel_source
             and "render_task_action_preflight_summary(" in task_status_panel_source
             and "task_action_preflight_summary(" in task_status_panel_source
             and 'class="task-action-preflight-summary' in task_status_panel_source
-            and 'f"任務編號 {task_id}"' in task_status_panel_source
-            and 'f"Task {task_id}"' not in task_status_panel_source
-            and "task_failure_next_action_text(task_status)" in task_status_panel_source
-            and "payload 不支援自動重試" not in task_status_panel_source
-            and "背景執行器已完成" in task_status_panel_source
-            and "worker 已完成" not in task_status_panel_source
+            and 'f"任務編號 {task_id}"' in task_status_presenter_source
+            and 'f"Task {task_id}"' not in task_status_presenter_source
+            and "task_failure_next_action_text(task_status)" in task_status_presenter_source
+            and "payload 不支援自動重試" not in task_status_presenter_source
+            and "背景執行器已完成" in task_status_presenter_source
+            and "worker 已完成" not in task_status_presenter_source
             and "會重新排隊並可能再次消耗模型、外部資料源或 API 額度"
-            in task_status_panel_source
-            and "此任務不支援一鍵重試" in task_status_panel_source
-            and "避免重複失敗與額度浪費" in task_status_panel_source
+            in task_status_presenter_source
+            and "此任務不支援一鍵重試" in task_status_presenter_source
+            and "避免重複失敗與額度浪費" in task_status_presenter_source
         ),
         "ui_task_status_operation_label_inference_enabled": (
-            "def task_status_operation_label(" in task_status_panel_source
-            and "task_status_operation_label(task_status)" in task_status_panel_source
-            and '"execution_context"' in task_status_panel_source
-            and '"operation"' in task_status_panel_source
-            and "def _task_run_payload(" in task_status_panel_source
-            and '"payload_json"' in task_status_panel_source
-            and '"workflow_name"' in task_status_panel_source
-            and "def _operator_operation_from_source(" in task_status_panel_source
-            and '"celery_"' in task_status_panel_source
+            "def task_status_operation_label(" in task_status_presenter_source
+            and "task_status_operation_label(task_status)" in task_status_presenter_source
+            and "task_action_preflight_summary(" in task_status_panel_source
+            and '"execution_context"' in task_status_presenter_source
+            and '"operation"' in task_status_presenter_source
+            and "def _task_run_payload(" in task_status_presenter_source
+            and '"payload_json"' in task_status_presenter_source
+            and '"workflow_name"' in task_status_presenter_source
+            and "def _operator_operation_from_source(" in task_status_presenter_source
+            and '"celery_"' in task_status_presenter_source
         ),
         "ui_task_status_terminal_task_action_guard_enabled": (
             "cancel_blocked = cancel_summary.get" in task_status_panel_source
             and "retry_blocked = retry_summary.get" in task_status_panel_source
-            and "此任務已結束，不能取消" in task_status_panel_source
-            and "此任務已成功，不需要一鍵重試" in task_status_panel_source
-            and "此任務仍在執行，不能重試" in task_status_panel_source
+            and "此任務已結束，不能取消" in task_status_presenter_source
+            and "此任務已成功，不需要一鍵重試" in task_status_presenter_source
+            and "此任務仍在執行，不能重試" in task_status_presenter_source
             and "disabled=cancel_blocked or not cancel_confirmed" in task_status_panel_source
             and "disabled=retry_blocked or not retry_confirmed" in task_status_panel_source
         ),

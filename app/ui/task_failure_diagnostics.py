@@ -53,6 +53,7 @@ OPERATION_LABELS = {
     "report_generation": "報告生成",
     "data_operation": "資料補強",
     "market_refresh": "市場資料刷新",
+    "market_data_refresh": "市場資料刷新",
     "company_filings_fetch": "公司文件抓取",
     "manual_ingest": "手動資料匯入",
     "rss_fetch": "RSS 抓取",

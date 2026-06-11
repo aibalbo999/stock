@@ -603,11 +603,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
     assert 'st.button("查詢背景任務狀態")' not in report_center_source
     assert 'st.json(api_get(f"/tasks/{selected_task_id}"))' not in report_center_source
+    task_status_presenter_source = ui.TASK_STATUS_PRESENTER_SOURCE.read_text()
+    assert "from app.ui.task_status_presenter import (" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "import streamlit" not in task_status_presenter_source
     assert "def task_status_diagnostic_rows(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "def task_execution_context_rows(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "執行上下文" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "def task_status_state_label(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "def task_run_source_label(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "def task_status_state_label(" in task_status_presenter_source
+    assert "def task_run_source_label(" in task_status_presenter_source
+    assert "def task_status_operation_label(" in task_status_presenter_source
     assert "已遮蔽敏感欄位" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "cancel_confirmed = st.checkbox(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert 'key=f"{refresh_key}_confirm_cancel"' in ui.TASK_STATUS_PANEL_SOURCE.read_text()
@@ -616,14 +620,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "disabled=cancel_blocked or not cancel_confirmed" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "disabled=retry_blocked or not retry_confirmed" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "可能消耗模型或資料源額度" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "def task_action_preflight_summary(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "def task_action_preflight_summary(" in task_status_presenter_source
     assert "def render_task_action_preflight_summary(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     assert "task-action-preflight-summary" in ui.STYLE_SOURCE.read_text()
-    assert "此任務不支援一鍵重試" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "此任務已結束，不能取消" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "此任務已成功，不需要一鍵重試" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "此任務仍在執行，不能重試" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
-    assert "避免重複失敗與額度浪費" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
+    assert "此任務不支援一鍵重試" in task_status_presenter_source
+    assert "此任務已結束，不能取消" in task_status_presenter_source
+    assert "此任務已成功，不需要一鍵重試" in task_status_presenter_source
+    assert "此任務仍在執行，不能重試" in task_status_presenter_source
+    assert "避免重複失敗與額度浪費" in task_status_presenter_source
     assert "def hydrate_active_report_result(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def hydrate_active_report_result(" in ui.REPORT_STATE_SOURCE.read_text()
     assert "def parse_json_object(" not in ui.DASHBOARD_CORE_SOURCE.read_text()

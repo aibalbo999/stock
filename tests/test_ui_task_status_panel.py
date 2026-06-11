@@ -112,9 +112,10 @@ def test_task_action_preflight_summary_blocks_explicitly_non_retryable_task() ->
         "label": "任務操作摘要",
         "title": "此任務不支援一鍵重試",
         "detail": "任務編號 task-bad-payload｜狀態 失敗｜操作 資料補強｜重試類型 -",
-        "next_step": "payload 不支援自動重試；請依錯誤內容手動重新送出。",
+        "next_step": "任務輸入不支援自動重試；請依錯誤內容手動重新送出。",
         "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
     }
+    assert "payload" not in summary["next_step"]
 
 
 def test_task_action_preflight_summary_blocks_retry_for_successful_task() -> None:
@@ -241,8 +242,9 @@ def test_task_action_preflight_summary_allows_confirmed_cancel() -> None:
         "title": "可以送出取消要求",
         "detail": "任務編號 task-running｜狀態 執行中｜操作 市場資料刷新",
         "next_step": "按「取消任務」通知背景任務停止；取消後請刷新狀態確認是否已停止。",
-        "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+        "impact": "取消要求會寫入任務紀錄；若背景執行器已完成，可能只會留下取消請求紀錄。",
     }
+    assert "worker" not in summary["impact"]
 
 
 def test_render_task_action_preflight_summary_outputs_operator_card(monkeypatch) -> None:
@@ -510,9 +512,10 @@ def test_task_status_controls_block_retry_when_task_is_explicitly_non_retryable(
     assert any(
         'class="task-action-preflight-summary is-blocked"' in markdown
         and "此任務不支援一鍵重試" in markdown
-        and "payload 不支援自動重試" in markdown
+        and "任務輸入不支援自動重試" in markdown
         for markdown in fake_st.markdowns
     )
+    assert "payload 不支援自動重試" not in "\n".join(fake_st.markdowns)
     assert posted_paths == []
 
 

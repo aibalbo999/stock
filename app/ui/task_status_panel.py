@@ -116,15 +116,14 @@ def task_action_preflight_summary(
         retry_kind = task_failure_retry_kind_label(task_status.get("retry_kind"))
         detail = "｜".join([*detail_parts, f"重試類型 {retry_kind}"])
         if task_status.get("retryable") is False:
+            next_step = task_failure_next_action_text(task_status)
             return {
                 "state": "blocked",
                 "label": "任務操作摘要",
                 "title": "此任務不支援一鍵重試",
                 "detail": detail,
-                "next_step": str(
-                    task_status.get("next_action")
-                    or "請依失敗診斷修正輸入或外部設定後，從原本入口重新送出。"
-                ),
+                "next_step": next_step
+                or "請依失敗診斷修正輸入或外部設定後，從原本入口重新送出。",
                 "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
             }
         if _task_status_successful(task_status):
@@ -180,7 +179,7 @@ def task_action_preflight_summary(
             "title": "準備取消背景任務",
             "detail": detail,
             "next_step": "勾選確認後，再按「取消任務」送出取消要求。",
-            "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+            "impact": "取消要求會寫入任務紀錄；若背景執行器已完成，可能只會留下取消請求紀錄。",
         }
     return {
         "state": "ready",
@@ -188,7 +187,7 @@ def task_action_preflight_summary(
         "title": "可以送出取消要求",
         "detail": detail,
         "next_step": "按「取消任務」通知背景任務停止；取消後請刷新狀態確認是否已停止。",
-        "impact": "取消要求會寫入任務紀錄；若 worker 已完成，可能只會留下取消請求紀錄。",
+        "impact": "取消要求會寫入任務紀錄；若背景執行器已完成，可能只會留下取消請求紀錄。",
     }
 
 

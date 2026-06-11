@@ -193,7 +193,11 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "ui_operator_service_status_unknown_guard_enabled": (
             "def service_status_unavailable(" in operator_status_source
             and "系統狀態暫不可讀" in operator_status_source
-            and "無法讀取 /services/status" in operator_status_source
+            and "無法讀取系統狀態" in operator_status_source
+            and "目前無法讀取系統狀態；請到維護頁確認 API 與背景任務狀態。"
+            in operator_status_source
+            and "無法讀取 /services/status" not in operator_status_source
+            and "目前無法讀取 /services/status" not in operator_status_source
             and "service_status_unavailable(service_snapshot)" in operator_decisions_source
             and "確認系統狀態" in operator_decisions_source
             and "這不代表背景任務已壞掉" in operator_decisions_source

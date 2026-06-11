@@ -116,8 +116,11 @@ def test_operator_status_overall_marks_missing_service_status_as_attention() -> 
     assert operator_status_overall({}, _successful_task_summary(), _reports()) == {
         "state": "attention",
         "label": "系統狀態暫不可讀",
-        "detail": "目前無法讀取 /services/status；請到維護頁確認 API 與背景任務狀態。",
+        "detail": "目前無法讀取系統狀態；請到維護頁確認 API 與背景任務狀態。",
     }
+    assert "/services/status" not in str(
+        operator_status_overall({}, _successful_task_summary(), _reports())
+    )
 
 
 def test_operator_status_overall_blocks_for_stale_running_before_failures_or_reports() -> None:
@@ -454,11 +457,12 @@ def test_operator_status_cards_do_not_report_worker_offline_when_service_status_
     assert cards[0] == {
         "title": "系統狀態",
         "value": "狀態未知",
-        "caption": "無法讀取 /services/status",
+        "caption": "無法讀取系統狀態",
         "state": "attention",
         "action_label": "查看維護",
         "route_hint": "settings:maintenance",
     }
+    assert "/services/status" not in cards[0]["caption"]
 
 
 def test_operator_status_cards_mark_missing_task_summary_as_unknown_not_clear() -> None:

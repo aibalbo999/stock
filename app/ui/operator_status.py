@@ -16,7 +16,7 @@ def operator_status_overall(
         return {
             "state": "attention",
             "label": "系統狀態暫不可讀",
-            "detail": "目前無法讀取 /services/status；請到維護頁確認 API 與背景任務狀態。",
+            "detail": "目前無法讀取系統狀態；請到維護頁確認 API 與背景任務狀態。",
         }
 
     task_queue = _task_queue_from_snapshot(service_snapshot)
@@ -93,7 +93,7 @@ def operator_status_cards(
             "title": "系統狀態",
             "value": "處理中" if queue_running else _queue_card_value(queue_state),
             "caption": (
-                "無法讀取 /services/status"
+                "無法讀取系統狀態"
                 if service_status_missing
                 else "Worker 線上，最新任務執行中"
                 if queue_running

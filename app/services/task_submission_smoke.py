@@ -118,9 +118,9 @@ def run_task_submission_smoke(
 def format_task_submission_smoke(report: dict) -> str:
     lines = [
         f"背景任務送出檢查: {report.get('status', 'unknown')}",
-        f"- api: {report.get('api_url', '-')}",
-        f"- operation: {report.get('operation', '-')}",
-        f"- submit: {bool(report.get('submit'))}",
+        f"- API: {report.get('api_url', '-')}",
+        f"- 操作: {report.get('operation', '-')}",
+        f"- 會送出任務: {_yes_no(report.get('submit'))}",
     ]
     task_queue = report.get("task_queue") if isinstance(report.get("task_queue"), dict) else {}
     runtime_identity = (
@@ -130,38 +130,46 @@ def format_task_submission_smoke(report: dict) -> str:
     )
     if runtime_identity:
         lines.append(
-            "- runtime: "
-            f"status={runtime_identity.get('status', '-')}; "
-            f"expected={runtime_identity.get('expected_commit_short') or '-'}; "
-            f"actual={runtime_identity.get('actual_commit_short') or '-'}"
+            "- API 執行版本: "
+            f"狀態={runtime_identity.get('status', '-')}；"
+            f"預期={runtime_identity.get('expected_commit_short') or '-'}；"
+            f"實際={runtime_identity.get('actual_commit_short') or '-'}"
         )
     if task_queue:
         lines.append(
             "- 背景任務佇列: "
-            f"可送出={bool(task_queue.get('ready'))}; "
-            f"可執行={bool(task_queue.get('processing_ready'))}; "
-            f"背景執行器在線={bool(task_queue.get('worker_online'))}"
+            f"可送出={_yes_no(task_queue.get('ready'))}；"
+            f"可執行={_yes_no(task_queue.get('processing_ready'))}；"
+            f"背景執行器在線={_yes_no(task_queue.get('worker_online'))}"
         )
     submission = report.get("submission") if isinstance(report.get("submission"), dict) else {}
     if submission:
         body = submission.get("json") if isinstance(submission.get("json"), dict) else {}
         lines.append(
-            "- submission: "
-            f"ok={bool(submission.get('ok'))}; "
-            f"status_code={submission.get('status_code')}; "
-            f"task_id={body.get('task_id', '-')}"
+            "- 任務送出: "
+            f"成功={_yes_no(submission.get('ok'))}；"
+            f"HTTP={submission.get('status_code')}；"
+            f"任務 ID={body.get('task_id', '-')}"
         )
     poll = report.get("task_poll") if isinstance(report.get("task_poll"), dict) else {}
     if poll:
         lines.append(
-            "- task poll: "
-            f"status={poll.get('status', '-')}; "
-            f"ready={bool(poll.get('ready'))}; "
-            f"successful={bool(poll.get('successful'))}"
+            "- 任務輪詢: "
+            f"狀態={poll.get('status', '-')}；"
+            f"完成={_yes_no(poll.get('ready'))}；"
+            f"成功={_yes_no(poll.get('successful'))}"
         )
     for action in report.get("next_actions") or []:
-        lines.append(f"- next: {action}")
+        lines.append(f"- 下一步: {action}")
     return "\n".join(lines)
+
+
+def _yes_no(value: object) -> str:
+    if value is True:
+        return "是"
+    if value is False:
+        return "否"
+    return str(value if value is not None else "-")
 
 
 def to_json(report: dict) -> str:

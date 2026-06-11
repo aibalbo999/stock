@@ -89,13 +89,52 @@ def test_task_submission_smoke_format_uses_operator_language() -> None:
                 "processing_ready": False,
                 "worker_online": False,
             },
+            "runtime_identity": {
+                "status": "failed",
+                "expected_commit_short": "new-commit",
+                "actual_commit_short": "old-commit",
+            },
+            "submission": {
+                "ok": True,
+                "status_code": 202,
+                "json": {"task_id": "task-1"},
+            },
+            "task_poll": {
+                "status": "completed",
+                "ready": True,
+                "successful": True,
+            },
             "next_actions": ["背景任務提交路徑正常。"],
         }
     )
 
     assert "背景任務送出檢查: passed" in rendered
+    assert "- API: http://api.test" in rendered
+    assert "- 操作: market_refresh" in rendered
+    assert "- 會送出任務: 是" in rendered
+    assert "- API 執行版本: 狀態=failed；預期=new-commit；實際=old-commit" in rendered
     assert "背景任務佇列" in rendered
+    assert "可送出=是" in rendered
+    assert "可執行=否" in rendered
+    assert "背景執行器在線=否" in rendered
+    assert "- 任務送出: 成功=是；HTTP=202；任務 ID=task-1" in rendered
+    assert "- 任務輪詢: 狀態=completed；完成=是；成功=是" in rendered
+    assert "- 下一步: 背景任務提交路徑正常。" in rendered
     assert "Task submission smoke" not in rendered
+    assert "- api:" not in rendered
+    assert "- operation:" not in rendered
+    assert "- submit:" not in rendered
+    assert "- runtime:" not in rendered
+    assert "- submission:" not in rendered
+    assert "- task poll:" not in rendered
+    assert "- next:" not in rendered
+    assert "status=" not in rendered
+    assert "expected=" not in rendered
+    assert "actual=" not in rendered
+    assert "ok=" not in rendered
+    assert "status_code=" not in rendered
+    assert "ready=" not in rendered
+    assert "successful=" not in rendered
     assert "worker_online" not in rendered
     assert "processing_ready" not in rendered
 

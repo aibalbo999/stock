@@ -35,7 +35,7 @@ def test_external_env_actions_surface_defaulted_neo4j_local_rules() -> None:
         == ".venv/bin/python scripts/start_system.py --start-dependencies"
     )
     assert external_env_key_next_step(item, "NEO4J_URI", "缺少") == (
-        "補齊 NEO4J_URI 後重跑對應 smoke。"
+        "補齊 NEO4J_URI 後重跑對應檢查。"
     )
 
 

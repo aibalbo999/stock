@@ -173,6 +173,7 @@ def test_company_filing_playwright_render_can_be_disabled(monkeypatch) -> None:
 
 
 def test_company_filing_render_fallback_ignores_playwright_without_dependency(monkeypatch) -> None:
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "false")
     monkeypatch.setattr(
         "app.data_sources.company_filing_render.company_filing_playwright_available", lambda: False
     )

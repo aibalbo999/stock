@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -9,18 +10,35 @@ from app.services import supply_chain_graph_models as graph_models
 from app.services import supply_chain_graph_reasoning
 from app.services.supply_chain_graph import SupplyChainGraph
 from app.services.supply_chain_graph_api import SupplyChainGraphApiService
+from app.services.supply_chain_graph_neo4j import Neo4jGraphImportService
 from app.services.whitelist import SupplyChainWhitelist
 
 
-def supply_chain_client() -> TestClient:
+def supply_chain_client(api_service: SupplyChainGraphApiService | None = None) -> TestClient:
     class Services:
         @staticmethod
         def supply_chain_graph_api() -> SupplyChainGraphApiService:
-            return SupplyChainGraphApiService()
+            return api_service or SupplyChainGraphApiService()
 
     app = FastAPI()
     app.include_router(create_supply_chain_router(api_services=Services()))
     return TestClient(app)
+
+
+def supply_chain_client_without_neo4j_config() -> TestClient:
+    settings = SimpleNamespace(
+        neo4j_uri="",
+        neo4j_database="neo4j",
+        neo4j_user="",
+        neo4j_password="",
+        neo4j_timeout_seconds=15.0,
+        neo4j_status_check_connection=False,
+    )
+    neo4j_service = Neo4jGraphImportService(settings_provider=lambda: settings)
+    api_service = SupplyChainGraphApiService(
+        neo4j_import_service_factory=lambda: neo4j_service,
+    )
+    return supply_chain_client(api_service)
 
 
 def test_supply_chain_graph_reexports_dedicated_model_types() -> None:
@@ -272,7 +290,7 @@ def test_supply_chain_graph_cypher_plan_endpoint_returns_guarded_plan() -> None:
 
 
 def test_supply_chain_graph_cypher_query_endpoint_degrades_without_neo4j() -> None:
-    response = supply_chain_client().get(
+    response = supply_chain_client_without_neo4j_config().get(
         "/supply-chain/graph/cypher-query"
         "?tickers=3324&target_ticker=2382&topic=AI%20伺服器散熱&question=上下游衝擊"
     )
@@ -287,7 +305,9 @@ def test_supply_chain_graph_cypher_query_endpoint_degrades_without_neo4j() -> No
 
 
 def test_supply_chain_graph_neo4j_import_endpoint_is_safe_without_config() -> None:
-    response = supply_chain_client().post("/supply-chain/graph/neo4j/import?tickers=3324")
+    response = supply_chain_client_without_neo4j_config().post(
+        "/supply-chain/graph/neo4j/import?tickers=3324"
+    )
 
     assert response.status_code == 200
     body = response.json()

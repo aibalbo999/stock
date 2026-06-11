@@ -41,6 +41,7 @@ def test_company_filing_fetch_url_document_refreshes_bad_cache_with_browser_rend
         )
 
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "browserless")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
     get_settings.cache_clear()
     monkeypatch.setattr(CompanyFilingFetcher, "_fetch_url_as_document", blocked_direct_fetch)
@@ -152,6 +153,7 @@ def test_company_filing_browser_render_posts_to_configured_endpoint(monkeypatch)
             )
 
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "browserless")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TOKEN", "secret-token")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_TIMEOUT_SECONDS", "12")
@@ -328,6 +330,7 @@ def test_company_filing_browser_render_respects_configured_concurrency(monkeypat
         )
 
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_PROVIDER", "browserless")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_URL", "https://browserless.example/content")
     monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_CONCURRENCY", "1")
     get_settings.cache_clear()

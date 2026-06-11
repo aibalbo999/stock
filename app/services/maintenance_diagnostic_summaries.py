@@ -78,7 +78,7 @@ def _upgrade_audit_summary_rows(payload: dict) -> list[dict]:
     summary = _dict_value(payload, "summary")
     rows = [
         _summary_row(
-            "Upgrade audit",
+            "升級稽核",
             payload.get("overall_status") or "-",
             _ready_count(summary.get("ready"), summary.get("total_checks")),
             _counts(
@@ -103,7 +103,7 @@ def _upgrade_audit_summary_rows(payload: dict) -> list[dict]:
 def _external_integrations_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "External integrations smoke",
+            "外部整合 smoke",
             payload.get("status") or "-",
             _ready_count(payload.get("ready_count"), payload.get("check_count")),
             _counts(actionable=payload.get("actionable_check_count")),
@@ -128,7 +128,7 @@ def _external_integrations_summary_rows(payload: dict) -> list[dict]:
 def _external_env_gap_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "External env gaps",
+            "外部 env 缺口",
             payload.get("status") or "-",
             _counts(
                 local=payload.get("local_action_count"), manual=payload.get("manual_secret_count")
@@ -161,7 +161,7 @@ def _external_env_check_summary_rows(payload: dict) -> list[dict]:
     checks = _dict_value(payload, "checks")
     rows = [
         _summary_row(
-            "External env check",
+            "外部 env 檢查",
             payload.get("status") or "-",
             _counts(target=payload.get("target"), gaps=payload.get("gap_count")),
             _counts(targets=len(checks), env_file=payload.get("env_file")),
@@ -212,7 +212,7 @@ def _external_env_check_next_action(check: dict) -> str:
 def _llm_quota_env_audit_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "LLM quota env audit",
+            "LLM 額度環境稽核",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
             _counts(
@@ -312,7 +312,7 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
     attempts = _list_value(payload, "attempts")
     rows = [
         _summary_row(
-            "Company filing render",
+            "公司文件 render",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
             _counts(attempts=len(attempts), proxies=payload.get("proxy_count")),
@@ -349,7 +349,7 @@ def _company_filing_render_summary_rows(payload: dict) -> list[dict]:
 def _structured_company_filing_smoke_summary_rows(payload: dict) -> list[dict]:
     rows = [
         _summary_row(
-            "Structured filing contract",
+            "結構化文件 contract",
             payload.get("status") or "-",
             _yes_no(payload.get("ready")),
             _counts(
@@ -427,7 +427,7 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
     )
     rows = [
         _summary_row(
-            "Task submission smoke",
+            "背景任務送出 smoke",
             payload.get("status") or "-",
             _counts(submit=payload.get("submit"), wait=payload.get("wait")),
             _counts(failed=failed_checks, warnings=warning_checks),
@@ -450,7 +450,7 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         check_processing_ready = bool(payload.get("check_processing_ready", True))
         rows.append(
             _summary_row(
-                "Task queue",
+                "背景任務佇列",
                 "ready" if task_queue.get("ready") else "not_ready",
                 _counts(
                     processing=(
@@ -469,7 +469,7 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
         body = _dict_value(submission, "json")
         rows.append(
             _summary_row(
-                "Data operation submission",
+                "資料操作送出",
                 "ok" if submission.get("ok") else "failed",
                 submission.get("status_code") or "-",
                 body.get("task_id") or submission.get("error") or "-",
@@ -480,7 +480,7 @@ def _task_submission_smoke_summary_rows(payload: dict) -> list[dict]:
     if task_poll:
         rows.append(
             _summary_row(
-                "Task polling",
+                "任務狀態輪詢",
                 task_poll.get("status") or "-",
                 _counts(
                     ready=task_poll.get("ready"),

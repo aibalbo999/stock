@@ -6,7 +6,7 @@ import sys
 MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     "upgrade_audit": {
         "id": "upgrade_audit",
-        "label": "Upgrade audit",
+        "label": "升級稽核",
         "description": "檢查核心升級能力與外部部署選配狀態，並自動套用已啟動的本機依賴預設值。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
@@ -22,7 +22,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "external_integrations_smoke": {
         "id": "external_integrations_smoke",
-        "label": "External integrations smoke",
+        "label": "外部整合 smoke",
         "description": "執行外部整合 smoke contract，不會啟動選配服務。",
         "display_command": ".venv/bin/python scripts/external_integrations_smoke.py --json",
         "argv": [sys.executable, "scripts/external_integrations_smoke.py", "--json"],
@@ -31,7 +31,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "external_deployment_env_gaps": {
         "id": "external_deployment_env_gaps",
-        "label": "External deployment env gaps",
+        "label": "外部部署 env 缺口",
         "description": "彙整外部部署選配缺少的 env key，區分本機可套用與需人工補密鑰。",
         "display_command": ".venv/bin/python scripts/external_deployment_env_gaps.py --json",
         "argv": [sys.executable, "scripts/external_deployment_env_gaps.py", "--json"],
@@ -40,7 +40,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "external_deployment_env_check": {
         "id": "external_deployment_env_check",
-        "label": "External deployment env check",
+        "label": "外部部署 env 檢查",
         "description": "比對目前 .env 的 host/compose 外部部署設定狀態，輸出會遮蔽密鑰。",
         "display_command": (
             ".venv/bin/python scripts/external_deployment_env_gaps.py "
@@ -61,7 +61,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "llm_quota_env_audit": {
         "id": "llm_quota_env_audit",
-        "label": "LLM quota env audit",
+        "label": "LLM 額度環境稽核",
         "description": (
             "檢查 .env 的 LLM_MODEL_DAILY_REQUEST_BUDGETS 是否符合追蹤中的 "
             "Free Tier / AI Studio 參考額度，不顯示密鑰。"
@@ -81,7 +81,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "celery_inspect_ping": {
         "id": "celery_inspect_ping",
-        "label": "Celery inspect ping",
+        "label": "Celery worker 連線檢查",
         "description": "檢查 Celery worker 是否回應目前設定的 Redis broker。",
         "display_command": (
             ".venv/bin/python -m celery -A app.tasks.celery_app.celery_app inspect ping"
@@ -100,7 +100,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "task_submission_smoke": {
         "id": "task_submission_smoke",
-        "label": "Task submission readiness smoke",
+        "label": "背景任務送出 readiness smoke",
         "description": (
             "只讀檢查 /services/runtime-identity、/services/status 的 task_queue readiness "
             "與背景任務提交 smoke 指令，不送出 Celery 任務。"
@@ -112,7 +112,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "task_submission_noop_smoke": {
         "id": "task_submission_noop_smoke",
-        "label": "Task submission no-op submit smoke",
+        "label": "背景任務 no-op 送出測試",
         "description": (
             "送出 smoke=true 的 no-op market_refresh，驗證 /tasks/data-operation、"
             "Celery enqueue 與 task wiring；不呼叫外部市場資料 API。完整 submit/wait "
@@ -138,7 +138,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "local_neo4j_upgrade_audit": {
         "id": "local_neo4j_upgrade_audit",
-        "label": "Local Neo4j upgrade audit",
+        "label": "本機 Neo4j 升級稽核",
         "description": "套用本機 Neo4j 預設值後檢查 GraphRAG live integration 狀態。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py "
@@ -157,7 +157,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "local_chroma_upgrade_audit": {
         "id": "local_chroma_upgrade_audit",
-        "label": "Local Chroma upgrade audit",
+        "label": "本機 Chroma 升級稽核",
         "description": "套用本機 Chroma 預設值後檢查 RAG / vector store integration 狀態。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py "
@@ -176,7 +176,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "local_unlocker_upgrade_audit": {
         "id": "local_unlocker_upgrade_audit",
-        "label": "Local Neo4j + unlocker upgrade audit",
+        "label": "本機 Neo4j 與 unlocker 升級稽核",
         "description": "套用本機 Neo4j 與 FlareSolverr 預設值後檢查外部選配狀態。",
         "display_command": (
             ".venv/bin/python scripts/upgrade_audit.py "
@@ -215,7 +215,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "graphrag_local_contract_smoke": {
         "id": "graphrag_local_contract_smoke",
-        "label": "GraphRAG local contract smoke",
+        "label": "GraphRAG 本機 contract smoke",
         "description": "確認 guarded Cypher planner 與本機 dry-run contract。",
         "display_command": (
             ".venv/bin/python scripts/neo4j_graphrag_smoke.py "
@@ -261,7 +261,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "graphrag_import_first_smoke": {
         "id": "graphrag_import_first_smoke",
-        "label": "GraphRAG import-first smoke",
+        "label": "GraphRAG 匯入後查詢測試",
         "description": (
             "先將 bundled supply-chain graph payload 匯入目前設定的本機 Neo4j，"
             "再驗證 guarded live Cypher query。"
@@ -292,7 +292,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "company_filing_render_smoke": {
         "id": "company_filing_render_smoke",
-        "label": "Company filing render smoke",
+        "label": "公司文件 render smoke",
         "description": "驗證 Browserless / Playwright / proxy fallback 可解析一般 HTML。",
         "display_command": (
             ".venv/bin/python scripts/company_filing_render_smoke.py "
@@ -310,7 +310,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_sample_contract_smoke": {
         "id": "structured_company_filing_sample_contract_smoke",
-        "label": "Structured filing sample contract smoke",
+        "label": "結構化文件 sample contract smoke",
         "description": "用 bundled sample JSON 驗證 TEJ/資料商結構化公司文件 API contract，不連外。",
         "display_command": (
             ".venv/bin/python scripts/structured_company_filing_smoke.py "
@@ -337,7 +337,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_fixture_http_smoke": {
         "id": "structured_company_filing_fixture_http_smoke",
-        "label": "Structured filing fixture HTTP smoke",
+        "label": "結構化文件 fixture HTTP smoke",
         "description": "臨時啟動本機 fixture 並跑 live HTTP fetch path，不連外且不需要 token。",
         "display_command": (
             ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py "
@@ -354,7 +354,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "structured_company_filing_provider_profile_fixture_smoke": {
         "id": "structured_company_filing_provider_profile_fixture_smoke",
-        "label": "Structured filing TEJ profile fixture smoke",
+        "label": "結構化文件 TEJ profile fixture smoke",
         "description": (
             "用本機 fixture 驗證 TEJ provider profile 的 Bearer auth、"
             "document_type 參數與 JSON 轉換，不連外且不需要真實 token。"
@@ -376,7 +376,7 @@ MAINTENANCE_DIAGNOSTIC_ACTIONS = {
     },
     "high_risk_unlocker_smoke": {
         "id": "high_risk_unlocker_smoke",
-        "label": "High-risk MOPS unlocker smoke",
+        "label": "高風險 MOPS unlocker smoke",
         "description": "驗證 FlareSolverr / unlocker provider 是否可處理 MOPS 高風險入口。",
         "display_command": (
             ".venv/bin/python scripts/company_filing_render_smoke.py "

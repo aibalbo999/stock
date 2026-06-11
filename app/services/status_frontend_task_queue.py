@@ -90,7 +90,9 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             and 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"'
             in maintenance_task_panels_source
             and "disabled=not diagnostic_confirmed" in maintenance_task_panels_source
-            and "我了解這會送出維護診斷背景任務" in maintenance_task_panels_source
+            and 'f"我了解這會送出「{selected_label}」維護診斷背景任務"'
+            in maintenance_task_panels_source
+            and 'f"執行 {selected_label}"' in maintenance_task_panels_source
             and "避免誤觸診斷" in maintenance_task_panels_source
         ),
         "ui_maintenance_safe_noop_diagnostics_enabled": (

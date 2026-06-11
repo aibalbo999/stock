@@ -686,7 +686,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "actions": [
                 {
                     "id": "upgrade_audit",
-                    "label": "Upgrade audit",
+                    "label": "升級稽核",
                     "description": "檢查核心升級能力與外部部署選配狀態。",
                     "display_command": ".venv/bin/python scripts/upgrade_audit.py",
                     "timeout_seconds": 90,
@@ -696,7 +696,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
                 },
                 {
                     "id": "task_submission_noop_smoke",
-                    "label": "Task submission no-op",
+                    "label": "背景任務 no-op 送出測試",
                     "description": "送出 smoke=true 的 no-op market_refresh。",
                     "display_command": ".venv/bin/python scripts/task_submission_smoke.py --submit --wait --json",
                     "timeout_seconds": 45,
@@ -706,7 +706,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
                 },
                 {
                     "id": "graphrag_import_first_smoke",
-                    "label": "GraphRAG import-first smoke",
+                    "label": "GraphRAG 匯入後查詢測試",
                     "description": "匯入 bundled graph payload 後驗證 live Cypher。",
                     "display_command": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --json",
                     "timeout_seconds": 120,
@@ -728,7 +728,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
 
     assert rows == [
         {
-            "動作": "Upgrade audit",
+            "動作": "升級稽核",
             "狀態": "只讀可執行",
             "效果": "read_only",
             "說明": "檢查核心升級能力與外部部署選配狀態。",
@@ -736,7 +736,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "Timeout": 90,
         },
         {
-            "動作": "Task submission no-op",
+            "動作": "背景任務 no-op 送出測試",
             "狀態": "安全 no-op",
             "效果": "safe_noop_task_submission",
             "說明": "送出 smoke=true 的 no-op market_refresh。",
@@ -744,7 +744,7 @@ def test_maintenance_diagnostic_action_rows_surface_allowlisted_actions() -> Non
             "Timeout": 45,
         },
         {
-            "動作": "GraphRAG import-first smoke",
+            "動作": "GraphRAG 匯入後查詢測試",
             "狀態": "本機 Neo4j smoke",
             "效果": "safe_local_neo4j_import_smoke",
             "說明": "匯入 bundled graph payload 後驗證 live Cypher。",
@@ -816,7 +816,7 @@ def test_maintenance_diagnostic_actions_require_confirmation_before_submit(monke
             "actions": [
                 {
                     "id": "upgrade_audit",
-                    "label": "Upgrade audit",
+                    "label": "升級稽核",
                     "description": "檢查核心升級能力與外部部署選配狀態。",
                     "display_command": ".venv/bin/python scripts/upgrade_audit.py",
                     "timeout_seconds": 90,
@@ -830,16 +830,17 @@ def test_maintenance_diagnostic_actions_require_confirmation_before_submit(monke
 
     assert fake_st.checkboxes == [
         {
-            "label": "我了解這會送出維護診斷背景任務",
+            "label": "我了解這會送出「升級稽核」維護診斷背景任務",
             "value": False,
             "key": "maintenance_diagnostic_confirm_upgrade_audit",
         }
     ]
     assert fake_st.buttons == [
         {
-            "label": "執行診斷",
+            "label": "執行 升級稽核",
             "key": "maintenance_run_diagnostic_action",
             "disabled": True,
+            "help": ".venv/bin/python scripts/upgrade_audit.py",
         }
     ]
     assert any("避免誤觸診斷" in caption for caption in fake_st.captions)
@@ -863,7 +864,7 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
 
         def selectbox(self, _label, options, *, format_func, key):
             assert key == "maintenance_diagnostic_action_select"
-            assert format_func(options[0]) == "Task submission no-op"
+            assert format_func(options[0]) == "背景任務 no-op 送出測試"
             return options[0]
 
         def checkbox(self, label: str, *, value: bool = False, key: str):
@@ -890,7 +891,7 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
             "actions": [
                 {
                     "id": "task_submission_noop_smoke",
-                    "label": "Task submission no-op",
+                    "label": "背景任務 no-op 送出測試",
                     "description": "送出 smoke=true 的 no-op market_refresh。",
                     "display_command": ".venv/bin/python scripts/task_submission_smoke.py",
                     "timeout_seconds": 45,
@@ -904,9 +905,10 @@ def test_maintenance_diagnostic_actions_submit_after_confirmation(monkeypatch) -
 
     assert fake_st.buttons == [
         {
-            "label": "執行診斷",
+            "label": "執行 背景任務 no-op 送出測試",
             "key": "maintenance_run_diagnostic_action",
             "disabled": False,
+            "help": ".venv/bin/python scripts/task_submission_smoke.py",
         }
     ]
     assert submitted == [

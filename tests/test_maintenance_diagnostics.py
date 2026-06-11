@@ -535,7 +535,7 @@ def test_run_maintenance_diagnostic_action_summarizes_upgrade_audit_json(
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "Upgrade audit"
+    assert rows[0]["項目"] == "升級稽核"
     assert rows[0]["Ready"] == "28/32"
     assert "warnings=4" in rows[0]["數量"]
     assert "blocking=ready" in rows[0]["下一步"]
@@ -603,7 +603,7 @@ def test_run_maintenance_diagnostic_action_summarizes_external_smoke_gap_actions
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "External integrations smoke"
+    assert rows[0]["項目"] == "外部整合 smoke"
     assert rows[0]["Ready"] == "5/9"
     assert rows[1]["項目"] == "外部部署啟用"
     assert rows[2]["項目"] == "外部缺口處理類型"
@@ -724,7 +724,7 @@ def test_run_maintenance_diagnostic_action_summarizes_external_env_check_json(
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "External env check"
+    assert rows[0]["項目"] == "外部 env 檢查"
     assert rows[0]["狀態"] == "action_required"
     assert "target=all" in rows[0]["Ready"]
     assert rows[1]["項目"] == "host env"
@@ -782,7 +782,7 @@ def test_run_maintenance_diagnostic_action_summarizes_llm_quota_env_audit_json(
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "LLM quota env audit"
+    assert rows[0]["項目"] == "LLM 額度環境稽核"
     assert rows[0]["狀態"] == "drift_detected"
     assert rows[0]["Ready"] == "否"
     assert "drift=1" in rows[0]["數量"]
@@ -848,7 +848,7 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "Task submission smoke"
+    assert rows[0]["項目"] == "背景任務送出 smoke"
     assert rows[0]["狀態"] == "caution"
     assert "submit=True" in rows[0]["Ready"]
     assert "warnings=1" in rows[0]["數量"]
@@ -858,15 +858,15 @@ def test_run_maintenance_diagnostic_action_summarizes_task_submission_smoke_json
     assert rows[1]["Ready"] == "new-commit"
     assert rows[1]["數量"] == "old-commit"
     assert rows[1]["下一步"] == "api_runtime_commit_mismatch"
-    assert rows[2]["項目"] == "Task queue"
+    assert rows[2]["項目"] == "背景任務佇列"
     assert rows[2]["狀態"] == "not_ready"
     assert "worker=False" in rows[2]["Ready"]
     assert "legacy_status_shape=True" in rows[2]["數量"]
-    assert rows[3]["項目"] == "Data operation submission"
+    assert rows[3]["項目"] == "資料操作送出"
     assert rows[3]["狀態"] == "ok"
     assert rows[3]["Ready"] == "202"
     assert rows[3]["數量"] == "abc-123"
-    assert rows[4]["項目"] == "Task polling"
+    assert rows[4]["項目"] == "任務狀態輪詢"
     assert rows[4]["狀態"] == "finished"
     assert "successful=True" in rows[4]["Ready"]
     assert rows[4]["數量"] == "SUCCESS"
@@ -926,7 +926,7 @@ def test_run_maintenance_diagnostic_action_summarizes_structured_sample_smoke_js
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "Structured filing contract"
+    assert rows[0]["項目"] == "結構化文件 contract"
     assert rows[0]["狀態"] == "ready"
     assert rows[0]["Ready"] == "是"
     assert "documents=1" in rows[0]["數量"]
@@ -996,7 +996,7 @@ def test_run_maintenance_diagnostic_action_summarizes_structured_fixture_smoke_j
     )
 
     rows = result["summary_rows"]
-    assert rows[0]["項目"] == "Structured filing contract"
+    assert rows[0]["項目"] == "結構化文件 contract"
     assert rows[0]["狀態"] == "ready"
     assert rows[0]["Ready"] == "是"
     assert "documents=1" in rows[0]["數量"]

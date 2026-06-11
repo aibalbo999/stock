@@ -128,6 +128,18 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "latest_report_lifecycle_snapshot,\n        )"
             in system_settings_maintenance_source
         ),
+        "ui_incident_priority_summary_enabled": (
+            "_render_incident_priority_summary(incidents)" in system_settings_maintenance_source
+            and "def _render_incident_priority_summary(" in system_settings_maintenance_source
+            and "def incident_action_priority_summary(" in system_settings_maintenance_source
+            and "Critical {critical} / Warning {warning} / Info {info}"
+            in system_settings_maintenance_source
+            and "retryable_count" in system_settings_maintenance_source
+            and "task_linked_count" in system_settings_maintenance_source
+            and "passive_count" in system_settings_maintenance_source
+            and "歷史趨勢/觀測" in system_settings_maintenance_source
+            and ".incident-priority-summary" in style_source
+        ),
         "ui_incident_grouped_summary_enabled": (
             "def incident_summary_cards(" in system_settings_maintenance_source
             and "incident_summary_cards(incidents)" in system_settings_maintenance_source

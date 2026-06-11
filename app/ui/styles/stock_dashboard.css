@@ -525,6 +525,7 @@ textarea:focus,
 .report-health-strip,
 .report-lifecycle-strip,
 .incident-inbox,
+.incident-priority-summary,
 .maintenance-focus-banner,
 .external-deployment-operator-summary,
 .data-gap-action-map,
@@ -838,6 +839,62 @@ textarea:focus,
 .incident-action-controls strong {
     color: var(--stock-text);
     font-size: 0.9rem;
+}
+.incident-priority-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 14px;
+    align-items: start;
+    background: #ffffff;
+    border: 1px solid var(--stock-border);
+    border-left: 4px solid var(--stock-accent);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.incident-priority-summary.is-blocked {
+    border-left-color: var(--stock-danger);
+    background: linear-gradient(90deg, rgba(220, 38, 38, 0.06), #ffffff 42%);
+}
+.incident-priority-summary.is-attention {
+    border-left-color: var(--stock-warning);
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), #ffffff 42%);
+}
+.incident-priority-summary.is-watch {
+    border-left-color: var(--stock-accent);
+}
+.incident-priority-summary.is-ready {
+    border-left-color: var(--stock-success);
+}
+.incident-priority-summary span,
+.incident-priority-summary strong,
+.incident-priority-summary p {
+    display: block;
+}
+.incident-priority-summary span {
+    color: var(--stock-accent);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.incident-priority-summary strong {
+    margin-top: 4px;
+    color: var(--stock-text);
+    font-size: 1rem;
+}
+.incident-priority-summary p,
+.incident-priority-summary li {
+    color: #334155;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+.incident-priority-summary p {
+    margin: 6px 0 0;
+}
+.incident-priority-summary ul {
+    margin: 0;
+    padding-left: 18px;
+}
+.incident-priority-summary li + li {
+    margin-top: 5px;
 }
 .operator-secondary-actions {
     grid-column: 1 / -1;
@@ -1534,6 +1591,7 @@ textarea:focus,
     .report-lifecycle-strip,
     .report-lifecycle-steps,
     .incident-list,
+    .incident-priority-summary,
     .data-gap-action-list,
     .market-cache-readiness-list,
     .market-operation-readiness-list,

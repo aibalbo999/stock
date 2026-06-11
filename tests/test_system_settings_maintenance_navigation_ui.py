@@ -76,10 +76,68 @@ def test_render_incident_inbox_uses_grouped_cards_without_losing_counts(monkeypa
 
     combined = "\n".join(fake_st.markdown_calls)
     assert "Warning 3" in combined
+    assert "incident-priority-summary is-attention" in combined
+    assert "先確認 3 個 Warning 事件" in combined
+    assert "3 個可重試任務可直接在下方操作" in combined
+    assert "0 個為歷史趨勢/觀測" in combined
     assert combined.count("資料來源抓取失敗") == 1
     assert "同類事件 3 筆" in combined
     assert "另有 2 筆同類事件" in combined
     assert captured_action_incidents == incidents
+
+
+def test_incident_action_priority_summary_prioritizes_retryable_critical_tasks() -> None:
+    incidents = [
+        {
+            "severity": "critical",
+            "category": "runtime_storage",
+            "title": "本機儲存失敗",
+            "route_hint": "task:storage-1",
+            "retryable": False,
+        },
+        {
+            "severity": "critical",
+            "category": "data_source",
+            "title": "資料來源抓取失敗",
+            "route_hint": "task:refresh-1",
+            "retryable": True,
+        },
+        {
+            "severity": "warning",
+            "category": "data_source",
+            "title": "資料來源抓取失敗",
+            "route_hint": "task:refresh-2",
+            "retryable": True,
+        },
+        {
+            "severity": "info",
+            "category": "unknown",
+            "title": "歷史觀測",
+            "retryable": False,
+        },
+    ]
+
+    summary = maintenance.incident_action_priority_summary(incidents)
+
+    assert summary["state"] == "blocked"
+    assert summary["title"] == "先處理 2 個 Critical 事件"
+    assert summary["counts_label"] == "Critical 2 / Warning 1 / Info 1"
+    assert summary["retryable_count"] == 2
+    assert summary["task_linked_count"] == 3
+    assert summary["passive_count"] == 1
+    assert "2 個可重試任務可直接在下方操作" in summary["primary_action"]
+    assert "3 個任務檢視" in summary["secondary_action"]
+    assert "1 個為歷史趨勢/觀測" in summary["secondary_action"]
+
+
+def test_incident_action_priority_summary_ready_state_for_empty_inbox() -> None:
+    summary = maintenance.incident_action_priority_summary([])
+
+    assert summary["state"] == "ready"
+    assert summary["title"] == "目前沒有待處理事件"
+    assert summary["counts_label"] == "Critical 0 / Warning 0 / Info 0"
+    assert summary["primary_action"] == "可以回到分析工作區產生最新版報告。"
+    assert summary["secondary_action"] == "維護頁仍保留服務狀態與升級稽核供備查。"
 
 
 def test_render_maintenance_tab_promotes_ai_quota_panel_when_requested(monkeypatch) -> None:

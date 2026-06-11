@@ -240,6 +240,7 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
 </section>""",
         unsafe_allow_html=True,
     )
+    _render_incident_priority_summary(incidents)
     _render_incident_action_controls(incidents)
     st.markdown(
         f"""<section class="incident-inbox is-list" aria-label="事件清單">
@@ -249,6 +250,87 @@ def _render_incident_inbox(incidents: list[dict]) -> None:
 </section>""",
         unsafe_allow_html=True,
     )
+
+
+def _render_incident_priority_summary(incidents: list[dict]) -> None:
+    summary = incident_action_priority_summary(incidents)
+    state = escape(str(summary.get("state") or "ready"))
+    st.markdown(
+        f"""<section class="incident-priority-summary is-{state}" aria-label="事件可行動摘要">
+<div>
+<span>建議處理順序</span>
+<strong>{escape(str(summary.get("title") or ""))}</strong>
+<p>{escape(str(summary.get("counts_label") or ""))}</p>
+</div>
+<ul>
+<li>{escape(str(summary.get("primary_action") or ""))}</li>
+<li>{escape(str(summary.get("secondary_action") or ""))}</li>
+</ul>
+</section>""",
+        unsafe_allow_html=True,
+    )
+
+
+def incident_action_priority_summary(incidents: list[dict]) -> dict[str, object]:
+    counts = incident_counts(incidents)
+    critical = counts["critical"]
+    warning = counts["warning"]
+    info = counts["info"]
+    retryable_count = sum(1 for incident in incidents if incident.get("retryable"))
+    task_linked_count = sum(
+        1
+        for incident in incidents
+        if str(incident.get("route_hint") or "").strip().startswith("task:")
+    )
+    routed_count = sum(1 for incident in incidents if str(incident.get("route_hint") or "").strip())
+    passive_count = max(0, len(incidents) - routed_count)
+    counts_label = f"Critical {critical} / Warning {warning} / Info {info}"
+
+    if not incidents:
+        return {
+            "state": "ready",
+            "title": "目前沒有待處理事件",
+            "counts_label": counts_label,
+            "primary_action": "可以回到分析工作區產生最新版報告。",
+            "secondary_action": "維護頁仍保留服務狀態與升級稽核供備查。",
+            "retryable_count": 0,
+            "task_linked_count": 0,
+            "passive_count": 0,
+        }
+
+    if critical:
+        state = "blocked"
+        title = f"先處理 {critical} 個 Critical 事件"
+    elif warning:
+        state = "attention"
+        title = f"先確認 {warning} 個 Warning 事件"
+    else:
+        state = "watch"
+        title = f"追蹤 {info} 個 Info 事件"
+
+    if retryable_count:
+        primary_action = f"{retryable_count} 個可重試任務可直接在下方操作；先處理最高嚴重度項目。"
+    elif task_linked_count:
+        primary_action = f"{task_linked_count} 個事件已連到任務檢視；先打開任務診斷確認原因。"
+    elif critical:
+        primary_action = "先依下方 Critical 事件修復服務、資料來源或本機儲存。"
+    else:
+        primary_action = "先確認下方事件是否影響最新版報告，再決定是否需要補強。"
+
+    secondary_action = (
+        f"{task_linked_count} 個任務檢視、{routed_count} 個跳轉入口，"
+        f"{passive_count} 個為歷史趨勢/觀測。"
+    )
+    return {
+        "state": state,
+        "title": title,
+        "counts_label": counts_label,
+        "primary_action": primary_action,
+        "secondary_action": secondary_action,
+        "retryable_count": retryable_count,
+        "task_linked_count": task_linked_count,
+        "passive_count": passive_count,
+    }
 
 
 def incident_summary_cards(incidents: list[dict], limit: int = 8) -> list[dict]:

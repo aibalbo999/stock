@@ -84,9 +84,13 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_market_source
             and "def _task_queue_status_from_service_snapshot(" in data_enrichment_market_source
             and "def _task_queue_block_reason(" in data_enrichment_market_source
-            and "背景任務未就緒，請先到維護頁檢查 Worker" in data_enrichment_market_source
-            and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+            and "背景任務未就緒，請先到維護頁檢查背景執行器" in data_enrichment_market_source
+            and "背景任務未就緒，請先到維護頁檢查背景任務佇列"
             in data_enrichment_market_source
+            and "背景任務未就緒，請先到維護頁檢查 Worker"
+            not in data_enrichment_market_source
+            and "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+            not in data_enrichment_market_source
         ),
         "ui_data_enrichment_market_submission_confirmation_enabled": (
             "market_operation_confirmed = st.checkbox(" in data_enrichment_market_source

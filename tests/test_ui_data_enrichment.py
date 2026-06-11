@@ -469,7 +469,7 @@ def test_market_operation_readiness_rows_block_when_worker_offline() -> None:
 
     assert {row["state"] for row in rows} == {"blocked"}
     assert {row["disabled_reason"] for row in rows} == {
-        "背景任務未就緒，請先到維護頁檢查 Worker"
+        "背景任務未就緒，請先到維護頁檢查背景執行器"
     }
     assert rows[0]["selected"] == "yes"
     assert rows[0]["button_type"] == "primary"
@@ -486,7 +486,7 @@ def test_market_operation_readiness_rows_show_queue_status_when_unavailable() ->
 
     assert {row["state"] for row in rows} == {"blocked"}
     assert {row["disabled_reason"] for row in rows} == {
-        "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+        "背景任務未就緒，請先到維護頁檢查背景任務佇列"
     }
 
 
@@ -540,7 +540,7 @@ def test_market_submission_preflight_summary_blocks_when_task_queue_unavailable(
         "state": "blocked",
         "title": "背景任務暫時不可送出",
         "detail": "股票：2330｜期間：2026-06-01 → 2026-06-10",
-        "next_step": "背景任務未就緒，請先到維護頁檢查 Redis/Celery。",
+        "next_step": "背景任務未就緒，請先到維護頁檢查背景任務佇列。",
         "quota_hint": "尚未送出任何資料補強；先修復背景任務可避免失敗重試浪費額度。",
     }
 

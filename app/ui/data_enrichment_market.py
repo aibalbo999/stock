@@ -657,11 +657,11 @@ def _task_queue_block_reason(task_queue: dict | None) -> str:
     if not isinstance(task_queue, dict) or not task_queue:
         return "尚未取得背景任務狀態"
     if not task_queue.get("ready"):
-        return "背景任務未就緒，請先到維護頁檢查 Redis/Celery"
+        return "背景任務未就緒，請先到維護頁檢查背景任務佇列"
     if task_queue.get("worker_online") is False:
-        return "背景任務未就緒，請先到維護頁檢查 Worker"
+        return "背景任務未就緒，請先到維護頁檢查背景執行器"
     if "processing_ready" in task_queue and not task_queue.get("processing_ready"):
-        return "背景任務未就緒，請先到維護頁檢查 Worker"
+        return "背景任務未就緒，請先到維護頁檢查背景執行器"
     return ""
 
 

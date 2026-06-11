@@ -318,8 +318,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "task_queue=task_queue_status" in source
     assert "task_queue_blocks_submission = bool(_task_queue_block_reason(task_queue_status))" in source
     assert "def _task_queue_block_reason(" in source
-    assert "背景任務未就緒，請先到維護頁檢查 Worker" in source
-    assert "背景任務未就緒，請先到維護頁檢查 Redis/Celery" in source
+    assert "背景任務未就緒，請先到維護頁檢查背景執行器" in source
+    assert "背景任務未就緒，請先到維護頁檢查背景任務佇列" in source
+    assert "背景任務未就緒，請先到維護頁檢查 Worker" not in source
+    assert "背景任務未就緒，請先到維護頁檢查 Redis/Celery" not in source
     assert "from app.ui.data_gap_actions import (" in source
     assert "data_gap_action_items(" in source
     assert "data_gap_action_summary(" in source

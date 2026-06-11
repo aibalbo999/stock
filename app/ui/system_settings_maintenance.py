@@ -27,6 +27,7 @@ from app.ui.maintenance_panels import (
     render_upgrade_audit_panel,
 )
 from app.ui.operator_route_controls import render_operator_route_button
+from app.ui.operator_routes import operator_route_target
 from app.ui.report_lifecycle import latest_report_lifecycle
 
 
@@ -455,10 +456,10 @@ def _incident_card_html(incident: dict) -> str:
             f'<span class="incident-repeat-badge">同類事件 {escape(str(repeat_count))} 筆</span>'
         )
     route_hint = str(incident.get("route_hint") or "").strip()
-    route_text = route_hint
+    route_text = incident_route_caption(route_hint)
     if hidden_count > 0:
         hidden_text = f"另有 {hidden_count} 筆同類事件"
-        route_text = f"{route_hint}；{hidden_text}" if route_hint else hidden_text
+        route_text = f"{route_text}；{hidden_text}" if route_text else hidden_text
     return f"""<article class="incident-card is-{escape(str(incident.get("severity") or "info"))}">
 <div class="incident-card-head">
 <strong>{escape(str(incident.get("title") or "-"))}</strong>
@@ -468,6 +469,13 @@ def _incident_card_html(incident: dict) -> str:
 <em>{escape(str(incident.get("next_action") or ""))}</em>
 <small>{escape(route_text)}</small>
 </article>"""
+
+
+def incident_route_caption(route_hint: object) -> str:
+    route = str(route_hint or "").strip()
+    if not route:
+        return ""
+    return str(operator_route_target(route).get("caption") or "").strip()
 
 
 def _incident_count_value(value: object, *, default: int) -> int:

@@ -187,6 +187,17 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "actionable = incident_action_summaries(incidents)"
             in system_settings_maintenance_source
         ),
+        "ui_incident_route_captions_enabled": (
+            "from app.ui.operator_routes import operator_route_target"
+            in system_settings_maintenance_source
+            and "def incident_route_caption(" in system_settings_maintenance_source
+            and "operator_route_target(route).get(\"caption\")"
+            in system_settings_maintenance_source
+            and "route_text = incident_route_caption(route_hint)"
+            in system_settings_maintenance_source
+            and "route_text = f\"{route_text}；{hidden_text}\""
+            in system_settings_maintenance_source
+        ),
         "ui_optimization_progress_operator_summary_enabled": (
             "def optimization_progress_operator_summary(" in maintenance_status_source
             and "optimization_progress_operator_summary(progress)" in maintenance_panels_source

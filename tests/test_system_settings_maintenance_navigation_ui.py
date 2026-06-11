@@ -83,7 +83,25 @@ def test_render_incident_inbox_uses_grouped_cards_without_losing_counts(monkeypa
     assert combined.count("資料來源抓取失敗") == 1
     assert "同類事件 3 筆" in combined
     assert "另有 2 筆同類事件" in combined
+    assert "開啟維護頁並檢視任務 refresh-0" in combined
+    assert "task:refresh-" not in combined
     assert captured_action_incidents == incidents
+
+
+def test_incident_card_uses_readable_route_caption_for_data_enrichment() -> None:
+    html = maintenance._incident_card_html(
+        {
+            "severity": "critical",
+            "category": "report_quality",
+            "title": "最新版報告不可直接採信",
+            "impact": "候選不足，需要補資料後再重跑。",
+            "next_action": "先補強公司文件與市場資料。",
+            "route_hint": "data_enrichment:company_filings_fetch:2330,2317",
+        }
+    )
+
+    assert "開啟資料補強，準備補抓公司文件：2330、2317" in html
+    assert "data_enrichment:" not in html
 
 
 def test_render_incident_inbox_header_separates_current_and_historical_counts(

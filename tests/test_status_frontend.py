@@ -317,6 +317,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_incident_header_current_context_enabled"] is True
     assert status["frontend"]["ui_incident_grouped_summary_enabled"] is True
     assert status["frontend"]["ui_incident_grouped_action_controls_enabled"] is True
+    assert status["frontend"]["ui_incident_route_captions_enabled"] is True
     assert status["frontend"]["ui_optimization_progress_operator_summary_enabled"] is True
     assert status["frontend"]["ui_optimization_progress_scope_summary_enabled"] is True
     assert status["frontend"]["ui_settings_ai_quota_route_focus_enabled"] is True
@@ -664,6 +665,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_incident_header_current_context_enabled"] is True
     assert frontend_arch["evidence"]["ui_incident_grouped_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_incident_grouped_action_controls_enabled"] is True
+    assert frontend_arch["evidence"]["ui_incident_route_captions_enabled"] is True
     assert frontend_arch["evidence"]["ui_optimization_progress_operator_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_optimization_progress_scope_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_settings_ai_quota_route_focus_enabled"] is True

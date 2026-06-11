@@ -145,6 +145,18 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
                 "operator_route_controls.py", ""
             )
         ),
+        "ui_operator_source_labels_enabled": (
+            "def _operator_source_label(" in analysis_workspace_source
+            and "source_label = _operator_source_label(source_text)"
+            in analysis_workspace_source
+            and '"optimization:auto_local_defaults"' in analysis_workspace_source
+            and '"本機 defaults 優化缺口"' in analysis_workspace_source
+            and '"optimization:company_filing_structured_api_fallback"'
+            in analysis_workspace_source
+            and '"公司文件結構化 API 選配"' in analysis_workspace_source
+            and 'if value == "services_status":' in analysis_workspace_source
+            and "優化目標缺口" in analysis_workspace_source
+        ),
         "ui_operator_local_defaults_secondary_action_enabled": (
             "def _optimization_local_defaults_action(" in operator_decisions_source
             and "local_defaults_action = _optimization_local_defaults_action(service_snapshot)"

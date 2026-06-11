@@ -120,6 +120,11 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "按下後會帶你到對應頁面" not in source
     assert "_render_operator_primary_action_control(" in source
     assert "_render_operator_action_controls(" in source
+    assert "def _operator_source_label(" in source
+    assert '"optimization:auto_local_defaults"' in source
+    assert "本機 defaults 優化缺口" in source
+    assert '"optimization:company_filing_structured_api_fallback"' in source
+    assert "公司文件結構化 API 選配" in source
     assert source.index("_render_operator_workbench()") < source.index("workflow-strip")
     assert "operator_route_target(" in source
     assert "st.switch_page(" in source

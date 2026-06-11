@@ -166,6 +166,39 @@ def test_operator_decision_card_uses_readable_target_caption() -> None:
     assert "settings:ai_quota" not in html
 
 
+def test_operator_source_text_labels_optimization_and_system_sources() -> None:
+    source_text = analysis_workspace._operator_source_text(
+        [
+            "optimization:auto_local_defaults",
+            "optimization:company_filing_structured_api_fallback",
+            "services_status",
+        ]
+    )
+
+    assert source_text == "本機 defaults 優化缺口、公司文件結構化 API 選配、系統狀態"
+    assert "optimization:" not in source_text
+    assert "services_status" not in source_text
+
+
+def test_operator_decision_card_hides_optimization_source_ids() -> None:
+    html = analysis_workspace._operator_decision_html(
+        {
+            "title": "驗證本機 defaults",
+            "reason": "可用本機 defaults 驗證外部選配。",
+            "risk": "未驗證時會保留外部選配提醒。",
+            "impact": "消除可本機處理的優化缺口。",
+            "action_label": "查看本機操作",
+            "route_hint": "settings:maintenance:local_defaults",
+            "source_ids": ["optimization:auto_local_defaults"],
+            "state": "ready",
+        },
+        [],
+    )
+
+    assert "本機 defaults 優化缺口" in html
+    assert "optimization:auto_local_defaults" not in html
+
+
 def test_operator_secondary_actions_use_readable_target_captions() -> None:
     html = analysis_workspace._operator_decision_html(
         {

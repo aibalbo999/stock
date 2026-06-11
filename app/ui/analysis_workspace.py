@@ -628,11 +628,26 @@ def _operator_source_text(source_ids: object) -> str:
         source_text = str(source_id).strip()
         if not source_text:
             continue
-        if _looks_like_operator_route(source_text):
+        source_label = _operator_source_label(source_text)
+        if source_label:
+            labels.append(source_label)
+        elif _looks_like_operator_route(source_text):
             labels.append(str(operator_route_target(source_text).get("caption") or source_text))
         else:
             labels.append(source_text)
     return "、".join(labels) if labels else "系統狀態"
+
+
+def _operator_source_label(value: str) -> str:
+    if value == "services_status":
+        return "系統狀態"
+    if value == "optimization:auto_local_defaults":
+        return "本機 defaults 優化缺口"
+    if value == "optimization:company_filing_structured_api_fallback":
+        return "公司文件結構化 API 選配"
+    if value.startswith("optimization:"):
+        return "優化目標缺口"
+    return ""
 
 
 def _looks_like_operator_route(value: str) -> bool:

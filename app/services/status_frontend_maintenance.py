@@ -10,6 +10,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     system_settings_source = ui_sources["system_settings.py"]
     operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
+    maintenance_status_source = ui_sources["maintenance_status.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
     maintenance_deployment_panel_source = ui_sources["maintenance_deployment_panel.py"]
     maintenance_deployment_presenter_source = ui_sources["maintenance_deployment_presenter.py"]
@@ -185,6 +186,16 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             in system_settings_maintenance_source
             and "actionable = incident_action_summaries(incidents)"
             in system_settings_maintenance_source
+        ),
+        "ui_optimization_progress_operator_summary_enabled": (
+            "def optimization_progress_operator_summary(" in maintenance_status_source
+            and "optimization_progress_operator_summary(progress)" in maintenance_panels_source
+            and "def _render_optimization_progress_operator_summary("
+            in maintenance_panels_source
+            and "optimization-progress-operator-summary" in maintenance_panels_source
+            and ".optimization-progress-operator-summary" in style_source
+            and "核心優化已可用，先驗證本機選配" in maintenance_status_source
+            and "付費/API 選配" in maintenance_status_source
         ),
         "ui_maintenance_panels_extracted": (ui_dir / "maintenance_panels.py").exists()
         and (ui_dir / "maintenance_deployment_panel.py").exists()

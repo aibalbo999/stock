@@ -1194,6 +1194,7 @@ textarea:focus,
 }
 .incident-inbox,
 .data-gap-action-map,
+.optimization-progress-operator-summary,
 .allowlist-scope-summary,
 .follow-up-submission-summary,
 .task-action-preflight-summary,
@@ -1212,6 +1213,60 @@ textarea:focus,
 }
 .incident-inbox.is-list {
     margin-top: 8px;
+}
+.optimization-progress-operator-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.9fr);
+    gap: 12px;
+    align-items: start;
+    margin: 10px 0 12px;
+    border-left: 4px solid var(--stock-accent);
+}
+.optimization-progress-operator-summary.is-blocked {
+    border-left-color: var(--stock-danger);
+    background: var(--stock-danger-soft);
+}
+.optimization-progress-operator-summary.is-attention {
+    border-left-color: var(--stock-warning);
+    background: var(--stock-warning-soft);
+}
+.optimization-progress-operator-summary span {
+    color: var(--stock-accent);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.optimization-progress-operator-summary.is-blocked span {
+    color: var(--stock-danger);
+}
+.optimization-progress-operator-summary.is-attention span {
+    color: var(--stock-warning);
+}
+.optimization-progress-operator-summary strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--stock-text);
+    font-size: 1rem;
+}
+.optimization-progress-operator-summary p,
+.optimization-progress-operator-summary li {
+    color: var(--stock-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+.optimization-progress-operator-summary ul {
+    margin: 0;
+    padding-left: 18px;
+}
+.optimization-progress-operator-summary code {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    border-radius: 6px;
+    background: #f8fafc;
+    border: 1px solid var(--stock-border);
+    padding: 8px 10px;
+    color: #334155;
+    font-size: 0.82rem;
 }
 .market-allowlist-warning {
     display: grid;
@@ -1666,6 +1721,7 @@ textarea:focus,
     .incident-list,
     .incident-priority-summary,
     .data-gap-action-list,
+    .optimization-progress-operator-summary,
     .market-cache-readiness-list,
     .market-operation-readiness-list,
     .action-impact-grid {

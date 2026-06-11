@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from app.ui.maintenance_ai_panels import (
@@ -10,6 +12,7 @@ from app.ui.maintenance_cleanup_panel import render_maintenance_cleanup_panel
 from app.ui.maintenance_deployment_panel import render_external_deployment_panel
 from app.ui.maintenance_status import (
     maintenance_service_metrics,
+    optimization_progress_operator_summary,
     optimization_progress_next_action_rows,
     optimization_progress_rows,
     upgrade_audit_html,
@@ -148,11 +151,39 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
         )
         if local_projection.get("next_action"):
             st.caption(str(local_projection["next_action"]))
+        _render_optimization_progress_operator_summary(
+            optimization_progress_operator_summary(progress)
+        )
         if rows:
             st.dataframe(rows, width="stretch", hide_index=True)
         if action_rows:
             st.caption("下一步")
             st.dataframe(action_rows, width="stretch", hide_index=True)
+
+
+def _render_optimization_progress_operator_summary(summary: dict[str, str]) -> None:
+    if not summary:
+        return
+    command = str(summary.get("command") or "-").strip()
+    command_html = ""
+    if command and command != "-":
+        command_html = f"<code>{escape(command)}</code>"
+    st.markdown(
+        f"""<section class="optimization-progress-operator-summary is-{escape(summary.get("state", "ready"))}" aria-label="優化進度操作者摘要">
+<div>
+<span>操作者摘要</span>
+<strong>{escape(summary.get("title", ""))}</strong>
+<p>{escape(summary.get("detail", ""))}</p>
+</div>
+<ul>
+<li>{escape(summary.get("local_action", ""))}</li>
+<li>{escape(summary.get("paid_external", ""))}</li>
+<li>{escape(summary.get("next_step", ""))}</li>
+</ul>
+{command_html}
+</section>""",
+        unsafe_allow_html=True,
+    )
 
 
 def render_service_metrics_panel(status: dict, service_snapshot: dict) -> None:

@@ -239,6 +239,72 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
     ]
 
 
+def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
+    if not isinstance(progress, dict):
+        progress = {}
+    actions = _optimization_progress_actions(progress)
+    blocking_count = int(progress.get("blocking_gap_count") or 0)
+    optional_count = int(progress.get("optional_gap_count") or 0)
+    local_count = int(progress.get("local_resolvable_gap_count") or 0)
+    effective_optional = int(
+        progress.get("effective_optional_gap_count_after_available_local_defaults")
+        if progress.get("effective_optional_gap_count_after_available_local_defaults")
+        is not None
+        else optional_count
+    )
+    first_action = actions[0] if actions else {}
+    local_action = _first_local_progress_action(actions)
+    paid_count = _paid_external_action_count(actions)
+
+    if blocking_count:
+        return {
+            "state": "blocked",
+            "title": "優化仍有 blocking 缺口",
+            "detail": f"目前仍有 {blocking_count} 項 blocking 缺口；先處理必要能力，再看外部選配。",
+            "local_action": f"先處理 {_action_label(first_action)}",
+            "paid_external": "付費/API 選配不是優先事項",
+            "next_step": _action_next_step(first_action, "先處理 blocking 缺口，再重跑升級稽核。"),
+            "command": _action_verify_command(first_action) if first_action else "-",
+        }
+
+    if not optional_count and not actions:
+        return {
+            "state": "ready",
+            "title": "優化目標目前沒有待處理缺口",
+            "detail": "核心能力與外部部署檢查都沒有待處理項目。",
+            "local_action": "不需本機 defaults",
+            "paid_external": "付費/API 選配 0 項",
+            "next_step": "維持例行 smoke、audit 與報告品質觀測。",
+            "command": "-",
+        }
+
+    local_label = _action_label(local_action)
+    local_detail = (
+        f"先驗證 {local_label}" if local_action else "目前沒有本機 defaults 可套用"
+    )
+    projection = (
+        progress.get("local_resolution_projection")
+        if isinstance(progress.get("local_resolution_projection"), dict)
+        else {}
+    )
+    next_step = str(
+        projection.get("next_action")
+        or _action_next_step(first_action, "依下一步清單逐項處理。")
+    )
+    return {
+        "state": "ready",
+        "title": "核心優化已可用，先驗證本機選配",
+        "detail": (
+            f"目前沒有 blocking 缺口；{optional_count} 項外部選配中 "
+            f"{local_count} 項可用本機 defaults 或免費 smoke 驗證。"
+        ),
+        "local_action": local_detail,
+        "paid_external": f"付費/API 選配 {max(paid_count, effective_optional, 0)} 項可暫緩",
+        "next_step": next_step,
+        "command": _action_verify_command(local_action or first_action) if actions else "-",
+    }
+
+
 def _action_verify_command(action: dict) -> str:
     verify_command = str(action.get("verify_command") or "").strip()
     if verify_command:
@@ -266,6 +332,42 @@ def _action_free_validation_commands(action: dict) -> list[str]:
     if not isinstance(commands, list):
         return []
     return [str(command).strip() for command in commands if str(command).strip()]
+
+
+def _optimization_progress_actions(progress: dict) -> list[dict]:
+    actions = progress.get("prioritized_next_actions") or progress.get("next_actions") or []
+    primary_action = (
+        progress.get("primary_next_action")
+        if isinstance(progress.get("primary_next_action"), dict)
+        else {}
+    )
+    if primary_action.get("capability") == "auto_local_defaults":
+        actions = [primary_action, *actions]
+    elif not actions and primary_action:
+        actions = [primary_action]
+    return [action for action in actions if isinstance(action, dict)]
+
+
+def _first_local_progress_action(actions: list[dict]) -> dict:
+    for action in actions:
+        if action.get("locally_available") or action.get("cost_profile") in {
+            "free_local_available",
+            "free_local_or_external",
+        }:
+            return action
+    return {}
+
+
+def _paid_external_action_count(actions: list[dict]) -> int:
+    return sum(1 for action in actions if action.get("cost_profile") == "paid_external")
+
+
+def _action_label(action: dict) -> str:
+    return str(action.get("label") or action.get("capability") or "下一個缺口")
+
+
+def _action_next_step(action: dict, default: str) -> str:
+    return str(action.get("next_action") or action.get("decision") or default)
 
 
 def _format_progress_ratio(value: object) -> str:

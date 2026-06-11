@@ -237,6 +237,9 @@ def test_task_queue_status_contract_and_compatibility_alias(service_status_snaps
     )
     assert "scripts/upgrade_audit.py" in status["task_queue"]["repair_commands"]["upgrade_audit"]
     assert isinstance(status["task_queue"]["repair_plan"], list)
+    assert "啟動 worker" not in status_task_queue_source
+    assert "Redis broker/backend" not in status_task_queue_source
+    assert "Celery Worker" not in status_task_queue_source
     assert all(
         {"item", "state", "next_step", "repair_command", "verify_command", "severity"} <= set(row)
         for row in status["task_queue"]["repair_plan"]
@@ -537,7 +540,7 @@ def test_background_task_queue_architecture_separates_contract_from_live_runtime
             "compose_runtime_env_passthrough_ready": True,
             "repair_plan": [
                 {
-                    "item": "Redis Broker/Backend",
+                    "item": "Redis 佇列/結果服務",
                     "state": "未連線",
                     "repair_command": ".venv/bin/python scripts/start_system.py --start-dependencies",
                 }
@@ -555,7 +558,9 @@ def test_background_task_queue_architecture_separates_contract_from_live_runtime
     assert task_queue_arch["status"] == "ready"
     assert task_queue_arch["evidence"]["implementation_ready"] is True
     assert task_queue_arch["evidence"]["runtime_ready"] is False
-    assert task_queue_arch["evidence"]["runtime_repair_plan"][0]["item"] == "Redis Broker/Backend"
+    assert task_queue_arch["evidence"]["runtime_repair_plan"][0]["item"] == (
+        "Redis 佇列/結果服務"
+    )
 
 
 def test_runtime_migration_and_secret_scanning_architecture_capabilities(

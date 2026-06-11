@@ -143,9 +143,9 @@ def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
     if not task_queue:
         return [
             {
-                "item": "Task queue 狀態",
+                "item": "背景任務狀態",
                 "state": "未取得",
-                "next_step": "確認 API /services/status 可讀取，再重新整理維護頁。",
+                "next_step": "確認系統狀態可讀取，再重新整理維護頁。",
                 "repair_command": "-",
                 "verify_command": "curl -s http://127.0.0.1:8000/services/status",
                 "severity": "warning",
@@ -166,9 +166,9 @@ def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
     if not task_queue.get("broker_ok") or not task_queue.get("backend_ok"):
         rows.append(
             {
-                "item": "Redis Broker/Backend",
+                "item": "Redis 佇列/結果服務",
                 "state": "未連線",
-                "next_step": "啟動本機依賴後重新檢查 Redis broker/backend 連線。",
+                "next_step": "啟動本機依賴後，重新檢查 Redis 佇列與結果儲存連線。",
                 "repair_command": commands["start_dependencies"],
                 "verify_command": commands["upgrade_audit"],
                 "severity": "error",
@@ -177,7 +177,7 @@ def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
     if not task_queue.get("submission_contract_ready"):
         rows.append(
             {
-                "item": "Celery task wiring",
+                "item": "任務註冊",
                 "state": "未對齊",
                 "next_step": _task_wiring_detail(task_queue),
                 "repair_command": commands["upgrade_audit"],
@@ -189,9 +189,9 @@ def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
         if task_queue.get("worker_ping_checked") and not task_queue.get("worker_online"):
             rows.append(
                 {
-                    "item": "Celery Worker",
+                    "item": "背景執行器",
                     "state": "未回應",
-                    "next_step": "啟動 worker，或確認既有 worker 能連到同一個 Redis broker。",
+                    "next_step": "啟動背景執行器，或確認既有背景執行器能連到同一個 Redis 訊息佇列。",
                     "repair_command": commands["start_worker"],
                     "verify_command": verify_command,
                     "severity": "warning",
@@ -200,9 +200,9 @@ def task_queue_repair_plan(task_queue: dict) -> list[dict[str, str]]:
         elif not task_queue.get("worker_ping_checked"):
             rows.append(
                 {
-                    "item": "Celery Worker ping",
+                    "item": "背景執行器健康檢查",
                     "state": "未檢查",
-                    "next_step": "執行 inspect ping 確認是否有 worker 回應。",
+                    "next_step": "執行健康檢查，確認是否有背景執行器回應。",
                     "repair_command": verify_command,
                     "verify_command": verify_command,
                     "severity": "info",

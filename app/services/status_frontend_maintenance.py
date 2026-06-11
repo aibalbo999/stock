@@ -208,6 +208,12 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "核心優化已可用，先驗證本機選配" in maintenance_status_source
             and "付費/API 選配" in maintenance_status_source
         ),
+        "ui_optimization_progress_paid_external_only_summary_enabled": (
+            "本機優化已完成，剩下外部資料 API 決策" in maintenance_status_source
+            and "本機 defaults 已無待處理項目" in maintenance_status_source
+            and "需外部資料商或正式 API" in maintenance_status_source
+            and "def _first_paid_external_progress_action(" in maintenance_status_source
+        ),
         "ui_optimization_progress_scope_summary_enabled": (
             "def optimization_progress_scope_summary(" in maintenance_status_source
             and "optimization_progress_scope_summary(service_snapshot)"

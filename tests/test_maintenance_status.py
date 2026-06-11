@@ -54,6 +54,40 @@ def test_optimization_progress_operator_summary_promotes_local_defaults() -> Non
     }
 
 
+def test_optimization_progress_operator_summary_surfaces_paid_external_only_gap() -> None:
+    summary = optimization_progress_operator_summary(
+        {
+            "status": "ready_with_optional_gaps",
+            "effective_status_after_available_local_defaults": "ready_with_optional_gaps",
+            "blocking_gap_count": 0,
+            "optional_gap_count": 1,
+            "local_resolvable_gap_count": 0,
+            "effective_optional_gap_count_after_available_local_defaults": 1,
+            "prioritized_next_actions": [
+                {
+                    "label": "公司文件結構化 API 備援",
+                    "status": "not_configured",
+                    "optional": True,
+                    "external": True,
+                    "cost_profile": "paid_external",
+                    "decision": "付費資料源/外部 API；只有正式穩定性需求明確時再採購。",
+                    "next_action": "若法說會簡報或重大訊息需要穩定資料，再設定 TEJ 或專業資料 API。",
+                },
+            ],
+        }
+    )
+
+    assert summary == {
+        "state": "ready",
+        "title": "本機優化已完成，剩下外部資料 API 決策",
+        "detail": "目前沒有 blocking 缺口，也沒有本機 defaults 可補；剩餘 1 項是付費/API 選配。",
+        "local_action": "本機 defaults 已無待處理項目",
+        "paid_external": "公司文件結構化 API 備援：需外部資料商或正式 API",
+        "next_step": "若法說會簡報或重大訊息需要穩定資料，再設定 TEJ 或專業資料 API。",
+        "command": "-",
+    }
+
+
 def test_optimization_progress_operator_summary_blocks_on_required_gaps() -> None:
     summary = optimization_progress_operator_summary(
         {

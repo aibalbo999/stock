@@ -264,6 +264,9 @@ def architecture_capabilities(
             and frontend_status.get("ui_incident_grouped_action_controls_enabled")
             and frontend_status.get("ui_incident_route_captions_enabled")
             and frontend_status.get("ui_optimization_progress_operator_summary_enabled")
+            and frontend_status.get(
+                "ui_optimization_progress_paid_external_only_summary_enabled"
+            )
             and frontend_status.get("ui_optimization_progress_scope_summary_enabled")
             and frontend_status.get("ui_settings_ai_quota_route_focus_enabled")
             and frontend_status.get("ui_settings_task_route_focus_enabled")

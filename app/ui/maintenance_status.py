@@ -254,6 +254,7 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
     )
     first_action = actions[0] if actions else {}
     local_action = _first_local_progress_action(actions)
+    paid_external_action = _first_paid_external_progress_action(actions)
     paid_count = _paid_external_action_count(actions)
 
     if blocking_count:
@@ -275,6 +276,24 @@ def optimization_progress_operator_summary(progress: dict) -> dict[str, str]:
             "local_action": "不需本機 defaults",
             "paid_external": "付費/API 選配 0 項",
             "next_step": "維持例行 smoke、audit 與報告品質觀測。",
+            "command": "-",
+        }
+
+    if optional_count and local_count <= 0 and paid_external_action:
+        paid_label = _action_label(paid_external_action)
+        return {
+            "state": "ready",
+            "title": "本機優化已完成，剩下外部資料 API 決策",
+            "detail": (
+                "目前沒有 blocking 缺口，也沒有本機 defaults 可補；"
+                f"剩餘 {effective_optional or optional_count} 項是付費/API 選配。"
+            ),
+            "local_action": "本機 defaults 已無待處理項目",
+            "paid_external": f"{paid_label}：需外部資料商或正式 API",
+            "next_step": _action_next_step(
+                paid_external_action,
+                "若法說會簡報或重大訊息需要穩定資料，再設定 TEJ 或專業資料 API。",
+            ),
             "command": "-",
         }
 
@@ -438,6 +457,13 @@ def _first_local_progress_action(actions: list[dict]) -> dict:
             "free_local_available",
             "free_local_or_external",
         }:
+            return action
+    return {}
+
+
+def _first_paid_external_progress_action(actions: list[dict]) -> dict:
+    for action in actions:
+        if action.get("cost_profile") == "paid_external":
             return action
     return {}
 

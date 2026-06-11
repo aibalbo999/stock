@@ -8,6 +8,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
     ui_source = source_context.ui_source
     ui_sources = source_context.ui_sources
     dashboard_core_source = ui_sources["dashboard_core.py"]
+    maintenance_task_panels_source = ui_sources["maintenance_task_panels.py"]
     task_status_panel_source = ui_sources["task_status_panel.py"]
     task_failure_diagnostics_source = ui_sources["task_failure_diagnostics.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
@@ -21,7 +22,10 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "task_retry_option_index(" in ui_source
         and "maintenance_retry_recommended_task" in ui_source
         and "一鍵重試建議任務" in ui_source
-        and "_submit_task_retry(str(retry_option" in ui_source
+        and (
+            "_submit_task_retry(str(retry_option" in ui_source
+            or "_submit_task_retry(recommended_task_id)" in ui_source
+        )
     )
     task_observability_auto_expand_enabled = (
         "def task_observability_expander_expanded(" in ui_source
@@ -73,6 +77,18 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         "ui_task_failure_alerts_enabled": 'task_summary.get("alerts")' in ui_source
         and 'alert.get("severity") == "error"' in ui_source
         and 'alert.get("severity") == "warning"' in ui_source,
+        "ui_maintenance_task_retry_confirmation_gate_enabled": (
+            "recommended_retry_confirmed = st.checkbox(" in maintenance_task_panels_source
+            and 'key=f"maintenance_retry_recommended_confirm_{recommended_task_id}"'
+            in maintenance_task_panels_source
+            and "selected_retry_confirmed = st.checkbox(" in maintenance_task_panels_source
+            and 'key=f"maintenance_retry_selected_confirm_{selected_retry_task_id}"'
+            in maintenance_task_panels_source
+            and "disabled=not recommended_retry_confirmed" in maintenance_task_panels_source
+            and "disabled=selected_retry_guarded or not selected_retry_confirmed"
+            in maintenance_task_panels_source
+            and "可能消耗模型或資料源額度" in maintenance_task_panels_source
+        ),
         "ui_task_status_panel_extracted": (ui_dir / "task_status_panel.py").exists()
         and "def render_task_status_panel(" in task_status_panel_source
         and "def render_task_status_panel(" not in dashboard_core_source

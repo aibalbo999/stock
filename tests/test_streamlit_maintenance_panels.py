@@ -957,13 +957,21 @@ def test_task_retry_controls_one_click_retries_recommended_task(monkeypatch) -> 
             self.session_state = {"maintenance_inspect_task_id": "task-safe-selected"}
             self.buttons: list[dict] = []
             self.captions: list[str] = []
+            self.checkboxes: list[dict] = []
             self.successes: list[str] = []
             self.warnings: list[str] = []
             self.selectboxes: list[dict] = []
 
         def button(self, label: str, **kwargs):
             self.buttons.append({"label": label, **kwargs})
-            return kwargs.get("key") == "maintenance_retry_recommended_task"
+            return (
+                kwargs.get("key") == "maintenance_retry_recommended_task"
+                and not kwargs.get("disabled")
+            )
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return key == "maintenance_retry_recommended_confirm_task-safe-selected"
 
         def caption(self, body: str) -> None:
             self.captions.append(str(body))
@@ -1027,6 +1035,108 @@ def test_task_retry_controls_one_click_retries_recommended_task(monkeypatch) -> 
     assert fake_st.selectboxes[0]["index"] == 1
     assert fake_st.buttons[0]["label"] == "一鍵重試建議任務"
     assert fake_st.buttons[0]["type"] == "primary"
+    assert fake_st.checkboxes[0]["key"] == "maintenance_retry_recommended_confirm_task-safe-selected"
+
+
+def test_task_retry_controls_require_confirmation_before_retry_submission(monkeypatch) -> None:
+    from app.ui import maintenance_task_panels
+
+    class FakeColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class FakeStreamlit:
+        def __init__(self) -> None:
+            self.session_state = {"maintenance_inspect_task_id": "task-selected"}
+            self.buttons: list[dict] = []
+            self.captions: list[str] = []
+            self.checkboxes: list[dict] = []
+            self.selectboxes: list[dict] = []
+            self.successes: list[str] = []
+            self.warnings: list[str] = []
+
+        def button(self, label: str, **kwargs):
+            self.buttons.append({"label": label, **kwargs})
+            return kwargs.get("key") in {
+                "maintenance_retry_recommended_task",
+                "maintenance_retry_failed_task",
+            } and not kwargs.get("disabled")
+
+        def checkbox(self, label: str, *, value: bool = False, key: str):
+            self.checkboxes.append({"label": label, "value": value, "key": key})
+            return False
+
+        def caption(self, body: str) -> None:
+            self.captions.append(str(body))
+
+        def warning(self, body: str) -> None:
+            self.warnings.append(str(body))
+
+        def success(self, body: str) -> None:
+            self.successes.append(str(body))
+
+        def columns(self, _spec):
+            return [FakeColumn(), FakeColumn()]
+
+        def selectbox(self, label, options, *, format_func, key, index=0):
+            self.selectboxes.append(
+                {
+                    "label": label,
+                    "options": list(options),
+                    "key": key,
+                    "index": index,
+                    "selected_label": format_func(options[index]),
+                }
+            )
+            return options[index]
+
+    fake_st = FakeStreamlit()
+    posted: list[tuple[str, dict]] = []
+    monkeypatch.setattr(maintenance_task_panels, "st", fake_st)
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "run_api_action_or_none",
+        lambda action, **_kwargs: action(),
+    )
+    monkeypatch.setattr(
+        maintenance_task_panels,
+        "api_task_post",
+        lambda endpoint, payload: posted.append((endpoint, payload))
+        or {"task_id": "task-retry-new"},
+    )
+
+    maintenance_task_panels._render_task_retry_controls(
+        [
+            {
+                "task_id": "task-selected",
+                "label": "report_generation｜run #23｜task-selected",
+                "retry_guarded": False,
+                "retry_guard_message": "",
+            }
+        ]
+    )
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會重試建議任務，可能消耗模型或資料源額度",
+            "value": False,
+            "key": "maintenance_retry_recommended_confirm_task-selected",
+        },
+        {
+            "label": "我了解這會重試選取任務，可能消耗模型或資料源額度",
+            "value": False,
+            "key": "maintenance_retry_selected_confirm_task-selected",
+        },
+    ]
+    assert fake_st.buttons[0]["label"] == "一鍵重試建議任務"
+    assert fake_st.buttons[0]["disabled"] is True
+    assert fake_st.buttons[1]["label"] == "重試選取任務"
+    assert fake_st.buttons[1]["disabled"] is True
+    assert any("避免誤觸重試" in caption for caption in fake_st.captions)
+    assert posted == []
 
 
 def test_external_deployment_warning_rows_include_optional_and_smoke_commands() -> None:

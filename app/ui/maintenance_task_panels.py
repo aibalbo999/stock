@@ -158,12 +158,19 @@ def _render_task_retry_controls(retry_options: list[dict]) -> None:
     selected_retry_guard_message = str(selected_retry_option.get("retry_guard_message") or "")
     if selected_retry_guarded and selected_retry_guard_message:
         st.warning(selected_retry_guard_message)
+    selected_retry_confirmed = st.checkbox(
+        "我了解這會重試選取任務，可能消耗模型或資料源額度",
+        value=False,
+        key=f"maintenance_retry_selected_confirm_{selected_retry_task_id}",
+    )
+    if not selected_retry_guarded and not selected_retry_confirmed:
+        st.caption("避免誤觸重試；確認後才可重新送出並消耗額度。")
     retry_cols = st.columns([1, 1])
     with retry_cols[0]:
         if st.button(
             "重試選取任務",
             key="maintenance_retry_failed_task",
-            disabled=selected_retry_guarded,
+            disabled=selected_retry_guarded or not selected_retry_confirmed,
         ):
             _submit_task_retry(str(selected_retry_task_id))
     with retry_cols[1]:
@@ -172,15 +179,24 @@ def _render_task_retry_controls(retry_options: list[dict]) -> None:
 
 
 def _render_recommended_task_retry_control(retry_option: dict) -> None:
-    label = str(retry_option.get("label") or retry_option.get("task_id") or "建議任務")
+    recommended_task_id = str(retry_option.get("task_id") or "")
+    label = str(retry_option.get("label") or recommended_task_id or "建議任務")
     st.caption(f"建議處理：{label}")
+    recommended_retry_confirmed = st.checkbox(
+        "我了解這會重試建議任務，可能消耗模型或資料源額度",
+        value=False,
+        key=f"maintenance_retry_recommended_confirm_{recommended_task_id}",
+    )
+    if not recommended_retry_confirmed:
+        st.caption("避免誤觸重試；確認後才會送出建議任務。")
     if st.button(
         "一鍵重試建議任務",
         key="maintenance_retry_recommended_task",
         type="primary",
         use_container_width=True,
+        disabled=not recommended_retry_confirmed,
     ):
-        _submit_task_retry(str(retry_option["task_id"]))
+        _submit_task_retry(recommended_task_id)
 
 
 def _submit_task_retry(task_id: str) -> None:

@@ -623,6 +623,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "maintenance_retry_failed_task" in source
     assert "maintenance_inspect_task_id" in source
     assert "maintenance_retry_recommended_task" in source
+    assert "recommended_retry_confirmed = st.checkbox(" in source
+    assert "recommended_task_id = str(" in source
+    assert 'key=f"maintenance_retry_recommended_confirm_{recommended_task_id}"' in source
+    assert "selected_retry_confirmed = st.checkbox(" in source
+    assert (
+        'key=f"maintenance_retry_selected_confirm_{selected_retry_task_id}"'
+        in source
+    )
+    assert "disabled=not recommended_retry_confirmed" in source
+    assert "disabled=selected_retry_guarded or not selected_retry_confirmed" in source
     assert "task_retry_option_index(" in source
     assert "_submit_task_retry(str(selected_retry_task_id))" in source
     assert 'f"/tasks/{task_id}/retry"' in source

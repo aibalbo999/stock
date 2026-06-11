@@ -656,6 +656,14 @@ textarea:focus,
     font-size: 1rem;
     line-height: 1.45;
 }
+.latest-report-picker-note {
+    color: var(--stock-muted);
+    display: block;
+    font-size: 0.82rem;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.45;
+}
 .analysis-submission-summary {
     display: grid;
     gap: 5px;

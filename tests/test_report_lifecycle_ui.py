@@ -23,6 +23,7 @@ def test_latest_report_picker_state_single_latest_report_without_choice() -> Non
     assert picker["selector_label"] == ""
     assert picker["summary_title"] == "目前最新版報告"
     assert picker["summary_detail"] == "AI 產業鏈｜2026-06-10 15:30"
+    assert picker["scope_note"] == "此頁只顯示目前保留的最新版；舊版請到疑難排解的執行紀錄追蹤。"
     assert picker["options"][0]["label"] == "2026-06-10 15:30｜AI 產業鏈"
 
 
@@ -51,6 +52,7 @@ def test_latest_report_picker_state_multi_topic_uses_topic_latest_selector() -> 
     assert picker["selector_label"] == "選擇主題最新版報告"
     assert picker["summary_title"] == "每個主題的最新版"
     assert picker["summary_detail"] == "共 2 份主題最新版，預設讀取最新產生的一份。"
+    assert picker["scope_note"] == "這不是歷史版本清單；每個主題只顯示最新一份可讀報告。"
 
 
 def test_latest_report_picker_state_shows_running_empty_state() -> None:
@@ -80,6 +82,7 @@ def test_latest_report_picker_state_shows_running_empty_state() -> None:
         "selector_label": "",
         "summary_title": "最新版報告生成中",
         "summary_detail": "最新任務正在背景執行；完成前不需要重複建立分析。",
+        "scope_note": "完成後報告中心會只顯示可閱讀的最新版結果。",
         "action_label": "查看任務",
         "route_hint": "task:first-report-task",
     }
@@ -95,9 +98,32 @@ def test_latest_report_picker_state_empty_state_offers_create_analysis_action() 
         "selector_label": "",
         "summary_title": "尚無最新版報告",
         "summary_detail": "建立分析後，這裡會顯示目前保留的最新版報告。",
+        "scope_note": "報告中心不需要手動整理歷史版本；系統會保留最新可讀結果。",
         "action_label": "建立分析",
         "route_hint": "analysis",
     }
+
+
+def test_latest_report_picker_summary_renders_latest_only_scope_note(monkeypatch) -> None:
+    rendered: list[str] = []
+    monkeypatch.setattr(
+        report_center.st,
+        "markdown",
+        lambda body, **_kwargs: rendered.append(str(body)),
+    )
+
+    report_center._render_latest_report_picker_summary(
+        {
+            "mode": "multi_topic_latest",
+            "summary_title": "每個主題的最新版",
+            "summary_detail": "共 2 份主題最新版，預設讀取最新產生的一份。",
+            "scope_note": "這不是歷史版本清單；每個主題只顯示最新一份可讀報告。",
+        }
+    )
+
+    assert rendered
+    assert "這不是歷史版本清單" in rendered[0]
+    assert "latest-report-picker-note" in rendered[0]
 
 
 def test_empty_report_action_summary_distinguishes_empty_and_running_states() -> None:

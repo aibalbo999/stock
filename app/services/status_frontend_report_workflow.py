@@ -130,6 +130,14 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "建立分析後，這裡會顯示目前保留的最新版報告。" in report_center_source
             and ".latest-report-picker" in style_source
         ),
+        "ui_report_latest_only_scope_note_enabled": (
+            '"scope_note": "這不是歷史版本清單；每個主題只顯示最新一份可讀報告。"'
+            in report_center_source
+            and "此頁只顯示目前保留的最新版" in report_center_source
+            and "報告中心不需要手動整理歷史版本" in report_center_source
+            and "latest-report-picker-note" in report_center_source
+            and ".latest-report-picker-note" in style_source
+        ),
         "ui_report_empty_create_analysis_action_enabled": (
             "def empty_report_action_summary(" in report_center_source
             and '"mode": "empty"' in report_center_source

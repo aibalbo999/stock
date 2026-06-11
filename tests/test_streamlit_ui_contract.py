@@ -622,6 +622,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def latest_report_picker_state(" in source
     assert "目前最新版報告" in source
     assert "選擇主題最新版報告" in source
+    assert "這不是歷史版本清單" in source
+    assert "每個主題只顯示最新一份可讀報告" in source
+    assert "latest-report-picker-note" in combined
     assert "flex-wrap: wrap" in combined
     assert 'button[data-testid^="stBaseButton"]' in styles
     assert 'button[data-testid^="stBaseButton"] {\n    min-height: 48px !important;' in styles

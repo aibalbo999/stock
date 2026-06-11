@@ -295,6 +295,7 @@ def latest_report_picker_state(
                 "selector_label": "",
                 "summary_title": "最新版報告生成中",
                 "summary_detail": "最新任務正在背景執行；完成前不需要重複建立分析。",
+                "scope_note": "完成後報告中心會只顯示可閱讀的最新版結果。",
                 "action_label": "查看任務",
                 "route_hint": _task_route_hint(latest_running_task),
             }
@@ -305,6 +306,7 @@ def latest_report_picker_state(
             "selector_label": "",
             "summary_title": "尚無最新版報告",
             "summary_detail": "建立分析後，這裡會顯示目前保留的最新版報告。",
+            "scope_note": "報告中心不需要手動整理歷史版本；系統會保留最新可讀結果。",
             "action_label": "建立分析",
             "route_hint": "analysis",
         }
@@ -322,6 +324,7 @@ def latest_report_picker_state(
             "selector_label": "",
             "summary_title": "目前最新版報告",
             "summary_detail": options[0]["summary_detail"],
+            "scope_note": "此頁只顯示目前保留的最新版；舊版請到疑難排解的執行紀錄追蹤。",
         }
 
     return {
@@ -331,6 +334,7 @@ def latest_report_picker_state(
         "selector_label": "選擇主題最新版報告",
         "summary_title": "每個主題的最新版",
         "summary_detail": f"共 {len(options)} 份主題最新版，預設讀取最新產生的一份。",
+        "scope_note": "這不是歷史版本清單；每個主題只顯示最新一份可讀報告。",
     }
 
 
@@ -456,6 +460,7 @@ def _render_latest_report_picker_summary(picker: dict[str, Any]) -> None:
         f"""<section class="latest-report-picker is-{escape(picker.get("mode", "empty"))}" aria-label="最新版報告範圍">
 <span>{escape(picker.get("summary_title", "-"))}</span>
 <strong>{escape(picker.get("summary_detail", ""))}</strong>
+<em class="latest-report-picker-note">{escape(picker.get("scope_note", ""))}</em>
 </section>""",
         unsafe_allow_html=True,
     )

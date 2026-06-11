@@ -35,6 +35,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
     data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
     data_enrichment_market_view_source = ui.DATA_ENRICHMENT_MARKET_VIEW_SOURCE.read_text()
     data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
@@ -62,11 +63,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
 
     assert "workspace-topbar" in combined
     assert "workspace-topbar is-compact" in source
+    assert "workspace-topbar is-compact" in analysis_view_source
+    assert "workspace-topbar is-compact" not in analysis_workspace_source
     assert "AI 台股操作者控制台" in source
     assert "研究主題、補資料、看報告，集中在同一個工作台" not in source
     assert "先看下一步建議" not in source
     assert "workflow-strip" in combined
     assert "workflow-strip is-compact" in source
+    assert "workflow-strip is-compact" in analysis_view_source
     assert "workspace-ledger" in combined
     assert "workspace-ledger is-compact" in source
     assert "credibility_html" in source
@@ -283,10 +287,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "pointer-events: none !important" in styles
     assert "def render_analysis_workspace() -> None:" in analysis_workspace_source
     assert "from app.ui.analysis_workspace_presenter import (" in analysis_workspace_source
+    assert "from app.ui.analysis_workspace_view import (" in analysis_workspace_source
     assert "import streamlit" not in analysis_presenter_source
+    assert "import streamlit" not in analysis_view_source
     assert "def analysis_submission_ready(" in analysis_presenter_source
     assert "def analysis_submission_summary(" in analysis_presenter_source
     assert "def analysis_submission_quota_pressure(" in analysis_presenter_source
+    assert "def analysis_submission_summary_html(" in analysis_view_source
+    assert "def operator_workbench_header_html(" in analysis_view_source
+    assert "def operator_status_grid_html(" in analysis_view_source
     assert "def analysis_submission_ready(" not in analysis_workspace_source
     assert "def analysis_submission_summary(" not in analysis_workspace_source
     assert "def analysis_submission_quota_pressure(" not in analysis_workspace_source
@@ -296,7 +305,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "額度壓力：" in analysis_presenter_source
     assert "適合快速試跑或額度偏緊時使用" in analysis_presenter_source
     assert "適合收盤後或額度剛重置時執行" in analysis_presenter_source
-    assert "送出前確認" in analysis_workspace_source
+    assert "送出前確認" in analysis_view_source
+    assert "送出前確認" not in analysis_workspace_source
     assert "可送出分析背景任務" in analysis_presenter_source
     assert "手動模式請先選擇至少一檔股票" in analysis_presenter_source
     assert "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source

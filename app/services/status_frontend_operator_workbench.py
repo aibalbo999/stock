@@ -11,6 +11,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     analysis_workspace_presenter_source = source_context.ui_sources.get(
         "analysis_workspace_presenter.py", ""
     )
+    analysis_workspace_view_source = source_context.ui_sources.get(
+        "analysis_workspace_view.py", ""
+    )
     data_enrichment_common_source = source_context.ui_sources.get(
         "data_enrichment_common.py", ""
     )
@@ -39,6 +42,19 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def analysis_submission_summary(" in analysis_workspace_presenter_source
             and "def analysis_submission_quota_pressure("
             in analysis_workspace_presenter_source
+        ),
+        "ui_analysis_workspace_view_extracted": (
+            "from app.ui.analysis_workspace_view import (" in analysis_workspace_source
+            and "import streamlit" not in analysis_workspace_view_source
+            and "def workspace_topbar_html(" in analysis_workspace_view_source
+            and "def workspace_flow_html(" in analysis_workspace_view_source
+            and "def analysis_submission_summary_html(" in analysis_workspace_view_source
+            and "def operator_workbench_header_html(" in analysis_workspace_view_source
+            and "workspace_topbar_html(today_taipei().isoformat())"
+            in analysis_workspace_source
+            and "workspace-topbar is-compact" not in analysis_workspace_source
+            and 'class="analysis-submission-summary'
+            not in analysis_workspace_source
         ),
         "ui_analysis_operator_presenter_extracted": (
             "from app.ui.analysis_operator_presenter import ("
@@ -80,8 +96,8 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "analysis_submission_summary(" in analysis_workspace_source
             and "_render_analysis_submission_summary(submission_summary)"
             in analysis_workspace_source
-            and 'class="analysis-submission-summary' in analysis_workspace_source
-            and "送出前確認" in analysis_workspace_source
+            and 'class="analysis-submission-summary' in analysis_workspace_view_source
+            and "送出前確認" in analysis_workspace_view_source
             and "可送出分析背景任務" in analysis_workspace_presenter_source
             and "手動模式請先選擇至少一檔股票"
             in analysis_workspace_presenter_source
@@ -96,7 +112,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             in analysis_workspace_presenter_source
             and "適合收盤後或額度剛重置時執行"
             in analysis_workspace_presenter_source
-            and "class=\"quota-pressure" in analysis_workspace_source
+            and "class=\"quota-pressure" in analysis_workspace_view_source
         ),
         "ui_data_task_followup_summary_enabled": (
             "def data_task_followup_summary(" in data_enrichment_common_source

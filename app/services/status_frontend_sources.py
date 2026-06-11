@@ -49,6 +49,7 @@ UI_MODULE_NAMES = (
     "maintenance_progress_presenter.py",
     "analysis_workspace_presenter.py",
     "analysis_workspace.py",
+    "analysis_workspace_view.py",
     "report_center.py",
     "data_enrichment.py",
     "data_enrichment_common.py",
@@ -75,6 +76,7 @@ UI_MODULE_NAMES = (
 
 PAGE_UI_MODULE_NAMES = (
     "analysis_workspace.py",
+    "analysis_workspace_view.py",
     "report_center.py",
     "data_enrichment.py",
     "data_enrichment_common.py",

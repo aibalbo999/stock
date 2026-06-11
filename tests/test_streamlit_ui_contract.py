@@ -35,6 +35,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    analysis_task_lookup_panel_source = ui.ANALYSIS_TASK_LOOKUP_PANEL_SOURCE.read_text()
     analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
     data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
     data_enrichment_market_cache_source = (
@@ -334,6 +335,20 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "analysis_form_intro_html()" in analysis_workspace_source
     assert 'class="compact-note"' in analysis_view_source
     assert "compact-note" not in analysis_workspace_source
+    assert (
+        "from app.ui.analysis_task_lookup_panel import render_analysis_task_lookup_panel"
+        in analysis_workspace_source
+    )
+    assert "render_analysis_task_lookup_panel()" in analysis_workspace_source
+    assert "def render_analysis_task_lookup_panel(" in analysis_task_lookup_panel_source
+    assert 'with st.expander("疑難排解：查詢背景分析")' in (
+        analysis_task_lookup_panel_source
+    )
+    assert 'with st.expander("疑難排解：查詢背景分析")' not in analysis_workspace_source
+    assert "render_task_status_panel(" in analysis_task_lookup_panel_source
+    assert 'refresh_key="refresh_analysis_task_status"' in analysis_task_lookup_panel_source
+    assert 'apply_result_key="apply_analysis_task_result"' in analysis_task_lookup_panel_source
+    assert 'task_state_key="last_async_task_id"' in analysis_task_lookup_panel_source
     assert "def _render_analysis_submission_summary(" in analysis_workspace_source
     assert "analysis-submission-summary" in combined
     assert "quota-pressure" in combined

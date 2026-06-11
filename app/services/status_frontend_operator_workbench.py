@@ -11,6 +11,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     analysis_workspace_presenter_source = source_context.ui_sources.get(
         "analysis_workspace_presenter.py", ""
     )
+    analysis_task_lookup_panel_source = source_context.ui_sources.get(
+        "analysis_task_lookup_panel.py", ""
+    )
     analysis_workspace_view_source = source_context.ui_sources.get(
         "analysis_workspace_view.py", ""
     )
@@ -67,6 +70,25 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and 'class="compact-note"' in analysis_workspace_view_source
             and "analysis_form_intro_html()" in analysis_workspace_source
             and "compact-note" not in analysis_workspace_source
+        ),
+        "ui_analysis_task_lookup_panel_extracted": (
+            "from app.ui.analysis_task_lookup_panel import render_analysis_task_lookup_panel"
+            in analysis_workspace_source
+            and "render_analysis_task_lookup_panel()" in analysis_workspace_source
+            and "def render_analysis_task_lookup_panel("
+            in analysis_task_lookup_panel_source
+            and 'with st.expander("疑難排解：查詢背景分析")'
+            in analysis_task_lookup_panel_source
+            and 'with st.expander("疑難排解：查詢背景分析")'
+            not in analysis_workspace_source
+            and "render_task_status_panel(" in analysis_task_lookup_panel_source
+            and 'refresh_key="refresh_analysis_task_status"'
+            in analysis_task_lookup_panel_source
+            and 'apply_result_key="apply_analysis_task_result"'
+            in analysis_task_lookup_panel_source
+            and 'task_state_key="last_async_task_id"' in analysis_task_lookup_panel_source
+            and 'st.warning("請輸入任務編號。")' in analysis_task_lookup_panel_source
+            and 'st.warning("請輸入任務編號。")' not in analysis_workspace_source
         ),
         "ui_analysis_operator_presenter_extracted": (
             "from app.ui.analysis_operator_presenter import ("

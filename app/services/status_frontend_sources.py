@@ -47,6 +47,7 @@ UI_MODULE_NAMES = (
     "task_queue_diagnostics.py",
     "task_failure_diagnostics.py",
     "analysis_operator_presenter.py",
+    "analysis_task_lookup_panel.py",
     "maintenance_incident_presenter.py",
     "maintenance_incident_view.py",
     "maintenance_status.py",
@@ -54,6 +55,7 @@ UI_MODULE_NAMES = (
     "maintenance_progress_view.py",
     "analysis_workspace_presenter.py",
     "analysis_workspace.py",
+    "analysis_task_lookup_panel.py",
     "analysis_workspace_view.py",
     "report_center.py",
     "data_enrichment.py",
@@ -86,6 +88,7 @@ UI_MODULE_NAMES = (
 
 PAGE_UI_MODULE_NAMES = (
     "analysis_workspace.py",
+    "analysis_task_lookup_panel.py",
     "analysis_workspace_view.py",
     "report_center.py",
     "report_center_view.py",

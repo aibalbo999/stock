@@ -21,6 +21,7 @@ from app.ui.analysis_workspace_presenter import (
     analysis_submission_ready,
     analysis_submission_summary,
 )
+from app.ui.analysis_task_lookup_panel import render_analysis_task_lookup_panel
 from app.ui.analysis_workspace_view import (
     analysis_form_intro_html,
     analysis_submission_summary_html,
@@ -54,7 +55,6 @@ from app.ui.report_follow_up_controls import render_follow_up_controls
 from app.ui.report_formatters import metric_count_from_payload
 from app.ui.report_html import report_html
 from app.ui.report_state import hydrate_active_report_result
-from app.ui.task_status_panel import render_task_status_panel
 
 
 __all__ = [
@@ -226,27 +226,7 @@ def render_analysis_workspace() -> None:
                     task_type="manual",
                 )
 
-        with st.expander("疑難排解：查詢背景分析"):
-            last_task_id = st.session_state.get("last_async_task_id")
-            task_id = st.text_input("背景分析編號", value=last_task_id or "")
-            render_task_status_panel(
-                task_id=task_id,
-                refresh_key="refresh_analysis_task_status",
-                apply_result_key="apply_analysis_task_result",
-                task_state_key="last_async_task_id",
-            )
-            if st.button("查詢紀錄", key="lookup_analysis_task_run"):
-                if not task_id:
-                    st.warning("請輸入任務編號。")
-                else:
-                    task_run = load_api_json_or_default(
-                        f"/tasks/{task_id}/run",
-                        None,
-                        error_message="查詢失敗",
-                        not_found_message="尚未找到對應紀錄；任務剛送出時可能需要等待。",
-                    )
-                    if task_run is not None:
-                        st.json(task_run)
+        render_analysis_task_lookup_panel()
 
     with analysis_result_col:
         result = st.session_state.get("last_analysis_result")

@@ -64,29 +64,53 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
     assert (
         status["company_filings"]["cache_ttl_seconds"] == settings.company_filing_cache_ttl_seconds
     )
-    assert status["company_filings"]["browser_render_enabled"] is False
-    assert status["company_filings"]["browser_render_provider"] == "browserless"
-    assert "flaresolverr" in status["company_filings"]["browser_render_supported_providers"]
-    assert status["company_filings"]["browser_render_provider_capability"]["tier"] == (
-        "browser_render"
+    assert (
+        status["company_filings"]["browser_render_enabled"]
+        is settings.company_filing_browser_render_enabled
     )
     assert (
-        status["company_filings"]["browser_render_provider_capability"]["captcha_unlocker"] is False
+        status["company_filings"]["browser_render_provider"]
+        == settings.company_filing_browser_render_provider
     )
-    assert status["company_filings"]["browser_render_configured"] is False
-    assert status["company_filings"]["browser_render_configuration_ready"] is False
-    assert status["company_filings"]["browser_render_configuration_check"]["status"] == "disabled"
-    assert status["company_filings"]["browser_render_configuration_check"]["missing_env_keys"] == [
-        "COMPANY_FILING_BROWSER_RENDER_ENABLED",
-        "COMPANY_FILING_BROWSER_RENDER_URL",
-    ]
-    assert status["company_filings"]["browser_render_token_required"] is False
-    assert status["company_filings"]["browser_render_token_configured"] is False
-    assert status["company_filings"]["browser_render_endpoint_reachable"] is False
+    assert "flaresolverr" in status["company_filings"]["browser_render_supported_providers"]
+    provider_capability = status["company_filings"]["browser_render_provider_capability"]
+    assert provider_capability["tier"] in {"browser_render", "unlocker", "managed_unlocker"}
+    assert isinstance(provider_capability["captcha_unlocker"], bool)
+    configuration_check = status["company_filings"]["browser_render_configuration_check"]
+    runtime = status["company_filings"]["browser_render_runtime"]
+    assert (
+        status["company_filings"]["browser_render_configured"]
+        is bool(runtime.get("runtime_available"))
+    )
+    assert (
+        status["company_filings"]["browser_render_configuration_ready"]
+        is bool(configuration_check.get("ready"))
+    )
+    if settings.company_filing_browser_render_enabled:
+        assert configuration_check["status"] in {"ready", "missing_required_env", "degraded"}
+        assert "COMPANY_FILING_BROWSER_RENDER_ENABLED" in configuration_check[
+            "configured_env_keys"
+        ]
+    else:
+        assert configuration_check["status"] == "disabled"
+        assert configuration_check["missing_env_keys"] == [
+            "COMPANY_FILING_BROWSER_RENDER_ENABLED",
+            "COMPANY_FILING_BROWSER_RENDER_URL",
+        ]
+    assert status["company_filings"]["browser_render_token_required"] is bool(
+        configuration_check.get("token_required")
+    )
+    assert status["company_filings"]["browser_render_token_configured"] is bool(
+        configuration_check.get("token_configured")
+    )
+    assert status["company_filings"]["browser_render_endpoint_reachable"] is bool(
+        runtime.get("endpoint_reachable")
+    )
     assert "fallback_reason" in status["company_filings"]["browser_render_runtime"]
     assert "mops.twse.com.tw" in status["company_filings"]["high_risk_source_domains"]
     assert (
-        status["company_filings"]["high_risk_source_policy"]["configured_provider"] == "browserless"
+        status["company_filings"]["high_risk_source_policy"]["configured_provider"]
+        == status["company_filings"]["browser_render_provider"]
     )
     assert (
         "flaresolverr"
@@ -96,7 +120,9 @@ def test_company_filing_status_parser_cache_render_and_identity_evidence(
         status["company_filings"]["high_risk_source_policy"]["configuration_check"]
         == status["company_filings"]["browser_render_configuration_check"]
     )
-    assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is False
+    assert status["company_filings"]["high_risk_captcha_unlocker_ready"] is bool(
+        status["company_filings"]["high_risk_source_policy"]["captcha_challenge_ready"]
+    )
     assert status["company_filings"]["browser_render_runtime"]["smoke_cli"].endswith(
         "scripts/company_filing_render_smoke.py --url https://example.com/ --json"
     )

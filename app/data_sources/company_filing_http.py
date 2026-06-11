@@ -103,7 +103,7 @@ async def company_filing_request_with_retries(
             )
     if last_error:
         raise last_error
-    raise httpx.HTTPError("company filing request failed without a response")
+    raise httpx.HTTPError("公司文件請求失敗且沒有回應內容")
 
 
 async def company_filing_fetch_response_with_retries(
@@ -158,7 +158,7 @@ async def company_filing_fetch_response_with_retries(
             )
     if last_error:
         raise last_error
-    raise httpx.HTTPError("company filing request failed without a response")
+    raise httpx.HTTPError("公司文件請求失敗且沒有回應內容")
 
 
 async def company_filing_sleep_before_retry(response: httpx.Response | None, attempt: int) -> None:

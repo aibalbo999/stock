@@ -41,6 +41,13 @@ from app.data_sources.news import NewsFetcher
 from app.services.persistence import CompanyFilingRepository
 
 
+def test_company_filing_http_terminal_error_uses_operator_language() -> None:
+    source = Path("app/data_sources/company_filing_http.py").read_text(encoding="utf-8")
+
+    assert "公司文件請求失敗且沒有回應內容" in source
+    assert "company filing request failed without a response" not in source
+
+
 def test_infer_company_filing_document_type() -> None:
     assert infer_document_type("台積電 2025 年報") == "annual_report"
     assert infer_document_type("Quanta investor presentation") == "investor_presentation"

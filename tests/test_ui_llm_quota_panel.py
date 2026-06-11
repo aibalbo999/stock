@@ -115,11 +115,15 @@ def test_llm_quota_captions_summarize_recommendation_budget_note_and_gemma_fallb
     )
 
     assert captions == [
-        "目前推薦：gemini-2.5-flash｜順位 2｜tier=fallback｜約 1 小時 30 分鐘 後重置",
-        "Earlier model(s) exhausted.",
-        "Limits are project-level.",
+        "目前推薦：gemini-2.5-flash｜順位 2｜路由層級 後援模型｜約 1 小時 30 分鐘 後重置",
+        "前序模型額度已用完，已自動改用下一順位。",
+        "額度限制以專案層級為準。",
         "高額度保底模型：gemma-4-31b-it",
     ]
+    rendered = str(captions)
+    assert "tier=fallback" not in rendered
+    assert "Earlier model(s) exhausted." not in rendered
+    assert "Limits are project-level." not in rendered
 
 
 def test_llm_quota_captions_surface_free_tier_reference_drift() -> None:
@@ -139,12 +143,17 @@ def test_llm_quota_captions_surface_free_tier_reference_drift() -> None:
     )
 
     assert captions == [
-        "目前推薦：gemini-3.5-flash｜順位 1｜tier=primary",
+        "目前推薦：gemini-3.5-flash｜順位 1｜路由層級 主力模型",
         (
-            "Free Tier 參考差異：gemini-2.5-flash-lite: configured 250 / official 1000。"
-            "實際仍以 Google AI Studio project limit 為準。"
+            "Free Tier 參考差異：gemini-2.5-flash-lite 設定 250 / 官方 1000。"
+            "實際仍以 Google AI Studio 專案額度為準。"
         ),
     ]
+    rendered = str(captions)
+    assert "tier=primary" not in rendered
+    assert "configured" not in rendered
+    assert "official" not in rendered
+    assert "project limit" not in rendered
 
 
 def test_llm_quota_captions_surface_near_limit_alerts_without_changing_recommendation() -> None:
@@ -170,13 +179,14 @@ def test_llm_quota_captions_surface_near_limit_alerts_without_changing_recommend
     )
 
     assert captions == [
-        "目前推薦：gemini-3.5-flash｜順位 1｜tier=primary｜約 10 分鐘 後重置",
-        (
-            "Top-ranked configured model still has remaining tracked quota; "
-            "it has reached the 80% warning threshold."
-        ),
-        "額度提醒：gemini-3.5-flash warning（已用 80.0%）；Keep using this model until exhausted.",
+        "目前推薦：gemini-3.5-flash｜順位 1｜路由層級 主力模型｜約 10 分鐘 後重置",
+        "最高順位模型仍有追蹤額度，已接近 80% 提醒門檻。",
+        "額度提醒：gemini-3.5-flash 需注意（已用 80.0%）；保持目前模型，直到額度用完再自動降級。",
     ]
+    rendered = str(captions)
+    assert "Top-ranked configured model" not in rendered
+    assert "warning" not in rendered
+    assert "Keep using this model until exhausted." not in rendered
 
 
 def test_llm_quota_captions_surface_active_cooldown_alerts() -> None:
@@ -198,9 +208,14 @@ def test_llm_quota_captions_surface_active_cooldown_alerts() -> None:
     )
 
     assert captions == [
-        "目前推薦：gemini-2.5-flash｜順位 2｜tier=fallback｜約 10 分鐘 後重置",
-        "額度提醒：gemini-3.5-flash warning；cooldown 約 30 分鐘；No manual action needed.",
+        "目前推薦：gemini-2.5-flash｜順位 2｜路由層級 後援模型｜約 10 分鐘 後重置",
+        "額度提醒：gemini-3.5-flash 需注意；冷卻約 30 分鐘；不需手動操作。",
     ]
+    rendered = str(captions)
+    assert "tier=fallback" not in rendered
+    assert "warning" not in rendered
+    assert "cooldown" not in rendered
+    assert "No manual action needed." not in rendered
 
 
 def test_llm_usage_routing_helpers_show_recommendation_and_model_order() -> None:

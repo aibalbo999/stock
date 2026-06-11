@@ -52,6 +52,30 @@ ROUTING_REASON_LABELS = {
     "No action needed for routing.": "路由會自動降級，不需手動操作。",
 }
 
+RECOMMENDED_REASON_LABELS = {
+    "Earlier model(s) exhausted.": "前序模型額度已用完，已自動改用下一順位。",
+    (
+        "Top-ranked configured model still has remaining tracked quota; "
+        "it has reached the 80% warning threshold."
+    ): "最高順位模型仍有追蹤額度，已接近 80% 提醒門檻。",
+}
+
+BUDGET_NOTE_LABELS = {
+    "Limits are project-level.": "額度限制以專案層級為準。",
+}
+
+ALERT_SEVERITY_LABELS = {
+    "error": "需處理",
+    "warning": "需注意",
+    "info": "資訊",
+}
+
+ALERT_ACTION_LABELS = {
+    "Keep using this model until exhausted.": "保持目前模型，直到額度用完再自動降級。",
+    "No manual action needed.": "不需手動操作。",
+    "No action needed for routing.": "路由會自動降級，不需手動操作。",
+}
+
 
 def llm_quota_metric_values(llm_quota: dict) -> dict[str, str | int]:
     window = _dict_value(llm_quota.get("window"))
@@ -119,11 +143,11 @@ def llm_quota_captions(llm_quota: dict) -> list[str]:
     if recommendation:
         captions.append(recommendation)
     if llm_quota.get("recommended_reason"):
-        captions.append(str(llm_quota["recommended_reason"]))
+        captions.append(_label(RECOMMENDED_REASON_LABELS, llm_quota["recommended_reason"]))
     captions.extend(_quota_alert_captions(llm_quota))
     budget_source = _dict_value(llm_quota.get("budget_source"))
     if budget_source.get("note"):
-        captions.append(str(budget_source["note"]))
+        captions.append(_label(BUDGET_NOTE_LABELS, budget_source["note"]))
     captions.extend(_quota_reference_drift_captions(llm_quota))
     routing_policy = _dict_value(llm_quota.get("routing_policy"))
     high_quota_models = [
@@ -153,14 +177,14 @@ def _quota_reference_drift_captions(llm_quota: dict) -> list[str]:
         if configured_int == reference_int:
             continue
         drift_rows.append(
-            f"{model.get('model')}: configured {configured_int} / official {reference_int}"
+            f"{model.get('model')} 設定 {configured_int} / 官方 {reference_int}"
         )
     if not drift_rows:
         return []
     return [
         "Free Tier 參考差異："
         + "；".join(drift_rows[:3])
-        + "。實際仍以 Google AI Studio project limit 為準。"
+        + "。實際仍以 Google AI Studio 專案額度為準。"
     ]
 
 
@@ -170,15 +194,18 @@ def _quota_alert_captions(llm_quota: dict) -> list[str]:
         if not isinstance(alert, dict):
             continue
         model = str(alert.get("model") or "-")
-        severity = str(alert.get("severity") or "warning")
+        severity = _label(ALERT_SEVERITY_LABELS, alert.get("severity") or "warning")
         ratio = _format_ratio(alert.get("usage_ratio"))
         cooldown = _format_duration(alert.get("active_cooldown_seconds"))
-        next_action = str(alert.get("next_action") or "").strip()
+        raw_next_action = str(alert.get("next_action") or "").strip()
+        next_action = (
+            _label(ALERT_ACTION_LABELS, raw_next_action) if raw_next_action else ""
+        )
         caption = f"額度提醒：{model} {severity}"
         if ratio != "-":
             caption += f"（已用 {ratio}）"
         if cooldown:
-            caption += f"；cooldown 約 {cooldown}"
+            caption += f"；冷卻約 {cooldown}"
         if next_action:
             caption += f"；{next_action}"
         captions.append(caption)
@@ -195,7 +222,7 @@ def _recommendation_caption(llm_quota: dict) -> str:
         parts.append(f"順位 {rank}")
     tier = str(llm_quota.get("recommended_routing_tier") or "").strip()
     if tier:
-        parts.append(f"tier={tier}")
+        parts.append(f"路由層級 {_label(ROUTING_TIER_LABELS, tier)}")
     window = _dict_value(llm_quota.get("window"))
     reset_in_seconds = window.get("reset_in_seconds")
     reset_text = _format_duration(reset_in_seconds)

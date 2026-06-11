@@ -365,6 +365,23 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
                 not in llm_quota_panel_source
             )
         ),
+        "ui_llm_quota_caption_operator_labels_enabled": (
+            "RECOMMENDED_REASON_LABELS = {" in llm_quota_panel_source
+            and "ALERT_SEVERITY_LABELS = {" in llm_quota_panel_source
+            and "ALERT_ACTION_LABELS = {" in llm_quota_panel_source
+            and "路由層級" in llm_quota_panel_source
+            and '"前序模型額度已用完，已自動改用下一順位。"'
+            in llm_quota_panel_source
+            and '"最高順位模型仍有追蹤額度，已接近 80% 提醒門檻。"'
+            in llm_quota_panel_source
+            and '"保持目前模型，直到額度用完再自動降級。"'
+            in llm_quota_panel_source
+            and "冷卻約" in llm_quota_panel_source
+            and "tier={tier}" not in llm_quota_panel_source
+            and "cooldown 約" not in llm_quota_panel_source
+            and "configured {configured_int} / official {reference_int}"
+            not in llm_quota_panel_source
+        ),
         "ui_llm_usage_routing_operator_labels_enabled": (
             "USAGE_ROUTING_REASON_LABELS = {" in maintenance_ai_panels_source
             and "USAGE_OPERATION_LABELS = {" in maintenance_ai_panels_source

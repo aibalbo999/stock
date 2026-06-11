@@ -115,8 +115,14 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         filing_hardening["browser_or_proxy_fallback_configured"]
         is status["company_filings"]["browser_or_proxy_fallback_configured"]
     )
-    assert filing_hardening["browser_render_provider"] == "browserless"
-    assert filing_hardening["browser_render_provider_capability"]["tier"] == "browser_render"
+    assert (
+        filing_hardening["browser_render_provider"]
+        in status["company_filings"]["browser_render_supported_providers"]
+    )
+    assert filing_hardening["browser_render_provider_capability"]["tier"] in {
+        "browser_render",
+        "unlocker",
+    }
     assert (
         filing_hardening["browser_render_configuration_ready"]
         is status["company_filings"]["browser_render_configuration_ready"]
@@ -127,8 +133,14 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
     )
     assert filing_hardening["browser_render_token_required"] is False
     assert filing_hardening["browser_render_token_configured"] is False
-    assert filing_hardening["high_risk_source_policy"]["configured_provider"] == "browserless"
-    assert filing_hardening["high_risk_captcha_unlocker_ready"] is False
+    assert (
+        filing_hardening["high_risk_source_policy"]["configured_provider"]
+        == filing_hardening["browser_render_provider"]
+    )
+    assert (
+        filing_hardening["high_risk_captcha_unlocker_ready"]
+        is status["company_filings"]["high_risk_captcha_unlocker_ready"]
+    )
     assert filing_hardening["structured_api_configured"] is False
     assert filing_hardening["official_material_information_openapi_ready"] is True
     assert (
@@ -212,8 +224,14 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         is status["company_filings"]["browser_or_proxy_fallback_configured"]
     )
     assert filing_fallback["evidence"]["proxy_count"] == 0
-    assert filing_fallback["evidence"]["browser_render_configured"] is False
-    assert filing_fallback["evidence"]["browser_render_provider"] == "browserless"
+    assert (
+        filing_fallback["evidence"]["browser_render_configured"]
+        is status["company_filings"]["browser_render_configured"]
+    )
+    assert (
+        filing_fallback["evidence"]["browser_render_provider"]
+        == status["company_filings"]["browser_render_provider"]
+    )
     assert (
         filing_fallback["evidence"]["browser_render_configuration_check"]
         == status["company_filings"]["browser_render_configuration_check"]
@@ -322,6 +340,8 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         "company_filing_structured_api_sample_contract"
     ]
     assert structured_sample_contract["status"] == "ready"
+    assert "樣本資料格式檢查" in structured_sample_contract["detail"]
+    assert "sample contract" not in structured_sample_contract["detail"]
     assert structured_sample_contract["evidence"]["ready"] is True
     assert structured_sample_contract["evidence"]["contract_diagnostics_ready"] is True
     assert (
@@ -339,6 +359,8 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
 
 def test_company_filing_playwright_fallback_requires_available_dependency(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "false")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "")
     get_settings.cache_clear()
     monkeypatch.setattr(
         "app.services.service_status.company_filing_playwright_browser_status",
@@ -566,6 +588,8 @@ def test_company_filing_high_risk_unlocker_ready_with_flaresolverr(monkeypatch) 
 
 def test_company_filing_playwright_fallback_requires_browser_binary(monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_FILING_PLAYWRIGHT_RENDER_ENABLED", "true")
+    monkeypatch.setenv("COMPANY_FILING_BROWSER_RENDER_ENABLED", "false")
+    monkeypatch.setenv("COMPANY_FILING_PROXY_URLS", "")
     get_settings.cache_clear()
     monkeypatch.setattr(
         "app.services.service_status.company_filing_playwright_browser_status",

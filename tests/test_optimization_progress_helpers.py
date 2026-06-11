@@ -88,7 +88,7 @@ def test_capability_free_validation_extracts_ordered_unique_commands() -> None:
 
     assert result == {
         "available": True,
-        "label": "sample + fixture + provider profile 可驗證",
+        "label": "樣本資料 + 本機測試 API + 提供者設定可驗證",
         "commands": [
             "sample --sample-json fixture.json",
             (".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict"),

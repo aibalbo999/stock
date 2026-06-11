@@ -439,13 +439,13 @@ def structured_company_filing_sample_contract_check() -> dict[str, Any]:
     return {
         "area": "data_business_logic",
         "capability": "company_filing_structured_api_sample_contract",
-        "label": "Structured company filing sample contract",
+        "label": "公司文件結構化樣本資料格式檢查",
         "status": report.get("status") or "unknown",
         "ready": bool(report.get("ready")),
         "evidence": report,
         "smoke_commands": [STRUCTURED_COMPANY_FILING_SAMPLE_COMMAND],
         "remediation": report.get("remediation")
-        or "Keep examples/structured_company_filing_sample.json convertible to CompanyFilingDocument rows.",
+        or "維持 examples/structured_company_filing_sample.json 可轉成 CompanyFilingDocument rows。",
     }
 
 

@@ -80,6 +80,12 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
         "data_pipeline_scraping",
         "ai_rag_graphrag",
     }
+    rendered_domains = str(progress["domains"])
+    assert "公司文件結構化 API 樣本資料格式檢查" in rendered_domains
+    assert "GraphRAG 受控 Neo4j 查詢" in rendered_domains
+    assert "sample contract" not in rendered_domains
+    assert "live query" not in rendered_domains
+    assert "guarded live Cypher query" not in rendered_domains
 
 
 def test_optimization_progress_keeps_paid_structured_api_as_optional_gap() -> None:
@@ -156,7 +162,7 @@ def test_optimization_progress_exposes_free_validation_for_paid_external_gap() -
 
     assert action["capability"] == "company_filing_structured_api_fallback"
     assert action["free_validation_available"] is True
-    assert action["free_validation_label"] == "sample + fixture + provider profile 可驗證"
+    assert action["free_validation_label"] == "樣本資料 + 本機測試 API + 提供者設定可驗證"
     assert len(action["free_validation_commands"]) == 4
     assert "structured_company_filing_sample.json" in action["free_validation_commands"][0]
     assert "structured_company_filing_fixture_smoke.py" in action_rows[0]["免費驗證指令"]

@@ -88,7 +88,7 @@ def test_maintenance_deployment_presenter_builds_effective_gap_rows() -> None:
             "remaining_paid_external_pending": 1,
             "local_default_capabilities": [
                 {"capability": "neo4j_import", "label": "外部 Neo4j 匯入連線"},
-                "GraphRAG guarded live Cypher query",
+                "GraphRAG 受控 Neo4j 查詢",
             ],
             "remaining_capabilities": [
                 {
@@ -101,7 +101,7 @@ def test_maintenance_deployment_presenter_builds_effective_gap_rows() -> None:
     )
 
     assert rows[0] == {"項目": "原始外部選配", "數量": 3, "說明": "尚未扣除已偵測本機 defaults"}
-    assert rows[1]["說明"] == "外部 Neo4j 匯入連線、GraphRAG guarded live Cypher query"
+    assert rows[1]["說明"] == "外部 Neo4j 匯入連線、GraphRAG 受控 Neo4j 查詢"
     assert rows[2] == {"項目": "有效剩餘", "數量": 1, "說明": "公司文件結構化 API 備援"}
     assert rows[-1] == {"項目": "本機驗證指令", "數量": 1, "說明": "audit --local"}
     assert external_deployment_effective_gap_rows({}) == []

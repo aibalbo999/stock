@@ -408,7 +408,7 @@ def test_upgrade_audit_marks_paid_external_only_gaps_as_nonblocking_optional() -
     assert enablement["all_pending_optional"] is True
     assert enablement["paid_external_only_pending"] is True
     assert enablement["primary_next_action"] == (
-        "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持 sample contract。"
+        "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持樣本資料格式檢查。"
     )
     projection = audit["external_deployment_local_projection"]
     assert projection["available_local_default_gap_count"] == 0
@@ -743,7 +743,7 @@ def test_upgrade_audit_fails_structured_api_sample_contract_regression() -> None
                 "data_business_logic.company_filing_structured_api_sample_contract": {
                     "status": "degraded",
                     "evidence": {
-                        "smoke_cli": "structured sample contract smoke",
+                        "smoke_cli": "structured sample data check",
                     },
                 }
             }

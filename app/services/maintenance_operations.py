@@ -30,7 +30,7 @@ MAINTENANCE_OPERATIONS = {
             {
                 "area": "ai_rag",
                 "capability": "graphrag_live_cypher_query",
-                "label": "GraphRAG guarded live Cypher query",
+                "label": "GraphRAG 受控 Neo4j 查詢",
             },
         ),
     },
@@ -58,7 +58,7 @@ MAINTENANCE_OPERATIONS = {
             {
                 "area": "ai_rag",
                 "capability": "graphrag_live_cypher_query",
-                "label": "GraphRAG guarded live Cypher query",
+                "label": "GraphRAG 受控 Neo4j 查詢",
             },
             {
                 "area": "data_business_logic",

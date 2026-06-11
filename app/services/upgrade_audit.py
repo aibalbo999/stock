@@ -118,16 +118,16 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
         "外部 Neo4j 匯入連線",
         ("upgrade_capability_matrix", "ai_rag", "neo4j_import"),
         optional=True,
-        remediation="若正式部署需要 live graph import，設定 NEO4J_URI / 帳密並啟動 Neo4j。",
+        remediation="若正式部署需要圖譜匯入，設定 NEO4J_URI / 帳密並啟動 Neo4j。",
     ),
     UpgradeAuditRequirement(
         "ai_rag",
         "graphrag_live_cypher_query",
-        "GraphRAG guarded live Cypher query",
+        "GraphRAG 受控 Neo4j 查詢",
         ("upgrade_capability_matrix", "ai_rag", "graphrag_live_cypher_query"),
         optional=True,
         remediation=(
-            "若正式部署需要 LLM 產生 guarded Cypher 後直接查 Neo4j，"
+            "若正式部署需要 LLM 產生受控 Cypher 後直接查 Neo4j，"
             "設定 NEO4J_URI / 帳密並確認 /supply-chain/graph/cypher-query 可執行 read-only 查詢。"
         ),
     ),
@@ -302,7 +302,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
     UpgradeAuditRequirement(
         "data_business_logic",
         "company_filing_structured_api_sample_contract",
-        "公司文件結構化 API sample contract",
+        "公司文件結構化 API 樣本資料格式檢查",
         (
             "upgrade_capability_matrix",
             "data_business_logic",
@@ -312,7 +312,7 @@ REQUIREMENTS: tuple[UpgradeAuditRequirement, ...] = (
             "執行 .venv/bin/python scripts/structured_company_filing_smoke.py "
             "--sample-json examples/structured_company_filing_sample.json "
             "--ticker 2330 --company-name 台積電 --document-type investor_presentation --json，"
-            "確認樣本 payload 可轉成 CompanyFilingDocument。"
+            "確認樣本資料可轉成 CompanyFilingDocument。"
         ),
     ),
     UpgradeAuditRequirement(
@@ -696,7 +696,7 @@ def _background_task_queue_remediation(evidence: dict, default: str) -> str:
     if evidence.get("task_failure_diagnostics_shared_service") is False:
         reasons.append("恢復 task failure diagnostics shared service")
     if evidence.get("task_failure_diagnostics_persisted_to_run_payload") is False:
-        reasons.append("將 task failure diagnostics 寫回 analysis run payload")
+        reasons.append("將任務失敗診斷寫回分析紀錄輸入內容")
     return "；".join(reasons) + "。" if reasons else default
 
 

@@ -148,11 +148,10 @@ EXTERNAL_ENABLEMENT_METADATA = {
         "cost_profile": "paid_contract_likely",
         "cost_label": "TEJ 或專業資料商通常需付費合約/API token",
         "recommended_path": (
-            "免費版先保留 sample contract，並用本機 fixture API 驗證 live HTTP contract；"
+            "免費版先保留樣本資料格式檢查，並用本機測試 API 驗證 HTTP 格式；"
             "只有需要穩定法說/重大訊息才接資料商。"
         ),
         "free_local_available": False,
         "paid_service_required": True,
     },
 }
-

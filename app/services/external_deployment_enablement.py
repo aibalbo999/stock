@@ -140,9 +140,9 @@ def external_enablement_primary_next_action(summary: dict) -> str:
     if int(summary.get("local_action_available") or 0) > 0:
         return "先處理本機免費可補強項目，再評估 API 額度或付費資料商。"
     if summary.get("paid_external_only_pending"):
-        return "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持範例資料檢查。"
+        return "剩餘項目都是付費外部 API 或資料商選配；免費版可先維持樣本資料格式檢查。"
     if int(summary.get("paid_external_pending") or 0) > 0:
-        return "剩餘項目需要外部資料 API 或服務合約，免費版可先保留範例資料檢查。"
+        return "剩餘項目需要外部資料 API 或服務合約，免費版可先保留樣本資料格式檢查。"
     if int(summary.get("quota_or_external_pending") or 0) > 0:
         return "剩餘項目主要取決於模型/API 額度，建議只在高價值文件啟用。"
     return "依啟用檢查清單逐項補齊設定。"

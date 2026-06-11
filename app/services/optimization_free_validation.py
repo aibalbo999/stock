@@ -41,11 +41,11 @@ def _free_validation_label(commands: list[str]) -> str:
     )
     has_provider_profile = any("--provider-profile" in command for command in commands)
     if has_sample and has_fixture and has_provider_profile:
-        return "sample + fixture + provider profile 可驗證"
+        return "樣本資料 + 本機測試 API + 提供者設定可驗證"
     if has_sample and has_fixture:
-        return "sample + fixture 可驗證"
+        return "樣本資料 + 本機測試 API 可驗證"
     if has_sample:
-        return "sample contract 可驗證"
+        return "樣本資料格式可驗證"
     return "免費驗證可用"
 
 

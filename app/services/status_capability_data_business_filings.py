@@ -311,8 +311,8 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "contract": structured_sample_contract,
             },
             detail=(
-                "Offline sample contract check that keeps structured filing JSON "
-                "payloads convertible to CompanyFilingDocument rows before a paid/live API is configured."
+                "在付費或正式 API 上線前，先用離線樣本資料格式檢查，"
+                "確保結構化公司文件 JSON 可轉成 CompanyFilingDocument rows。"
             ),
         ),
         "company_filing_cache": _capability(

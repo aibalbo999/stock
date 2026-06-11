@@ -357,7 +357,8 @@ def test_external_integration_report_summarizes_optional_deployment_checks() -> 
     assert "structured_company_filing_smoke.py" in output
     assert "--provider-profile tej" in output
     assert "structured_company_filing_sample.json" in output
-    assert "Structured company filing sample contract: ready" in output
+    assert "公司文件結構化樣本資料格式檢查: ready" in output
+    assert "sample contract" not in output
 
 
 def test_external_integration_report_can_use_local_neo4j_smoke_commands() -> None:

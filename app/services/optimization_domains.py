@@ -113,7 +113,7 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
             OptimizationCapabilityRef(
                 "data_business_logic",
                 "company_filing_structured_api_sample_contract",
-                "公司文件結構化 API sample contract",
+                "公司文件結構化 API 樣本資料格式檢查",
             ),
             OptimizationCapabilityRef(
                 "data_business_logic",
@@ -212,16 +212,16 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
                 optional=True,
                 external=True,
                 action_type="free_local_or_external_config",
-                next_action="正式部署需要 live graph import 時，設定 Neo4j URI/帳密並跑 smoke。",
+                next_action="正式部署需要圖譜匯入時，設定 Neo4j URI/帳密並執行本機驗證。",
             ),
             OptimizationCapabilityRef(
                 "ai_rag",
                 "graphrag_live_cypher_query",
-                "GraphRAG guarded live Cypher query",
+                "GraphRAG 受控 Neo4j 查詢",
                 optional=True,
                 external=True,
                 action_type="free_local_or_external_config",
-                next_action="正式部署要讓 guarded Cypher 直接查 Neo4j 時，再啟用 live query。",
+                next_action="正式部署要讓受控 Cypher 直接查 Neo4j 時，再啟用 Neo4j 查詢。",
             ),
         ),
     ),

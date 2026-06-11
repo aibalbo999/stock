@@ -119,7 +119,7 @@ def neo4j_graphrag_smoke_report(
     else:
         status = "degraded"
         ready = False
-        remediation = "Neo4j live query smoke did not execute cleanly; inspect query execution payload."
+        remediation = "Neo4j 查詢檢查未順利完成；請檢查查詢輸入與執行結果。"
 
     return build_smoke_report(
         status=status,
@@ -341,7 +341,7 @@ def format_neo4j_graphrag_smoke(report: dict[str, Any]) -> str:
     ]
     if execution:
         lines.append(
-            "- live query: "
+            "- Neo4j query: "
             f"{execution.get('status')} "
             f"({execution.get('row_count', 0) or 0} rows)"
         )
@@ -379,7 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--topic", default=DEFAULT_TOPIC, help="Topic context for the guarded Cypher plan.")
     parser.add_argument("--question", default=DEFAULT_QUESTION, help="Question context for the guarded Cypher plan.")
     parser.add_argument("--max-depth", type=int, default=3, help="Maximum graph traversal depth.")
-    parser.add_argument("--max-records", type=int, default=8, help="Maximum live query records to return.")
+    parser.add_argument("--max-records", type=int, default=8, help="Maximum Neo4j query records to return.")
     parser.add_argument("--use-llm", action="store_true", help="Allow LLM-generated Cypher plan before validation.")
     parser.add_argument("--import-first", action="store_true", help="Import the current graph into Neo4j before querying.")
     parser.add_argument(

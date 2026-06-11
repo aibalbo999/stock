@@ -1896,19 +1896,19 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
             {
                 "area": "ai_rag",
                 "capability": "graphrag_live_cypher_query",
-                "label": "GraphRAG guarded live Cypher query",
+                "label": "GraphRAG 受控 Neo4j 查詢",
                 "status": "degraded",
                 "severity": "warn",
                 "optional": True,
                 "external_integration": True,
-                "detail": "Neo4j is required for live guarded Cypher execution.",
+                "detail": "Neo4j is required for guarded Cypher execution.",
                 "evidence": {
                     "endpoint": "GET /supply-chain/graph/cypher-query",
                     "payload_dry_run_cli": ".venv/bin/python -m scripts.import_supply_chain_graph_neo4j --dry-run --tickers 2330 --output graph_payload.json",
                     "smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
                     "import_smoke_cli": ".venv/bin/python scripts/neo4j_graphrag_smoke.py --import-first --tickers 2330 --target-ticker 2382 --question 上下游衝擊 --json",
                 },
-                "remediation": "啟動 Neo4j 後驗證 live read-only query。",
+                "remediation": "啟動 Neo4j 後驗證 read-only 查詢。",
             },
             {
                 "area": "data_business_logic",
@@ -1949,7 +1949,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert [row["能力"] for row in rows] == [
         "外部 Neo4j 匯入連線",
         "公司文件 Proxy / Browser render / Playwright 後援",
-        "GraphRAG guarded live Cypher query",
+        "GraphRAG 受控 Neo4j 查詢",
         "公司文件結構化 API 備援",
     ]
     assert rows[0]["警示層級"] == "需處理"
@@ -2008,7 +2008,7 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     assert [row["項目"] for row in readiness_rows] == [
         "外部 Neo4j 匯入連線",
         "公司文件 Proxy / Browser render / Playwright 後援",
-        "GraphRAG guarded live Cypher query",
+        "GraphRAG 受控 Neo4j 查詢",
         "公司文件結構化 API 備援",
     ]
     assert [row["狀態"] for row in readiness_rows] == [
@@ -2031,7 +2031,9 @@ def test_external_deployment_warning_rows_include_optional_and_smoke_commands() 
     ]
     assert "本機 Neo4j 免費" in readiness_rows[0]["成本/額度"]
     assert "先用 Playwright" in readiness_rows[1]["建議路徑"]
-    assert "免費版先保留 sample contract" in readiness_rows[3]["建議路徑"]
+    assert "免費版先保留樣本資料格式檢查" in readiness_rows[3]["建議路徑"]
+    assert "sample contract" not in readiness_rows[3]["建議路徑"]
+    assert "live HTTP contract" not in readiness_rows[3]["建議路徑"]
     assert [row["本機動作"] for row in readiness_rows] == [
         "可啟動",
         "可啟動",
@@ -2808,7 +2810,7 @@ def test_local_neo4j_operation_rows_include_actionable_commands() -> None:
             {
                 "area": "ai_rag",
                 "capability": "graphrag_live_cypher_query",
-                "label": "GraphRAG guarded live Cypher query",
+                "label": "GraphRAG 受控 Neo4j 查詢",
                 "status": "degraded",
                 "severity": "warn",
                 "optional": True,

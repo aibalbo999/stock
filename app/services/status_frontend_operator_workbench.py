@@ -5,6 +5,9 @@ from app.services.status_frontend_sources import FrontendSourceContext
 
 def frontend_operator_workbench_status(source_context: FrontendSourceContext) -> dict:
     analysis_workspace_source = source_context.ui_sources.get("analysis_workspace.py", "")
+    analysis_workspace_presenter_source = source_context.ui_sources.get(
+        "analysis_workspace_presenter.py", ""
+    )
     data_enrichment_common_source = source_context.ui_sources.get(
         "data_enrichment_common.py", ""
     )
@@ -16,8 +19,16 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "frontend_operator_workbench_status_path": (
             "app/services/status_frontend_operator_workbench.py"
         ),
+        "ui_analysis_workspace_presenter_extracted": (
+            "from app.ui.analysis_workspace_presenter import (" in analysis_workspace_source
+            and "import streamlit" not in analysis_workspace_presenter_source
+            and "def analysis_submission_ready(" in analysis_workspace_presenter_source
+            and "def analysis_submission_summary(" in analysis_workspace_presenter_source
+            and "def analysis_submission_quota_pressure("
+            in analysis_workspace_presenter_source
+        ),
         "ui_analysis_submission_quota_confirmation_enabled": (
-            "def analysis_submission_ready(" in analysis_workspace_source
+            "def analysis_submission_ready(" in analysis_workspace_presenter_source
             and "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source
             and 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
             and "我了解這會送出分析背景任務並消耗 AI/API 額度"
@@ -37,23 +48,27 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             in analysis_workspace_source
         ),
         "ui_analysis_submission_preflight_summary_enabled": (
-            "def analysis_submission_summary(" in analysis_workspace_source
+            "def analysis_submission_summary(" in analysis_workspace_presenter_source
             and "def _render_analysis_submission_summary(" in analysis_workspace_source
             and "analysis_submission_summary(" in analysis_workspace_source
             and "_render_analysis_submission_summary(submission_summary)"
             in analysis_workspace_source
             and 'class="analysis-submission-summary' in analysis_workspace_source
             and "送出前確認" in analysis_workspace_source
-            and "可送出分析背景任務" in analysis_workspace_source
-            and "手動模式請先選擇至少一檔股票" in analysis_workspace_source
+            and "可送出分析背景任務" in analysis_workspace_presenter_source
+            and "手動模式請先選擇至少一檔股票"
+            in analysis_workspace_presenter_source
         ),
         "ui_analysis_submission_quota_pressure_guidance_enabled": (
-            "def analysis_submission_quota_pressure(" in analysis_workspace_source
-            and "quota_pressure" in analysis_workspace_source
-            and "quota_pressure_class" in analysis_workspace_source
-            and "額度壓力：" in analysis_workspace_source
-            and "適合快速試跑或額度偏緊時使用" in analysis_workspace_source
-            and "適合收盤後或額度剛重置時執行" in analysis_workspace_source
+            "def analysis_submission_quota_pressure("
+            in analysis_workspace_presenter_source
+            and "quota_pressure" in analysis_workspace_presenter_source
+            and "quota_pressure_class" in analysis_workspace_presenter_source
+            and "額度壓力：" in analysis_workspace_presenter_source
+            and "適合快速試跑或額度偏緊時使用"
+            in analysis_workspace_presenter_source
+            and "適合收盤後或額度剛重置時執行"
+            in analysis_workspace_presenter_source
             and "class=\"quota-pressure" in analysis_workspace_source
         ),
         "ui_data_task_followup_summary_enabled": (

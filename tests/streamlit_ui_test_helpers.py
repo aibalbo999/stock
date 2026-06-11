@@ -45,6 +45,7 @@ EXTERNAL_DEPLOYMENT_NEO4J_SOURCE = Path("app/ui/external_deployment_neo4j.py")
 EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE = Path("app/ui/external_deployment_structured_api.py")
 TASK_QUEUE_DIAGNOSTICS_SOURCE = Path("app/ui/task_queue_diagnostics.py")
 TASK_FAILURE_DIAGNOSTICS_SOURCE = Path("app/ui/task_failure_diagnostics.py")
+ANALYSIS_WORKSPACE_PRESENTER_SOURCE = Path("app/ui/analysis_workspace_presenter.py")
 SYSTEM_SETTINGS_SOURCE = Path("app/ui/system_settings.py")
 SYSTEM_SETTINGS_SCOPE_SOURCE = Path("app/ui/system_settings_scope.py")
 SYSTEM_SETTINGS_SCHEDULE_SOURCE = Path("app/ui/system_settings_schedule.py")
@@ -90,6 +91,7 @@ UI_SOURCE_FILES = [
     EXTERNAL_DEPLOYMENT_STRUCTURED_API_SOURCE,
     TASK_QUEUE_DIAGNOSTICS_SOURCE,
     TASK_FAILURE_DIAGNOSTICS_SOURCE,
+    ANALYSIS_WORKSPACE_PRESENTER_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     Path("app/ui/report_center.py"),
     Path("app/ui/data_enrichment.py"),

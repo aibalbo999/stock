@@ -26,6 +26,8 @@ def test_streamlit_page_import_contract_exports_page_functions() -> None:
 
 def test_streamlit_shell_uses_operational_workspace_header() -> None:
     source = ui.read_ui_source()
+    analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
+    analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
     external_readiness_service_source = Path(
         "app/services/external_deployment_readiness.py"
     ).read_text()
@@ -203,26 +205,31 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert '[data-testid="stSidebarNavLink"] {\n    min-height: 44px !important;' in styles
     assert 'a[aria-label="Link to heading"]' in styles
     assert "pointer-events: none !important" in styles
-    assert "def render_analysis_workspace() -> None:" in source
-    assert "def analysis_submission_ready(" in source
-    assert "def analysis_submission_summary(" in source
-    assert "def analysis_submission_quota_pressure(" in source
-    assert "def _render_analysis_submission_summary(" in source
+    assert "def render_analysis_workspace() -> None:" in analysis_workspace_source
+    assert "from app.ui.analysis_workspace_presenter import (" in analysis_workspace_source
+    assert "import streamlit" not in analysis_presenter_source
+    assert "def analysis_submission_ready(" in analysis_presenter_source
+    assert "def analysis_submission_summary(" in analysis_presenter_source
+    assert "def analysis_submission_quota_pressure(" in analysis_presenter_source
+    assert "def analysis_submission_ready(" not in analysis_workspace_source
+    assert "def analysis_submission_summary(" not in analysis_workspace_source
+    assert "def analysis_submission_quota_pressure(" not in analysis_workspace_source
+    assert "def _render_analysis_submission_summary(" in analysis_workspace_source
     assert "analysis-submission-summary" in combined
     assert "quota-pressure" in combined
-    assert "額度壓力：" in source
-    assert "適合快速試跑或額度偏緊時使用" in source
-    assert "適合收盤後或額度剛重置時執行" in source
-    assert "送出前確認" in source
-    assert "可送出分析背景任務" in source
-    assert "手動模式請先選擇至少一檔股票" in source
-    assert "analysis_quota_confirmed = st.checkbox(" in source
-    assert 'key="confirm_analysis_submission_quota_usage"' in source
-    assert "我了解這會送出分析背景任務並消耗 AI/API 額度" in source
-    assert "避免誤觸與免費額度消耗" in source
-    assert "ai_discovery_mode=bool(ai_discovery_mode)" in source
-    assert "manual_tickers=tickers" in source
-    assert "disabled=not analysis_submission_ready(" in source
+    assert "額度壓力：" in analysis_presenter_source
+    assert "適合快速試跑或額度偏緊時使用" in analysis_presenter_source
+    assert "適合收盤後或額度剛重置時執行" in analysis_presenter_source
+    assert "送出前確認" in analysis_workspace_source
+    assert "可送出分析背景任務" in analysis_presenter_source
+    assert "手動模式請先選擇至少一檔股票" in analysis_presenter_source
+    assert "analysis_quota_confirmed = st.checkbox(" in analysis_workspace_source
+    assert 'key="confirm_analysis_submission_quota_usage"' in analysis_workspace_source
+    assert "我了解這會送出分析背景任務並消耗 AI/API 額度" in analysis_workspace_source
+    assert "避免誤觸與免費額度消耗" in analysis_workspace_source
+    assert "ai_discovery_mode=bool(ai_discovery_mode)" in analysis_workspace_source
+    assert "manual_tickers=tickers" in analysis_workspace_source
+    assert "disabled=not analysis_submission_ready(" in analysis_workspace_source
     assert "def render_report_center() -> None:" in source
     assert "def render_data_enrichment() -> None:" in source
     assert "def render_system_settings() -> None:" in source

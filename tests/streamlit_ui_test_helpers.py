@@ -20,6 +20,7 @@ REPORT_FORMATTERS_SOURCE = Path("app/ui/report_formatters.py")
 REPORT_SECTIONS_SOURCE = Path("app/ui/report_sections.py")
 REPORT_HTML_SOURCE = Path("app/ui/report_html.py")
 REPORT_FOLLOW_UP_PRESENTER_SOURCE = Path("app/ui/report_follow_up_presenter.py")
+REPORT_FOLLOW_UP_TASK_PANEL_SOURCE = Path("app/ui/report_follow_up_task_panel.py")
 OPERATOR_STATUS_SOURCE = Path("app/ui/operator_status.py")
 OPERATOR_QUOTA_PRESENTER_SOURCE = Path("app/ui/operator_quota_presenter.py")
 OPERATOR_OPTIMIZATION_ACTIONS_SOURCE = Path("app/ui/operator_optimization_actions.py")
@@ -89,6 +90,7 @@ UI_SOURCE_FILES = [
     REPORT_SECTIONS_SOURCE,
     REPORT_HTML_SOURCE,
     REPORT_FOLLOW_UP_PRESENTER_SOURCE,
+    REPORT_FOLLOW_UP_TASK_PANEL_SOURCE,
     OPERATOR_STATUS_SOURCE,
     OPERATOR_QUOTA_PRESENTER_SOURCE,
     OPERATOR_OPTIMIZATION_ACTIONS_SOURCE,

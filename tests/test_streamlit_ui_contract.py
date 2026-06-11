@@ -904,6 +904,18 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_follow_up_controls(" in ui.REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
     assert "def render_follow_up_flash(" not in ui.REPORT_PANELS_SOURCE.read_text()
     assert "def render_follow_up_flash(" in ui.REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
+    assert "def render_follow_up_task_status_panel(" in (
+        ui.REPORT_FOLLOW_UP_TASK_PANEL_SOURCE.read_text()
+    )
+    assert "render_follow_up_task_status_panel(key_suffix, streamlit_module=st)" in (
+        ui.REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
+    )
+    assert 'with st.expander("背景補強任務狀態", expanded=True):' not in (
+        ui.REPORT_FOLLOW_UP_CONTROLS_SOURCE.read_text()
+    )
+    assert 'with streamlit_module.expander("背景補強任務狀態", expanded=True):' in (
+        ui.REPORT_FOLLOW_UP_TASK_PANEL_SOURCE.read_text()
+    )
     assert "def render_quality_gate(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_quality_gate(" in ui.REPORT_PANELS_SOURCE.read_text()
     assert "def markdown_table_rows(" not in ui.REPORT_HTML_SOURCE.read_text()
@@ -1275,7 +1287,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "回報告中心確認最新版生命週期" in source
     assert 'key=f"{label}_followup_action"' in source
     assert 'task_state_key="last_async_task_id"' in source
-    assert 'task_state_key="last_follow_up_task_id"' in source
+    assert 'task_state_key="last_follow_up_task_id"' in (
+        ui.REPORT_FOLLOW_UP_TASK_PANEL_SOURCE.read_text()
+    )
 
 
 def test_follow_up_controls_use_scoped_widget_keys() -> None:

@@ -20,6 +20,7 @@ UI_MODULE_NAMES = (
     "report_sections.py",
     "report_html.py",
     "report_follow_up_presenter.py",
+    "report_follow_up_task_panel.py",
     "follow_up_status.py",
     "llm_quota_panel.py",
     "operator_status.py",

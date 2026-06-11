@@ -12,6 +12,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_panels_source = ui_sources["report_panels.py"]
     report_follow_up_controls_source = ui_sources["report_follow_up_controls.py"]
     report_follow_up_presenter_source = ui_sources["report_follow_up_presenter.py"]
+    report_follow_up_task_panel_source = ui_sources["report_follow_up_task_panel.py"]
     report_observability_panel_source = ui_sources["report_observability_panel.py"]
     report_center_source = ui_sources["report_center.py"]
     report_center_presenter_source = ui_sources["report_center_presenter.py"]
@@ -447,5 +448,22 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         and "def render_follow_up_flash(" not in report_panels_source
         and "def render_follow_up_controls(" not in dashboard_core_source
         and "from app.ui.report_follow_up_controls import" in ui_source,
+        "ui_report_follow_up_task_panel_extracted": (
+            (ui_dir / "report_follow_up_task_panel.py").exists()
+            and "from app.ui.report_follow_up_task_panel import render_follow_up_task_status_panel"
+            in report_follow_up_controls_source
+            and "render_follow_up_task_status_panel(key_suffix, streamlit_module=st)"
+            in report_follow_up_controls_source
+            and "def render_follow_up_task_status_panel("
+            in report_follow_up_task_panel_source
+            and 'with streamlit_module.expander("背景補強任務狀態", expanded=True):'
+            in report_follow_up_task_panel_source
+            and 'with st.expander("背景補強任務狀態", expanded=True):'
+            not in report_follow_up_controls_source
+            and 'task_state_key="last_follow_up_task_id"'
+            in report_follow_up_task_panel_source
+            and '"套用背景補強結果"' in report_follow_up_task_panel_source
+            and '"套用背景補強結果"' not in report_follow_up_controls_source
+        ),
         "ui_report_follow_up_controls_path": "app/ui/report_follow_up_controls.py",
     }

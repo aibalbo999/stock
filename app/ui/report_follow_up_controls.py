@@ -9,7 +9,6 @@ from app.ui.background_tasks import submit_api_task
 from app.ui.follow_up_status import (
     candidate_revalidation_summary,
     follow_up_blocker_action_rows,
-    follow_up_result_message,
 )
 from app.ui.report_follow_up_presenter import (
     PURPOSE_LABELS,
@@ -19,8 +18,8 @@ from app.ui.report_follow_up_presenter import (
     planned_follow_up_rows,
     skipped_follow_up_rows,
 )
+from app.ui.report_follow_up_task_panel import render_follow_up_task_status_panel
 from app.ui.report_markdown import markdown_table_rows
-from app.ui.task_status_panel import render_task_status_panel
 
 
 def follow_up_submission_preflight_summary(
@@ -255,46 +254,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
             error_message="自動補強任務送出失敗",
         )
 
-    last_follow_up_task_id = st.session_state.get("last_follow_up_task_id")
-    if last_follow_up_task_id:
-        with st.expander("背景補強任務狀態", expanded=True):
-            task_id = st.text_input(
-                "補強任務編號",
-                value=last_follow_up_task_id,
-                key=f"followup_task_lookup_{key_suffix}",
-            )
-            task_status = render_task_status_panel(
-                task_id=task_id,
-                refresh_key=f"refresh_followup_task_{key_suffix}",
-                task_state_key="last_follow_up_task_id",
-            )
-            result = (task_status or {}).get("result") if isinstance(task_status, dict) else None
-            if isinstance(result, dict) and st.button(
-                "套用背景補強結果", key=f"apply_followup_task_{key_suffix}"
-            ):
-                st.session_state["last_follow_up_result"] = result
-                selected_summary = (result.get("summary") or {}).get("selected") or {}
-                execution_summary = (result.get("summary") or {}).get("execution") or {}
-                summary_text = (
-                    f"執行 {selected_summary.get('total_count', len(result.get('actions') or []))} 項任務"
-                    f"（資料缺口 {selected_summary.get('required_count', 0)}、"
-                    f"追蹤更新 {selected_summary.get('tracking_count', 0)}）"
-                )
-                if execution_summary:
-                    summary_text += (
-                        f"，補入/更新 {execution_summary.get('stored_count', 0)} 筆資料"
-                        f"，錯誤 {execution_summary.get('error_count', 0)} 項"
-                    )
-                message_level, message_text = follow_up_result_message(result, summary_text)
-                st.session_state["follow_up_flash"] = {
-                    "level": message_level,
-                    "message": message_text,
-                    "result": result,
-                }
-                new_report = result.get("rerun_report") or {}
-                if new_report.get("report_id"):
-                    st.session_state["pending_selected_report_id"] = int(new_report["report_id"])
-                st.rerun()
+    render_follow_up_task_status_panel(key_suffix, streamlit_module=st)
 
 
 def render_follow_up_flash() -> None:

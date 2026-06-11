@@ -266,6 +266,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_optimization_progress_operator_summary_enabled")
             and frontend_status.get("ui_optimization_progress_metric_labels_enabled")
             and frontend_status.get("ui_optimization_progress_next_action_labels_enabled")
+            and frontend_status.get("ui_optimization_progress_compact_action_rows_enabled")
             and frontend_status.get(
                 "ui_optimization_progress_paid_external_only_summary_enabled"
             )

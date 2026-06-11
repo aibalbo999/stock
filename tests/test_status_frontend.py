@@ -322,6 +322,10 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_optimization_progress_metric_labels_enabled"] is True
     assert status["frontend"]["ui_optimization_progress_next_action_labels_enabled"] is True
     assert (
+        status["frontend"]["ui_optimization_progress_compact_action_rows_enabled"]
+        is True
+    )
+    assert (
         status["frontend"]["ui_optimization_progress_paid_external_only_summary_enabled"]
         is True
     )
@@ -676,6 +680,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_optimization_progress_metric_labels_enabled"] is True
     assert (
         frontend_arch["evidence"]["ui_optimization_progress_next_action_labels_enabled"]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"]["ui_optimization_progress_compact_action_rows_enabled"]
         is True
     )
     assert (

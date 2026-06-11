@@ -105,6 +105,37 @@ def test_optimization_progress_next_action_rows_localize_status_values() -> None
     assert "not_configured" not in str(rows[0])
 
 
+def test_optimization_progress_next_action_rows_compact_free_validation_commands() -> None:
+    progress = {
+        "prioritized_next_actions": [
+            {
+                "domain_label": "資料管線與爬蟲穩定度",
+                "label": "公司文件結構化 API 備援",
+                "status": "not_configured",
+                "capability_status": "not_configured",
+                "optional": True,
+                "external": True,
+                "action_type": "paid_external",
+                "cost_profile": "paid_external",
+                "free_validation_label": "sample + fixture + provider profile 可驗證",
+                "free_validation_commands": [
+                    ".venv/bin/python scripts/structured_company_filing_smoke.py --sample-json examples/structured_company_filing_sample.json --json",
+                    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --json --strict",
+                    ".venv/bin/python scripts/structured_company_filing_fixture_smoke.py --provider-profile tej --json --strict",
+                    "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom COMPANY_FILING_STRUCTURED_API_URL=http://127.0.0.1:8794/filings .venv/bin/python scripts/structured_company_filing_smoke.py --json",
+                ],
+            }
+        ]
+    }
+
+    full_rows = optimization_progress_next_action_rows(progress)
+    compact_rows = optimization_progress_next_action_rows(progress, compact=True)
+
+    assert "structured_company_filing_fixture_smoke.py" in full_rows[0]["免費驗證指令"]
+    assert compact_rows[0]["免費驗證指令"] == "4 組免費 smoke"
+    assert "structured_company_filing_fixture_smoke.py" not in str(compact_rows[0])
+
+
 def test_optimization_progress_operator_summary_surfaces_paid_external_only_gap() -> None:
     summary = optimization_progress_operator_summary(
         {

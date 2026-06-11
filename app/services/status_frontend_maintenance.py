@@ -222,6 +222,13 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and '"能力狀態": optimization_progress_status_label(' in maintenance_status_source
             and '"not_configured": "未設定"' in maintenance_status_source
         ),
+        "ui_optimization_progress_compact_action_rows_enabled": (
+            "def optimization_progress_next_action_rows(\n    progress: dict, *, compact: bool = False\n)"
+            in maintenance_status_source
+            and "optimization_progress_next_action_rows(progress, compact=True)"
+            in maintenance_panels_source
+            and "return f\"{len(commands)} 組免費 smoke\"" in maintenance_status_source
+        ),
         "ui_optimization_progress_paid_external_only_summary_enabled": (
             "本機優化已完成，剩下外部資料 API 決策" in maintenance_status_source
             and "本機 defaults 已無待處理項目" in maintenance_status_source

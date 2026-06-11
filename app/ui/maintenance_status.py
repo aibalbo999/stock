@@ -235,7 +235,9 @@ def optimization_progress_status_label(status: object) -> str:
     return status_labels.get(text, text)
 
 
-def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
+def optimization_progress_next_action_rows(
+    progress: dict, *, compact: bool = False
+) -> list[dict]:
     action_type_labels = {
         "code_or_config": "程式/設定",
         "free_local_or_external_config": "本機或外部設定",
@@ -286,7 +288,9 @@ def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
             "決策": action.get("decision") or "-",
             "優先理由": action.get("priority_reason") or "-",
             "免費驗證": action.get("free_validation_label") or "-",
-            "免費驗證指令": _action_free_validation_command_summary(action),
+            "免費驗證指令": _action_free_validation_command_summary(
+                action, compact=compact
+            ),
             "指令": _action_verify_command(action),
             "建議": action.get("next_action") or "-",
         }
@@ -479,10 +483,14 @@ def _action_verify_command(action: dict) -> str:
     return "-"
 
 
-def _action_free_validation_command_summary(action: dict) -> str:
+def _action_free_validation_command_summary(
+    action: dict, *, compact: bool = False
+) -> str:
     commands = _action_free_validation_commands(action)
     if not commands:
         return "-"
+    if compact:
+        return f"{len(commands)} 組免費 smoke"
     return "\n".join(commands)
 
 

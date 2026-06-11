@@ -99,7 +99,7 @@ def render_optimization_progress_panel(service_snapshot: dict) -> None:
         else {}
     )
     rows = optimization_progress_rows(progress)
-    action_rows = optimization_progress_next_action_rows(progress)
+    action_rows = optimization_progress_next_action_rows(progress, compact=True)
     raw_status = str(progress.get("status") or "unknown")
     effective_status = str(
         progress.get("effective_status_after_available_local_defaults")

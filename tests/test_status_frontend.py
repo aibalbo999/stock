@@ -199,6 +199,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_operator_quota_step_caption_enabled"] is True
     assert status["frontend"]["ui_operator_task_state_helpers_extracted"] is True
     assert status["frontend"]["ui_operator_decision_support_helpers_extracted"] is True
+    assert status["frontend"]["ui_operator_secondary_decisions_extracted"] is True
     assert status["frontend"]["ui_analysis_submission_quota_pressure_guidance_enabled"] is True
     assert status["frontend"]["ui_operator_retryable_failure_primary_action_enabled"] is True
     assert status["frontend"]["ui_operator_stale_running_primary_action_enabled"] is True
@@ -683,6 +684,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         frontend_arch["evidence"]["ui_operator_decision_support_helpers_extracted"]
         is True
     )
+    assert frontend_arch["evidence"]["ui_operator_secondary_decisions_extracted"] is True
     assert (
         frontend_arch["evidence"]["ui_operator_retryable_failure_primary_action_enabled"]
         is True

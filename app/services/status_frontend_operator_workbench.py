@@ -37,6 +37,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     )
     operator_task_state_source = source_context.ui_sources.get("operator_task_state.py", "")
     operator_decisions_source = source_context.ui_sources.get("operator_decisions.py", "")
+    operator_secondary_decisions_source = source_context.ui_sources.get(
+        "operator_secondary_decisions.py", ""
+    )
     operator_decision_support_source = source_context.ui_sources.get(
         "operator_decision_support.py", ""
     )
@@ -314,6 +317,20 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             not in operator_decisions_source
             and "def _latest_report(" not in operator_decisions_source
         ),
+        "ui_operator_secondary_decisions_extracted": (
+            "from app.ui.operator_secondary_decisions import build_operator_secondary_actions"
+            in operator_decisions_source
+            and "def build_operator_secondary_actions(" in operator_secondary_decisions_source
+            and "top_incidents(" in operator_secondary_decisions_source
+            and "def _dedupe_secondary_actions(" in operator_secondary_decisions_source
+            and "def _incident_matches_primary(" in operator_secondary_decisions_source
+            and "def _secondary_action_matches_primary("
+            in operator_secondary_decisions_source
+            and "def _dedupe_secondary_actions(" not in operator_decisions_source
+            and "def _incident_matches_primary(" not in operator_decisions_source
+            and "def _secondary_action_matches_primary("
+            not in operator_decisions_source
+        ),
         "ui_operator_retryable_failure_primary_action_enabled": (
             "def retryable_failure_affecting_report("
             in operator_decision_support_source
@@ -362,8 +379,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         ),
         "ui_operator_secondary_action_labels_enabled": (
             '"action_label": incident.get("action_label") or "查看事件"'
-            in operator_decisions_source
+            in operator_secondary_decisions_source
             and "operator_secondary_actions(" in operator_decisions_source
+            and "build_operator_secondary_actions(" in operator_decisions_source
             and "render_operator_route_button(" in analysis_operator_workbench_source
             and "action.get(\"action_label\")" in source_context.ui_sources.get(
                 "operator_route_controls.py", ""
@@ -383,7 +401,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         ),
         "ui_operator_optimization_actions_extracted": (
             "from app.ui.operator_optimization_actions import ("
-            in operator_decisions_source
+            in operator_secondary_decisions_source
             and "import streamlit" not in operator_optimization_actions_source
             and "def optimization_local_defaults_action("
             in operator_optimization_actions_source
@@ -397,7 +415,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
         "ui_operator_local_defaults_secondary_action_enabled": (
             "def optimization_local_defaults_action(" in operator_optimization_actions_source
             and "local_defaults_action = _optimization_local_defaults_action(service_snapshot)"
-            in operator_decisions_source
+            in operator_secondary_decisions_source
             and '"驗證本機 defaults"' in operator_optimization_actions_source
             and '"settings:maintenance:local_defaults"' in operator_optimization_actions_source
             and '"optimization:auto_local_defaults"' in operator_optimization_actions_source
@@ -407,7 +425,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             "def optimization_free_validation_action(" in operator_optimization_actions_source
             and "def _optimization_actions(" in operator_optimization_actions_source
             and "free_validation_action = _optimization_free_validation_action(service_snapshot)"
-            in operator_decisions_source
+            in operator_secondary_decisions_source
             and '"驗證公司文件 API 格式"' in operator_optimization_actions_source
             and '"settings:maintenance:structured_api"' in operator_optimization_actions_source
             and '"optimization:company_filing_structured_api_fallback"'

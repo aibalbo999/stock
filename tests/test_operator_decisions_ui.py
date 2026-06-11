@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.ui.operator_decisions import operator_next_best_action, operator_secondary_actions
 
 
@@ -21,6 +23,23 @@ HEALTHY_REPORT = {
     "quality_gate": {"status": "ready", "metrics": {"promoted_count": 2}},
     "candidate_whitelist": [{"ticker": "2330"}, {"ticker": "2382"}],
 }
+
+
+def test_operator_secondary_action_orchestration_lives_outside_primary_decisions() -> None:
+    primary_source = Path("app/ui/operator_decisions.py").read_text()
+    secondary_path = Path("app/ui/operator_secondary_decisions.py")
+
+    assert secondary_path.exists()
+    secondary_source = secondary_path.read_text()
+    assert "from app.ui.operator_secondary_decisions import build_operator_secondary_actions" in (
+        primary_source
+    )
+    assert "def build_operator_secondary_actions(" in secondary_source
+    assert '"action_label": incident.get("action_label") or "查看事件"' in secondary_source
+    assert "top_incidents(" in secondary_source
+    assert "def _dedupe_secondary_actions(" not in primary_source
+    assert "def _incident_matches_primary(" not in primary_source
+    assert "def _secondary_action_matches_primary(" not in primary_source
 
 
 def test_operator_next_action_prioritizes_queue_blocker() -> None:

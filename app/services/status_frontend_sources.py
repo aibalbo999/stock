@@ -30,6 +30,7 @@ UI_MODULE_NAMES = (
     "operator_routes.py",
     "operator_route_controls.py",
     "operator_decisions.py",
+    "operator_secondary_decisions.py",
     "operator_decision_support.py",
     "report_health.py",
     "report_lifecycle.py",

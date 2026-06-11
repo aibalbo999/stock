@@ -29,6 +29,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     operator_status_source = ui.OPERATOR_STATUS_SOURCE.read_text()
     operator_quota_presenter_source = ui.OPERATOR_QUOTA_PRESENTER_SOURCE.read_text()
     operator_decisions_source = ui.OPERATOR_DECISIONS_SOURCE.read_text()
+    operator_secondary_decisions_source = ui.OPERATOR_SECONDARY_DECISIONS_SOURCE.read_text()
     operator_decision_support_source = ui.OPERATOR_DECISION_SUPPORT_SOURCE.read_text()
     operator_optimization_actions_source = ui.OPERATOR_OPTIMIZATION_ACTIONS_SOURCE.read_text()
     operator_task_state_source = ui.OPERATOR_TASK_STATE_SOURCE.read_text()
@@ -144,6 +145,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.operator_decisions import (" in source
     assert "operator_next_best_action(" in source
     assert "operator_secondary_actions(" in source
+    assert "from app.ui.operator_secondary_decisions import build_operator_secondary_actions" in (
+        operator_decisions_source
+    )
+    assert "def build_operator_secondary_actions(" in operator_secondary_decisions_source
+    assert "top_incidents(" in operator_secondary_decisions_source
+    assert "def _dedupe_secondary_actions(" in operator_secondary_decisions_source
+    assert "def _dedupe_secondary_actions(" not in operator_decisions_source
+    assert "def _incident_matches_primary(" not in operator_decisions_source
+    assert "def _secondary_action_matches_primary(" not in operator_decisions_source
     assert "from app.ui.operator_optimization_actions import (" in source
     assert "import streamlit" not in operator_optimization_actions_source
     assert "def optimization_local_defaults_action(" in operator_optimization_actions_source

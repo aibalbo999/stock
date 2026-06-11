@@ -120,6 +120,16 @@ def frontend_task_queue_status(source_context: FrontendSourceContext) -> dict:
             in maintenance_task_panels_source
             and '"Timeout"' not in maintenance_task_panels_source
         ),
+        "ui_maintenance_diagnostic_effect_operator_labels_enabled": (
+            "def maintenance_diagnostic_effect_label(" in maintenance_task_panels_source
+            and '"效果": maintenance_diagnostic_effect_label(action.get("effect"))'
+            in maintenance_task_panels_source
+            and '"read_only": "只讀檢查"' in maintenance_task_panels_source
+            and '"safe_noop_task_submission": "安全 no-op 送出"'
+            in maintenance_task_panels_source
+            and '"safe_local_neo4j_import_smoke": "本機 Neo4j smoke"'
+            in maintenance_task_panels_source
+        ),
         "ui_maintenance_diagnostic_confirmation_gate_enabled": (
             "diagnostic_confirmed = st.checkbox(" in maintenance_task_panels_source
             and 'key=f"maintenance_diagnostic_confirm_{selected_action_id}"'

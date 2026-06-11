@@ -232,7 +232,7 @@ def maintenance_diagnostic_action_rows(maintenance_diagnostics: dict) -> list[di
         {
             "動作": action.get("label") or action.get("id") or "-",
             "狀態": _maintenance_diagnostic_action_status(action),
-            "效果": action.get("effect") or "-",
+            "效果": maintenance_diagnostic_effect_label(action.get("effect")),
             "說明": action.get("description") or "-",
             "指令": action.get("display_command") or "-",
             "逾時秒數": int(action.get("timeout_seconds") or 0),
@@ -344,3 +344,15 @@ def _maintenance_diagnostic_action_status(action: dict) -> str:
     if action.get("safe_to_run") and action.get("effect") == "safe_local_neo4j_import_smoke":
         return "本機 Neo4j smoke"
     return "停用"
+
+
+def maintenance_diagnostic_effect_label(value: object) -> str:
+    labels = {
+        "read_only": "只讀檢查",
+        "safe_noop_task_submission": "安全 no-op 送出",
+        "safe_local_neo4j_import_smoke": "本機 Neo4j smoke",
+    }
+    text = str(value or "").strip()
+    if not text:
+        return "-"
+    return labels.get(text, text)

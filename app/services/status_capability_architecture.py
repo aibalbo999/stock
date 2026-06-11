@@ -247,6 +247,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_data_enrichment_status_extracted")
             and frontend_status.get("frontend_data_enrichment_tabs_status_extracted")
             and frontend_status.get("frontend_data_enrichment_runtime_status_extracted")
+            and frontend_status.get("ui_data_enrichment_common_view_extracted")
             and frontend_status.get("ui_data_enrichment_market_presenter_extracted")
             and frontend_status.get("ui_data_enrichment_market_view_extracted")
             and frontend_status.get("ui_data_enrichment_manual_presenter_extracted")

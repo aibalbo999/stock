@@ -18,6 +18,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     operator_routes_source = source_context.ui_sources["operator_routes.py"]
     data_enrichment_source = source_context.ui_sources["data_enrichment.py"]
     data_enrichment_common_source = source_context.ui_sources["data_enrichment_common.py"]
+    data_enrichment_common_view_source = source_context.ui_sources[
+        "data_enrichment_common_view.py"
+    ]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
     data_enrichment_market_presenter_source = source_context.ui_sources[
         "data_enrichment_market_presenter.py"
@@ -34,6 +37,20 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         "frontend_data_enrichment_status_extracted": True,
         "frontend_data_enrichment_status_path": (
             "app/services/status_frontend_data_enrichment.py"
+        ),
+        "ui_data_enrichment_common_view_extracted": (
+            "from app.ui.data_enrichment_common_view import ("
+            in data_enrichment_common_source
+            and "import streamlit" not in data_enrichment_common_view_source
+            and "def allowlist_scope_summary_html(" in data_enrichment_common_view_source
+            and "def data_task_followup_summary_html(" in data_enrichment_common_view_source
+            and "def data_ingest_submission_summary_html("
+            in data_enrichment_common_view_source
+            and 'class="allowlist-scope-summary' in data_enrichment_common_view_source
+            and 'class="data-task-followup-summary' in data_enrichment_common_view_source
+            and 'class="data-ingest-submission-summary' in data_enrichment_common_view_source
+            and 'class="allowlist-scope-summary' not in data_enrichment_common_source
+            and 'class="data-ingest-submission-summary' not in data_enrichment_common_source
         ),
         "ui_operator_data_gap_prefill_enabled": (
             "from app.ui.data_gap_actions import data_gap_action_items"
@@ -197,8 +214,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_manual_data_ingest_preflight_summary_enabled": (
             "def render_data_ingest_submission_summary(" in data_enrichment_common_source
-            and 'class="data-ingest-submission-summary' in data_enrichment_common_source
-            and "資料送出前摘要" in data_enrichment_common_source
+            and 'class="data-ingest-submission-summary'
+            in data_enrichment_common_view_source
+            and "資料送出前摘要" in data_enrichment_common_view_source
             and "def manual_news_preflight_summary("
             in data_enrichment_manual_presenter_source
             and "def company_filing_text_preflight_summary("
@@ -233,7 +251,7 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_source
             and "def allowlist_scope_summary(" in data_enrichment_common_source
             and "def render_allowlist_scope_summary(" in data_enrichment_common_source
-            and 'class="allowlist-scope-summary' in data_enrichment_common_source
+            and 'class="allowlist-scope-summary' in data_enrichment_common_view_source
             and "目前使用靜態白名單" in data_enrichment_common_source
             and "目前使用動態候選白名單" in data_enrichment_common_source
             and "系統設定的股票範圍" in data_enrichment_common_source

@@ -17,6 +17,9 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
     data_enrichment_common_source = source_context.ui_sources.get(
         "data_enrichment_common.py", ""
     )
+    data_enrichment_common_view_source = source_context.ui_sources.get(
+        "data_enrichment_common_view.py", ""
+    )
     operator_status_source = source_context.ui_sources.get("operator_status.py", "")
     operator_quota_presenter_source = source_context.ui_sources.get(
         "operator_quota_presenter.py", ""
@@ -119,7 +122,7 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "def _render_data_task_followup_summary(" in data_enrichment_common_source
             and "data_task_followup_summary(task_status)" in data_enrichment_common_source
             and "_render_data_task_followup_summary(" in data_enrichment_common_source
-            and 'class="data-task-followup-summary' in data_enrichment_common_source
+            and 'class="data-task-followup-summary' in data_enrichment_common_view_source
             and "資料補強完成" in data_enrichment_common_source
             and "等待資料補強完成" in data_enrichment_common_source
             and "資料補強未完成" in data_enrichment_common_source

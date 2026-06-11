@@ -38,6 +38,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
     data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
     data_enrichment_market_view_source = ui.DATA_ENRICHMENT_MARKET_VIEW_SOURCE.read_text()
+    data_enrichment_common_source = Path("app/ui/data_enrichment_common.py").read_text()
+    data_enrichment_common_view_source = ui.DATA_ENRICHMENT_COMMON_VIEW_SOURCE.read_text()
     data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
     data_enrichment_manual_presenter_source = (
         ui.DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE.read_text()
@@ -499,8 +501,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "company_filing_text_preflight_summary(" in source
     assert "company_filing_url_preflight_summary(" in source
     assert "render_data_ingest_submission_summary(" in source
+    assert "from app.ui.data_enrichment_common_view import (" in data_enrichment_common_source
+    assert "import streamlit" not in data_enrichment_common_view_source
+    assert "def allowlist_scope_summary_html(" in data_enrichment_common_view_source
+    assert "def data_task_followup_summary_html(" in data_enrichment_common_view_source
+    assert "def data_ingest_submission_summary_html(" in data_enrichment_common_view_source
     assert "data-ingest-submission-summary" in combined
-    assert "資料送出前摘要" in source
+    assert 'class="data-ingest-submission-summary' in data_enrichment_common_view_source
+    assert 'class="data-ingest-submission-summary' not in data_enrichment_common_source
+    assert "資料送出前摘要" in data_enrichment_common_view_source
     assert "不會消耗 AI 額度" in source
     assert "rss_fetch_confirmed = st.checkbox(" in source
     assert 'key="confirm_rss_fetch_submission"' in source
@@ -1163,11 +1172,14 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def allowlist_scope_summary(" in source
     assert "def render_allowlist_scope_summary(" in source
     assert "allowlist-scope-summary" in combined
+    assert 'class="allowlist-scope-summary' in data_enrichment_common_view_source
+    assert 'class="allowlist-scope-summary' not in data_enrichment_common_source
     assert "目前使用靜態白名單" in source
     assert "目前使用動態候選白名單" in source
     assert "系統設定的股票範圍" in source
     assert "data-task-followup-summary" in combined
-    assert "資料任務後續處理" in source
+    assert 'class="data-task-followup-summary' in data_enrichment_common_view_source
+    assert "資料任務後續處理" in data_enrichment_common_view_source
     assert "資料補強完成" in source
     assert "等待資料補強完成" in source
     assert "資料補強未完成" in source

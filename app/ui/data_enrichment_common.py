@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from html import escape
 from typing import Any
 
 import streamlit as st
 
+from app.ui.data_enrichment_common_view import (
+    allowlist_scope_summary_html,
+    data_ingest_submission_summary_html,
+    data_task_followup_summary_html,
+)
 from app.ui.operator_route_controls import render_operator_route_button
 from app.ui.task_status_panel import render_task_status_panel
 
@@ -44,12 +48,7 @@ def render_allowlist_scope_summary(
 ) -> None:
     summary = allowlist_scope_summary(whitelist, allowed_tickers)
     st.markdown(
-        f"""<section class="allowlist-scope-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料補強白名單來源摘要">
-<span>白名單來源摘要</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-</section>""",
+        allowlist_scope_summary_html(summary),
         unsafe_allow_html=True,
     )
     if summary.get("route_hint"):
@@ -121,12 +120,7 @@ def _render_data_task_followup_summary(summary: dict[str, str], *, key: str) -> 
     if not summary:
         return
     st.markdown(
-        f"""<section class="data-task-followup-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料任務後續處理">
-<span>後續處理</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-</section>""",
+        data_task_followup_summary_html(summary),
         unsafe_allow_html=True,
     )
     if summary.get("route_hint"):
@@ -150,13 +144,7 @@ def render_data_ingest_submission_summary(
         return
     streamlit_module = streamlit_module or st
     streamlit_module.markdown(
-        f"""<section class="data-ingest-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料送出前摘要">
-<span>資料送出前摘要</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-<small>{escape(summary.get("quota_hint", ""))}</small>
-</section>""",
+        data_ingest_submission_summary_html(summary),
         unsafe_allow_html=True,
     )
 

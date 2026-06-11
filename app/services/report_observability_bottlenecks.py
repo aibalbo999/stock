@@ -40,7 +40,7 @@ def report_observability_recommendations(
                 code="trace_missing",
                 affected_reports=int(totals.get("trace_missing_count") or 0),
                 evidence=f"trace_missing={totals.get('trace_missing_count')}",
-                next_action="重新產生缺 trace 的報告，並確認 run payload 寫入 report_execution。",
+                next_action="重新產生缺少追蹤紀錄的報告，並確認報告產生輸入內容已寫入追蹤紀錄。",
                 top_bottleneck=top_bottleneck,
             )
         )
@@ -266,7 +266,7 @@ def observability_bottleneck_severity(row: dict, dominant_factor: str) -> str:
 
 def observability_bottleneck_next_action(row: dict, dominant_factor: str) -> str:
     if dominant_factor == "trace_missing":
-        return "重新產生或檢查 run payload 是否寫入 report_execution trace。"
+        return "重新產生或檢查報告產生輸入內容是否寫入追蹤紀錄。"
     if dominant_factor in {"llm_fallback", "retryable_failures"}:
         return "檢查 quota/routing、429 cooldown 與模型順序，避免每份報告先撞耗盡模型。"
     if dominant_factor == "quota_routing_skip":

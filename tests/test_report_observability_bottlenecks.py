@@ -73,6 +73,33 @@ def test_report_observability_recommendations_reference_top_bottleneck() -> None
     assert "聰明模型" in recommendations[1]["next_action"]
 
 
+def test_report_observability_trace_actions_use_operator_language() -> None:
+    rows = [
+        {
+            "id": 3,
+            "topic": "AI",
+            "trace_captured": False,
+            "generated_at": "2026-06-02T10:00:00",
+        }
+    ]
+    totals = {"trace_missing_count": 1}
+
+    bottlenecks = report_observability_bottleneck_rows(rows)
+    recommendations = report_observability_recommendations(rows, totals, bottlenecks)
+    rendered_actions = " ".join(
+        [
+            str(bottlenecks[0]["next_action"]),
+            str(recommendations[0]["next_action"]),
+        ]
+    )
+
+    assert "報告產生輸入內容" in rendered_actions
+    assert "追蹤紀錄" in rendered_actions
+    assert "run payload" not in rendered_actions
+    assert "report_execution" not in rendered_actions
+    assert " trace" not in rendered_actions
+
+
 def test_report_observability_metric_helpers_coerce_numeric_text() -> None:
     assert metric_int("12.8") == 12
     assert metric_float("12.8") == 12.8

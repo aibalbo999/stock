@@ -124,7 +124,7 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and 'key=f"{refresh_key}_confirm_cancel"' in task_status_panel_source
             and "retry_confirmed = st.checkbox(" in task_status_panel_source
             and 'key=f"{refresh_key}_confirm_retry"' in task_status_panel_source
-            and "disabled=not cancel_confirmed" in task_status_panel_source
+            and "disabled=cancel_blocked or not cancel_confirmed" in task_status_panel_source
             and "disabled=retry_blocked or not retry_confirmed" in task_status_panel_source
             and "可能消耗模型或資料源額度" in task_status_panel_source
         ),
@@ -138,6 +138,15 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             in task_status_panel_source
             and "此任務不支援一鍵重試" in task_status_panel_source
             and "避免重複失敗與額度浪費" in task_status_panel_source
+        ),
+        "ui_task_status_terminal_task_action_guard_enabled": (
+            "cancel_blocked = cancel_summary.get" in task_status_panel_source
+            and "retry_blocked = retry_summary.get" in task_status_panel_source
+            and "此任務已結束，不能取消" in task_status_panel_source
+            and "此任務已成功，不需要一鍵重試" in task_status_panel_source
+            and "此任務仍在執行，不能重試" in task_status_panel_source
+            and "disabled=cancel_blocked or not cancel_confirmed" in task_status_panel_source
+            and "disabled=retry_blocked or not retry_confirmed" in task_status_panel_source
         ),
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source

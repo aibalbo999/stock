@@ -110,6 +110,52 @@ def test_task_action_preflight_summary_blocks_explicitly_non_retryable_task() ->
     }
 
 
+def test_task_action_preflight_summary_blocks_retry_for_successful_task() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-success",
+            "status": "SUCCESS",
+            "operation": "market_refresh",
+            "ready": True,
+            "successful": True,
+        },
+        action="retry",
+        confirmed=True,
+    )
+
+    assert summary == {
+        "state": "blocked",
+        "label": "任務操作摘要",
+        "title": "此任務已成功，不需要一鍵重試",
+        "detail": "Task task-success｜狀態 SUCCESS｜操作 market_refresh｜重試類型 -",
+        "next_step": "若需要重新執行，請回原本功能入口建立新任務。",
+        "impact": "不會送出重試；避免對已成功任務重複消耗模型、外部資料源或 API 額度。",
+    }
+
+
+def test_task_action_preflight_summary_blocks_cancel_for_finished_task() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-success",
+            "status": "SUCCESS",
+            "operation": "market_refresh",
+            "ready": True,
+            "successful": True,
+        },
+        action="cancel",
+        confirmed=True,
+    )
+
+    assert summary == {
+        "state": "blocked",
+        "label": "任務操作摘要",
+        "title": "此任務已結束，不能取消",
+        "detail": "Task task-success｜狀態 SUCCESS｜操作 market_refresh",
+        "next_step": "不需取消；若結果失敗且支援重試，請使用重試或回原入口重新送出。",
+        "impact": "不會送出取消要求；避免改動已完成任務紀錄。",
+    }
+
+
 def test_task_action_preflight_summary_allows_confirmed_cancel() -> None:
     summary = task_action_preflight_summary(
         {
@@ -249,7 +295,13 @@ def test_task_status_controls_submit_only_after_confirmation(monkeypatch) -> Non
         },
         pressed={"task_panel_cancel", "task_panel_retry"},
     )
-    fake_st.session_state["task_status"] = {"task_id": "task-1", "status": "FAILURE"}
+    fake_st.session_state["task_status"] = {
+        "task_id": "task-1",
+        "status": "FAILURE",
+        "operation": "report_generation",
+        "retryable": True,
+        "retry_kind": "report_generation",
+    }
     monkeypatch.setattr(task_status_panel, "st", fake_st)
     monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
 
@@ -274,18 +326,62 @@ def test_task_status_controls_submit_only_after_confirmation(monkeypatch) -> Non
         task_state_key="last_task_id",
     )
 
-    assert posted_paths == [
-        ("/tasks/task-1/cancel", {}),
-        ("/tasks/task-1/retry", {}),
-    ]
+    assert posted_paths == [("/tasks/task-1/retry", {})]
     assert fake_st.buttons == [
-        {"label": "取消任務", "key": "task_panel_cancel", "disabled": False},
+        {"label": "取消任務", "key": "task_panel_cancel", "disabled": True},
         {"label": "重試任務", "key": "task_panel_retry", "disabled": False},
     ]
     assert fake_st.session_state["last_task_id"] == "task-retry"
     assert fake_st.session_state["task_status"] == {"task_id": "task-retry"}
-    assert "已送出取消要求。" in fake_st.successes
+    assert "已送出取消要求。" not in fake_st.successes
     assert "已送出重試任務：task-retry" in fake_st.successes
+
+
+def test_task_status_controls_allow_cancel_for_running_task_after_confirmation(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit(
+        checked={
+            "task_panel_confirm_cancel": True,
+            "task_panel_confirm_retry": False,
+        },
+        pressed={"task_panel_cancel"},
+    )
+    fake_st.session_state["task_status"] = {
+        "task_id": "task-running",
+        "status": "STARTED",
+        "operation": "market_refresh",
+        "ready": False,
+    }
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
+
+    posted_paths = []
+
+    def fake_api_task_post(path: str, payload: dict) -> dict:
+        posted_paths.append((path, payload))
+        return {"task_id": "task-running", "cancel_requested": True}
+
+    monkeypatch.setattr(task_status_panel, "api_task_post", fake_api_task_post)
+    monkeypatch.setattr(
+        task_status_panel,
+        "run_api_action_or_none",
+        lambda action, *, error_message: action(),
+    )
+
+    _render_task_status_panel_controls(
+        task_id="task-running",
+        refresh_key="task_panel",
+        status_state_key="task_status",
+        apply_result_key=None,
+        task_state_key="last_task_id",
+    )
+
+    assert posted_paths == [("/tasks/task-running/cancel", {})]
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["取消任務"]["disabled"] is False
+    assert by_label["重試任務"]["disabled"] is True
+    assert "已送出取消要求。" in fake_st.successes
 
 
 def test_task_status_controls_block_retry_when_task_is_explicitly_non_retryable(monkeypatch) -> None:
@@ -329,6 +425,52 @@ def test_task_status_controls_block_retry_when_task_is_explicitly_non_retryable(
         'class="task-action-preflight-summary is-blocked"' in markdown
         and "此任務不支援一鍵重試" in markdown
         and "payload 不支援自動重試" in markdown
+        for markdown in fake_st.markdowns
+    )
+    assert posted_paths == []
+
+
+def test_task_status_controls_block_retry_and_cancel_for_successful_task(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit(
+        checked={
+            "task_panel_confirm_cancel": True,
+            "task_panel_confirm_retry": True,
+        },
+        pressed={"task_panel_cancel", "task_panel_retry"},
+    )
+    fake_st.session_state["task_status"] = {
+        "task_id": "task-success",
+        "status": "SUCCESS",
+        "operation": "market_refresh",
+        "ready": True,
+        "successful": True,
+    }
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
+
+    posted_paths = []
+    monkeypatch.setattr(
+        task_status_panel,
+        "run_api_action_or_none",
+        lambda action, *, error_message: posted_paths.append(error_message),
+    )
+
+    _render_task_status_panel_controls(
+        task_id="task-success",
+        refresh_key="task_panel",
+        status_state_key="task_status",
+        apply_result_key=None,
+        task_state_key="last_task_id",
+    )
+
+    by_label = {button["label"]: button for button in fake_st.buttons}
+    assert by_label["取消任務"]["disabled"] is True
+    assert by_label["重試任務"]["disabled"] is True
+    assert any(
+        "此任務已結束，不能取消" in markdown
+        and "此任務已成功，不需要一鍵重試" in "\n".join(fake_st.markdowns)
         for markdown in fake_st.markdowns
     )
     assert posted_paths == []

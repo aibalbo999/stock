@@ -49,6 +49,24 @@ def task_action_preflight_summary(
                 ),
                 "impact": "尚未送出重試；先修正輸入、白名單或外部設定，避免重複失敗與額度浪費。",
             }
+        if _task_status_successful(task_status):
+            return {
+                "state": "blocked",
+                "label": "任務操作摘要",
+                "title": "此任務已成功，不需要一鍵重試",
+                "detail": detail,
+                "next_step": "若需要重新執行，請回原本功能入口建立新任務。",
+                "impact": "不會送出重試；避免對已成功任務重複消耗模型、外部資料源或 API 額度。",
+            }
+        if not _task_status_ready(task_status):
+            return {
+                "state": "blocked",
+                "label": "任務操作摘要",
+                "title": "此任務仍在執行，不能重試",
+                "detail": detail,
+                "next_step": "等待任務結束後，再依結果決定是否需要重試。",
+                "impact": "不會送出重試；避免同一任務尚未完成時重複排隊。",
+            }
         if not confirmed:
             return {
                 "state": "attention",
@@ -68,6 +86,15 @@ def task_action_preflight_summary(
         }
 
     detail = "｜".join(detail_parts)
+    if _task_status_ready(task_status):
+        return {
+            "state": "blocked",
+            "label": "任務操作摘要",
+            "title": "此任務已結束，不能取消",
+            "detail": detail,
+            "next_step": "不需取消；若結果失敗且支援重試，請使用重試或回原入口重新送出。",
+            "impact": "不會送出取消要求；避免改動已完成任務紀錄。",
+        }
     if not confirmed:
         return {
             "state": "attention",
@@ -371,6 +398,14 @@ def _task_status_ready(task_status: dict | None) -> bool:
     }
 
 
+def _task_status_successful(task_status: dict | None) -> bool:
+    if not isinstance(task_status, dict):
+        return False
+    return bool(task_status.get("successful")) or str(task_status.get("status") or "").upper() == (
+        "SUCCESS"
+    )
+
+
 def task_status_poll_interval_seconds(
     task_status: dict | None,
     *,
@@ -456,17 +491,17 @@ def _render_task_status_panel_controls(
         )
         if not cancel_confirmed:
             st.caption("避免誤觸取消；確認後才可送出取消要求。")
-        render_task_action_preflight_summary(
-            task_action_preflight_summary(
-                task_status,
-                action="cancel",
-                confirmed=cancel_confirmed,
-            )
+        cancel_summary = task_action_preflight_summary(
+            task_status,
+            action="cancel",
+            confirmed=cancel_confirmed,
         )
+        render_task_action_preflight_summary(cancel_summary)
+        cancel_blocked = cancel_summary.get("state") == "blocked"
         if st.button(
             "取消任務",
             key=f"{refresh_key}_cancel",
-            disabled=not cancel_confirmed,
+            disabled=cancel_blocked or not cancel_confirmed,
         ):
             cancel_response = run_api_action_or_none(
                 lambda: api_task_post(f"/tasks/{task_id}/cancel", {}),

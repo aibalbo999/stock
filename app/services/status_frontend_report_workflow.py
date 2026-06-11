@@ -17,6 +17,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_center_source = ui_sources["report_center.py"]
     report_center_presenter_source = ui_sources["report_center_presenter.py"]
     report_center_view_source = ui_sources["report_center_view.py"]
+    report_center_document_source = ui_sources["report_center_document.py"]
     report_center_history_source = ui_sources["report_center_history.py"]
     report_health_source = ui_sources["report_health.py"]
     report_lifecycle_source = ui_sources["report_lifecycle.py"]
@@ -70,6 +71,28 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             not in report_center_source
             and "render_task_status_panel(" in report_center_history_source
             and "report_run_history_rows(runs)" in report_center_history_source
+        ),
+        "ui_report_center_document_panel_extracted": (
+            (ui_dir / "report_center_document.py").exists()
+            and "from app.ui.report_center_document import render_report_center_document"
+            in report_center_source
+            and "render_report_center_document(" in report_center_source
+            and "def render_report_center_document(" in report_center_document_source
+            and 'load_api_json_or_default(\n        f"/reports/{int(selected_id)}/follow-up/plan"'
+            in report_center_document_source
+            and "latest_report_lifecycle(history_result or {}, follow_up_plan)"
+            in report_center_document_source
+            and "latest_report_health_summary(history_result or {}, follow_up_plan)"
+            in report_center_document_source
+            and "report_reader_decision_summary(lifecycle, health_summary)"
+            in report_center_document_source
+            and 'st.tabs(["重點報告", "資料查核", "完整文字"])'
+            in report_center_document_source
+            and "render_reader_report(report_markdown, history_result)"
+            in report_center_document_source
+            and 'scope="history_report"' in report_center_document_source
+            and "history_tabs = st.tabs(" not in report_center_source
+            and 'scope="history_report"' not in report_center_source
         ),
         "ui_report_observability_summary_enabled": "/reports/observability/summary?limit=20"
         in ui_source
@@ -195,10 +218,12 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_report_reader_decision_summary_enabled": (
             "def report_reader_decision_summary(" in report_center_presenter_source
-            and "def _render_report_reader_decision_summary(" in report_center_source
-            and "health_summary = latest_report_health_summary(" in report_center_source
+            and "def _render_report_reader_decision_summary("
+            in report_center_document_source
+            and "health_summary = latest_report_health_summary("
+            in report_center_document_source
             and "report_reader_decision_summary(lifecycle, health_summary)"
-            in report_center_source
+            in report_center_document_source
             and 'class="report-reader-decision' in report_center_view_source
             and "閱讀決策" in report_center_view_source
             and "可先閱讀，但投資判斷需標示限制" in report_center_presenter_source

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.ui import report_center
+from app.ui import report_center, report_center_document
 from app.ui.report_lifecycle import latest_report_lifecycle, stage_by_key
 
 
@@ -512,12 +512,12 @@ def test_latest_report_lifecycle_attention_explanation_names_incomplete_rerun() 
 def test_report_lifecycle_strip_renders_primary_action_detail(monkeypatch) -> None:
     rendered: list[str] = []
     monkeypatch.setattr(
-        report_center.st,
+        report_center_document.st,
         "markdown",
         lambda body, **_kwargs: rendered.append(str(body)),
     )
 
-    report_center._render_report_lifecycle_strip(
+    report_center_document._render_report_lifecycle_strip(
         {
             "overall_state": "attention",
             "trust_label": "可閱讀但需註記",
@@ -608,12 +608,12 @@ def test_report_reader_decision_summary_uses_blocked_health_as_guardrail() -> No
 def test_report_reader_decision_summary_renders_operator_cards(monkeypatch) -> None:
     rendered: list[str] = []
     monkeypatch.setattr(
-        report_center.st,
+        report_center_document.st,
         "markdown",
         lambda body, **_kwargs: rendered.append(str(body)),
     )
 
-    report_center._render_report_reader_decision_summary(
+    report_center_document._render_report_reader_decision_summary(
         {
             "state": "ready",
             "eyebrow": "閱讀決策",

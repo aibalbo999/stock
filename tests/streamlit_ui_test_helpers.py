@@ -31,6 +31,7 @@ REPORT_HEALTH_SOURCE = Path("app/ui/report_health.py")
 REPORT_LIFECYCLE_SOURCE = Path("app/ui/report_lifecycle.py")
 REPORT_CENTER_PRESENTER_SOURCE = Path("app/ui/report_center_presenter.py")
 REPORT_CENTER_VIEW_SOURCE = Path("app/ui/report_center_view.py")
+REPORT_CENTER_DOCUMENT_SOURCE = Path("app/ui/report_center_document.py")
 REPORT_CENTER_HISTORY_SOURCE = Path("app/ui/report_center_history.py")
 INCIDENT_INBOX_SOURCE = Path("app/ui/incident_inbox.py")
 OPERATOR_DECISIONS_SOURCE = Path("app/ui/operator_decisions.py")
@@ -104,6 +105,7 @@ UI_SOURCE_FILES = [
     REPORT_LIFECYCLE_SOURCE,
     REPORT_CENTER_PRESENTER_SOURCE,
     REPORT_CENTER_VIEW_SOURCE,
+    REPORT_CENTER_DOCUMENT_SOURCE,
     REPORT_CENTER_HISTORY_SOURCE,
     INCIDENT_INBOX_SOURCE,
     OPERATOR_DECISIONS_SOURCE,

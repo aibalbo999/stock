@@ -839,6 +839,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_task_status_panel(" not in ui.DASHBOARD_CORE_SOURCE.read_text()
     assert "def render_task_status_panel(" in ui.TASK_STATUS_PANEL_SOURCE.read_text()
     report_center_source = Path("app/ui/report_center.py").read_text()
+    report_center_document_source = ui.REPORT_CENTER_DOCUMENT_SOURCE.read_text()
     report_center_history_source = ui.REPORT_CENTER_HISTORY_SOURCE.read_text()
     assert (
         "from app.ui.task_status_panel import render_task_status_panel"
@@ -847,7 +848,16 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "from app.ui.report_center_history import render_report_history_debug_panel" in (
         report_center_source
     )
+    assert "from app.ui.report_center_document import render_report_center_document" in (
+        report_center_source
+    )
+    assert "render_report_center_document(" in report_center_source
+    assert "def render_report_center_document(" in report_center_document_source
     assert "render_report_history_debug_panel(" in report_center_source
+    assert 'st.tabs(["重點報告", "資料查核", "完整文字"])' in report_center_document_source
+    assert "history_tabs = st.tabs(" not in report_center_source
+    assert 'scope="history_report"' in report_center_document_source
+    assert 'scope="history_report"' not in report_center_source
     assert 'with st.expander("報告管理")' not in report_center_history_source
     assert 'with st.expander("疑難排解：執行紀錄")' not in report_center_source
     assert 'with st.expander("疑難排解：執行紀錄")' in report_center_history_source
@@ -881,6 +891,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     report_center_view_source = ui.REPORT_CENTER_VIEW_SOURCE.read_text()
     assert "from app.ui.report_center_presenter import (" in report_center_source
     assert "from app.ui.report_center_view import (" in report_center_source
+    assert "from app.ui.report_center_view import (" in report_center_document_source
     assert "import streamlit" not in report_center_presenter_source
     assert "import streamlit" not in report_center_view_source
     assert "def render_report_history_debug_panel(" in report_center_history_source
@@ -900,6 +911,10 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def latest_report_picker_state(" not in report_center_source
     assert "def report_run_history_rows(" not in report_center_source
     assert "def _report_lifecycle_stage_html(" not in report_center_source
+    assert "def _render_report_reader_decision_summary(" in report_center_document_source
+    assert "report_reader_decision_summary(lifecycle, health_summary)" in (
+        report_center_document_source
+    )
     assert 'class="report-reader-decision' not in report_center_source
     task_status_presenter_source = ui.TASK_STATUS_PRESENTER_SOURCE.read_text()
     task_status_view_source = ui.TASK_STATUS_VIEW_SOURCE.read_text()

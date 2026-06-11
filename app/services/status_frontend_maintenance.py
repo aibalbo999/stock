@@ -99,6 +99,14 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             "app/ui/maintenance_task_panels.py",
             "app/ui/maintenance_cleanup_panel.py",
         ],
+        "ui_maintenance_cleanup_confirmation_gate_enabled": (
+            "cleanup_confirmed = st.checkbox(" in maintenance_cleanup_panel_source
+            and 'key="confirm_maintenance_cleanup"' in maintenance_cleanup_panel_source
+            and "我了解這裡會改動或刪除歷史資料" in maintenance_cleanup_panel_source
+            and "清理操作會刪除歷史紀錄" in maintenance_cleanup_panel_source
+            and "disabled=not cleanup_confirmed" in maintenance_cleanup_panel_source
+            and 'api_post("/maintenance/cleanup"' in maintenance_cleanup_panel_source
+        ),
         "ui_llm_quota_panel_extracted": (ui_dir / "llm_quota_panel.py").exists()
         and "def llm_quota_metric_values(" in llm_quota_panel_source
         and "def llm_quota_model_rows(" in llm_quota_panel_source

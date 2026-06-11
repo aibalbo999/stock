@@ -248,6 +248,7 @@ def architecture_capabilities(
             and frontend_status.get("report_html_renderer_extracted")
             and frontend_status.get("ui_status_helpers_extracted")
             and frontend_status.get("ui_maintenance_panels_extracted")
+            and frontend_status.get("ui_maintenance_cleanup_confirmation_gate_enabled")
             and frontend_status.get("ui_system_settings_tabs_extracted")
             and frontend_status.get("ui_api_client_extracted")
             and frontend_status.get("ui_api_loaders_extracted")
@@ -266,6 +267,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_external_deployment_diagnostics_extracted")
             and frontend_status.get("ui_local_dependency_repair_guidance_enabled")
             and frontend_status.get("ui_maintenance_operations_enabled")
+            and frontend_status.get("ui_maintenance_operation_confirmation_gate_enabled")
             and frontend_status.get(
                 "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"
             )

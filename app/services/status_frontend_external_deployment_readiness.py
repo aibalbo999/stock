@@ -147,6 +147,15 @@ def frontend_external_deployment_readiness_status(
             in maintenance_deployment_panel_source
             and '"confirmed": True' in maintenance_deployment_panel_source
         ),
+        "ui_maintenance_operation_confirmation_gate_enabled": (
+            "operation_confirmed = st.checkbox(" in maintenance_deployment_panel_source
+            and 'key="confirm_maintenance_operation"' in maintenance_deployment_panel_source
+            and "我了解此操作會啟動本機 Docker 依賴" in maintenance_deployment_panel_source
+            and "disabled=not operation_confirmed" in maintenance_deployment_panel_source
+            and 'f"/tasks/maintenance-operation/{selected_operation_id}"'
+            in maintenance_deployment_panel_source
+            and '"confirmed": True' in maintenance_deployment_panel_source
+        ),
         "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled": (
             "action_confirmed = st.checkbox(" in maintenance_deployment_panel_source
             and 'key=f"maintenance_post_run_diagnostic_confirm_{action_id}"'

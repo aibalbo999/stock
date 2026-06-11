@@ -325,6 +325,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/ui/maintenance_task_panels.py",
         "app/ui/maintenance_cleanup_panel.py",
     ]
+    assert status["frontend"]["ui_maintenance_cleanup_confirmation_gate_enabled"] is True
     assert status["frontend"]["ui_system_settings_tabs_extracted"] is True
     assert status["frontend"]["ui_system_settings_tab_paths"] == [
         "app/ui/system_settings_scope.py",
@@ -363,6 +364,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_local_dependency_start_history_enabled"] is True
     assert status["frontend"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert status["frontend"]["ui_maintenance_operations_enabled"] is True
+    assert status["frontend"]["ui_maintenance_operation_confirmation_gate_enabled"] is True
     assert (
         status["frontend"]["ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"]
         is True
@@ -602,6 +604,10 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["report_html_renderer_extracted"] is True
     assert frontend_arch["evidence"]["ui_status_helpers_extracted"] is True
     assert frontend_arch["evidence"]["ui_maintenance_panels_extracted"] is True
+    assert (
+        frontend_arch["evidence"]["ui_maintenance_cleanup_confirmation_gate_enabled"]
+        is True
+    )
     assert frontend_arch["evidence"]["ui_system_settings_tabs_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_client_extracted"] is True
     assert frontend_arch["evidence"]["ui_api_loaders_extracted"] is True
@@ -621,6 +627,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["ui_external_deployment_diagnostics_extracted"] is True
     assert frontend_arch["evidence"]["ui_local_dependency_repair_guidance_enabled"] is True
     assert frontend_arch["evidence"]["ui_maintenance_operations_enabled"] is True
+    assert frontend_arch["evidence"]["ui_maintenance_operation_confirmation_gate_enabled"] is True
     assert (
         frontend_arch["evidence"][
             "ui_maintenance_post_run_diagnostic_confirmation_gate_enabled"

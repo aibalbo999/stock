@@ -549,6 +549,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         "def report_observability_recommendation_rows("
         in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     )
+    assert "def _observability_bottleneck_label(" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert "def _observability_recommendation_label(" in (
+        ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    )
+    assert '"主要瓶頸"' in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert '"關聯報告"' in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
+    assert '"Token 估算"' in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     assert "graph_reasoning_path_count" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     assert "圖譜推理路徑" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()
     assert "圖譜推理覆蓋率" in ui.REPORT_OBSERVABILITY_PANEL_SOURCE.read_text()

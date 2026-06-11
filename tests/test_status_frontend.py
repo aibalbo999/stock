@@ -275,6 +275,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_report_workflow.py"
     )
     assert status["frontend"]["ui_report_lifecycle_data_gap_prefill_enabled"] is True
+    assert status["frontend"]["ui_report_delete_confirmation_gate_enabled"] is True
     assert status["frontend"]["frontend_settings_ui_status_extracted"] is True
     assert status["frontend"]["frontend_settings_ui_status_path"] == (
         "app/services/status_frontend_settings.py"

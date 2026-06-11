@@ -171,7 +171,18 @@ def render_report_center() -> None:
         if selected_id is not None:
             st.markdown("#### 報告管理")
             st.caption("進階操作，只在需要移除最新版報告時使用。")
-            if st.button("刪除此報告", key=f"delete_report_{selected_id}"):
+            report_delete_confirmed = st.checkbox(
+                f"我了解會刪除目前選取的報告 #{selected_id}",
+                value=False,
+                key=f"confirm_delete_report_{selected_id}",
+            )
+            if not report_delete_confirmed:
+                st.caption("勾選確認後才會啟用刪除此報告，避免誤觸。")
+            if st.button(
+                "刪除此報告",
+                key=f"delete_report_{selected_id}",
+                disabled=not report_delete_confirmed,
+            ):
                 deleted = run_api_action_or_none(
                     lambda: api_delete(f"/reports/{int(selected_id)}"),
                     error_message="刪除失敗",
@@ -239,7 +250,18 @@ def render_report_center() -> None:
                     )
             if selected_run_error:
                 st.error(selected_run_error)
-            if st.button("刪除此分析紀錄"):
+            run_delete_confirmed = st.checkbox(
+                f"我了解會刪除分析紀錄 #{selected_run_id}",
+                value=False,
+                key=f"confirm_delete_run_{selected_run_id}",
+            )
+            if not run_delete_confirmed:
+                st.caption("勾選確認後才會啟用刪除此分析紀錄，避免誤觸。")
+            if st.button(
+                "刪除此分析紀錄",
+                key=f"delete_run_{selected_run_id}",
+                disabled=not run_delete_confirmed,
+            ):
                 deleted = run_api_action_or_none(
                     lambda: api_delete(f"/runs/{int(selected_run_id)}"),
                     error_message="刪除失敗",

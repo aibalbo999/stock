@@ -442,9 +442,17 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert 'with st.expander("報告管理")' not in report_center_source
     assert 'with st.expander("疑難排解：執行紀錄")' in report_center_source
     assert report_center_source.index('with st.expander("疑難排解：執行紀錄")') < (
-        report_center_source.index('st.button("刪除此報告"')
+        report_center_source.index('"刪除此報告",')
     )
     assert "進階操作，只在需要移除最新版報告時使用。" in report_center_source
+    assert "report_delete_confirmed = st.checkbox(" in report_center_source
+    assert 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
+    assert 'disabled=not report_delete_confirmed' in report_center_source
+    assert "run_delete_confirmed = st.checkbox(" in report_center_source
+    assert 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
+    assert 'key=f"delete_run_{selected_run_id}"' in report_center_source
+    assert 'disabled=not run_delete_confirmed' in report_center_source
+    assert "避免誤觸" in report_center_source
     assert 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
     assert 'refresh_key=f"history_run_task_status_{selected_run_id}"' in report_center_source
     assert 'st.button("查詢背景任務狀態")' not in report_center_source

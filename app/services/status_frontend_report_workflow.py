@@ -24,7 +24,7 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
     report_debug_expander_index = report_center_source.find(
         'with st.expander("疑難排解：執行紀錄")'
     )
-    report_delete_button_index = report_center_source.find('st.button("刪除此報告"')
+    report_delete_button_index = report_center_source.find('"刪除此報告",')
     return {
         "frontend_report_workflow_status_extracted": True,
         "frontend_report_workflow_status_path": (
@@ -137,12 +137,22 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             'with st.expander("疑難排解：執行紀錄")' in report_center_source
             and 'with st.expander("報告管理")' not in report_center_source
             and "進階操作，只在需要移除最新版報告時使用。" in report_center_source
-            and 'st.button("刪除此報告"' in report_center_source
+            and '"刪除此報告",' in report_center_source
             and report_debug_expander_index >= 0
             and report_delete_button_index >= 0
             and report_debug_expander_index < report_delete_button_index
             and 'with st.expander("原始紀錄內容"):' in report_center_source
             and 'with st.expander("背景任務狀態", expanded=False):' in report_center_source
+        ),
+        "ui_report_delete_confirmation_gate_enabled": (
+            "report_delete_confirmed = st.checkbox(" in report_center_source
+            and 'key=f"confirm_delete_report_{selected_id}"' in report_center_source
+            and "disabled=not report_delete_confirmed" in report_center_source
+            and "run_delete_confirmed = st.checkbox(" in report_center_source
+            and 'key=f"confirm_delete_run_{selected_run_id}"' in report_center_source
+            and 'key=f"delete_run_{selected_run_id}"' in report_center_source
+            and "disabled=not run_delete_confirmed" in report_center_source
+            and "避免誤觸" in report_center_source
         ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"

@@ -823,4 +823,9 @@ def test_follow_up_controls_use_scoped_widget_keys() -> None:
     assert 'scope="history_report"' in source
     assert "manual_tracking_selected" in source
     assert '"force_refresh": bool(force_refresh or manual_tracking_selected)' in source
+    assert "followup_run_confirmed = st.checkbox(" in source
+    assert 'key=f"followup_run_confirm_{key_suffix}"' in source
+    assert "我了解這會送出自動補強背景任務" in source
+    assert "避免誤觸補強" in source
+    assert "disabled=not has_executable_actions or not followup_run_confirmed" in source
     assert 'key=f"followup_purpose_{report_id}"' not in source

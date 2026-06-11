@@ -154,6 +154,17 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and "disabled=not run_delete_confirmed" in report_center_source
             and "避免誤觸" in report_center_source
         ),
+        "ui_report_follow_up_submission_confirmation_enabled": (
+            "followup_run_confirmed = st.checkbox(" in report_follow_up_controls_source
+            and 'key=f"followup_run_confirm_{key_suffix}"'
+            in report_follow_up_controls_source
+            and "我了解這會送出自動補強背景任務" in report_follow_up_controls_source
+            and "避免誤觸補強" in report_follow_up_controls_source
+            and "disabled=not has_executable_actions or not followup_run_confirmed"
+            in report_follow_up_controls_source
+            and 'submit_api_task(\n            f"/reports/{report_id}/follow-up/run_async"'
+            in report_follow_up_controls_source
+        ),
         "ui_report_observability_panel_extracted": (
             ui_dir / "report_observability_panel.py"
         ).exists()

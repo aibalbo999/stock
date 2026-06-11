@@ -186,6 +186,13 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         step=10,
         key=f"followup_news_limit_{key_suffix}",
     )
+    followup_run_confirmed = st.checkbox(
+        "我了解這會送出自動補強背景任務",
+        value=False,
+        key=f"followup_run_confirm_{key_suffix}",
+    )
+    if has_executable_actions and not followup_run_confirmed:
+        st.caption("避免誤觸補強；確認執行範圍、補抓資料量與是否重跑後才會送出背景任務。")
     button_label = (
         "補資料缺口並重跑"
         if selected_purpose == "required"
@@ -197,7 +204,7 @@ def render_follow_up_controls(report_id: int, markdown: str, scope: str = "repor
         button_label,
         type="primary",
         key=f"followup_run_{key_suffix}",
-        disabled=not has_executable_actions,
+        disabled=not has_executable_actions or not followup_run_confirmed,
     ):
         submit_api_task(
             f"/reports/{report_id}/follow-up/run_async",

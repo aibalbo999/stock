@@ -3,6 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from app.ui.incident_failure_catalog import (
+    failure_action_label,
+    failure_category,
+    failure_impact,
+    failure_next_action,
+    failure_severity,
+    failure_title,
+)
 from app.ui.operator_status import quota_operator_summary
 
 
@@ -21,22 +29,6 @@ CATEGORY_ORDER = {
     "cancelled": 10,
     "unknown": 11,
 }
-FAILURE_CATEGORY_MAP = {
-    "payload_validation": "whitelist",
-    "data_source": "data_source",
-    "vector_store": "vector_store",
-    "runtime_storage": "runtime_storage",
-}
-ALLOWED_RAW_FAILURE_CATEGORIES = {
-    "quota",
-    "task_queue",
-    "visual_rag",
-    "external_config",
-    "timeout",
-    "cancelled",
-}
-
-
 def incident_inbox_items(
     service_snapshot: dict | None,
     task_summary: dict | None,
@@ -167,7 +159,7 @@ def _task_alert_category(alert: dict) -> str:
     if _is_stale_running_alert(alert):
         return "task_queue"
     if _text(alert.get("error_category")):
-        return _failure_category(alert)
+        return failure_category(alert)
     return "task_queue"
 
 
@@ -184,22 +176,22 @@ def _failure_incidents(
 ) -> list[dict[str, Any]]:
     incidents = []
     for failure in _recent_failures(task_summary):
-        category = _failure_category(failure)
+        category = failure_category(failure)
         identity = _failure_identity(failure)
         task_id = _text(failure.get("task_id"))
         operation = _text(failure.get("operation"), default="task")
         retryable = bool(failure.get("retryable"))
         incident = {
             "id": f"failure_{identity.replace(':', '_')}_{category}",
-            "severity": _failure_severity(failure, category),
+            "severity": failure_severity(failure, category),
             "category": category,
-            "title": _text(failure.get("error_summary"), default=_failure_title(category)),
-            "impact": _failure_impact(category),
+            "title": _text(failure.get("error_summary"), default=failure_title(category)),
+            "impact": failure_impact(category),
             "next_action": _text(
                 failure.get("next_action"),
-                default=_failure_next_action(category, retryable),
+                default=failure_next_action(category, retryable),
             ),
-            "action_label": _failure_action_label(category, retryable),
+            "action_label": failure_action_label(category, retryable),
             "route_hint": f"task:{task_id}" if task_id else "settings:maintenance",
             "retryable": retryable,
             "source": _failure_source(failure, operation),
@@ -296,28 +288,6 @@ def _failure_identity(row: dict) -> str:
     )
 
 
-def _failure_category(failure: dict) -> str:
-    raw_category = _text(failure.get("error_category")).casefold()
-    if not raw_category:
-        return "unknown"
-    if raw_category in FAILURE_CATEGORY_MAP:
-        return FAILURE_CATEGORY_MAP[raw_category]
-    if raw_category in ALLOWED_RAW_FAILURE_CATEGORIES:
-        return raw_category
-    return "unknown"
-
-
-def _failure_severity(failure: dict, category: str) -> str:
-    raw_severity = _text(failure.get("error_severity")).casefold()
-    if raw_severity in {"critical", "error"}:
-        return "critical"
-    if raw_severity in {"warning", "warn"}:
-        return "warning"
-    if raw_severity == "info":
-        return "info"
-    return "critical" if category == "runtime_storage" else "warning"
-
-
 def _failure_source(failure: dict, operation: str) -> str:
     task_id = _text(failure.get("task_id"))
     if task_id:
@@ -326,54 +296,6 @@ def _failure_source(failure: dict, operation: str) -> str:
     if run_id:
         return f"run:{run_id}"
     return operation
-
-
-def _failure_title(category: str) -> str:
-    return {
-        "whitelist": "白名單或輸入擋下任務",
-        "data_source": "資料來源抓取失敗",
-        "vector_store": "RAG 向量檢索曾降級",
-        "runtime_storage": "本機儲存失敗",
-        "quota": "AI 額度需注意",
-        "task_queue": "背景任務失敗",
-        "visual_rag": "Visual RAG 設定需確認",
-        "external_config": "外部配置缺失",
-        "timeout": "任務逾時",
-        "cancelled": "任務已取消",
-    }.get(category, "有失敗任務")
-
-
-def _failure_impact(category: str) -> str:
-    return {
-        "whitelist": "補強或重跑沒有進入有效資料流程。",
-        "data_source": "最新版報告可能缺少最新市場或公司資料。",
-        "vector_store": "報告可降級完成，但檢索覆蓋率較低。",
-        "runtime_storage": "報告檔案、SQLite 或備份可能沒有寫入成功。",
-        "quota": "AI 模型額度或路由限制導致任務失敗。",
-        "task_queue": "背景任務服務異常導致任務失敗。",
-        "visual_rag": "Visual RAG 設定或文件後援導致任務失敗。",
-        "external_config": "外部服務、API key 或部署設定缺失導致任務失敗。",
-        "timeout": "任務執行時間過長，可能需要重試或縮小輸入範圍。",
-        "cancelled": "任務已取消，需要確認是否重新送出。",
-    }.get(category, "近期任務失敗，需查看維護頁。")
-
-
-def _failure_next_action(category: str, retryable: bool) -> str:
-    if category == "whitelist":
-        return "修正輸入後重試" if retryable else "檢查輸入與白名單"
-    if retryable:
-        return "到維護頁重試此任務"
-    return "到維護頁查看失敗診斷"
-
-
-def _failure_action_label(category: str, retryable: bool) -> str:
-    if retryable:
-        return "重試任務"
-    if category == "quota":
-        return "查看額度"
-    if category in {"external_config", "task_queue", "visual_rag", "data_source"}:
-        return "修復配置"
-    return "檢查任務"
 
 
 def _latest_success_timestamp(task_summary: dict) -> float:

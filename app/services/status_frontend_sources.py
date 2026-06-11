@@ -38,6 +38,7 @@ UI_MODULE_NAMES = (
     "report_center_view.py",
     "report_center_history.py",
     "incident_inbox.py",
+    "incident_failure_catalog.py",
     "data_gap_actions.py",
     "report_observability_panel.py",
     "external_deployment_diagnostics.py",

@@ -34,6 +34,7 @@ REPORT_CENTER_VIEW_SOURCE = Path("app/ui/report_center_view.py")
 REPORT_CENTER_DOCUMENT_SOURCE = Path("app/ui/report_center_document.py")
 REPORT_CENTER_HISTORY_SOURCE = Path("app/ui/report_center_history.py")
 INCIDENT_INBOX_SOURCE = Path("app/ui/incident_inbox.py")
+INCIDENT_FAILURE_CATALOG_SOURCE = Path("app/ui/incident_failure_catalog.py")
 OPERATOR_DECISIONS_SOURCE = Path("app/ui/operator_decisions.py")
 OPERATOR_SECONDARY_DECISIONS_SOURCE = Path("app/ui/operator_secondary_decisions.py")
 OPERATOR_DECISION_SUPPORT_SOURCE = Path("app/ui/operator_decision_support.py")
@@ -109,6 +110,7 @@ UI_SOURCE_FILES = [
     REPORT_CENTER_DOCUMENT_SOURCE,
     REPORT_CENTER_HISTORY_SOURCE,
     INCIDENT_INBOX_SOURCE,
+    INCIDENT_FAILURE_CATALOG_SOURCE,
     OPERATOR_DECISIONS_SOURCE,
     OPERATOR_SECONDARY_DECISIONS_SOURCE,
     OPERATOR_DECISION_SUPPORT_SOURCE,

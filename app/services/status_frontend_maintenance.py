@@ -10,6 +10,8 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     system_settings_source = ui_sources["system_settings.py"]
     operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
+    incident_inbox_source = ui_sources["incident_inbox.py"]
+    incident_failure_catalog_source = ui_sources["incident_failure_catalog.py"]
     maintenance_incident_presenter_source = ui_sources["maintenance_incident_presenter.py"]
     maintenance_incident_view_source = ui_sources["maintenance_incident_view.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
@@ -114,10 +116,22 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             '"action_label": incident_action_label(incident, index)'
             in system_settings_maintenance_source
             and "def incident_action_label(" in maintenance_incident_presenter_source
-            and '"action_label": _failure_action_label(category, retryable)' in ui_source
-            and "def _failure_action_label(" in ui_source
-            and 'return "重試任務"' in ui_source
-            and 'return "檢查任務"' in ui_source
+            and '"action_label": failure_action_label(category, retryable)' in incident_inbox_source
+            and "def failure_action_label(" in incident_failure_catalog_source
+            and 'return "重試任務"' in incident_failure_catalog_source
+            and 'return "檢查任務"' in incident_failure_catalog_source
+        ),
+        "ui_incident_failure_catalog_extracted": (
+            (ui_dir / "incident_failure_catalog.py").exists()
+            and "from app.ui.incident_failure_catalog import (" in incident_inbox_source
+            and "def failure_category(" in incident_failure_catalog_source
+            and "def failure_title(" in incident_failure_catalog_source
+            and "def failure_impact(" in incident_failure_catalog_source
+            and "def failure_next_action(" in incident_failure_catalog_source
+            and "def failure_action_label(" in incident_failure_catalog_source
+            and "FAILURE_CATEGORY_MAP" not in incident_inbox_source
+            and "def _failure_title(" not in incident_inbox_source
+            and "def _failure_action_label(" not in incident_inbox_source
         ),
         "ui_incident_report_lifecycle_enabled": (
             "from app.ui.report_lifecycle import latest_report_lifecycle"

@@ -282,6 +282,7 @@ def architecture_capabilities(
             and frontend_status.get("frontend_settings_core_status_extracted")
             and frontend_status.get("frontend_maintenance_ui_status_extracted")
             and frontend_status.get("ui_incident_action_labels_enabled")
+            and frontend_status.get("ui_incident_failure_catalog_extracted")
             and frontend_status.get("ui_incident_report_lifecycle_enabled")
             and frontend_status.get("ui_incident_priority_summary_enabled")
             and frontend_status.get("ui_incident_historical_context_enabled")

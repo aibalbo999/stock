@@ -237,6 +237,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         ui.MAINTENANCE_INCIDENT_PRESENTER_SOURCE.read_text()
     )
     maintenance_incident_view_source = ui.MAINTENANCE_INCIDENT_VIEW_SOURCE.read_text()
+    incident_inbox_source = ui.INCIDENT_INBOX_SOURCE.read_text()
+    incident_failure_catalog_source = ui.INCIDENT_FAILURE_CATALOG_SOURCE.read_text()
     system_settings_maintenance_source = Path(
         "app/ui/system_settings_maintenance.py"
     ).read_text()
@@ -287,6 +289,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         system_settings_maintenance_source
     )
     assert "def incident_action_label(" in maintenance_incident_presenter_source
+    assert "from app.ui.incident_failure_catalog import (" in incident_inbox_source
+    assert "def failure_category(" in incident_failure_catalog_source
+    assert "def failure_action_label(" in incident_failure_catalog_source
+    assert "FAILURE_CATEGORY_MAP" not in incident_inbox_source
+    assert "def _failure_title(" not in incident_inbox_source
+    assert "def _failure_action_label(" not in incident_inbox_source
     assert "def incident_summary_cards(" not in system_settings_maintenance_source
     assert "def incident_action_priority_summary(" not in system_settings_maintenance_source
     assert "下一步建議" in source

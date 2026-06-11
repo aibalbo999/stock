@@ -340,6 +340,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_maintenance.py"
     )
     assert status["frontend"]["ui_incident_action_labels_enabled"] is True
+    assert status["frontend"]["ui_incident_failure_catalog_extracted"] is True
     assert status["frontend"]["ui_incident_report_lifecycle_enabled"] is True
     assert status["frontend"]["ui_incident_priority_summary_enabled"] is True
     assert status["frontend"]["ui_incident_historical_context_enabled"] is True
@@ -780,6 +781,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["ui_incident_action_labels_enabled"] is True
+    assert frontend_arch["evidence"]["ui_incident_failure_catalog_extracted"] is True
     assert frontend_arch["evidence"]["ui_incident_priority_summary_enabled"] is True
     assert frontend_arch["evidence"]["ui_incident_historical_context_enabled"] is True
     assert frontend_arch["evidence"]["ui_incident_header_current_context_enabled"] is True

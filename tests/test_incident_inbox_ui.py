@@ -1,7 +1,24 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.ui import system_settings_maintenance
 from app.ui.incident_inbox import incident_counts, incident_inbox_items, top_incidents
+
+
+def test_incident_failure_catalog_lives_outside_inbox_orchestration() -> None:
+    inbox_source = Path("app/ui/incident_inbox.py").read_text()
+    catalog_path = Path("app/ui/incident_failure_catalog.py")
+
+    assert catalog_path.exists()
+    catalog_source = catalog_path.read_text()
+    assert "from app.ui.incident_failure_catalog import (" in inbox_source
+    assert "def failure_category(" in catalog_source
+    assert "def failure_title(" in catalog_source
+    assert "def failure_action_label(" in catalog_source
+    assert "FAILURE_CATEGORY_MAP" not in inbox_source
+    assert "def _failure_title(" not in inbox_source
+    assert "def _failure_action_label(" not in inbox_source
 
 
 def test_incident_inbox_reports_queue_unavailable() -> None:

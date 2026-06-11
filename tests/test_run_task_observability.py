@@ -157,13 +157,15 @@ def test_run_task_api_summarizes_recent_task_health() -> None:
             "error_category": "stale_running",
             "count": 1,
             "days": 0,
-            "message": "有 1 個背景任務疑似卡住，請檢查 worker 與任務狀態。",
+            "message": "有 1 個背景任務疑似卡住，請檢查背景執行器與任務狀態。",
             "next_steps": [
                 "查看背景任務觀測中的疑似卡住任務。",
-                "確認 Celery worker 是否在線，必要時取消或重試任務。",
+                "確認背景執行器是否在線，必要時取消或重試任務。",
             ],
         }
     ]
+    assert "worker" not in str(summary["alerts"])
+    assert "Celery" not in str(summary["alerts"])
     assert summary["recent_failures"][0]["task_id"] == "task-failed"
     assert summary["recent_failures"][0]["error_category"] == "quota"
     assert summary["recent_failures"][0]["error_severity"] == "warning"

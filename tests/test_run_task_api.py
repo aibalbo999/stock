@@ -404,8 +404,10 @@ def test_run_task_service_reports_queued_progress_before_run_exists() -> None:
         "status": "queued",
         "progress_pct": 0.0,
         "current_step": "waiting_for_worker",
-        "resume_hint": "任務已送出，等待 Celery worker 建立 analysis run。",
+        "resume_hint": "任務已送出，等待背景執行器建立執行紀錄。",
     }
+    assert "Celery worker" not in status["progress"]["resume_hint"]
+    assert "analysis run" not in status["progress"]["resume_hint"]
 
 
 def test_run_task_service_prefers_celery_progress_before_run_exists() -> None:

@@ -189,20 +189,20 @@ def celery_status_progress(status: str | None, *, ready: bool) -> dict:
             "status": "retrying",
             "progress_pct": 0.0,
             "current_step": "task_retrying",
-            "resume_hint": "Celery 正在重試，等待 worker 更新 run 狀態。",
+            "resume_hint": "背景任務正在重試，等待背景執行器更新執行紀錄。",
         }
     if normalized == "STARTED":
         return {
             "status": "running",
             "progress_pct": 0.05,
             "current_step": "worker_started",
-            "resume_hint": "Worker 已接手，等待 analysis run metadata。",
+            "resume_hint": "背景執行器已接手，等待任務執行紀錄。",
         }
     return {
         "status": "queued" if not ready else normalized.casefold(),
         "progress_pct": 0.0 if not ready else None,
         "current_step": "waiting_for_worker",
-        "resume_hint": "任務已送出，等待 Celery worker 建立 analysis run。",
+        "resume_hint": "任務已送出，等待背景執行器建立執行紀錄。",
     }
 
 
@@ -521,10 +521,10 @@ def task_failure_alerts(rows: list[dict], daily_rows: list[dict]) -> list[dict]:
                 "error_category": "stale_running",
                 "count": stale_count,
                 "days": 0,
-                "message": f"有 {stale_count} 個背景任務疑似卡住，請檢查 worker 與任務狀態。",
+                "message": f"有 {stale_count} 個背景任務疑似卡住，請檢查背景執行器與任務狀態。",
                 "next_steps": [
                     "查看背景任務觀測中的疑似卡住任務。",
-                    "確認 Celery worker 是否在線，必要時取消或重試任務。",
+                    "確認背景執行器是否在線，必要時取消或重試任務。",
                 ],
             }
         )

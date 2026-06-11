@@ -189,8 +189,13 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def render_analysis_workspace() -> None:" in source
     assert "def analysis_submission_ready(" in source
     assert "def analysis_submission_summary(" in source
+    assert "def analysis_submission_quota_pressure(" in source
     assert "def _render_analysis_submission_summary(" in source
     assert "analysis-submission-summary" in combined
+    assert "quota-pressure" in combined
+    assert "額度壓力：" in source
+    assert "適合快速試跑或額度偏緊時使用" in source
+    assert "適合收盤後或額度剛重置時執行" in source
     assert "送出前確認" in source
     assert "可送出分析背景任務" in source
     assert "手動模式請先選擇至少一檔股票" in source

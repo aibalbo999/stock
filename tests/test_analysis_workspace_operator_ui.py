@@ -45,8 +45,60 @@ def test_analysis_submission_summary_shows_ready_configuration() -> None:
         "state": "ready",
         "title": "可送出分析背景任務",
         "detail": "AI 伺服器供應鏈｜深度研究｜資料抓取 12｜引用上限 180｜回看 30 天",
+        "quota_pressure": "額度壓力：很高",
+        "quota_pressure_class": "very-high",
+        "quota_advice": "適合收盤後或額度剛重置時執行；若免費額度緊張，先改用標準研究或降低引用上限。",
         "next_step": "按「執行分析」送出背景任務。",
         "disabled_reason": "",
+    }
+
+
+def test_analysis_submission_quota_pressure_guides_free_tier_usage() -> None:
+    assert hasattr(analysis_workspace, "analysis_submission_quota_pressure")
+
+    light = analysis_workspace.analysis_submission_quota_pressure(
+        analysis_mode_label="快速預覽",
+        discovery_limit=2,
+        evidence_limit=40,
+        lookback_days=7,
+        ai_discovery_mode=False,
+        manual_tickers=["2330"],
+    )
+    heavy = analysis_workspace.analysis_submission_quota_pressure(
+        analysis_mode_label="深度研究",
+        discovery_limit=20,
+        evidence_limit=200,
+        lookback_days=60,
+        ai_discovery_mode=True,
+        manual_tickers=[],
+    )
+
+    assert light == {
+        "level": "低",
+        "class": "low",
+        "advice": "適合快速試跑或額度偏緊時使用；完成後再視結果升級分析強度。",
+    }
+    assert heavy == {
+        "level": "很高",
+        "class": "very-high",
+        "advice": "適合收盤後或額度剛重置時執行；若免費額度緊張，先改用標準研究或降低引用上限。",
+    }
+
+
+def test_analysis_submission_quota_pressure_keeps_standard_ai_default_daily() -> None:
+    default_pressure = analysis_workspace.analysis_submission_quota_pressure(
+        analysis_mode_label="標準研究",
+        discovery_limit=5,
+        evidence_limit=120,
+        lookback_days=14,
+        ai_discovery_mode=True,
+        manual_tickers=[],
+    )
+
+    assert default_pressure == {
+        "level": "中",
+        "class": "medium",
+        "advice": "適合一般日常分析；若接近免費額度上限，可先降低資料抓取或引用量。",
     }
 
 
@@ -66,6 +118,9 @@ def test_analysis_submission_summary_explains_missing_manual_tickers() -> None:
         "state": "attention",
         "title": "先補齊送出條件",
         "detail": "AI 伺服器供應鏈｜手動個股 0 檔｜標準研究｜資料抓取 5｜引用上限 120｜回看 14 天",
+        "quota_pressure": "額度壓力：中",
+        "quota_pressure_class": "medium",
+        "quota_advice": "適合一般日常分析；若接近免費額度上限，可先降低資料抓取或引用量。",
         "next_step": "手動模式請先選擇至少一檔股票。",
         "disabled_reason": "手動模式尚未選擇股票",
     }
@@ -85,6 +140,9 @@ def test_analysis_submission_summary_explains_quota_confirmation() -> None:
 
     assert summary["state"] == "attention"
     assert summary["title"] == "先確認額度消耗"
+    assert summary["quota_pressure"] == "額度壓力：低"
+    assert summary["quota_pressure_class"] == "low"
+    assert summary["quota_advice"] == "適合快速試跑或額度偏緊時使用；完成後再視結果升級分析強度。"
     assert summary["next_step"] == "勾選額度確認後才能送出背景任務。"
     assert summary["disabled_reason"] == "尚未確認 AI/API 額度消耗"
 

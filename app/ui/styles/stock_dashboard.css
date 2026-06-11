@@ -687,6 +687,27 @@ textarea:focus,
     line-height: 1.5;
     margin: 0;
 }
+.analysis-submission-summary small {
+    border-radius: 6px;
+    color: var(--stock-text);
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.45;
+    padding: 7px 9px;
+}
+.analysis-submission-summary small.is-low {
+    background: rgba(20, 184, 166, 0.12);
+}
+.analysis-submission-summary small.is-medium {
+    background: rgba(59, 130, 246, 0.1);
+}
+.analysis-submission-summary small.is-high {
+    background: rgba(245, 158, 11, 0.14);
+}
+.analysis-submission-summary small.is-very-high {
+    background: rgba(239, 68, 68, 0.1);
+}
 .analysis-submission-summary em {
     color: var(--stock-text);
     font-size: 0.86rem;

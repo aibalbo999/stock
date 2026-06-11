@@ -42,6 +42,15 @@ def frontend_operator_workbench_status(source_context: FrontendSourceContext) ->
             and "可送出分析背景任務" in analysis_workspace_source
             and "手動模式請先選擇至少一檔股票" in analysis_workspace_source
         ),
+        "ui_analysis_submission_quota_pressure_guidance_enabled": (
+            "def analysis_submission_quota_pressure(" in analysis_workspace_source
+            and "quota_pressure" in analysis_workspace_source
+            and "quota_pressure_class" in analysis_workspace_source
+            and "額度壓力：" in analysis_workspace_source
+            and "適合快速試跑或額度偏緊時使用" in analysis_workspace_source
+            and "適合收盤後或額度剛重置時執行" in analysis_workspace_source
+            and "class=\"quota-pressure" in analysis_workspace_source
+        ),
         "ui_data_task_followup_summary_enabled": (
             "def data_task_followup_summary(" in data_enrichment_common_source
             and "def _render_data_task_followup_summary(" in data_enrichment_common_source

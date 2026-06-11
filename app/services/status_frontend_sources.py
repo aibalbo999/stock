@@ -55,6 +55,7 @@ UI_MODULE_NAMES = (
     "data_enrichment_manual_presenter.py",
     "data_enrichment_market.py",
     "data_enrichment_market_presenter.py",
+    "data_enrichment_market_view.py",
     "data_enrichment_rss.py",
     "data_enrichment_runtime.py",
     "system_settings.py",
@@ -77,6 +78,7 @@ PAGE_UI_MODULE_NAMES = (
     "data_enrichment_common.py",
     "data_enrichment_manual.py",
     "data_enrichment_market.py",
+    "data_enrichment_market_view.py",
     "data_enrichment_rss.py",
     "data_enrichment_runtime.py",
     "system_settings.py",
@@ -99,6 +101,7 @@ DATA_ENRICHMENT_MODULE_NAMES = (
     "data_enrichment_manual_presenter.py",
     "data_enrichment_market.py",
     "data_enrichment_market_presenter.py",
+    "data_enrichment_market_view.py",
     "data_enrichment_rss.py",
     "data_enrichment_runtime.py",
 )

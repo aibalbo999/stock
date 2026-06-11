@@ -35,6 +35,8 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_operator_presenter_source = ui.ANALYSIS_OPERATOR_PRESENTER_SOURCE.read_text()
     analysis_workspace_source = Path("app/ui/analysis_workspace.py").read_text()
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
+    data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
+    data_enrichment_market_view_source = ui.DATA_ENRICHMENT_MARKET_VIEW_SOURCE.read_text()
     data_enrichment_manual_source = Path("app/ui/data_enrichment_manual.py").read_text()
     data_enrichment_manual_presenter_source = (
         ui.DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE.read_text()
@@ -373,6 +375,15 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "action-impact-grid" in combined
     assert "from app.ui.data_enrichment_market_presenter import (" in source
     assert "import streamlit" not in ui.DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE.read_text()
+    assert "from app.ui.data_enrichment_market_view import (" in data_enrichment_market_source
+    assert "import streamlit" not in data_enrichment_market_view_source
+    assert "def data_gap_action_map_html(" in data_enrichment_market_view_source
+    assert "def market_operation_readiness_html(" in data_enrichment_market_view_source
+    assert "def market_submission_summary_html(" in data_enrichment_market_view_source
+    assert "def market_cache_operator_summary_html(" in data_enrichment_market_view_source
+    assert "def _data_gap_action_card_html(" not in data_enrichment_market_source
+    assert "def _market_operation_readiness_card_html(" not in data_enrichment_market_source
+    assert "def _market_cache_card_html(" not in data_enrichment_market_source
     assert "market_operation_readiness_rows(" in source
     assert "_render_market_operation_readiness(" in source
     assert "market-operation-readiness" in combined

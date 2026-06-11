@@ -22,6 +22,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
     data_enrichment_market_presenter_source = source_context.ui_sources[
         "data_enrichment_market_presenter.py"
     ]
+    data_enrichment_market_view_source = source_context.ui_sources[
+        "data_enrichment_market_view.py"
+    ]
     data_enrichment_manual_source = source_context.ui_sources["data_enrichment_manual.py"]
     data_enrichment_manual_presenter_source = source_context.ui_sources[
         "data_enrichment_manual_presenter.py"
@@ -54,6 +57,20 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             in data_enrichment_market_presenter_source
             and "def market_cache_operator_summary(" in data_enrichment_market_presenter_source
         ),
+        "ui_data_enrichment_market_view_extracted": (
+            "from app.ui.data_enrichment_market_view import ("
+            in data_enrichment_market_source
+            and "import streamlit" not in data_enrichment_market_view_source
+            and "def data_gap_action_map_html(" in data_enrichment_market_view_source
+            and "def market_operation_readiness_html(" in data_enrichment_market_view_source
+            and "def market_submission_summary_html(" in data_enrichment_market_view_source
+            and "def market_cache_operator_summary_html("
+            in data_enrichment_market_view_source
+            and "def _data_gap_action_card_html(" not in data_enrichment_market_source
+            and "def _market_operation_readiness_card_html("
+            not in data_enrichment_market_source
+            and "def _market_cache_card_html(" not in data_enrichment_market_source
+        ),
         "ui_data_enrichment_manual_presenter_extracted": (
             "from app.ui.data_enrichment_manual_presenter import ("
             in data_enrichment_manual_source
@@ -85,9 +102,10 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         "ui_data_enrichment_pending_handoff_banner_enabled": (
             "def pending_market_handoff_summary(" in data_enrichment_market_presenter_source
             and "def _render_pending_market_handoff(" in data_enrichment_market_source
+            and "def pending_market_handoff_html(" in data_enrichment_market_view_source
             and "pending_market_handoff_summary(" in data_enrichment_market_source
-            and 'class="market-handoff-banner' in data_enrichment_market_source
-            and "補強導引" in data_enrichment_market_source
+            and 'class="market-handoff-banner' in data_enrichment_market_view_source
+            and "補強導引" in data_enrichment_market_view_source
             and "先處理白名單提醒，再" in data_enrichment_market_presenter_source
             and '"next_step": f"{next_prefix}確認背景任務後按'
             in data_enrichment_market_presenter_source
@@ -95,18 +113,20 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         "ui_data_enrichment_operation_readiness_enabled": (
             "def market_operation_readiness_rows(" in data_enrichment_market_presenter_source
             and "def _render_market_operation_readiness(" in data_enrichment_market_source
-            and "def _market_operation_readiness_card_html(" in data_enrichment_market_source
-            and 'class="market-operation-readiness"' in data_enrichment_market_source
-            and "執行前檢查" in data_enrichment_market_source
+            and "def market_operation_readiness_card_html("
+            in data_enrichment_market_view_source
+            and 'class="market-operation-readiness"' in data_enrichment_market_view_source
+            and "執行前檢查" in data_enrichment_market_view_source
             and "可送出背景任務" in data_enrichment_market_presenter_source
             and "disabled_reason" in data_enrichment_market_presenter_source
         ),
         "ui_data_enrichment_submission_preflight_summary_enabled": (
             "def market_submission_preflight_summary(" in data_enrichment_market_presenter_source
             and "def _render_market_submission_summary(" in data_enrichment_market_source
+            and "def market_submission_summary_html(" in data_enrichment_market_view_source
             and "market_submission_preflight_summary(" in data_enrichment_market_source
-            and 'class="market-submission-summary' in data_enrichment_market_source
-            and "送出前摘要" in data_enrichment_market_source
+            and 'class="market-submission-summary' in data_enrichment_market_view_source
+            and "送出前摘要" in data_enrichment_market_view_source
             and "避免重複送出" in data_enrichment_market_presenter_source
             and "外部資料額度" in data_enrichment_market_presenter_source
             and "market_operation_confirmed" in data_enrichment_market_source
@@ -227,9 +247,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             "def market_cache_operator_summary(" in data_enrichment_market_presenter_source
             and "def _render_market_cache_operator_summary(" in data_enrichment_market_source
             and "market_cache_operator_summary(cache_summary" in data_enrichment_market_source
-            and 'class="market-cache-readiness"' in data_enrichment_market_source
+            and 'class="market-cache-readiness"' in data_enrichment_market_view_source
             and "cached-stale" in data_enrichment_market_presenter_source
-            and "市場快取新鮮度" in data_enrichment_market_source
+            and "市場快取新鮮度" in data_enrichment_market_view_source
         ),
         **frontend_data_enrichment_tabs_status(source_context),
         **frontend_data_enrichment_runtime_status(source_context),

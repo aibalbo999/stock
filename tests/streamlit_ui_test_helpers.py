@@ -34,6 +34,7 @@ OPERATOR_DECISION_SUPPORT_SOURCE = Path("app/ui/operator_decision_support.py")
 DATA_GAP_ACTIONS_SOURCE = Path("app/ui/data_gap_actions.py")
 DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE = Path("app/ui/data_enrichment_manual_presenter.py")
 DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE = Path("app/ui/data_enrichment_market_presenter.py")
+DATA_ENRICHMENT_MARKET_VIEW_SOURCE = Path("app/ui/data_enrichment_market_view.py")
 FOLLOW_UP_STATUS_SOURCE = Path("app/ui/follow_up_status.py")
 MAINTENANCE_STATUS_SOURCE = Path("app/ui/maintenance_status.py")
 MAINTENANCE_PROGRESS_PRESENTER_SOURCE = Path("app/ui/maintenance_progress_presenter.py")
@@ -115,6 +116,7 @@ UI_SOURCE_FILES = [
     DATA_ENRICHMENT_MANUAL_PRESENTER_SOURCE,
     Path("app/ui/data_enrichment_market.py"),
     DATA_ENRICHMENT_MARKET_PRESENTER_SOURCE,
+    DATA_ENRICHMENT_MARKET_VIEW_SOURCE,
     Path("app/ui/data_enrichment_rss.py"),
     Path("app/ui/data_enrichment_runtime.py"),
     SYSTEM_SETTINGS_SOURCE,

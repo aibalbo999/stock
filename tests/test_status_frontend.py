@@ -262,6 +262,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
         "app/services/status_frontend_data_enrichment_runtime.py"
     )
     assert status["frontend"]["ui_data_enrichment_market_presenter_extracted"] is True
+    assert status["frontend"]["ui_data_enrichment_market_view_extracted"] is True
     assert status["frontend"]["ui_data_enrichment_manual_presenter_extracted"] is True
     assert status["frontend"]["ui_operator_data_gap_prefill_enabled"] is True
     assert (
@@ -802,6 +803,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         frontend_arch["evidence"]["ui_data_enrichment_market_presenter_extracted"]
         is True
     )
+    assert frontend_arch["evidence"]["ui_data_enrichment_market_view_extracted"] is True
     assert (
         frontend_arch["evidence"]["ui_data_enrichment_manual_presenter_extracted"]
         is True

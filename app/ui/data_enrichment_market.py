@@ -15,7 +15,6 @@ from app.ui.background_tasks import submit_data_operation_task
 from app.ui.dashboard_core import render_section_header
 from app.ui.data_gap_actions import (
     data_gap_action_items,
-    data_gap_action_summary,
 )
 from app.ui.data_enrichment_common import (
     DATA_TASK_STATUS_STATE_KEYS,
@@ -36,6 +35,13 @@ from app.ui.data_enrichment_market_presenter import (
     market_submission_preflight_summary,
     pending_market_handoff_summary,
     pending_market_selection_state,
+)
+from app.ui.data_enrichment_market_view import (
+    data_gap_action_map_html,
+    market_cache_operator_summary_html,
+    market_operation_readiness_html,
+    market_submission_summary_html,
+    pending_market_handoff_html,
 )
 from app.ui.operator_route_controls import render_operator_route_button
 
@@ -254,36 +260,8 @@ def _latest_report_follow_up_context() -> tuple[dict, dict]:
 
 
 def _render_data_gap_action_map(items: list[dict]) -> None:
-    summary = data_gap_action_summary(items)
-    cards_html = "\n".join(_data_gap_action_card_html(item) for item in items[:6])
-    if not cards_html:
-        cards_html = """<article class="data-gap-action-card is-ready">
-<strong>目前沒有必要資料缺口</strong>
-<span>最新版報告沒有必補資料行動。</span>
-<em>可依例行需求刷新市場資料。</em>
-</article>"""
-    st.markdown(
-        f"""<section class="data-gap-action-map is-{escape(summary.get("state", "ready"))}" aria-label="資料缺口行動地圖">
-<div class="data-gap-action-head">
-<div class="workspace-kicker">資料缺口行動地圖</div>
-<h3>{escape(summary.get("label", "-"))}</h3>
-<p>{escape(summary.get("detail", ""))}</p>
-</div>
-<div class="data-gap-action-list">
-{cards_html}
-</div>
-</section>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(data_gap_action_map_html(items), unsafe_allow_html=True)
     _render_data_gap_action_controls(items)
-
-
-def _data_gap_action_card_html(item: dict) -> str:
-    return f"""<article class="data-gap-action-card is-{escape(item.get("purpose", "tracking"))}">
-<strong>{escape(item.get("action_label", "-"))}</strong>
-<span>{escape(item.get("ticker", "全部"))}｜{escape(item.get("impact", ""))}</span>
-<em>{escape(item.get("post_action_hint", ""))}</em>
-</article>"""
 
 
 def _render_data_gap_action_controls(items: list[dict]) -> None:
@@ -368,61 +346,15 @@ def _render_pending_operation_notice(selected_market_tickers: list[str]) -> str 
 def _render_pending_market_handoff(summary: dict[str, str]) -> None:
     if not summary:
         return
-    rejected_html = ""
-    if summary.get("rejected_detail"):
-        rejected_html = f"<small>{escape(summary['rejected_detail'])}</small>"
-    st.markdown(
-        f"""<section class="market-handoff-banner is-{escape(summary.get("state", "ready"))}" aria-label="資料補強交接">
-<div>
-<span>補強導引</span>
-<strong>{escape(summary.get("title", "已帶入資料補強"))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-{rejected_html}
-</div>
-<em>{escape(summary.get("next_step", ""))}</em>
-</section>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(pending_market_handoff_html(summary), unsafe_allow_html=True)
 
 
 def _render_market_operation_readiness(rows: list[dict[str, str]]) -> None:
-    cards_html = "\n".join(_market_operation_readiness_card_html(row) for row in rows)
-    st.markdown(
-        f"""<section class="market-operation-readiness" aria-label="資料補強執行前檢查">
-<div class="market-operation-readiness-head">
-<div class="workspace-kicker">執行前檢查</div>
-<h3>先確認能否送出背景任務</h3>
-<p>每個刷新操作會先檢查背景任務、股票、日期與目前建議操作；可送出時再按下方按鈕。</p>
-</div>
-<div class="market-operation-readiness-list">
-{cards_html}
-</div>
-</section>""",
-        unsafe_allow_html=True,
-    )
-
-
-def _market_operation_readiness_card_html(row: dict[str, str]) -> str:
-    selected_class = " is-selected" if row.get("selected") == "yes" else ""
-    return f"""<article class="market-operation-card is-{escape(row.get("state", "attention"))}{selected_class}">
-<span>{escape(row.get("label", "-"))}</span>
-<strong>{escape(row.get("disabled_reason", ""))}</strong>
-<em>{escape(row.get("caption", ""))}</em>
-<small>{escape(row.get("impact", ""))} {escape(row.get("post_action_hint", ""))}</small>
-</article>"""
+    st.markdown(market_operation_readiness_html(rows), unsafe_allow_html=True)
 
 
 def _render_market_submission_summary(summary: dict[str, str]) -> None:
-    st.markdown(
-        f"""<section class="market-submission-summary is-{escape(summary.get("state", "attention"))}" aria-label="資料補強送出前摘要">
-<span>送出前摘要</span>
-<strong>{escape(summary.get("title", ""))}</strong>
-<p>{escape(summary.get("detail", ""))}</p>
-<em>{escape(summary.get("next_step", ""))}</em>
-<small>{escape(summary.get("quota_hint", ""))}</small>
-</section>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(market_submission_summary_html(summary), unsafe_allow_html=True)
 
 
 def _render_cache_summary(allowed_tickers: list[str]) -> None:
@@ -509,27 +441,4 @@ def _render_cache_summary(allowed_tickers: list[str]) -> None:
 
 def _render_market_cache_operator_summary(cache_summary: dict) -> None:
     rows = market_cache_operator_summary(cache_summary if isinstance(cache_summary, dict) else {})
-    cards_html = "\n".join(_market_cache_card_html(row) for row in rows)
-    st.markdown(
-        f"""<section class="market-cache-readiness" aria-label="市場快取新鮮度">
-<div class="market-cache-readiness-head">
-<div class="workspace-kicker">市場快取新鮮度</div>
-<h3>先刷新最會影響報告判讀的資料</h3>
-<p>股價、估值、財報與公司文件會影響最新版報告的品質門檻與補強建議。</p>
-</div>
-<div class="market-cache-readiness-list">
-{cards_html}
-</div>
-</section>""",
-        unsafe_allow_html=True,
-    )
-
-
-def _market_cache_card_html(row: dict[str, str]) -> str:
-    return f"""<article class="market-cache-card is-{escape(row.get("state", "attention"))}">
-<span>{escape(row.get("title", "-"))}</span>
-<strong>{escape(row.get("value", "-"))}</strong>
-<em>{escape(row.get("caption", ""))}</em>
-<small>{escape(row.get("action_label", ""))}</small>
-</article>"""
-
+    st.markdown(market_cache_operator_summary_html(rows), unsafe_allow_html=True)

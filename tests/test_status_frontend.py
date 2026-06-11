@@ -540,6 +540,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_report_empty_running_task_state_enabled"] is True
     assert status["frontend"]["ui_report_advanced_controls_progressive_disclosure_enabled"] is True
     assert status["frontend"]["ui_report_run_history_operator_labels_enabled"] is True
+    assert status["frontend"]["ui_report_run_detail_error_operator_label_enabled"] is True
     assert status["frontend"]["ui_report_follow_up_submission_confirmation_enabled"] is True
     assert status["frontend"]["ui_report_follow_up_submission_preflight_summary_enabled"] is True
     assert status["frontend"]["ui_report_follow_up_action_operator_labels_enabled"] is True
@@ -697,6 +698,7 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
         is True
     )
     assert frontend_arch["evidence"]["ui_report_run_history_operator_labels_enabled"] is True
+    assert frontend_arch["evidence"]["ui_report_run_detail_error_operator_label_enabled"] is True
     assert frontend_arch["evidence"]["frontend_settings_ui_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_settings_core_status_extracted"] is True
     assert frontend_arch["evidence"]["frontend_maintenance_ui_status_extracted"] is True

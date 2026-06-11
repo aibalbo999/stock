@@ -250,6 +250,15 @@ def frontend_report_workflow_status(source_context: FrontendSourceContext) -> di
             and '"status": run.get("status")' not in report_center_source
             and '"error": run.get("error")' not in report_center_source
         ),
+        "ui_report_run_detail_error_operator_label_enabled": (
+            "def report_run_detail_error_message(" in report_center_source
+            and "執行紀錄錯誤：" in report_center_source
+            and "st.error(report_run_detail_error_message(selected_run_error))"
+            in report_center_source
+            and '"查看執行紀錄"' in report_center_source
+            and '"查看 run"' not in report_center_source
+            and "st.error(selected_run_error)" not in report_center_source
+        ),
         "ui_report_delete_confirmation_gate_enabled": (
             "report_delete_confirmed = st.checkbox(" in report_center_source
             and 'key=f"confirm_delete_report_{selected_id}"' in report_center_source

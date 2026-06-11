@@ -161,6 +161,16 @@ def test_report_run_history_rows_use_operator_labels() -> None:
     assert "task_queue_error" not in rendered_rows
 
 
+def test_report_run_detail_error_message_hides_raw_error_code() -> None:
+    assert (
+        report_center.report_run_detail_error_message("task_queue_error")
+        == "執行紀錄錯誤：背景任務佇列異常"
+    )
+    assert "task_queue_error" not in report_center.report_run_detail_error_message(
+        "task_queue_error"
+    )
+
+
 def test_empty_report_action_summary_distinguishes_empty_and_running_states() -> None:
     empty_summary = report_center.empty_report_action_summary(
         {

@@ -243,7 +243,7 @@ def render_report_center() -> None:
                 hide_index=True,
             )
             selected_run_id = st.selectbox(
-                "查看 run",
+                "查看執行紀錄",
                 options=run_ids,
                 format_func=lambda run_id: f"紀錄 #{run_id}",
             )
@@ -272,7 +272,7 @@ def render_report_center() -> None:
                         refresh_key=f"history_run_task_status_{selected_run_id}",
                     )
             if selected_run_error:
-                st.error(selected_run_error)
+                st.error(report_run_detail_error_message(selected_run_error))
             run_delete_confirmed = st.checkbox(
                 f"我了解會刪除分析紀錄 #{selected_run_id}",
                 value=False,
@@ -385,6 +385,10 @@ def report_run_history_ids(runs: list[Any] | None) -> list[Any]:
     if not isinstance(runs, list):
         return []
     return [run["id"] for run in runs if isinstance(run, dict) and run.get("id") is not None]
+
+
+def report_run_detail_error_message(error: Any) -> str:
+    return f"執行紀錄錯誤：{_run_error_label(error)}"
 
 
 def _latest_report_options(reports: list[dict] | None) -> list[dict[str, Any]]:

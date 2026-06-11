@@ -94,6 +94,22 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
                     ),
                 },
             },
+            "optimization_progress_scope": {
+                "scope": "optimization_objective",
+                "optimization_check_count": 33,
+                "audit_check_count": 34,
+                "excluded_audit_checks": [
+                    {
+                        "area": "architecture",
+                        "capability": "python_runtime",
+                        "label": "Python 3.11+ runtime",
+                    }
+                ],
+                "note": (
+                    "Optimization progress tracks the user-approved objective domains; "
+                    "upgrade audit also includes deployment preflight checks."
+                ),
+            },
             "external_deployment_pending_gaps": [
                 {
                     "capability": "neo4j_import",
@@ -171,9 +187,13 @@ def test_upgrade_audit_script_prints_text_and_returns_success_for_warnings(
     ) in output
     assert "Effective next action: 套用已偵測本機 defaults 可消除 1 項外部選配缺口。" in output
     assert (
-        "Optimization progress: ready_with_optional_gaps "
+        "Optimization objective progress: ready_with_optional_gaps "
         "(29/33 ready; blocking=0; optional=4; local_resolvable=3; "
         "effective_optional=1)"
+    ) in output
+    assert (
+        "Optimization scope: 33 objective checks; 34 audit checks; "
+        "deployment preflight outside objective=architecture.python_runtime"
     ) in output
     assert "Optimization next action: 本機 defaults 可驗證" in output
     assert "Optimization command: .venv/bin/python scripts/upgrade_audit.py --local-neo4j-defaults --prefer-unlocker --json" in output

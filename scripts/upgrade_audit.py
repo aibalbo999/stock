@@ -544,7 +544,7 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
     )
     lines = [
         (
-            "Optimization progress: "
+            "Optimization objective progress: "
             f"{progress.get('status', 'unknown')} "
             f"({ready_checks}/{total_checks} ready; "
             f"blocking={blocking_gaps}; optional={optional_gaps}; "
@@ -552,6 +552,24 @@ def _format_optimization_progress_lines(audit: dict) -> list[str]:
             f"effective_optional={effective_optional})"
         )
     ]
+    scope = (
+        audit.get("optimization_progress_scope")
+        if isinstance(audit.get("optimization_progress_scope"), dict)
+        else {}
+    )
+    if scope:
+        excluded = [
+            f"{row.get('area')}.{row.get('capability')}"
+            for row in scope.get("excluded_audit_checks") or []
+            if isinstance(row, dict) and row.get("area") and row.get("capability")
+        ]
+        outside_objective = ", ".join(excluded) if excluded else "-"
+        lines.append(
+            "Optimization scope: "
+            f"{int(scope.get('optimization_check_count') or 0)} objective checks; "
+            f"{int(scope.get('audit_check_count') or 0)} audit checks; "
+            f"deployment preflight outside objective={outside_objective}"
+        )
     primary_action = (
         progress.get("primary_next_action")
         if isinstance(progress.get("primary_next_action"), dict)

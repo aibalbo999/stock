@@ -443,6 +443,10 @@ def audit_upgrade_capabilities(
         "implementation": implementation,
         "deployment": deployment,
         "optimization_progress": optimization_progress,
+        "optimization_progress_scope": _optimization_progress_scope(
+            optimization_progress,
+            checks,
+        ),
         "local_dependencies": local_dependencies,
         "local_dependency_auto_defaults": local_dependency_auto_defaults,
         "areas": dict(sorted(areas.items())),
@@ -469,6 +473,44 @@ def audit_upgrade_capabilities(
         local_dependency_auto_defaults,
     )
     return audit
+
+
+def _optimization_progress_scope(
+    optimization_progress: dict,
+    audit_checks: list[dict],
+) -> dict:
+    optimization_refs = {
+        (
+            str(check.get("area") or ""),
+            str(check.get("capability") or ""),
+        )
+        for domain in optimization_progress.get("domains") or []
+        for check in domain.get("checks") or []
+        if isinstance(domain, dict) and isinstance(check, dict)
+    }
+    excluded_checks = [
+        {
+            "area": str(check.get("area") or ""),
+            "capability": str(check.get("capability") or ""),
+            "label": str(check.get("label") or ""),
+        }
+        for check in audit_checks
+        if (
+            str(check.get("area") or ""),
+            str(check.get("capability") or ""),
+        )
+        not in optimization_refs
+    ]
+    return {
+        "scope": "optimization_objective",
+        "optimization_check_count": int(optimization_progress.get("total_checks") or 0),
+        "audit_check_count": len(audit_checks),
+        "excluded_audit_checks": excluded_checks,
+        "note": (
+            "Optimization progress tracks the user-approved objective domains; "
+            "upgrade audit also includes deployment preflight checks."
+        ),
+    }
 
 
 def _requirement_result(

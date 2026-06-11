@@ -573,6 +573,22 @@ def test_upgrade_audit_includes_optimization_progress_for_operator_json() -> Non
         ".venv/bin/python scripts/upgrade_audit.py --auto-local-defaults --json"
         in progress["local_default_verify_commands"]
     )
+    assert audit["optimization_progress_scope"] == {
+        "scope": "optimization_objective",
+        "optimization_check_count": 32,
+        "audit_check_count": 33,
+        "excluded_audit_checks": [
+            {
+                "area": "architecture",
+                "capability": "python_runtime",
+                "label": "Python 3.11+ runtime",
+            }
+        ],
+        "note": (
+            "Optimization progress tracks the user-approved objective domains; "
+            "upgrade audit also includes deployment preflight checks."
+        ),
+    }
 
 
 def test_upgrade_audit_treats_visual_rag_as_deployment_hardening() -> None:

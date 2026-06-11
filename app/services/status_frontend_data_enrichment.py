@@ -22,6 +22,9 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         "data_enrichment_common_view.py"
     ]
     data_enrichment_market_source = source_context.ui_sources["data_enrichment_market.py"]
+    data_enrichment_market_cache_source = source_context.ui_sources[
+        "data_enrichment_market_cache.py"
+    ]
     data_enrichment_market_presenter_source = source_context.ui_sources[
         "data_enrichment_market_presenter.py"
     ]
@@ -95,6 +98,18 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
             and "def _market_operation_readiness_card_html("
             not in data_enrichment_market_source
             and "def _market_cache_card_html(" not in data_enrichment_market_source
+        ),
+        "ui_data_enrichment_market_cache_panel_extracted": (
+            "from app.ui.data_enrichment_market_cache import render_market_cache_panel"
+            in data_enrichment_market_source
+            and "def render_market_cache_panel(" in data_enrichment_market_cache_source
+            and "render_market_cache_panel(allowed_tickers)" in data_enrichment_market_source
+            and '"/market/cache-summary?tickers="' in data_enrichment_market_cache_source
+            and '"/market/cache-summary?tickers="' not in data_enrichment_market_source
+            and 'st.tabs(["股價快取", "估值快取", "公司文件"])'
+            in data_enrichment_market_cache_source
+            and 'st.tabs(["股價快取", "估值快取", "公司文件"])'
+            not in data_enrichment_market_source
         ),
         "ui_data_enrichment_manual_presenter_extracted": (
             "from app.ui.data_enrichment_manual_presenter import ("
@@ -271,8 +286,10 @@ def frontend_data_enrichment_status(source_context: FrontendSourceContext) -> di
         ),
         "ui_market_cache_operator_summary_enabled": (
             "def market_cache_operator_summary(" in data_enrichment_market_presenter_source
-            and "def _render_market_cache_operator_summary(" in data_enrichment_market_source
-            and "market_cache_operator_summary(cache_summary" in data_enrichment_market_source
+            and "def render_market_cache_operator_summary("
+            in data_enrichment_market_cache_source
+            and "market_cache_operator_summary(cache_summary"
+            in data_enrichment_market_cache_source
             and 'class="market-cache-readiness"' in data_enrichment_market_view_source
             and "cached-stale" in data_enrichment_market_presenter_source
             and "市場快取新鮮度" in data_enrichment_market_view_source

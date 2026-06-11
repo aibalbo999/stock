@@ -37,6 +37,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     analysis_presenter_source = ui.ANALYSIS_WORKSPACE_PRESENTER_SOURCE.read_text()
     analysis_view_source = ui.ANALYSIS_WORKSPACE_VIEW_SOURCE.read_text()
     data_enrichment_market_source = Path("app/ui/data_enrichment_market.py").read_text()
+    data_enrichment_market_cache_source = (
+        ui.DATA_ENRICHMENT_MARKET_CACHE_SOURCE.read_text()
+    )
     data_enrichment_market_view_source = ui.DATA_ENRICHMENT_MARKET_VIEW_SOURCE.read_text()
     data_enrichment_common_source = Path("app/ui/data_enrichment_common.py").read_text()
     data_enrichment_common_view_source = ui.DATA_ENRICHMENT_COMMON_VIEW_SOURCE.read_text()
@@ -458,6 +461,19 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "def _data_gap_action_card_html(" not in data_enrichment_market_source
     assert "def _market_operation_readiness_card_html(" not in data_enrichment_market_source
     assert "def _market_cache_card_html(" not in data_enrichment_market_source
+    assert "from app.ui.data_enrichment_market_cache import render_market_cache_panel" in (
+        data_enrichment_market_source
+    )
+    assert "def render_market_cache_panel(" in data_enrichment_market_cache_source
+    assert "render_market_cache_panel(allowed_tickers)" in data_enrichment_market_source
+    assert '"/market/cache-summary?tickers="' in data_enrichment_market_cache_source
+    assert '"/market/cache-summary?tickers="' not in data_enrichment_market_source
+    assert 'st.tabs(["股價快取", "估值快取", "公司文件"])' in (
+        data_enrichment_market_cache_source
+    )
+    assert 'st.tabs(["股價快取", "估值快取", "公司文件"])' not in (
+        data_enrichment_market_source
+    )
     assert "market_operation_readiness_rows(" in source
     assert "_render_market_operation_readiness(" in source
     assert "market-operation-readiness" in combined
@@ -492,8 +508,9 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "_render_data_gap_action_controls(" in source
     assert 'key=f"data_gap_action_{index}"' in source
     assert "def market_cache_operator_summary(" in source
-    assert "def _render_market_cache_operator_summary(" in source
-    assert "market_cache_operator_summary(cache_summary" in source
+    assert "def render_market_cache_operator_summary(" in data_enrichment_market_cache_source
+    assert "def _render_market_cache_operator_summary(" not in data_enrichment_market_source
+    assert "market_cache_operator_summary(cache_summary" in data_enrichment_market_cache_source
     assert "市場快取新鮮度" in source
     assert "cached-stale" in source
     assert "market-cache-readiness" in combined

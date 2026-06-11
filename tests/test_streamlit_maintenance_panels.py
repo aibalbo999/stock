@@ -20,6 +20,7 @@ from app.services.external_deployment_readiness import (
     local_dependency_repair_rows,
     local_dependency_status_rows,
 )
+from app.ui import external_deployment_structured_api as structured_api_ui
 from app.ui.external_deployment_structured_api import structured_filing_api_operation_rows
 from app.ui.external_deployment_unlocker import high_risk_filing_unlocker_rows
 from app.ui.maintenance_deployment_panel import (
@@ -3101,6 +3102,12 @@ def test_structured_filing_api_operation_rows_include_actionable_commands() -> N
     assert "title/name/headline/doc_title" in rows[9]["說明"]
     assert rows[10]["狀態"] == "未設定"
     assert "missing_structured_api_provider_or_url" in rows[10]["說明"]
+    command_block = structured_api_ui.structured_filing_free_validation_command_block(audit)
+    assert "structured_company_filing_smoke.py --sample-json" in command_block
+    assert "structured_company_filing_fixture_smoke.py --json --strict" in command_block
+    assert "structured_company_filing_fixture_smoke.py --provider-profile tej" in command_block
+    assert "local_structured_company_filing_api.py" in command_block
+    assert "COMPANY_FILING_STRUCTURED_API_PROVIDER=custom" in command_block
     rendered = str(rows)
     for raw_label in (
         "Configuration check",

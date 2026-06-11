@@ -119,6 +119,18 @@ def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
     ]
 
 
+def structured_filing_free_validation_command_block(upgrade_audit: dict) -> str:
+    item = external_deployment_item_by_capability(
+        upgrade_audit,
+        "company_filing_structured_api_fallback",
+    )
+    if not item:
+        return ""
+    evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+    runtime = evidence.get("runtime") if isinstance(evidence.get("runtime"), dict) else evidence
+    return structured_filing_free_validation_command(runtime)
+
+
 def structured_filing_env_hint(runtime: dict) -> str:
     setup_preview = (
         runtime.get("provider_setup_preview")

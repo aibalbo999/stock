@@ -23,6 +23,7 @@ from app.ui.external_deployment_diagnostics import (
     local_neo4j_operation_rows,
     local_unlocker_operation_rows,
     structured_filing_api_operation_rows,
+    structured_filing_free_validation_command_block,
 )
 from app.ui.maintenance_deployment_presenter import (
     external_deployment_effective_gap_rows,
@@ -104,6 +105,9 @@ def render_external_deployment_panel(
     local_neo4j_rows = local_neo4j_operation_rows(upgrade_audit)
     local_unlocker_rows = local_unlocker_operation_rows(upgrade_audit)
     structured_api_rows = structured_filing_api_operation_rows(upgrade_audit)
+    structured_api_free_validation_commands = structured_filing_free_validation_command_block(
+        upgrade_audit
+    )
     local_dependency_rows = local_dependency_status_rows(service_snapshot)
     local_dependency_start_rows = local_dependency_last_start_rows(service_snapshot)
     local_dependency_repair_plan_rows = local_dependency_repair_rows(service_snapshot)
@@ -253,6 +257,9 @@ def render_external_deployment_panel(
             if structured_api_rows:
                 st.caption("結構化文件 API 操作提示")
                 st.dataframe(structured_api_rows, width="stretch", hide_index=True)
+            if structured_api_free_validation_commands:
+                st.caption("結構化文件 API 免費驗證指令")
+                st.code(structured_api_free_validation_commands, language="bash")
             if external_smoke_commands:
                 st.caption("單項診斷指令")
                 st.code("\n".join(external_smoke_commands), language="bash")

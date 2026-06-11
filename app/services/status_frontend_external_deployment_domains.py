@@ -169,6 +169,17 @@ def frontend_external_deployment_domain_status(source_context: FrontendSourceCon
             and "正式串 TEJ 前" in external_deployment_structured_api_source
             and "不需要付費資料商 token" in external_deployment_structured_api_source
         ),
+        "ui_structured_filing_api_free_validation_code_block_enabled": (
+            "def structured_filing_free_validation_command_block("
+            in external_deployment_structured_api_source
+            and "structured_filing_free_validation_command_block as"
+            in external_deployment_source
+            and "structured_filing_free_validation_command_block(upgrade_audit)"
+            in ui_source
+            and "結構化文件 API 免費驗證指令" in ui_source
+            and 'st.code(structured_api_free_validation_commands, language="bash")'
+            in ui_source
+        ),
         "ui_unlocker_operation_operator_labels_enabled": (
             "def _high_risk_unlocker_status_label(" in external_deployment_unlocker_source
             and '"解鎖服務"' in external_deployment_unlocker_source

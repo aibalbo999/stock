@@ -768,10 +768,12 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     assert "local_neo4j_operation_rows(upgrade_audit)" in source
     assert "local_unlocker_operation_rows(upgrade_audit)" in source
     assert "structured_filing_api_operation_rows(upgrade_audit)" in source
+    assert "structured_filing_free_validation_command_block(upgrade_audit)" in source
     assert "高風險文件 unlocker" in source
     assert "本機 Neo4j / GraphRAG 操作提示" in source
     assert "本機 unlocker 操作提示" in source
     assert "結構化文件 API 操作提示" in source
+    assert "結構化文件 API 免費驗證指令" in source
     assert "設定檢查" in source
     assert "configuration_check" in source
     assert "Configuration check" not in source

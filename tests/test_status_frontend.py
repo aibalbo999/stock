@@ -471,6 +471,7 @@ def test_frontend_status_mpa_background_task_and_css_evidence(service_status_sna
     assert status["frontend"]["ui_external_deployment_domain_helpers_extracted"] is True
     assert status["frontend"]["ui_structured_filing_api_operation_operator_labels_enabled"] is True
     assert status["frontend"]["ui_structured_filing_api_free_validation_steps_enabled"] is True
+    assert status["frontend"]["ui_structured_filing_api_free_validation_code_block_enabled"] is True
     assert status["frontend"]["ui_unlocker_operation_operator_labels_enabled"] is True
     assert status["frontend"]["ui_neo4j_operation_operator_labels_enabled"] is True
     assert status["frontend"]["ui_external_deployment_domain_helper_paths"] == [
@@ -891,6 +892,12 @@ def test_streamlit_architecture_capability_evidence(service_status_snapshot) -> 
     )
     assert (
         frontend_arch["evidence"]["ui_structured_filing_api_free_validation_steps_enabled"]
+        is True
+    )
+    assert (
+        frontend_arch["evidence"][
+            "ui_structured_filing_api_free_validation_code_block_enabled"
+        ]
         is True
     )
     assert frontend_arch["evidence"]["ui_unlocker_operation_operator_labels_enabled"] is True

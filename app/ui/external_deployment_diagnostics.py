@@ -22,6 +22,7 @@ from app.ui.external_deployment_neo4j import (
     local_neo4j_operation_rows as _local_neo4j_operation_rows,
 )
 from app.ui.external_deployment_structured_api import (
+    structured_filing_free_validation_command_block as _structured_filing_free_validation_command_block,
     structured_filing_api_operation_rows as _structured_filing_api_operation_rows,
 )
 from app.ui.external_deployment_unlocker import (
@@ -130,3 +131,7 @@ def local_neo4j_operation_rows(upgrade_audit: dict) -> list[dict]:
 
 def structured_filing_api_operation_rows(upgrade_audit: dict) -> list[dict]:
     return _structured_filing_api_operation_rows(upgrade_audit)
+
+
+def structured_filing_free_validation_command_block(upgrade_audit: dict) -> str:
+    return _structured_filing_free_validation_command_block(upgrade_audit)

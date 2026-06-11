@@ -139,6 +139,17 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
             and "此任務不支援一鍵重試" in task_status_panel_source
             and "避免重複失敗與額度浪費" in task_status_panel_source
         ),
+        "ui_task_status_operation_label_inference_enabled": (
+            "def task_status_operation_label(" in task_status_panel_source
+            and "task_status_operation_label(task_status)" in task_status_panel_source
+            and '"execution_context"' in task_status_panel_source
+            and '"operation"' in task_status_panel_source
+            and "def _task_run_payload(" in task_status_panel_source
+            and '"payload_json"' in task_status_panel_source
+            and '"workflow_name"' in task_status_panel_source
+            and "def _operator_operation_from_source(" in task_status_panel_source
+            and '"celery_"' in task_status_panel_source
+        ),
         "ui_task_status_terminal_task_action_guard_enabled": (
             "cancel_blocked = cancel_summary.get" in task_status_panel_source
             and "retry_blocked = retry_summary.get" in task_status_panel_source

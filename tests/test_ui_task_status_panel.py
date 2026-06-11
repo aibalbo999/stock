@@ -156,6 +156,50 @@ def test_task_action_preflight_summary_blocks_cancel_for_finished_task() -> None
     }
 
 
+def test_task_action_preflight_summary_uses_execution_context_operation() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-maintenance",
+            "status": "SUCCESS",
+            "ready": True,
+            "successful": True,
+            "execution_context": {
+                "run_source": "celery_maintenance_cleanup",
+                "operation": "maintenance_cleanup",
+            },
+        },
+        action="cancel",
+        confirmed=True,
+    )
+
+    assert summary["detail"] == "Task task-maintenance｜狀態 SUCCESS｜操作 maintenance_cleanup"
+
+
+def test_task_action_preflight_summary_infers_operation_from_run_payload() -> None:
+    summary = task_action_preflight_summary(
+        {
+            "task_id": "task-maintenance",
+            "status": "SUCCESS",
+            "ready": True,
+            "successful": True,
+            "run": {
+                "source": "celery_maintenance_cleanup",
+                "payload": (
+                    '{"task": "maintenance_cleanup", '
+                    '"payload": {"latest_reports_only": true}}'
+                ),
+            },
+        },
+        action="retry",
+        confirmed=True,
+    )
+
+    assert (
+        summary["detail"]
+        == "Task task-maintenance｜狀態 SUCCESS｜操作 maintenance_cleanup｜重試類型 -"
+    )
+
+
 def test_task_action_preflight_summary_allows_confirmed_cancel() -> None:
     summary = task_action_preflight_summary(
         {

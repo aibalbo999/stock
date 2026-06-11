@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from html import escape
 
 import streamlit as st
@@ -18,6 +19,42 @@ TASK_STATUS_QUEUED_POLL_SECONDS = 8
 TASK_STATUS_RETRY_POLL_SECONDS = 15
 
 
+def task_status_operation_label(task_status: dict | None) -> str:
+    if not isinstance(task_status, dict):
+        return "-"
+
+    for value in (
+        task_status.get("operation"),
+        _nested_text(task_status.get("execution_context"), "operation"),
+    ):
+        label = _clean_task_operation_label(value)
+        if label:
+            return label
+
+    run = task_status.get("run")
+    if isinstance(run, dict):
+        payload = _task_run_payload(run)
+        for key in ("operation", "task", "workflow_name"):
+            label = _clean_task_operation_label(payload.get(key))
+            if label:
+                return label
+
+        workflow = run.get("workflow")
+        label = _clean_task_operation_label(_nested_text(workflow, "name"))
+        if label:
+            return label
+
+    for value in (
+        _nested_text(task_status.get("execution_context"), "run_source"),
+        _nested_text(run, "source") if isinstance(run, dict) else None,
+    ):
+        label = _clean_task_operation_label(value)
+        if label:
+            return _operator_operation_from_source(label)
+
+    return "-"
+
+
 def task_action_preflight_summary(
     task_status: dict,
     *,
@@ -27,7 +64,7 @@ def task_action_preflight_summary(
     action_key = str(action or "").strip().casefold()
     task_id = str(task_status.get("task_id") or "-")
     status = str(task_status.get("status") or "UNKNOWN").upper()
-    operation = str(task_status.get("operation") or "-")
+    operation = task_status_operation_label(task_status)
     detail_parts = [
         f"Task {task_id}",
         f"狀態 {status}",
@@ -329,6 +366,41 @@ def _company_filing_gap_summary_rows(result: dict) -> list[dict]:
 def _join_values(value: object) -> str:
     values = _string_values(value)
     return "、".join(values) if values else "-"
+
+
+def _nested_text(value: object, key: str) -> object:
+    if isinstance(value, dict):
+        return value.get(key)
+    return None
+
+
+def _clean_task_operation_label(value: object) -> str:
+    label = str(value or "").strip()
+    if not label or label in {"-", "unknown", "UNKNOWN"}:
+        return ""
+    return label
+
+
+def _task_run_payload(run: dict) -> dict:
+    for key in ("payload", "payload_json"):
+        raw_payload = run.get(key)
+        if isinstance(raw_payload, dict):
+            return raw_payload
+        if not isinstance(raw_payload, str):
+            continue
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def _operator_operation_from_source(source: str) -> str:
+    if source.startswith("celery_"):
+        return source.removeprefix("celery_")
+    return source
 
 
 def _string_values(value: object) -> list[str]:

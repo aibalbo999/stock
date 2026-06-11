@@ -37,7 +37,7 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
             OptimizationCapabilityRef(
                 "architecture",
                 "background_task_queue",
-                "背景任務 queue readiness",
+                "背景任務佇列就緒檢查",
             ),
             OptimizationCapabilityRef(
                 "architecture",
@@ -103,7 +103,7 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
             OptimizationCapabilityRef(
                 "data_business_logic",
                 "company_filing_render_provider_contract",
-                "公司文件 render/unlocker provider contract",
+                "公司文件渲染/解鎖提供者格式檢查",
             ),
             OptimizationCapabilityRef(
                 "data_business_logic",
@@ -194,7 +194,7 @@ OPTIMIZATION_DOMAINS: tuple[OptimizationDomain, ...] = (
             OptimizationCapabilityRef(
                 "ai_rag",
                 "neo4j_payload_export",
-                "Neo4j parameterized payload export",
+                "Neo4j 參數化匯入資料輸出",
             ),
             OptimizationCapabilityRef(
                 "ai_rag",

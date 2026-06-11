@@ -81,8 +81,14 @@ def test_optimization_progress_reports_all_domains_ready() -> None:
         "ai_rag_graphrag",
     }
     rendered_domains = str(progress["domains"])
+    assert "背景任務佇列就緒檢查" in rendered_domains
+    assert "公司文件渲染/解鎖提供者格式檢查" in rendered_domains
     assert "公司文件結構化 API 樣本資料格式檢查" in rendered_domains
+    assert "Neo4j 參數化匯入資料輸出" in rendered_domains
     assert "GraphRAG 受控 Neo4j 查詢" in rendered_domains
+    assert "queue readiness" not in rendered_domains
+    assert "provider contract" not in rendered_domains
+    assert "payload export" not in rendered_domains
     assert "sample contract" not in rendered_domains
     assert "live query" not in rendered_domains
     assert "guarded live Cypher query" not in rendered_domains
@@ -273,7 +279,7 @@ def test_optimization_progress_marks_core_capability_gap_as_blocking() -> None:
         domain for domain in progress["domains"] if domain["id"] == "architecture_uiux"
     )
     assert architecture["blocking_gaps"][0]["next_action"] == (
-        "檢查 背景任務 queue readiness：worker offline"
+        "檢查 背景任務佇列就緒檢查：worker offline"
     )
 
 

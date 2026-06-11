@@ -147,8 +147,8 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "pdf_parser_dependencies": company_filing_status.get("pdf_parser_dependencies"),
             },
             detail=(
-                "Deployment runtime check for table-capable PDF parsers. "
-                "When PDF table extraction is enabled, pdfplumber or unstructured[pdf] must be importable."
+                "PDF 表格解析套件部署檢查；啟用 PDF 表格抽取時，"
+                "pdfplumber 或 unstructured[pdf] 需可匯入。"
             ),
         ),
         "company_filing_render_provider_contract": _capability(
@@ -163,8 +163,8 @@ def company_filing_capabilities(*, company_filing_status: dict) -> dict:
                 "contract": company_filing_status.get("browser_render_provider_contract"),
             },
             detail=(
-                "Offline provider contract check for Browserless, Generic, FlareSolverr, "
-                "ScrapingBee, and BrightData request/response mappings."
+                "離線提供者格式檢查，確認 Browserless、Generic、FlareSolverr、"
+                "ScrapingBee 與 BrightData 的請求/回應對應。"
             ),
         ),
         "company_filing_browser_or_proxy_fallback": _capability(

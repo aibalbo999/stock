@@ -162,6 +162,8 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
 
     render_contract = matrix["data_business_logic"]["company_filing_render_provider_contract"]
     assert render_contract["status"] == "ready"
+    assert "提供者格式檢查" in render_contract["detail"]
+    assert "provider contract" not in render_contract["detail"]
     assert render_contract["evidence"]["ready"] is True
     assert render_contract["evidence"]["contract"]["provider_count"] == 5
     assert render_contract["evidence"]["smoke_cli"].endswith(
@@ -201,6 +203,8 @@ def test_data_business_capability_matrix_shape_and_evidence(service_status_snaps
         else "not_configured"
     )
     assert pdf_parser_runtime["status"] == expected_pdf_runtime_status
+    assert "PDF 表格解析套件" in pdf_parser_runtime["detail"]
+    assert "Deployment runtime check" not in pdf_parser_runtime["detail"]
     assert (
         pdf_parser_runtime["evidence"]["pdf_table_parser_available"]
         is status["company_filings"]["pdf_table_parser_available"]

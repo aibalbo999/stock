@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ui.maintenance_status import (
+    optimization_progress_metric_values,
     optimization_progress_operator_summary,
     optimization_progress_scope_summary,
 )
@@ -52,6 +53,31 @@ def test_optimization_progress_operator_summary_promotes_local_defaults() -> Non
         "next_step": "套用已偵測本機 defaults 可先消除 3 項缺口；有效剩餘 1 項付費外部資料 API 選配。",
         "command": ".venv/bin/python scripts/upgrade_audit.py --prefer-unlocker --wait-local-flaresolverr 20 --local-browser-render-defaults --json",
     }
+
+
+def test_optimization_progress_metric_values_localize_raw_statuses() -> None:
+    metrics = optimization_progress_metric_values(
+        {
+            "status": "ready_with_optional_gaps",
+            "effective_status_after_available_local_defaults": "ready",
+            "ready_checks": 31,
+            "total_checks": 32,
+            "blocking_gap_count": 0,
+            "optional_gap_count": 4,
+            "effective_blocking_gap_count_after_available_local_defaults": 0,
+            "effective_optional_gap_count_after_available_local_defaults": 1,
+            "local_resolvable_gap_count": 0,
+        }
+    )
+
+    assert metrics["狀態"] == "完成"
+    assert metrics["狀態_delta"] == "原始 核心完成/外部選配"
+    assert metrics["完成"] == "31/32"
+    assert metrics["Blocking"] == 0
+    assert metrics["外部/選配"] == 1
+    assert metrics["外部/選配_delta"] == "原始 4"
+    assert metrics["本機可補"] == 0
+    assert "ready_with_optional_gaps" not in str(metrics)
 
 
 def test_optimization_progress_operator_summary_surfaces_paid_external_only_gap() -> None:

@@ -181,6 +181,59 @@ def optimization_progress_rows(progress: dict) -> list[dict]:
     ]
 
 
+def optimization_progress_metric_values(progress: dict) -> dict[str, object]:
+    if not isinstance(progress, dict):
+        progress = {}
+    raw_status = str(progress.get("status") or "unknown")
+    effective_status = str(
+        progress.get("effective_status_after_available_local_defaults") or raw_status
+    )
+    raw_blocking = int(progress.get("blocking_gap_count") or 0)
+    raw_optional = int(progress.get("optional_gap_count") or 0)
+    effective_blocking = int(
+        progress.get("effective_blocking_gap_count_after_available_local_defaults")
+        if progress.get("effective_blocking_gap_count_after_available_local_defaults")
+        is not None
+        else raw_blocking
+    )
+    effective_optional = int(
+        progress.get("effective_optional_gap_count_after_available_local_defaults")
+        if progress.get("effective_optional_gap_count_after_available_local_defaults")
+        is not None
+        else raw_optional
+    )
+    return {
+        "狀態": optimization_progress_status_label(effective_status),
+        "狀態_delta": (
+            f"原始 {optimization_progress_status_label(raw_status)}"
+            if effective_status != raw_status
+            else None
+        ),
+        "完成": f"{int(progress.get('ready_checks') or 0)}/{int(progress.get('total_checks') or 0)}",
+        "Blocking": effective_blocking,
+        "Blocking_delta": (
+            f"原始 {raw_blocking}" if effective_blocking != raw_blocking else None
+        ),
+        "外部/選配": effective_optional,
+        "外部/選配_delta": (
+            f"原始 {raw_optional}" if effective_optional != raw_optional else None
+        ),
+        "本機可補": int(progress.get("local_resolvable_gap_count") or 0),
+    }
+
+
+def optimization_progress_status_label(status: object) -> str:
+    status_labels = {
+        "ready": "完成",
+        "ready_with_optional_gaps": "核心完成/外部選配",
+        "degraded": "需處理",
+        "local_ready": "本機可驗證",
+        "unknown": "未評估",
+    }
+    text = str(status or "unknown")
+    return status_labels.get(text, text)
+
+
 def optimization_progress_next_action_rows(progress: dict) -> list[dict]:
     action_type_labels = {
         "code_or_config": "程式/設定",

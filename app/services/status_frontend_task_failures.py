@@ -103,6 +103,15 @@ def frontend_task_failure_status(source_context: FrontendSourceContext) -> dict:
         and "celery_info_shape" in task_status_panel_source
         and "sensitive_keys_masked" in task_status_panel_source
         and "exception_message_preview" in task_status_panel_source,
+        "ui_task_status_operation_confirmation_gate_enabled": (
+            "cancel_confirmed = st.checkbox(" in task_status_panel_source
+            and 'key=f"{refresh_key}_confirm_cancel"' in task_status_panel_source
+            and "retry_confirmed = st.checkbox(" in task_status_panel_source
+            and 'key=f"{refresh_key}_confirm_retry"' in task_status_panel_source
+            and "disabled=not cancel_confirmed" in task_status_panel_source
+            and "disabled=not retry_confirmed" in task_status_panel_source
+            and "可能消耗模型或資料源額度" in task_status_panel_source
+        ),
         "ui_task_status_panel_path": "app/ui/task_status_panel.py",
         "task_retry_uses_scoped_state_key": "task_state_key" in task_status_panel_source
         and 'st.session_state["last_data_task_id"]' not in task_status_panel_source,

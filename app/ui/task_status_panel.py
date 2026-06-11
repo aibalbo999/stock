@@ -363,7 +363,18 @@ def _render_task_status_panel_controls(
     render_task_status(task_status)
     action_cols = st.columns(2)
     with action_cols[0]:
-        if st.button("取消任務", key=f"{refresh_key}_cancel"):
+        cancel_confirmed = st.checkbox(
+            "我了解這會取消目前背景任務",
+            value=False,
+            key=f"{refresh_key}_confirm_cancel",
+        )
+        if not cancel_confirmed:
+            st.caption("避免誤觸取消；確認後才可送出取消要求。")
+        if st.button(
+            "取消任務",
+            key=f"{refresh_key}_cancel",
+            disabled=not cancel_confirmed,
+        ):
             cancel_response = run_api_action_or_none(
                 lambda: api_task_post(f"/tasks/{task_id}/cancel", {}),
                 error_message="取消失敗",
@@ -372,7 +383,18 @@ def _render_task_status_panel_controls(
                 st.session_state[status_state_key] = cancel_response
                 st.success("已送出取消要求。")
     with action_cols[1]:
-        if st.button("重試任務", key=f"{refresh_key}_retry"):
+        retry_confirmed = st.checkbox(
+            "我了解這會重新送出任務，可能消耗模型或資料源額度",
+            value=False,
+            key=f"{refresh_key}_confirm_retry",
+        )
+        if not retry_confirmed:
+            st.caption("避免誤觸重試；確認後才可重新送出並消耗額度。")
+        if st.button(
+            "重試任務",
+            key=f"{refresh_key}_retry",
+            disabled=not retry_confirmed,
+        ):
             retry_response = run_api_action_or_none(
                 lambda: api_task_post(f"/tasks/{task_id}/retry", {}),
                 error_message="重試失敗",

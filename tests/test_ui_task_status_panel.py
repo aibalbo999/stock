@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.ui.task_status_panel import (
     _fetch_task_status,
+    _render_task_status_panel_controls,
     company_filing_gap_rows,
     task_execution_context_rows,
     task_status_diagnostic_rows,
@@ -13,6 +14,46 @@ from app.ui.task_status_panel import (
 class FakeStreamlit:
     def __init__(self) -> None:
         self.session_state: dict = {}
+
+
+class FakeTaskStatusStreamlit:
+    def __init__(
+        self,
+        *,
+        checked: dict[str, bool] | None = None,
+        pressed: set[str] | None = None,
+    ):
+        self.session_state: dict = {}
+        self.checked = checked or {}
+        self.pressed = pressed or set()
+        self.buttons: list[dict] = []
+        self.checkboxes: list[dict] = []
+        self.captions: list[str] = []
+        self.successes: list[str] = []
+
+    def columns(self, spec):
+        count = spec if isinstance(spec, int) else len(spec)
+        return [self for _ in range(count)]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def checkbox(self, label: str, *, value: bool = False, key: str):
+        self.checkboxes.append({"label": label, "value": value, "key": key})
+        return self.checked.get(key, value)
+
+    def button(self, label: str, *, key: str, disabled: bool = False):
+        self.buttons.append({"label": label, "key": key, "disabled": disabled})
+        return key in self.pressed and not disabled
+
+    def caption(self, text: str) -> None:
+        self.captions.append(text)
+
+    def success(self, text: str) -> None:
+        self.successes.append(text)
 
 
 def test_fetch_task_status_uses_api_loader_and_stores_dict(monkeypatch) -> None:
@@ -49,6 +90,102 @@ def test_fetch_task_status_ignores_non_dict_loader_fallback(monkeypatch) -> None
 
     assert _fetch_task_status("task-1", "task_status") is None
     assert "task_status" not in fake_st.session_state
+
+
+def test_task_status_controls_require_confirmation_before_cancel_or_retry(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit()
+    fake_st.session_state["task_status"] = {"task_id": "task-1", "status": "STARTED"}
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
+
+    api_calls = []
+    monkeypatch.setattr(
+        task_status_panel,
+        "run_api_action_or_none",
+        lambda action, *, error_message: api_calls.append(error_message),
+    )
+
+    assert (
+        _render_task_status_panel_controls(
+            task_id="task-1",
+            refresh_key="task_panel",
+            status_state_key="task_status",
+            apply_result_key=None,
+            task_state_key="last_task_id",
+        )
+        == {"task_id": "task-1", "status": "STARTED"}
+    )
+
+    assert fake_st.checkboxes == [
+        {
+            "label": "我了解這會取消目前背景任務",
+            "value": False,
+            "key": "task_panel_confirm_cancel",
+        },
+        {
+            "label": "我了解這會重新送出任務，可能消耗模型或資料源額度",
+            "value": False,
+            "key": "task_panel_confirm_retry",
+        },
+    ]
+    assert fake_st.buttons == [
+        {"label": "取消任務", "key": "task_panel_cancel", "disabled": True},
+        {"label": "重試任務", "key": "task_panel_retry", "disabled": True},
+    ]
+    assert any("避免誤觸取消" in caption for caption in fake_st.captions)
+    assert any("避免誤觸重試" in caption for caption in fake_st.captions)
+    assert api_calls == []
+
+
+def test_task_status_controls_submit_only_after_confirmation(monkeypatch) -> None:
+    from app.ui import task_status_panel
+
+    fake_st = FakeTaskStatusStreamlit(
+        checked={
+            "task_panel_confirm_cancel": True,
+            "task_panel_confirm_retry": True,
+        },
+        pressed={"task_panel_cancel", "task_panel_retry"},
+    )
+    fake_st.session_state["task_status"] = {"task_id": "task-1", "status": "FAILURE"}
+    monkeypatch.setattr(task_status_panel, "st", fake_st)
+    monkeypatch.setattr(task_status_panel, "render_task_status", lambda task_status: None)
+
+    posted_paths = []
+
+    def fake_api_task_post(path: str, payload: dict) -> dict:
+        posted_paths.append((path, payload))
+        return {"task_id": "task-retry"} if path.endswith("/retry") else {"task_id": "task-1"}
+
+    monkeypatch.setattr(task_status_panel, "api_task_post", fake_api_task_post)
+    monkeypatch.setattr(
+        task_status_panel,
+        "run_api_action_or_none",
+        lambda action, *, error_message: action(),
+    )
+
+    _render_task_status_panel_controls(
+        task_id="task-1",
+        refresh_key="task_panel",
+        status_state_key="task_status",
+        apply_result_key=None,
+        task_state_key="last_task_id",
+    )
+
+    assert posted_paths == [
+        ("/tasks/task-1/cancel", {}),
+        ("/tasks/task-1/retry", {}),
+    ]
+    assert fake_st.buttons == [
+        {"label": "取消任務", "key": "task_panel_cancel", "disabled": False},
+        {"label": "重試任務", "key": "task_panel_retry", "disabled": False},
+    ]
+    assert fake_st.session_state["last_task_id"] == "task-retry"
+    assert fake_st.session_state["task_status"] == {"task_id": "task-retry"}
+    assert "已送出取消要求。" in fake_st.successes
+    assert "已送出重試任務：task-retry" in fake_st.successes
 
 
 def test_task_status_diagnostic_rows_show_failure_category_and_next_steps() -> None:

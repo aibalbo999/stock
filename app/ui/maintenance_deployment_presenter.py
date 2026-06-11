@@ -1,6 +1,82 @@
 from __future__ import annotations
 
 
+def external_deployment_operator_summary(
+    upgrade_audit: dict,
+    enablement_summary: dict,
+    local_projection: dict,
+) -> dict[str, str]:
+    audit_summary = (
+        upgrade_audit.get("summary") if isinstance(upgrade_audit.get("summary"), dict) else {}
+    )
+    blocking_pending = _first_int(
+        local_projection.get("remaining_blocking_pending"),
+        enablement_summary.get("blocking_pending"),
+        audit_summary.get("deployment_blocking_failures"),
+    )
+    failures = _first_int(audit_summary.get("failures"), upgrade_audit.get("failures"))
+    if blocking_pending or failures:
+        return {
+            "state": "blocked",
+            "title": "外部部署需先處理 blocking 缺口",
+            "detail": (
+                f"目前仍有 {max(blocking_pending, failures, 1)} 項 blocking deployment 缺口；"
+                "先處理這些項目，避免正式部署或資料補強流程失敗。"
+            ),
+            "local_action": "先看外部設定處理計畫",
+            "effective_remaining": f"待處理 {max(blocking_pending, failures, 1)} 項",
+            "paid_external": "暫緩付費選配評估",
+            "next_step": "先處理 blocking 缺口，再回來重跑升級稽核。",
+        }
+
+    current_pending = _first_int(
+        local_projection.get("current_pending"),
+        enablement_summary.get("pending"),
+        audit_summary.get("optional_warnings"),
+    )
+    local_available = _first_int(
+        local_projection.get("available_local_default_gap_count"),
+        enablement_summary.get("local_action_available"),
+        enablement_summary.get("free_local_pending"),
+    )
+    remaining_pending = _first_int(
+        local_projection.get("remaining_pending"),
+        max(current_pending - local_available, 0),
+    )
+    paid_external = _first_int(
+        local_projection.get("remaining_paid_external_pending"),
+        enablement_summary.get("paid_external_pending"),
+    )
+    next_step = str(
+        local_projection.get("next_action")
+        or enablement_summary.get("primary_next_action")
+        or "依待處理缺口分類逐項處理。"
+    )
+    if current_pending <= 0:
+        return {
+            "state": "ready",
+            "title": "外部部署選配已就緒",
+            "detail": "目前沒有 blocking deployment 缺口，也沒有待處理外部選配 warning。",
+            "local_action": "不需本機 defaults",
+            "effective_remaining": "有效剩餘 0 項",
+            "paid_external": "付費/API 選配 0 項",
+            "next_step": next_step,
+        }
+
+    return {
+        "state": "ready",
+        "title": "外部選配不是系統故障",
+        "detail": (
+            f"目前沒有 blocking deployment 缺口；{current_pending} 項外部選配中，"
+            f"{local_available} 項可先用本機 defaults 或免費 smoke 驗證。"
+        ),
+        "local_action": f"{local_available} 項可先用本機 defaults 驗證",
+        "effective_remaining": f"有效剩餘 {remaining_pending} 項",
+        "paid_external": f"付費/API 選配 {paid_external} 項",
+        "next_step": next_step,
+    }
+
+
 def external_deployment_focus_banner(focus_context: str | None) -> dict:
     focus = str(focus_context or "").strip()
     if focus == "structured_api":
@@ -21,6 +97,15 @@ def external_deployment_focus_banner(focus_context: str | None) -> dict:
             "target_caption": "本機依賴與 audit 指令",
         }
     return {}
+
+
+def _first_int(*values: object) -> int:
+    for value in values:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
 
 
 def external_deployment_effective_gap_rows(local_projection: dict) -> list[dict]:

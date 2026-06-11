@@ -526,6 +526,7 @@ textarea:focus,
 .report-lifecycle-strip,
 .incident-inbox,
 .maintenance-focus-banner,
+.external-deployment-operator-summary,
 .data-gap-action-map,
 .market-allowlist-warning,
 .data-ingest-submission-summary,
@@ -555,6 +556,58 @@ textarea:focus,
     border-left: 4px solid var(--stock-focus);
     border-radius: 8px;
     padding: 14px 16px;
+}
+.external-deployment-operator-summary {
+    background: var(--stock-surface);
+    border: 1px solid var(--stock-border);
+    border-left: 4px solid var(--stock-accent);
+    border-radius: 8px;
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+}
+.external-deployment-operator-summary.is-blocked {
+    background: var(--stock-danger-soft);
+    border-left-color: var(--stock-danger);
+}
+.external-deployment-operator-summary span {
+    color: var(--stock-accent);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.external-deployment-operator-summary.is-blocked span {
+    color: var(--stock-danger);
+}
+.external-deployment-operator-summary strong {
+    color: var(--stock-text);
+    font-size: 1rem;
+    line-height: 1.35;
+}
+.external-deployment-operator-summary p {
+    color: var(--stock-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+.external-deployment-operator-summary-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.external-deployment-operator-summary em {
+    background: #f8fafc;
+    border: 1px solid var(--stock-border);
+    border-radius: 8px;
+    color: var(--stock-text);
+    font-size: 0.84rem;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.35;
+    padding: 8px 10px;
+}
+.external-deployment-operator-summary small {
+    color: var(--stock-muted);
+    font-size: 0.84rem;
+    line-height: 1.45;
 }
 .maintenance-focus-banner span {
     display: block;
@@ -1474,6 +1527,7 @@ textarea:focus,
     }
     .operator-status-grid,
     .operator-secondary-actions,
+    .external-deployment-operator-summary-grid,
     .report-reader-decision,
     .report-reader-decision-grid,
     .report-health-strip,

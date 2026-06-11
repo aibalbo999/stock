@@ -27,6 +27,7 @@ from app.ui.external_deployment_diagnostics import (
 from app.ui.maintenance_deployment_presenter import (
     external_deployment_effective_gap_rows,
     external_deployment_focus_banner,
+    external_deployment_operator_summary,
     maintenance_operation_post_run_check_rows,
     maintenance_operation_post_run_diagnostic_action_ids,
     maintenance_operation_recommendation_caption,
@@ -102,6 +103,11 @@ def render_external_deployment_panel(
         if isinstance(optimization_progress.get("local_resolution_projection"), dict)
         else {}
     )
+    operator_summary = external_deployment_operator_summary(
+        upgrade_audit,
+        external_enablement_summary,
+        external_local_projection,
+    )
     focus_banner = external_deployment_focus_banner(focus_context)
     if focus_banner:
         st.markdown(_external_deployment_focus_banner_html(focus_banner), unsafe_allow_html=True)
@@ -113,6 +119,10 @@ def render_external_deployment_panel(
             upgrade_audit.get("deployment")
             if isinstance(upgrade_audit.get("deployment"), dict)
             else {}
+        )
+        st.markdown(
+            _external_deployment_operator_summary_html(operator_summary),
+            unsafe_allow_html=True,
         )
         deploy_cols = st.columns(4)
         deploy_cols[0].metric(
@@ -248,6 +258,20 @@ def _external_deployment_focus_banner_html(banner: dict) -> str:
 <p>{escape(str(banner.get("detail") or ""))}</p>
 </div>
 <em>{escape(str(banner.get("target_caption") or ""))}</em>
+</section>"""
+
+
+def _external_deployment_operator_summary_html(summary: dict) -> str:
+    return f"""<section class="external-deployment-operator-summary is-{escape(str(summary.get("state", "ready")))}" aria-label="外部部署選配決策摘要">
+<span>外部部署選配決策摘要</span>
+<strong>{escape(str(summary.get("title") or "-"))}</strong>
+<p>{escape(str(summary.get("detail") or ""))}</p>
+<div class="external-deployment-operator-summary-grid">
+  <em>{escape(str(summary.get("local_action") or "-"))}</em>
+  <em>{escape(str(summary.get("effective_remaining") or "-"))}</em>
+  <em>{escape(str(summary.get("paid_external") or "-"))}</em>
+</div>
+<small>{escape(str(summary.get("next_step") or ""))}</small>
 </section>"""
 
 

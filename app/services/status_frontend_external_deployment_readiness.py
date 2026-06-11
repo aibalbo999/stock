@@ -86,6 +86,17 @@ def frontend_external_deployment_readiness_status(
             and '"本機指令"' in readiness_service_source
             and '"驗證指令"' in readiness_service_source
         ),
+        "ui_external_deployment_operator_summary_enabled": (
+            "def external_deployment_operator_summary(" in maintenance_deployment_presenter_source
+            and "external_deployment_operator_summary(" in maintenance_deployment_panel_source
+            and "def _external_deployment_operator_summary_html("
+            in maintenance_deployment_panel_source
+            and "external-deployment-operator-summary" in maintenance_deployment_panel_source
+            and "外部部署選配決策摘要" in maintenance_deployment_panel_source
+            and "外部選配不是系統故障" in maintenance_deployment_presenter_source
+            and "沒有 blocking deployment 缺口" in maintenance_deployment_presenter_source
+            and "付費/API 選配" in maintenance_deployment_presenter_source
+        ),
         "ui_local_dependency_start_history_enabled": (
             "def local_dependency_last_start_rows(" in external_deployment_common_source
             and "def local_dependency_last_start_rows(" in local_dependency_service_source

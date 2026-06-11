@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ui.maintenance_deployment_presenter import (
+    external_deployment_operator_summary,
     external_deployment_effective_gap_rows,
     external_deployment_focus_banner,
     maintenance_operation_post_run_check_rows,
@@ -9,6 +10,59 @@ from app.ui.maintenance_deployment_presenter import (
     maintenance_operation_rows,
     recommended_maintenance_operation_id,
 )
+
+
+def test_external_deployment_operator_summary_explains_optional_warnings() -> None:
+    summary = external_deployment_operator_summary(
+        {
+            "summary": {
+                "deployment_optional_only": True,
+                "deployment_blocking_failures": 0,
+                "failures": 0,
+                "optional_warnings": 4,
+            }
+        },
+        {
+            "pending": 4,
+            "blocking_pending": 0,
+            "all_pending_optional": True,
+            "free_local_pending": 3,
+            "local_action_available": 3,
+            "paid_external_pending": 1,
+            "primary_next_action": "先處理本機免費可補強項目，再評估 API 額度或付費資料商。",
+        },
+        {
+            "current_pending": 4,
+            "available_local_default_gap_count": 3,
+            "remaining_pending": 1,
+            "remaining_blocking_pending": 0,
+            "remaining_paid_external_pending": 1,
+            "next_action": "套用已偵測本機 defaults 可先消除 3 項缺口；有效剩餘 1 項付費外部資料 API 選配。",
+        },
+    )
+
+    assert summary["state"] == "ready"
+    assert summary["title"] == "外部選配不是系統故障"
+    assert "沒有 blocking deployment 缺口" in summary["detail"]
+    assert summary["local_action"] == "3 項可先用本機 defaults 驗證"
+    assert summary["effective_remaining"] == "有效剩餘 1 項"
+    assert summary["paid_external"] == "付費/API 選配 1 項"
+    assert summary["next_step"] == (
+        "套用已偵測本機 defaults 可先消除 3 項缺口；有效剩餘 1 項付費外部資料 API 選配。"
+    )
+
+
+def test_external_deployment_operator_summary_flags_blocking_gaps() -> None:
+    summary = external_deployment_operator_summary(
+        {"summary": {"deployment_blocking_failures": 1, "failures": 1}},
+        {"pending": 2, "blocking_pending": 1, "local_action_available": 0},
+        {"remaining_pending": 2, "remaining_blocking_pending": 1},
+    )
+
+    assert summary["state"] == "blocked"
+    assert summary["title"] == "外部部署需先處理 blocking 缺口"
+    assert "目前仍有 1 項 blocking deployment 缺口" in summary["detail"]
+    assert summary["next_step"] == "先處理 blocking 缺口，再回來重跑升級稽核。"
 
 
 def test_maintenance_deployment_presenter_builds_structured_api_focus_banner() -> None:

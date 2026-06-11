@@ -11,6 +11,7 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
     operator_routes_source = ui_sources["operator_routes.py"]
     system_settings_maintenance_source = ui_sources["system_settings_maintenance.py"]
     maintenance_incident_presenter_source = ui_sources["maintenance_incident_presenter.py"]
+    maintenance_incident_view_source = ui_sources["maintenance_incident_view.py"]
     maintenance_status_source = ui_sources["maintenance_status.py"]
     maintenance_progress_presenter_source = ui_sources["maintenance_progress_presenter.py"]
     maintenance_panels_source = ui_sources["maintenance_panels.py"]
@@ -219,6 +220,23 @@ def frontend_maintenance_ui_status(source_context: FrontendSourceContext) -> dic
             and "def incident_summary_cards(" not in system_settings_maintenance_source
             and "def incident_action_priority_summary("
             not in system_settings_maintenance_source
+        ),
+        "ui_maintenance_incident_view_extracted": (
+            (ui_dir / "maintenance_incident_view.py").exists()
+            and "from app.ui.maintenance_incident_view import ("
+            in maintenance_incident_presenter_source
+            and "import streamlit" not in maintenance_incident_view_source
+            and "def incident_inbox_header_html(" in maintenance_incident_view_source
+            and "def incident_list_html(" in maintenance_incident_view_source
+            and "def incident_card_html(" in maintenance_incident_view_source
+            and "def incident_priority_summary_html(" in maintenance_incident_view_source
+            and "def incident_action_controls_intro_html(" in maintenance_incident_view_source
+            and 'class="incident-inbox' in maintenance_incident_view_source
+            and 'class="incident-card' in maintenance_incident_view_source
+            and 'class="incident-priority-summary' in maintenance_incident_view_source
+            and 'class="incident-action-controls' in maintenance_incident_view_source
+            and 'class="incident-card' not in maintenance_incident_presenter_source
+            and 'class="incident-inbox' not in maintenance_incident_presenter_source
         ),
         "ui_optimization_progress_operator_summary_enabled": (
             "def optimization_progress_operator_summary("

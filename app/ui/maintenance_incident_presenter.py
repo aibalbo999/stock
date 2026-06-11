@@ -1,63 +1,36 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from html import escape
 
 from app.ui.incident_inbox import incident_counts, top_incidents
+from app.ui.maintenance_incident_view import (
+    incident_action_controls_intro_html as _incident_action_controls_intro_html,
+    incident_card_html as _incident_card_html,
+    incident_empty_card_html,
+    incident_inbox_header_html as _incident_inbox_header_html,
+    incident_list_html as _incident_list_html,
+    incident_priority_summary_html as _incident_priority_summary_html,
+)
 from app.ui.operator_routes import operator_route_target
 
 
 def incident_inbox_header_html(incidents: list[dict]) -> str:
-    count_badges = "\n".join(
-        f"<span>{escape(label)}</span>" for label in incident_inbox_header_badges(incidents)
-    )
-    return f"""<section class="incident-inbox" aria-label="待處理事件">
-<div class="incident-inbox-head">
-<div>
-<div class="workspace-kicker">待處理事件</div>
-<h3>事件收件匣</h3>
-</div>
-<div class="incident-counts">
-{count_badges}
-</div>
-</div>
-</section>"""
+    return _incident_inbox_header_html(incident_inbox_header_badges(incidents))
 
 
 def incident_list_html(incidents: list[dict]) -> str:
     incident_html = "\n".join(incident_card_html(incident) for incident in incident_summary_cards(incidents))
     if not incident_html:
-        incident_html = """<article class="incident-card is-ready">
-<strong>目前沒有待處理事件</strong>
-<span>背景任務、近期失敗與 AI 額度沒有主要阻塞。</span>
-</article>"""
-    return f"""<section class="incident-inbox is-list" aria-label="事件清單">
-<div class="incident-list">
-{incident_html}
-</div>
-</section>"""
+        incident_html = incident_empty_card_html()
+    return _incident_list_html(incident_html)
 
 
 def incident_priority_summary_html(summary: dict[str, object]) -> str:
-    state = escape(str(summary.get("state") or "ready"))
-    return f"""<section class="incident-priority-summary is-{state}" aria-label="事件可行動摘要">
-<div>
-<span>建議處理順序</span>
-<strong>{escape(str(summary.get("title") or ""))}</strong>
-<p>{escape(str(summary.get("counts_label") or ""))}</p>
-</div>
-<ul>
-<li>{escape(str(summary.get("primary_action") or ""))}</li>
-<li>{escape(str(summary.get("secondary_action") or ""))}</li>
-</ul>
-</section>"""
+    return _incident_priority_summary_html(summary)
 
 
 def incident_action_controls_intro_html() -> str:
-    return """<section class="incident-action-controls" aria-label="事件處理操作">
-<span>處理事件</span>
-<strong>開啟對應頁面或任務檢視</strong>
-</section>"""
+    return _incident_action_controls_intro_html()
 
 
 def incident_inbox_header_badges(incidents: list[dict]) -> list[str]:
@@ -210,25 +183,12 @@ def incident_card_html(incident: dict) -> str:
         incident.get("hidden_count"),
         default=max(0, repeat_count - 1),
     )
-    repeat_badge = ""
-    if repeat_count > 1:
-        repeat_badge = (
-            f'<span class="incident-repeat-badge">同類事件 {escape(str(repeat_count))} 筆</span>'
-        )
     route_hint = str(incident.get("route_hint") or "").strip()
     route_text = incident_route_caption(route_hint)
     if hidden_count > 0:
         hidden_text = f"另有 {hidden_count} 筆同類事件"
         route_text = f"{route_text}；{hidden_text}" if route_text else hidden_text
-    return f"""<article class="incident-card is-{escape(str(incident.get("severity") or "info"))}">
-<div class="incident-card-head">
-<strong>{escape(str(incident.get("title") or "-"))}</strong>
-{repeat_badge}
-</div>
-<span>{escape(str(incident.get("impact") or ""))}</span>
-<em>{escape(str(incident.get("next_action") or ""))}</em>
-<small>{escape(route_text)}</small>
-</article>"""
+    return _incident_card_html(incident, route_text=route_text)
 
 
 def incident_route_caption(route_hint: object) -> str:

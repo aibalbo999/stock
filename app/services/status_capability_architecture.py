@@ -281,6 +281,7 @@ def architecture_capabilities(
             and frontend_status.get("ui_incident_grouped_action_controls_enabled")
             and frontend_status.get("ui_incident_route_captions_enabled")
             and frontend_status.get("ui_maintenance_incident_presenter_extracted")
+            and frontend_status.get("ui_maintenance_incident_view_extracted")
             and frontend_status.get("ui_optimization_progress_operator_summary_enabled")
             and frontend_status.get("ui_optimization_progress_metric_labels_enabled")
             and frontend_status.get("ui_optimization_progress_next_action_labels_enabled")

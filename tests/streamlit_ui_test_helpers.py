@@ -62,6 +62,7 @@ ANALYSIS_OPERATOR_PRESENTER_SOURCE = Path("app/ui/analysis_operator_presenter.py
 ANALYSIS_WORKSPACE_PRESENTER_SOURCE = Path("app/ui/analysis_workspace_presenter.py")
 ANALYSIS_WORKSPACE_VIEW_SOURCE = Path("app/ui/analysis_workspace_view.py")
 MAINTENANCE_INCIDENT_PRESENTER_SOURCE = Path("app/ui/maintenance_incident_presenter.py")
+MAINTENANCE_INCIDENT_VIEW_SOURCE = Path("app/ui/maintenance_incident_view.py")
 SYSTEM_SETTINGS_SOURCE = Path("app/ui/system_settings.py")
 SYSTEM_SETTINGS_SCOPE_SOURCE = Path("app/ui/system_settings_scope.py")
 SYSTEM_SETTINGS_SCOPE_VIEW_SOURCE = Path("app/ui/system_settings_scope_view.py")
@@ -121,6 +122,7 @@ UI_SOURCE_FILES = [
     ANALYSIS_OPERATOR_PRESENTER_SOURCE,
     ANALYSIS_WORKSPACE_PRESENTER_SOURCE,
     MAINTENANCE_INCIDENT_PRESENTER_SOURCE,
+    MAINTENANCE_INCIDENT_VIEW_SOURCE,
     Path("app/ui/analysis_workspace.py"),
     ANALYSIS_WORKSPACE_VIEW_SOURCE,
     Path("app/ui/report_center.py"),

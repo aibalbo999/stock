@@ -207,6 +207,7 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
     maintenance_incident_presenter_source = (
         ui.MAINTENANCE_INCIDENT_PRESENTER_SOURCE.read_text()
     )
+    maintenance_incident_view_source = ui.MAINTENANCE_INCIDENT_VIEW_SOURCE.read_text()
     system_settings_maintenance_source = Path(
         "app/ui/system_settings_maintenance.py"
     ).read_text()
@@ -223,6 +224,19 @@ def test_streamlit_shell_uses_operational_workspace_header() -> None:
         system_settings_maintenance_source
     )
     assert "import streamlit" not in maintenance_incident_presenter_source
+    assert "from app.ui.maintenance_incident_view import (" in (
+        maintenance_incident_presenter_source
+    )
+    assert "import streamlit" not in maintenance_incident_view_source
+    assert "def incident_inbox_header_html(" in maintenance_incident_view_source
+    assert "def incident_list_html(" in maintenance_incident_view_source
+    assert "def incident_card_html(" in maintenance_incident_view_source
+    assert "def incident_priority_summary_html(" in maintenance_incident_view_source
+    assert "def incident_action_controls_intro_html(" in maintenance_incident_view_source
+    assert 'class="incident-card' in maintenance_incident_view_source
+    assert 'class="incident-inbox' in maintenance_incident_view_source
+    assert 'class="incident-card' not in maintenance_incident_presenter_source
+    assert 'class="incident-inbox' not in maintenance_incident_presenter_source
     assert "def incident_action_priority_summary(" in maintenance_incident_presenter_source
     assert "先處理 {critical} 個 Critical 事件" in source
     assert "歷史趨勢/觀測" in source

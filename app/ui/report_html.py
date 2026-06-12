@@ -3,6 +3,9 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 from typing import Optional
+from collections.abc import Callable
+
+READING_BUDGET_PREVIEW_LIMIT = 3
 
 from app.ui.report_candidate_audit import candidate_audit_html
 from app.ui.report_formatters import (
@@ -23,7 +26,7 @@ from app.ui.report_markdown import (
 )
 from app.ui.report_sections import (
     company_analysis_html,
-    comparison_matrix_html,
+    comparison_matrix_cards,
     credibility_html,
     detail_html,
     early_potential_radar_html,
@@ -37,6 +40,58 @@ REPORT_HTML_STYLE_PATH = Path(__file__).with_name("styles") / "report_html.css"
 
 def load_report_html_css() -> str:
     return REPORT_HTML_STYLE_PATH.read_text(encoding="utf-8")
+
+
+def reading_budget_section_html(
+    *,
+    section_id: str,
+    title: str,
+    noun: str,
+    items: list[str],
+    summary_html: str = "",
+    preview_limit: int = READING_BUDGET_PREVIEW_LIMIT,
+    preview_items: list[str] | None = None,
+    empty_html: str = "<p class='muted'>目前沒有可呈現的資料。</p>",
+    list_class: str = "",
+) -> str:
+    total = len(items)
+    selected_preview = preview_items if preview_items is not None else items[:preview_limit]
+    visible_count = min(len(selected_preview), total)
+    title_with_count = f"{title}（{total} {noun}）" if total else title
+    if total == 0:
+        return f"<section class='panel' data-reading-budget='{escape(section_id)}'><h2>{escape(title)}</h2>{empty_html}</section>"
+
+    preview_body = "".join(selected_preview) or empty_html
+    preview_class = f"reading-budget-preview {list_class}".strip()
+    if total <= preview_limit:
+        return f"""
+        <section class="panel reading-budget-section" data-reading-budget="{escape(section_id)}">
+          <div class="reading-budget-head">
+            <h2>{escape(title_with_count)}</h2>
+            <span>顯示 {visible_count} / {total}</span>
+          </div>
+          {summary_html}
+          <div class="{escape(preview_class)}" data-reading-budget-preview="{escape(section_id)}">{preview_body}</div>
+        </section>
+        """
+
+    remaining = total - visible_count
+    full_class = f"reading-budget-full {list_class}".strip()
+    return f"""
+    <section class="panel reading-budget-section" data-reading-budget="{escape(section_id)}">
+      <div class="reading-budget-head">
+        <h2>{escape(title_with_count)}</h2>
+        <span>顯示 {visible_count} / {total}</span>
+      </div>
+      {summary_html}
+      <div class="{escape(preview_class)}" data-reading-budget-preview="{escape(section_id)}">{preview_body}</div>
+      <p class="reading-budget-more">另有 {remaining} {noun}可展開</p>
+      <details class="reading-budget-details">
+        <summary>展開全部 {total} {noun}</summary>
+        <div class="{escape(full_class)}" data-reading-budget-full="{escape(section_id)}">{"".join(items)}</div>
+      </details>
+    </section>
+    """
 
 
 def report_html(markdown: str, result: Optional[dict] = None) -> str:
@@ -85,7 +140,7 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
     investment_rows = markdown_table_rows(markdown, "投資建議", limit=20)
     early_radar_html = early_potential_radar_html(markdown)
-    comparison_html = comparison_matrix_html(markdown)
+    comparison_summary_html, comparison_cards = comparison_matrix_cards(markdown)
     thesis_html = investment_thesis_html(markdown)
     credibility_panel = credibility_html(markdown)
     follow_up_html = follow_up_tasks_html(markdown)
@@ -194,7 +249,14 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
       {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
       {"<section class='panel'><h2>早期潛力雷達</h2><p class='muted'>專看截至目前報導較少、但近況訊號轉強的研究線索；不是買賣指令，也不是自選股狀態。</p><div class='matrix-list'>" + early_radar_html + "</div></section>" if early_radar_html else ""}
-      {"<section class='panel'><h2>個股比較矩陣</h2><div class='matrix-list'>" + comparison_html + "</div></section>" if comparison_html else ""}
+      {reading_budget_section_html(
+          section_id="comparison-matrix",
+          title="個股比較矩陣",
+          noun="檔",
+          items=comparison_cards,
+          summary_html=comparison_summary_html,
+          list_class="matrix-list",
+      ) if comparison_cards else ""}
       {"<section class='panel'><h2>投資理由地圖</h2><div class='thesis-list'>" + thesis_html + "</div></section>" if thesis_html else ""}
       <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
       {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}

@@ -52,6 +52,36 @@ def test_report_html_renders_comparison_matrix_cards() -> None:
     assert "目前情境降值分" in html
 
 
+def test_report_html_collapses_large_comparison_matrix_to_reading_budget() -> None:
+    helpers = load_report_helpers()
+    rows = "\n".join(
+        f"| {1000 + index} 測試{index} | 觀察 / 等風險降低 | 2026-05-22 收盤 {index} | 等風險下降 | 20 分 | 7 分 | 目前估值接近同業 | 高 | 測試{index} |"
+        for index in range(1, 21)
+    )
+    markdown = f"""
+# AI 產業鏈 自動分析報告
+
+## 個股比較矩陣
+| 股票 | 判斷 | 最新可取得收盤價 | 追價風險標籤 | 目前情境升值分 | 目前情境降值分 | 目前估值位置 | 財務信心 | 核心提醒 |
+|---|---|---|---|---:|---:|---|---|---|
+{rows}
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert 'data-reading-budget="comparison-matrix"' in html
+    assert "個股比較矩陣（20 檔）" in html
+    assert "顯示 3 / 20" in html
+    assert "另有 17 檔可展開" in html
+    assert "展開全部 20 檔" in html
+    assert html.count('class="matrix-card') == 23
+    preview_html = html.split('data-reading-budget-preview="comparison-matrix"', 1)[1].split(
+        'data-reading-budget-full="comparison-matrix"', 1
+    )[0]
+    assert preview_html.count('class="matrix-card') == 3
+    assert "1020 測試20" in html
+
+
 def test_report_html_renders_all_comparison_matrix_rows() -> None:
     helpers = load_report_helpers()
     rows = "\n".join(
@@ -69,10 +99,11 @@ def test_report_html_renders_all_comparison_matrix_rows() -> None:
 
     html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
 
-    assert html.count('class="matrix-card') == 20
+    assert html.count('class="matrix-card') == 23
     assert "共 20 檔" in html
     assert "觀察 20" in html
     assert "1020 測試20" in html
+    assert 'data-reading-budget-full="comparison-matrix"' in html
 
 
 def test_report_html_renders_credibility_panel() -> None:

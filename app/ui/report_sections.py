@@ -123,10 +123,10 @@ def company_analysis_html(markdown: str) -> str:
     return f"<details open><summary>個別公司分析（{len(cards)} 檔）</summary>{''.join(cards)}</details>"
 
 
-def comparison_matrix_html(markdown: str) -> str:
+def comparison_matrix_cards(markdown: str) -> tuple[str, list[str]]:
     rows = markdown_table_rows(markdown, "個股比較矩陣", limit=60)
     if not rows:
-        return ""
+        return "", []
     cards = []
     action_count = 0
     watch_count = 0
@@ -194,7 +194,12 @@ def comparison_matrix_html(markdown: str) -> str:
         f"<span>風險 {risk_count}</span>"
         f"</div>"
     )
-    return summary + "".join(cards)
+    return summary, cards
+
+
+def comparison_matrix_html(markdown: str) -> str:
+    summary, cards = comparison_matrix_cards(markdown)
+    return summary + "".join(cards) if cards else ""
 
 
 def early_potential_radar_html(markdown: str) -> str:

@@ -29,9 +29,9 @@ from app.ui.report_sections import (
     comparison_matrix_cards,
     credibility_html,
     detail_html,
-    early_potential_radar_html,
-    follow_up_tasks_html,
-    investment_thesis_html,
+    early_potential_radar_cards,
+    follow_up_task_cards,
+    investment_thesis_cards,
     next_steps_html,
 )
 
@@ -94,6 +94,42 @@ def reading_budget_section_html(
     """
 
 
+def investment_advice_cards(markdown: str) -> list[str]:
+    investment_rows = markdown_table_rows(markdown, "投資建議", limit=60)
+    cards = []
+    for row in investment_rows:
+        if len(row) >= 7:
+            ticker_raw, price_raw, price_label_raw, decision_raw, reason_raw = row[0], row[1], row[2], row[3], row[4]
+        else:
+            ticker_raw = row[0] if len(row) > 0 else "-"
+            price_raw = "-"
+            price_label_raw = "未標示"
+            decision_raw = row[1] if len(row) > 1 else "-"
+            reason_raw = row[2] if len(row) > 2 else ""
+        ticker = escape(ticker_raw)
+        price = escape(price_raw)
+        price_label = escape(price_label_raw)
+        decision = escape(decision_raw)
+        reason = escape(reason_raw)
+        price_class = current_price_badge_class(price_label_raw)
+        cards.append(
+            f"""
+            <article class="stock-card">
+              <div>
+                <div class="ticker">{ticker}</div>
+                <div class="stock-meta">
+                  <span>{price}</span>
+                  <strong class="{price_class}">{price_label}</strong>
+                </div>
+                <div class="reason">{reason}</div>
+              </div>
+              <span class="decision">{decision}</span>
+            </article>
+            """
+        )
+    return cards
+
+
 def report_html(markdown: str, result: Optional[dict] = None) -> str:
     gate = result.get("quality_gate") if result else None
     gate = gate if isinstance(gate, dict) else {}
@@ -138,12 +174,12 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     time_scope_items = markdown_items(markdown, "時間口徑說明", limit=5)
     criteria_items = markdown_items(markdown, "判斷準則說明", limit=5)
     guard_items = markdown_items(markdown, "投資行動限制", limit=3)
-    investment_rows = markdown_table_rows(markdown, "投資建議", limit=20)
-    early_radar_html = early_potential_radar_html(markdown)
+    investment_cards = investment_advice_cards(markdown)
+    early_radar_cards = early_potential_radar_cards(markdown)
     comparison_summary_html, comparison_cards = comparison_matrix_cards(markdown)
-    thesis_html = investment_thesis_html(markdown)
+    thesis_cards = investment_thesis_cards(markdown)
     credibility_panel = credibility_html(markdown)
-    follow_up_html = follow_up_tasks_html(markdown)
+    follow_up_cards = follow_up_task_cards(markdown)
     audit_html = candidate_audit_html(markdown, result)
     final_items = markdown_items(markdown, "二次綜合篩選", limit=3)
 
@@ -152,38 +188,6 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     criteria_html = "".join(f"<li>{escape(item)}</li>" for item in criteria_items)
     action_html = next_steps_html(markdown)
     guard_html = "".join(f"<li>{escape(item)}</li>" for item in guard_items)
-    cards = []
-    for row in investment_rows:
-        if len(row) >= 7:
-            ticker_raw, price_raw, price_label_raw, decision_raw, reason_raw = row[0], row[1], row[2], row[3], row[4]
-        else:
-            ticker_raw = row[0] if len(row) > 0 else "-"
-            price_raw = "-"
-            price_label_raw = "未標示"
-            decision_raw = row[1] if len(row) > 1 else "-"
-            reason_raw = row[2] if len(row) > 2 else ""
-        ticker = escape(ticker_raw)
-        price = escape(price_raw)
-        price_label = escape(price_label_raw)
-        decision = escape(decision_raw)
-        reason = escape(reason_raw)
-        price_class = current_price_badge_class(price_label_raw)
-        cards.append(
-            f"""
-            <article class="stock-card">
-              <div>
-                <div class="ticker">{ticker}</div>
-                <div class="stock-meta">
-                  <span>{price}</span>
-                  <strong class="{price_class}">{price_label}</strong>
-                </div>
-                <div class="reason">{reason}</div>
-              </div>
-              <span class="decision">{decision}</span>
-            </article>
-            """
-        )
-    investment_html = "".join(cards) or "<p class='muted'>目前沒有可呈現的個股建議。</p>"
     final_html = "".join(f"<li>{escape(item)}</li>" for item in final_items)
     details = "".join(
         [
@@ -247,8 +251,21 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
       <section class="panel"><h2>下一步</h2>{action_html}</section>
       {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
-      {"<section class='panel'><h2>系統會自動補強</h2>" + follow_up_html + "</section>" if follow_up_html else ""}
-      {"<section class='panel'><h2>早期潛力雷達</h2><p class='muted'>專看截至目前報導較少、但近況訊號轉強的研究線索；不是買賣指令，也不是自選股狀態。</p><div class='matrix-list'>" + early_radar_html + "</div></section>" if early_radar_html else ""}
+      {reading_budget_section_html(
+          section_id="follow-up-tasks",
+          title="系統會自動補強",
+          noun="項",
+          items=follow_up_cards,
+          list_class="stock-list",
+      ) if follow_up_cards else ""}
+      {reading_budget_section_html(
+          section_id="early-potential-radar",
+          title="早期潛力雷達",
+          noun="檔",
+          items=early_radar_cards,
+          summary_html="<p class='muted'>專看截至目前報導較少、但近況訊號轉強的研究線索；不是買賣指令，也不是自選股狀態。</p>",
+          list_class="matrix-list",
+      ) if early_radar_cards else ""}
       {reading_budget_section_html(
           section_id="comparison-matrix",
           title="個股比較矩陣",
@@ -257,8 +274,21 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
           summary_html=comparison_summary_html,
           list_class="matrix-list",
       ) if comparison_cards else ""}
-      {"<section class='panel'><h2>投資理由地圖</h2><div class='thesis-list'>" + thesis_html + "</div></section>" if thesis_html else ""}
-      <section class="panel"><h2>個股建議</h2><div class="stock-list">{investment_html}</div></section>
+      {reading_budget_section_html(
+          section_id="investment-thesis",
+          title="投資理由地圖",
+          noun="張",
+          items=thesis_cards,
+          list_class="thesis-list",
+      ) if thesis_cards else ""}
+      {reading_budget_section_html(
+          section_id="investment-advice",
+          title="個股建議",
+          noun="檔",
+          items=investment_cards,
+          empty_html="<p class='muted'>目前沒有可呈現的個股建議。</p>",
+          list_class="stock-list",
+      )}
       {"<section class='panel'><h2>二次篩選</h2><ul>" + final_html + "</ul></section>" if final_html else ""}
       <section class="panel"><h2>展開看細節</h2>{details or "<p class='muted'>目前沒有更多細節。</p>"}</section>
     </div>

@@ -202,10 +202,10 @@ def comparison_matrix_html(markdown: str) -> str:
     return summary + "".join(cards) if cards else ""
 
 
-def early_potential_radar_html(markdown: str) -> str:
-    rows = markdown_table_rows(markdown, "早期潛力雷達", limit=8)
+def early_potential_radar_cards(markdown: str) -> list[str]:
+    rows = markdown_table_rows(markdown, "早期潛力雷達", limit=30)
     if not rows:
-        return ""
+        return []
     cards = []
     for row in rows:
         if not row or row[0] in {"目前無足夠數據判斷", "目前無足夠數據判斷。"}:
@@ -243,13 +243,17 @@ def early_potential_radar_html(markdown: str) -> str:
             </article>
             """
         )
-    return "".join(cards)
+    return cards
 
 
-def investment_thesis_html(markdown: str) -> str:
+def early_potential_radar_html(markdown: str) -> str:
+    return "".join(early_potential_radar_cards(markdown))
+
+
+def investment_thesis_cards(markdown: str) -> list[str]:
     section = markdown_section_or_none(markdown, "投資理由地圖")
     if not section:
-        return ""
+        return []
     company_blocks = re.split(r"(?m)^### (?=\d{4}\s)", section)
     cards = []
     for block in company_blocks[1:]:
@@ -289,7 +293,11 @@ def investment_thesis_html(markdown: str) -> str:
             </article>
             """
         )
-    return "".join(cards)
+    return cards
+
+
+def investment_thesis_html(markdown: str) -> str:
+    return "".join(investment_thesis_cards(markdown))
 
 
 def credibility_badge_class(value: str) -> str:
@@ -362,10 +370,10 @@ def credibility_html(markdown: str) -> str:
     )
 
 
-def follow_up_tasks_html(markdown: str) -> str:
-    rows = markdown_table_rows(markdown, "自動補強任務", limit=8)
+def follow_up_task_cards(markdown: str) -> list[str]:
+    rows = markdown_table_rows(markdown, "自動補強任務", limit=30)
     if not rows:
-        return ""
+        return []
     cards = []
     for row in rows:
         task = escape(row[0]) if len(row) > 0 else "-"
@@ -390,4 +398,8 @@ def follow_up_tasks_html(markdown: str) -> str:
             </article>
             """
         )
-    return "".join(cards)
+    return cards
+
+
+def follow_up_tasks_html(markdown: str) -> str:
+    return "".join(follow_up_task_cards(markdown))

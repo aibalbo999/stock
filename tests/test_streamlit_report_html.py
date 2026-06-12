@@ -106,6 +106,54 @@ def test_report_html_renders_all_comparison_matrix_rows() -> None:
     assert 'data-reading-budget-full="comparison-matrix"' in html
 
 
+def test_report_html_does_not_wrap_short_sections_with_extra_details() -> None:
+    helpers = load_report_helpers()
+    markdown = """
+# AI 產業鏈 自動分析報告
+
+## 投資建議
+| 股票 | 最新可取得收盤價 | 追價風險標籤 | 建議 | 理由 | 單檔上限 | 來源 |
+|---|---|---|---|---|---:|---|
+| 2330 台積電 | 2026-05-22 收盤 100 | 可研究但勿追高 | 可小額分批研究 | 測試 | 約 100,000 元 | 測試 |
+| 2382 廣達 | 2026-05-22 收盤 80 | 等風險下降 | 觀察 / 等風險降低 | 測試 | 0 元 | 測試 |
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert 'data-reading-budget="investment-advice"' in html
+    assert "顯示 2 / 2" in html
+    assert "另有" not in html
+    assert "展開全部 2 檔" not in html
+
+
+def test_report_html_collapses_follow_up_tasks_to_reading_budget() -> None:
+    helpers = load_report_helpers()
+    rows = "\n".join(
+        f"| 任務{index} | 2330 | high | weekly | 補強原因{index} |"
+        for index in range(1, 7)
+    )
+    markdown = f"""
+# AI 產業鏈 自動分析報告
+
+## 自動補強任務
+| 任務 | 股票 | 優先級 | 頻率 | 觸發原因 |
+|---|---|---|---|---|
+{rows}
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert 'data-reading-budget="follow-up-tasks"' in html
+    assert "系統會自動補強（6 項）" in html
+    assert "顯示 3 / 6" in html
+    assert "另有 3 項可展開" in html
+    preview_html = html.split('data-reading-budget-preview="follow-up-tasks"', 1)[1].split(
+        'data-reading-budget-full="follow-up-tasks"', 1
+    )[0]
+    assert preview_html.count('class="task-card"') == 3
+    assert "任務6" in html
+
+
 def test_report_html_renders_credibility_panel() -> None:
     helpers = load_report_helpers()
     markdown = """

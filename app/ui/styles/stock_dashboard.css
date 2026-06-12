@@ -260,6 +260,15 @@ textarea,
     min-height: 44px !important;
     align-items: center !important;
     touch-action: manipulation;
+    color: var(--stock-text) !important;
+}
+[data-baseweb="checkbox"] div,
+[data-baseweb="radio"] div,
+[data-testid="stCheckbox"] label p,
+[data-testid="stCheckbox"] label span,
+[data-testid="stRadio"] label p,
+[data-testid="stRadio"] label span {
+    color: var(--stock-text) !important;
 }
 [data-testid="stWidgetLabel"],
 [data-testid="stWidgetLabel"] p,
@@ -1726,6 +1735,13 @@ textarea:focus,
     min-height: 44px !important;
     align-items: center !important;
     touch-action: manipulation;
+    color: var(--stock-text) !important;
+}
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span,
+[data-testid="stMarkdownContainer"] p:not([class]),
+[data-testid="stMarkdownContainer"] li:not([class]) {
+    color: var(--stock-text) !important;
 }
 [data-testid="stDataFrame"] {
     border: 1px solid var(--stock-border);

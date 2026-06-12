@@ -131,6 +131,17 @@ details { background:#F9FBFD; border:1px solid var(--border); border-radius:8px;
 summary { cursor:pointer; font-weight:700; }
 .company-detail { background:#FFFFFF; margin:10px 0 0; }
 .company-detail summary { color:#1D4ED8; }
+.reading-budget-section { position: relative; margin-bottom: 24px; }
+.reading-budget-head { display: flex; align-items: baseline; justify-content: space-between; }
+.reading-budget-head h2 { margin-bottom: 0; }
+.reading-budget-head span { font-size: 13px; color: var(--muted); }
+.reading-budget-preview { margin-top: 16px; }
+.reading-budget-more { text-align: center; font-size: 13px; color: var(--muted); margin: 12px 0 0 0; border-top: 1px dashed var(--border); padding-top: 12px; }
+.reading-budget-details { margin-top: 8px; background: transparent; border: none; padding: 0; }
+.reading-budget-details > summary { cursor: pointer; color: var(--blue); font-weight: 600; text-align: center; list-style: none; padding: 8px; background-color: var(--surface); border-radius: 4px; border: 1px solid var(--border); }
+.reading-budget-details > summary::-webkit-details-marker { display: none; }
+.reading-budget-details > summary:hover { background-color: #F4F7FB; }
+.reading-budget-full { margin-top: 16px; }
 @media (max-width:900px) { .decision-rail { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .grid,.trust-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .matrix-list,.thesis-body,.credibility-grid { grid-template-columns:1fr; } .stock-card,.task-card,.audit-card,.matrix-top,.credibility-head { display:block; } .decision,.task-meta,.audit-meta,.credibility-badge { display:inline-flex; margin-top:10px; justify-content:flex-start; min-width:0; } }
 @media (max-width:520px) { .grid,.trust-grid,.mini-grid,.decision-rail { grid-template-columns:1fr; } }

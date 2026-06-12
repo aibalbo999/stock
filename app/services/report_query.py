@@ -47,6 +47,18 @@ def _quality_gate_refresh_kwargs(metrics: dict, promoted_count: int) -> dict:
     if source_count is not None:
         kwargs["source_count"] = source_count
 
+    source_quality = {
+        "unique_publisher_count": metrics.get("source_unique_publishers"),
+        "timestamp_coverage": metrics.get("source_timestamp_coverage"),
+        "recent_coverage": metrics.get("source_recent_coverage"),
+        "lookback_days": metrics.get("source_lookback_days"),
+        "high_credibility_ratio": metrics.get("source_high_credibility_ratio"),
+        "low_credibility_ratio": metrics.get("source_low_credibility_ratio"),
+        "average_credibility": metrics.get("source_average_credibility"),
+    }
+    if any(v is not None for v in source_quality.values()):
+        kwargs["source_quality"] = source_quality
+
     company_filing_coverage = _metric_float(metrics.get("company_filing_coverage"))
     if company_filing_coverage is not None:
         kwargs["company_filing_sufficient_count"] = round(company_filing_coverage * promoted_count)

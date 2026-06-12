@@ -16,10 +16,7 @@ class FollowUpCompatibilityMixin:
     api_services: Any
 
     def load_report_follow_up_context(self, report_id: int) -> dict:
-        try:
-            return self.api_services.report_follow_up_context().load(report_id)
-        except ReportFollowUpContextNotFound as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return self.api_services.report_follow_up_context().load(report_id)
 
     async def prepare_follow_up_report_context(
         self,
@@ -33,7 +30,10 @@ class FollowUpCompatibilityMixin:
         return await self.api_services.report_follow_up_context().refresh_market_data(request)
 
     def get_report_follow_up_plan(self, report_id: int) -> dict:
-        return self.api_services.report_follow_up_plan().build(report_id)
+        try:
+            return self.api_services.report_follow_up_plan().build(report_id)
+        except ReportFollowUpContextNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     async def maybe_auto_start_required_follow_up(
         self,
@@ -62,6 +62,8 @@ class FollowUpCompatibilityMixin:
             return await self.api_services.report_follow_up_run().run(report_id, payload)
         except HTTPException:
             raise
+        except ReportFollowUpContextNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ReportExecutionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except WorkflowOrchestrationError as exc:

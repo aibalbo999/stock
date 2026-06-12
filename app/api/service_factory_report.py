@@ -71,8 +71,8 @@ class ReportServiceFactoryMixin:
             analysis_run_repository_cls=d["AnalysisRunRepository"],
             report_repository_cls=d["ReportRepository"],
             follow_up_action_planner_cls=d["FollowUpActionPlanner"],
-            load_report_follow_up_context_func=d["load_report_follow_up_context"],
-            prepare_follow_up_report_context_func=d["prepare_follow_up_report_context"],
+            load_report_follow_up_context_func=self.report_follow_up_context().load,
+            prepare_follow_up_report_context_func=self.report_follow_up_context().prepare,
             execute_follow_up_actions_func=d["execute_follow_up_actions"],
             summarize_follow_up_execution_func=d["summarize_follow_up_execution"],
             split_fresh_tracking_actions_func=d["split_fresh_tracking_actions"],
@@ -86,7 +86,7 @@ class ReportServiceFactoryMixin:
     def report_follow_up_plan(self):
         d = self.dependencies
         return d["ReportFollowUpPlanService"](
-            load_report_follow_up_context_func=d["load_report_follow_up_context"],
+            load_report_follow_up_context_func=self.report_follow_up_context().load,
             follow_up_action_planner_cls=d["FollowUpActionPlanner"],
             should_require_candidate_audit_follow_up_func=d["should_require_candidate_audit_follow_up"],
             split_fresh_tracking_actions_func=d["split_fresh_tracking_actions"],
@@ -100,9 +100,9 @@ class ReportServiceFactoryMixin:
         d = self.dependencies
         return d["AutoFollowUpStartService"](
             settings_provider=d["get_settings"],
-            plan_provider=d["get_report_follow_up_plan"],
+            plan_provider=self.report_follow_up_plan().build,
             follow_up_run_request_cls=d["FollowUpRunRequest"],
-            run_follow_up_func=d["run_report_follow_up"],
+            run_follow_up_func=self.report_follow_up_run().run,
             background_runner_func=d["run_required_follow_up_background"],
             create_task_func=d["asyncio"].create_task,
         )

@@ -350,12 +350,13 @@ def build_quality_gate_for_request(
     company_filing_sufficient_count: int | None = None,
     candidate_support: dict | None = None,
     plan_quality: dict | None = None,
+    source_quality: dict | None = None,
 ) -> dict:
     tickers = list(dict.fromkeys(request.tickers))
     if not tickers:
         tickers = EntityMapper().filter_allowed_tickers(request.tickers)
     source_count = len(documents or []) if source_count is None else source_count
-    source_quality = (
+    source_quality = source_quality or (
         summarize_document_source_quality(documents or [], request.lookback_days)
         if documents
         else None

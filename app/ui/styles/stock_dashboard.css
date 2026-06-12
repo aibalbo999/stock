@@ -49,11 +49,38 @@ a[aria-label="Link to heading"] {
     border-radius: 8px !important;
     padding: 8px 12px !important;
     touch-action: manipulation;
+    color: var(--stock-text) !important;
+}
+[data-testid="stSidebarNavLink"] p,
+[data-testid="stSidebarNavLink"] span {
+    color: var(--stock-text) !important;
 }
 [data-testid="stSidebarNavLink"]:hover,
 [data-testid="stSidebarNavLink"]:focus-visible {
     background: #eef4ff !important;
     color: var(--stock-primary-strong) !important;
+}
+[data-testid="stSidebarNavLink"]:hover p,
+[data-testid="stSidebarNavLink"]:hover span {
+    color: var(--stock-primary-strong) !important;
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+    background: var(--stock-primary-strong) !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebarNavLink"][aria-current="page"] p,
+[data-testid="stSidebarNavLink"][aria-current="page"] span {
+    color: #ffffff !important;
+}
+/* Sidebar background and text */
+[data-testid="stSidebar"] {
+    background: #ffffff !important;
+}
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] li,
+[data-testid="stSidebar"] label {
+    color: var(--stock-text) !important;
 }
 .block-container {
     padding-top: 0.55rem;

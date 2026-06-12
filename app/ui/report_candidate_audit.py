@@ -68,7 +68,19 @@ def candidate_source_matches_display_entity(candidate: dict, source: dict) -> bo
     return True
 
 
-def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
+def candidate_audit_priority_key(card: str) -> int:
+    if "audit-weak" in card:
+        return 0
+    if "audit-needs" in card:
+        return 1
+    if "audit-limited" in card:
+        return 2
+    if "audit-unavailable" in card:
+        return 3
+    return 4
+
+
+def candidate_audit_summary_and_cards(markdown: str, result: Optional[dict] = None) -> tuple[str, list[str]]:
     candidates = result.get("candidate_whitelist", []) if result else []
     rows = []
     if candidates:
@@ -127,7 +139,7 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
     else:
         rows = markdown_table_rows_by_header(markdown, "候選公司審計", "股票", limit=30)
     if not rows:
-        return ""
+        return "", []
 
     supported = [row for row in rows if len(row) > 2 and "正式分析" in row[2]]
     weak = [row for row in rows if len(row) > 2 and "弱證據" in row[2]]
@@ -184,4 +196,9 @@ def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
         f"<span>資料不足排除 {len(unavailable)}</span>"
         "</div>"
     )
-    return summary + "".join(cards)
+    return summary, cards
+
+
+def candidate_audit_html(markdown: str, result: Optional[dict] = None) -> str:
+    summary, cards = candidate_audit_summary_and_cards(markdown, result)
+    return summary + "".join(cards) if cards else ""

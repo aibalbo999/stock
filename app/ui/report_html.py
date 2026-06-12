@@ -7,7 +7,11 @@ from collections.abc import Callable
 
 READING_BUDGET_PREVIEW_LIMIT = 3
 
-from app.ui.report_candidate_audit import candidate_audit_html
+from app.ui.report_candidate_audit import (
+    candidate_audit_html,
+    candidate_audit_summary_and_cards,
+    candidate_audit_priority_key,
+)
 from app.ui.report_formatters import (
     auto_follow_up_status_html,
     confidence_label,
@@ -32,6 +36,7 @@ from app.ui.report_sections import (
     early_potential_radar_cards,
     follow_up_task_cards,
     investment_thesis_cards,
+    next_step_groups,
     next_steps_html,
 )
 
@@ -180,13 +185,13 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
     thesis_cards = investment_thesis_cards(markdown)
     credibility_panel = credibility_html(markdown)
     follow_up_cards = follow_up_task_cards(markdown)
-    audit_html = candidate_audit_html(markdown, result)
+    audit_summary_html, audit_cards = candidate_audit_summary_and_cards(markdown, result)
     final_items = markdown_items(markdown, "二次綜合篩選", limit=3)
 
     summary_html = "".join(f"<li>{escape(item)}</li>" for item in summary_items) or "<li>目前無足夠數據判斷。</li>"
     time_scope_html = "".join(f"<li>{escape(item)}</li>" for item in time_scope_items)
     criteria_html = "".join(f"<li>{escape(item)}</li>" for item in criteria_items)
-    action_html = next_steps_html(markdown)
+    action_groups = next_step_groups(markdown)
     guard_html = "".join(f"<li>{escape(item)}</li>" for item in guard_items)
     final_html = "".join(f"<li>{escape(item)}</li>" for item in final_items)
     details = "".join(
@@ -249,8 +254,25 @@ def report_html(markdown: str, result: Optional[dict] = None) -> str:
       {"<section class='panel'><h2>時間口徑</h2><ul>" + time_scope_html + "</ul></section>" if time_scope_html else ""}
       {"<section class='panel'><h2>判斷準則</h2><ul>" + criteria_html + "</ul></section>" if criteria_html else ""}
       {"<section class='panel'><h2>投資行動限制</h2><ul>" + guard_html + "</ul></section>" if guard_html else ""}
-      <section class="panel"><h2>下一步</h2>{action_html}</section>
-      {"<section class='panel'><h2>候選公司審計</h2>" + audit_html + "</section>" if audit_html else ""}
+      {("".join(
+          reading_budget_section_html(
+              section_id=group['title'],
+              title=group["title"],
+              noun="項",
+              items=[f"<li>{escape(item)}</li>" for item in group["items"]],
+              list_class="next-step-list",
+              empty_html="<p class='muted'>目前沒有可呈現的行動。</p>",
+          ).replace('data-reading-budget=', 'data-next-step-group=').replace('data-reading-budget-preview=', 'data-next-step-preview=').replace('data-reading-budget-full=', 'data-next-step-full=')
+          for group in action_groups
+      ) if action_groups else "<section class='panel'><h2>下一步行動</h2><p class='muted'>先補資料後再重新分析。</p></section>")}
+      {reading_budget_section_html(
+          section_id="candidate-audit",
+          title="候選公司審計",
+          noun="張",
+          items=audit_cards,
+          summary_html=audit_summary_html,
+          preview_items=sorted(audit_cards, key=candidate_audit_priority_key)[:READING_BUDGET_PREVIEW_LIMIT] if audit_cards else [],
+      ) if audit_cards else ""}
       {reading_budget_section_html(
           section_id="follow-up-tasks",
           title="系統會自動補強",

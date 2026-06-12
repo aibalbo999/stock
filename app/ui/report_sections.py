@@ -25,10 +25,10 @@ def detail_html(markdown: str, title: str, heading: str, limit: int = 4) -> str:
     return f"<details><summary>{escape(title)}</summary><ul>{body}</ul></details>"
 
 
-def next_steps_html(markdown: str) -> str:
+def next_step_groups(markdown: str) -> list[dict]:
     section = markdown_section_or_none(markdown, "下一步行動")
     if not section:
-        return "<p class='muted'>先補資料後再重新分析。</p>"
+        return []
 
     groups: list[dict] = []
     current: dict = {"title": "處理原則", "items": []}
@@ -52,7 +52,11 @@ def next_steps_html(markdown: str) -> str:
             current["items"].append(text)
     if current["items"]:
         groups.append(current)
+    return groups
 
+
+def next_steps_html(markdown: str) -> str:
+    groups = next_step_groups(markdown)
     if not groups:
         return "<p class='muted'>先補資料後再重新分析。</p>"
 

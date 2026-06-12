@@ -724,6 +724,66 @@ def test_report_html_renders_follow_up_tasks() -> None:
     assert "task-card" in html
 
 
+def test_report_html_collapses_candidate_audit_to_priority_preview() -> None:
+    helpers = load_report_helpers()
+    html = helpers["report_html"](
+        "# AI 產業鏈 自動分析報告",
+        {
+            "report_id": 1,
+            "quality_gate": {},
+            "candidate_whitelist": [
+                {"ticker": "2382", "name": "廣達", "segment": "系統組裝", "status": "evidence_supported", "evidence_count": 2, "evidence_source_count": 2, "validation_reason": "通過正式分析門檻", "next_action": "納入正式分析"},
+                {"ticker": "3324", "name": "雙鴻", "segment": "散熱模組", "status": "weak_evidence", "evidence_count": 1, "evidence_source_count": 1, "validation_reason": "弱證據：來源不足", "next_action": "補抓公司新聞"},
+                {"ticker": "2308", "name": "台達電", "segment": "電源", "status": "needs_evidence", "evidence_count": 0, "evidence_source_count": 0, "validation_reason": "缺少公司主題證據", "next_action": "重新補抓"},
+                {"ticker": "3059", "name": "華晶科", "segment": "相機", "status": "evidence_limited", "evidence_count": 4, "evidence_source_count": 2, "validation_reason": "補查後未升格", "next_action": "等待公告"},
+                {"ticker": "8046", "name": "南電", "segment": "PCB", "status": "evidence_unavailable", "evidence_count": 0, "evidence_source_count": 0, "validation_reason": "資料不足排除", "next_action": "排除"},
+            ],
+        },
+    )
+
+    assert 'data-reading-budget="candidate-audit"' in html
+    assert "候選公司審計（5 張）" in html
+    preview_html = html.split('data-reading-budget-preview="candidate-audit"', 1)[1].split(
+        'data-reading-budget-full="candidate-audit"', 1
+    )[0]
+    assert "3324 雙鴻" in preview_html
+    assert "2308 台達電" in preview_html
+    assert "3059 華晶科" in preview_html
+    assert "2382 廣達" not in preview_html
+    assert "8046 南電" in html
+
+
+def test_report_html_collapses_next_step_groups() -> None:
+    helpers = load_report_helpers()
+    watch_rows = "\n".join(
+        f"- {1000 + index} 測試{index}：觀察 / 等風險降低；下一步補查 等待新證據。"
+        for index in range(1, 8)
+    )
+    markdown = f"""
+# AI 產業鏈 自動分析報告
+
+## 下一步行動
+1. 先處理資料缺口。
+2. 只把資料完整且通過門檻的股票放進研究清單。
+
+### 待補資料 / 觀察
+{watch_rows}
+"""
+
+    html = helpers["report_html"](markdown, {"report_id": 1, "quality_gate": {}})
+
+    assert 'data-next-step-group="待補資料 / 觀察"' in html
+    assert "待補資料 / 觀察（7 項）" in html
+    assert "另有 4 項可展開" in html
+    group_preview = html.split('data-next-step-preview="待補資料 / 觀察"', 1)[1].split(
+        'data-next-step-full="待補資料 / 觀察"', 1
+    )[0]
+    assert "1001 測試1" in group_preview
+    assert "1003 測試3" in group_preview
+    assert "1004 測試4" not in group_preview
+    assert "1007 測試7" in html
+
+
 def test_report_html_renders_candidate_audit_from_markdown() -> None:
     helpers = load_report_helpers()
     markdown = """

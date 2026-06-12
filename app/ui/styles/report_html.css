@@ -9,8 +9,8 @@
   --danger: #e11d48;
   --surface: #ffffff;
   --bg: #f8fafc;        /* Very light slate */
-  --text: #1e293b;
-  --muted: #64748b;
+  --text: #0f172a;
+  --muted: #475569;
   --border: #e2e8f0;
   
   /* Status Colors (Pastel + Bold Text) */
@@ -27,7 +27,7 @@
   --status-danger-border: #fecdd3;
 
   --status-neutral-bg: #f1f5f9;
-  --status-neutral-text: #475569;
+  --status-neutral-text: #334155;
   
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -157,6 +157,9 @@ h2 { font-size: 20px; font-weight: 700; margin: 0 0 16px; color: var(--navy); le
 
 ul { margin: 8px 0 0; padding-left: 24px; }
 li { margin: 8px 0; line-height: 1.6; }
+.report p:not(.muted), .report li:not(.muted) { color: var(--text); }
+.report a { color: var(--blue); text-decoration: none; }
+.report a:hover { text-decoration: underline; }
 
 /* Cards & Lists */
 .stock-list { display: grid; gap: 16px; }
